@@ -1,20 +1,58 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback } from "react";
+import { Pause, Play, Plus } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
-import { TrackPlayButton } from "./TrackPlayButton";
-import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
-import { ArtistTrackListToolbar } from "./ArtistTrackListToolbar";
+import { TrackList } from "../../../components/TrackList";
+import { TrackPlaylistSubmenu } from "./TrackPlaylistMenu";
 import { useAlbumTrackListToolbar } from "../../../hooks/useAlbumTrackListToolbar";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
+
+const releaseTrackId = (track, trackKey, index) =>
+  String(track?.id ?? track?.mbid ?? `${trackKey}-${index}`);
+
+const formatReleaseTrackDuration = (length) =>
+  length
+    ? `${Math.floor(length / 60000)}:${Math.floor((length % 60000) / 1000)
+        .toString()
+        .padStart(2, "0")}`
+    : "—";
+
+export function useReleasePreviewQueue({ release, trackKey, tracks, artistName, artistMbid, playbackSource }) {
+  const normalizeTrack = useCallback(
+    (track, index) =>
+      normalizePreviewTrack(
+        {
+          id: releaseTrackId(track, trackKey, index),
+          title: track?.title || track?.trackName,
+          preview_url: track?.preview_url,
+        },
+        artistName,
+        {
+          album: release?.title || "",
+          artistMbid,
+          albumMbid: release?.id || trackKey,
+        },
+      ),
+    [artistMbid, artistName, release?.id, release?.title, trackKey],
+  );
+  const getQueueTracks = useCallback(
+    () =>
+      (tracks || [])
+        .map((track, index) => (track?.preview_url ? normalizeTrack(track, index) : null))
+        .filter(Boolean),
+    [normalizeTrack, tracks],
+  );
+  const toolbar = useAlbumTrackListToolbar({ getQueueTracks, playbackSource });
+  return { ...toolbar, normalizeTrack, getQueueTracks };
+}
 
 export function ArtistDetailsReleaseTrackList({
   release,
   trackKey,
   tracks,
   loading,
-  artistName = "",
-  artistMbid = "",
+  preview,
   playbackSource = null,
   onAddTrackToPlaylist,
   onAddTrackToLibrary,
@@ -29,190 +67,108 @@ export function ArtistDetailsReleaseTrackList({
   onLoadPlaylists,
   highlightTrackId = null,
 }) {
-  const rowRefs = useRef({});
   const ownedTrackSet = new Set((Array.isArray(ownedTrackMbids) ? ownedTrackMbids : []).map(String));
-  const normalizeTrack = useCallback(
-    (track, index) =>
-      normalizePreviewTrack(
-        {
-          id: track?.id ?? track?.mbid ?? `${trackKey}-${index}`,
-          title: track?.title || track?.trackName,
-          preview_url: track?.preview_url,
-        },
-        artistName,
-        {
-          album: release?.title || "",
-          artistMbid,
-          albumMbid: release?.id || trackKey,
-        },
-      ),
-    [artistMbid, artistName, release?.id, release?.title, trackKey],
-  );
-
-  const { currentTrack, isPlaying, isLoading, playTrack, togglePlayPause, source } =
-    useAudioQueue();
-
-  const handlePlay = useCallback(
-    (track, options = {}, ...normalizeArgs) => {
-      const normalized = normalizeTrack(track, ...normalizeArgs);
-      if (!normalized?.src) return;
-      if (currentTrack?.id === normalized.id) {
-        togglePlayPause();
-        return;
-      }
-      playTrack(normalized, {
-        source: options.source ?? source,
-        queue: options.queue,
-        shuffle: options.shuffle,
-        updateShufflePreference: options.updateShufflePreference,
-      });
-    },
-    [currentTrack?.id, normalizeTrack, playTrack, source, togglePlayPause],
-  );
-
-  const isTrackPlaying = useCallback(
-    (trackId) => !!trackId && currentTrack?.id === String(trackId) && (isPlaying || isLoading),
-    [currentTrack?.id, isLoading, isPlaying],
-  );
-
-  const isTrackLoading = useCallback(
-    (trackId) => !!trackId && currentTrack?.id === String(trackId) && isLoading,
-    [currentTrack?.id, isLoading],
-  );
-
-  const getQueueTracks = useCallback(
-    () =>
-      (tracks || [])
-        .filter((entry) => entry?.preview_url)
-        .map((entry, entryIndex) => normalizeTrack(entry, entryIndex)),
-    [tracks, normalizeTrack],
-  );
-
-  const {
-    disabled: toolbarDisabled,
-    isListPlaying,
-    isShuffleEnabled,
-    handlePlayAll,
-    handleShufflePlay,
-  } = useAlbumTrackListToolbar({
-    getQueueTracks,
-    playbackSource,
-  });
-
-  const handleTrackPreviewPlay = (track, index, event) => {
-    event.stopPropagation();
-    if (!track?.preview_url) return;
-    const queue = (tracks || [])
-      .filter((entry) => entry?.preview_url)
-      .map((entry, entryIndex) => normalizeTrack(entry, entryIndex));
-    handlePlay(track, { source: playbackSource, queue }, index);
-  };
-
-  useEffect(() => {
-    if (!highlightTrackId || loading || !tracks?.length) return;
-    const normalizedHighlight = String(highlightTrackId);
-    const matchIndex = tracks.findIndex((track, index) => {
-      const trackId = String(track.id ?? track.mbid ?? `${trackKey}-${index}`);
-      return trackId === normalizedHighlight;
-    });
-    if (matchIndex < 0) return;
-    const track = tracks[matchIndex];
-    const trackId = String(track.id ?? track.mbid ?? `${trackKey}-${matchIndex}`);
-    const row = rowRefs.current[trackId];
-    if (!row) return;
-    row.classList.add("is-search-focused");
-    row.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    const timeout = window.setTimeout(() => {
-      row.classList.remove("is-search-focused");
-    }, 2400);
-    return () => window.clearTimeout(timeout);
-  }, [highlightTrackId, loading, trackKey, tracks]);
+  const { currentTrack, isPlaying, isLoading, playTrack, togglePlayPause } = useAudioQueue();
 
   if (!release) return null;
+  if (loading) {
+    return (
+      <div className="native-library-state" role="status">
+        <DotLoader size="lg" label={null} />
+        <span>Loading tracks…</span>
+      </div>
+    );
+  }
+  if (!tracks?.length) {
+    return (
+      <div className="native-library-state">
+        <span>No tracks available</span>
+      </div>
+    );
+  }
+
+  const handlePlay = (track, index) => {
+    const normalized = preview.normalizeTrack(track, index);
+    if (!normalized?.src) return;
+    if (currentTrack?.id === normalized.id) {
+      togglePlayPause();
+      return;
+    }
+    playTrack(normalized, { source: playbackSource, queue: preview.getQueueTracks() });
+  };
+
+  const rows = tracks.map((track, index) => {
+    const id = releaseTrackId(track, trackKey, index);
+    const title = track.title || track.trackName || "Unknown Track";
+    const isCurrent = currentTrack?.id === id;
+    const isOwned = [track.mbid, track.recordingId, track.id]
+      .filter(Boolean)
+      .some((identity) => ownedTrackSet.has(String(identity)));
+    const canPlay = Boolean(track.preview_url);
+    const membershipTrack = resolveMembershipTrack ? resolveMembershipTrack(track, release) : track;
+    const items = [
+      {
+        id: "play",
+        label: isCurrent && isPlaying ? "Pause preview" : "Play preview",
+        icon: isCurrent && isPlaying ? Pause : Play,
+        disabled: !canPlay,
+        onSelect: () => handlePlay(track, index),
+      },
+      ...(onAddTrackToLibrary && !isOwned
+        ? [
+            {
+              id: "add-library",
+              label: "Add to library",
+              icon: Plus,
+              disabled: libraryTrackSavingKey === id,
+              onSelect: () => onAddTrackToLibrary(track, release),
+            },
+          ]
+        : []),
+    ];
+    return {
+      key: id,
+      number: track.trackNumber || track.position || index + 1,
+      title,
+      time: formatReleaseTrackDuration(track.length),
+      active: isCurrent,
+      playing: isCurrent && (isPlaying || isLoading),
+      onPlay: canPlay ? () => handlePlay(track, index) : null,
+      badge: isOwned ? <SearchLibraryCheck size="discover" /> : null,
+      menu: {
+        items,
+        additionalItemsAfter: items[items.length - 1].id,
+        onMenuOpen: onLoadPlaylists,
+        renderAdditionalItems: onAddTrackToPlaylist
+          ? ({ closeMenu }) => (
+              <>
+                <div className="native-library-item-menu__separator" />
+                <TrackPlaylistSubmenu
+                  label="Add to playlist"
+                  icon={Plus}
+                  track={membershipTrack}
+                  playlists={playlists}
+                  loading={playlistsLoading}
+                  saving={playlistSavingKey === id}
+                  error={playlistError}
+                  defaultNewPlaylistName={getDefaultPlaylistName?.(track, release)}
+                  onSelect={(target) => onAddTrackToPlaylist(track, release, target)}
+                  onClose={closeMenu}
+                  toggleOnClick
+                />
+              </>
+            )
+          : undefined,
+      },
+    };
+  });
 
   return (
-    <div className="artist-release-track-list">
-      {loading ? (
-        <div className="artist-loading">
-        <DotLoader size="xl" label={null} />
-        </div>
-      ) : tracks?.length ? (
-        <>
-          <ArtistTrackListToolbar
-            disabled={toolbarDisabled}
-            isPlaying={isListPlaying}
-            isShuffleEnabled={isShuffleEnabled}
-            onPlayAll={handlePlayAll}
-            onShufflePlay={handleShufflePlay}
-          />
-          <div className="artist-track-list__rows">
-            {tracks.map((track, index) => {
-              const currentTrackId = String(track.id ?? track.mbid ?? `${trackKey}-${index}`);
-              const isPlaying = isTrackPlaying(currentTrackId);
-              const isLoadingPreview = isTrackLoading(currentTrackId);
-              const durationLabel = track.length
-                ? `${Math.floor(track.length / 60000)}:${Math.floor((track.length % 60000) / 1000)
-                    .toString()
-                    .padStart(2, "0")}`
-                : "";
-              const isOwned = [track.mbid, track.recordingId, track.id]
-                .filter(Boolean)
-                .some((identity) => ownedTrackSet.has(String(identity)));
-              return (
-                <div
-                  key={currentTrackId}
-                  ref={(node) => {
-                    if (node) rowRefs.current[currentTrackId] = node;
-                  }}
-                  className="artist-track-row"
-                >
-                  <span className="artist-track-number">
-                    {track.trackNumber || track.position || index + 1}
-                  </span>
-                  {track.preview_url ? (
-                    <TrackPlayButton
-                      track={track}
-                      isPlaying={isPlaying}
-                      isLoading={isLoadingPreview}
-                      onClick={(event) => handleTrackPreviewPlay(track, index, event)}
-                    />
-                  ) : (
-                    <span />
-                  )}
-                  <span className={`artist-track-title${isOwned ? " artist-track-title--owned" : ""}`}>
-                    {isOwned ? <SearchLibraryCheck size="discover" /> : null}
-                    <span>{track.title || track.trackName || "Unknown Track"}</span>
-                  </span>
-                  {onAddTrackToPlaylist ? (
-                    <TrackPlaylistMenu
-                      track={
-                        resolveMembershipTrack ? resolveMembershipTrack(track, release) : track
-                      }
-                      playlists={playlists}
-                      loading={playlistsLoading}
-                      saving={playlistSavingKey === currentTrackId}
-                      error={playlistError}
-                      defaultNewPlaylistName={getDefaultPlaylistName?.(track, release)}
-                      onLoadPlaylists={onLoadPlaylists}
-                      triggerVariant="kebab"
-                      librarySaving={libraryTrackSavingKey === currentTrackId}
-                      onAddToLibrary={
-                        onAddTrackToLibrary && !isOwned
-                          ? () => onAddTrackToLibrary(track, release)
-                          : null
-                      }
-                      onSelect={(target) => onAddTrackToPlaylist(track, release, target)}
-                    />
-                  ) : null}
-                  <span className="artist-track-duration">{durationLabel}</span>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      ) : (
-        <p className="artist-empty-message">No tracks available</p>
-      )}
-    </div>
+    <TrackList
+      label={`${release.title || "Release"} tracks`}
+      rows={rows}
+      variant="release"
+      highlightKey={highlightTrackId}
+    />
   );
 }

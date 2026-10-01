@@ -480,6 +480,14 @@ export class WeeklyFlowWorker {
     };
   }
 
+  hasWork() {
+    return this.activeJobs.size > 0 ||
+      this.reserveBuildsInFlight.size > 0 ||
+      this.blockedPlaylistTypes.size > 0 ||
+      Boolean(this.reuseRepairInFlight) ||
+      (this.running && Boolean(downloadTracker.getNextPending()));
+  }
+
   _maybeStopWhenIdle() {
     if (!this.running) return;
     if (this.activeJobs.size > 0) return;

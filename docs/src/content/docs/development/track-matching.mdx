@@ -1,194 +1,69 @@
 ---
 title: Track matching architecture
-description: How Aurral matches and validates music downloads with the bundled beets engine.
+description: How Aurral chooses recordings and checks downloaded files.
 ---
 
-Aurral bundles the [beets](https://beets.io) autotagging engine internally as
-the generic music-identity layer for track matching. This page explains the
-integration boundary, the architecture, and how to extend it.
+Aurral matches tracks with native JavaScript rules. The matcher needs no Python runtime, external service, or audio fingerprints. A source adapter supplies only the evidence that its provider really exposes. A missing artist, duration, or recording ID never counts as a match.
 
-## What beets does (and does not) do here
+## Decision path
 
-beets ships inside the normal Aurral image. As a user you never install it,
-configure it, run a `beets` container, or use `beet import`. It is an internal
-implementation detail.
+1. `trackIdentity.js` builds the requested recording.
+2. `candidateNormalizer.js` and the source adapters turn search results into comparable candidates.
+3. `nativeMatcher.js` applies one versioned policy. It checks contradictions, ranks candidates, checks release fit, and assigns files one to one.
+4. `decisionEngine.js` adds provider evidence and returns `accept`, `verify`, `review`, or `reject` for each result.
 
-beets is used only as a **matching engine**:
+After a download, `postDownloadValidator.js` runs the same matcher on the original file tags. Aurral writes its own tags only after this check passes.
 
-- metadata distance/scoring between the requested track and candidates
-- duration comparison with configurable tolerance
-- recommendation strength (strong/medium/low/none) and best-vs-runner-up gap
-- multi-track assignment for release-level evidence
-- later: Chromaprint/AcoustID escalation
+- A strong title score cannot override a known conflict in the recording ID, version, artist, or duration.
+- Missing evidence does not count as agreement.
+- A file whose original tags match except for the duration goes to review.
+- A file without usable identity tags is not imported automatically.
 
-Aurral remains responsible for everything else: provider searches, download
-orchestration, quality profiles, provider-specific behavior, filesystem
-placement, metadata writing, library management, user review, and
-retries/fallbacks.
+## Titles and scripts
 
-## Architecture
+A title in a file name keeps its dash-separated version suffix. A remaster can match the original recording, but a radio edit must match the requested version.
 
-```text
-Canonical TrackRequest
-        |
- provider searches (unchanged)
-        |
-normalizeCandidate()  -> canonical CandidateTrack
-        |
-Aurral semantic policy  -- obvious contradictions reject before scoring
-        |
-beets matching engine (JSON over stdin/stdout to backend/matcher/aurral_matcher.py)
-        |
-ranked candidates + recommendation + gap
-        |
-accept / verify / reject / review decision
+Matching removes Latin accents and treats equivalent Unicode spellings as equal. If either core title contains non-Latin letters, two different normalized titles are a contradiction, even when the artist, duration, or recording ID agrees. This rule also applies to file names and to album file assignment. A transliteration or spelling difference in such a title needs the user to choose.
+
+## yt-dlp files
+
+yt-dlp names files by video ID, so the file name is not title evidence. yt-dlp writes the video metadata into the file, and splits a title of the form `Artist - Title` into the artist and title tags. Before matching, the validator removes promotional labels such as "Official Music Video" from the title.
+
+## Manual selections
+
+When a user chooses a result in a manual search, the choice decides the identity. The validator still requires readable audio with a known quality tier. It accepts tiers that the quality profile turns off. It does not apply the title, artist, album, duration, or version rules. Aurral downloads only the chosen result and does not fall back to another result or source.
+
+## Policy version
+
+`MATCH_POLICY.version` in `nativeMatcher.js` is stored with each matcher decision and returned by the health response. Change the policy in one place. Then run the fixture evaluation and the cross-source regression tests.
+
+## Album release grabs
+
+An Aurral album request keeps one job for each missing track. When Soulseek, Usenet, or deemix is enabled, the first pending job reserves the other jobs for one release attempt:
+
+- Usenet submits one NZB.
+- Soulseek submits one folder batch.
+- deemix submits one album URL.
+
+Aurral assigns the finished files to the reserved jobs and never uses one file twice. Each assigned file must pass its own post-download check before it moves into the Library. A missing, unreadable, contradictory, or failed file leaves its job pending for the per-track fallback. If the attempt ends early, for example because the first job fails or is removed, the reserved jobs also return to per-track search.
+
+The release attempt follows the configured source priority. yt-dlp stays a per-track source. Lidarr albums go through Lidarr. Cancellation removes only work that belongs to the album request. Queued pipeline state resumes after a worker restart.
+
+## Add a source
+
+1. Declare the evidence that the source provides in `candidateNormalizer.js`.
+2. Map provider results through `buildSourceCandidates()`. Keep provider-specific availability checks in the adapter.
+3. Run the shared post-download validator before you write tags or import files.
+4. For whole-release downloads, pass the finished file paths to `finishAlbumGrab()`, and test partial and failed downloads.
+
+## Verification
+
+`.tests/track-matching/fixtures/` holds development and acceptance cases built from CC0 MusicBrainz data. The two sets share no identities. To get correct, wrong, abstained, contradicted, and yield counts for each flow, run:
+
+```bash
+node .tests/track-matching/native-evaluation.mjs
 ```
 
-Key modules:
+The held-out acceptance run is a release gate. Tune rules against the development set only. The cross-source and download tests cover provider mapping, real audio tags, album imports, partial failures, cancellation, and fallback.
 
-| Module | Role |
-| --- | --- |
-| `backend/services/trackMatching/trackIdentity.js` | Canonical TrackRequest from the resolved track context |
-| `backend/services/trackMatching/candidateNormalizer.js` | Provider results to canonical CandidateTrack and per-source evidence capabilities |
-| `backend/services/trackMatching/semanticPolicy.js` | Variant extraction, contradiction detection, noise rejection |
-| `backend/services/trackMatching/beetsClient.js` | Node-to-Python JSON bridge with timeouts and structured errors |
-| `backend/services/trackMatching/decisionEngine.js` | Pre-download decisions (`accept`, `verify`, `reject`, `review`) |
-| `backend/matcher/aurral_matcher.py` | Python bridge to beets (pinned `beets==2.14.1`) |
-
-beets is pinned in `backend/matcher/requirements.txt` and installed into a
-build-time venv at `/opt/aurral-matcher` by the Dockerfile. The Node bridge
-resolves the interpreter in order: `AURRAL_MATCHER_PYTHON` env override,
-the bundled venv, then `python3` on `PATH`.
-
-The matcher never performs network lookups during candidate ranking, never
-reads a user beets config, and never touches a beets library database.
-Failures surface as structured errors and never crash download orchestration.
-
-## Decision states
-
-- `accept` — strong beets recommendation; safe to download
-- `verify` — moderate match; download only with strict post-download validation
-- `review` — weak evidence; hold for review after alternatives are exhausted
-- `reject` — semantic contradiction or unusable candidate
-
-Semantic contradictions (requested studio version vs offered karaoke, live,
-nightcore, slowed, remix, …) are hard rejections decided before beets scoring.
-Fuzzy title evidence never overrides them.
-
-## Adding a new download source
-
-1. Add a capabilities entry in `candidateNormalizer.js` describing which
-   evidence the source actually provides.
-2. Map the source's raw results with `normalizeCandidate()` (or feed the
-   canonical shape directly).
-3. Call `evaluateTrackCandidates({ source, context, candidates })` and act on
-   the returned decision states.
-
-## Matcher regression fixtures
-
-Tests live in `.tests/track-matching/`. The beets-backed tests skip
-automatically when beets is unavailable and run in CI against the pinned
-version. Every historical false positive should become a regression fixture:
-add the expected track, the candidate, and the expected decision to
-`matcher-regression.test.js`.
-
-## Migration history
-
-The unified system replaced four per-source matchers in a single cutover:
-
-- `weeklyFlowSoulseekMatcher.js` (filename/path parsing, release-folder
-  grouping, tracklist scoring, variant extraction, duration gates, quality
-  admission, post-download validation) — split into
-  `weeklyFlowSoulseekSearch.js` (queries, grouping, attempt selection),
-  `trackMatching/providers/soulseekProvider.js` (folder/artist evidence and
-  canonical candidates), the shared decision engine (identity), and
-  `trackMatching/postDownloadValidator.js` (post-download). Deleted.
-- `weeklyFlowDeemixMatcher.js` (structured title/artist/album/duration
-  scoring) — query construction moved to `weeklyFlowDeemixSearch.js` +
-  shared engine. Deleted.
-- `weeklyFlowYtdlpMatcher.js` (title/channel scoring, junk patterns) — query
-  construction and channel evidence moved to `weeklyFlowYtdlpSearch.js`,
-  junk/version detection moved to the shared semantic policy. Deleted.
-- `weeklyFlowUsenetMatcher.js` → renamed
-  `weeklyFlowUsenetReleaseSearch.js`: release-level pre-download scoring is
-  provider acquisition context; post-download identity uses the shared
-  validator and beets' `assign_items`.
-
-## Same-recording policy
-
-Aurral accepts the same underlying recording even when the release or master
-differs:
-
-| Requested | Offered | Verdict |
-| --- | --- | --- |
-| studio | remaster of the same recording | accept |
-| studio | compilation appearance of the same recording | accept |
-| studio | radio edit | reject (unless the edit was requested) |
-| studio | live / acoustic / karaoke / nightcore / cover / demo / instrumental | reject (unless requested) |
-| original | later re-recording | reject |
-
-Album and year are supporting evidence: a weak album match or a conflicting
-year downgrades an acceptance to `verify` (strict post-download validation)
-but never upgrades a weak match.
-
-## Candidate-gap handling
-
-A strong best candidate is only accepted when it is separated from the
-runner-up (gap >= 0.1 or the runner-up is not competitive, i.e. its distance
-is above 0.25). Near-ties download under strict post-download validation
-instead of acceptance; exact duplicates (gap 0) are the same recording and
-keep the accept.
-
-An exact recording-MBID match is decisive positive evidence. A known
-conflicting recording MBID is a hard contradiction; Aurral never fuzzy-matches
-across an identifier conflict. MBIDs are never compared across entity types.
-
-## Failure behavior
-
-beets is part of the Aurral image. If the matcher is unavailable there is no
-fallback to weaker matching: attempts fail with a clear diagnostic, jobs
-retry/fail through the normal source-fallback path, and the health endpoint
-reports the matcher runtime status (`matcher.available`). A startup self-test
-verifies the Python interpreter, the pinned beets version, and the protocol
-version; results are cached in the health payload, not re-discovered per
-request.
-
-## Known gap: independent audio verification (Chromaprint/AcoustID)
-
-**Not implemented.** Today there is no audio fingerprinting anywhere in the
-pipeline: no `fpcalc`/Chromaprint binary in the image, no `pyacoustid`
-dependency, and no `fingerprint_file` matcher operation (the protocol
-reserves the name). Every accept decision rests on metadata plus provider
-identifiers.
-
-That means metadata-indistinguishable false positives can still pass:
-re-recordings, covers whose tags claim the original artist, uploads with
-forged tags, and descriptor-less edits. The full list is in the PR
-description; the system's answer today is retry/verify/review, never silent
-acceptance of *contradicted* evidence.
-
-Follow-up plan (deliberately small and opt-in, never fingerprint-by-default):
-
-1. Add an optional `fingerprint_file` operation to `aurral_matcher.py` that
-   shells out to `fpcalc` and returns a raw fingerprint. No AcoustID lookup
-   inside the matcher.
-2. Add `chromaprint-tools` (LGPL `fpcalc`) to the Dockerfile in its own
-   layer; keep the image functional when the binary is absent.
-3. Node side: an `escalateWithFingerprint()` helper in `trackMatching/` that
-   runs ONLY when a post-download result is `AMBIGUOUS` (or a pre-download
-   near-tie needs a tiebreak), queries the AcoustID API with the fingerprint,
-   and feeds the returned recording title/artist/MBID back through the same
-   semantic policy + distance comparison.
-4. Rate limiting via the existing `requests-ratelimiter` dependency AcoustID
-   requires an API key; ship without one set, treat missing key as
-   "escalation unavailable" and keep today's retry/review behavior.
-5. Regression fixtures: the metadata-indistinguishable re-recording case
-   flips from accept to reject when the fingerprint escalates.
-
-## Performance
-
-Each search makes exactly ONE `track_distance` call for the whole candidate
-pool; the search early-exit gates (`hasUsableSearchCandidates`,
-`hasSlskdSearchCandidates`) are Node-only and never spawn Python. Release
-post-download uses one `assign_items` call (beets `assign_items`) plus
-per-file validation only for the assigned file.
+Metadata cannot tell apart two recordings with identical visible evidence. Aurral does not use audio fingerprints. If that case matters, review the downloaded file before import, or choose the file with a manual search.

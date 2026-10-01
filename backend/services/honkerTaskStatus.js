@@ -1,5 +1,6 @@
 import { db } from "../config/db-sqlite.js";
 import { SCHEDULED_SYSTEM_TASKS } from "./honkerDb.js";
+import { registerHonkerShutdownHandler } from "./honkerWorkerRuntime.js";
 
 export const QUEUE_DEFINITIONS = [
   {
@@ -8,6 +9,13 @@ export const QUEUE_DEFINITIONS = [
     workerLabel: "System Maintenance Worker",
     description: "Runs housekeeping, startup checks, and scheduled playlist maintenance.",
     worker: "system-task",
+  },
+  {
+    queue: "release-metadata-refresh",
+    label: "Release Metadata",
+    workerLabel: "Release Metadata Worker",
+    description: "Refreshes release catalogues outside playlist processing.",
+    worker: "release-metadata-refresh",
   },
   {
     queue: "system-task-maintenance",
@@ -136,6 +144,10 @@ export const SYSTEM_TASK_LABELS = {
     label: "Lidarr Retry",
     description: "Retries Lidarr library access after a temporary connection problem.",
   },
+  "release-metadata-refresh": {
+    label: "Release Metadata Refresh",
+    description: "Refreshes recent and upcoming releases from BrainzMash.",
+  },
 };
 
 export const HONKER_QUEUE_NAMES = QUEUE_DEFINITIONS.map((definition) => definition.queue);
@@ -194,6 +206,8 @@ let insertRunStatement = null;
 let updateRunStatement = null;
 let pruneRunsStatement = null;
 let pruneDeadJobsStatement = null;
+let cleanupTimer = null;
+let cleanupPromise = null;
 
 function ensureRunSchema() {
   if (schemaEnsured) return;
@@ -262,15 +276,38 @@ async function pruneExpiredRuns() {
   ensureRunSchema();
   const cutoff = getRunLedgerCutoffUnix();
   pruneRunsStatement.run(cutoff);
-  try {
-    pruneDeadJobsStatement.run(cutoff);
-  } catch {}
-  try {
-    const { pruneDuplicateScheduledDiscoveryRefreshes } = await import(
-      "./discovery/refreshScheduler.js"
-    );    pruneDuplicateScheduledDiscoveryRefreshes();
-  } catch {}
+  pruneDeadJobsStatement.run(cutoff);
+  const { pruneDuplicateScheduledDiscoveryRefreshes } = await import(
+    "./discovery/refreshScheduler.js"
+  );
+  pruneDuplicateScheduledDiscoveryRefreshes();
 }
+
+function runTaskCleanup() {
+  if (!cleanupPromise) {
+    cleanupPromise = pruneExpiredRuns()
+      .catch((error) => {
+        console.warn("[TaskCleanup] Housekeeping failed:", error?.message || error);
+      })
+      .finally(() => { cleanupPromise = null; });
+  }
+  return cleanupPromise;
+}
+
+export function startHonkerTaskCleanup() {
+  if (cleanupTimer) return cleanupPromise || Promise.resolve();
+  cleanupTimer = setInterval(runTaskCleanup, 60000);
+  cleanupTimer.unref?.();
+  return runTaskCleanup();
+}
+
+export async function stopHonkerTaskCleanup() {
+  clearInterval(cleanupTimer);
+  cleanupTimer = null;
+  await cleanupPromise;
+}
+
+registerHonkerShutdownHandler(stopHonkerTaskCleanup);
 
 function isActiveQueueRow(row) {
   return row.status === "running" || row.status === "queued" || row.status === "scheduled";
@@ -405,7 +442,7 @@ export function describeHonkerTask(queue, payloadValue) {
   const safeQueue = String(queue || "").trim();
 
   if (safeQueue === "system-task" || safeQueue === "system-task-maintenance" ||
-      safeQueue === "system-task-inbox")
+      safeQueue === "system-task-inbox" || safeQueue === "release-metadata-refresh")
     return systemTaskInfo(String(payload?.kind || "").trim()).label;
   if (safeQueue === "discovery-refresh") return discoveryRefreshInfo(payload).label;
   if (safeQueue === "_outbox:notifications")
@@ -431,7 +468,7 @@ function describeHonkerTaskDetail(queue, payloadValue) {
   const safeQueue = String(queue || "").trim();
 
   if (safeQueue === "system-task" || safeQueue === "system-task-maintenance" ||
-      safeQueue === "system-task-inbox")
+      safeQueue === "system-task-inbox" || safeQueue === "release-metadata-refresh")
     return systemTaskInfo(String(payload?.kind || "").trim()).description;
   if (safeQueue === "discovery-refresh") return discoveryRefreshInfo(payload).description;
 
@@ -447,7 +484,7 @@ function summarizePayload(queue, payloadValue) {
   }
 
   if (queue === "system-task" || queue === "system-task-maintenance" ||
-      queue === "system-task-inbox") {
+      queue === "system-task-inbox" || queue === "release-metadata-refresh") {
     return "";
   }
 
@@ -546,18 +583,16 @@ function normalizeRunRow(row) {
   };
 }
 
-function readRunningStartsByJobId() {
-  ensureRunSchema();
-  const rows = safeQuery(`
-    SELECT job_id, queue, started_at
-    FROM honker_task_runs
-    WHERE status = 'running'
-  `);
-  const map = new Map();
+function getRunningStartsByJobId(rows) {
+  const latest = new Map();
   for (const row of rows) {
-    map.set(`${row.queue}:${row.job_id}`, Number(row.started_at));
+    if (row.status !== "running") continue;
+    const key = `${row.queue}:${row.job_id}`;
+    if (!latest.has(key) || Number(row.id) > Number(latest.get(key).id)) {
+      latest.set(key, row);
+    }
   }
-  return map;
+  return new Map([...latest].map(([key, row]) => [key, Number(row.started_at)]));
 }
 
 function enrichQueueRow(row) {
@@ -712,18 +747,7 @@ function readRecentRuns() {
   );
 }
 
-function readLatestRunsByTask() {
-  const cutoff = getRunLedgerCutoffUnix();
-  const rows = safeQuery(
-    `
-      SELECT *
-      FROM honker_task_runs
-      WHERE started_at >= ?
-         OR status = 'running'
-      ORDER BY started_at DESC, id DESC
-    `,
-    [cutoff],
-  );
+function getLatestRunsByTask(rows) {
   const latest = new Map();
   for (const row of rows) {
     const payload = parsePayload(row.payload);
@@ -1127,7 +1151,6 @@ export function recordHonkerTaskRunFinished(runId, status, error = null) {
       durationMs,
       id,
     );
-    void pruneExpiredRuns();
   } catch {}
 }
 
@@ -1211,17 +1234,17 @@ export async function clearStaleHonkerJobs() {
 
 export async function getHonkerTaskStatus() {
   ensureRunSchema();
-  await pruneExpiredRuns();
+  const workerStatuses = await readWorkerStatuses();
   const scheduledRows = readScheduledRows();
-  const latestRunsByTask = readLatestRunsByTask();
+  const runRows = readRecentRuns();
+  for (const row of runRows) row.payload = parsePayload(row.payload);
+  const latestRunsByTask = getLatestRunsByTask(runRows);
   const liveRows = readLiveJobs();
   const liveStats = readLiveJobStats();
   const scheduledLiveRows = readScheduledLiveJobs();
   const deadRows = readDeadJobs();
-  const runRows = readRecentRuns();
-  const runningStartsByJobId = readRunningStartsByJobId();
+  const runningStartsByJobId = getRunningStartsByJobId(runRows);
   const queueStats = readQueueStats(liveRows, liveStats, scheduledLiveRows);
-  const workerStatuses = await readWorkerStatuses();
   const workers = normalizeWorkerRows(workerStatuses, queueStats);
   const queue = normalizeQueueRows(liveRows, deadRows, runRows, runningStartsByJobId);
 

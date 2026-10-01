@@ -8,6 +8,8 @@ import {
 import { logger } from "../../../services/logger.js";
 import { getCanonicalLibraryReadModelForArtistPage } from "../../../services/canonicalLibraryReadAdapter.js";
 import { getCanonicalArtistProjection } from "../../../services/libraryQueryService.js";
+import { setLibraryArtistMbid } from "../../../services/libraryMediaStore.js";
+import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.js";
 export function registerArtists(router) {
   router.get("/artists", cacheMiddleware(120), async (req, res) => {
     try {
@@ -179,6 +181,46 @@ export function registerArtists(router) {
   });
 
   router.put(
+    "/canonical/artists/:id/mbid",
+    requireAuth,
+    requirePermission("addArtist"),
+    async (req, res) => {
+      const artistId = Number(req.params.id);
+      const rawMbid = req.body?.mbid;
+      const mbid = typeof rawMbid === "string" ? rawMbid.trim().toLowerCase() : rawMbid;
+      if (!Number.isSafeInteger(artistId) || (mbid !== null && !UUID_REGEX.test(String(mbid)))) {
+        return res.status(400).json({ error: "A MusicBrainz artist ID or null is required" });
+      }
+      let musicbrainzName = null;
+      if (mbid) {
+        try {
+          const artist = await getArtistByMbid(mbid);
+          musicbrainzName = artist.name || null;
+        } catch (error) {
+          if (error?.code === "ERR_METADATA_NOT_FOUND" || error?.response?.status === 404) {
+            return res.status(404).json({ error: "MusicBrainz has no artist with that ID" });
+          }
+          return res.status(503).json({ error: "Could not reach the metadata provider. Try again." });
+        }
+      }
+      const result = setLibraryArtistMbid(artistId, mbid);
+      if (result.error === "not_found") {
+        return res.status(404).json({ error: "Artist not found" });
+      }
+      if (result.error === "lidarr_managed") {
+        return res.status(409).json({ error: "Lidarr manages this artist. Change its MusicBrainz ID in Lidarr." });
+      }
+      res.json({
+        id: result.artist.id,
+        mbid: result.artist.mbid,
+        name: result.artist.name,
+        musicbrainzName,
+        merged: Boolean(result.mergedArtistId),
+      });
+    },
+  );
+
+  router.put(
     "/artists/:mbid",
     requireAuth,
     requirePermission("changeMonitoring"),
@@ -229,7 +271,9 @@ export function registerArtists(router) {
         const result = await libraryManager.deleteArtist(mbid, deleteFiles === "true");
         if (!result?.success) {
           const message = result?.error || "Failed to delete artist";
-          return res.status(503).json({ error: message, message });
+          return res
+            .status(result?.statusCode || 503)
+            .json({ error: message, message, code: result?.code });
         }
         res.json({ success: true, message: "Artist deleted successfully" });
       } catch (error) {

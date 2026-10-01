@@ -1,6 +1,7 @@
 // Flow queues share one process because their workers coordinate in-memory state.
 // Other background queues are isolated from the web process and from each other.
 export const ISOLATED_QUEUE_GROUPS = Object.freeze({
+  "release-metadata-refresh": "release-metadata",
   "library-scan": "library",
   "discovery-refresh": "discovery-refresh",
   "discovery-playlist-build": "discovery-playlist-build",

@@ -14,6 +14,7 @@ test("a blocked background process leaves the web process event loop responsive"
   const donePromise = new Promise((resolve) => { done = resolve; });
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["library"],
+    findGroupsWithWork: () => ["library"],
     forkProcess: (_entry, _args, options) => {
       child = fork(fixture, [], options);
       return child;

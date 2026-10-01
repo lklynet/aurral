@@ -9,6 +9,10 @@ import { lidarrClient } from "../../backend/services/lidarrClient.js";
 import { logger } from "../../backend/services/logger.js";
 import { invalidateCanonicalLibraryCache } from "../../backend/services/libraryQueryService.js";
 import {
+  clearLibraryManagement,
+  setLibraryManagement,
+} from "../../backend/services/libraryManagementStore.js";
+import {
   linkLibraryAlbumTrack,
   upsertLibraryAlbum,
   upsertLibraryArtist,
@@ -203,6 +207,55 @@ test("artist lookup does not restore an Aurral-only artist after a Lidarr error"
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    invalidateCanonicalLibraryCache();
+  }
+});
+
+test("artist lookup reports an Aurral-owned artist even when Lidarr does not have it", async (t) => {
+  const mbid = "99999999-9999-4999-8999-999999999999";
+  const artist = upsertLibraryArtist({
+    identityKey: `artist-lookup-aurral-owned-${process.pid}-${Date.now()}`,
+    mbid,
+    name: "Aurral-owned Artist",
+  });
+  setLibraryManagement({
+    entityKind: "artist",
+    entityId: artist.id,
+    managedBy: "aurral",
+    monitorMode: "none",
+  });
+  invalidateCanonicalLibraryCache();
+
+  const routes = new Map();
+  registerMisc({
+    get(path, handler) {
+      routes.set(path, handler);
+    },
+    post() {},
+  });
+  let lidarrLookups = 0;
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getArtistByMbid", async () => {
+    lidarrLookups += 1;
+    return null;
+  });
+
+  let body;
+  const response = {
+    json(value) {
+      body = value;
+      return this;
+    },
+  };
+
+  try {
+    await routes.get("/lookup/:mbid")({ params: { mbid } }, response);
+    assert.equal(body?.exists, true);
+    assert.equal(body?.artist?.managedBy, "aurral");
+    assert.equal(lidarrLookups, 0);
+  } finally {
+    clearLibraryManagement("artist", artist.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
     invalidateCanonicalLibraryCache();
   }

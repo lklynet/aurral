@@ -13,7 +13,7 @@ import { DotLoader } from "../../components/DotLoader";
 import TooltipButton from "../../components/TooltipButton";
 import { useToast } from "../../contexts/ToastContext";
 import { formatDateTime } from "../../utils/dateTime.js";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { PageSectionMobileNav } from "../../components/PageSectionMobileNav";
 import {
   getAllFlowJobs,

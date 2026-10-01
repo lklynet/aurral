@@ -216,6 +216,7 @@ export async function finalizeQualityUpgradeSuccess(upgradeJob, finalPath, quali
     trackName: originalDetails.trackName,
     artistName: original.artistName,
     albumName: original.albumName,
+    albumMbid: original.albumMbid,
     playlistId: originalDetails.playlistType,
     title: upgradeJob.manualReplacementSearch
       ? `Re-searched ${originalDetails.trackName}`
@@ -244,6 +245,7 @@ export async function finalizeQualityUpgradeFailure(upgradeJob, message) {
     trackName: original.trackName,
     artistName: original.artistName,
     albumName: original.albumName,
+    albumMbid: original.albumMbid,
     playlistId: original.playlistType,
     title: upgradeJob.manualReplacementSearch
       ? `No replacement found for ${original.trackName}`

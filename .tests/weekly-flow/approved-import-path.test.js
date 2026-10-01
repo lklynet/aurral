@@ -22,6 +22,7 @@ const [
   { weeklyFlowWorker },
   { queueQualityUpgrade },
   { registerJobs },
+  { processWeeklyFlowOperation },
   libraryStore,
   playlistDownloadUtils,
 ] = await setupIsolatedBackend(
@@ -35,6 +36,7 @@ const [
   "backend/services/weeklyFlow/weeklyFlowWorker.js",
   "backend/services/qualityProfileService.js",
   "backend/routes/weeklyFlow/handlers/jobs.js",
+  "backend/services/weeklyFlow/weeklyFlowOperations.js",
   "backend/services/libraryMediaStore.js",
   "backend/services/playlistDownloadUtils.js",
 );
@@ -153,6 +155,41 @@ test("playlist jobs annotate tracks that are already in the canonical library", 
       ["Missing Track", false],
     ],
   );
+});
+
+test("playlist job file paths are only returned to admins", async (t) => {
+  const playlistId = "job-file-paths";
+  flowPlaylistConfig.createSharedPlaylist({ id: playlistId, name: "File paths", tracks: [] });
+  const [jobId] = downloadTracker.addJobs(
+    [{ artistName: "Path Artist", trackName: "Path Track" }],
+    playlistId,
+  );
+  const finalPath = path.join(process.env.DOWNLOAD_FOLDER, "Path Artist", "Path Track.FLAC");
+  downloadTracker.setDownloading(jobId, path.join(process.env.DOWNLOAD_FOLDER, "staging.flac"));
+  downloadTracker.setDone(jobId, finalPath, "Path Album");
+  t.after(() => {
+    requestUser = { role: "admin" };
+  });
+
+  const listed = await (await fetch(`${baseUrl}/jobs/${playlistId}`)).json();
+  const [allListed] = await (await fetch(`${baseUrl}/jobs`)).json();
+  for (const job of [listed[0], allListed]) {
+    assert.equal(job.id, jobId);
+    assert.equal(job.streamFormat, "flac");
+    assert.deepEqual(Object.keys(job).filter((key) => /path$/i.test(key)), []);
+  }
+
+  const adminResponse = await fetch(`${baseUrl}/jobs/${jobId}/files`);
+  assert.equal(adminResponse.status, 200);
+  assert.deepEqual(await adminResponse.json(), { paths: [finalPath] });
+
+  requestUser = { id: 1, role: "user", permissions: { accessFlow: true } };
+  const userResponse = await fetch(`${baseUrl}/jobs/${jobId}/files`);
+  assert.equal(userResponse.status, 403);
+  assert.equal(JSON.stringify(await userResponse.json()).includes(finalPath), false);
+
+  requestUser = { role: "admin" };
+  assert.equal((await fetch(`${baseUrl}/jobs/missing-job/files`)).status, 404);
 });
 
 test.after(async () => {
@@ -605,6 +642,75 @@ test("search all stays within the requesting user's playlist access", async () =
     assert.match(jobsResponse.headers.get("cache-control") || "", /no-store/);
     assert.equal(
       jobsPayload.some((job) => job.upgradeForJobId === ownedUpgradeId),
+      true,
+    );
+  } finally {
+    weeklyFlowWorker.start = originalStart;
+    requestUser = { role: "admin" };
+  }
+});
+
+test("wanted covers every library job regardless of playlist access", async () => {
+  const missingJobId = downloadTracker.addJob(
+    { artistName: "Library Artist", trackName: "Library Missing", albumName: "Album" },
+    "library",
+  );
+  downloadTracker.setFailed(missingJobId, "No source");
+  const lowQualityPath = path.join(
+    process.env.DOWNLOAD_FOLDER,
+    "Library Artist",
+    "Album",
+    "Library Low.mp3",
+  );
+  await fs.mkdir(path.dirname(lowQualityPath), { recursive: true });
+  await fs.writeFile(lowQualityPath, "audio");
+  const lowQualityJobId = downloadTracker.addJob(
+    { artistName: "Library Artist", trackName: "Library Low", albumName: "Album" },
+    "library",
+  );
+  downloadTracker.setDone(lowQualityJobId, lowQualityPath, "Album");
+  downloadTracker.updateQuality(lowQualityJobId, { tier: "mp3-128", format: "mp3" });
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: {
+      slskd: { enabled: true, url: "http://127.0.0.1:1", apiKey: "test-key" },
+    },
+  });
+
+  const originalStart = weeklyFlowWorker.start;
+  weeklyFlowWorker.start = async () => {};
+  requestUser = { role: "user", id: 9 };
+  try {
+    const jobsPayload = await (await fetch(`${baseUrl}/jobs`)).json();
+    const listed = new Map(jobsPayload.map((job) => [job.id, job]));
+    assert.equal(listed.get(missingJobId)?.status, "failed");
+    assert.equal(listed.get(lowQualityJobId)?.qualityOwned, true);
+    assert.notEqual(listed.get(lowQualityJobId)?.qualityState, "preferred");
+
+    const missingResponse = await fetch(`${baseUrl}/research-missing`, { method: "POST" });
+    const missingPayload = await missingResponse.json();
+    assert.equal(missingResponse.status, 200, JSON.stringify(missingPayload));
+    assert.equal(missingPayload.requeued, 1);
+    assert.equal(downloadTracker.getJob(missingJobId)?.status, "pending");
+
+    downloadTracker.setFailed(missingJobId, "Still no source");
+    const research = await processWeeklyFlowOperation({
+      kind: "shared-playlist-research-track",
+      playlistId: "library",
+      jobId: missingJobId,
+    });
+    assert.equal(research.success, true);
+    assert.equal(downloadTracker.getJob(missingJobId)?.status, "pending");
+
+    const upgradeResponse = await fetch(
+      `${baseUrl}/quality-upgrades/library/${lowQualityJobId}`,
+      { method: "POST" },
+    );
+    const upgradePayload = await upgradeResponse.json();
+    assert.equal(upgradeResponse.status, 200, JSON.stringify(upgradePayload));
+    assert.equal(upgradePayload.queued, 1);
+    assert.equal(
+      downloadTracker.getAll().some((job) => job.upgradeForJobId === lowQualityJobId),
       true,
     );
   } finally {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { RefreshCw, Trash2, X } from "lucide-react";
 import PillToggle from "../../../components/PillToggle";
 import { DotLoader } from "../../../components/DotLoader";

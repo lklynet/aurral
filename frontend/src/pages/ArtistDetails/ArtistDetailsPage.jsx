@@ -10,7 +10,9 @@ import {
 } from "../../utils/api/endpoints/artists.js";
 import {
   addArtistToLibrary,
+  settleLibraryOwnerConflict,
   downloadTrackToLibrary,
+  lookupArtistInLibrary,
 } from "../../utils/api/endpoints/library.js";
 import {
   addSharedPlaylistTracks,
@@ -24,7 +26,7 @@ import {
 import { useArtistTasteFeedback } from "../../hooks/useArtistTasteFeedback";
 import { useSharedPlaylists } from "../../hooks/useSharedPlaylists";
 
-import { useParams, useLocation } from "react-router-dom";
+import { useParams, useLocation } from "react-router";
 import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
 import { Music, X } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
@@ -49,8 +51,11 @@ import { ArtistDetailsSimilar } from "./components/ArtistDetailsSimilar";
 import { DeleteArtistModal } from "./components/DeleteArtistModal";
 import { DeleteAlbumModal } from "./components/DeleteAlbumModal";
 import { AddArtistCustomizeModal } from "./components/AddArtistCustomizeModal";
+import { useLibraryDestination } from "../../hooks/useLibraryDestination";
+import { buildArtistAddPayload, getManagerName } from "../../utils/libraryDestination";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import TooltipButton from "../../components/TooltipButton";
+import CrossViewLink from "../../components/CrossViewLink";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ArtistDetailsPage() {
@@ -66,7 +71,8 @@ function ArtistDetailsPage() {
     }),
     [locationState?.inLibrary, locationState?.libraryArtist],
   );
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showInfo } = useToast();
+  const libraryDestination = useLibraryDestination();
   const { hasPermission } = useAuth();
   const similarArtistsScrollRef = useRef(null);
   const [showEditIdsModal, setShowEditIdsModal] = useState(false);
@@ -200,27 +206,30 @@ function ArtistDetailsPage() {
   );
 
   const handleAddSimilarArtistToLibrary = useCallback(
-    async (similarArtist) => {
+    async (similarArtist, managedBy = libraryDestination.primary) => {
       const artistId = similarArtist?.id || similarArtist?.mbid;
-      if (!similarArtist?.name || !artistId) return false;
+      if (!similarArtist?.name || !artistId || !libraryDestination.ready) return false;
       try {
-        await addSimilarArtist({
-          foreignArtistId: artistId,
+        await addSimilarArtist(buildArtistAddPayload({
+          artistMbid: artistId,
           artistName: similarArtist.name,
-        });
-        showSuccess(`Adding ${similarArtist.name}...`);
+          managedBy,
+        }));
+        showSuccess(`Added ${similarArtist.name} to ${getManagerName(managedBy)}`);
         return true;
       } catch (err) {
-        showError(
-          err.response?.data?.message ||
-            err.response?.data?.error ||
-            err.message ||
-            "Failed to add artist to library",
-        );
+        const conflict = settleLibraryOwnerConflict(err);
+        if (conflict) {
+          showInfo(`${similarArtist.name}: ${conflict.message}`);
+          return true;
+        }
+        showError(`Failed to add artist to ${getManagerName(managedBy)}: ${
+          err.response?.data?.message || err.response?.data?.error || err.message
+        }`);
         return false;
       }
     },
-    [addSimilarArtist, showError, showSuccess],
+    [addSimilarArtist, libraryDestination.primary, libraryDestination.ready, showError, showInfo, showSuccess],
   );
 
   const library = useArtistDetailsLibrary({
@@ -234,6 +243,8 @@ function ArtistDetailsPage() {
     appSettings,
     showSuccess,
     showError,
+    showInfo,
+    libraryDestination,
   });
 
   useArtistSearchFocus({
@@ -241,6 +252,13 @@ function ArtistDetailsPage() {
     mbid,
     locationState,
   });
+
+  const libraryLookup = useQuery({
+    queryKey: queryKeys.libraryLookupDetails(mbid),
+    queryFn: ({ signal }) => lookupArtistInLibrary(mbid, { signal }),
+    enabled: false,
+  });
+  const libraryCanonicalId = libraryLookup.data?.libraryArtistId || null;
 
   const preview = usePreviewPlayer(mbid, artistNameFromNav, artist);
   const {
@@ -516,7 +534,17 @@ function ArtistDetailsPage() {
 
       <ArtistDetailsActionBar
         library={library}
+        libraryDestination={libraryDestination}
+        artistManagedBy={libraryArtist?.managedBy}
         existsInLibrary={existsInLibrary}
+        libraryLink={
+          libraryCanonicalId ? (
+            <CrossViewLink
+              view="library"
+              to={`/library/artist/${encodeURIComponent(libraryCanonicalId)}`}
+            />
+          ) : null
+        }
         loadingLibrary={loadingLibrary}
         canChangeMonitoring={canChangeMonitoring}
         canDeleteArtist={canDeleteArtist}
@@ -561,6 +589,7 @@ function ArtistDetailsPage() {
         canAddAlbum={canAddAlbum}
         requestingAlbum={library.requestingAlbum}
         handleRequestAlbum={library.handleRequestAlbum}
+        libraryDestination={libraryDestination}
         playbackSource={playbackSource}
         artistName={artistDisplayName}
         onAddTrackToPlaylist={handleReleaseTrackAdd}
@@ -608,6 +637,7 @@ function ArtistDetailsPage() {
           getAlbumStatus={library.getAlbumStatus}
           canAddAlbum={canAddAlbum}
           handleRequestAlbum={library.handleRequestAlbum}
+          libraryDestination={libraryDestination}
           requestingAlbum={library.requestingAlbum}
           artistName={artistDisplayName}
           onVisibleCoverIdsChange={setVisibleReleaseGroupCoverIds}
@@ -631,6 +661,7 @@ function ArtistDetailsPage() {
           getAlbumStatus={library.getAlbumStatus}
           canAddAlbum={canAddAlbum}
           handleRequestAlbum={library.handleRequestAlbum}
+          libraryDestination={libraryDestination}
           requestingAlbum={library.requestingAlbum}
           artistName={artistDisplayName}
           onVisibleCoverIdsChange={setVisibleAppearsOnCoverIds}
@@ -675,6 +706,7 @@ function ArtistDetailsPage() {
         show={library.showDeleteModal && !!libraryArtist}
         artistName={artist?.name}
         libraryArtistName={libraryArtist?.artistName}
+        managedBy={libraryArtist?.managedBy}
         deleteFiles={library.deleteFiles}
         onDeleteFilesChange={library.setDeleteFiles}
         onCancel={library.handleDeleteCancel}
@@ -685,6 +717,8 @@ function ArtistDetailsPage() {
       <DeleteAlbumModal
         show={!!library.showDeleteAlbumModal}
         title={library.showDeleteAlbumModal?.title}
+        managedBy={library.showDeleteAlbumModal?.managedBy}
+        keepFilesAction="unmonitor"
         deleteFiles={library.deleteAlbumFiles}
         onDeleteFilesChange={library.setDeleteAlbumFiles}
         onCancel={library.handleDeleteAlbumCancel}
@@ -693,6 +727,7 @@ function ArtistDetailsPage() {
       />
 
       <AddArtistCustomizeModal
+        error={library.customizeAddError}
         show={library.showAddCustomizeModal}
         artistName={artist?.name}
         loading={library.loadingLidarrPreferences}

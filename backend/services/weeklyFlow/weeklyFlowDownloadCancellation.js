@@ -1,4 +1,23 @@
 import { db } from "../../config/db-sqlite.js";
+import { randomUUID } from "node:crypto";
+
+const attemptStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
+const saveAttemptStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+
+export function getActiveDownloadAttemptId(jobId) {
+  const row = attemptStmt.get(`activeDownloadAttempt:${jobId}`);
+  return row ? JSON.parse(row.value) : null;
+}
+
+export function beginDownloadAttempt(jobId) {
+  const id = randomUUID();
+  setActiveDownloadAttemptId(jobId, id);
+  return id;
+}
+
+export function setActiveDownloadAttemptId(jobId, id) {
+  saveAttemptStmt.run(`activeDownloadAttempt:${jobId}`, JSON.stringify(id));
+}
 
 const playlistCancellationStmt = db.prepare(
   `SELECT generation, state FROM weekly_flow_download_cancellations WHERE playlist_id = ?`,
@@ -222,6 +241,12 @@ export function isDownloadJobCancelled(jobId) {
 export function isPipelinePayloadActive(payload = {}) {
   const jobId = normalizeId(payload.jobId);
   if (jobId && isDownloadJobCancelled(jobId)) return false;
+  if (payload.downloadAttemptId !== undefined && getActiveDownloadAttemptId(jobId) !== (payload.downloadAttemptId || null)) return false;
+  if (jobId) {
+    const owner = db.prepare("SELECT playlist_id, playlist_type, playlist_generation FROM playlist_download_jobs WHERE id = ?").get(jobId);
+    if (owner && payload.playlistId && ((owner.playlist_id || owner.playlist_type) !== payload.playlistId ||
+        Number(owner.playlist_generation || 0) !== Number(payload.playlistGeneration || 0))) return false;
+  }
 
   const playlistId = normalizeId(payload.playlistId);
   if (!playlistId) return true;
@@ -239,19 +264,14 @@ export async function withPipelineCommitLock(payload, operation) {
   if (!playlistId) {
     return { cancelled: false, result: await operation() };
   }
-  const { withHonkerLock } = await import("../honkerDb.js");
-  return withHonkerLock(
-    `playlist-mutation:${playlistId}`,
+  const { withPlaylistMutationLock } = await import("./weeklyFlowMutationGuards.js");
+  return withPlaylistMutationLock(
+    playlistId,
     async () => {
       if (!isPipelinePayloadActive(payload)) {
         return { cancelled: true, result: null };
       }
       return { cancelled: false, result: await operation() };
-    },
-    {
-      ttlSeconds: 180,
-      waitTimeoutMs: 15 * 60 * 1000,
-      retryDelayMs: 250,
     },
   );
 }

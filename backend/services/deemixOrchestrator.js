@@ -23,6 +23,9 @@ import {
 import { deferForInactiveOwner } from "./weeklyFlow/weeklyFlowOwnerStatus.js";
 import { getQualityProfile } from "./qualityProfileService.js";
 import { isQualityUpgrade } from "./qualityProfileModel.js";
+import { readDeemixAlbumQueue } from "./deemixClient.js";
+import { albumGrabJobs, finishAlbumGrab } from "./albumGrab.js";
+import { normalizeMatchText } from "./trackMatching/nativeMatcher.js";
 import {
   getPayloadCandidate,
   hasNextCandidate,
@@ -85,6 +88,58 @@ function readQueueError(queueItem) {
   return "";
 }
 
+async function searchDeemixAlbum(payload, helpers, job, client) {
+  const jobs = albumGrabJobs(payload);
+  const albums = new Map();
+  let searchFailed = false;
+  for (const sibling of jobs) {
+    const request = buildResolvedTrack(sibling);
+    const queries = buildDeemixSearchQueries(request).slice(0, 2);
+    const results = [];
+    const seen = new Set();
+    let eligible = [];
+    for (const query of queries) {
+      try {
+        if (!isPipelinePayloadActive(payload)) return null;
+        const found = await client.search(query, { limit: SEARCH_LIMIT });
+        if (!isPipelinePayloadActive(payload)) return null;
+        mergeSearchResults(results, seen, found, (entry) => String(entry.id || "").trim());
+        const suitable = results.filter((result) => result.readable !== false && result.albumId
+          && normalizeMatchText(result.album) === normalizeMatchText(job.albumName));
+        const evaluation = await buildSourceCandidates({ source: "deemix", results: suitable, request });
+        eligible = evaluation.evaluations.filter((entry) => ["accept", "verify"].includes(entry.decision));
+        if (eligible.length > 0) break;
+      } catch (error) {
+        searchFailed = true;
+        logger.warn("deemix", "Album track search failed", {
+          jobId: sibling.id, reason: safeLogDiagnostic(error),
+        });
+      }
+    }
+    if (!isPipelinePayloadActive(payload)) return null;
+    for (const entry of eligible) {
+      const result = entry.candidate.raw;
+      const group = albums.get(result.albumId) || { albumId: result.albumId,
+        albumUrl: result.albumUrl, album: result.album, matchedJobIds: new Set() };
+      group.matchedJobIds.add(sibling.id);
+      albums.set(result.albumId, group);
+    }
+  }
+  const ranked = [...albums.values()].sort((left, right) =>
+    right.matchedJobIds.size - left.matchedJobIds.size || left.albumId.localeCompare(right.albumId));
+  const best = ranked[0];
+  if (!best || best.matchedJobIds.size / jobs.length < 0.8
+    || ranked[1]?.matchedJobIds.size === best.matchedJobIds.size) {
+    return helpers.failOrTryNextSource(payload, job, searchFailed
+      ? "deemix album search failed or found no selectable release"
+      : "No selectable deemix album release");
+  }
+  return {
+    ...payload, source: "deemix", phase: "download", candidateIndex: 0,
+    candidates: [{ raw: best, resolvedAlbumName: best.album }],
+  };
+}
+
 async function handleDeemixSearch(payload, helpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
@@ -115,7 +170,13 @@ async function handleDeemixSearch(payload, helpers) {
     upgradeForJobId: payload.upgradeForJobId || null,
   };
   const client = getDeemixClient();
+  if (payload.albumGrab === true) return searchDeemixAlbum(payload, helpers, job, client);
   const queries = buildDeemixSearchQueries(resolvedTrack);
+  const deniedIds = new Set(
+    (Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [])
+      .filter((entry) => Array.isArray(entry) && entry[0] === "deemix")
+      .map((entry) => String(entry[1] || "").trim()),
+  );
   const aggregated = [];
   const seen = new Set();
   let lastError = "";
@@ -123,7 +184,7 @@ async function handleDeemixSearch(payload, helpers) {
     if (hasEnoughCandidates(aggregated, resolvedTrack)) break;
     try {
       const results = await client.search(query, { limit: SEARCH_LIMIT });
-      mergeSearchResults(aggregated, seen, results, (entry) => String(entry.id || "").trim());
+      mergeSearchResults(aggregated, seen, results.filter((entry) => !deniedIds.has(String(entry.id || "").trim())), (entry) => String(entry.id || "").trim());
     } catch (error) {
       lastError = safeLogDiagnostic(error);
       logger.warn("deemix", "deemix search failed", {
@@ -141,17 +202,6 @@ async function handleDeemixSearch(payload, helpers) {
     results: availableResults,
     request: resolvedTrack,
   });
-  if (evaluation.decision === "error") {
-    return helpers.failOrTryNextSource(payload, job, safeLogDiagnostic(evaluation.error?.message || "track matcher unavailable"), {
-      queryCount: queries.length,
-      rawResultCount: aggregated.length,
-    });
-  }
-  const deniedIds = new Set(
-    (Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [])
-      .filter((entry) => Array.isArray(entry) && entry[0] === "deemix")
-      .map((entry) => String(entry[1] || "").trim()),
-  );
   const candidates = usableEvaluationEntries(evaluation)
     .filter((entry) => !deniedIds.has(String(entry.candidate?.provider?.id || "").trim()))
     .map(toPipelineCandidate);
@@ -183,7 +233,7 @@ async function handleDeemixDownload(payload, helpers) {
   const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
   const index = Number(payload.candidateIndex || 0);
   const candidate = candidates[index];
-  const url = candidate?.raw?.url;
+  const url = payload.albumGrab === true ? candidate?.raw?.albumUrl : candidate?.raw?.url;
   if (!url) {
     return helpers.failOrTryNextSource(payload, job, "No deemix track URL available");
   }
@@ -200,13 +250,15 @@ async function handleDeemixDownload(payload, helpers) {
   let submission;
   try {
     submission = await withPipelineCommitLock(payload, async () => {
-      const queueUuid = await client.addToQueue(url, candidate.raw.id);
+      const queueUuid = payload.albumGrab === true
+        ? await client.addAlbumToQueue(url, candidate.raw.albumId)
+        : await client.addToQueue(url, candidate.raw.id);
       downloadTracker.updateDownloadMetadata(job.id, {
         downloadSource: "deemix",
         downloadClient: "deemix",
         downloadClientId: queueUuid,
-        releaseGuid: candidate.raw.id,
-        releaseTitle: candidate.raw.title,
+        releaseGuid: candidate.raw.albumId || candidate.raw.id,
+        releaseTitle: candidate.raw.album || candidate.raw.title,
         remoteUsername: candidate.raw.artist,
         remoteFilename: candidate.raw.file,
       });
@@ -270,6 +322,19 @@ async function handleDeemixPoll(payload, helpers) {
   }
 
   const status = String(queueItem?.status || "").trim();
+  if (payload.albumGrab === true) {
+    const albumQueue = readDeemixAlbumQueue(queueItem);
+    if (!albumQueue.finished) {
+      return { ...payload, phase: "poll", delaySeconds: POLL_DELAY_SECONDS, pollAttempts };
+    }
+    if (albumQueue.filePaths.length > 0) {
+      return { ...payload, phase: "finalize", downloadedPaths: albumQueue.filePaths,
+        albumFailedCount: albumQueue.failedCount, pollAttempts };
+    }
+    await client.removeFromQueue(payload.queueUuid).catch(() => {});
+    return helpers.failOrTryNextSource(payload, job,
+      safeLogDiagnostic(readQueueError(queueItem) || `deemix album ${status || "failed"}`));
+  }
   if (!queueItem || status === "inQueue" || status === "downloading") {
     return { ...payload, phase: "poll", delaySeconds: POLL_DELAY_SECONDS, pollAttempts };
   }
@@ -291,6 +356,19 @@ async function handleDeemixPoll(payload, helpers) {
 }
 
 async function handleDeemixFinalize(payload, helpers) {
+  if (payload.albumGrab === true) {
+    const filePaths = (payload.downloadedPaths || []).map((remote) =>
+      resolveLocalPath(remote, getPathMappings("deemix")));
+    try {
+      return await finishAlbumGrab(payload, { filePaths, source: "deemix" });
+    } finally {
+      await getDeemixClient().removeFromQueue(payload.queueUuid).catch((error) => {
+        logger.warn("deemix", "Could not remove completed album queue item", {
+          jobId: payload.jobId, reason: safeLogDiagnostic(error),
+        });
+      });
+    }
+  }
   // deemix derives the queue uuid from the track and bitrate, so a finished entry
   // left behind makes the next request match it instead of downloading again.
   // Dropping it once here covers every exit below, a job held for review included.

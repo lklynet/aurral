@@ -64,6 +64,9 @@ export const getFlowJobs = (flowId, limit = null, options = {}) => {
 export const getAllFlowJobs = (options = {}) =>
   getData("/playlists/jobs", options);
 
+export const getFlowJobFiles = (jobId, options = {}) =>
+  getData(`/playlists/jobs/${encodeURIComponent(jobId)}/files`, options);
+
 export const getManualMissingSearchSources = (jobId, { mode = "missing", playlistId = null } = {}) =>
   getData(`/playlists/jobs/${encodeURIComponent(jobId)}/manual-search/sources`, {
     params: { mode, ...(playlistId ? { playlistId } : {}) },
@@ -154,18 +157,10 @@ export const reSearchFlowTrack = (playlistId, jobId) =>
     `/playlists/flows/${encodeURIComponent(playlistId)}/tracks/${encodeURIComponent(jobId)}/research`,
   );
 
-export const reSearchMissingSharedPlaylistTracks = (playlistId) =>
-  postData(
-    `/playlists/shared-playlists/${playlistId}/research-missing`,
-  );
-
 export const searchTrackUpgrade = (playlistId, jobId) =>
   postData(
     `/playlists/quality-upgrades/${encodeURIComponent(playlistId)}/${encodeURIComponent(jobId)}`,
   );
-
-export const searchPlaylistUpgrades = (playlistId) =>
-  postData(`/playlists/quality-upgrades/${encodeURIComponent(playlistId)}`);
 
 export const searchAllUpgrades = () => postData("/playlists/quality-upgrades");
 
@@ -237,3 +232,12 @@ export const syncSharedPlaylistImport = (playlistId) =>
 
 export const getFlowLidarrImportListUrl = (flowId) =>
   getData(`/playlists/flows/${encodeURIComponent(flowId)}/lidarr-import-list`);
+
+export const removeSharedPlaylistTracks = (playlistId, jobIds) =>
+  postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/track-removals`, { jobIds });
+
+export const moveSharedPlaylistTracks = (playlistId, jobIds, target) =>
+  postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/track-moves`, { jobIds, target });
+
+export const getSharedPlaylistOperation = (playlistId, operationId, options) =>
+  getData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/operations/${encodeURIComponent(operationId)}`, options);

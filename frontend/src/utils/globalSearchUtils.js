@@ -1,6 +1,7 @@
 import { getArtistRecordId } from "./artistTaste";
 
 export const AUTOCOMPLETE_DEBOUNCE_MS = 250;
+export const LIBRARY_AUTOCOMPLETE_DEBOUNCE_MS = 80;
 export const SUGGEST_LIMIT = 5;
 export const TAG_SUGGESTIONS_LIMIT = 8;
 export const ALBUM_PENDING_STATUSES = new Set([

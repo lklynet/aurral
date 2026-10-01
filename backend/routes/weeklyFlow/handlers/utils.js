@@ -189,9 +189,14 @@ export const canAccessPlaylistType = (user, playlistType) => {
   return false;
 };
 
+export const LIBRARY_JOB_TYPE = "library";
+
+export const canAccessJobType = (user, playlistType) =>
+  playlistType === LIBRARY_JOB_TYPE || canAccessPlaylistType(user, playlistType);
+
 export const filterJobsForUser = (user, jobs) =>
   (Array.isArray(jobs) ? jobs : []).filter((job) =>
-    canAccessPlaylistType(user, job?.playlistId || job?.playlistType),
+    canAccessJobType(user, job?.playlistId || job?.playlistType),
   );
 
 export const queueFlowSideEffect = (kind, labelPrefix, flowId) => {
@@ -212,7 +217,7 @@ export const queueFlowSideEffect = (kind, labelPrefix, flowId) => {
 };
 
 export const enqueueResearchTrack = async (req, res, playlistId, jobId, labelPrefix) => {
-  if (!canAccessPlaylistType(req.user, playlistId)) {
+  if (!canAccessJobType(req.user, playlistId)) {
     return res.status(404).json({ error: "Playlist not found" });
   }
 

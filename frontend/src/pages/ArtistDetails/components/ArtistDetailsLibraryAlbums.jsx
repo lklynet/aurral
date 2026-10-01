@@ -146,6 +146,13 @@ export function ArtistDetailsLibraryAlbums({
   }, []);
 
   const openLibraryAlbum = (libraryAlbum) => {
+    const hasFiles =
+      (libraryAlbum.statistics?.sizeOnDisk ?? 0) > 0 ||
+      (libraryAlbum.statistics?.trackFileCount ?? 0) > 0;
+    if (libraryAlbum.canonicalId && hasFiles) {
+      navigate(`/library/album/${encodeURIComponent(libraryAlbum.canonicalId)}`);
+      return;
+    }
     const rgId = libraryAlbum.mbid || libraryAlbum.foreignAlbumId;
     const coverUrl =
       albumCovers[rgId] ||
@@ -465,7 +472,7 @@ export function ArtistDetailsLibraryAlbums({
                               >
                                 <span className="artist-menu-item__main">
                                   <Trash2 className="artist-icon-sm" />
-                                  Delete Album
+                                  {libraryAlbum.managedBy === "aurral" ? "Remove album" : "Delete Album"}
                                 </span>
                               </button>
                             </>

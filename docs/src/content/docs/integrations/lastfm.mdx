@@ -1,44 +1,43 @@
 ---
 title: Last.fm
-description: Personalized discovery, tags, and listening history.
+description: Use Last.fm for recommendations, listening history, and scrobbling.
 ---
 
-You can use Aurral without Last.fm. A Last.fm API key improves recommendations, tags, and discover playlists.
+Last.fm is optional. A Last.fm API key gives Aurral similar artists, tags, and top tracks, which improve recommendations, discover playlists, and flows. Flow **Deep Dive** needs the key.
 
-## Recommendations
+Aurral reads artist genres from BrainzMash first. It uses Last.fm tags only for artists that BrainzMash has no genres for.
 
-Add your Last.fm API key and API secret in **Settings > Connect > Last.fm**. Aurral uses the key
-for recommendations and discovery data, and uses both values to connect Last.fm scrobbling.
+## Add the API key
 
-## Scrobbling
+An admin adds the Last.fm **API key** and **API secret** in **Settings > Connect > Last.fm**. Aurral uses the key for discovery data. It uses the key and the secret together to connect scrobbling accounts.
 
-Open **Settings > Playback > Scrobbling**, enable **Last.fm**, select **Connect Last.fm account**,
-and complete the authorization in the Last.fm window.
+## Scrobble to Last.fm
 
-Aurral copies Navidrome's Last.fm flow directly: it uses the API key and API secret from
-**Settings > Connect**, then stores each user's Last.fm session key. Navidrome is not required.
-Account linking requires a user's login session. The instance API key cannot identify which
-user should own the Last.fm connection.
+1. Open **Settings > Playback > Scrobbling**.
+2. Turn on **Last.fm**.
+3. Select **Connect Last.fm account**.
+4. Approve access in the Last.fm window.
+
+Aurral stores a Last.fm session key for each user. Navidrome is not required.
+
+Each user connects their own account while signed in. The instance API key cannot connect an account, because it does not identify a user.
 
 ## Per-user listening history
 
-Each user selects a history source in **Profile**. Select **Last.fm** and enter a Last.fm username
-to read external history. Select **Local only** to use only Aurral play events.
+Each user chooses a history source in **Profile > Listening history**. To read Last.fm history, choose **Last.fm** and enter a Last.fm username. To use only the plays recorded in Aurral, choose **Local only**.
 
-Aurral combines local play events with external history when a user selects Last.fm, ListenBrainz,
-or Koito.
-
-Aurral records local plays from the built-in player and Subsonic clients before it contacts Last.fm. A Last.fm outage does not remove local history or stop playback.
-
-Local plays are queued before provider delivery. Delivery is at least once: temporary failures are
-retried, so a provider can receive a duplicate scrobble attempt. Aurral's local history is retained
-regardless of provider delivery results.
+When a user chooses Last.fm, ListenBrainz, or Koito, Aurral combines the provider's history with the plays recorded in Aurral.
 
 ![Aurral profile listening history](../../../assets/screenshots/profile-listening.webp)
 
+## How Aurral sends plays
+
+Aurral records each play from the built-in player and from Subsonic clients before it contacts Last.fm. If Last.fm is down, playback continues and Aurral keeps the play.
+
+Aurral queues each play and retries temporary failures. Because of the retries, Last.fm can receive the same play twice. Aurral's own history does not depend on the result.
+
 ## Discovery settings
 
-Admins set the refresh interval and discovery mode in **Settings > Discover**. The available modes are Safer, Balanced, and Deeper.
+An admin sets the refresh interval and the discovery mode in **Settings > Discover**. The modes are Safer, Balanced, and Deeper.
 
-If Last.fm is unavailable, Aurral can use ListenBrainz or [Koito](/integrations/koito/) history
-when the user selects that provider in **Profile**.
+If Last.fm is unavailable, users can choose ListenBrainz or [Koito](/integrations/koito/) as their history source in **Profile**.

@@ -1,40 +1,41 @@
 ---
 title: slskd
-description: Soulseek-backed downloads for flows and playlists.
+description: Download tracks and albums from Soulseek through slskd.
 ---
 
-slskd downloads flow and playlist tracks from Soulseek. Aurral can also use [Usenet](/integrations/usenet/) through Prowlarr and SABnzbd/NZBGet.
+slskd is a Soulseek client. Aurral uses it to download tracks for flows, playlists, and Aurral albums. For an Aurral album, Aurral can download one whole folder at once when the folder fits the requested release.
 
-## Search behavior
-
-When artist details are available, Aurral tries artist-and-album searches first. If they return too few suitable candidates, it searches for the album title alone, then tries the album and track titles together. Without artist details, Aurral starts with the album title alone. It still matches each search result and validates downloaded files before accepting them.
+Aurral stops its active search when it has enough suitable results, reaches its time limit, or the download is cancelled. This also applies when **Clean up after runs** is off; that setting controls retention of completed searches and transfers.
 
 ![Aurral history with slskd downloads](../../../assets/screenshots/history.webp)
 
 ## Setup
 
-1. Mount the same media root in Aurral and slskd at the same container path. See [Filesystem and mounts](/getting-started/storage/).
-2. Connect slskd in **Settings > Download clients > slskd**.
+1. Mount the same media root in Aurral and slskd, at the same container path. See [Filesystem and mounts](/getting-started/storage/).
+2. Open **Settings > Download clients > slskd**.
+3. Turn on **Enable slskd**.
+4. Enter the **Server URL** and the **API key**.
+5. Select **Test connection**.
 
-The API key is optional. Leave it empty when slskd runs with authentication disabled - for example `SLSKD_NO_AUTH=true`, `--no-auth`, or `web.authentication.disabled: true` - such as when an authenticating reverse proxy sits in front of slskd.
+The API key is optional. Leave it empty when slskd runs without authentication, for example with `SLSKD_NO_AUTH=true`, `--no-auth`, or `web.authentication.disabled: true`. Use this only when a reverse proxy that requires sign-in sits in front of slskd.
 
-Aurral uses the slskd API and reads the completed files from the path slskd reports. It then moves those files into your Downloads Folder path.
+Aurral reads each completed file at the path that slskd reports, and moves it into the Downloads Folder.
 
-If slskd runs on Windows and reports host paths, mount the parent folder into Aurral. For example, slskd can report `N:\...`.
+If slskd runs on Windows and reports host paths such as `N:\...`, mount the parent folder in Aurral. Then add a mapping in **Settings > Download clients > Remote path mappings**, with **Applies to** set to **slskd**.
 
-Then, add a path mapping under **Settings > Download clients > Remote Path Mappings**.
+## Options
 
-## Worker settings
+- **Source priority** sets the order among download sources. The default is `10`.
+- **Clean up after runs** clears finished slskd transfers when a flow or playlist run ends.
 
-Open the **slskd** card in **Settings > Download clients**. Set these options:
+To choose the accepted FLAC, MP3, and M4A tiers, open **Settings > Download clients > Quality profile**. See [Quality profile](/using/playlists/#quality-profile).
 
-- **Source priority**: order relative to Usenet (default `10`)
-- **Clean up after runs**: clear completed slskd jobs when a flow or playlist run finishes
+slskd can supply missing tracks and upgrades. Aurral reads each downloaded file before it accepts the quality.
 
-Use **Settings > Download clients > Quality profile** to select and order FLAC, MP3, and M4A quality tiers. Aurral uses this profile for new downloads and upgrades. See [Playlists: Quality profile](/using/playlists/#quality-profile).
+## How Aurral searches
 
-slskd can supply both missing tracks and upgrades. Aurral reads the completed file before it accepts the quality.
+When Aurral knows the artist, it searches for the artist and the album first. If that gives too few usable results, it searches for the album title alone, then for the album and track titles together. Without an artist, Aurral starts with the album title alone. Aurral checks every result against the requested track and checks every downloaded file before it accepts it.
 
-## Download fallback
+## Fallback
 
-When Usenet or yt-dlp is also configured, Aurral tries sources in priority order. If slskd fails, Aurral can fall back automatically. See [Usenet](/integrations/usenet/#download-source-priority-and-fallback) and [yt-dlp](/integrations/ytdlp/).
+When other sources are configured, Aurral tries them in priority order. If slskd fails, Aurral tries the next source. See [Download source priority and fallback](/integrations/usenet/#download-source-priority-and-fallback).

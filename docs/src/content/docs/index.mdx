@@ -5,40 +5,37 @@ description: Install, configure, and use Aurral.
 
 import { Card, CardGrid } from "@astrojs/starlight/components";
 
-Aurral is a self-hosted app for music discovery and playback. It keeps a canonical index of Aurral-owned files and optional Lidarr library files, adds recommendations and requests, and downloads tracks for flows and imported playlists.
+Aurral is a self-hosted app for music discovery, downloads, and playback. It finds artists you do not have yet, downloads tracks for flows and imported playlists, and plays your library in the browser.
 
 ![Aurral Discover page](../../assets/screenshots/discover.webp)
 
 ## Get started
 
 1. [Install Aurral with Docker](/getting-started/docker/).
-2. [Set up the shared filesystem](/getting-started/storage/) so Aurral can read existing files and connect its downloads to your playback server.
+2. [Set up the shared filesystem](/getting-started/storage/). Aurral must read the files that your other services write.
 3. [Complete first-run setup](/getting-started/first-run/).
 4. Connect the services that you use.
 
 :::note
-Lidarr is optional for browsing, searching, playback, streaming, activity, and library scans. Connect Lidarr when you want Lidarr-managed library changes, requests, or provider status.
+Lidarr is optional. Without Lidarr, Aurral keeps your music in its Downloads Folder and manages it itself. Connect Lidarr when you want Lidarr to manage some or all of your artists and albums.
 :::
 
 ## How Aurral fits
 
-**Discover. Download. Listen.**
-
-Aurral reads configured Aurral and Lidarr roots and keeps a canonical index of readable music. It manages flows and static playlists, and it can play canonical tracks in its built-in player. Navidrome, Jellyfin, Plex, and Subsonic clients are optional playback destinations.
+Aurral indexes the music in its Downloads Folder and, if you connect Lidarr, in the Lidarr root folders. This index is the Library. Aurral plays Library tracks in its built-in player and serves them to Subsonic clients. Navidrome, Plex, and Jellyfin are optional playback servers that receive Aurral playlists.
 
 ## Essential guides
 
 <CardGrid>
   <Card title="Use the app">
-    Learn about Discover, Search, Library, Playlists, Activity, Shows, Profile, and Settings. [App
+    Discover, Search, Library, Playlists, Activity, Shows, Profile, and Settings. [App
     overview](/using/overview/)
   </Card>
   <Card title="Create playlists">
-    Build a scheduled flow or import a fixed playlist. [Playlists and flows](/using/playlists/)
+    Build a scheduled flow or import a playlist. [Playlists overview](/using/playlists/)
   </Card>
   <Card title="Connect Lidarr">
-    Configure requests, queue status, and file reuse. [Lidarr
-    integration](/integrations/lidarr/)
+    Let Lidarr manage artists and albums. [Lidarr integration](/integrations/lidarr/)
   </Card>
   <Card title="Run Aurral">
     Storage, users, environment variables, and troubleshooting. [Administration](/admin/storage/)
@@ -47,7 +44,7 @@ Aurral reads configured Aurral and Lidarr roots and keeps a canonical index of r
 
 ## Tools
 
-Import a playlist without Spotify Connect using the [Spotify CSV converter](/tools/spotify-csv-converter/).
+To import a Spotify playlist without connecting Spotify, use the [Spotify CSV converter](/tools/spotify-csv-converter/).
 
 ## Links
 

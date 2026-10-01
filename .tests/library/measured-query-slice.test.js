@@ -79,6 +79,77 @@ test("substring search uses the trigram index with stable pagination", (t) => {
   assert.ok(plan.some((row) => row.detail.includes("SCAN search_fts VIRTUAL TABLE")));
 });
 
+test("search keeps category matches and literal wildcards distinct after interleaved inserts", () => {
+  const searchArtist = libraryStore.upsertLibraryArtist({
+    identityKey: "literal:artist",
+    name: "Literal %_ Artist",
+  });
+  const searchAlbum = libraryStore.upsertLibraryAlbum({
+    identityKey: "literal:album",
+    artistId: searchArtist.id,
+    title: "Literal %_ Album",
+  });
+  const first = libraryStore.upsertLibraryTrack({
+    identityKey: "literal:track",
+    title: "Literal %_ Song",
+    artistName: searchArtist.name,
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: searchAlbum.id, trackId: first.id });
+  const laterArtist = libraryStore.upsertLibraryArtist({
+    identityKey: "literal:later-artist",
+    name: "Later Literal %_ Artist",
+  });
+  const laterAlbum = libraryStore.upsertLibraryAlbum({
+    identityKey: "literal:later-album",
+    artistId: laterArtist.id,
+    title: "Later Literal %_ Album",
+  });
+  const plain = libraryStore.upsertLibraryTrack({
+    identityKey: "literal:plain",
+    title: "Literal Plain Song",
+    artistName: "Plain Artist",
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: laterAlbum.id, trackId: plain.id });
+
+  try {
+    for (const query of ["literal %_", "%_", "literal", ""]) {
+      const result = queryService.getCanonicalSearchPage({ query });
+      assert.ok(result.artists.some((entry) => entry.id === searchArtist.id));
+      assert.ok(result.artists.some((entry) => entry.id === laterArtist.id));
+      assert.ok(result.albums.albums.some((entry) => entry.id === searchAlbum.id));
+      assert.ok(result.albums.albums.some((entry) => entry.id === laterAlbum.id));
+    }
+    const songs = queryService.getCanonicalSearchPage({ query: "literal %_ song" });
+    assert.deepEqual(songs.artists, []);
+    assert.deepEqual(songs.albums.albums, []);
+    assert.deepEqual(songs.tracks.tracks.map((entry) => entry.id), [first.id]);
+    const albums = queryService.getCanonicalSearchPage({
+      query: "literal %_ album",
+      artistLimit: 0,
+      albumLimit: 1,
+      albumOffset: 1,
+      songLimit: 0,
+    });
+    assert.deepEqual(albums.artists, []);
+    assert.deepEqual(albums.albums.albums.map((entry) => entry.id), [searchAlbum.id]);
+    assert.deepEqual(albums.tracks.tracks, []);
+  } finally {
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?)")
+      .run(searchAlbum.id, laterAlbum.id);
+    db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)")
+      .run(searchAlbum.id, laterAlbum.id);
+    db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)")
+      .run(searchArtist.id, laterArtist.id);
+    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(first.id, plain.id);
+    db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id IN (?, ?)")
+      .run(searchArtist.id, laterArtist.id);
+    db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'album' AND entity_id IN (?, ?)")
+      .run(searchAlbum.id, laterAlbum.id);
+    db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'track' AND entity_id IN (?, ?)")
+      .run(first.id, plain.id);
+  }
+});
+
 test("unchanged canonical upserts do not rewrite search documents", () => {
   db.exec(`
     CREATE TEMP TABLE search_update_probe (count INTEGER NOT NULL);

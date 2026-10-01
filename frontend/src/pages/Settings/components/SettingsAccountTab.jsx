@@ -6,9 +6,10 @@ import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
 import { ConnectedAccountsSection } from "./ConnectedAccountsSection";
 import { ThemeSettings } from "./ThemeSettings";
 
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { RotateCcw } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
+import { describeLibraryManagerControl } from "../utils/librarySettings";
 export function SettingsAccountTab({
   listenHistoryProvider,
   setListenHistoryProvider,
@@ -23,6 +24,9 @@ export function SettingsAccountTab({
   setLidarrRootFolderPath,
   lidarrQualityProfileId,
   setLidarrQualityProfileId,
+  libraryOwner,
+  saveLibraryOwner,
+  savingLibraryOwner = false,
   loading,
   handleSave,
   hidePanelHeader = false,
@@ -76,6 +80,8 @@ export function SettingsAccountTab({
       </div>
     );
   }
+
+  const managerControl = describeLibraryManagerControl({ libraryOwner, lidarrConfigured });
 
   const profileSummary = (() => {
     if (listenHistoryProvider === "local") return "Local only";
@@ -236,6 +242,59 @@ export function SettingsAccountTab({
             <p className="settings-page__section-note">
               Defaults for one-click artist adds. Profile values override them.
             </p>
+          </div>
+
+          <div className="settings-page__fields profile-settings__fields">
+            <div className="profile-settings__field">
+              <span className="profile-settings__label" id="profile-library-manager">
+                Default library manager
+              </span>
+              <div className="profile-settings__control">
+                <div
+                  className="artist-segmented"
+                  role="group"
+                  aria-labelledby="profile-library-manager"
+                >
+                  {managerControl.options.map((option) => {
+                    const selected = managerControl.value === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`artist-segmented-button${selected ? " is-active" : ""}`}
+                        aria-pressed={selected}
+                        disabled={option.disabled || savingLibraryOwner}
+                        onClick={() => {
+                          if (selected && managerControl.canUseDefault) return;
+                          void saveLibraryOwner?.(option.id);
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <span className="profile-settings__control-status" aria-live="polite">
+                  {managerControl.statusLabel}
+                </span>
+                {managerControl.canUseDefault ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    disabled={savingLibraryOwner}
+                    onClick={() => void saveLibraryOwner?.(null)}
+                  >
+                    Use default
+                  </button>
+                ) : null}
+              </div>
+              <p className="settings-page__hint">
+                Manages the artists and albums you add.
+                {managerControl.lidarrUnavailableReason
+                  ? ` ${managerControl.lidarrUnavailableReason}`
+                  : ""}
+              </p>
+            </div>
           </div>
 
           <fieldset

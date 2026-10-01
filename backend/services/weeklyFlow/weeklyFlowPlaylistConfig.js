@@ -319,6 +319,7 @@ export const normalizeSharedTrack = (track) => {
     : [];
   const reason = String(track.reason ?? "").trim();
   const canonicalJobId = String(track.canonicalJobId ?? track.libraryJobId ?? "").trim();
+  const membershipId = String(track.membershipId || "").trim();
   return {
     artistName,
     trackName,
@@ -331,6 +332,7 @@ export const normalizeSharedTrack = (track) => {
     artistAliases,
     reason: reason || null,
     ...(canonicalJobId ? { canonicalJobId } : {}),
+    ...(membershipId ? { membershipId } : {}),
   };
 };
 
@@ -491,7 +493,12 @@ export function normalizeImportSource(value) {
 
 const normalizeSharedPlaylist = (playlist) => {
   const name = String(playlist?.name || "").trim();
-  const tracks = dedupeSharedTracks(playlist?.tracks);
+  const membershipIds = new Set();
+  const tracks = dedupeSharedTracks(playlist?.tracks).map((track) => {
+    const membershipId = track.membershipId && !membershipIds.has(track.membershipId) ? track.membershipId : randomUUID();
+    membershipIds.add(membershipId);
+    return { ...track, membershipId };
+  });
   const importSource = normalizeImportSource(playlist?.importSource);
   return {
     id: playlist?.id || randomUUID(),
@@ -609,10 +616,13 @@ const setSharedPlaylists = (playlists) => {
   cachedSharedPlaylists = playlists;
   sharedPlaylistsCachedAt = Date.now();
   const current = dbOps.getSettings();
-  dbOps.updateSettings({
-    ...current,
-    sharedPlaylists: playlists,
-  });
+  try {
+    dbOps.updateSettings({ ...current, sharedPlaylists: playlists });
+  } catch (error) {
+    dbOps.invalidateSettingsCache();
+    invalidateFlowPlaylistConfigCache();
+    throw error;
+  }
 };
 
 const normalizeNameKey = (value) =>
@@ -963,7 +973,7 @@ export const flowPlaylistConfig = {
     const index = playlists.findIndex((playlist) => playlist.id === playlistId);
     if (index === -1) return null;
     const current = playlists[index];
-    const appendedTracks = filterMissingSharedTracks(current.tracks, tracks);
+    const appendedTracks = filterMissingSharedTracks(current.tracks, tracks).map((track) => ({ ...track, membershipId: randomUUID() }));
     const next = normalizeSharedPlaylist({
       ...current,
       tracks: [...current.tracks, ...appendedTracks],
@@ -1002,7 +1012,10 @@ export const flowPlaylistConfig = {
         updates?.importSource !== undefined
           ? normalizeImportSource(updates.importSource)
           : current.importSource,
-      tracks: Array.isArray(updates?.tracks) ? updates.tracks : current.tracks,
+      tracks: Array.isArray(updates?.tracks) ? dedupeSharedTracks(updates.tracks).map((track) => {
+        const previous = current.tracks.find((entry) => entry.canonicalJobId === track.canonicalJobId && tracksShareMembership(entry, track));
+        return { ...track, membershipId: previous?.membershipId || randomUUID() };
+      }) : current.tracks,
       importedAt: current.importedAt,
       createdAt: current.createdAt,
     });

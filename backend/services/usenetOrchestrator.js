@@ -12,7 +12,6 @@ import {
 } from "./weeklyFlow/weeklyFlowUsenetReleaseSearch.js";
 import {
   selectVerifiedDownloadedFile,
-  MATCHER_UNAVAILABLE_MESSAGE,
 } from "./trackMatching/index.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
@@ -38,6 +37,7 @@ import {
 } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
 import { getQualityProfile } from "./qualityProfileService.js";
 import { orderAdvertisedQualityCandidates } from "./qualityProfileModel.js";
+import { finishAlbumGrab } from "./albumGrab.js";
 
 const MIN_USENET_CANDIDATES = 2;
 const MAX_DOWNLOAD_CANDIDATES = 5;
@@ -77,9 +77,9 @@ function removeSabnzbdItem(nzbId, jobId) {
   });
 }
 
-function hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions) {
+function hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions, albumGrab) {
   const ranked = rankUsenetReleases(aggregated, resolvedTrack).filter(
-    (entry) => entry.releaseAdmissible,
+    (entry) => entry.releaseAdmissible && (!albumGrab || entry.resolvedAlbumName),
   );
   return orderAdvertisedQualityCandidates(ranked, {
     ...qualityOptions,
@@ -169,7 +169,7 @@ export async function collectDownloadedAudioFiles(historyItem, preferredClient =
 
 async function validateDownloadedRelease(audioFilePaths, candidate, resolvedTrack, options = {}) {
   // Post-download identity is decided by the shared engine: downloaded files
-  // are assigned to the expected tracklist with beets when one is available
+  // are assigned to the expected tracklist with the native matcher
   // and validated individually against the requested track.
   return selectVerifiedDownloadedFile({
     request: resolvedTrack,
@@ -204,18 +204,25 @@ async function handleUsenetSearch(payload, helpers) {
     upgrade: payload.upgrade === true,
   };
   const searchTiers = buildFlowSearchTiers(resolvedTrack);
+  const deniedSources = Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [];
+  const deniedSourceGuidSet = new Set(
+    deniedSources
+      .filter((entry) => Array.isArray(entry) && entry[0] === "usenet")
+      .map((entry) => String(entry[1] || "").trim()),
+  );
   const aggregated = [];
   const seen = new Set();
   const queries = [];
   let lastError = "";
   for (const tier of searchTiers) {
-    if (hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions)) break;
+    if (hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions, payload.albumGrab === true)) break;
     for (const query of tier.queries) {
-      if (hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions)) break;
+      if (hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions, payload.albumGrab === true)) break;
       queries.push(query);
       try {
         const releases = await prowlarrClient.search(query);
-        mergeSearchResults(aggregated, seen, releases, (release) =>
+        mergeSearchResults(aggregated, seen, releases.filter((release) =>
+          !deniedSourceGuidSet.has(String(release.guid || "").trim())), (release) =>
           [release.guid, release.downloadUrl, release.indexerId, release.title]
             .map((entry) => String(entry || "").trim().toLowerCase())
             .join("\0"),
@@ -231,17 +238,12 @@ async function handleUsenetSearch(payload, helpers) {
     }
   }
   const ranked = rankUsenetReleases(aggregated, resolvedTrack);
-  const deniedSources = Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [];
-  const deniedSourceGuidSet = new Set(
-    deniedSources
-      .filter((entry) => Array.isArray(entry) && entry[0] === "usenet")
-      .map((entry) => String(entry[1] || "").trim()),
-  );
   const filteredRanked = deniedSourceGuidSet.size > 0
     ? ranked.filter((entry) => !deniedSourceGuidSet.has(String(entry?.raw?.guid || "").trim()))
     : ranked;
   const qualityRanked = orderAdvertisedQualityCandidates(
-    filteredRanked.filter((entry) => entry.releaseAdmissible),
+    filteredRanked.filter((entry) => entry.releaseAdmissible
+      && (payload.albumGrab !== true || entry.resolvedAlbumName)),
     {
     ...qualityOptions,
     readName: (entry) => entry?.raw?.release?.title,
@@ -401,6 +403,18 @@ async function handleUsenetFinalize(payload, helpers) {
   const candidate = getPayloadCandidate(payload);
   const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
   const historyItem = payload.history || (await client.getHistoryItem(payload.nzbId));
+  if (payload.albumGrab === true) {
+    const filePaths = await collectDownloadedAudioFiles(
+      historyItem, payload.downloadClient || payload.manualDownloadClient,
+    );
+    const next = await finishAlbumGrab(payload, {
+      filePaths, source: "usenet", album: candidate?.resolvedAlbumName || job.albumName,
+    });
+    if (getUsenetClientKey(payload.downloadClient || payload.manualDownloadClient) === "sabnzbd") {
+      removeSabnzbdItem(payload.nzbId, job.id);
+    }
+    return next;
+  }
   const resolvedTrack = {
     ...buildResolvedTrack(job, payload.track),
     upgradeForJobId: payload.upgradeForJobId || null,
@@ -426,11 +440,8 @@ async function handleUsenetFinalize(payload, helpers) {
     return null;
   }
   if (!found.filePath) {
-    const reason =
-      found.validation?.reason ||
-      (found.validation?.error
-        ? MATCHER_UNAVAILABLE_MESSAGE
-        : "Usenet download completed, but no matching audio file was found");
+    const reason = found.validation?.reason
+      || "Usenet download completed, but no matching audio file was found";
     if (getUsenetClientKey(payload.downloadClient || payload.manualDownloadClient) === "sabnzbd") {
       removeSabnzbdItem(payload.nzbId, job.id);
     }

@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
   addArtistToLibrary,
   lookupAlbumsInLibraryBatch,
   lookupArtistsInLibraryBatch,
   requestAlbumFromSearch,
+  settleLibraryOwnerConflict,
 } from "../utils/api/endpoints/library.js";
 import {
   addSharedPlaylistTracks,
@@ -13,7 +14,7 @@ import {
 import { getDiscovery } from "../utils/api/endpoints/discovery.js";
 import { DotLoader } from "../components/DotLoader";
 import { getArtistCover, getReleaseGroupCover } from "../utils/api/endpoints/artists.js";
-import { searchCatalog, searchUnified } from "../utils/api/endpoints/search.js";
+import { searchCatalog, searchLibrary, searchUnified } from "../utils/api/endpoints/search.js";
 import SearchAlbumResults from "../components/SearchAlbumResults";
 import SearchArtistResults from "../components/SearchArtistResults";
 import AddActionButton from "../components/AddActionButton";
@@ -34,7 +35,13 @@ import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
 import { queryKeys } from "../queryClient.js";
 import { useSharedPlaylists } from "../hooks/useSharedPlaylists";
 import { getArtistRecordId } from "../utils/artistTaste";
-import { getAlbumAddButtonLabel, isAlbumCompleteInLibrary, shouldTriggerAlbumSearch } from "../utils/albumAddAction";
+import { describeAlbumRequestResult, getAlbumAddAction, isAlbumCompleteInLibrary, shouldTriggerAlbumSearch } from "../utils/albumAddAction";
+import {
+  buildAlbumRequestPayload,
+  buildArtistAddPayload,
+  getManagerName,
+} from "../utils/libraryDestination";
+import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import {
   PAGE_SIZE,
   DEFAULT_ALBUM_SORT,
@@ -50,7 +57,7 @@ import {
   ARTIST_IMAGE_HYDRATION_CONCURRENCY,
   ALBUM_COVER_HYDRATION_CONCURRENCY,
 } from "./searchPageUtils";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
@@ -74,6 +81,7 @@ const RECOMMENDED_SORT_OPTIONS = [
   { value: "popularity", label: "Popularity" },
 ];
 const EMPTY_SEARCH_PAGES = [];
+const LIBRARY_RESULT_LIMIT = 6;
 
 const getRecommendedArtistName = (artist) => String(artist?.name || "").trim();
 
@@ -145,7 +153,8 @@ function SearchResultsPage() {
   const recommendedToolbarRef = useRef(null);
   const navigate = useDiscoverNavigation();
   const { hasPermission, bootstrap } = useAuth();
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showInfo } = useToast();
+  const libraryDestination = useLibraryDestination();
 
   const trimmedQuery = useMemo(() => query.trim(), [query]);
   const normalizedType = useMemo(() => {
@@ -342,6 +351,25 @@ function SearchResultsPage() {
     () => (isAlbumSearch ? rawResults.map(withAlbumLibraryState) : rawResults),
     [isAlbumSearch, rawResults, withAlbumLibraryState],
   );
+  const librarySearchQuery = useQuery({
+    queryKey: queryKeys.searchLibrary(trimmedQuery, LIBRARY_RESULT_LIMIT),
+    enabled: isUnifiedSearch,
+    queryFn: ({ signal }) =>
+      searchLibrary(trimmedQuery, { limit: LIBRARY_RESULT_LIMIT, signal }),
+    staleTime: 30_000,
+  });
+  const libraryResults = isUnifiedSearch ? librarySearchQuery.data || null : null;
+  const libraryItems = useMemo(
+    () =>
+      libraryResults
+        ? [
+            ...(libraryResults.artists || []),
+            ...(libraryResults.albums || []),
+            ...(libraryResults.tracks || []),
+          ]
+        : [],
+    [libraryResults],
+  );
   const fullList = normalizedType === "trending" ? rawResults : null;
   const loading = searchQuery.isLoading;
   const loadingMore = searchQuery.isFetchingNextPage;
@@ -352,7 +380,7 @@ function SearchResultsPage() {
   const searchTotalCount = isUnifiedSearch
     ? (unifiedResults?.catalog?.artists?.length || 0) +
       (unifiedResults?.catalog?.albums?.length || 0) +
-      (unifiedResults?.library?.tracks?.length || 0)
+      (unifiedResults?.catalog?.tracks?.length || 0)
     : normalizedType === "recommended"
       ? Number(searchPages[searchPages.length - 1]?.recommendationCount || results.length)
       : normalizedType === "trending"
@@ -415,11 +443,15 @@ function SearchResultsPage() {
     if (isAlbumSearch) return undefined;
 
     let cancelled = false;
-    const artists = isUnifiedSearch ? buildSearchArtistResults(unifiedResults, {}) : results;
+    const artists = isUnifiedSearch
+      ? [
+          ...(libraryResults?.artists || []).filter(
+            (artist) => String(artist.id) !== String(artist.canonicalId),
+          ),
+          ...buildSearchArtistResults(unifiedResults, {}),
+        ]
+      : results;
 
-    if (isUnifiedSearch && !unifiedResults) {
-      return undefined;
-    }
     if (!artists.length) {
       return undefined;
     }
@@ -478,7 +510,7 @@ function SearchResultsPage() {
     return () => {
       cancelled = true;
     };
-  }, [artistImages, isAlbumSearch, isUnifiedSearch, results, unifiedResults]);
+  }, [artistImages, isAlbumSearch, isUnifiedSearch, libraryResults, results, unifiedResults]);
 
   useEffect(() => {
     if (isAlbumSearch || isUnifiedSearch) return undefined;
@@ -575,22 +607,17 @@ function SearchResultsPage() {
   }, [albumCovers, isUnifiedSearch, unifiedResults]);
 
   useEffect(() => {
-    if (!isUnifiedSearch || !unifiedResults) {
+    if (!libraryResults) {
       return undefined;
     }
     let cancelled = false;
-    const tracks = unifiedResults.library?.tracks || [];
-    const albums = unifiedResults.catalog?.albums || [];
-    const missingCoverIds = tracks
-      .map((track) => track?.albumMbid)
-      .filter(
-        (albumMbid) =>
-          albumMbid &&
-          albumCovers[albumMbid] === undefined &&
-          !albums.some(
-            (album) => album.id === albumMbid && (album.coverUrl || albumCovers[album.id]),
-          ),
-      )
+    const tracks = libraryResults.tracks || [];
+    const albums = libraryResults.albums || [];
+    const missingCoverIds = [
+      ...albums.map((album) => album?.id),
+      ...tracks.map((track) => track?.albumMbid),
+    ]
+      .filter((albumMbid) => albumMbid && albumCovers[albumMbid] === undefined)
       .filter((albumMbid, index, list) => list.indexOf(albumMbid) === index);
 
     if (missingCoverIds.length === 0) {
@@ -641,7 +668,7 @@ function SearchResultsPage() {
     return () => {
       cancelled = true;
     };
-  }, [albumCovers, isUnifiedSearch, unifiedResults]);
+  }, [albumCovers, libraryResults]);
 
   useEffect(() => {
     if (!isUnifiedSearch || !unifiedResults?.catalog?.albums?.length) {
@@ -838,7 +865,7 @@ function SearchResultsPage() {
   );
 
   const handleAlbumAction = useCallback(
-    async (album) => {
+    async (album, managedBy = libraryDestination.primary) => {
       if (!album?.id) return;
       const shouldTriggerSearch = shouldTriggerAlbumSearch({
         status: album.status,
@@ -847,44 +874,45 @@ function SearchResultsPage() {
       });
       setPendingAlbumIds((prev) => ({ ...prev, [album.id]: true }));
       try {
-        const result = await requestAlbumFromSearch({
+        const result = await requestAlbumFromSearch(buildAlbumRequestPayload({
           albumMbid: album.id,
           albumName: album.title,
           artistMbid: album.artistMbid,
           artistName: album.artistName,
+          managedBy,
           triggerSearch: shouldTriggerSearch,
-        });
-        const nextAlbum = result?.queued
-          ? { inLibrary: true, status: "processing" }
-          : {
-              inLibrary: true,
-              libraryAlbumId: result.album?.id,
-              libraryArtistId: result.artist?.id,
-              status: result.status,
-            };
+        }));
+        const nextAlbum = {
+          inLibrary: true,
+          managedBy: result?.album?.managedBy || result?.managedBy || managedBy,
+          libraryAlbumId: result.album?.id,
+          libraryArtistId: result.artist?.id,
+          status: result?.queued ? "processing" : result.status,
+        };
         setAlbumLibraryLookup((prev) => ({
           ...prev,
           [album.id]: nextAlbum,
         }));
-        showSuccess(
-          result?.queued
-            ? `Adding ${album.title}...`
-            : result.triggeredSearch
-              ? `Search triggered for ${album.title}`
-              : `${album.title} added to library`,
-        );
+        const outcome = describeAlbumRequestResult(result, album.title, managedBy);
+        (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
       } catch (err) {
-        showError(
-          err.response?.data?.error ||
-            err.response?.data?.message ||
-            err.message ||
-            "Failed to request album",
-        );
+        const conflict = settleLibraryOwnerConflict(err);
+        if (conflict) {
+          setAlbumLibraryLookup((prev) => ({
+            ...prev,
+            [album.id]: { ownerConflict: conflict },
+          }));
+          showInfo(`${album.title}: ${conflict.message}`);
+          return;
+        }
+        showError(`Failed to add album to ${getManagerName(managedBy)}: ${
+          err.response?.data?.message || err.response?.data?.error || err.message
+        }`);
       } finally {
         setPendingAlbumIds(({ [album.id]: _, ...prev }) => prev);
       }
     },
-    [showError, showSuccess],
+    [libraryDestination.primary, showError, showInfo, showSuccess],
   );
 
   const handleSearchTrackAdd = useCallback(
@@ -948,34 +976,38 @@ function SearchResultsPage() {
   );
 
   const handleArtistAction = useCallback(
-    async (artist) => {
+    async (artist, managedBy = libraryDestination.primary) => {
       const artistId = getArtistRecordId(artist);
-      if (!artist?.name || !artistId) return false;
+      if (!artist?.name || !artistId || !libraryDestination.ready) return false;
       setPendingArtistIds((prev) => ({ ...prev, [artistId]: true }));
       try {
-        await addArtistToLibrary({
-          foreignArtistId: artistId,
+        await addArtistToLibrary(buildArtistAddPayload({
+          artistMbid: artistId,
           artistName: artist.name,
-        });
+          managedBy,
+        }));
         setLibraryLookup((prev) => ({
           ...prev,
           [artistId]: true,
         }));
-        showSuccess(`Adding ${artist.name}...`);
+        showSuccess(`Added ${artist.name} to ${getManagerName(managedBy)}`);
         return true;
       } catch (err) {
-        showError(
-          err.response?.data?.message ||
-            err.response?.data?.error ||
-            err.message ||
-            "Failed to add artist to library",
-        );
+        const conflict = settleLibraryOwnerConflict(err);
+        if (conflict) {
+          setLibraryLookup((previous) => ({ ...previous, [artistId]: true }));
+          showInfo(`${artist.name}: ${conflict.message}`);
+          return false;
+        }
+        showError(`Failed to add artist to ${getManagerName(managedBy)}: ${
+          err.response?.data?.message || err.response?.data?.error || err.message
+        }`);
         return false;
       } finally {
         setPendingArtistIds(({ [artistId]: _, ...prev }) => prev);
       }
     },
-    [showError, showSuccess],
+    [libraryDestination.primary, libraryDestination.ready, showError, showInfo, showSuccess],
   );
 
   const handleArtistFeedback = useCallback(
@@ -1034,11 +1066,8 @@ function SearchResultsPage() {
           <AddActionButton
             disabled={!!pendingArtistIds[artistId]}
             isLoading={!!pendingArtistIds[artistId]}
-            label="Add to Lidarr"
-            onClick={(event) => {
-              event.stopPropagation();
-              handleArtistAction(item);
-            }}
+            destination={libraryDestination}
+            onAdd={(managedBy) => handleArtistAction(item, managedBy)}
           />
         );
       }
@@ -1048,17 +1077,11 @@ function SearchResultsPage() {
         const pending = !!pendingAlbumIds[item.id];
         return (
           <AddActionButton
-            onClick={(event) => {
-              event.stopPropagation();
-              handleAlbumAction(item);
-            }}
+            {...getAlbumAddAction(item, libraryDestination)}
+            ownerConflict={item.ownerConflict}
+            onAdd={(managedBy) => handleAlbumAction(item, managedBy)}
             isLoading={pending}
             disabled={pending || ALBUM_PENDING_STATUSES.has(item.status)}
-            label={getAlbumAddButtonLabel({
-              status: item.status,
-              inLibrary: item.inLibrary,
-              monitored: item.monitored,
-            })}
           />
         );
       }
@@ -1070,6 +1093,7 @@ function SearchResultsPage() {
       canAddArtist,
       handleAlbumAction,
       handleArtistAction,
+      libraryDestination,
       handleSearchTrackAdd,
       isSearchResultInLibrary,
       loadSharedPlaylists,
@@ -1194,7 +1218,10 @@ function SearchResultsPage() {
 
   const showContent =
     !loading && (query || normalizedType === "recommended" || normalizedType === "trending");
-  const isEmpty = isUnifiedSearch ? unifiedView.isEmpty : displayedResults.length === 0;
+  const showLibraryResults = isUnifiedSearch && activeFilter === "all" && libraryItems.length > 0;
+  const isEmpty = isUnifiedSearch
+    ? unifiedView.isEmpty && !showLibraryResults
+    : displayedResults.length === 0;
   const showLoadMore =
     hasMore &&
     (["recommended", "trending", "tag"].includes(normalizedType)
@@ -1550,6 +1577,19 @@ function SearchResultsPage() {
         )}
       </header>
 
+      {showLibraryResults && (
+        <section className="search-page__section" aria-labelledby="search-library-heading">
+          <h2 id="search-library-heading" className="search-page__section-title">
+            Your library
+          </h2>
+          <SearchMixedResultList items={libraryItems} {...searchListProps} />
+        </section>
+      )}
+
+      {showLibraryResults && (loading || !unifiedView.isEmpty || error) && (
+        <h2 className="search-page__section-title">Discover</h2>
+      )}
+
       {error && (
         <div className="artist-error-panel" role="alert">
           <p className="artist-error-text">{error}</p>
@@ -1613,6 +1653,7 @@ function SearchResultsPage() {
                       canAddAlbum={canAddAlbum}
                       pendingAlbumIds={pendingAlbumIds}
                       onAlbumAction={handleAlbumAction}
+                      libraryDestination={libraryDestination}
                       navigate={navigate}
                       viewMode="grid"
                     />
@@ -1640,6 +1681,7 @@ function SearchResultsPage() {
                       canAddAlbum={canAddAlbum}
                       pendingAlbumIds={pendingAlbumIds}
                       onAlbumAction={handleAlbumAction}
+                      libraryDestination={libraryDestination}
                       navigate={navigate}
                       viewMode="grid"
                     />
@@ -1652,6 +1694,7 @@ function SearchResultsPage() {
                   canAddAlbum={canAddAlbum}
                   pendingAlbumIds={pendingAlbumIds}
                   onAlbumAction={handleAlbumAction}
+                  libraryDestination={libraryDestination}
                   navigate={navigate}
                   viewMode={albumViewMode}
                 />

@@ -34,10 +34,12 @@ const Login = () => {
     if (submitting) return;
     setSubmitting(true);
     try {
-      const success = await login(password, username);
+      const result = await login(password, username);
 
-      if (success) {
+      if (result.ok) {
         setError("");
+      } else if (result.status === 429) {
+        setError("Too many sign-in attempts. Wait a few minutes, then try again.");
       } else {
         setError("Invalid username or password");
       }

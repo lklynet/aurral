@@ -1,102 +1,93 @@
 ---
 title: Usenet (Prowlarr and SABnzbd or NZBGet)
-description: Usenet-backed downloads for flows and playlists.
+description: Download tracks and albums from Usenet through Prowlarr and SABnzbd or NZBGet.
 ---
 
-Usenet downloads use **Prowlarr** for indexer searches. They use **SABnzbd** or **NZBGet** as the download client.
+Usenet downloads need two parts:
 
-Aurral treats each download client equally. You must configure only one download client for Usenet operation.
+- **Prowlarr** searches your Usenet indexers. Connect it in **Settings > Indexers**.
+- **SABnzbd** or **NZBGet** downloads the results. Connect one of them in **Settings > Download clients**. You need only one.
 
-Enable and connect both components:
+## Setup
 
-- The download client in **Settings > Download clients**
-- Prowlarr in **Settings > Indexers**
-
-## Search behavior
-
-When artist details are available, Aurral tries artist-and-album searches first. If they return too few suitable releases, it searches for the album title alone, then tries the album and track titles together. Without artist details, Aurral starts with the album title alone. Results still go through release matching, and Aurral validates downloaded files before importing them.
-
-## Setup overview
-
-1. Run Prowlarr with at least one Usenet audio indexer configured.
-2. Run SABnzbd or NZBGet with a category Aurral can use (default `aurral`).
-3. Mount the same media root in Aurral and SABnzbd or NZBGet at the same container path so Aurral can read completed files ([Filesystem and mounts](/getting-started/storage/)).
+1. Run Prowlarr with one or more Usenet audio indexers.
+2. Run SABnzbd or NZBGet with a category for Aurral. The default category is `aurral`.
+3. Mount the same media root in Aurral and SABnzbd or NZBGet, at the same container path, so that Aurral can read the completed files. See [Filesystem and mounts](/getting-started/storage/).
 4. Open **Settings > Indexers**.
-5. Enable **Prowlarr**.
+5. Turn on **Enable Prowlarr**.
 6. Enter the Prowlarr URL and API key.
 7. Select **Test connection**.
 8. Select **Refresh indexers**.
-9. Enable each indexer.
-10. Set the priority for each indexer.
-11. Open **Settings > Download clients**.
-12. Enable **SABnzbd** or **NZBGet**.
-13. Enter the URL and credentials.
-14. Select **Test connection**.
-15. Settings save automatically after each change.
+9. Turn on each indexer that Aurral can use, and set its priority.
+10. Open **Settings > Download clients**.
+11. Turn on **Enable SABnzbd** or **Enable NZBGet**.
+12. Enter the URL and credentials.
+13. Select **Test connection**.
+
+Settings save automatically after each change.
 
 ## Prowlarr
 
-Open the **Prowlarr** card under **Indexers**:
+The **Prowlarr** card in **Settings > Indexers** has these fields:
 
-- **Server URL**: URL Aurral can reach (for example, `http://prowlarr:9696` in Docker)
-- **API key**: from Prowlarr
-- **Music categories**: Newznab audio categories (default `3000`)
-- **Result limit**: max releases returned per search
+- **Server URL**: the Prowlarr URL that Aurral can reach, for example `http://prowlarr:9696` in Docker.
+- **API key**: the Prowlarr API key.
+- **Music categories**: the Newznab audio categories. The default is `3000`.
+- **Result limit**: the most results for one search.
 
-After the connection test, Aurral shows the Usenet indexers from Prowlarr.
-
-Open each card. Set **Priority**. A lower number has a higher priority.
+After the connection test, Aurral lists the Usenet indexers from Prowlarr. Open each indexer and set its **Priority**. A lower number has a higher priority.
 
 ## SABnzbd
 
-Open the **SABnzbd** card under **Download clients**:
+The **SABnzbd** card in **Settings > Download clients** has these fields:
 
-- **Server URL**: URL Aurral can reach (for example, `http://sabnzbd:8080` in Docker)
-- **API key**: from SABnzbd
-- **Category**: SABnzbd category for Aurral jobs (default `aurral`)
-- **Source priority**: relative to slskd. The default is `20`. The slskd default is `10`.
-- **Add NZBs paused**: send jobs to SABnzbd in a paused state
-
-Aurral monitors SABnzbd until the download is complete. Aurral then imports the best audio file into the Aurral Downloads Folder.
+- **Server URL**: the SABnzbd URL that Aurral can reach, for example `http://sabnzbd:8080` in Docker.
+- **API key**: the SABnzbd API key.
+- **Category**: the SABnzbd category for Aurral jobs. The default is `aurral`.
+- **Source priority**: the order among download sources. The default is `20`.
+- **Add NZBs paused**: sends jobs to SABnzbd paused.
 
 ## NZBGet
 
-Open the **NZBGet** card under **Download clients**:
+The **NZBGet** card in **Settings > Download clients** has these fields:
 
-- **Server URL**: URL Aurral can reach (for example, `http://nzbget:6789` in Docker)
-- **Username** and **Password**
-- **Category**: NZBGet category for Aurral jobs (default `aurral`)
-- **Source priority**: relative to slskd (default `20`)
-- **NZB priority**: queue priority passed to NZBGet
-- **Completed download path**: optional override when Aurral cannot infer the finished-file location
-- **Add NZBs paused**: send jobs to NZBGet in a paused state
+- **Server URL**: the NZBGet URL that Aurral can reach, for example `http://nzbget:6789` in Docker.
+- **Username** and **Password**.
+- **Category**: the NZBGet category for Aurral jobs. The default is `aurral`.
+- **Source priority**: the order among download sources. The default is `20`.
+- **NZB priority**: the queue priority that Aurral sends to NZBGet.
+- **Completed download path**: the folder of finished downloads. Set it only when Aurral cannot find that folder by itself.
+- **Add NZBs paused**: sends jobs to NZBGet paused.
 
-Aurral monitors NZBGet until the download is complete. Aurral then imports the best audio file into the Aurral Downloads Folder.
+If NZBGet runs on Windows and reports host paths, mount the parent folder in Aurral. Then add a mapping in **Settings > Download clients > Remote path mappings**, with **Applies to** set to **NZBGet**.
 
-If NZBGet runs on Windows and reports host paths, mount the parent folder into Aurral.
+## Behavior
 
-Then, add a path mapping under **Settings > Download clients > Remote Path Mappings**.
+Aurral watches SABnzbd or NZBGet until the download finishes. For an Aurral album, one NZB can fill several tracks. For other requests, Aurral imports the checked track into the Downloads Folder.
 
-Aurral can find a track with an incorrect duration. Aurral retains this track under **Activity > Queue**.
+When Aurral knows the artist, it searches for the artist and the album first. If that gives too few usable releases, it searches for the album title alone, then for the album and track titles together. Without an artist, Aurral starts with the album title alone. Aurral checks every release against the request and every downloaded file before it imports it.
 
-You can preview, approve, or deny the track.
+If a file matches the requested track but its duration is very different, Aurral holds it in **Activity > Queue**. You can preview, approve, or deny it.
 
 ## Quality and upgrades
 
-Use **Settings > Download clients > Quality profile** to set acceptable quality tiers and the preferred cutoff. Aurral reads the completed audio file before it accepts the quality. A quality rejection does not go to Queue review.
+The quality profile in **Settings > Download clients > Quality profile** sets the accepted tiers and the cutoff. Aurral reads each downloaded file before it accepts its quality. A quality rejection does not go to Queue review.
 
-Usenet can supply both missing tracks and upgrades. Upgrade searches follow the normal source priority and have a lower queue priority than missing-track downloads. See [Playlists: Track upgrades](/using/playlists/#track-upgrades).
+Usenet can supply missing tracks and upgrades. See [Track upgrades](/using/playlists/#track-upgrades).
 
 ## Download source priority and fallback
 
-Aurral can run slskd, Usenet, and yt-dlp at the same time. Each source has a **source priority**. Aurral tries lower numbers first.
+Aurral can use slskd, Usenet, deemix, and yt-dlp together. Each source has a **Source priority**, and Aurral tries lower numbers first. The defaults are:
 
-If a source fails, Aurral tries the next source for the same track.
+| Source | Default priority |
+| --- | --- |
+| slskd | `10` |
+| deemix | `15` |
+| SABnzbd or NZBGet | `20` |
+| yt-dlp | `50` |
 
-Change the priorities if you want Aurral to try Usenet or yt-dlp first.
+If a source fails, Aurral tries the next source for the same track. To try another source first, give it a lower number.
 
-## History
+For an Aurral album, Aurral first tries to download the whole release from slskd, Usenet, or deemix, in priority order. Tracks that the release does not fill continue one by one through all sources.
 
-When you configure Usenet, **History** shows a separate **SABnzbd** or **NZBGet** tab for flow and playlist download jobs.
-
-See [Activity](/using/activity/).
+See [Activity](/using/activity/) to follow the downloads.

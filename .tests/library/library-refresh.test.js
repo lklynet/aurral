@@ -27,7 +27,8 @@ const { beginLibraryScan, finishLibraryScan } = await import(
 const { processSystemTask } = await import("../../backend/services/systemTaskWorker.js");
 const {
   getLibraryScanQueue,
-  SCHEDULED_SYSTEM_TASKS,
+  bootstrapHonkerSchedules,
+  getHonkerDb,
 } = await import("../../backend/services/honkerDb.js");
 const { createLibraryFileWatcher, resolveLibraryWatchRoots } = await import(
   "../../backend/services/libraryFileWatcher.js"
@@ -35,10 +36,8 @@ const { createLibraryFileWatcher, resolveLibraryWatchRoots } = await import(
 const { lidarrClient } = await import("../../backend/services/lidarrClient.js");
 
 test("library scans are not scheduled as a recurring background task", () => {
-  assert.equal(
-    SCHEDULED_SYSTEM_TASKS.some((task) => task.name === "library-index-refresh"),
-    false,
-  );
+  bootstrapHonkerSchedules();
+  assert.equal(getHonkerDb().scheduler().list().some((task) => task.queue === "library-scan"), false);
 });
 
 test("library bootstrap runs only until the first completed scan", async () => {

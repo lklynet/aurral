@@ -3,11 +3,11 @@ import {
   Ban,
   ChevronDown,
   MoreHorizontal,
+  MoreVertical,
   Pause,
   Pencil,
   Play,
   RefreshCw,
-  SlidersHorizontal,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -18,20 +18,15 @@ import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import { getDiscoveryFeedbackLabel } from "../../../utils/discoveryFeedback";
 import TooltipButton from "../../../components/TooltipButton";
 import Tooltip from "../../../components/Tooltip";
-
-const MONITOR_OPTIONS = [
-  { value: "none", label: "None (Artist Only)" },
-  { value: "existing", label: "Existing Albums" },
-  { value: "all", label: "All Albums" },
-  { value: "future", label: "Future Albums" },
-  { value: "missing", label: "Missing Albums" },
-  { value: "latest", label: "Latest Album" },
-  { value: "first", label: "First Album" },
-];
+import { getManagedByLabel, getMonitorOptionsForManager } from "../../../utils/libraryDestination";
+import { MONITOR_OPTIONS } from "../../../utils/aurralMonitoring";
 
 export function ArtistDetailsActionBar({
   library,
+  libraryDestination,
+  artistManagedBy = null,
   existsInLibrary,
+  libraryLink = null,
   loadingLibrary,
   canChangeMonitoring,
   canDeleteArtist,
@@ -54,28 +49,35 @@ export function ArtistDetailsActionBar({
       return (
         <div className="btn btn-secondary btn--bold btn-min-h">
           <DotLoader size="sm" label={null} />
-          {existsInLibrary ? "Loading library" : "Checking Lidarr"}
+          {existsInLibrary ? "Loading library" : "Checking library"}
         </div>
       );
     }
 
     if (existsInLibrary) {
+      const hasLibraryMenu = canChangeMonitoring || canDeleteArtist;
+      const libraryStateLabel = [
+        "In library",
+        getManagedByLabel(artistManagedBy),
+      ].filter(Boolean).join(" · ");
       return (
         <div className="artist-relative">
-          <button
-            type="button"
-            onClick={() => library.setShowRemoveDropdown(!library.showRemoveDropdown)}
-            className="btn btn-neutral-active btn--bold btn-min-h"
+          <TooltipButton
+            label={libraryStateLabel}
+            onClick={hasLibraryMenu
+              ? () => library.setShowRemoveDropdown(!library.showRemoveDropdown)
+              : undefined}
+            className={`btn btn-add-action btn-add-action--labeled${hasLibraryMenu ? " btn-add-action--menu" : ""}${library.showRemoveDropdown ? " is-open" : ""}`}
+            aria-haspopup={hasLibraryMenu ? "menu" : undefined}
+            aria-expanded={hasLibraryMenu ? library.showRemoveDropdown : undefined}
           >
-            <SearchLibraryCheck size="sm" />
-            In Library
-            {(canChangeMonitoring || canDeleteArtist) && (
-              <ChevronDown
-                className={`artist-icon-sm${library.showRemoveDropdown ? " artist-chevron--open" : ""}`}
-              />
-            )}
-          </button>
-          {library.showRemoveDropdown && (canChangeMonitoring || canDeleteArtist) && (
+            <span className="btn-add-action__icon">
+              <SearchLibraryCheck action aria-hidden="true" aria-label={undefined} />
+            </span>
+            <span className="btn-add-action__label">In library</span>
+            {hasLibraryMenu && <MoreVertical className="btn-add-action__more" aria-hidden="true" />}
+          </TooltipButton>
+          {library.showRemoveDropdown && hasLibraryMenu && (
             <>
               <button
                 type="button"
@@ -94,7 +96,7 @@ export function ArtistDetailsActionBar({
                     disabled={library.updatingMonitor}
                     className="artist-menu-item"
                   >
-                    <span>Monitor: {library.getCurrentMonitorOption()}</span>
+                    <span>Monitor: {currentMonitorOption ?? "custom"}</span>
                     <ChevronDown
                       className={`artist-icon-sm${library.showMonitorOptionMenu ? " artist-chevron--open" : ""}`}
                     />
@@ -102,7 +104,7 @@ export function ArtistDetailsActionBar({
                 )}
                 {canChangeMonitoring && library.showMonitorOptionMenu && (
                   <div className="artist-menu-section">
-                    {MONITOR_OPTIONS.map((option) => {
+                    {getMonitorOptionsForManager(MONITOR_OPTIONS, artistManagedBy).map((option) => {
                       const isActive = option.value === currentMonitorOption;
                       return (
                         <button
@@ -146,21 +148,13 @@ export function ArtistDetailsActionBar({
     if (!canAddArtist) return null;
 
     return (
-      <div className="btn-add-action-group">
         <AddActionButton
-          onClick={library.handleAddToLibrary}
+          destination={libraryDestination}
+          onAdd={library.handleAddToLibrary}
+          onCustomize={library.handleOpenAddCustomizeModal}
           isLoading={library.addingToLibrary}
-          label="Add to Lidarr"
+          showLabel
         />
-        <AddActionButton
-          type="button"
-          icon={SlidersHorizontal}
-          label="Customize add options"
-          onClick={library.handleOpenAddCustomizeModal}
-          disabled={library.addingToLibrary}
-          className="btn-add-action-options"
-        />
-      </div>
     );
   };
 
@@ -185,6 +179,7 @@ export function ArtistDetailsActionBar({
             )}
           </TooltipButton>
           {renderLibraryAction()}
+          {libraryLink}
         </div>
 
         <div className="artist-row-actions">

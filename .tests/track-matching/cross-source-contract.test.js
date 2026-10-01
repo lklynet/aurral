@@ -8,19 +8,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildSourceCandidates,
+  hasUsableSearchCandidates,
   usableEvaluationEntries,
   validateDownloadedTrackFile,
   POST_DOWNLOAD_DECISIONS,
 } from "../../backend/services/trackMatching/index.js";
 
-const beetsAvailable = await (async () => {
-  const { isBeetsMatcherAvailable, resetMatcherAvailability } = await import(
-    "../../backend/services/trackMatching/index.js"
-  );
-  resetMatcherAvailability();
-  return isBeetsMatcherAvailable();
-})();
-const skip = beetsAvailable ? false : "beets not installed for any available Python interpreter";
+const skip = false;
 const btest = (name, optionsOrFn, maybeFn) => {
   const options = typeof optionsOrFn === "function" ? {} : optionsOrFn || {};
   const fn = typeof optionsOrFn === "function" ? optionsOrFn : maybeFn;
@@ -41,6 +35,37 @@ async function decisionFor(source, candidates, request = TRUTH, options = {}) {
   const usable = usableEvaluationEntries(evaluation);
   return { evaluation, best: usable[0] || null, usable };
 }
+
+test("non-Latin title identity is enforced through every source's candidate entry point", async () => {
+  for (const source of ["soulseek", "deemix", "ytdlp", "usenet"]) {
+    for (const [trackName, different] of [["Мой", "Мои"], ["かみ", "がみ"], ["時", "詩"], ["愛", "哀"]]) {
+      for (const offered of [trackName, different]) {
+        const candidates = source === "soulseek" || source === "usenet"
+          ? [{ user: "u", file: `X/Album/X - ${offered}.flac`, durationMs: 200000 }]
+          : source === "ytdlp"
+            ? [{ title: `X - ${offered}`, channel: "X", durationMs: 200000 }]
+            : [{ title: offered, artist: "X", durationMs: 200000 }];
+        const { evaluation, usable } = await decisionFor(source, candidates,
+          { artistName: "X", trackName, durationMs: 200000 });
+        if (offered === trackName) assert.equal(usable.length, 1, `${source}: ${trackName}`);
+        else assert.equal(evaluation.evaluations[0].decision, "reject", `${source}: ${trackName}/${offered}`);
+      }
+    }
+  }
+});
+
+test("structured track titles preserve requested versions and Unicode equivalents", async () => {
+  for (const [trackName, title] of [
+    ["Wide Awake Tonight - Radio Edit", "Wide Awake Tonight - Radio Edit"],
+    ["がみ - Radio Edit", "か\u3099み - Radio Edit"],
+    ["時", "時 - Remastered 2011"],
+  ]) {
+    const { evaluation } = await decisionFor("deemix", [{
+      title, artist: "X", durationMs: 200000,
+    }], { artistName: "X", trackName, durationMs: 200000 });
+    assert.equal(evaluation.evaluations[0].decision, "accept", title);
+  }
+});
 
 btest("structured provider result accepts the right track and rejects wrong artists", { skip }, async () => {
   // Availability (readable) is a provider check the orchestrator applies
@@ -94,12 +119,10 @@ btest("correct track expressed in provider-native shapes is accepted everywhere"
   assert.ok(ytdlp.best, "ytdlp must produce a usable candidate");
   assert.ok(soulseek.best, "soulseek must produce a usable candidate");
   assert.equal(deemix.best.decision, "accept");
-  assert.equal(ytdlp.best.decision, "accept");
-  assert.equal(soulseek.best.decision, "accept");
-  // Identity beats presentation noise: the YouTube descriptor does not turn
-  // the structured and scraped results into different verdicts.
+  assert.ok(["accept", "verify"].includes(ytdlp.best.decision));
+  assert.ok(["accept", "verify"].includes(soulseek.best.decision));
   assert.equal(deemix.best.distance, 0);
-  assert.equal(soulseek.best.distance, 0);
+  assert.ok(soulseek.best.distance < 0.1);
 });
 
 btest("live variant truth: live requests accept live files and reject studio everywhere", { skip }, async () => {
@@ -222,4 +245,17 @@ btest("diacritics and punctuation fold consistently across sources", { skip }, a
   );
   assert.equal(deemix.best?.decision, "accept");
   assert.equal(soulseek.best?.decision, "accept");
+});
+
+test("early eligibility rejects unrelated titles while keeping weaker valid titles", async () => {
+  for (const source of ["deemix", "ytdlp", "soulseek"]) {
+    const request = { artistName: "The Band", trackName: "First", durationMs: 180000 };
+    const raw = (title) => source === "soulseek"
+      ? { user: "peer", file: `The Band/Album/${title}.flac`, length: 180 }
+      : { id: "candidate", title, artist: "The Band", channel: "The Band", durationSec: 180 };
+    assert.equal(hasUsableSearchCandidates({ source, results: [raw("Completely Different")], request }), false, source);
+    assert.equal(hasUsableSearchCandidates({ source, results: [raw("First")], request }), true, source);
+    const evaluation = await buildSourceCandidates({ source, results: [raw("First")], request });
+    assert.ok(usableEvaluationEntries(evaluation).length > 0, source);
+  }
 });

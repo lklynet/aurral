@@ -1,26 +1,20 @@
 ---
 title: API overview
-description: This page explains Aurral authentication and HTTP API use for scripts, widgets, and integrations.
+description: Authenticate to the Aurral JSON API and the Subsonic API from scripts, widgets, and players.
 ---
 
-Aurral provides a JSON HTTP API. The web interface uses this API. You can also
-use the API for scripts, dashboards, and homepage widgets.
+Aurral has two HTTP APIs:
 
-The JSON API and the authenticated Subsonic API are separate interfaces. Use
-the JSON API for Aurral-specific automation. Use `/rest` for a Subsonic player
-or client.
+- The **JSON API** under `/api`. The web app uses it. You can also use it for scripts, dashboards, and homepage widgets.
+- The **Subsonic API** under `/rest`. Music players use it.
 
 :::caution
-The API does not have version numbers. Routes and response formats can change
-between Aurral releases. Use the same Aurral version for each integration. If
-response fields change or are not present, make sure that your integration can
-operate.
+The JSON API has no version numbers. Routes and response fields can change between Aurral releases. Test each integration after you upgrade, and make it handle missing fields.
 :::
 
-## Authentication
+## Authenticate with the API key
 
-Open **Settings > System**. Copy the API key. Send the key in the `X-Api-Key`
-header:
+Open **Settings > System** and copy the API key. Send it in the `X-Api-Key` header:
 
 ```bash
 curl --fail \
@@ -28,31 +22,22 @@ curl --fail \
   https://aurral.example.com/api/library/artists
 ```
 
-Aurral also accepts the `api_key` query parameter:
+Aurral also accepts the key in the `api_key` query parameter:
 
 ```bash
 curl --fail \
   "https://aurral.example.com/api/library/recent?api_key=YOUR_API_KEY"
 ```
 
-Use the header. A browser can save URLs in its history. A reverse proxy can
-save URLs in its access logs.
+Use the header when you can. Browsers keep URLs in their history, and reverse proxies write them to access logs.
 
-The API key replaces a login session token. You do not need to call the login
-endpoint first. The key currently gives administrator access. It does **not**
-have read-only access.
+With the API key, you do not need to sign in first. The key gives administrator access. It has **no** read-only mode.
 
-The API key identifies the Aurral installation, not a user account. Use a
-user's login session for operations that create or update user-owned data, such
-as Last.fm, ListenBrainz, or Koito account linking, local play events, and
-library favorites. Aurral returns `403` when an API key calls one of these
-operations.
+The key belongs to the Aurral installation, not to a user. For actions on user data, use a user's sign-in session instead. These actions include linking Last.fm, ListenBrainz, or Koito, recording plays, and changing favorites. When the API key calls one of them, Aurral returns `403`.
 
-Keep the key in a secret store. If your integration needs read access, make
-only `GET` requests. After you rotate the key, the old key does not operate.
+Keep the key in a secret store. If an integration only needs to read, send only `GET` requests. To replace the key, select **Rotate API key** in **Settings > System**. The old key stops working at once.
 
-Do not put the key in public browser JavaScript. A server-side widget or
-same-origin proxy keeps it out of visitors' browsers.
+Do not put the key in public browser JavaScript. Call Aurral from a server-side widget or a same-origin proxy instead.
 
 ## Useful read endpoints
 
@@ -60,29 +45,26 @@ same-origin proxy keeps it out of visitors' browsers.
 | --- | --- | --- |
 | `GET /api/health/live` | Minimal liveness check | None |
 | `GET /api/health` | Aurral, library, discovery, and system status | None |
-| `GET /api/library/artists` | Library artists | `limit` (1-10000), `offset` |
+| `GET /api/library/artists` | Library artists | `limit` from 1 to 10000, and `offset` |
 | `GET /api/library/artists/:mbid` | One library artist | MusicBrainz artist ID in the path |
-| `GET /api/library/canonical` | A bounded canonical page | Required `kind` and `pageSize` (1-100). Optional `source`, `availableOnly`, `page`, `query`, `genre`, `sort`, `direction`, `artistId`, or `albumId`. |
-| `GET /api/library/favorites` | Current user's favorites and library | None |
-| `GET /api/library/albums` | Albums for an artist | Required `artistId` |
+| `GET /api/library/canonical` | One page of Library items | Required `kind`, and `pageSize` from 1 to 100. Optional `source`, `availableOnly`, `page`, `query`, `genre`, `sort`, `direction`, `artistId`, and `albumId`. |
+| `GET /api/library/favorites` | The current user's favorites | None |
+| `GET /api/library/albums` | The albums of an artist | Required `artistId` |
 | `GET /api/library/albums/:id` | One library album | Lidarr album ID in the path |
-| `GET /api/library/tracks` | Tracks for an album | `albumId` or `releaseGroupMbid` |
-| `GET /api/library/recent` | 20 most recently added artists | None |
-| `GET /api/library/recent-releases` | Recent missing releases | None |
+| `GET /api/library/tracks` | The tracks of an album | `albumId` or `releaseGroupMbid` |
+| `GET /api/library/recent` | The 20 most recently added artists | None |
+| `GET /api/library/recent-releases` | Recent and upcoming releases that are not in the Library | None |
 | `GET /api/requests` | Current artist and album requests | Optional `refresh=true` |
 | `GET /api/library/downloads/status/all` | All current download states | None |
-| `GET /api/search` | Search artists, albums, or tags | Required `q`. Optional `scope`, `limit`, and `offset` |
+| `GET /api/search` | Search artists, albums, or tags | Required `q`. Optional `scope`, `limit`, and `offset`. |
 
-`GET /api/library/canonical` rejects requests without a supported `kind` and a
-bounded `pageSize`. Use separate requests for artists, albums, tracks, or
-genres.
+`GET /api/library/canonical` rejects a request without a supported `kind` and a `pageSize`. Send separate requests for artists, albums, tracks, and genres.
 
-See the [endpoint reference](/api/endpoints/) for the complete current route
-index.
+For every route, see the [endpoint reference](/api/endpoints/).
 
 ## Example homepage request
 
-This request gets five recently added artists. The key stays on the server:
+This request gets five library artists. The key stays on the server:
 
 ```js
 const response = await fetch(`${process.env.AURRAL_URL}/api/library/artists?limit=5`, {
@@ -95,31 +77,34 @@ const artists = await response.json();
 
 ## Cross-origin requests
 
-If a browser loads Aurral's JSON API from another origin, set `CORS_ORIGIN`. Use
-commas to separate each permitted origin. By default, Aurral does not permit
-cross-origin JSON API requests. The authenticated Subsonic API at `/rest` is
-available to browser Subsonic clients such as Feishin without this setting.
+By default, Aurral does not allow browser requests to the JSON API from another origin. To allow them, set `CORS_ORIGIN` to a comma-separated list of origins.
 
-The current CORS preflight allows the `Content-Type` and `Authorization`
-headers. It does not allow the `X-Api-Key` header. For a cross-origin browser
-widget, use a server-side proxy. When you use the `api_key` query parameter, you
-do not need a custom header. However, browser history and access logs can reveal
-the key.
+The CORS preflight allows the `Content-Type` and `Authorization` headers. It does not allow `X-Api-Key`. For a browser widget on another origin, use a server-side proxy. The `api_key` query parameter needs no custom header, but browser history and access logs can expose the key.
+
+Browser Subsonic clients such as Feishin can use `/rest` without `CORS_ORIGIN`.
 
 ## Responses and limits
 
-- For a successful request, the route returns a JSON object or array.
-- For an error, the route returns JSON with an `error` field. Some errors also
-  have a `message` or `code` field.
-- If authentication is invalid or not present, Aurral returns `401`.
-- If a valid account does not have the necessary permission, Aurral returns
-  `403`.
-- If an instance API key calls an operation that needs a user account, Aurral
-  returns `403`.
-- Aurral limits each client to 5,000 API requests in each 15-minute period.
-- The API key does not have a separate permission or read-only scope.
+- A successful request returns a JSON object or array.
+- An error returns JSON with an `error` field. Some errors also have a `message` or `code` field.
+- Missing or invalid authentication returns `401`.
+- A valid account without the needed permission returns `403`.
+- The API key calling a user-only action returns `403`.
+- Each client can send 5,000 API requests in each 15-minute period.
+- Sign-in routes accept 10 attempts in each 15-minute period.
 
-The API key gives access to administration routes and routes that change data.
-Before you give the key to a third-party integration, read the endpoint
-reference. The API key is not a Subsonic credential; Subsonic clients use the
-account password or token authentication described in the integration guide.
+## Subsonic authentication
+
+The Subsonic API at `/rest` uses Aurral user accounts, not the API key. It supports both Subsonic sign-in methods:
+
+- **Password authentication** sends the username and password. Clients often call it legacy authentication.
+- **Token authentication** sends a salted token made from the password.
+
+Token authentication needs a password that Aurral stored for Subsonic. When it fails, Aurral returns error `41`, `Token authentication failed`, with a link to this section. To fix it:
+
+1. Turn on password authentication in the client. In Music Assistant, turn on legacy authentication. In Feishin, set `LEGACY_AUTHENTICATION=true`.
+2. Or make sure that the account has a local password. An account created before Aurral stored Subsonic credentials needs one Aurral sign-in. An account created by OIDC or a reverse proxy needs an admin to set a password.
+
+A wrong username or password returns error `40`.
+
+See [Navidrome and Subsonic](/integrations/navidrome/) for the supported client features.

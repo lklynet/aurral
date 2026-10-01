@@ -37,7 +37,7 @@ import { noCache } from "../middleware/cache.js";
 import { requireAuth } from "../middleware/requirePermission.js";
 import { getImageProxyCacheSizeBytes } from "../services/imageProxyService.js";
 import { getDownloadSourceStatus } from "../services/downloadSourceService.js";
-import { getMatcherRuntimeStatus } from "../services/trackMatching/index.js";
+import { getMatcherStatus } from "../services/trackMatching/index.js";
 import {
   DISCOVERY_PROVIDER_LASTFM,
   DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
@@ -241,6 +241,7 @@ function serializeBootstrapMatcherStatus(status, authenticated) {
   return {
     available: Boolean(status.available),
     checked: Boolean(status.checked),
+    policyVersion: status.policyVersion || null,
     error: status.error
       ? { code: status.error.code || "matcher_error" }
       : null,
@@ -270,7 +271,7 @@ function buildBootstrapPayload(req) {
     timestamp: new Date().toISOString(),
     appVersion: APP_VERSION,
     matcher: serializeBootstrapMatcherStatus(
-      getMatcherRuntimeStatus(),
+      getMatcherStatus(),
       Boolean(currentUser),
     ),
   };
@@ -284,7 +285,7 @@ function buildBootstrapPayload(req) {
       permissions: currentUser.permissions,
     };
     payload.authUser = currentUser.username;
-    payload.rootFolderConfigured = lidarrConfigured;
+    payload.rootFolderConfigured = lidarrConfigured || Boolean(resolvePlaylistRoot());
     payload.lidarr = {
       configured: lidarrConfigured,
       circuitOpen: lidarrClient.isCircuitOpen(),

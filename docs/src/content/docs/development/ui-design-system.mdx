@@ -3,13 +3,13 @@ title: UI design system
 description: How to use Aurral's theme tokens and shared controls.
 ---
 
-Aurral's direction emphasizes music-focused browsing, compact neutral surfaces, accessible states, functional restraint, purposeful imagery, and useful spacing. Aurral's theme tokens and shared controls remain the source of truth.
+Aurral's interface puts the music first. It uses compact, neutral surfaces, clear focus and disabled states, and images only where they help. The theme tokens and shared controls in the frontend define the rules. This page explains how to use them.
 
 ## Run the UI checks
 
 Run `npm run lint:ui` from the repository root to check stylesheets and JSX. Run `npm run lint` to include the UI checks with the other lint rules.
 
-The UI checks run in the existing frontend lint step, so CI reports violations through the root lint command.
+The UI checks are part of the frontend lint step, so CI reports violations through the root lint command.
 
 ## Use Aurral theme tokens
 
@@ -17,7 +17,7 @@ Add global design tokens to `frontend/src/index.css`. The CSS checker reads toke
 
 Use an existing `--aurral-*` token for theme colors, surfaces, borders, rings, shadows, spacing, and radii. CSS and JSX inline styles cannot use literal colors for Aurral theme styling. Use `var(--aurral-text)` instead of `#171717`, for example.
 
-The blocking rules check static color values and undefined `--aurral-*` references in CSS and JSX. Use spacing, radius, and shadow tokens when their roles fit; the checker does not infer whether every local geometry value should use a particular token, so review those choices with the component's layout.
+The checker fails on literal colors and on undefined `--aurral-*` references in CSS and JSX. Use the spacing, radius, and shadow tokens when their roles fit. The checker cannot tell whether a local size should use a token, so check those values against the component's layout.
 
 Name a new token for its role. Use `light-dark()` when the role needs different values in light and dark themes. Keep local variables when they derive from Aurral tokens or hold runtime values such as dimensions and progress.
 
@@ -41,7 +41,7 @@ Use `TooltipButton` for icon-only actions. Give it a `label`, and include `.btn`
 </TooltipButton>
 ```
 
-Use `Tooltip` for a custom tooltip on another element. ESLint rejects native `title` tooltips on HTML elements. Keep `iframe` titles for accessible frame names.
+Use `Tooltip` for a tooltip on another element. A `Tooltip` opens on hover and on keyboard focus, but not on a mouse click that moves focus. ESLint rejects native `title` tooltips on HTML elements. Keep `iframe` titles, because they name the frame for assistive technology.
 
 ```jsx
 <Tooltip content={fullTrackName}>
@@ -49,7 +49,7 @@ Use `Tooltip` for a custom tooltip on another element. ESLint rejects native `ti
 </Tooltip>
 ```
 
-Use `AddActionButton` for actions that add an item to Lidarr. It includes the standard button classes and the loading state.
+Use `AddActionButton` for actions that add an artist or album to the Library. It includes the standard button classes, the loading state, and the **Add to…** menu that picks Aurral or Lidarr.
 
 Keep a component-specific control class when the control has a dedicated layout or interaction. The button rule checks bare buttons and classes in the `.btn-*` family. The theme-token checks still apply to custom CSS and inline styles.
 

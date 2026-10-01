@@ -1,98 +1,109 @@
 ---
 title: Environment variables
-description: Deployment variables most users touch outside the web UI.
+description: Deployment variables that you set outside the web UI.
 ---
 
-Use the web UI for most settings. Use these variables for Docker deployment settings.
+Set most options in the web UI. Use these variables for deployment settings.
 
 ## Mounts and permissions
 
 | Variable | Purpose |
-| -------- | ------- |
-| `PUID` / `PGID` | Run the container as the user that owns mounted folders. |
-| `AURRAL_DATA_DIR` | Override app data directory. Default `/config`. |
-| `DOWNLOAD_FOLDER` | Initial Downloads Folder path. Prefer **Settings > Download clients > Downloads Folder > Path**. Use an absolute path under your media mount. |
+| --- | --- |
+| `PUID`, `PGID` | The user and group that run Aurral in the container. Set them to the owner of the mounted folders. |
+| `AURRAL_DATA_DIR` | The app data folder. Default `/config`. |
+| `DOWNLOAD_FOLDER` | The first Downloads Folder path. Use an absolute path under your media mount. After setup, change it in **Settings > Download clients > Downloads Folder > Path**. |
+| `FILE_BROWSE_ROOTS` | Comma-separated folders that **Browse folders** can open, and where Aurral can create a Downloads Folder. By default these are `/data`, the app data folder, and the Downloads Folder. Set this variable when your media mount is not under `/data`, for example `/music`. |
+| `PORT` | The port that Aurral listens on inside the container. Default `3001`. |
 
 ## Path mappings
 
 | Variable | Purpose |
-| -------- | ------- |
-| `PATH_MAPPINGS` | Translate paths for mixed Windows and Docker setups. Use the format `remote\|local`. Separate multiple mappings with `;`. To limit a mapping to one source, use `source\|remote\|local`. Aurral applies these mappings at runtime. Edit them under **Settings > Download clients > Remote Path Mappings**. |
+| --- | --- |
+| `PATH_MAPPINGS` | Path translations for mixed Windows and Docker setups. Use the format `remote\|local`. Separate mappings with `;`. To limit a mapping to one application, use `source\|remote\|local`. You can also edit mappings in **Settings > Download clients > Remote path mappings**. |
 
 ## Authentication
 
 | Variable | Purpose |
-| -------- | ------- |
-| `TRUST_PROXY` | Set when Aurral is behind a reverse proxy. |
-| `AURRAL_PUBLIC_URL` | Canonical public origin for OAuth callbacks (for example, `https://aurral.example.com`). |
-| `AUTH_PROXY_ENABLED` | Enable reverse-proxy authentication. Default header `x-forwarded-user`. |
-| `AUTH_PROXY_HEADER` | Custom header that contains the authenticated username. |
-| `AUTH_PROXY_DOMAIN` | Origin of your forwardAuth login page (for example, `https://auth.example.com`). Aurral adds it to the `connect-src` content security policy so pages can reach your authentication origin. |
-| `AUTH_PROXY_TRUSTED_IPS` | Comma-separated proxy IP allowlist for authentication headers. You must set it when you enable proxy authentication. Without it, a direct client can use the identity header to impersonate users. |
-| `AUTH_PROXY_LOGOUT_URL` | Your proxy or IdP logout endpoint. For Authentik single-application forward auth, use `https://aurral.example.com/outpost.goauthentik.io/sign_out`. This value ends the proxy session when you log out of Aurral. Aurral hides its **Log out** control while proxy authentication is on and this value is unset. |
-| `AUTH_PROXY_DEFAULT_ROLE` | Role for proxy-auth users who do not otherwise have the admin role: `user` or `admin`. Aurral evaluates the role on every request. |
-| `AUTH_PROXY_ADMIN_USERS` | Comma-separated usernames that get the admin role. Aurral checks the list on each request. If you remove a username, Aurral changes that user on the next request. |
-| `AUTH_PROXY_ROLE_HEADER` | Optional header that contains the user's group membership (for example, Authelia's `Remote-Groups`). Usually, this is a comma-separated list. Aurral compares it with `AUTH_PROXY_ADMIN_GROUPS` on every request. |
-| `AUTH_PROXY_ADMIN_GROUPS` | Comma-separated group names that give the admin role. Aurral compares these names with `AUTH_PROXY_ROLE_HEADER`. A group named `admin` has no special function unless you list it here. |
-| `OIDC_ENABLED` | Enable native OpenID Connect login. |
-| `OIDC_ISSUER` | Identity provider issuer URL used for OIDC discovery. |
-| `OIDC_CLIENT_ID` | OIDC client ID. |
-| `OIDC_CLIENT_SECRET` | OIDC client secret. Not required when `OIDC_TOKEN_ENDPOINT_AUTH_METHOD` is `none`. |
-| `OIDC_TOKEN_ENDPOINT_AUTH_METHOD` | How Aurral authenticates to the token endpoint: `client_secret_basic` (default), `client_secret_post`, or `none`. Must match the method registered with your IdP. |
-| `OIDC_REDIRECT_URI` | Exact callback URL registered with your IdP. Must be `https://<your-aurral-host>/sso/callback`. |
+| --- | --- |
+| `TRUST_PROXY` | Set this variable when Aurral runs behind a reverse proxy. |
+| `AURRAL_PUBLIC_URL` | The public address of Aurral, used for OAuth callbacks. Example: `https://aurral.example.com`. |
+| `SESSION_EXPIRY_HOURS` | Session length in hours for all sign-in methods. Default `720`, which is 30 days. |
+| `AUTH_PROXY_ENABLED` | Turns on reverse-proxy authentication. The default header is `x-forwarded-user`. |
+| `AUTH_PROXY_HEADER` | The header that holds the authenticated username. |
+| `AUTH_PROXY_TRUSTED_IPS` | Comma-separated addresses of your reverse proxy. Aurral accepts the identity header only from these addresses. Set it whenever you turn on proxy authentication. Without it, any client can send the header and act as any user. |
+| `AUTH_PROXY_DOMAIN` | The address of your forward-auth sign-in page, for example `https://auth.example.com`. Aurral adds it to the `connect-src` content security policy, so that pages can reach it. |
+| `AUTH_PROXY_LOGOUT_URL` | The logout address of your proxy or identity provider. **Log out** in Aurral then ends the proxy session. For Authentik single-application forward auth, use `https://aurral.example.com/outpost.goauthentik.io/sign_out`. While proxy authentication is on and this variable is not set, Aurral hides **Log out**. |
+| `AUTH_PROXY_DEFAULT_ROLE` | The role for proxy users who do not get the admin role another way: `user` or `admin`. Aurral checks the role on every request. |
+| `AUTH_PROXY_ADMIN_USERS` | Comma-separated usernames that get the admin role. Aurral checks the list on every request. When you remove a name, the user loses the admin role at the next request. |
+| `AUTH_PROXY_ROLE_HEADER` | Optional header with the user's groups, such as Authelia's `Remote-Groups`. The value is usually a comma-separated list. |
+| `AUTH_PROXY_ADMIN_GROUPS` | Comma-separated groups that give the admin role. Aurral compares them with `AUTH_PROXY_ROLE_HEADER`. A group named `admin` has no special effect unless you list it here. |
+| `OIDC_ENABLED` | Set to `true` to turn on native OpenID Connect sign-in. |
+| `OIDC_ISSUER` | The issuer URL of your identity provider, used for discovery. |
+| `OIDC_CLIENT_ID` | The OIDC client ID. |
+| `OIDC_CLIENT_SECRET` | The OIDC client secret. Not required when `OIDC_TOKEN_ENDPOINT_AUTH_METHOD` is `none`. |
+| `OIDC_TOKEN_ENDPOINT_AUTH_METHOD` | How Aurral authenticates to the token endpoint: `client_secret_basic`, the default, `client_secret_post`, or `none`. It must match the method registered with your identity provider. |
+| `OIDC_REDIRECT_URI` | The callback URL registered with your identity provider. It must be `https://<your-aurral-host>/sso/callback`. |
 | `OIDC_SCOPES` | Space-separated scopes. Default `openid profile email`. |
-| `OIDC_USERNAME_CLAIM` | Claim used as the Aurral username. Default `preferred_username`. Falls back to `email` when that claim is missing. |
-| `OIDC_DEFAULT_ROLE` | Role for OIDC users who are not otherwise granted admin: `user` or `admin`. |
-| `OIDC_ADMIN_USERS` | Comma-separated usernames that get the admin role at OIDC login. |
-| `OIDC_GROUPS_CLAIM` | Optional ID-token claim that contains group membership. |
-| `OIDC_ADMIN_GROUPS` | Comma-separated group names that grant the admin role when present in `OIDC_GROUPS_CLAIM`. |
-| `OIDC_LOGOUT_URL` | Optional IdP logout URL. When set, Aurral redirects there after clearing the local session. |
-| `OIDC_DOMAIN` | Optional IdP origin added to the `connect-src` content security policy. |
-| `SESSION_EXPIRY_HOURS` | Session lifetime in hours for password login, proxy auth, and native OIDC. Default `720` (30 days). |
+| `OIDC_USERNAME_CLAIM` | The claim that becomes the Aurral username. Default `preferred_username`. If the claim is missing, Aurral uses `email`. |
+| `OIDC_DEFAULT_ROLE` | The role for OIDC users who do not get the admin role another way: `user` or `admin`. |
+| `OIDC_ADMIN_USERS` | Comma-separated usernames that get the admin role at OIDC sign-in. |
+| `OIDC_GROUPS_CLAIM` | Optional ID-token claim that holds group membership. |
+| `OIDC_ADMIN_GROUPS` | Comma-separated groups in `OIDC_GROUPS_CLAIM` that give the admin role. |
+| `OIDC_LOGOUT_URL` | Optional logout address of the identity provider. After Aurral ends its own session, it sends the browser there. |
+| `OIDC_DOMAIN` | Optional address of the identity provider, added to the `connect-src` content security policy. |
+
+Google and Plex sign-in use settings in the web UI, not environment variables. See [Sign in with Google or Plex](/admin/users/#sign-in-with-google-or-plex).
 
 ## Cross-origin clients
 
 | Variable | Purpose |
-| -------- | ------- |
-| `CORS_ORIGIN` | Comma-separated browser origins allowed to call Aurral's JSON API. Browser Subsonic clients do not need this setting. |
+| --- | --- |
+| `CORS_ORIGIN` | Comma-separated browser origins that can call Aurral's JSON API. Browser Subsonic clients do not need this variable. |
+
+## Metadata
+
+| Variable | Purpose |
+| --- | --- |
+| `BRAINZMASH_BASE_URL` | The address of your own BrainzMash metadata server. A **Base URL** set in `/settings/metadata` takes precedence. See [Metadata and search](/integrations/metadata/). |
 
 ## Logging
 
 | Variable | Purpose |
-| -------- | ------- |
-| `AURRAL_VERBOSE_LOGS` | Set to `true` to include routine and debug server logs. Regular logs show startup messages, warnings, and errors. |
+| --- | --- |
+| `AURRAL_VERBOSE_LOGS` | Set to `true` to add routine and debug messages to the server log. The normal log shows startup messages, warnings, and errors. |
 
-## Image proxy
+## Image cache
 
 | Variable | Purpose |
-| -------- | ------- |
-| `AURRAL_IMAGE_PROXY_MAX_BYTES` | Maximum library-art image-proxy disk-cache size in bytes. The default is `268435456` (256MB). Aurral removes the oldest entries first. When Aurral serves an image, it updates the age of that image. |
+| --- | --- |
+| `AURRAL_IMAGE_PROXY_MAX_BYTES` | The largest size of the disk cache for library artwork, in bytes. Default `268435456`, which is 256 MB. When the cache is full, Aurral removes the images that it served least recently. |
 
 ## Resource tuning
 
-The Docker image uses conservative defaults for native artwork processing. These variables let you trade memory for artwork-generation throughput.
+The Docker image uses low defaults for artwork processing. Use these variables to trade memory for faster artwork generation.
 
 | Variable | Purpose |
-| -------- | ------- |
-| `AURRAL_DISCOVERY_ARTWORK_CONCURRENCY` | Number of discovery playlist covers rendered in parallel. Default `1`; accepted range `1`–`3`. |
-| `AURRAL_SHARP_CONCURRENCY` | Number of libvips worker threads used by Sharp. Default `2`; accepted range `1`–`4`. |
-| `MALLOC_CONF` | jemalloc page-decay settings. The Docker image defaults to `background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000` so freed native image buffers return to the operating system sooner, including while the application is idle. |
+| --- | --- |
+| `AURRAL_DISCOVERY_ARTWORK_CONCURRENCY` | How many discover playlist covers Aurral renders at the same time. Default `1`. Range `1` to `3`. |
+| `AURRAL_SHARP_CONCURRENCY` | How many image worker threads Sharp uses. Default `2`. Range `1` to `4`. |
+| `AURRAL_WORKER_IDLE_STOP_MS` | How long a background task stays loaded after its last job, in milliseconds. Aurral then stops its process to free memory and starts it again when new work arrives. Default `60000`. Minimum `5000`. Set `0` to keep background processes running once they start. |
+| `MALLOC_CONF` | jemalloc memory settings. The Docker image sets `background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000`, so memory from image processing returns to the operating system sooner, also while Aurral is idle. |
 
-## Last.fm tuning
+## Last.fm
 
 | Variable | Purpose |
-| -------- | ------- |
-| `AURRAL_LASTFM_TIMEOUT_MS` | Last.fm API timeout in milliseconds. Default `15000`. Increase this value if focus playlists have no tracks and logs show `ECONNABORTED`. |
+| --- | --- |
+| `AURRAL_LASTFM_TIMEOUT_MS` | Last.fm API timeout in milliseconds. Default `15000`. Increase it if Focus playlists have no tracks and the logs show `ECONNABORTED`. |
 
 ## Spotify playlist import
 
-These variables change the shared Lidarr Spotify OAuth proxy. The default values are correct for most installations.
+These variables change the shared Spotify OAuth proxy that Lidarr also uses. The defaults work for most installations.
 
 | Variable | Purpose |
-| -------- | ------- |
-| `SPOTIFY_CLIENT_ID` | OAuth client ID. |
-| `SPOTIFY_OAUTH_REDIRECT_URI` | Authorization redirect. Default `https://spotify.lidarr.audio/auth`. |
-| `SPOTIFY_OAUTH_RENEW_URI` | Token refresh endpoint. Default `https://spotify.lidarr.audio/renew`. |
+| --- | --- |
+| `SPOTIFY_CLIENT_ID` | The OAuth client ID. |
+| `SPOTIFY_OAUTH_REDIRECT_URI` | The authorization redirect. Default `https://spotify.lidarr.audio/auth`. |
+| `SPOTIFY_OAUTH_RENEW_URI` | The token refresh endpoint. Default `https://spotify.lidarr.audio/renew`. |
 
 ## Example
 

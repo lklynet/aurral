@@ -1,7 +1,11 @@
 import { useId } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import TooltipButton from "../components/TooltipButton";
+import { useAuth } from "../contexts/AuthContext";
 import { useModalDialog } from "../hooks/useModalDialog.js";
+import { getLibraryTrackFiles } from "../utils/api/endpoints/library.js";
+import { getFlowJobFiles } from "../utils/api/endpoints/playlists.js";
 
 const text = (value) => String(value ?? "").trim();
 
@@ -50,7 +54,8 @@ const formatQuality = (quality) => {
     .join(" · ");
 };
 
-const getRows = ({ kind, entity, artist, album, trackNumber }) => {
+const getRows = ({ kind, source, entity, artist, album, trackNumber }) => {
+  const isPlaylistTrack = source === "playlist";
   const file = kind === "track" ? firstFile(entity) : null;
   const title =
     entity?.title || entity?.trackName || entity?.albumName || entity?.name || entity?.artistName;
@@ -81,26 +86,47 @@ const getRows = ({ kind, entity, artist, album, trackNumber }) => {
       ["Track number", trackNumber],
       ["Duration", formatDuration(durationMs(entity, file))],
       ["Format", file?.format || entity.streamFormat],
-      ["Quality", formatQuality(file?.quality || entity.quality)],
-      ["Available", (entity.available ?? file?.available) ? "Yes" : "No"],
+      ["Quality", formatQuality(file?.quality || entity.quality) || (entity.qualityTier && entity.qualityLabel)],
+      [
+        "Available",
+        (isPlaylistTrack ? entity.status === "done" : (entity.available ?? file?.available))
+          ? "Yes"
+          : "No",
+      ],
     );
   }
 
   rows.push(
     ["Genres", metadataGenres(entity)],
-    ["Sources", formatList(entity.sources)],
-    ["MusicBrainz ID", entity.mbid],
+    ["Sources", formatList(entity.sources || entity.downloadSource)],
+    ["MusicBrainz ID", entity.mbid || entity.trackMbid],
     ...(kind === "album" ? [["Release group ID", entity.releaseGroupMbid]] : []),
-    ["Library ID", entity.id],
+    [isPlaylistTrack ? "Job ID" : "Library ID", entity.id],
   );
   return rows.filter(([, value]) => text(value));
 };
 
+const pathsLabel = (query) => {
+  if (query.isPending) return "Loading…";
+  if (query.isError) return "Could not load file paths";
+  return query.data?.paths?.length ? query.data.paths : "No file on disk";
+};
+
 export default function LibraryInfoModal({ item, onClose }) {
   const titleId = useId();
+  const { user } = useAuth();
   const { dialogRef, handleBackdropClick } = useModalDialog({
     open: Boolean(item),
     onClose,
+  });
+  const trackId = item?.kind === "track" ? item.entity?.id : null;
+  const showPaths = Boolean(trackId) && user?.role === "admin";
+  const pathsQuery = useQuery({
+    queryKey: ["track-files", item?.source || "library", trackId],
+    queryFn: ({ signal }) =>
+      (item.source === "playlist" ? getFlowJobFiles : getLibraryTrackFiles)(trackId, { signal }),
+    enabled: showPaths,
+    staleTime: 30_000,
   });
 
   if (!item) return null;
@@ -109,6 +135,10 @@ export default function LibraryInfoModal({ item, onClose }) {
     text(item.entity?.title || item.entity?.trackName || item.entity?.albumName || item.entity?.name) ||
     "Library information";
   const rows = getRows(item);
+  if (showPaths) {
+    const paths = pathsLabel(pathsQuery);
+    rows.push([Array.isArray(paths) && paths.length > 1 ? "Files" : "File", paths]);
+  }
 
   return (
     <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
@@ -139,7 +169,11 @@ export default function LibraryInfoModal({ item, onClose }) {
           {rows.map(([label, value]) => (
             <div className="activity-info-modal__row" key={label}>
               <dt>{label}</dt>
-              <dd>{text(value)}</dd>
+              <dd>
+                {Array.isArray(value)
+                  ? value.map((entry) => <div key={entry}>{entry}</div>)
+                  : text(value)}
+              </dd>
             </div>
           ))}
         </dl>

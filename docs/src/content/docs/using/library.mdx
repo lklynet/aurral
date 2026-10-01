@@ -1,98 +1,132 @@
 ---
 title: Library
-description: Browse and play your canonical music library.
+description: Browse, play, add, and remove the music in your Library.
 ---
 
-Library reads Aurral's canonical music library. Open **Library** in the sidebar
-to see the overview and browse these sections:
+The Library is Aurral's index of your music. It includes the files in the Downloads Folder and, if you connect Lidarr, the files in the Lidarr root folders. Open **Library** in the sidebar to see these sections:
 
-- **Library** opens with recently added albums and a compact track list.
-- **Favorites** shows starred artists, albums, and tracks.
-- **Albums** shows album artwork, track availability, and sorting.
-- **Tracks** shows playable tracks, artist and album links, and missing files.
-- **Album Artists** and **Artists** show the canonical artist records.
-- **Genres** links to the album list filtered by genre.
-- **Playlists** opens your static playlists. Flows have their own **Flows** section.
+- **Library** shows recently added albums and a short track list.
+- **Favorites** shows your starred artists, albums, and tracks.
+- **Albums** shows album artwork and how many tracks are available.
+- **Tracks** shows each track, its artist and album, and whether its file exists.
+- **Album Artists** and **Artists** list the artists.
+- **Genres** opens the album list for one genre.
+- **Playlists** shows your static playlists. Flows have their own **Flows** item in the sidebar.
 
-Select a track or album to play it with Aurral's built-in player. Artists and
-albums open listening-first library pages with their tracks, playback controls,
-and favorites. Those pages link to the full Discover artist or release page
-when a canonical identifier is available. Tracks without an available file
-stay visible but cannot play; missing album tracks are shown in a muted state.
-Use the track action menu to add a library track to a playlist, remove it, or
-promote an Aurral-owned track into the permanent Library. Favorites are stored
-per user and work in both the built-in player and Subsonic clients. The page
-reports stale library data, partial or missing files, provider health problems,
-and empty results. Use **View info** in an artist, album, or track action menu
-to inspect the indexed metadata without leaving the Library.
+To filter the current section, use the search field in the toolbar.
 
-For an available track downloaded by Aurral, right-click and choose
-**Re-search** to look for another recording. The current file stays available
-until Aurral finds and validates a replacement. Tracks from Lidarr do not have
-this action.
+## Play and browse
 
-When you delete an Aurral-owned track, Aurral removes its file. If no other
-media for the track is available, it also removes the canonical track and any
-empty album or artist record. If one of several files cannot be deleted, Aurral
-keeps the track until a later deletion succeeds.
+Select a track or album to play it in the built-in player. An artist or album page shows its tracks, playback controls, and favorites. A track without a file stays in the list but cannot play. Missing album tracks appear dimmed.
 
-Navidrome remains optional. Lidarr is optional. When it is configured, Aurral
-uses it for managed library changes and explicit provider actions.
+Each artist and album has a Discover view and a Library view. On a Library page, select **Open in Discover** to see releases, tags, similar artists, and previews. On a Discover page, select **Open in library** to go back.
 
-## Aurral-owned storage
+Favorites belong to each user. They work in the built-in player and in Subsonic clients.
 
-Permanent Aurral tracks use the canonical `artist/album/track` layout under
-the configured Aurral download folder. Flow media is temporary and lives under
-`_flows`. It is not added to the canonical Library until you promote a track.
-Static playlist membership is stored by Aurral's Subsonic model, so deleting a
-playlist does not delete a canonical track. A Subsonic favorite can also
-promote a Flow track when **Favorite Flow tracks** is enabled in **Settings > System > Subsonic**.
+Use the track menu to add a track to a playlist or remove it. To see the indexed metadata of an artist, album, or track, select **View info** in its menu.
 
-## When new files appear
+The page tells you when library data is stale, when files are partial or missing, when a service has a problem, and when a list is empty.
 
-Aurral keeps the canonical library in its own database. It scans the Aurral
-root and the saved Lidarr root folders locally. The scan records provider
-identities, album and track metadata, and the readable media files that belong
-to them. A manual or watcher scan does not request Lidarr artist, album, track,
-or track-file data.
+On a Discover artist page, you can search releases by title. Filter by all releases, albums, EPs and singles, or compilations. To show or hide live releases in any filter, use the **Live albums** switch.
 
-When a file changes in a watched Aurral or Lidarr root, Aurral's filesystem
-watcher queues a targeted local scan for the changed file or folder. Unchanged
-files are skipped using their stored size and modification time. The watcher
-waits briefly for a file move or rename to finish and ignores `_playlists`,
-`_staging`, `_fallback`, hidden folders, `_flows`, and `aurral-weekly-flow`.
+## Choose a library manager
 
-When the scan completes, an open Library page reloads its canonical records
-automatically. The home page and **Newest** album or track sorting use the time
-the media first entered Aurral's canonical library, not the album's original
-release date.
+Each artist and album has one library manager:
 
-On a new installation, Aurral performs one initial scan when the library has
-not been indexed yet. After that, Aurral does not run recurring full-library
-scans. When files change, the filesystem watcher queues a scan; use the
-**Refresh** button in Library when you need to check immediately. It offers two
-scans. **Quick scan** checks every root, reads new and changed files, and marks
-missing files unavailable. When a scan finishes, the page reloads from the
-updated canonical records.
+- **Aurral** downloads the music with your download clients and keeps it in the Downloads Folder.
+- **Lidarr** downloads the music and keeps it in the Lidarr root folders.
 
-**Full scan** reads the tags of every file again. Use it after retagging files
-in a way that keeps their size and modification time, or when Library shows
-stale metadata that a quick scan does not fix. A full scan can take a long time
-on a large library. It keeps running if you leave the page.
+To set your default, open **Profile > Library defaults > Default library manager**. The add button uses your default. If you did not choose a default, the add button is **Add to Lidarr** when Lidarr is connected, and **Add to Aurral** when it is not.
 
-When Lidarr is configured, check the Lidarr path mapping if Discover says an
-album is in Lidarr but Library does not show it. Aurral must be able to read the
-saved root path. Then use **Refresh** in Library. See [Filesystem and mounts](/getting-started/storage/)
-and [Lidarr library access](/integrations/lidarr/#library-access-check).
+When both managers are available, **Add to…** adds one item with the other manager. Your default does not change.
 
-When you disable Lidarr, Aurral keeps indexed Lidarr media visible and stops
-watching and scanning those roots until you enable Lidarr again.
+:::caution
+If you use Aurral without Lidarr and connect Lidarr later, **Add to Lidarr** becomes the add button until you choose a default. To keep adding to Aurral, set your default to Aurral.
+:::
 
-Use the search field in the toolbar to filter the current section.
+Lidarr additions use your Lidarr defaults. To change them for one artist, select **Customize Lidarr add…** on the artist page before you add it. Aurral additions never use Lidarr profiles, root folders, or tags.
 
-Artist pages show library status, release groups, tags, similar artists, previews, and album actions.
-On an artist release page, you can search for a release by title. You can show all releases,
-albums, EPs and singles, or compilations. Use the **Live albums** switch to show or hide live
-releases in any selected filter.
+If an album already has a manager, Aurral shows **Managed by Aurral** or **Managed by Lidarr** instead of an add button. Connecting Lidarr does not move anything. Aurral does not move artists, albums, or files between managers.
 
-When you add an artist or album, Aurral uses your Lidarr defaults. You can change these values before you add it.
+## Monitor Aurral artists
+
+Aurral can monitor the artists that it manages, without Lidarr. It looks only for official albums and EPs. It skips singles, live albums, compilations, and other releases with a secondary type. Choose one of these options on the artist page:
+
+- **All albums** and **Missing albums** download every album that is not complete.
+- **Latest album** and **First album** download the newest or the oldest album.
+- **Future albums** downloads only albums released after you start monitoring.
+- **None** stops new downloads and keeps what you already have.
+
+After you change the option, Aurral reports how many albums it queued and why it skipped the others. If Aurral cannot load the artist's releases, it tells you and keeps the old option.
+
+Aurral checks monitored artists for new releases once a day. It does not touch albums that Lidarr manages. The **Existing albums** option applies only to Lidarr.
+
+To stop monitoring one album, turn off **Monitored** on its Library page. If the album has unfinished downloads, Aurral asks you to confirm. It then cancels those downloads and keeps the finished tracks. The album stays unmonitored when you change the artist's option later.
+
+## Follow an Aurral album download
+
+An album that Aurral manages shows its download state on its page, such as **Queued**, **Downloading**, **Partially available**, or **Needs attention**.
+
+- To stop unfinished tracks, select **Cancel downloads**. Finished tracks stay in the Library.
+- To search again for cancelled and failed tracks, select **Retry**.
+
+If no download client is set up, or if tracks wait for review, the album page links to the settings page or the Activity view that fixes the problem. An album with files from both Aurral and Lidarr shows its manager and the source of each track's file.
+
+## Replace a track
+
+To look for another recording of a track that Aurral downloaded, right-click the track and select **Re-search**. The current file stays available until Aurral downloads and checks a replacement. Lidarr tracks do not have this action.
+
+## Remove tracks, albums, and artists
+
+When you delete a track that Aurral manages, Aurral deletes its file. If no other file exists for the track, Aurral also removes the track, and any album or artist that is left empty. If one of several files cannot be deleted, Aurral keeps the track until a later attempt succeeds.
+
+When you remove an album or artist that Aurral manages, Aurral cancels its unfinished downloads. To also delete the files that Aurral downloaded, select **Delete album files** or **Delete artist files**. Otherwise the files stay on disk.
+
+- Aurral never deletes Lidarr files. An album that also has Lidarr files stays in the Library with only those tracks.
+- You cannot remove one album of an artist that Aurral monitors, because monitoring would add it again. First set the artist's monitoring to **None**, or remove the whole artist.
+- When you remove a Lidarr artist, Aurral keeps the albums that Aurral manages.
+
+## Where Aurral keeps files
+
+Aurral keeps permanent tracks in `Artist/Album/Track` folders in the Downloads Folder.
+
+Flow tracks are temporary. They live under `_flows` and are not part of the Library, with two exceptions:
+
+- To add one flow track to the Library, select **Add to library** in its menu.
+- To show all current tracks of a flow in the Library, turn on **Show in library** for the flow. See [Flows](/using/flows/#scrobbling-and-library).
+
+When a Subsonic client favorites a flow track, Aurral adds it to the Library. To turn this off, open **Settings > System > Subsonic** and turn off **Favorite Flow tracks**.
+
+Aurral stores static playlist membership in its own database. Deleting a static playlist does not delete Library tracks.
+
+## How the Library finds new files
+
+Aurral keeps the Library in its own database. It scans the Downloads Folder and the saved Lidarr root folders on local disk. A scan reads the artist, album, and track tags, the MusicBrainz IDs, and the audio files. A scan does not ask Lidarr for artist, album, or track data.
+
+When a file changes in a watched folder, Aurral scans the changed file or folder. It skips files whose size and modification time did not change. It waits a moment for a move or rename to finish. It ignores `_playlists`, `_staging`, `_fallback`, `_flows`, `aurral-weekly-flow`, and hidden folders.
+
+On a new installation, Aurral scans the whole library once. After that, it scans only what changes. It does not run scheduled full scans.
+
+To scan now, select **Refresh** in Library and choose a scan:
+
+- **Quick scan** checks every folder, reads new and changed files, and marks missing files as unavailable.
+- **Full scan** reads the tags of every file again. Use it after you retag files without changing their size or modification time, or when a quick scan does not fix stale metadata. A full scan can take a long time on a large library. It keeps running if you leave the page.
+
+When a scan finishes, an open Library page reloads. **Newest** sorting and the home page use the time that a file entered the Library, not the release date.
+
+If Discover says that an album is in Lidarr but the Library does not show it, Aurral probably cannot read the Lidarr root folder. Run **Settings > Storage health > Run checks** and fix the **Lidarr library** section, then select **Refresh**. See [Filesystem and mounts](/getting-started/storage/).
+
+When you turn off Lidarr in **Settings > Lidarr > Enabled**, Aurral keeps indexed Lidarr tracks in the Library. It stops watching and scanning the Lidarr root folders until you turn Lidarr on again.
+
+## Artists without a MusicBrainz ID
+
+Aurral matches Lidarr files to artists by MusicBrainz ID. When a file has no MusicBrainz artist tag, Aurral looks up the artist name on MusicBrainz after each scan. It links the artist only when exactly one MusicBrainz artist has that name or alias. A name that several artists share stays unlinked.
+
+An unlinked artist stays in the Library. Its Discover page can still offer **Add to Aurral**, because Aurral cannot tell that the files belong to that artist.
+
+To fix a wrong or missing link, open the artist menu and select **Edit MusicBrainz ID**. Paste an artist ID or a musicbrainz.org artist link, or remove the ID. If another library artist already has that ID, Aurral merges the two artists. Later scans keep your choice. You cannot edit a Lidarr artist here. Change it in Lidarr.
+
+## Known limits
+
+- Aurral does not move artists, albums, or files between Aurral and Lidarr. Each item keeps the manager that added it.
+- When Lidarr is connected and **Show available music only** is on, the Library hides albums that Aurral is still downloading until one track finishes. To show them, turn off the setting in **Settings > Lidarr**.

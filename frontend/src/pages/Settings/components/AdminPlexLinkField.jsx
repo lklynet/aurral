@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { SettingsSelect } from "./SettingsField";
 import { DotLoader } from "../../../components/DotLoader";
 import {

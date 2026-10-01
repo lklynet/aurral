@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate, useNavigationType } from "react-router";
 import {
   Menu,
   Sparkles,
@@ -7,11 +7,12 @@ import {
   Activity,
   Ellipsis,
   Ticket,
-  AudioWaveform,
   Workflow,
   Settings,
   LogOut,
   User,
+  Ban,
+  ChevronLeft,
 } from "lucide-react";
 import Sidebar from "./Sidebar";
 import GlobalSearch from "./GlobalSearch";
@@ -23,6 +24,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { DEFAULT_SETTINGS_TAB } from "../pages/Settings/settingsTabsConfig";
 import { useModalDialog } from "../hooks/useModalDialog.js";
+import { useSectionNav } from "../navigation/useSectionNav.js";
+import { useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
 
 const SIDEBAR_THRESHOLD = 100;
 const SIDEBAR_MIN = 56;
@@ -65,9 +68,15 @@ function Layout({ children, headerActions }) {
   });
   const [isResizing, setIsResizing] = useState(false);
   const location = useLocation();
-  const { authRequired, canLogOut, logout, user } = useAuth();
+  const navigate = useNavigate();
+  const navigationType = useNavigationType();
+  const scrollPositionsRef = useRef(new Map());
+  const sectionNav = useSectionNav();
+  const { isDiscoverSectionActive } = useDiscoverRecent();
+  const sectionBarRef = useRef(null);
+  const { authRequired, canLogOut, logout, user, bootstrap } = useAuth();
   const { isActive: isPlayerActive } = useAudioQueue();
-  const isArtistDetailsRoute = /^\/artist\/[^/]+(\/(albums|appears-on|release\/[^/]+))?$/.test(
+  const isArtistDetailsRoute = /^\/artist\/[^/]+(\/(albums|appears-on))?$/.test(
     location.pathname,
   );
   const isSettingsRoute = location.pathname.startsWith("/settings");
@@ -116,7 +125,7 @@ function Layout({ children, headerActions }) {
 
   const isActive = useCallback(
     (path) => {
-      if (path === "/discover" && location.pathname === "/") return true;
+      if (path === "/") return isDiscoverSectionActive;
       if (path.startsWith("/settings")) {
         return location.pathname.startsWith("/settings");
       }
@@ -129,41 +138,32 @@ function Layout({ children, headerActions }) {
       if (path.startsWith("/activity")) {
         return location.pathname.startsWith("/activity");
       }
-      if (path.startsWith("/history")) {
-        return location.pathname.startsWith("/activity");
+      if (path === "/library") {
+        return location.pathname === "/library" || location.pathname.startsWith("/library/");
       }
       return location.pathname === path;
     },
-    [location.pathname],
+    [isDiscoverSectionActive, location.pathname],
   );
 
-  const mobilePrimaryItems = useMemo(() => {
-    const items = [
-      { path: "/discover", label: "Discover", icon: Sparkles },
-      { path: "/library", label: "Library", icon: Library },
-      {
-        path: "/playlists",
-        label: "Playlists",
-        icon: AudioWaveform,
-        permission: "accessFlow",
-      },
-    ];
-    return items.filter(
-      (item) =>
-        !item.permission || user?.role === "admin" || !!user?.permissions?.[item.permission],
-    );
-  }, [user]);
+  const mobilePrimaryItems = [
+    { path: "/", label: "Discover", icon: Sparkles },
+    { path: "/library", label: "Library", icon: Library },
+    { path: "/activity/queue", label: "Activity", icon: Activity },
+  ];
 
   const mobileOverflowItems = useMemo(() => {
     const items = [
-      { path: "/shows/all", label: "Shows", icon: Ticket },
       {
         path: "/flows",
         label: "Flows",
         icon: Workflow,
         permission: "accessFlow",
       },
-      { path: "/activity/queue", label: "Activity", icon: Activity },
+      ...(bootstrap?.ticketmasterConfigured
+        ? [{ path: "/shows/all", label: "Shows", icon: Ticket }]
+        : []),
+      { path: "/blocklist", label: "Blocklist", icon: Ban },
       { path: "/profile", label: "Profile", icon: User },
       {
         path: `/settings/${DEFAULT_SETTINGS_TAB}`,
@@ -176,7 +176,15 @@ function Layout({ children, headerActions }) {
       (item) =>
         !item.permission || user?.role === "admin" || !!user?.permissions?.[item.permission],
     );
-  }, [user]);
+  }, [bootstrap?.ticketmasterConfigured, user]);
+
+  const handleMobileBack = useCallback(() => {
+    if ((window.history.state?.idx ?? 0) > 0) {
+      navigate(-1);
+      return;
+    }
+    navigate("/");
+  }, [navigate]);
 
   const persistSidebarWidth = useCallback((width) => {
     const nextWidth = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.round(width)));
@@ -331,6 +339,11 @@ function Layout({ children, headerActions }) {
   }, [location.pathname]);
 
   useEffect(() => {
+    const activeChip = sectionBarRef.current?.querySelector('[aria-current="page"]');
+    activeChip?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [location.pathname, location.search, sectionNav?.id]);
+
+  useEffect(() => {
     let frameId;
     let timeoutId;
     if (isMobileMenuOpen) {
@@ -351,9 +364,26 @@ function Layout({ children, headerActions }) {
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    mainScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    window.requestAnimationFrame(updateMainScrollbar);
-  }, [location.pathname, location.search, updateMainScrollbar]);
+    const node = mainScrollRef.current;
+    const savedTop =
+      navigationType === "POP" ? scrollPositionsRef.current.get(location.key) || 0 : 0;
+    let frameId;
+    const startedAt = performance.now();
+    const restore = () => {
+      if (!node) return;
+      const reachable = node.scrollHeight - node.clientHeight >= savedTop;
+      node.scrollTo({ top: savedTop, left: 0, behavior: "auto" });
+      if (!reachable && performance.now() - startedAt < 4000) {
+        frameId = window.requestAnimationFrame(restore);
+        return;
+      }
+      updateMainScrollbar();
+    };
+    restore();
+    return () => {
+      if (frameId) window.cancelAnimationFrame(frameId);
+    };
+  }, [location.key, navigationType, updateMainScrollbar]);
 
   useEffect(() => {
     const update = () => updateMainScrollbar();
@@ -428,6 +458,17 @@ function Layout({ children, headerActions }) {
             <Menu aria-hidden="true" />
           </TooltipButton>
 
+          {!sectionNav ? (
+            <button
+              type="button"
+              className="app-mobile-back"
+              onClick={handleMobileBack}
+              aria-label="Go back"
+            >
+              <ChevronLeft aria-hidden="true" />
+            </button>
+          ) : null}
+
           <GlobalSearch settingsMode={isSettingsRoute} />
 
           <div className="app-header-actions">
@@ -437,6 +478,26 @@ function Layout({ children, headerActions }) {
           </div>
         </header>
 
+        {sectionNav ? (
+          <nav
+            ref={sectionBarRef}
+            className="app-section-bar"
+            aria-label={sectionNav.label}
+          >
+            {sectionNav.items.map((item) => (
+              <Link
+                key={item.id}
+                to={item.path}
+                replace
+                className={`app-section-bar__chip${item.active ? " is-active" : ""}`}
+                aria-current={item.active ? "page" : undefined}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+        ) : null}
+
         <div className="app-main-wrap">
           <main
             className={`app-main${
@@ -445,7 +506,8 @@ function Layout({ children, headerActions }) {
               isPlayerActive ? " app-main--player-active" : ""
             }`}
             ref={mainScrollRef}
-            onScroll={() => {
+            onScroll={(event) => {
+              scrollPositionsRef.current.set(location.key, event.currentTarget.scrollTop);
               updateMainScrollbar();
               showScrollbarTemporarily();
             }}
@@ -490,6 +552,7 @@ function Layout({ children, headerActions }) {
               aria-label="More navigation options"
               tabIndex={-1}
             >
+              <span className="app-mobile-menu__handle" aria-hidden="true" />
               <nav className="app-mobile-menu__nav">
                 {mobileOverflowItems.map((item, index) => {
                   const Icon = item.icon;

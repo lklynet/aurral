@@ -513,12 +513,14 @@ export function registerDownloads(router) {
         return res.status(400).json({ error: "Lidarr is not configured" });
       }
 
-      const album = await libraryManager.getAlbumById(albumId);
+      const album = await libraryManager.getAlbumById(albumId, { managedBy: "lidarr" });
       if (!album) {
         return res.status(404).json({ error: "Album not found" });
       }
 
-      const artist = album.artistId ? await libraryManager.getArtistById(album.artistId) : null;
+      const artist = album.artistId
+        ? await libraryManager.getArtistById(album.artistId, { managedBy: "lidarr" })
+        : null;
       if (artist) {
         await libraryManager.ensureArtistMonitored(artist);
       }
@@ -579,12 +581,14 @@ export function registerDownloads(router) {
           return res.status(400).json({ error: "Lidarr is not configured" });
         }
 
-        const album = await libraryManager.getAlbumById(albumId);
+        const album = await libraryManager.getAlbumById(albumId, { managedBy: "lidarr" });
         if (!album) {
           return res.status(404).json({ error: "Album not found" });
         }
 
-        const artist = album.artistId ? await libraryManager.getArtistById(album.artistId) : null;
+        const artist = album.artistId
+          ? await libraryManager.getArtistById(album.artistId, { managedBy: "lidarr" })
+          : null;
         if (artist) {
           await libraryManager.ensureArtistMonitored(artist);
         }

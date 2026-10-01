@@ -114,6 +114,119 @@ export function finishLibraryScan(scanId, {
   );
 }
 
+function moveLibraryArtistStars(fromKey, toKey) {
+  const copied = db.prepare(
+    `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
+     SELECT user_id, entity_kind, ?, created_at
+     FROM subsonic_stars
+     WHERE entity_kind = 'artist' AND entity_key = ?`,
+  ).run(toKey, fromKey).changes > 0;
+  const deleted = db.prepare(
+    "DELETE FROM subsonic_stars WHERE entity_kind = 'artist' AND entity_key = ?",
+  ).run(fromKey).changes > 0;
+  return copied || deleted;
+}
+
+function mergeLibraryArtistInto(fallback, resolved) {
+  if (!fallback || !resolved || fallback.id === resolved.id) return false;
+  let changed = moveLibraryArtistStars(fallback.identity_key, resolved.identity_key);
+  changed = db.prepare("UPDATE OR IGNORE library_release_calendar SET artist_id = ? WHERE artist_id = ?")
+    .run(resolved.id, fallback.id).changes > 0 || changed;
+  changed = db.prepare("UPDATE library_albums SET artist_id = ? WHERE artist_id = ?")
+    .run(resolved.id, fallback.id).changes > 0 || changed;
+  changed = db.prepare("DELETE FROM library_artists WHERE id = ?")
+    .run(fallback.id).changes > 0 || changed;
+  return changed;
+}
+
+export function getUnresolvedLibraryArtists() {
+  return db.prepare(
+    `SELECT DISTINCT artist.id, artist.name
+     FROM library_artists AS artist
+     JOIN library_albums AS album ON album.artist_id = artist.id
+     JOIN library_media_files AS media ON media.album_id = album.id AND media.available = 1
+     WHERE artist.mbid IS NULL
+       AND (NOT json_valid(artist.metadata_json)
+         OR json_extract(artist.metadata_json, '$.mbidSource') IS NOT 'manual')
+     ORDER BY artist.id`,
+  ).all();
+}
+
+export function assignLibraryArtistMbid(artistId, mbid) {
+  const key = buildIdentityKey("mbid", mbid);
+  if (!key) return null;
+  const artist = db.transaction(() => {
+    const fallback = db
+      .prepare("SELECT id, identity_key FROM library_artists WHERE id = ? AND mbid IS NULL")
+      .get(artistId);
+    if (!fallback) return null;
+    const resolved = db
+      .prepare(
+        `SELECT id, identity_key FROM library_artists
+         WHERE identity_key = ? OR mbid = ?
+         ORDER BY identity_key = ? DESC, id
+         LIMIT 1`,
+      )
+      .get(key, mbid, key);
+    if (resolved) {
+      mergeLibraryArtistInto(fallback, resolved);
+      return resolved;
+    }
+    moveLibraryArtistStars(fallback.identity_key, key);
+    db.prepare("UPDATE library_artists SET identity_key = ?, mbid = ?, updated_at = ? WHERE id = ?")
+      .run(key, mbid, now(), fallback.id);
+    return fallback;
+  })();
+  if (artist) invalidateLibraryCache();
+  return artist;
+}
+
+export function setLibraryArtistMbid(artistId, mbid) {
+  const result = db.transaction(() => {
+    const artist = db.prepare("SELECT * FROM library_artists WHERE id = ?").get(artistId);
+    if (!artist) return { error: "not_found" };
+    const metadata = dbHelpers.parseJSON(artist.metadata_json) || {};
+    if (metadata.id != null) return { error: "lidarr_managed" };
+    const fallbackKey = buildFallbackIdentityKey("artist", artist.name);
+    const fallbackTaken = !mbid && db
+      .prepare("SELECT 1 FROM library_artists WHERE id != ? AND identity_key = ?")
+      .get(artist.id, fallbackKey);
+    const key = mbid
+      ? buildIdentityKey("mbid", mbid)
+      : fallbackTaken ? `${fallbackKey}:${artist.id}` : fallbackKey;
+    const target = mbid
+      ? db
+          .prepare(
+            "SELECT * FROM library_artists WHERE id != ? AND (identity_key = ? OR mbid = ?) ORDER BY identity_key = ? DESC, id LIMIT 1",
+          )
+          .get(artist.id, key, mbid, key)
+      : null;
+    if (target) {
+      const targetMetadata = dbHelpers.parseJSON(target.metadata_json) || {};
+      mergeLibraryArtistInto(artist, target);
+      db.prepare("UPDATE library_artists SET metadata_json = ?, updated_at = ? WHERE id = ?")
+        .run(stringify({ ...targetMetadata, mbidSource: "manual" }), now(), target.id);
+      return {
+        artist: db.prepare("SELECT * FROM library_artists WHERE id = ?").get(target.id),
+        mergedArtistId: artist.id,
+      };
+    }
+    moveLibraryArtistStars(artist.identity_key, key);
+    db.prepare(
+      `UPDATE library_artists
+       SET identity_key = ?, mbid = ?, metadata_json = ?, updated_at = ?
+       WHERE id = ?`,
+    ).run(key, mbid || null, stringify({ ...metadata, mbidSource: "manual" }), now(), artist.id);
+    return { artist: db.prepare("SELECT * FROM library_artists WHERE id = ?").get(artist.id) };
+  })();
+  if (result.artist) {
+    if (result.mergedArtistId) removeLibrarySearchDocument("artist", result.mergedArtistId);
+    syncLibrarySearchArtist(result.artist.id);
+    invalidateLibraryCache();
+  }
+  return result;
+}
+
 export function upsertLibraryArtist({
   identityKey,
   mbid = null,
@@ -155,20 +268,7 @@ export function upsertLibraryArtist({
       return matches.length === 1 ? matches[0] : null;
     };
     const mergeFallbackArtist = (fallback, resolved) => {
-      if (!fallback || !resolved || fallback.id === resolved.id) return;
-      libraryChanged = db.prepare(
-        `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
-         SELECT user_id, entity_kind, ?, created_at
-         FROM subsonic_stars
-         WHERE entity_kind = 'artist' AND entity_key = ?`,
-      ).run(resolved.identity_key, fallback.identity_key).changes > 0 || libraryChanged;
-      libraryChanged = db.prepare(
-        "DELETE FROM subsonic_stars WHERE entity_kind = 'artist' AND entity_key = ?",
-      ).run(fallback.identity_key).changes > 0 || libraryChanged;
-      libraryChanged = db.prepare("UPDATE library_albums SET artist_id = ? WHERE artist_id = ?")
-        .run(resolved.id, fallback.id).changes > 0 || libraryChanged;
-      libraryChanged = db.prepare("DELETE FROM library_artists WHERE id = ?")
-        .run(fallback.id).changes > 0 || libraryChanged;
+      libraryChanged = mergeLibraryArtistInto(fallback, resolved) || libraryChanged;
     };
     if (mbid) {
       const resolved = db.prepare("SELECT id, identity_key FROM library_artists WHERE identity_key = ?").get(key);
@@ -176,17 +276,7 @@ export function upsertLibraryArtist({
         ? null
         : findFallbackArtist();
       if (fallback && !resolved) {
-        libraryChanged = db.prepare(
-          `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
-           SELECT user_id, entity_kind, ?, created_at
-           FROM subsonic_stars
-           WHERE entity_kind = 'artist' AND entity_key = ?`,
-        ).run(key, fallback.identity_key).changes > 0 || libraryChanged;
-        libraryChanged = db.prepare(
-          "DELETE FROM subsonic_stars WHERE entity_kind = 'artist' AND entity_key = ?",
-        ).run(fallback.identity_key).changes > 0 || libraryChanged;
-      }
-      if (fallback && !resolved) {
+        libraryChanged = moveLibraryArtistStars(fallback.identity_key, key) || libraryChanged;
         libraryChanged = db.prepare("UPDATE library_artists SET identity_key = ? WHERE id = ?")
           .run(key, fallback.id).changes > 0 || libraryChanged;
       } else if (fallback && resolved && fallback.id !== resolved.id) {
@@ -201,12 +291,15 @@ export function upsertLibraryArtist({
       }
     }
     const existing = db.prepare("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
+    const mergedMetadataText = existing && metadata
+      ? stringify({ ...dbHelpers.parseJSON(existing.metadata_json), ...metadata })
+      : metadataText;
     if (
       existing &&
       (artistMbid == null || artistMbid === existing.mbid) &&
       artistName === existing.name &&
       (artistSortName == null || artistSortName === existing.sort_name) &&
-      (metadataText == null || metadataText === existing.metadata_json)
+      (mergedMetadataText == null || mergedMetadataText === existing.metadata_json)
     ) {
       if (syncSearch) syncLibrarySearchArtist(existing.id);
       return existing;
@@ -220,7 +313,7 @@ export function upsertLibraryArtist({
          sort_name = COALESCE(excluded.sort_name, library_artists.sort_name),
          metadata_json = COALESCE(excluded.metadata_json, library_artists.metadata_json),
          updated_at = excluded.updated_at`,
-    ).run(key, artistMbid, artistName, artistSortName, metadataText, timestamp, timestamp);
+    ).run(key, artistMbid, artistName, artistSortName, mergedMetadataText, timestamp, timestamp);
     libraryChanged = true;
     const row = db.prepare("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
     if (syncSearch) syncLibrarySearchArtist(row?.id);
@@ -480,6 +573,69 @@ export function removeLibraryTrackIfNoAvailableMedia(trackId) {
   })();
   if (removed) invalidateLibraryCache();
   return removed;
+}
+
+export function removeLibraryArtistIfEmpty(artistId) {
+  const normalizedArtistId = Number(artistId);
+  if (!Number.isSafeInteger(normalizedArtistId)) return false;
+  const removed = db.prepare(
+    `DELETE FROM library_artists
+     WHERE id = ?
+       AND NOT EXISTS (SELECT 1 FROM library_albums WHERE artist_id = ?)`,
+  ).run(normalizedArtistId, normalizedArtistId).changes > 0;
+  if (removed) {
+    removeLibrarySearchDocument("artist", normalizedArtistId);
+    invalidateLibraryCache();
+  }
+  return removed;
+}
+
+export function removeLibraryAlbumTracksWithoutAvailableMedia(albumId) {
+  const normalizedAlbumId = Number(albumId);
+  if (!Number.isSafeInteger(normalizedAlbumId)) return { albumRemoved: false };
+  const result = db.transaction(() => {
+    const trackIds = db.prepare(
+      `SELECT link.track_id AS id
+       FROM library_album_tracks link
+       WHERE link.album_id = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM library_media_files file
+           WHERE file.track_id = link.track_id AND file.available = 1
+         )`,
+    ).all(normalizedAlbumId).map((row) => row.id);
+
+    for (const trackId of trackIds) {
+      db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?")
+        .run(normalizedAlbumId, trackId);
+      const linkedElsewhere = db.prepare(
+        "SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1",
+      ).get(trackId);
+      if (linkedElsewhere) {
+        db.prepare("DELETE FROM library_media_files WHERE track_id = ? AND album_id = ?")
+          .run(trackId, normalizedAlbumId);
+        continue;
+      }
+      removeLibrarySearchDocument("track", trackId);
+      db.prepare("DELETE FROM library_media_files WHERE track_id = ?").run(trackId);
+      db.prepare("DELETE FROM library_tracks WHERE id = ?").run(trackId);
+    }
+
+    const albumRemoved = db.prepare(
+      `DELETE FROM library_albums
+       WHERE id = ?
+         AND NOT EXISTS (SELECT 1 FROM library_album_tracks WHERE album_id = ?)`,
+    ).run(normalizedAlbumId, normalizedAlbumId).changes > 0;
+    if (albumRemoved) {
+      db.prepare("DELETE FROM library_media_files WHERE album_id = ? AND available = 0")
+        .run(normalizedAlbumId);
+      removeLibrarySearchDocument("album", normalizedAlbumId);
+    } else {
+      touchLibraryAlbum(normalizedAlbumId);
+    }
+    return { albumRemoved, changed: albumRemoved || trackIds.length > 0 };
+  }).immediate();
+  if (result.changed) invalidateLibraryCache();
+  return { albumRemoved: result.albumRemoved };
 }
 
 export function upsertLibraryMediaFile({

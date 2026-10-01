@@ -1,50 +1,45 @@
 ---
 title: yt-dlp
-description: YouTube and web-backed downloads for flows and playlists.
+description: Download tracks from YouTube with the built-in yt-dlp source.
 ---
 
-yt-dlp is the built-in fallback download source. It searches YouTube for artist and title matches.
+yt-dlp is the built-in fallback download source. It searches YouTube for the artist and title of a track.
 
-yt-dlp extracts audio with ffmpeg. Aurral stages the audio outside your media paths, validates and tags it, and then imports it into your Downloads Folder.
+yt-dlp extracts the audio with ffmpeg. Aurral writes the audio to a staging folder outside your media folders, checks it, tags it, and then moves it into the Downloads Folder.
 
-The default staging path is `/config/_staging`. To use another disk, mount it in the Aurral container and set **Settings > Download clients > yt-dlp > Staging path**. Keep this path outside every media-server library.
+The default staging folder is `/config/_staging`. To use another disk, mount it in the Aurral container and set **Settings > Download clients > yt-dlp > Staging path**. Keep this folder outside every media server library.
 
-You do not need a separate daemon. The Docker image includes `yt-dlp`, `ffmpeg`, and Node. Aurral enables Node as yt-dlp's JavaScript runtime for current YouTube extraction.
+yt-dlp needs no separate service. The Docker image includes `yt-dlp`, `ffmpeg`, and Node. Aurral uses Node as the JavaScript runtime that yt-dlp needs for YouTube.
 
-For a bare-metal installation, install `yt-dlp` and `ffmpeg` on the host. A supported JavaScript runtime such as Node or Deno is recommended for current YouTube extraction. Make sure that `yt-dlp` and the runtime are on `PATH`.
+For an installation without Docker, install `yt-dlp` and `ffmpeg` on the host. Also install a JavaScript runtime such as Node or Deno for YouTube. Make sure that `yt-dlp` and the runtime are on `PATH`.
 
 ## Setup
 
 1. Open **Settings > Download clients > yt-dlp**.
-2. Leave **Enable yt-dlp** on (default).
+2. Leave **Enable yt-dlp** on. It is on by default.
 3. If necessary, set **Source priority** or **Staging path**.
 4. Select **Test connection**.
-5. Settings save automatically after each change.
 
-The yt-dlp default priority is `50`. The slskd default is `10`. The Usenet default is `20`.
+The default priority of yt-dlp is `50`. The other sources have lower numbers, so Aurral tries them first.
 
 ## Behavior
 
-Aurral tries download sources in priority order. With default settings, Aurral tries configured slskd and Usenet sources first.
+yt-dlp downloads the tracks that the other sources cannot find. It can also be your only download source. It always downloads one track at a time. It never downloads a whole album at once.
 
-yt-dlp downloads tracks that the other sources cannot find. It can also be the only download source.
+Aurral ranks results by title, artist, and duration. It skips karaoke, live loops, and similar unwanted results.
 
-Aurral ranks results by title, artist, duration, and noise filters. It skips karaoke, live loops, and similar unwanted results.
+yt-dlp writes the video metadata into the file. When a video title has the form `Artist - Title`, yt-dlp stores the two parts as the artist and the title. Before Aurral accepts the download, it checks this artist and title against the requested track. It removes promotional labels such as "Official Music Video" from the title before it compares. It does not use the file name, because yt-dlp names files by video ID.
 
-Aurral validates downloaded audio with the same track validation that it uses for other sources.
+Aurral then applies the quality profile. It rejects the file if its measured M4A quality is not an enabled tier.
 
-Aurral also applies the global quality profile. It rejects the final file if its measured M4A quality is not an enabled tier.
+After the checks, Aurral writes the title, artist, album, album artist, year, and track number into the file. Tag-based servers such as Navidrome can then sort the track correctly.
 
-After validation, Aurral writes the playlist's title, artist, album, album artist, year, and track number into the audio file. This metadata lets tag-based libraries such as Navidrome organize yt-dlp downloads correctly.
+Aurral stores its own identity marker in the grouping tag, not in the comment tag, so Navidrome does not show it as the track description. Aurral still reads the older comment marker in existing files.
 
-Aurral stores its internal identity marker in the grouping tag instead of the comment tag, so Navidrome does not show it as the track description. Existing files with the older comment marker remain readable.
+If the file matches the requested track but its duration is very different, Aurral holds it in **Activity > Queue**. You can preview, approve, or deny it.
 
-When a downloaded file matches the requested track but its duration differs significantly, Aurral retains it under **Activity > Queue** for preview, approval, or denial.
-
-Audio from YouTube is usually lossy. Prefer slskd or Usenet when you want higher quality.
-
-yt-dlp can supply the first acceptable file for a track. Automatic and manual upgrade searches use slskd or Usenet, not yt-dlp.
+YouTube audio is usually lossy. For higher quality, prefer slskd, Usenet, or deemix. yt-dlp can supply the first file for a track, but Aurral does not use yt-dlp for upgrades.
 
 ## Download source priority
 
-See [Usenet](/integrations/usenet/#download-source-priority-and-fallback) for how priority and fallback work across sources.
+See [Download source priority and fallback](/integrations/usenet/#download-source-priority-and-fallback).

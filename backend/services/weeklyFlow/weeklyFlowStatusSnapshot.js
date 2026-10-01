@@ -1,11 +1,56 @@
 import { downloadTracker } from "./weeklyFlowDownloadTracker.js";
 import { weeklyFlowWorker } from "./weeklyFlowWorker.js";
-import { buildSharedTrackIdentity, flowPlaylistConfig } from "./weeklyFlowPlaylistConfig.js";
+import { buildSharedTrackIdentity, flowPlaylistConfig, invalidateFlowPlaylistConfigCache } from "./weeklyFlowPlaylistConfig.js";
 import { weeklyFlowOperationQueue } from "./weeklyFlowOperationQueue.js";
 import { getWeeklyFlowOperationWorkerStatus } from "./weeklyFlowOperationWorker.js";
 import { getDownloadClient } from "../download/downloadClientSettings.js";
-import { userOps } from "../../db/helpers/index.js";
+import { dbOps, userOps } from "../../db/helpers/index.js";
+import { db } from "../../config/db-sqlite.js";
 import { getFlowCapabilities } from "../listenbrainzDiscoveryFallback.js";
+
+const playlistSettingsStmt = db.prepare("SELECT key, value FROM settings WHERE key IN ('flows', 'sharedPlaylists') ORDER BY key");
+const membershipCache = new Map();
+const MEMBERSHIP_CACHE_LIMIT = 128;
+let cachedSettings = null;
+let cachedJobRevision = null;
+
+function readPlaylistSettingsVersion() {
+  return JSON.stringify(playlistSettingsStmt.all());
+}
+
+function refreshMembershipCache() {
+  const settings = readPlaylistSettingsVersion();
+  const revision = downloadTracker.getRevision();
+  if (settings !== cachedSettings) {
+    dbOps.invalidateSettingsCache();
+    invalidateFlowPlaylistConfigCache();
+  }
+  if (settings !== cachedSettings || revision !== cachedJobRevision) {
+    membershipCache.clear();
+  }
+  cachedSettings = settings;
+  cachedJobRevision = revision;
+}
+
+function getMembershipSummary(playlist) {
+  let summary = membershipCache.get(playlist.id);
+  if (!summary) {
+    const jobs = downloadTracker.getByPlaylistType(playlist.id);
+    summary = {
+      trackIdentities: collectPlaylistTrackIdentities(playlist, jobs),
+      trackEntries: collectPlaylistTrackEntries(jobs),
+    };
+  }
+  membershipCache.delete(playlist.id);
+  membershipCache.set(playlist.id, summary);
+  if (membershipCache.size > MEMBERSHIP_CACHE_LIMIT) {
+    membershipCache.delete(membershipCache.keys().next().value);
+  }
+  return {
+    trackIdentities: [...summary.trackIdentities],
+    trackEntries: summary.trackEntries.map((entry) => ({ ...entry })),
+  };
+}
 
 function formatNextRunMessage(flows) {
   const nextRunAt = (Array.isArray(flows) ? flows : [])
@@ -48,7 +93,7 @@ function aggregateStats(statsByType, ids) {
 }
 
 
-function collectPlaylistTrackIdentities(playlist) {
+function collectPlaylistTrackIdentities(playlist, jobs) {
   const playlistId = String(playlist?.id || "");
   if (!playlistId) return [];
   const seen = new Set();
@@ -59,7 +104,7 @@ function collectPlaylistTrackIdentities(playlist) {
     seen.add(identity);
     identities.push(identity);
   };
-  for (const job of downloadTracker.getByPlaylistType(playlistId)) {
+  for (const job of jobs) {
     addIdentity(job);
   }
   for (const track of Array.isArray(playlist?.tracks) ? playlist.tracks : []) {
@@ -68,11 +113,8 @@ function collectPlaylistTrackIdentities(playlist) {
   return identities;
 }
 
-function collectPlaylistTrackEntries(playlist) {
-  const playlistId = String(playlist?.id || "");
-  if (!playlistId) return [];
-  return downloadTracker
-    .getByPlaylistType(playlistId)
+function collectPlaylistTrackEntries(jobs) {
+  return jobs
     .filter((job) =>
       [
         job?.artistName,
@@ -114,6 +156,7 @@ function buildOwnerMap(flows, sharedPlaylists) {
 export function getWeeklyFlowStatusSnapshot({
   user = null,
 } = {}) {
+  refreshMembershipCache();
   const workerStatus = weeklyFlowWorker.getStatus();
   const flows = user ? flowPlaylistConfig.getFlowsForUser(user) : flowPlaylistConfig.getFlows();
   const rawSharedPlaylists = user
@@ -144,8 +187,7 @@ export function getWeeklyFlowStatusSnapshot({
       trackCount: Math.max(jobTotal, Number(playlist.trackCount || 0)),
       recordHistory: playlist.recordHistory !== false,
       showTrackAvailability: playlist.showTrackAvailability === true,
-      trackIdentities: collectPlaylistTrackIdentities(playlist),
-      trackEntries: collectPlaylistTrackEntries(playlist),
+      ...getMembershipSummary(playlist),
       importSource: playlist.importSource
         ? {
             provider: playlist.importSource.provider,

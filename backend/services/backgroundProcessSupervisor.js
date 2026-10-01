@@ -6,6 +6,7 @@ const ENTRY = fileURLToPath(new URL("./backgroundWorkerProcess.js", import.meta.
 const RESTART_BASE_MS = 1000;
 const RESTART_MAX_MS = 30000;
 const UNRESPONSIVE_MS = 120000;
+const DEMAND_POLL_MS = 2000;
 const JOB_TIMEOUT_MS = Object.freeze({
   library: 6 * 60 * 60 * 1000,
   "discovery-refresh": 2 * 60 * 60 * 1000,
@@ -15,6 +16,7 @@ const JOB_TIMEOUT_MS = Object.freeze({
   inbox: 15 * 60 * 1000,
   notifications: 15 * 60 * 1000,
   "play-events": 15 * 60 * 1000,
+  "release-metadata-refresh": 2 * 60 * 60 * 1000,
   "system-task": 2 * 60 * 60 * 1000,
   "weekly-flow-operation": 2 * 60 * 60 * 1000,
   "slskd-pipeline": 6 * 60 * 60 * 1000,
@@ -23,8 +25,11 @@ const JOB_TIMEOUT_MS = Object.freeze({
   "playlist-mbid-enrichment": 2 * 60 * 60 * 1000,
 });
 
+// A group's process runs only while it has work: queued jobs or a due schedule
+// reported by findGroupsWithWork, or flow requests. Idle processes exit.
 export function createBackgroundProcessSupervisor({
   groups = ISOLATED_WORKER_GROUPS,
+  findGroupsWithWork = () => [],
   forkProcess = fork,
   onMessage = () => {},
   onExit = () => {},
@@ -32,6 +37,7 @@ export function createBackgroundProcessSupervisor({
   jobTimeoutsMs = JOB_TIMEOUT_MS,
   unresponsiveMs = UNRESPONSIVE_MS,
   watchdogIntervalMs = 15000,
+  demandPollMs = DEMAND_POLL_MS,
 } = {}) {
   const children = new Map();
   const restartTimers = new Map();
@@ -42,13 +48,58 @@ export function createBackgroundProcessSupervisor({
   const exitReasons = new Map();
   const pendingRequests = new Map();
   const flowStatuses = new Map();
+  const readyGroups = new Set();
+  const retiringGroups = new Set();
+  const recoveringGroups = new Set();
+  const relaunchGroups = new Set();
   let nextRequestId = 0;
   let watchdogInterval = null;
+  let demandInterval = null;
   let started = false;
   let stopping = false;
 
+  function canSend(group) {
+    const child = children.get(group);
+    return Boolean(child) && readyGroups.has(group) && !retiringGroups.has(group) &&
+      child.connected !== false;
+  }
+
+  function hasRequests(group) {
+    return [...pendingRequests.values()].some((pending) => pending.group === group);
+  }
+
+  function sendRequest(requestId) {
+    const pending = pendingRequests.get(requestId);
+    if (!pending || pending.sent || !canSend(pending.group)) return false;
+    try {
+      children.get(pending.group).send(pending.message);
+      pending.sent = true;
+    } catch (error) {
+      pendingRequests.delete(requestId);
+      clearTimeout(pending.timer);
+      pending.reject(error);
+    }
+    return true;
+  }
+
+  function flushRequests(group) {
+    for (const [requestId, pending] of pendingRequests) {
+      if (pending.group === group) sendRequest(requestId);
+    }
+  }
+
+  function retire(group, child) {
+    if (stopping || !canSend(group) || hasRequests(group) || activeJobs.get(group)?.size) return;
+    retiringGroups.add(group);
+    try {
+      child.send({ type: "retire" });
+    } catch {
+      retiringGroups.delete(group);
+    }
+  }
+
   function launch(group) {
-    if (stopping || children.has(group)) return;
+    if (stopping || !started || children.has(group) || recoveringGroups.has(group)) return;
     let child;
     try {
       child = forkProcess(ENTRY, [], {
@@ -67,6 +118,20 @@ export function createBackgroundProcessSupervisor({
     const startedAt = Date.now();
     child.on("message", (message) => {
       lastSeen.set(group, Date.now());
+      if (message?.type === "idle") {
+        retire(group, child);
+        return;
+      }
+      if (message?.type === "busy") {
+        retiringGroups.delete(group);
+        relaunchGroups.delete(group);
+        flushRequests(group);
+        return;
+      }
+      if (message?.type === "ready") {
+        readyGroups.add(group);
+        flushRequests(group);
+      }
       if (message?.type === "heartbeat" && Array.isArray(message.workers)) {
         workerStatuses.set(group, message.workers);
         if (message.flowStatus) flowStatuses.set(group, message.flowStatus);
@@ -103,12 +168,14 @@ export function createBackgroundProcessSupervisor({
       if (exited) return;
       exited = true;
       if (children.get(group) === child) children.delete(group);
+      const retiring = retiringGroups.delete(group);
+      readyGroups.delete(group);
       lastSeen.delete(group);
       workerStatuses.delete(group);
       activeJobs.delete(group);
       flowStatuses.delete(group);
       for (const [id, pending] of pendingRequests) {
-        if (pending.group !== group) continue;
+        if (pending.group !== group || !pending.sent) continue;
         pendingRequests.delete(id);
         clearTimeout(pending.timer);
         pending.reject(new Error(`${group} worker exited before responding`));
@@ -116,13 +183,22 @@ export function createBackgroundProcessSupervisor({
       const exitReason = exitReasons.get(group) || null;
       exitReasons.delete(group);
       if (stopping) return;
-      if (Date.now() - startedAt > 60000) attempts.delete(group);
-      logger.warn?.(`[BackgroundWorkers] ${group} exited (${signal || code}); restarting`);
-      Promise.resolve().then(() => onExit(group, code, signal, child.pid, exitReason))
+      const retired = retiring && code === 0 && !exitReason;
+      if (!retired) {
+        if (Date.now() - startedAt > 60000) attempts.delete(group);
+        logger.warn?.(`[BackgroundWorkers] ${group} exited (${signal || code}); restarting`);
+      }
+      recoveringGroups.add(group);
+      Promise.resolve().then(() => onExit(group, code, signal, child.pid, exitReason, retired))
         .catch((error) => {
           logger.error?.(`[BackgroundWorkers] Could not handle ${group} exit:`, error);
         })
-        .finally(() => scheduleRestart(group));
+        .finally(() => {
+          recoveringGroups.delete(group);
+          const wanted = relaunchGroups.delete(group) || hasRequests(group);
+          if (!retired) scheduleRestart(group);
+          else if (wanted) launch(group);
+        });
     };
     child.once("exit", handleExit);
     child.once("close", handleExit);
@@ -141,10 +217,28 @@ export function createBackgroundProcessSupervisor({
     restartTimers.set(group, timer);
   }
 
+  function ensure(group) {
+    if (!started || stopping || !groups.includes(group)) return false;
+    if (retiringGroups.has(group) || recoveringGroups.has(group)) relaunchGroups.add(group);
+    else if (!restartTimers.has(group)) launch(group);
+    return true;
+  }
+
+  function launchGroupsWithWork() {
+    if (!started || stopping) return;
+    try {
+      for (const group of findGroupsWithWork()) ensure(group);
+    } catch (error) {
+      logger.warn?.("[BackgroundWorkers] Could not check for queued work:", error?.message || error);
+    }
+  }
+
   function start() {
     if (started) return false;
     started = true;
-    for (const group of groups) launch(group);
+    launchGroupsWithWork();
+    demandInterval = setInterval(launchGroupsWithWork, demandPollMs);
+    demandInterval.unref?.();
     watchdogInterval = setInterval(() => {
       for (const [group, child] of children) {
         const unresponsive = Date.now() - (lastSeen.get(group) || 0) > unresponsiveMs;
@@ -172,6 +266,8 @@ export function createBackgroundProcessSupervisor({
 
   async function stop({ timeoutMs = 3000 } = {}) {
     stopping = true;
+    clearInterval(demandInterval);
+    demandInterval = null;
     if (watchdogInterval) clearInterval(watchdogInterval);
     watchdogInterval = null;
     for (const timer of restartTimers.values()) clearTimeout(timer);
@@ -205,6 +301,9 @@ export function createBackgroundProcessSupervisor({
     }));
     await Promise.all(pending);
     children.clear();
+    readyGroups.clear();
+    retiringGroups.clear();
+    relaunchGroups.clear();
     workerStatuses.clear();
     activeJobs.clear();
     exitReasons.clear();
@@ -217,33 +316,30 @@ export function createBackgroundProcessSupervisor({
   }
 
   function request(group, method, args = [], { timeoutMs = 30000 } = {}) {
-    const child = children.get(group);
-    if (!child?.connected && child?.connected !== undefined) {
+    if (!started || stopping || !groups.includes(group)) {
       return Promise.reject(new Error(`${group} worker is unavailable`));
     }
-    if (!child) return Promise.reject(new Error(`${group} worker is unavailable`));
     return new Promise((resolve, reject) => {
       const requestId = ++nextRequestId;
       const timer = setTimeout(() => {
         pendingRequests.delete(requestId);
         reject(new Error(`${group} worker request timed out: ${method}`));
       }, timeoutMs);
-      pendingRequests.set(requestId, { group, resolve, reject, timer });
-      try {
-        child.send({ type: "flow-command", requestId, method, args });
-      } catch (error) {
-        clearTimeout(timer);
-        pendingRequests.delete(requestId);
-        reject(error);
-      }
+      pendingRequests.set(requestId, {
+        group, resolve, reject, timer, sent: false,
+        message: { type: "flow-command", requestId, method, args },
+      });
+      if (!sendRequest(requestId)) ensure(group);
     });
   }
 
   function wake(group) {
-    const child = children.get(group);
-    if (!child || child.connected === false) return false;
+    if (!canSend(group)) {
+      launchGroupsWithWork();
+      return false;
+    }
     try {
-      child.send({ type: "queue-wake" });
+      children.get(group).send({ type: "queue-wake" });
       return true;
     } catch (error) {
       logger.warn?.(`[BackgroundWorkers] Could not wake ${group}:`, error);

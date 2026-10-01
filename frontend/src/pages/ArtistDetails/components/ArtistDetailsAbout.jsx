@@ -1,20 +1,13 @@
 import { Fragment, useMemo } from "react";
 import { ExternalLink } from "lucide-react";
 import { getArtistHeroImage, getArtistType } from "../utils";
-import lidarrLogo from "../../../../images/logos/lidarr.svg?raw";
-import lastFmLogo from "../../../../images/logos/last-fm.svg?raw";
-import musicBrainzLogo from "../../../../images/logos/musicbrainz.svg?raw";
-import listenBrainzLogo from "../../../../images/logos/listenbrainz.svg?raw";
+import lidarrLogo from "../../../../images/logos/lidarr-color.svg";
+import lastFmLogo from "../../../../images/logos/last-fm-color.svg";
+import musicBrainzLogo from "../../../../images/logos/musicbrainz-color.svg";
+import listenBrainzLogo from "../../../../images/logos/listenbrainz-color.svg";
 
 import { UUID_REGEX } from "../../../../../lib/uuid.js";
 import Tooltip from "../../../components/Tooltip";
-
-const toCurrentColorSvg = (svg) =>
-  svg
-    .replace(/fill:#fff/gi, "fill:currentColor")
-    .replace(/fill="#fff"/gi, 'fill="currentColor"')
-    .replace(/fill:#ffffff/gi, "fill:currentColor")
-    .replace(/fill="#ffffff"/gi, 'fill="currentColor"');
 
 const normalizeHref = (value) => {
   const href = String(value || "").trim();
@@ -117,8 +110,7 @@ export function ArtistDetailsAbout({
             key: "lidarr",
             label: "Lidarr",
             href: lidarrHref,
-            logo: toCurrentColorSvg(lidarrLogo),
-            color: "var(--aurral-text-muted)",
+            logo: lidarrLogo,
           }
         : null,
       artist?.name
@@ -126,8 +118,7 @@ export function ArtistDetailsAbout({
             key: "lastfm",
             label: "Last.fm",
             href: `https://www.last.fm/music/${encodeURIComponent(artist.name)}`,
-            logo: toCurrentColorSvg(lastFmLogo),
-            color: "var(--aurral-text-muted)",
+            logo: lastFmLogo,
           }
         : null,
       artist?.id && UUID_REGEX.test(artist.id)
@@ -135,8 +126,7 @@ export function ArtistDetailsAbout({
             key: "musicbrainz",
             label: "MusicBrainz",
             href: `https://musicbrainz.org/artist/${artist.id}`,
-            logo: toCurrentColorSvg(musicBrainzLogo),
-            color: "var(--aurral-text-muted)",
+            logo: musicBrainzLogo,
           }
         : null,
       artist?.id && UUID_REGEX.test(artist.id)
@@ -144,8 +134,7 @@ export function ArtistDetailsAbout({
             key: "listenbrainz",
             label: "ListenBrainz",
             href: `https://listenbrainz.org/artist/${encodeURIComponent(artist.id)}/`,
-            logo: toCurrentColorSvg(listenBrainzLogo),
-            color: "var(--aurral-text-muted)",
+            logo: listenBrainzLogo,
           }
         : null,
     ].filter(Boolean);
@@ -256,12 +245,7 @@ export function ArtistDetailsAbout({
                     className="artist-external-link"
                   >
                     {link.logo ? (
-                      <span
-                        className="artist-external-link__logo"
-                        style={{ color: link.color || "var(--aurral-text-muted)" }}
-                        aria-hidden="true"
-                        dangerouslySetInnerHTML={{ __html: link.logo }}
-                      />
+                      <img className="artist-external-link__logo" src={link.logo} alt="" aria-hidden="true" />
                     ) : (
                       <ExternalLink className="artist-icon-sm" />
                     )}

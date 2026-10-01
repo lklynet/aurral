@@ -1038,7 +1038,10 @@ test("ListenBrainz sync uses the shared import update path", async (t) => {
       force: true,
     });
 
-    assert.deepEqual(flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks, [
+    const syncedTracks = flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks;
+    assert.ok(syncedTracks[0].membershipId);
+    assert.notEqual(syncedTracks[0].membershipId, playlist.tracks[0].membershipId);
+    assert.deepEqual(syncedTracks.map(({ membershipId: _membershipId, ...track }) => track), [
       {
         artistName: "New Artist",
         trackName: "New Song",
@@ -1097,7 +1100,10 @@ test("YouTube Music sync uses the shared import path without logging its externa
     });
 
     assert.equal(getPlaylist.mock.callCount(), 1);
-    assert.deepEqual(getPlaylist.mock.calls[0].arguments, ["PLsecretUnlisted_123"]);
+    assert.deepEqual(getPlaylist.mock.calls[0].arguments, [
+      "PLsecretUnlisted_123",
+      { forceRefresh: true },
+    ]);
     assert.equal(result.trackCount, 1);
     assert.equal(flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks[0].trackName, "New Song");
     assert.equal(JSON.stringify(info.mock.calls).includes("PLsecretUnlisted_123"), false);
@@ -1433,5 +1439,47 @@ test("Spotify cleanup serializes retention updates with file removal", async () 
     spotifyClient.listPlaylistTracks = originalListPlaylistTracks;
     weeklyFlowWorker.start = originalStart;
     weeklyFlowWorker.stop();
+  }
+});
+
+test("Spotify status asks the owner to reconnect only when synced imports lost their connection", async () => {
+  const spotifyRoutes = await importFromRepo("backend/routes/weeklyFlow/handlers/spotifyImport.js");
+  const { spotifyConnectionStore } = await importFromRepo(
+    "backend/services/spotify/spotifyConnectionStore.js",
+  );
+  const handlers = new Map();
+  spotifyRoutes.registerSpotifyImport({
+    get(route, handler) { handlers.set(route, handler); },
+    post() {},
+    delete() {},
+  });
+  const statusFor = (userId) => {
+    const response = { json(body) { this.body = body; return this; } };
+    handlers.get("/import/spotify/status")({ user: { id: userId } }, response);
+    return response.body;
+  };
+  const playlist = flowPlaylistConfig.createSharedPlaylist({
+    name: "Synced Spotify Mix",
+    ownerUserId: 41,
+    tracks: [],
+    importSource: {
+      provider: "spotify-playlist",
+      externalId: "spotify-mix",
+      syncEnabled: true,
+      syncIntervalHours: 24,
+    },
+  });
+  try {
+    assert.equal(statusFor(41).reconnectRequired, true);
+    assert.equal(statusFor(42).reconnectRequired, false);
+
+    spotifyConnectionStore.saveConnection(41, { accessToken: "access", refreshToken: "refresh" });
+    assert.deepEqual(
+      [statusFor(41).connected, statusFor(41).reconnectRequired],
+      [true, false],
+    );
+  } finally {
+    spotifyConnectionStore.clearConnection(41);
+    flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
   }
 });

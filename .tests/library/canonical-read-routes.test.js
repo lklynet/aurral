@@ -69,6 +69,7 @@ test("canonical track reads remove nested filesystem paths", async () => {
     });
 
     const routes = new Map();
+    const routeChains = new Map();
     registerTracks({
       delete(routePath, ...handlers) {
         routes.set(routePath, async (req, res) => {
@@ -82,8 +83,33 @@ test("canonical track reads remove nested filesystem paths", async () => {
       },
       get(routePath, ...handlers) {
         routes.set(routePath, handlers.at(-1));
+        routeChains.set(routePath, handlers);
       },
     });
+
+    const getTrackFiles = async (id, user) => {
+      const response = {
+        statusCode: 200,
+        body: null,
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        json(value) {
+          this.body = value;
+          return this;
+        },
+        set() {
+          return this;
+        },
+        setHeader() {},
+      };
+      const handlers = routeChains.get("/tracks/:id/files");
+      let index = 0;
+      const next = () => handlers[index++]?.({ params: { id }, user }, response, next);
+      await next();
+      return response;
+    };
 
     let deleteStatus;
     let deleteBody;
@@ -127,6 +153,14 @@ test("canonical track reads remove nested filesystem paths", async () => {
     assert.deepEqual(body[0].quality, { audioFormat: "FLAC", nested: {} });
     assert.match(body[0].streamPath, /\/library\/canonical-stream\/\d+\/\d+$/);
     assert.equal(body[0].streamFormat, "flac");
+
+    const userFiles = await getTrackFiles(String(body[0].id), { role: "user", permissions: {} });
+    assert.equal(userFiles.statusCode, 403);
+    assert.equal(JSON.stringify(userFiles.body).includes(filePath), false);
+    const adminFiles = await getTrackFiles(String(body[0].id), { role: "admin" });
+    assert.equal(adminFiles.statusCode, 200);
+    assert.deepEqual(adminFiles.body, { paths: [filePath] });
+    assert.equal((await getTrackFiles("999999999", { role: "admin" })).statusCode, 404);
 
     await routes.get("/tracks")(
       {

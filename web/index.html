@@ -3,680 +3,1065 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Aurral — the Lidarr companion for self-hosted music discovery</title>
+    <title>Aurral — self-hosted music discovery</title>
     <meta
       name="description"
-      content="Aurral is the Lidarr companion for self-hosted music discovery."
+      content="The best open-source music discovery for your self-hosted library. Recommendations, rotating flows, and playlist downloads. Works alone or alongside Lidarr."
     />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#050505" />
     <link rel="canonical" href="https://aurral.org/" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="preload" as="image" href="screenshots/discover.webp" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://aurral.org/" />
     <meta property="og:site_name" content="Aurral" />
-    <meta
-      property="og:title"
-      content="Aurral — the Lidarr companion for self-hosted music discovery"
-    />
+    <meta property="og:title" content="Aurral — self-hosted music discovery" />
     <meta
       property="og:description"
-      content="Recommendations, rotating flows, and playlist downloads, built on Lidarr instead of replacing it."
+      content="The best open-source music discovery for your self-hosted library. Works alone or alongside Lidarr."
     />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content="https://aurral.org/screenshots/discover.webp" />
+    <meta property="og:image:alt" content="The Aurral Discover page" />
+    <meta name="twitter:card" content="summary_large_image" />
     <style>
       :root {
-        --bg: #0a0c0c;
-        --face: #1a1f1a;
-        --face-hi: #2a3228;
-        --face-lo: #0f120f;
-        --edge: #3d4638;
-        --lcd: #0c1408;
-        --lcd-text: #84cc16;
-        --lcd-dim: #3f6212;
-        --text: #a3a99c;
-        --bright: #c9cec4;
         color-scheme: dark;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        --font-sans:
+          ui-sans-serif, system-ui, -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
+        --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        --chrome: #050505;
+        --surface: #111111;
+        --text: #f5f5f5;
+        --text-muted: rgb(255 255 255 / 58%);
+        --text-subtle: rgb(255 255 255 / 46%);
+        --border: rgb(255 255 255 / 8%);
+        --border-strong: rgb(255 255 255 / 14%);
+        --hover: rgb(255 255 255 / 9%);
+        --pressed: rgb(255 255 255 / 14%);
+        --ring: rgb(255 255 255 / 46%);
+        --radius: 10px;
+        --radius-sm: 6px;
+        --gutter: 24px;
+        --chapter: 80px;
       }
 
       * {
         box-sizing: border-box;
       }
 
+      [hidden] {
+        display: none !important;
+      }
+
+      html {
+        background: var(--chrome);
+        scroll-padding-top: 80px;
+      }
+
       body {
-        background: radial-gradient(ellipse at 50% 30%, #121612 0%, var(--bg) 70%), var(--bg);
+        background: var(--chrome);
         color: var(--text);
+        font: 400 17px / 1.55 var(--font-sans);
         margin: 0;
-        min-height: 100svh;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
       }
 
-      main {
-        align-items: center;
-        align-items: safe center;
-        display: flex;
-        justify-content: center;
-        min-height: 100svh;
-        padding: clamp(1rem, 4vw, 3rem);
-      }
-
-      .stack {
-        display: grid;
-        gap: 0.75rem;
-        width: min(42rem, 100%);
-      }
-
-      .player {
-        background: linear-gradient(160deg, var(--face-hi), var(--face) 40%, var(--face-lo));
-        border: 1px solid var(--edge);
-        box-shadow:
-          inset 1px 1px 0 #4a5544,
-          inset -1px -1px 0 #0a0d0a,
-          0 18px 40px rgba(0, 0, 0, 0.45);
-        display: grid;
-        gap: 0.55rem;
-        padding: 0.45rem;
-      }
-
-      .titlebar {
-        align-items: center;
-        color: var(--bright);
-        display: flex;
-        font-size: 0.7rem;
-        font-weight: 700;
-        letter-spacing: 0.14em;
-        padding: 0.15rem 0.35rem 0.35rem;
-        text-transform: uppercase;
-      }
-
-      .titlebar span {
-        flex: 1;
-      }
-
-      .titlebar b {
-        color: var(--lcd-dim);
-        font-weight: 500;
-        letter-spacing: 0.08em;
-      }
-
-      .lcd {
-        background: var(--lcd);
-        border: 1px solid #000;
-        box-shadow:
-          inset 0 0 0 1px #24301c,
-          inset 0 2px 8px rgba(0, 0, 0, 0.65);
-        color: var(--lcd-text);
-        display: grid;
-        padding: 0.55rem 0.7rem;
-      }
-
-      .lcd-track {
-        min-width: 0;
-        overflow: hidden;
-        white-space: nowrap;
-      }
-
-      .lcd-track p {
-        animation: marquee 34s linear infinite;
-        display: inline-block;
-        font-size: 0.78rem;
-        letter-spacing: 0.04em;
-        margin: 0;
-        text-transform: uppercase;
-      }
-
-      .stage {
-        align-items: center;
-        aspect-ratio: 16 / 9;
-        background: #050705;
-        border: 1px solid #000;
-        box-shadow:
-          inset 0 0 0 1px #1c2618,
-          inset 0 0 24px rgba(0, 0, 0, 0.7);
-        display: flex;
-        justify-content: center;
-        overflow: hidden;
-      }
-
-      .ascii-stack {
-        display: grid;
-      }
-
+      h1,
+      h2,
+      h3,
+      p,
+      ul,
+      ol,
+      dl,
+      dd,
+      figure,
       pre {
-        flex: 0 0 auto;
-        font:
-          600 clamp(3px, 0.72vw, 9px) / 0.88 ui-monospace,
-          SFMono-Regular,
-          Menlo,
-          Monaco,
-          Consolas,
-          monospace;
-        grid-area: 1 / 1;
         margin: 0;
-        user-select: none;
       }
 
-      .ascii-base {
-        color: #65a30d;
+      ul,
+      ol {
+        list-style: none;
+        padding: 0;
       }
 
-      .ascii-highlight {
-        color: #a3e635;
+      a {
+        color: inherit;
+        text-decoration: none;
       }
 
-      .deck {
-        align-items: stretch;
-        display: grid;
-        gap: 0.55rem;
-        grid-template-columns: 1fr auto;
+      img {
+        display: block;
+        height: auto;
+        max-width: 100%;
       }
 
-      .transport {
+      :focus-visible {
+        border-radius: var(--radius-sm);
+        outline: 2px solid var(--ring);
+        outline-offset: 2px;
+      }
+
+      .icon {
+        fill: none;
+        flex: none;
+        height: 20px;
+        stroke: currentColor;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.5;
+        width: 20px;
+      }
+
+      .wrap {
+        margin-inline: auto;
+        max-width: calc(1200px + var(--gutter) * 2);
+        padding-inline: var(--gutter);
+      }
+
+      .sr {
+        clip-path: inset(50%);
+        height: 1px;
+        overflow: hidden;
+        position: absolute;
+        white-space: nowrap;
+        width: 1px;
+      }
+
+      .skip {
+        background: var(--text);
+        border-radius: var(--radius-sm);
+        color: var(--chrome);
+        left: 12px;
+        padding: 8px 12px;
+        position: fixed;
+        top: -60px;
+        z-index: 20;
+      }
+
+      .skip:focus {
+        top: 12px;
+      }
+
+      /* Navigation */
+
+      .nav {
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        background: rgb(5 5 5 / 80%);
+        border-bottom: 1px solid transparent;
+        position: sticky;
+        top: 0;
+        transition: border-color 200ms ease;
+        z-index: 10;
+      }
+
+      .nav.is-scrolled {
+        border-bottom-color: var(--border);
+      }
+
+      .nav .wrap {
+        align-items: center;
+        display: flex;
+        gap: 16px;
+        height: 64px;
+        justify-content: space-between;
+      }
+
+      .brand {
+        align-items: center;
+        display: inline-flex;
+        font-size: 17px;
+        font-weight: 600;
+        gap: 10px;
+        letter-spacing: -0.01em;
+      }
+
+      .brand img {
+        height: 20px;
+        width: auto;
+      }
+
+      .nav ul {
+        display: flex;
+        gap: 4px;
+      }
+
+      .nav ul a {
+        align-items: center;
+        border-radius: var(--radius-sm);
+        color: var(--text-muted);
+        display: inline-flex;
+        font-size: 15px;
+        font-weight: 500;
+        gap: 6px;
+        height: 36px;
+        padding-inline: 10px;
+        transition:
+          color 150ms ease,
+          background-color 150ms ease;
+      }
+
+      .nav ul a span {
+        color: var(--text-subtle);
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* Buttons and links */
+
+      .actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.35rem;
+        gap: 12px;
       }
 
-      .transport a,
-      .transport button,
-      .transport span {
+      .button {
         align-items: center;
-        background: linear-gradient(180deg, #2c3428, #171c16);
-        border: 1px solid #000;
-        box-shadow:
-          inset 1px 1px 0 #46503f,
-          inset -1px -1px 0 #0a0d0a;
-        color: var(--bright);
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-sm);
         display: inline-flex;
-        font-size: 0.72rem;
+        font-size: 15px;
+        font-weight: 500;
+        gap: 8px;
+        height: 40px;
         justify-content: center;
-        letter-spacing: 0.04em;
-        min-height: 2.2rem;
-        min-width: 2.4rem;
-        padding: 0.35rem 0.55rem;
-        text-decoration: none;
-        text-transform: uppercase;
+        padding-inline: 16px;
+        transition:
+          background-color 150ms ease,
+          border-color 150ms ease,
+          transform 100ms ease-out;
       }
 
-      .transport a:hover,
-      .transport a:focus-visible,
-      .transport button:hover,
-      .transport button:focus-visible {
-        background: linear-gradient(180deg, #384232, #1d241b);
-        color: #b5ec5a;
-        outline: 1px solid var(--lcd-text);
+      .button.primary {
+        background: var(--text);
+        border-color: var(--text);
+        color: var(--chrome);
       }
 
-      .transport button {
-        cursor: pointer;
-        font: inherit;
-        font-size: 0.72rem;
+      .button:active {
+        transform: scale(0.97);
       }
 
-      .transport button[aria-expanded="true"] {
-        background: linear-gradient(180deg, #1b3310, #0f1d08);
-        box-shadow:
-          inset 1px 1px 0 #0a0d0a,
-          inset -1px -1px 0 #46503f;
-        color: var(--lcd-text);
+      .link {
+        align-items: center;
+        color: var(--text-muted);
+        display: inline-flex;
+        font-size: 15px;
+        font-weight: 500;
+        gap: 6px;
+        transition: color 150ms ease;
       }
 
-      .player[hidden] {
-        display: none;
+      .link .icon {
+        height: 16px;
+        transition: transform 150ms ease-out;
+        width: 16px;
       }
 
-      .titlebar button {
+      @media (hover: hover) and (pointer: fine) {
+        .nav ul a:hover {
+          background: var(--hover);
+          color: var(--text);
+        }
+
+        .button:hover {
+          background: var(--hover);
+          border-color: rgb(255 255 255 / 22%);
+        }
+
+        .button.primary:hover {
+          background: #ffffff;
+          border-color: #ffffff;
+        }
+
+        .link:hover,
+        .stack a:hover,
+        .footer a:hover {
+          color: var(--text);
+        }
+
+        .link:hover .icon {
+          transform: translateX(2px);
+        }
+
+        .rest a:hover {
+          background: var(--hover);
+        }
+      }
+
+      /* Type */
+
+      h1 {
+        font-size: clamp(44px, 8vw, 88px);
+        font-weight: 600;
+        letter-spacing: -0.035em;
+        line-height: 1.02;
+      }
+
+      h2 {
+        font-size: clamp(28px, 3.4vw, 40px);
+        font-weight: 600;
+        letter-spacing: -0.025em;
+        line-height: 1.15;
+        max-width: 34ch;
+      }
+
+      .quiet {
+        color: var(--text-muted);
+      }
+
+      .lede {
+        color: var(--text-muted);
+        font-size: clamp(18px, 1.6vw, 20px);
+        line-height: 1.5;
+        max-width: 38ch;
+      }
+
+      .meta {
+        color: var(--text-subtle);
+        font-size: 14px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* Hero */
+
+      .hero {
+        display: grid;
+        gap: 24px;
+        justify-items: center;
+        padding-block: 72px 56px;
+        text-align: center;
+      }
+
+      .hero .actions {
+        justify-content: center;
+        margin-top: 8px;
+      }
+
+      .shot {
+        aspect-ratio: 16 / 9;
+        background: var(--surface);
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius);
+        overflow: hidden;
+      }
+
+      .shot img {
+        height: 100%;
+        object-fit: cover;
+        object-position: left top;
+        width: 100%;
+      }
+
+      .shot.cropped {
+        aspect-ratio: 5 / 2;
+      }
+
+      @media (max-width: 767px) {
+        .shot {
+          aspect-ratio: 1;
+        }
+
+        .shot.cropped {
+          aspect-ratio: 4 / 3;
+        }
+      }
+
+      /* Chapters */
+
+      .chapter {
+        padding-top: var(--chapter);
+      }
+
+      .chapter > .wrap {
+        display: grid;
+        gap: 40px;
+      }
+
+      .features {
+        display: grid;
+        gap: 28px 32px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+
+      .features li {
+        display: grid;
+        gap: 4px;
+      }
+
+      .features .icon {
+        color: var(--text);
+        margin-bottom: 8px;
+      }
+
+      .features h3,
+      .rest h3,
+      .stack h3 {
+        font-size: 16px;
+        font-weight: 500;
+        line-height: 1.4;
+      }
+
+      .features p,
+      .rest p {
+        color: var(--text-muted);
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+      /* Numbers */
+
+      .numbers .wrap {
+        align-items: start;
+        display: grid;
+        gap: 40px;
+      }
+
+      .numbers dl {
+        display: grid;
+        gap: 32px 24px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .numbers dl > div {
+        display: flex;
+        flex-direction: column-reverse;
+        gap: 4px;
+      }
+
+      .numbers dd {
+        font-size: clamp(32px, 3.4vw, 40px);
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+        letter-spacing: -0.025em;
+        line-height: 1.1;
+      }
+
+      .numbers dt {
+        color: var(--text-muted);
+        font-size: 15px;
+      }
+
+      /* The rest */
+
+      .rest ul {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        margin-inline: -16px;
+      }
+
+      .rest a {
+        border-radius: var(--radius);
+        display: grid;
+        gap: 4px;
+        height: 100%;
+        padding: 16px;
+        transition: background-color 150ms ease;
+      }
+
+      .rest .icon {
+        margin-bottom: 8px;
+      }
+
+      /* Stack */
+
+      .stack .groups {
+        display: grid;
+        gap: 32px 24px;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      }
+
+      .stack h3 {
+        color: var(--text-subtle);
+        font-size: 14px;
+        margin-bottom: 12px;
+      }
+
+      .stack ul {
+        display: grid;
+        gap: 8px;
+      }
+
+      .stack ul a {
+        color: var(--text-muted);
+        transition: color 150ms ease;
+      }
+
+      /* Install */
+
+      .install .wrap {
+        align-items: start;
+        display: grid;
+        gap: 40px;
+      }
+
+      .install .copy {
+        display: grid;
+        gap: 20px;
+      }
+
+      .install .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 24px;
+      }
+
+      .code {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .code header {
+        align-items: center;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        height: 48px;
+        justify-content: space-between;
+        padding-inline: 16px 8px;
+      }
+
+      .code header span {
+        color: var(--text-subtle);
+        font: 400 13px / 1 var(--font-mono);
+      }
+
+      .code button {
+        align-items: center;
         background: none;
         border: 0;
-        color: var(--lcd-dim);
+        border-radius: var(--radius-sm);
+        color: var(--text-muted);
         cursor: pointer;
-        font: inherit;
-        font-size: 0.7rem;
-        letter-spacing: 0.08em;
-        padding: 0 0.15rem;
+        display: inline-flex;
+        font: 500 14px / 1 var(--font-sans);
+        gap: 6px;
+        height: 32px;
+        padding-inline: 10px;
+        transition:
+          color 150ms ease,
+          background-color 150ms ease;
       }
 
-      .titlebar button:hover,
-      .titlebar button:focus-visible {
-        color: var(--bright);
+      .code button .icon {
+        height: 16px;
+        width: 16px;
       }
 
-      .transport .play {
-        color: var(--lcd-text);
-        min-width: 4.5rem;
+      @media (hover: hover) and (pointer: fine) {
+        .code button:hover {
+          background: var(--hover);
+          color: var(--text);
+        }
       }
 
-      .transport span {
-        color: var(--lcd-dim);
-        cursor: default;
-      }
-
-      .eq {
-        align-items: end;
-        background: var(--lcd);
-        border: 1px solid #000;
-        box-shadow: inset 0 0 0 1px #24301c;
-        display: flex;
-        gap: 0.18rem;
-        height: 2.2rem;
-        padding: 0.3rem 0.4rem;
-      }
-
-      .eq i {
-        animation: eq 1.1s ease-in-out infinite;
-        background: var(--lcd-text);
-        display: block;
-        flex: 1;
-        height: 100%;
-        min-width: 0.25rem;
-        opacity: 0.85;
-        transform-origin: bottom;
-      }
-
-      .eq i:nth-child(2) {
-        animation-delay: -0.15s;
-      }
-      .eq i:nth-child(3) {
-        animation-delay: -0.4s;
-      }
-      .eq i:nth-child(4) {
-        animation-delay: -0.05s;
-      }
-      .eq i:nth-child(5) {
-        animation-delay: -0.55s;
-      }
-      .eq i:nth-child(6) {
-        animation-delay: -0.25s;
-      }
-      .eq i:nth-child(7) {
-        animation-delay: -0.7s;
-      }
-      .eq i:nth-child(8) {
-        animation-delay: -0.35s;
-      }
-
-      .status {
-        border-top: 1px solid #2a3228;
+      .code pre {
         color: var(--text);
-        display: flex;
-        font-size: 0.65rem;
-        gap: 0.75rem;
-        justify-content: space-between;
-        letter-spacing: 0.05em;
-        padding: 0.35rem 0.4rem 0.15rem;
-        text-transform: uppercase;
-      }
-
-      .status strong {
-        color: var(--lcd-text);
-        font-weight: 600;
-      }
-
-      .readout {
-        background: var(--lcd);
-        border: 1px solid #000;
-        box-shadow:
-          inset 0 0 0 1px #24301c,
-          inset 0 2px 8px rgba(0, 0, 0, 0.65);
-        display: grid;
-        gap: 0.5rem 0.7rem;
-        grid-auto-columns: 1fr;
-        grid-auto-flow: column;
-        margin: 0;
-        padding: 0.6rem 0.7rem;
-      }
-
-      .readout div {
-        display: grid;
-        gap: 0.1rem;
-        min-width: 0;
-      }
-
-      .readout dt {
-        color: var(--lcd-dim);
-        font-size: 0.58rem;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-      }
-
-      .readout dd {
-        color: var(--lcd-text);
-        font-size: 0.92rem;
-        font-variant-numeric: tabular-nums;
-        letter-spacing: 0.03em;
-        margin: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .tracks {
-        background: var(--lcd);
-        border: 1px solid #000;
-        box-shadow:
-          inset 0 0 0 1px #24301c,
-          inset 0 2px 8px rgba(0, 0, 0, 0.65);
-        display: grid;
-        list-style: none;
-        margin: 0;
-        padding: 0.4rem 0.35rem;
-      }
-
-      .tracks a {
-        align-items: baseline;
-        color: var(--lcd-text);
-        display: grid;
-        gap: 0 0.6rem;
-        grid-template-columns: 1.6rem 1fr auto;
-        padding: 0.3rem 0.35rem;
-        text-decoration: none;
-      }
-
-      .tracks a:hover,
-      .tracks a:focus-visible {
-        background: #16330d;
-        outline: none;
-      }
-
-      .tracks b {
-        color: var(--lcd-dim);
-        font-size: 0.7rem;
-        font-variant-numeric: tabular-nums;
-        font-weight: 500;
-      }
-
-      .tracks strong {
-        font-size: 0.78rem;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-      }
-
-      .tracks em {
-        color: #6f9b3a;
-        font-size: 0.68rem;
-        font-style: normal;
-        grid-column: 2 / -1;
-        letter-spacing: 0.02em;
-      }
-
-      .tracks i {
-        color: var(--lcd-dim);
-        font-size: 0.66rem;
-        font-style: normal;
-        font-variant-numeric: tabular-nums;
-      }
-
-      .console {
-        background: var(--lcd);
-        border: 1px solid #000;
-        box-shadow:
-          inset 0 0 0 1px #24301c,
-          inset 0 2px 8px rgba(0, 0, 0, 0.65);
-        color: var(--lcd-text);
-        margin: 0;
+        font: 400 14px / 1.65 var(--font-mono);
         overflow-x: auto;
-        padding: 0.6rem 0.7rem;
+        padding: 16px;
       }
 
-      .console code {
-        font: inherit;
-        font-size: 0.7rem;
-        line-height: 1.5;
-        white-space: pre;
+      .code .c {
+        color: var(--text-subtle);
       }
 
-      button.copy {
-        background: linear-gradient(180deg, #2c3428, #171c16);
-        border: 1px solid #000;
-        box-shadow:
-          inset 1px 1px 0 #46503f,
-          inset -1px -1px 0 #0a0d0a;
-        color: var(--bright);
-        cursor: pointer;
-        font: inherit;
-        font-size: 0.72rem;
-        letter-spacing: 0.04em;
-        min-height: 2.2rem;
-        padding: 0.35rem 0.55rem;
-        text-transform: uppercase;
+      .body {
+        color: var(--text-muted);
+        max-width: 44ch;
       }
 
-      button.copy:hover,
-      button.copy:focus-visible {
-        background: linear-gradient(180deg, #384232, #1d241b);
-        color: #b5ec5a;
-        outline: 1px solid var(--lcd-text);
+      .body code {
+        color: var(--text);
+        font: 400 0.9em var(--font-mono);
       }
 
-      @keyframes marquee {
-        from {
-          transform: translateX(0);
-        }
-        to {
-          transform: translateX(-50%);
+      @media (max-width: 767px) {
+        .code pre {
+          font-size: 13px;
         }
       }
 
-      @keyframes eq {
-        0%,
-        100% {
-          transform: scaleY(0.25);
+      /* Closing */
+
+      .closing {
+        padding-block: calc(var(--chapter) * 1.5) var(--chapter);
+      }
+
+      .closing .wrap {
+        align-items: center;
+        display: grid;
+        gap: 24px;
+        justify-items: center;
+        text-align: center;
+      }
+
+      .closing img {
+        height: 48px;
+        margin-bottom: 8px;
+        width: auto;
+      }
+
+      .closing h2 {
+        font-size: clamp(36px, 5.4vw, 64px);
+        letter-spacing: -0.035em;
+        line-height: 1.05;
+        max-width: 16ch;
+      }
+
+      .closing .lede {
+        max-width: 42ch;
+      }
+
+      .closing .actions {
+        justify-content: center;
+        margin-top: 8px;
+      }
+
+      /* Footer */
+
+      .footer {
+        border-top: 1px solid var(--border);
+        color: var(--text-muted);
+        font-size: 15px;
+        padding-block: 48px;
+      }
+
+      .footer .wrap {
+        display: grid;
+        gap: 40px 24px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .footer .about {
+        display: grid;
+        gap: 12px;
+        grid-column: 1 / -1;
+        align-content: start;
+      }
+
+      .footer .brand {
+        color: var(--text);
+      }
+
+      .footer h2 {
+        color: var(--text);
+        font-size: 15px;
+        font-weight: 500;
+        letter-spacing: 0;
+        margin-bottom: 12px;
+      }
+
+      .footer ul {
+        display: grid;
+        gap: 8px;
+      }
+
+      .footer a {
+        transition: color 150ms ease;
+      }
+
+      .footer .meta {
+        grid-column: 1 / -1;
+      }
+
+      @media (min-width: 768px) {
+        :root {
+          --gutter: 48px;
+          --chapter: 128px;
         }
-        50% {
-          transform: scaleY(1);
+
+        .hero {
+          gap: 28px;
+          padding-block: 112px 72px;
+        }
+
+        .numbers .wrap {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .numbers dl {
+          gap: 40px 32px;
+        }
+
+        .install .wrap {
+          grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+          gap: 64px;
+        }
+
+        .footer .wrap {
+          grid-template-columns: 2fr repeat(3, minmax(0, 1fr));
+        }
+
+        .footer .about {
+          grid-column: auto;
         }
       }
 
-      @media (max-width: 520px) {
-        main {
-          align-items: flex-start;
-        }
-
-        .deck {
-          grid-template-columns: 1fr;
-        }
-
-        .eq {
-          height: 1.8rem;
-        }
-
-        .tracks i {
+      @media (max-width: 440px) {
+        .nav .hide-narrow {
           display: none;
-        }
-
-        .readout {
-          grid-auto-flow: row;
-          grid-template-columns: repeat(3, 1fr);
         }
       }
 
       @media (prefers-reduced-motion: reduce) {
-        .lcd-track p,
-        .eq i {
-          animation: none;
+        *,
+        *::before,
+        *::after {
+          transition-duration: 0ms !important;
         }
 
-        .eq i {
-          transform: scaleY(0.55);
+        .button:active {
+          transform: none;
         }
       }
     </style>
   </head>
   <body>
-    <main>
-      <div class="stack">
-        <section class="player" aria-label="Aurral player">
-          <header class="titlebar">
-            <span>Aurral</span>
-            <b aria-hidden="true">□□ ×</b>
-          </header>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></symbol>
+      <symbol id="i-history" viewBox="0 0 24 24">
+        <path d="M2 10v3" /><path d="M6 6v11" /><path d="M10 3v18" /><path d="M14 8v7" /><path d="M18 5v13" /><path d="M22 10v3" />
+      </symbol>
+      <symbol id="i-tune" viewBox="0 0 24 24">
+        <path d="M21 4h-7" /><path d="M10 4H3" /><path d="M21 12h-9" /><path d="M8 12H3" /><path d="M21 20h-5" /><path d="M12 20H3" />
+        <path d="M14 2v4" /><path d="M8 10v4" /><path d="M16 18v4" />
+      </symbol>
+      <symbol id="i-trending" viewBox="0 0 24 24"><path d="M22 7 13.5 15.5 8.5 10.5 2 17" /><path d="M16 7h6v6" /></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24">
+        <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" />
+        <circle cx="12" cy="10" r="3" />
+      </symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24">
+        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" />
+        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" />
+      </symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24">
+        <path d="M8 2v4" /><path d="M16 2v4" /><rect width="18" height="18" x="3" y="4" rx="2" /><path d="M3 10h18" />
+      </symbol>
+      <symbol id="i-import" viewBox="0 0 24 24">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /><path d="M12 15V3" />
+      </symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3v18l14-9z" /></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></symbol>
+      <symbol id="i-library" viewBox="0 0 24 24"><path d="m16 6 4 14" /><path d="M12 6v14" /><path d="M8 8v12" /><path d="M4 4v16" /></symbol>
+      <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24">
+        <rect width="14" height="14" x="8" y="8" rx="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></symbol>
+    </svg>
 
-          <div class="lcd" aria-hidden="true">
-            <div class="lcd-track">
-              <p>
-                Aurral — the Lidarr companion for self-hosted music discovery. Recommendations,
-                rotating flows, and playlist downloads, built on Lidarr instead of replacing it. ·
-                Aurral — the Lidarr companion for self-hosted music discovery. Recommendations,
-                rotating flows, and playlist downloads, built on Lidarr instead of replacing it. ·
-              </p>
-            </div>
-          </div>
+    <a class="skip" href="#main">Skip to content</a>
 
-          <div class="stage" role="img" aria-label="A rotating Aurral logo rendered as ASCII art">
-            <div class="ascii-stack" aria-hidden="true">
-              <pre class="ascii-base" data-ascii-base></pre>
-              <pre class="ascii-highlight" data-ascii-highlight></pre>
-            </div>
-            <noscript>Aurral</noscript>
-          </div>
-
-          <div class="deck">
-            <nav class="transport" aria-label="Aurral links">
-              <span aria-hidden="true">◀◀</span>
-              <a class="play" href="https://docs.aurral.org/">▶ Docs</a>
-              <span aria-hidden="true">■</span>
-              <span aria-hidden="true">▶▶</span>
-              <a href="https://github.com/lklynet/aurral">⏏ GitHub</a>
-              <button
-                type="button"
-                data-toggle="playlist"
-                aria-expanded="false"
-                aria-controls="playlist"
-                title="Playlist: what Aurral does"
+    <header class="nav" data-nav>
+      <div class="wrap">
+        <a class="brand" href="/" aria-label="Aurral home">
+          <img src="favicon.svg" alt="" width="27" height="20" />
+          Aurral
+        </a>
+        <nav aria-label="Primary">
+          <ul>
+            <li><a href="https://docs.aurral.org/">Docs</a></li>
+            <li>
+              <a href="https://github.com/lklynet/aurral"
+                >GitHub <span data-stat="stars">1.7K</span><span class="sr"> stars</span></a
               >
-                PL
-              </button>
-              <button
-                type="button"
-                data-toggle="install"
-                aria-expanded="false"
-                aria-controls="install"
-                title="Load: docker compose"
-              >
-                Get
-              </button>
-            </nav>
-            <div class="eq" aria-hidden="true">
-              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-            </div>
-          </div>
+            </li>
+            <li class="hide-narrow"><a href="https://discord.gg/cpPYfgVURJ">Discord</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
 
-          <dl class="readout" aria-label="Project stats">
+    <main id="main">
+      <section class="wrap hero" aria-labelledby="hero-title">
+        <h1 id="hero-title">Music discovery,<br /><span class="quiet">self-hosted.</span></h1>
+        <p class="lede">
+          The best open-source discovery for your library. Works alone or alongside Lidarr.
+        </p>
+        <div class="actions">
+          <a class="button primary" href="https://docs.aurral.org/getting-started/docker/"
+            >Get started</a
+          >
+          <a class="button" href="https://github.com/lklynet/aurral">View on GitHub</a>
+        </div>
+        <p class="meta">Free and MIT licensed · <span data-stat="version">v2.10.0</span></p>
+      </section>
+
+      <div class="wrap">
+        <figure class="shot">
+          <img
+            src="screenshots/discover.webp"
+            width="3840"
+            height="2160"
+            fetchpriority="high"
+            alt="The Aurral Discover page with recently added artists, playlists made for the listener, and upcoming releases"
+          />
+        </figure>
+      </div>
+
+      <section class="chapter numbers" aria-labelledby="numbers-title">
+        <div class="wrap">
+          <h2 id="numbers-title">
+            People keep installing it.
+            <span class="quiet">Live numbers, no marketing math.</span>
+          </h2>
+          <dl>
             <div>
-              <dt>Release</dt>
-              <dd data-stat="version">v2.0.2</dd>
+              <dt>GitHub stars</dt>
+              <dd data-stat="stars">1.7K</dd>
             </div>
             <div>
-              <dt>Shipped</dt>
-              <dd data-stat="released">recently</dd>
+              <dt>Docker pulls</dt>
+              <dd data-stat="pulls">1.7M</dd>
             </div>
             <div>
-              <dt>Stars</dt>
-              <dd data-stat="stars">1.3K</dd>
+              <dt>Latest release, <span data-stat="released">recently</span></dt>
+              <dd data-stat="version">v2.10.0</dd>
             </div>
             <div>
-              <dt>Pulls</dt>
-              <dd data-stat="pulls">840K</dd>
-            </div>
-            <div>
-              <dt>Forks</dt>
-              <dd data-stat="forks">58</dd>
-            </div>
-            <div>
-              <dt>License</dt>
-              <dd>MIT</dd>
+              <dt>Integrations</dt>
+              <dd data-integration-count>17</dd>
             </div>
           </dl>
+        </div>
+      </section>
 
-          <p class="status">
-            <span>last commit <span data-stat="pushed">today</span></span>
-            <strong>self-hosted</strong>
-          </p>
-        </section>
-
-        <section class="player" id="playlist" aria-label="What Aurral does" hidden>
-          <header class="titlebar">
-            <span>Playlist — what it does</span>
-            <b aria-hidden="true">8 tracks</b>
-            <button type="button" data-close aria-label="Close playlist">×</button>
-          </header>
-
-          <ol class="tracks">
+      <section class="chapter" aria-labelledby="discover-title">
+        <div class="wrap">
+          <h2 id="discover-title">
+            Recommendations with taste.
+            <span class="quiet"
+              >Built from your library and listening history, not someone's ad budget.</span
+            >
+          </h2>
+          <ul class="features">
             <li>
-              <a href="https://docs.aurral.org/using/discover/">
-                <b>01</b>
-                <strong>Discover</strong>
-                <i>using/discover</i>
-                <em>Personalized recommendations, trends, tags, new releases, nearby shows.</em>
-              </a>
+              <svg class="icon" aria-hidden="true"><use href="#i-history" /></svg>
+              <h3>Learns from you</h3>
+              <p>Your library plus Last.fm, ListenBrainz, or Koito history.</p>
             </li>
             <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-tune" /></svg>
+              <h3>Goes as deep as you want</h3>
+              <p>Safer, balanced, or deeper. More like this, less like that.</p>
+            </li>
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-trending" /></svg>
+              <h3>Knows what's moving</h3>
+              <p>Global trends, tags, and recent releases in one place.</p>
+            </li>
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-pin" /></svg>
+              <h3>Finds the show</h3>
+              <p>Nearby concerts for the artists you already love.</p>
+            </li>
+          </ul>
+          <figure class="shot">
+            <img
+              src="screenshots/playback.webp"
+              width="3840"
+              height="2160"
+              loading="lazy"
+              alt="An Aurral artist page for Daft Punk with popular tracks, an Aurral pick, and the player"
+            />
+          </figure>
+          <a class="link" href="https://docs.aurral.org/using/discover/"
+            >How Discover works <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg
+          ></a>
+        </div>
+      </section>
+
+      <section class="chapter" aria-labelledby="playlists-title">
+        <div class="wrap">
+          <h2 id="playlists-title">
+            Playlists that refill themselves.
+            <span class="quiet">Flows mix discovery and your library on a schedule, then fetch the tracks.</span>
+          </h2>
+          <ul class="features">
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg>
+              <h3>Rotating flows</h3>
+              <p>Pick the mix, the size, and the days. Aurral does the rest.</p>
+            </li>
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-calendar" /></svg>
+              <h3>Release Radar</h3>
+              <p>Adopt discover playlists and keep them fresh every week.</p>
+            </li>
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-import" /></svg>
+              <h3>Bring your playlists</h3>
+              <p>Import from Spotify, YouTube Music, Last.fm, or ListenBrainz.</p>
+            </li>
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-play" /></svg>
+              <h3>Play them anywhere</h3>
+              <p>In the browser, or synced to Navidrome, Plex, and Jellyfin.</p>
+            </li>
+          </ul>
+          <figure class="shot cropped">
+            <img
+              src="screenshots/playlists.webp"
+              width="3840"
+              height="2160"
+              loading="lazy"
+              alt="The Aurral playlists page showing a playlist called Late Night Drive and its tracklist"
+            />
+          </figure>
+          <a class="link" href="https://docs.aurral.org/using/playlists/"
+            >Playlists and flows <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg
+          ></a>
+        </div>
+      </section>
+
+      <section class="chapter rest" aria-labelledby="rest-title">
+        <div class="wrap">
+          <h2 id="rest-title">
+            The rest, done properly.
+            <span class="quiet">Everything a music server should have had already.</span>
+          </h2>
+          <ul>
+            <li>
               <a href="https://docs.aurral.org/using/overview/">
-                <b>02</b>
-                <strong>Search</strong>
-                <i>using/overview</i>
-                <em>Find artists and albums, preview tracks, add to Lidarr with your defaults.</em>
+                <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
+                <h3>Search</h3>
+                <p>Find any artist or album, preview it, and add it with your defaults.</p>
               </a>
             </li>
             <li>
               <a href="https://docs.aurral.org/using/library/">
-                <b>03</b>
-                <strong>Library</strong>
-                <i>using/library</i>
-                <em>Browse and search everything Lidarr already tracks.</em>
-              </a>
-            </li>
-            <li>
-              <a href="https://docs.aurral.org/using/playlists/">
-                <b>04</b>
-                <strong>Playlists</strong>
-                <i>using/playlists</i>
-                <em>Scheduled flows, Release Radar, Spotify imports, fixed tracklists.</em>
+                <svg class="icon" aria-hidden="true"><use href="#i-library" /></svg>
+                <h3>Library</h3>
+                <p>One index of everything Aurral and Lidarr manage.</p>
               </a>
             </li>
             <li>
               <a href="https://docs.aurral.org/using/activity/">
-                <b>05</b>
-                <strong>Activity</strong>
-                <i>using/activity</i>
-                <em>Queue, review, and history for every request, download, and job.</em>
-              </a>
-            </li>
-            <li>
-              <a href="https://docs.aurral.org/integrations/lidarr/">
-                <b>06</b>
-                <strong>Integrations</strong>
-                <i>integrations</i>
-                <em>Lidarr, Last.fm, ListenBrainz, Koito, yt-dlp, slskd, SABnzbd/NZBGet, more.</em>
-              </a>
-            </li>
-            <li>
-              <a href="https://docs.aurral.org/integrations/navidrome/">
-                <b>07</b>
-                <strong>Playback</strong>
-                <i>integrations/navidrome</i>
-                <em>Stream through Navidrome M3U playlists or Plex/Plexamp API sync.</em>
+                <svg class="icon" aria-hidden="true"><use href="#i-activity" /></svg>
+                <h3>Activity</h3>
+                <p>Every request and download, with cancel and retry.</p>
               </a>
             </li>
             <li>
               <a href="https://docs.aurral.org/admin/users/">
-                <b>08</b>
-                <strong>Multi-user</strong>
-                <i>admin/users</i>
-                <em>Per-user profiles, permissions, local auth, LAN login, reverse-proxy SSO.</em>
+                <svg class="icon" aria-hidden="true"><use href="#i-users" /></svg>
+                <h3>Multi-user</h3>
+                <p>Profiles, permissions, SSO, and native OIDC.</p>
               </a>
             </li>
-          </ol>
-        </section>
+          </ul>
+        </div>
+      </section>
 
-        <section class="player" id="install" aria-label="Install Aurral" hidden>
-          <header class="titlebar">
-            <span>Load — docker compose</span>
-            <b aria-hidden="true">ghcr.io</b>
-            <button type="button" data-close aria-label="Close docker compose">×</button>
-          </header>
+      <section class="chapter stack" aria-labelledby="stack-title">
+        <div class="wrap">
+          <h2 id="stack-title">
+            Lidarr optional. Everything else, too.
+            <span class="quiet">Connect the services you already run and skip the ones you don't.</span>
+          </h2>
+          <div class="groups">
+            <div>
+              <h3>Library</h3>
+              <ul>
+                <li data-integration><a href="https://docs.aurral.org/integrations/lidarr/">Lidarr</a></li>
+                <li data-integration>
+                  <a href="https://docs.aurral.org/integrations/metadata/">MusicBrainz</a>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h3>Downloads</h3>
+              <ul>
+                <li data-integration><a href="https://docs.aurral.org/integrations/slskd/">slskd</a></li>
+                <li data-integration><a href="https://docs.aurral.org/integrations/ytdlp/">yt-dlp</a></li>
+                <li data-integration><a href="https://docs.aurral.org/integrations/deemix/">deemix</a></li>
+                <li data-integration><a href="https://docs.aurral.org/integrations/usenet/">SABnzbd</a></li>
+                <li data-integration><a href="https://docs.aurral.org/integrations/usenet/">NZBGet</a></li>
+              </ul>
+            </div>
+            <div>
+              <h3>Playback</h3>
+              <ul>
+                <li data-integration>
+                  <a href="https://docs.aurral.org/integrations/navidrome/">Navidrome</a>
+                </li>
+                <li data-integration><a href="https://docs.aurral.org/integrations/plex/">Plex</a></li>
+                <li data-integration>
+                  <a href="https://docs.aurral.org/integrations/jellyfin/">Jellyfin</a>
+                </li>
+                <li data-integration>
+                  <a href="https://docs.aurral.org/api/overview/">Subsonic clients</a>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h3>Listening</h3>
+              <ul>
+                <li data-integration><a href="https://docs.aurral.org/integrations/lastfm/">Last.fm</a></li>
+                <li data-integration>
+                  <a href="https://docs.aurral.org/integrations/lastfm/">ListenBrainz</a>
+                </li>
+                <li data-integration><a href="https://docs.aurral.org/integrations/koito/">Koito</a></li>
+              </ul>
+            </div>
+            <div>
+              <h3>Alerts and shows</h3>
+              <ul>
+                <li data-integration>
+                  <a href="https://docs.aurral.org/integrations/ticketmaster/">Ticketmaster</a>
+                </li>
+                <li data-integration>
+                  <a href="https://docs.aurral.org/integrations/notifications/">Gotify</a>
+                </li>
+                <li data-integration>
+                  <a href="https://docs.aurral.org/integrations/notifications/">Webhooks</a>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
 
-          <pre class="console"><code data-compose>services:
+      <section class="chapter install" aria-labelledby="install-title">
+        <div class="wrap">
+          <div class="copy">
+            <h2 id="install-title">
+              Running in a minute.
+              <span class="quiet">One container, one port.</span>
+            </h2>
+            <p class="body">
+              Mount the same media path that Lidarr uses, run <code>docker compose up -d</code>,
+              and open port 3001. Lidarr can come later, or never.
+            </p>
+            <div class="links">
+              <a class="link" href="https://docs.aurral.org/getting-started/docker/"
+                >Setup guide <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg
+              ></a>
+              <a class="link" href="https://docs.aurral.org/getting-started/storage/"
+                >Filesystem and mounts <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg
+              ></a>
+            </div>
+          </div>
+          <div class="code">
+            <header>
+              <span>docker-compose.yml</span>
+              <button type="button" data-copy hidden>
+                <svg class="icon" aria-hidden="true"><use href="#i-copy" /></svg>
+                <span>Copy</span>
+              </button>
+            </header>
+            <pre><code data-compose>services:
   aurral:
     image: ghcr.io/lklynet/aurral:latest
     restart: unless-stopped
@@ -686,83 +1071,101 @@
       - PUID=1000
       - PGID=1000
     volumes:
-      - /data:/data
+      - ${MEDIA_ROOT:-/srv/media}:/data
       - ./config:/config</code></pre>
-
-          <div class="deck">
-            <nav class="transport" aria-label="More Aurral links">
-              <a href="https://docs.aurral.org/getting-started/docker/">▶ Setup guide</a>
-              <a href="https://discord.gg/cpPYfgVURJ">◆ Discord</a>
-              <a href="https://github.com/sponsors/lklynet/">♥ Sponsor</a>
-            </nav>
-            <button class="copy" type="button" data-copy>⧉ Copy</button>
           </div>
+        </div>
+      </section>
 
-          <p class="status">
-            <span>mount the same media path as Lidarr</span>
-            <strong>pin <span data-stat="version">v2.0.2</span></strong>
+      <section class="closing" aria-labelledby="closing-title">
+        <div class="wrap">
+          <img src="favicon.svg" alt="" width="65" height="48" />
+          <h2 id="closing-title">Built in public. Better every week.</h2>
+          <p class="lede">
+            Free, MIT licensed, and shaped by the people who run it. Sponsors keep it that way.
           </p>
-        </section>
-      </div>
+          <div class="actions">
+            <a class="button primary" href="https://docs.aurral.org/getting-started/docker/"
+              >Get started</a
+            >
+            <a class="button" href="https://github.com/sponsors/lklynet/">Sponsor</a>
+          </div>
+        </div>
+      </section>
     </main>
 
+    <footer class="footer">
+      <div class="wrap">
+        <div class="about">
+          <a class="brand" href="/">
+            <img src="favicon.svg" alt="" width="27" height="20" />
+            Aurral
+          </a>
+          <p>Self-hosted music discovery.</p>
+        </div>
+        <nav aria-labelledby="footer-docs">
+          <h2 id="footer-docs">Docs</h2>
+          <ul>
+            <li><a href="https://docs.aurral.org/">Overview</a></li>
+            <li><a href="https://docs.aurral.org/getting-started/docker/">Get started</a></li>
+            <li><a href="https://docs.aurral.org/integrations/lidarr/">Integrations</a></li>
+            <li><a href="https://docs.aurral.org/api/overview/">API</a></li>
+            <li>
+              <a href="https://docs.aurral.org/tools/spotify-csv-converter/">Spotify CSV converter</a>
+            </li>
+          </ul>
+        </nav>
+        <nav aria-labelledby="footer-project">
+          <h2 id="footer-project">Project</h2>
+          <ul>
+            <li><a href="https://github.com/lklynet/aurral">GitHub</a></li>
+            <li><a href="https://github.com/lklynet/aurral/releases">Releases</a></li>
+            <li><a href="https://github.com/lklynet/aurral/issues">Issues</a></li>
+            <li><a href="https://github.com/sponsors/lklynet/">Sponsor</a></li>
+          </ul>
+        </nav>
+        <nav aria-labelledby="footer-community">
+          <h2 id="footer-community">Community</h2>
+          <ul>
+            <li><a href="https://discord.gg/cpPYfgVURJ">Discord</a></li>
+          </ul>
+        </nav>
+        <p class="meta">MIT licensed. Made for people who still listen to whole albums.</p>
+      </div>
+    </footer>
+
     <script type="module">
-      const base = document.querySelector("[data-ascii-base]");
-      const highlight = document.querySelector("[data-ascii-highlight]");
+      const nav = document.querySelector("[data-nav]");
+      const onScroll = () => nav.classList.toggle("is-scrolled", scrollY > 8);
+      addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
 
-      fetch("3dsvg-ascii.json")
-        .then((response) => {
-          if (!response.ok) throw new Error(`Animation failed to load: ${response.status}`);
-          return response.json();
-        })
-        .then(({ fps, columns, frames, highlights }) => {
-          base.style.width = `${columns}ch`;
-          highlight.style.width = `${columns}ch`;
-          base.textContent = frames[0];
-          highlight.textContent = highlights[0];
-          if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      document.querySelector("[data-integration-count]").textContent = String(
+        document.querySelectorAll("[data-integration]").length,
+      );
 
-          let previous = -1;
-          const animate = (time) => {
-            const frame = Math.floor((time * fps) / 1000) % frames.length;
-            if (frame !== previous) {
-              base.textContent = frames[frame];
-              highlight.textContent = highlights[frame];
-              previous = frame;
-            }
-            requestAnimationFrame(animate);
-          };
-          requestAnimationFrame(animate);
-        })
-        .catch(() => {});
-    </script>
-
-    <script type="module">
       const compact = new Intl.NumberFormat("en", {
         notation: "compact",
         maximumFractionDigits: 1,
       });
       const ago = (iso) => {
         const hours = (Date.now() - Date.parse(iso)) / 3600000;
+        if (!Number.isFinite(hours)) return null;
         if (hours < 1) return "just now";
         if (hours < 24) return `${Math.round(hours)}h ago`;
         return `${Math.round(hours / 24)}d ago`;
       };
-
       const set = (name, value) => {
+        if (value == null || value === "") return;
         for (const node of document.querySelectorAll(`[data-stat="${name}"]`)) {
           node.textContent = value;
         }
       };
-
+      const count = (value) => (Number.isFinite(value) ? compact.format(value) : null);
       const json = (url) => fetch(url).then((r) => (r.ok ? r.json() : Promise.reject(r.status)));
 
       json("https://api.github.com/repos/lklynet/aurral")
-        .then((repo) => {
-          set("stars", compact.format(repo.stargazers_count));
-          set("forks", compact.format(repo.forks_count));
-          set("pushed", ago(repo.pushed_at));
-        })
+        .then((repo) => set("stars", count(repo.stargazers_count)))
         .catch(() => {});
 
       json("https://api.github.com/repos/lklynet/aurral/releases/latest")
@@ -773,31 +1176,29 @@
         .catch(() => {});
 
       json("https://ghcr-badge.elias.eu.org/api/lklynet/aurral/aurral")
-        .then(({ downloadCountRaw }) => set("pulls", compact.format(downloadCountRaw)))
+        .then(({ downloadCountRaw }) => set("pulls", count(Number(downloadCountRaw))))
         .catch(() => {});
 
-      for (const button of document.querySelectorAll("[data-toggle]")) {
-        const panel = document.getElementById(button.dataset.toggle);
-        const show = (open) => {
-          panel.hidden = !open;
-          button.setAttribute("aria-expanded", String(open));
-        };
-        button.addEventListener("click", () => show(panel.hidden));
-        panel.querySelector("[data-close]").addEventListener("click", () => {
-          show(false);
-          button.focus();
-        });
-      }
-
       const copy = document.querySelector("[data-copy]");
+      const label = copy.querySelector("span");
+      const glyph = copy.querySelector("use");
+      let reset;
+      copy.hidden = !navigator.clipboard;
       copy.addEventListener("click", () => {
+        clearTimeout(reset);
         navigator.clipboard
           .writeText(document.querySelector("[data-compose]").textContent)
           .then(() => {
-            copy.textContent = "✓ Copied";
-            setTimeout(() => (copy.textContent = "⧉ Copy"), 2000);
+            label.textContent = "Copied";
+            glyph.setAttribute("href", "#i-check");
           })
-          .catch(() => (copy.textContent = "⚠ Select manually"));
+          .catch(() => (label.textContent = "Select and copy manually"))
+          .finally(() => {
+            reset = setTimeout(() => {
+              label.textContent = "Copy";
+              glyph.setAttribute("href", "#i-copy");
+            }, 2000);
+          });
       });
     </script>
   </body>

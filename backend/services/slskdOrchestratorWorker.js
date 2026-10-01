@@ -5,16 +5,31 @@ import {
   processPipelinePayload,
   enqueuePendingJobsWithoutBatch,
   failPipelineJob,
+  ALBUM_GRAB_ENDED_REASON,
 } from "./slskdOrchestrator.js";
+import { releaseAlbumGrabJobs } from "./albumGrab.js";
+import { isPipelinePayloadActive } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
 import { isAnyDownloadSourceConfigured } from "./downloadSourceService.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
+import { recordAlbumGrabQueued, recordAlbumGrabPhase } from "./albumGrabActivity.js";
+import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
+import { withDownloadPayloadMutation } from "./weeklyFlow/weeklyFlowMutationGuards.js";
 
-export async function processOrchestratorJob(payload, dependencies = {}) {
+async function processLockedOrchestratorJob(payload, dependencies = {}) {
   const processPayload = dependencies.processPipelinePayload || processPipelinePayload;
   const continuePayload = dependencies.continuePipeline || continuePipeline;
   const failPayload = dependencies.failPipelineJob || failPipelineJob;
   try {
+    if (payload?.albumGrab === true && isPipelinePayloadActive(payload)) {
+      recordAlbumGrabQueued(payload, downloadTracker.getAll());
+      recordAlbumGrabPhase(payload);
+    }
     const nextPayload = await processPayload(payload);
+    if (nextPayload?.albumGrab === true) recordAlbumGrabPhase(nextPayload);
+    if (payload?.albumGrab === true
+      && !(nextPayload?.albumGrab === true && isPipelinePayloadActive(nextPayload))) {
+      releaseAlbumGrabJobs(payload, ALBUM_GRAB_ENDED_REASON);
+    }
     await continuePayload(nextPayload);
   } catch (error) {
     if (payload?.manualSelection !== true) throw error;
@@ -26,6 +41,10 @@ export async function processOrchestratorJob(payload, dependencies = {}) {
     });
     await failPayload(payload, message);
   }
+}
+
+export function processOrchestratorJob(payload, dependencies = {}) {
+  return withDownloadPayloadMutation(payload, (current) => processLockedOrchestratorJob(current, dependencies));
 }
 
 const {
@@ -54,7 +73,7 @@ const {
       message,
       stack: error?.stack || null,
     });
-    return failPipelineJob(job.payload, message);
+    return withDownloadPayloadMutation(job.payload, (payload) => failPipelineJob(payload, message));
   },
 });
 

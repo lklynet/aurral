@@ -9,7 +9,6 @@ import {
   toPipelineCandidate,
   usableEvaluationEntries,
   validateDownloadedTrackFile,
-  MATCHER_UNAVAILABLE_MESSAGE,
 } from "./trackMatching/index.js";
 import { buildYtdlpSearchQueries } from "./weeklyFlow/weeklyFlowYtdlpSearch.js";
 import { resolvePlaylistRoot } from "./playlistPaths.js";
@@ -70,6 +69,11 @@ async function handleYtdlpSearch(payload, helpers) {
     upgradeForJobId: payload.upgradeForJobId || null,
   };
   const queries = buildYtdlpSearchQueries(resolvedTrack);
+  const deniedIds = new Set(
+    (Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [])
+      .filter((entry) => Array.isArray(entry) && entry[0] === "ytdlp")
+      .map((entry) => String(entry[1] || "").trim()),
+  );
   const aggregated = [];
   const seen = new Set();
   let lastError = "";
@@ -77,7 +81,7 @@ async function handleYtdlpSearch(payload, helpers) {
     if (hasEnoughCandidates(aggregated, resolvedTrack)) break;
     try {
       const results = await ytdlpClient.search(query, { limit: 5 });
-      mergeSearchResults(aggregated, seen, results, (entry) =>
+      mergeSearchResults(aggregated, seen, results.filter((entry) => !deniedIds.has(String(entry.id || "").trim())), (entry) =>
         String(entry.id || entry.url || "").trim().toLowerCase(),
       );
     } catch (error) {
@@ -99,17 +103,6 @@ async function handleYtdlpSearch(payload, helpers) {
     results: downloadableResults,
     request: resolvedTrack,
   });
-  if (evaluation.decision === "error") {
-    return helpers.failOrTryNextSource(payload, job, MATCHER_UNAVAILABLE_MESSAGE, {
-      queryCount: queries.length,
-      rawResultCount: aggregated.length,
-    });
-  }
-  const deniedIds = new Set(
-    (Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [])
-      .filter((entry) => Array.isArray(entry) && entry[0] === "ytdlp")
-      .map((entry) => String(entry[1] || "").trim()),
-  );
   const candidates = usableEvaluationEntries(evaluation)
     .filter((entry) => !deniedIds.has(String(entry.candidate?.provider?.id || "").trim()))
     .map(toPipelineCandidate);

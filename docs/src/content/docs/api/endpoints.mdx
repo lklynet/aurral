@@ -30,8 +30,17 @@ can change Aurral, Lidarr, files, users, or external services.
 | `GET` | `/api/auth/me` | Current authenticated identity |
 | `GET` | `/api/auth/api-key` | Read or create the instance API key |
 | `POST` | `/api/auth/api-key/rotate` | Replace the instance API key |
+| `POST` | `/api/auth/reauth` | Confirm the current password with `{ "currentPassword": "…" }` before a sensitive account change |
 | `GET` | `/api/auth/oidc/login` | Start an OpenID Connect login |
 | `POST` | `/api/auth/oidc/exchange` | Exchange an OpenID Connect code for a session |
+| `GET` | `/api/auth/google/login` | Start a Google sign-in |
+| `POST` | `/api/auth/google/exchange` | Exchange a Google sign-in code for a session |
+| `GET` | `/api/auth/google/link` | Start linking a Google account to the current user |
+| `POST` | `/api/auth/google/link/start` | Start linking a Google account and return the authorization URL |
+| `POST` | `/api/auth/plex/login/pin` | Start a Plex sign-in |
+| `POST` | `/api/auth/plex/login/complete` | Complete a Plex sign-in |
+
+The Google and Plex sign-in routes return `404` when that sign-in method is off. They sign in only users who already linked the account. The Google link routes, the password change, and the identity and Plex link changes require a sign-in in the last 15 minutes. Otherwise, call `/api/auth/reauth` first. Google returns to `/sso/google/callback`, and OIDC returns to `/sso/callback`.
 
 The liveness, bootstrap, and health routes do not require authentication.
 Aurral returns detailed health fields only for a request with a valid
@@ -55,8 +64,8 @@ Subscriptions use the `status`, `downloads`, `discovery`, `library`,
 
 For local password authentication, connect with the session token as
 `/ws?token=SESSION_TOKEN`. Aurral also accepts reverse-proxy identity and LAN
-auto-login for WebSocket connections. Aurral does not currently accept the
-instance API key for WebSocket connections.
+auto-login for WebSocket connections. The instance API key does not work for
+WebSocket connections.
 
 ## Incoming webhooks
 
@@ -74,6 +83,7 @@ instance API key for WebSocket connections.
 | `PUT` | `/api/library/artists/:mbid` | Update artist monitoring |
 | `DELETE` | `/api/library/artists/:mbid` | Delete an artist |
 | `POST` | `/api/library/artists/:mbid/refresh` | Refresh an artist in Lidarr |
+| `PUT` | `/api/library/canonical/artists/:id/mbid` | Set a library artist's MusicBrainz ID with `{ "mbid": "…" }`, or clear it with `{ "mbid": null }` |
 | `GET` | `/api/library/albums?artistId=:id` | List an artist's albums |
 | `GET` | `/api/library/albums/:id` | Get an album |
 | `POST` | `/api/library/albums` | Add an album |
@@ -83,16 +93,18 @@ instance API key for WebSocket connections.
 | `PUT` | `/api/library/albums/aurral/:canonicalId` | Monitor or stop monitoring an Aurral-managed album with `{ "monitored": true \| false }` |
 | `GET` | `/api/library/albums/aurral/:canonicalId/status` | Get the download status of an Aurral-managed album |
 | `POST` | `/api/library/albums/aurral/:canonicalId/cancel` | Cancel queued and active downloads for an Aurral-managed album |
+| `DELETE` | `/api/library/albums/aurral/:canonicalId?deleteFiles=true\|false` | Remove an Aurral-managed album |
 | `GET` | `/api/library/tracks` | List album tracks |
 | `DELETE` | `/api/library/tracks/:id` | Delete a library track file and prune canonical records when no media remains |
-| `POST` | `/api/library/refresh` | Queue a canonical library scan; `mode` is `quick` (default) or `full` to re-read every file |
-| `GET` | `/api/library/refresh/:jobId` | Read canonical library scan status |
-| `GET` | `/api/library/canonical` | Read a bounded canonical page; provide a supported `kind` and `pageSize` (1-100) |
+| `POST` | `/api/library/refresh` | Queue a library scan. `mode` is `quick`, the default, or `full` to read every file again |
+| `GET` | `/api/library/refresh` | Read the ID and status of the scheduled library scan |
+| `GET` | `/api/library/refresh/:jobId` | Read the status of a library scan |
+| `GET` | `/api/library/canonical` | Read one page of Library items. Requires a supported `kind`, and `pageSize` from 1 to 100 |
 | `GET` | `/api/library/favorites` | Read the current user's library favorites |
-| `POST` | `/api/library/favorites` | Add or remove a library favorite; requires a user session |
-| `GET` | `/api/library/playback-queue` | Build a bounded playback queue page; optional `page` and `pageSize` (1-100) |
+| `POST` | `/api/library/favorites` | Add or remove a library favorite. Requires a user session |
+| `GET` | `/api/library/playback-queue` | Build one page of a playback queue. Optional `page`, and `pageSize` from 1 to 100 |
 | `GET` | `/api/library/stream/:songId` | Stream a library song |
-| `GET` | `/api/library/canonical-stream/:trackId` | Stream a canonical library track |
+| `GET` | `/api/library/canonical-stream/:albumId/:trackId` | Stream a canonical library track |
 | `GET` | `/api/library/file-stream/:albumId/:trackId` | Stream an album track file |
 | `GET` | `/api/library/rootfolder` | List Lidarr root-folder paths |
 | `GET` | `/api/library/lookup/:mbid` | Check whether an artist is in the library |
@@ -101,11 +113,12 @@ instance API key for WebSocket connections.
 | `GET` | `/api/library/recent` | List 20 recently added artists |
 | `GET` | `/api/library/recent-releases` | List recent missing releases |
 | `GET` | `/api/library/downloads` | List download jobs |
-| `GET` | `/api/library/downloads/status` | Get statuses for the required `albumIds` query; use `aurral:<canonicalId>` for Aurral-managed albums |
+| `GET` | `/api/library/downloads/status` | Get the statuses for the required `albumIds` query. Use `aurral:<canonicalId>` for Aurral albums |
 | `GET` | `/api/library/downloads/status/all` | Get all download statuses |
 | `POST` | `/api/library/downloads/track` | Download or request a track |
 | `POST` | `/api/library/downloads/album` | Monitor an album and optionally run the configured search |
 | `POST` | `/api/library/downloads/album/search` | Trigger a Lidarr album search |
+| `POST` | `/api/library/downloads/tracks/:trackId/research` | Search for a replacement of an Aurral library track. Send the `albumId`. Returns `409` when a search for the track is already running |
 
 The artist and album add routes accept an optional `managedBy` value of
 `aurral` or `lidarr`. If the value is absent, Aurral uses the user's saved
@@ -128,10 +141,20 @@ response includes `monitoring.releaseGroupIds` for the albums being queued and
 unavailable, the route returns `503` with `metadata_unavailable` and keeps the
 previous mode.
 
+`DELETE /api/library/albums/aurral/:canonicalId` and
+`DELETE /api/library/artists/:mbid` for an Aurral-managed artist cancel
+unfinished downloads first. They return `409` with `download_cancellation_failed`
+when a download client does not confirm the cancellation, and album removal
+returns `409` with `artist_monitored` while Aurral monitors the album's artist.
+
 Cancelling an album stops pending and active downloads and keeps tracks that
 already finished. Requesting the album again retries cancelled and failed
 tracks. Without a configured download source, an Aurral album request saves
 the album and reports `download_source_missing` instead of queueing downloads.
+For Aurral-managed albums, a complete Usenet, Soulseek, or deemix release can
+fill several track jobs with one download attempt. If only some files verify,
+the remaining tracks continue through per-track fallback. Lidarr-managed
+albums keep Lidarr acquisition behavior.
 
 `POST /api/library/downloads/track` requires an authenticated user with the
 `addAlbum` permission.
@@ -155,7 +178,7 @@ the album and reports `download_source_missing` instead of queueing downloads.
 | `GET` | `/api/artists/release-group/:mbid/cover` | Release-group cover metadata; `refresh=true` retries a stale link |
 | `GET` | `/api/artists/release-group/:mbid/tracks` | Release-group tracks |
 
-`GET /api/artists` intentionally returns `404`. Use `/api/search` or an artist
+`GET /api/artists` returns `404`. Use `/api/search` or an artist
 detail route instead.
 
 ## Search and requests
@@ -208,7 +231,7 @@ accept `releaseTypes` and `sort`. `GET /api/requests` accepts `refresh=true`.
 | `POST` | `/api/news/feeds/disable` | Disable a news feed |
 
 `/api/news` accepts an optional `limit` query parameter. News preferences are
-user-scoped; the `blockedPublishers` request field is an array of publisher
+user-scoped. The `blockedPublishers` request field is an array of publisher
 names. The response includes `refresh.checkedArtistCount`,
 `refresh.queuedArtistCount`, `refresh.callsRemaining`, and an optional
 `refresh.warning` so clients can explain partial coverage and provider limits.
@@ -227,12 +250,17 @@ names. The response includes `refresh.checkedArtistCount`,
 The canonical prefix is `/api/playlists`. The legacy `/api/weekly-flow`
 prefix redirects to it with status `308`.
 
+The routes call a static playlist a shared playlist.
+
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/playlists/status` | Flow worker and playlist status |
-| `GET` | `/api/playlists/jobs` | List flow jobs |
+| `GET` | `/api/playlists/jobs` | List Library and accessible flow and playlist jobs |
 | `GET` | `/api/playlists/jobs/:flowId` | List jobs for a flow or static playlist |
-| `POST` | `/api/playlists/research-missing` | Research all missing tracks in accessible operations |
+| `POST` | `/api/playlists/research-missing` | Re-search every missing track in Wanted |
+| `GET` | `/api/playlists/jobs/:jobId/manual-search/sources` | List the download clients available for a manual search |
+| `POST` | `/api/playlists/jobs/:jobId/manual-search` | Search one download client for a track. Send `sourceId`, and `mode` set to `missing` or `replacement` |
+| `POST` | `/api/playlists/jobs/:jobId/manual-search/select` | Queue one result from a manual search |
 | `POST` | `/api/playlists/start/:flowId` | Run a flow |
 | `POST` | `/api/playlists/flows` | Create a flow |
 | `PUT` | `/api/playlists/flows/:flowId` | Update a flow |
@@ -251,14 +279,13 @@ prefix redirects to it with status `308`.
 | `POST` | `/api/playlists/shared-playlists/import` | Import a shared playlist |
 | `PUT` | `/api/playlists/shared-playlists/:playlistId` | Update a shared playlist |
 | `PUT` | `/api/playlists/shared-playlists/:playlistId/record-history` | Enable or disable listening history for a shared playlist |
+| `PUT` | `/api/playlists/shared-playlists/:playlistId/track-availability` | Show or hide track availability for a shared playlist, with `{ "enabled": true \| false }` |
 | `DELETE` | `/api/playlists/shared-playlists/:playlistId` | Delete a shared playlist |
 | `POST` | `/api/playlists/shared-playlists/:playlistId/tracks` | Add a shared-playlist track |
 | `DELETE` | `/api/playlists/shared-playlists/:playlistId/tracks/:jobId` | Delete a shared-playlist track |
 | `POST` | `/api/playlists/shared-playlists/:playlistId/tracks/:jobId/research` | Research a shared-playlist track |
-| `POST` | `/api/playlists/shared-playlists/:playlistId/research-missing` | Research all missing tracks |
 | `POST` | `/api/playlists/quality-upgrades/:playlistId/:jobId` | Search for a track upgrade |
-| `POST` | `/api/playlists/quality-upgrades/:playlistId` | Search for playlist upgrades |
-| `POST` | `/api/playlists/quality-upgrades` | Search for upgrades in accessible operations |
+| `POST` | `/api/playlists/quality-upgrades` | Search for upgrades for every cutoff-unmet track in Wanted |
 | `POST` | `/api/playlists/shared-playlists/:playlistId/sync` | Sync a shared playlist |
 | `PUT` | `/api/playlists/playlists/:playlistId/retry-cycle` | Pause or resume retries for a static playlist |
 | `POST` | `/api/playlists/jobs/:jobId/approve` | Approve a flow job |
@@ -327,6 +354,10 @@ These routes retrieve public playlists anonymously. Preview accepts a supported 
 | `PATCH` | `/api/users/:id` | Update a user |
 | `DELETE` | `/api/users/:id` | Delete a user |
 | `GET` | `/api/users/me/listening-history` | Get listening-history settings for the current user |
+| `GET` | `/api/users/me/library-owner` | Read the current user's default library manager |
+| `POST` | `/api/users/me/library-owner` | Set `defaultLibraryOwner` to `aurral`, `lidarr`, or `null` to use the automatic default |
+| `GET` | `/api/users/me/identities` | List the sign-in identities linked to the current user |
+| `DELETE` | `/api/users/me/identities/:id` | Remove a linked identity. Returns `400` with `last_auth_method` when it is the last way to sign in |
 | `GET` | `/api/users/me/lidarr-preferences` | Current user's Lidarr preferences |
 | `PATCH` | `/api/users/me/lidarr-preferences` | Update current user's Lidarr preferences |
 | `GET` | `/api/users/me/discover-layout` | Current user's discovery layout |
@@ -351,7 +382,8 @@ Every route in this section requires an administrator.
 | --- | --- | --- |
 | `GET` | `/api/settings` | Read settings |
 | `POST` | `/api/settings` | Update settings |
-| `GET` | `/api/settings/storage-health` | Run or return the storage health check |
+| `GET` | `/api/settings/storage-health` | Return the result of the last storage health check. It does not run the checks |
+| `POST` | `/api/settings/storage-health/check` | Run the storage health check again |
 | `GET` | `/api/settings/tasks` | List scheduled maintenance tasks |
 | `POST` | `/api/settings/tasks/clear-stale` | Clear stale task runs |
 | `GET` | `/api/settings/lidarr/profiles` | List Lidarr quality profiles |
@@ -390,16 +422,16 @@ recording require a user's login session.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/scrobbling/status` | Read scrobbling provider status |
-| `GET` | `/api/scrobbling/lastfm/link` | Start or read Last.fm linking; requires a user session |
+| `GET` | `/api/scrobbling/lastfm/link` | Start or read Last.fm linking. Requires a user session |
 | `GET` | `/api/scrobbling/lastfm/link/callback` | Complete Last.fm linking |
 | `DELETE` | `/api/scrobbling/lastfm/link` | Unlink Last.fm |
 | `GET` | `/api/scrobbling/listenbrainz/link` | Read ListenBrainz linking |
-| `PUT` | `/api/scrobbling/listenbrainz/link` | Link ListenBrainz; requires a user session |
+| `PUT` | `/api/scrobbling/listenbrainz/link` | Link ListenBrainz. Requires a user session |
 | `DELETE` | `/api/scrobbling/listenbrainz/link` | Unlink ListenBrainz |
-| `PUT` | `/api/scrobbling/koito/link` | Configure Koito; requires a user session |
+| `PUT` | `/api/scrobbling/koito/link` | Configure Koito. Requires a user session |
 | `DELETE` | `/api/scrobbling/koito/link` | Unlink Koito |
 | `GET` | `/api/play-events` | Read local play history |
-| `POST` | `/api/play-events` | Record a local play event; requires a user session |
+| `POST` | `/api/play-events` | Record a local play event. Requires a user session |
 
 ## Onboarding
 
@@ -433,9 +465,9 @@ not require an API key.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` or `POST` | `/rest/:method.view` | Authenticated Subsonic API methods |
+| `GET` or `POST` | `/rest/:method.view` | Subsonic and OpenSubsonic API methods |
 
 The Subsonic API supports XML and JSON responses. Use the account's Subsonic
-credentials or token authentication; the instance API key is not a Subsonic
-credential. See [Navidrome and Subsonic](/integrations/navidrome/) for the
+password or token authentication. The instance API key does not work for
+Subsonic. See [Navidrome and Subsonic](/integrations/navidrome/) for the
 supported client behavior.

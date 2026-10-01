@@ -1,5 +1,7 @@
-import { getNotificationOutbox, getWorkerId } from "./honkerDb.js";
+import { getNotificationOutbox, getWorkerId, hasActiveHonkerJobs } from "./honkerDb.js";
 import {
+  createIdleAbortController,
+  getWorkerIdleStopMs,
   isHonkerShuttingDown,
   markHonkerWorkerLoopEnded,
   registerHonkerWorker,
@@ -13,21 +15,26 @@ let _loopPromise = null;
 let abortController = null;
 
 async function runLoop() {
-  abortController = new AbortController();
+  abortController = createIdleAbortController({
+    idleStopMs: getWorkerIdleStopMs(),
+    isBusy: () => hasActiveHonkerJobs(getNotificationOutbox().queue.name),
+  });
+  abortController.arm();
   try {
     await getNotificationOutbox().runWorker(getWorkerId(), {
       idlePollS: 5,
       signal: abortController.signal,
     });
   } catch (error) {
-    if (!stopRequested && !isHonkerShuttingDown()) {
+    if (!stopRequested && !abortController.idleStopped && !isHonkerShuttingDown()) {
       console.error("[notificationOutboxWorker] loop error:", error);
     }
   } finally {
+    const intentional = stopRequested || abortController.idleStopped;
+    abortController.dispose();
     abortController = null;
     running = false;
     _loopPromise = null;
-    const intentional = stopRequested;
     stopRequested = false;
     markHonkerWorkerLoopEnded(WORKER_NAME, startNotificationOutboxWorker, {
       intentional,

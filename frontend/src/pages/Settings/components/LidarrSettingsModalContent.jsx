@@ -3,12 +3,14 @@ import {
   testLidarrConnection,
 } from "../../../utils/api/endpoints/settings.js";
 
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { RefreshCw } from "lucide-react";
 import PillToggle from "../../../components/PillToggle";
 import { DotLoader } from "../../../components/DotLoader";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
+import { describeLidarrConnectionState } from "../utils/librarySettings";
+import { RootOverlapWarning } from "./RootOverlapWarning";
 export function LidarrSettingsSection({
   settings,
   updateSettings,
@@ -39,6 +41,10 @@ export function LidarrSettingsSection({
     ? lidarrMetadataProfiles
     : [];
   const safeLidarrTags = Array.isArray(lidarrTags) ? lidarrTags : [];
+  const reconnectState = describeLidarrConnectionState({
+    lidarr: settings.integrations?.lidarr,
+    health,
+  });
 
   const updateLidarr = (patch) =>
     updateSettings({
@@ -213,6 +219,25 @@ export function LidarrSettingsSection({
           .
         </div>
 
+        {reconnectState ? (
+          <div className="arr-info arr-info--warning" role="status">
+            <p className="arr-info__lead">{reconnectState.title}</p>
+            <p className="arr-info__help">{reconnectState.message}</p>
+          </div>
+        ) : null}
+
+        <SettingsArrFormGroup
+          label="Enabled"
+          help="Turn off to stop Lidarr requests without removing the connection."
+        >
+          <PillToggle
+            className="settings-toggle"
+            checked={settings.integrations?.lidarr?.enabled !== false}
+            onChange={(e) => updateLidarr({ enabled: e.target.checked })}
+            aria-label="Enable Lidarr"
+          />
+        </SettingsArrFormGroup>
+
         <SettingsArrFormGroup label="Server URL" labelFor="lidarr-url">
           <SettingsInput
             id="lidarr-url"
@@ -274,6 +299,7 @@ export function LidarrSettingsSection({
         <p className="arr-form-help">
           Users can override the root folder and quality profile in Profile.
         </p>
+        <RootOverlapWarning rootWarnings={settings.rootWarnings} />
         <SettingsArrFormGroup label="Default root folder" labelFor="lidarr-root-folder">
           <SettingsSelect
             id="lidarr-root-folder"

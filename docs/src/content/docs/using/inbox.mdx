@@ -1,26 +1,28 @@
 ---
 title: Inbox
-description: Library-based releases, shows, news, and discoveries in Aurral.
+description: New releases, shows, news, and discoveries for your library.
 ---
 
-The Inbox is the bell icon beside your profile menu. It is a compact update feed for changes that need your attention.
+The Inbox is the bell icon beside your profile menu. It is a short feed of updates about your library.
 
-Inbox items are private to each Aurral user. The source library is shared, but read and dismissed state is not.
+Each user has their own Inbox state. All users share one library, but read, saved, and dismissed items belong to each user.
 
 ## What appears
 
-- Upcoming and recently released albums from artists in the Lidarr library
-- Upcoming shows for library artists when Ticketmaster is configured
-- Optional library-artist news from RSS feeds
-- Optional recommended-artist news from RSS feeds
-- Personalized artist discoveries from Discover
+- Albums from library artists released in the last 30 days or due in the next 90 days
+- Upcoming shows for library artists, when Ticketmaster is configured
+- News about library artists, from RSS feeds
+- News about recommended artists, from RSS feeds
+- New artist discoveries from Discover
 
-The green Inbox icon shows that unread items exist. Select an item to mark it as read; it stays in the Inbox with reduced emphasis. Use the item actions to save, dismiss, or mark it as added. Artist and release items open their full pages, where you can decide whether to add them to Lidarr. Use the filter button to show all notifications or one category. The dropdown scrolls when there are more updates than fit on screen.
+When unread items exist, the Inbox icon turns green. Select an item to open its page and mark it as read. The item stays in the Inbox with less emphasis. From an artist or release page, you can add the artist or album to your library.
+
+To remove an item, select **Remove from Inbox**. To show one category, use the filter button. The list scrolls when it has more items than fit on the screen.
 
 ## Settings
 
-Admins can enable or disable each Inbox category in the **Inbox** section below **Notification Events** under **Settings > Connect**. Only library-artist news and recommended-artist news are available as news Inbox categories. Configure RSS feeds and feed groups under **Settings > RSS News**. Ticketmaster is configured under **Settings > Connect > Ticketmaster**.
+An admin turns each Inbox category on or off in the **Inbox** section of **Settings > Connect**. The Ticketmaster settings are in the same tab.
 
-News is optional. Enable it under **Settings > RSS News**. This page lists Aurral's built-in RSS feeds, lets you enable or disable feed groups, and lets you add or remove custom feeds. Aurral combines enabled feeds locally, matches stories to library and recommended artist names, and applies publisher blocks before creating Inbox items.
+News is optional. To turn it on, open **Settings > RSS news**. This page lists Aurral's built-in RSS feeds. You can turn feed groups on or off, and add or remove your own feeds. Aurral merges the enabled feeds, matches stories to library and recommended artist names, and removes stories from blocked publishers.
 
-Inbox data refreshes in the background once a day and also refreshes when opened. Artist news advances in the background every six hours and checks due artists when the news page opens.
+Aurral refreshes every Inbox once a day. It checks the RSS feeds every 15 minutes.

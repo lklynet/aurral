@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   addSharedPlaylistTracks,
@@ -9,6 +9,7 @@ import {
   downloadTrackToLibrary,
   lookupAlbumsInLibraryBatch,
   requestAlbumFromSearch,
+  settleLibraryOwnerConflict,
 } from "../../utils/api/endpoints/library.js";
 import {
   getReleaseGroupCover,
@@ -18,14 +19,20 @@ import {
 import { useSharedPlaylists } from "../../hooks/useSharedPlaylists";
 import { useWebSocketChannel } from "../../hooks/useWebSocket";
 
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { CornerUpLeft, ExternalLink, Library, Music } from "lucide-react";
+import { Link, useLocation, useParams } from "react-router";
+import { ExternalLink } from "lucide-react";
 import AddActionButton from "../../components/AddActionButton";
+import { useLibraryDestination } from "../../hooks/useLibraryDestination";
+import { buildAlbumAddAction, describeAlbumRequestResult } from "../../utils/albumAddAction";
+import { buildAlbumRequestPayload, getManagerName } from "../../utils/libraryDestination";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
-import { ArtistDetailsReleaseTrackList } from "./components/ArtistDetailsReleaseTrackList";
-import { extractTwoToneGradientFromImage } from "../../utils/imageColors";
+import {
+  ArtistDetailsReleaseTrackList,
+  useReleasePreviewQueue,
+} from "./components/ArtistDetailsReleaseTrackList";
+import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../../components/CollectionHeader";
 import { withImageCacheBust } from "../../utils/normalizeMediaUrl.js";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import {
@@ -40,6 +47,7 @@ import {
   sumTrackDurationMs,
 } from "./utils";
 import Tooltip from "../../components/Tooltip";
+import CrossViewLink from "../../components/CrossViewLink";
 const getReleaseTypeLabel = (release) => {
   const types = [
     release?.["primary-type"],
@@ -92,12 +100,14 @@ const ACTIVE_DOWNLOAD_STATUSES = new Set([
 function ReleasePage() {
   const { mbid: artistMbid, releaseMbid } = useParams();
   const { state: locationState } = useLocation();
-  const navigate = useNavigate();
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showInfo } = useToast();
+  const libraryDestination = useLibraryDestination();
+  const [ownerConflictState, setOwnerConflictState] = useState(null);
+  const ownerConflict =
+    ownerConflictState?.releaseMbid === releaseMbid ? ownerConflictState.conflict : null;
   const { hasPermission } = useAuth();
   const canAddAlbum = hasPermission("addAlbum");
 
-  const artistName = locationState?.artistName || "";
   const focusTrackMbid = locationState?.focusTrackMbid || null;
 
   const baseRelease = useMemo(
@@ -115,6 +125,12 @@ function ReleasePage() {
     () => mergeReleaseDetails(baseRelease, releaseDetailsQuery.data),
     [baseRelease, releaseDetailsQuery.data],
   );
+  const artistCredits = releaseDetailsQuery.data?.["artist-credit"];
+  const artistName =
+    locationState?.artistName ||
+    (Array.isArray(artistCredits)
+      ? artistCredits.find((credit) => credit?.artist?.id === artistMbid)?.name || ""
+      : "");
 
   const [coverUrl, setCoverUrl] = useState(release._coverUrl || "");
   const [coverRetryUrl, setCoverRetryUrl] = useState("");
@@ -204,29 +220,19 @@ function ReleasePage() {
   });
   const downloadStatus = downloadStatusQuery.data?.[libraryAlbumId] || null;
 
-  const [heroColor, setHeroColor] = useState(null);
-  const colorRequestRef = useRef(null);
-
-  useEffect(() => {
-    if (!coverUrl) {
-      setHeroColor(null);
-      return;
-    }
-    const url = coverUrl;
-    colorRequestRef.current = url;
-    extractTwoToneGradientFromImage(url).then((result) => {
-      if (colorRequestRef.current === url && result?.top) {
-        setHeroColor(result.top);
-      }
-    });
-    return () => {
-      if (colorRequestRef.current === url) {
-        colorRequestRef.current = null;
-      }
-    };
-  }, [coverUrl]);
-
   const releaseTitle = release.title || "Release";
+  const playbackSource = useMemo(
+    () => ({ type: "release", id: releaseMbid, label: releaseTitle }),
+    [releaseMbid, releaseTitle],
+  );
+  const preview = useReleasePreviewQueue({
+    release,
+    trackKey: releaseMbid,
+    tracks,
+    artistName,
+    artistMbid,
+    playbackSource,
+  });
   const pageTitle = artistName ? `${releaseTitle} — ${artistName}` : releaseTitle;
   useDocumentTitle(pageTitle);
 
@@ -242,6 +248,11 @@ function ReleasePage() {
   );
   const isComplete = libraryDisplay.isComplete;
   const triggerSearch = libraryDisplay.triggerSearch;
+  const albumAddAction = buildAlbumAddAction(
+    triggerSearch,
+    libraryInfo?.managedBy,
+    libraryDestination,
+  );
   const lastfmUrl = artistName && releaseTitle ? buildLastfmAlbumUrl(artistName, releaseTitle) : "";
 
   const releaseMeta = [
@@ -435,17 +446,18 @@ function ReleasePage() {
     [buildReleaseTrackPayload, downloadTrack, showError, showSuccess],
   );
 
-  const handleAlbumAction = useCallback(async () => {
+  const handleAlbumAction = useCallback(async (managedBy) => {
     if (!releaseMbid || requestingAlbum) return;
     setRequestingAlbum(true);
     try {
-      const result = await requestAlbum({
+      const result = await requestAlbum(buildAlbumRequestPayload({
         albumMbid: releaseMbid,
         albumName: release.title,
         artistMbid,
         artistName,
+        managedBy,
         triggerSearch,
-      });
+      }));
       const addedAlbum = result?.album;
       let entry = null;
       if (addedAlbum?.id != null) {
@@ -454,6 +466,7 @@ function ReleasePage() {
         const trackFileCount = Number(statistics.trackFileCount || 0);
         entry = {
           inLibrary: true,
+          managedBy: addedAlbum.managedBy || result?.managedBy || managedBy,
           libraryAlbumId: String(addedAlbum.id),
           libraryArtistId:
             addedAlbum.artistId != null ? String(addedAlbum.artistId) : null,
@@ -491,18 +504,18 @@ function ReleasePage() {
           );
         }
       }
-      showSuccess(
-        triggerSearch
-          ? `Searching for ${release.title || "album"}`
-          : `Added ${release.title || "album"} to Lidarr`,
-      );
+      const outcome = describeAlbumRequestResult(result, release.title || "album", managedBy);
+      (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
     } catch (err) {
-      showError(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          err.message ||
-          "Failed to add album",
-      );
+      const conflict = settleLibraryOwnerConflict(err);
+      if (conflict) {
+        setOwnerConflictState({ releaseMbid, conflict });
+        showInfo(`${release.title || "Album"}: ${conflict.message}`);
+        return;
+      }
+      showError(`Failed to add album to ${getManagerName(managedBy)}: ${
+        err.response?.data?.message || err.response?.data?.error || err.message
+      }`);
     } finally {
       setRequestingAlbum(false);
     }
@@ -515,6 +528,7 @@ function ReleasePage() {
     requestingAlbum,
     requestAlbum,
     showError,
+    showInfo,
     showSuccess,
   ]);
 
@@ -525,75 +539,54 @@ function ReleasePage() {
   };
 
   return (
-    <div
-      className="artist-details-page release-page"
-      style={
-        heroColor
-          ? { background: `linear-gradient(180deg, ${heroColor} 0%, ${heroColor} 120px, var(--aurral-surface) 400px)` }
-          : undefined
-      }
-    >
-      <div className="artist-page-header">
-        <div>
-          <div className="artist-title-link release-page__title-nav">
-            <Link to={`/artist/${artistMbid}`} state={artistLinkState}>
-              <span>{artistName || "Artist"}</span>
-            </Link>
-            <span className="release-page__title-nav-separator" aria-hidden="true">
-              /
-            </span>
-            <Link
-              to={`/artist/${artistMbid}/albums`}
-              state={artistLinkState}
-              className="release-page__title-nav-albums"
-            >
-              <span>Albums</span>
-              <CornerUpLeft className="artist-icon-lg" />
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      <div className="release-page__hero">
-        <div className="release-page__cover">
-          {coverUrl ? (
+    <CollectionPage tintSrc={coverUrl}>
+      <CollectionHeader
+        cover={
+          coverUrl ? (
             <img
               src={coverRetryUrl || coverUrl}
-              alt={releaseTitle}
+              alt=""
               loading="eager"
               decoding="async"
               onError={() => void handleCoverError()}
             />
           ) : (
-            <div className="artist-release-card__placeholder">
-              <Music className="artist-icon-lg" />
-            </div>
-          )}
-        </div>
-        <div className="release-page__copy">
-          <h1 className="release-page__title">{releaseTitle}</h1>
-          {artistMbid ? (
-            <Link
-              to={`/artist/${artistMbid}`}
-              state={artistLinkState}
-              className="artist-link-button release-page__artist"
-            >
+            <span className="native-library-cover-fallback" aria-hidden="true">
+              {releaseTitle.trim().charAt(0).toUpperCase() || "—"}
+            </span>
+          )
+        }
+        kicker={releaseTypeLabel || "Release"}
+        title={releaseTitle}
+        subtitle={
+          artistMbid ? (
+            <Link to={`/artist/${artistMbid}`} state={artistLinkState} className="native-library-detail__artist">
               {artistName || "Artist"}
             </Link>
-          ) : null}
-          {releaseMeta ? (
-            <p className="artist-card-meta release-page__meta">{releaseMeta}</p>
-          ) : null}
-          <div className="release-page__actions">
+          ) : null
+        }
+        meta={releaseMeta}
+        actions={
+          <>
+            <CollectionPlayButtons
+              label={`${releaseTitle} previews`}
+              disabled={preview.disabled}
+              isPlaying={preview.isListPlaying}
+              isShuffleEnabled={preview.isShuffleEnabled}
+              onPlay={preview.handlePlayAll}
+              onShuffle={preview.handleShufflePlay}
+            />
+            {canAddAlbum && !isComplete ? (
+              <AddActionButton
+                {...albumAddAction}
+                ownerConflict={ownerConflict}
+                onAdd={handleAlbumAction}
+                isLoading={requestingAlbum}
+                disabled={requestingAlbum}
+              />
+            ) : null}
             {libraryInfo?.canonicalInLibrary ? (
-              <button
-                type="button"
-                className="btn btn-surface btn-sm release-page__external-link"
-                onClick={() => navigate(libraryPath)}
-              >
-                <Library className="artist-icon-sm" />
-                Open in library
-              </button>
+              <CrossViewLink view="library" to={libraryPath} />
             ) : libraryDisplay.label ? (
               <Tooltip content={libraryDisplay.label}>
                 <span
@@ -603,57 +596,43 @@ function ReleasePage() {
                 </span>
               </Tooltip>
             ) : null}
-            {canAddAlbum && !isComplete ? (
-              <AddActionButton
-                onClick={handleAlbumAction}
-                isLoading={requestingAlbum}
-                disabled={requestingAlbum}
-                label={triggerSearch ? "Search Album" : "Add to Lidarr"}
-              />
-            ) : null}
             {lastfmUrl ? (
-              <a
-                href={lastfmUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn btn-surface btn-sm release-page__external-link"
-              >
-                <ExternalLink className="artist-icon-sm" />
-                Last.fm
-              </a>
+              <Tooltip content="Open on Last.fm">
+                <a
+                  href={lastfmUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="native-library-favorite"
+                  aria-label="Open on Last.fm"
+                >
+                  <ExternalLink aria-hidden="true" />
+                </a>
+              </Tooltip>
             ) : null}
-          </div>
-        </div>
-      </div>
-
-      <div className="release-page__tracks">
-        <ArtistDetailsReleaseTrackList
-          release={release}
-          trackKey={releaseMbid}
-          tracks={tracks}
-          loading={loadingTracks}
-          artistName={artistName}
-          artistMbid={artistMbid}
-          playbackSource={{
-            type: "release",
-            id: releaseMbid,
-            label: releaseTitle,
-          }}
-          onAddTrackToPlaylist={handleReleaseTrackAdd}
-          onAddTrackToLibrary={handleReleaseTrackAddToLibrary}
-          libraryTrackSavingKey={libraryTrackSavingKey}
-          ownedTrackMbids={libraryInfo?.ownedTrackMbids}
-          resolveMembershipTrack={buildReleaseTrackPayload}
-          playlists={sharedPlaylists}
-          playlistsLoading={playlistModalLoading}
-          playlistSavingKey={playlistMenuSavingKey}
-          playlistError={playlistModalError}
-          getDefaultPlaylistName={getDefaultTrackPlaylistName}
-          onLoadPlaylists={loadSharedPlaylists}
-          highlightTrackId={focusTrackMbid}
-        />
-      </div>
-    </div>
+          </>
+        }
+      />
+      <ArtistDetailsReleaseTrackList
+        release={release}
+        trackKey={releaseMbid}
+        tracks={tracks}
+        loading={loadingTracks}
+        preview={preview}
+        playbackSource={playbackSource}
+        onAddTrackToPlaylist={handleReleaseTrackAdd}
+        onAddTrackToLibrary={handleReleaseTrackAddToLibrary}
+        libraryTrackSavingKey={libraryTrackSavingKey}
+        ownedTrackMbids={libraryInfo?.ownedTrackMbids}
+        resolveMembershipTrack={buildReleaseTrackPayload}
+        playlists={sharedPlaylists}
+        playlistsLoading={playlistModalLoading}
+        playlistSavingKey={playlistMenuSavingKey}
+        playlistError={playlistModalError}
+        getDefaultPlaylistName={getDefaultTrackPlaylistName}
+        onLoadPlaylists={loadSharedPlaylists}
+        highlightTrackId={focusTrackMbid}
+      />
+    </CollectionPage>
   );
 }
 

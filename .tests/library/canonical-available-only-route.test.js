@@ -56,7 +56,9 @@ function callCanonical(query) {
 }
 
 function setAvailableOnly(value) {
-  dbOps.updateSettings({ integrations: { lidarr: { availableOnly: value } } });
+  dbOps.updateSettings({
+    integrations: { lidarr: { url: "http://lidarr:8686", apiKey: "test-key", availableOnly: value } },
+  });
 }
 
 test.before(() => {
@@ -186,4 +188,10 @@ test("an explicit availableOnly query param overrides the setting", () => {
     availableOnly: "false",
   });
   assert.equal(unfiltered.total, 3);
+});
+
+test("without a Lidarr connection, the Library shows albums that are still downloading", () => {
+  dbOps.updateSettings({ integrations: { lidarr: {} } });
+  assert.equal(callCanonical({ kind: "albums", page: "1", pageSize: "50" }).total, 3);
+  assert.equal(callCanonical({ kind: "artists", page: "1", pageSize: "50" }).total, 2);
 });

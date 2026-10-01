@@ -23,6 +23,7 @@ const {
 const { downloadTracker } = await importFromRepo(
   "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
 );
+const { upsertLibraryArtist, upsertLibraryAlbum, upsertLibraryTrack, linkLibraryAlbumTrack } = await importFromRepo("backend/services/libraryMediaStore.js");
 const { getHonkerDb } = await importFromRepo("backend/services/honkerDb.js");
 const { lidarrClient } = await importFromRepo("backend/services/lidarrClient.js");
 
@@ -239,6 +240,33 @@ test("queued library track jobs appear in activity immediately", async () => {
   assert.equal(entry?.statusLabel, "Queued");
   assert.equal(entry?.inQueue, true);
   assert.equal(entry?.trackName, "Queued Song");
+});
+
+test("queued album track jobs open their album, and other library jobs open the library playlist", async () => {
+  const albumMbid = "b2222222-2222-4222-8222-222222222201";
+  const artist = upsertLibraryArtist({ identityKey: "mbid:b1111111-1111-4111-8111-111111111111", mbid: "b1111111-1111-4111-8111-111111111111", name: "Artist" });
+  const album = upsertLibraryAlbum({
+    identityKey: `release-group:${albumMbid}`,
+    mbid: albumMbid,
+    releaseGroupMbid: albumMbid,
+    artistId: artist.id,
+    title: "Album",
+  });
+  const track = upsertLibraryTrack({ identityKey: "recording:b3333333-3333-4333-8333-333333333301", mbid: "b3333333-3333-4333-8333-333333333301", title: "One", artistName: "Artist" });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  const withAlbum = downloadTracker.addJob({ artistName: "Artist", trackName: "One", albumName: "Album", albumMbid, trackMbid: "t1" }, "library");
+  const withoutAlbum = downloadTracker.addJob({ artistName: "Artist", trackName: "Two", albumName: "Loose", trackMbid: "t2" }, "library");
+  recordTrackJobQueued(downloadTracker.getJob(withAlbum));
+  recordTrackJobQueued(downloadTracker.getJob(withoutAlbum));
+
+  const entries = await getAurralHistoryRequests();
+  assert.equal(entries.find((item) => item.jobId === withAlbum)?.href, `/library/album/${album.id}`);
+  assert.equal(entries.find((item) => item.jobId === withoutAlbum)?.href, "/playlists?selected=library");
+
+  const { finalizeQualityUpgradeFailure } = await importFromRepo("backend/services/qualityProfileService.js");
+  await finalizeQualityUpgradeFailure({ id: "upgrade-of-one", upgradeForJobId: withAlbum }, "No better file");
+  const upgrade = (await getAurralHistoryRequests()).find((item) => item.jobId === "upgrade-of-one");
+  assert.equal(upgrade?.href, `/library/album/${album.id}`);
 });
 
 test("pending tracker jobs without history appear in activity immediately", async () => {

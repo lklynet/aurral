@@ -198,7 +198,8 @@ db.exec(`
     quality_checked_at INTEGER,
     quality_upgrade_checked_at INTEGER,
     upgrade_for_job_id TEXT,
-    manual_replacement_search INTEGER NOT NULL DEFAULT 0
+    manual_replacement_search INTEGER NOT NULL DEFAULT 0,
+    album_grab_attempted INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS weekly_flow_download_cancellations (
@@ -282,6 +283,22 @@ db.exec(`
     FOREIGN KEY (artist_id) REFERENCES library_artists(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS library_release_calendar (
+    release_group_mbid TEXT NOT NULL,
+    artist_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    release_date TEXT NOT NULL,
+    release_type TEXT,
+    secondary_types_json TEXT,
+    release_statuses_json TEXT,
+    present INTEGER NOT NULL DEFAULT 1,
+    refreshed_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (release_group_mbid, artist_id),
+    FOREIGN KEY (artist_id) REFERENCES library_artists(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS library_tracks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     identity_key TEXT NOT NULL UNIQUE,
@@ -348,6 +365,10 @@ db.exec(`
     ON library_albums (title COLLATE NOCASE);
   CREATE INDEX IF NOT EXISTS idx_library_albums_release_date
     ON library_albums (release_date DESC);
+  CREATE INDEX IF NOT EXISTS idx_library_release_calendar_artist
+    ON library_release_calendar (artist_id);
+  CREATE INDEX IF NOT EXISTS idx_library_release_calendar_date
+    ON library_release_calendar (present, release_date DESC);
   CREATE INDEX IF NOT EXISTS idx_library_artists_sort_name_name
     ON library_artists (sort_name COLLATE NOCASE, name COLLATE NOCASE);
   CREATE INDEX IF NOT EXISTS idx_library_artists_mbid
@@ -468,6 +489,49 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_honker_task_runs_queue_started ON honker_task_runs(queue, started_at DESC);
   CREATE INDEX IF NOT EXISTS idx_honker_task_runs_job ON honker_task_runs(job_id, queue);
 `);
+
+const releaseCalendarPrimaryKey = db
+  .prepare("PRAGMA table_info(library_release_calendar)")
+  .all()
+  .filter((column) => Number(column.pk) > 0)
+  .sort((left, right) => Number(left.pk) - Number(right.pk))
+  .map((column) => column.name);
+
+if (JSON.stringify(releaseCalendarPrimaryKey) !== JSON.stringify(["release_group_mbid", "artist_id"])) {
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE library_release_calendar_v2 (
+        release_group_mbid TEXT NOT NULL,
+        artist_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        release_date TEXT NOT NULL,
+        release_type TEXT,
+        secondary_types_json TEXT,
+        release_statuses_json TEXT,
+        present INTEGER NOT NULL DEFAULT 1,
+        refreshed_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (release_group_mbid, artist_id),
+        FOREIGN KEY (artist_id) REFERENCES library_artists(id) ON DELETE CASCADE
+      );
+
+      INSERT INTO library_release_calendar_v2
+        (release_group_mbid, artist_id, title, release_date, release_type,
+         secondary_types_json, release_statuses_json, present, refreshed_at, created_at, updated_at)
+      SELECT release_group_mbid, artist_id, title, release_date, release_type,
+        secondary_types_json, release_statuses_json, present, refreshed_at, created_at, updated_at
+      FROM library_release_calendar;
+
+      DROP TABLE library_release_calendar;
+      ALTER TABLE library_release_calendar_v2 RENAME TO library_release_calendar;
+      CREATE INDEX idx_library_release_calendar_artist
+        ON library_release_calendar (artist_id);
+      CREATE INDEX idx_library_release_calendar_date
+        ON library_release_calendar (present, release_date DESC);
+    `);
+  })();
+}
 
 // The previous getIndexes timestamp was the request time. Seed existing users past that value
 // so a client carrying a pre-upgrade ifModifiedSince receives the new index once.
@@ -605,6 +669,7 @@ for (const [name, type] of [
   ["quality_upgrade_checked_at", "INTEGER"],
   ["upgrade_for_job_id", "TEXT"],
   ["manual_replacement_search", "INTEGER NOT NULL DEFAULT 0"],
+  ["album_grab_attempted", "INTEGER NOT NULL DEFAULT 0"],
 ]) {
   if (!tableColumns.includes(name)) {
     tryAddColumn(`ALTER TABLE playlist_download_jobs ADD COLUMN ${name} ${type}`);
@@ -761,6 +826,21 @@ db.exec(`
     AFTER DELETE ON playlist_download_jobs BEGIN
       UPDATE playlist_download_jobs_revision SET revision = revision + 1 WHERE id = 1;
     END;
+`);
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS playlist_download_attempt_delete
+    AFTER DELETE ON playlist_download_jobs BEGIN
+      DELETE FROM settings WHERE key = 'activeDownloadAttempt:' || OLD.id;
+    END;
+  CREATE TRIGGER IF NOT EXISTS playlist_download_attempt_complete
+    AFTER UPDATE OF status ON playlist_download_jobs WHEN NEW.status = 'done' BEGIN
+      DELETE FROM settings WHERE key = 'activeDownloadAttempt:' || NEW.id;
+    END;
+  DELETE FROM settings WHERE key LIKE 'activeDownloadAttempt:%'
+    AND NOT EXISTS (
+      SELECT 1 FROM playlist_download_jobs
+      WHERE id = substr(settings.key, length('activeDownloadAttempt:') + 1) AND status != 'done'
+    );
 `);
 initializeLibrarySearchIndex(db);
 

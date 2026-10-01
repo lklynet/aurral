@@ -2,13 +2,14 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   addArtistToLibrary,
   requestAlbumFromSearch,
+  settleLibraryOwnerConflict,
 } from "../utils/api/endpoints/library.js";
 import {
   addSharedPlaylistTracks,
   createSharedPlaylist,
 } from "../utils/api/endpoints/playlists.js";
 import { getTagSuggestions } from "../utils/api/endpoints/discovery.js";
-import { searchUnified } from "../utils/api/endpoints/search.js";
+import { searchLibrary, searchUnified } from "../utils/api/endpoints/search.js";
 import { getArtistRecordId } from "../utils/artistTaste";
 import {
   buildUnifiedSuggestionSections,
@@ -23,6 +24,7 @@ import {
 
 import {
   AUTOCOMPLETE_DEBOUNCE_MS,
+  LIBRARY_AUTOCOMPLETE_DEBOUNCE_MS,
   SUGGEST_LIMIT,
   TAG_SUGGESTIONS_LIMIT,
   ALBUM_PENDING_STATUSES,
@@ -34,10 +36,16 @@ import {
   isSuggestionInLibrary,
   buildTrackPlaylistPayload,
 } from "../utils/globalSearchUtils";
-import { getAlbumAddButtonLabel, shouldTriggerAlbumSearch } from "../utils/albumAddAction";
+import { describeAlbumRequestResult, getAlbumAddAction, shouldTriggerAlbumSearch } from "../utils/albumAddAction";
+import {
+  buildAlbumRequestPayload,
+  buildArtistAddPayload,
+  getManagerName,
+} from "../utils/libraryDestination";
+import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { useDebouncedTask } from "../hooks/useDebouncedTask";
 import { useSharedPlaylists } from "../hooks/useSharedPlaylists";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router";
 import { Clock, Search } from "lucide-react";
 import { DotLoader } from "./DotLoader";
 import AddActionButton from "./AddActionButton";
@@ -46,6 +54,9 @@ import { TrackPlaylistMenu } from "../pages/ArtistDetails/components/TrackPlayli
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { searchSettingsItems } from "../pages/Settings/settingsTabsConfig";
+
+const EMPTY_SUGGESTION_RESULTS = { library: null, catalog: null };
+
 function GlobalSearch({ settingsMode = false }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [lastfmConfigured, setLastfmConfigured] = useState(true);
@@ -58,11 +69,14 @@ function GlobalSearch({ settingsMode = false }) {
   const [recentSearches, setRecentSearches] = useState(() => readRecentSearches());
   const searchContainerRef = useRef(null);
   const inputRef = useRef(null);
+  const suggestionResultsRef = useRef(EMPTY_SUGGESTION_RESULTS);
   const { schedule: scheduleSuggest, cancel: cancelSuggest } = useDebouncedTask();
+  const { schedule: scheduleLibrarySuggest, cancel: cancelLibrarySuggest } = useDebouncedTask();
   const navigate = useNavigate();
   const location = useLocation();
   const { hasPermission, bootstrap } = useAuth();
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showInfo } = useToast();
+  const libraryDestination = useLibraryDestination();
   const {
     sharedPlaylists,
     setSharedPlaylists,
@@ -129,9 +143,21 @@ function GlobalSearch({ settingsMode = false }) {
   }, []);
 
   const closeAutocomplete = useCallback(() => {
+    suggestionResultsRef.current = EMPTY_SUGGESTION_RESULTS;
     setSuggestionRows([]);
     setSuggestionMode(null);
     setSuggestionIndex(-1);
+  }, []);
+
+  const showUnifiedSuggestions = useCallback((results, { resetIndex = false } = {}) => {
+    suggestionResultsRef.current = results;
+    setSuggestionRows(
+      flattenSuggestionSections(
+        buildUnifiedSuggestionSections({ ...results.catalog, library: results.library }),
+      ),
+    );
+    setSuggestionMode("unified");
+    if (resetIndex) setSuggestionIndex(-1);
   }, []);
 
   useEffect(() => {
@@ -162,16 +188,22 @@ function GlobalSearch({ settingsMode = false }) {
 
   useEffect(() => {
     const trimmed = searchQuery.trim();
-    if (settingsMode) {
+    const cancelAll = () => {
       cancelSuggest();
+      cancelLibrarySuggest();
+    };
+    if (settingsMode) {
+      cancelAll();
       setLoadingSuggestions(false);
       closeAutocomplete();
-      return cancelSuggest;
+      return cancelAll;
     }
     const isTagShortcut = lastfmConfigured && trimmed.startsWith("#");
     const tagPart = isTagShortcut ? trimmed.slice(1).trim() : trimmed;
 
     if (isTagShortcut) {
+      cancelLibrarySuggest();
+      suggestionResultsRef.current = EMPTY_SUGGESTION_RESULTS;
       if (tagPart.length < 2) {
         cancelSuggest();
         setLoadingSuggestions(false);
@@ -218,29 +250,37 @@ function GlobalSearch({ settingsMode = false }) {
     }
 
     if (trimmed.length < 2) {
-      cancelSuggest();
+      cancelAll();
       setLoadingSuggestions(false);
       closeAutocomplete();
       return;
     }
 
+    scheduleLibrarySuggest(async (isCurrent, signal) => {
+      const library = await searchLibrary(trimmed, { limit: SUGGEST_LIMIT, signal }).catch(
+        () => null,
+      );
+      if (!isCurrent()) return;
+      showUnifiedSuggestions(
+        { ...suggestionResultsRef.current, library },
+        { resetIndex: true },
+      );
+    }, LIBRARY_AUTOCOMPLETE_DEBOUNCE_MS);
+
     scheduleSuggest(async (isCurrent, signal) => {
       setLoadingSuggestions(true);
       try {
-        const data = await searchUnified(trimmed, {
+        const catalog = await searchUnified(trimmed, {
           mode: "suggest",
           limit: SUGGEST_LIMIT,
           signal,
         });
         if (!isCurrent()) return;
-        setLocalSearchConfigured(!!data?.localSearchConfigured);
-        const sections = buildUnifiedSuggestionSections(data);
-        setSuggestionRows(flattenSuggestionSections(sections));
-        setSuggestionMode("unified");
-        setSuggestionIndex(-1);
+        setLocalSearchConfigured(!!catalog?.localSearchConfigured);
+        showUnifiedSuggestions({ ...suggestionResultsRef.current, catalog });
       } catch {
         if (isCurrent()) {
-          closeAutocomplete();
+          showUnifiedSuggestions({ ...suggestionResultsRef.current, catalog: null });
         }
       } finally {
         if (isCurrent()) {
@@ -249,8 +289,18 @@ function GlobalSearch({ settingsMode = false }) {
       }
     }, AUTOCOMPLETE_DEBOUNCE_MS);
 
-    return cancelSuggest;
-  }, [searchQuery, closeAutocomplete, lastfmConfigured, scheduleSuggest, cancelSuggest, settingsMode]);
+    return cancelAll;
+  }, [
+    searchQuery,
+    closeAutocomplete,
+    lastfmConfigured,
+    scheduleSuggest,
+    cancelSuggest,
+    scheduleLibrarySuggest,
+    cancelLibrarySuggest,
+    showUnifiedSuggestions,
+    settingsMode,
+  ]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -358,35 +408,39 @@ function GlobalSearch({ settingsMode = false }) {
   }, []);
 
   const handleArtistAction = useCallback(
-    async (artist) => {
+    async (artist, managedBy = libraryDestination.primary) => {
       const artistId = getArtistRecordId(artist);
-      if (!artist?.name || !artistId) return false;
+      if (!artist?.name || !artistId || !libraryDestination.ready) return false;
       setPendingArtistIds((prev) => ({ ...prev, [artistId]: true }));
       try {
-        await addArtistToLibrary({
-          foreignArtistId: artistId,
+        await addArtistToLibrary(buildArtistAddPayload({
+          artistMbid: artistId,
           artistName: artist.name,
-        });
+          managedBy,
+        }));
         updateSuggestionItem(artist, { inLibrary: true });
-        showSuccess(`Adding ${artist.name}...`);
+        showSuccess(`Added ${artist.name} to ${getManagerName(managedBy)}`);
         return true;
       } catch (err) {
-        showError(
-          err.response?.data?.message ||
-            err.response?.data?.error ||
-            err.message ||
-            "Failed to add artist to library",
-        );
+        const conflict = settleLibraryOwnerConflict(err);
+        if (conflict) {
+          updateSuggestionItem(artist, { inLibrary: true });
+          showInfo(`${artist.name}: ${conflict.message}`);
+          return false;
+        }
+        showError(`Failed to add artist to ${getManagerName(managedBy)}: ${
+          err.response?.data?.message || err.response?.data?.error || err.message
+        }`);
         return false;
       } finally {
         setPendingArtistIds(({ [artistId]: _, ...prev }) => prev);
       }
     },
-    [showError, showSuccess, updateSuggestionItem],
+    [libraryDestination.primary, libraryDestination.ready, showError, showInfo, showSuccess, updateSuggestionItem],
   );
 
   const handleAlbumAction = useCallback(
-    async (album) => {
+    async (album, managedBy = libraryDestination.primary) => {
       if (!album?.id) return;
       const shouldTriggerSearch = shouldTriggerAlbumSearch({
         status: album.status,
@@ -395,41 +449,39 @@ function GlobalSearch({ settingsMode = false }) {
       });
       setPendingAlbumIds((prev) => ({ ...prev, [album.id]: true }));
       try {
-        const result = await requestAlbumFromSearch({
+        const result = await requestAlbumFromSearch(buildAlbumRequestPayload({
           albumMbid: album.id,
           albumName: album.title,
           artistMbid: album.artistMbid,
           artistName: album.artistName,
+          managedBy,
           triggerSearch: shouldTriggerSearch,
-        });
-        const nextAlbum = result?.queued
-          ? { inLibrary: true, status: "processing" }
-          : {
-              inLibrary: true,
-              libraryAlbumId: result.album?.id,
-              libraryArtistId: result.artist?.id,
-              status: result.status,
-            };
+        }));
+        const nextAlbum = {
+          inLibrary: true,
+          managedBy: result?.album?.managedBy || result?.managedBy || managedBy,
+          libraryAlbumId: result.album?.id,
+          libraryArtistId: result.artist?.id,
+          status: result?.queued ? "processing" : result.status,
+        };
         updateSuggestionItem(album, nextAlbum);
-        showSuccess(
-          result?.queued
-            ? `Adding ${album.title}...`
-            : result.triggeredSearch
-              ? `Search triggered for ${album.title}`
-              : `${album.title} added to library`,
-        );
+        const outcome = describeAlbumRequestResult(result, album.title, managedBy);
+        (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
       } catch (err) {
-        showError(
-          err.response?.data?.error ||
-            err.response?.data?.message ||
-            err.message ||
-            "Failed to request album",
-        );
+        const conflict = settleLibraryOwnerConflict(err);
+        if (conflict) {
+          updateSuggestionItem(album, { ownerConflict: conflict });
+          showInfo(`${album.title}: ${conflict.message}`);
+          return;
+        }
+        showError(`Failed to add album to ${getManagerName(managedBy)}: ${
+          err.response?.data?.message || err.response?.data?.error || err.message
+        }`);
       } finally {
         setPendingAlbumIds(({ [album.id]: _, ...prev }) => prev);
       }
     },
-    [showError, showSuccess, updateSuggestionItem],
+    [libraryDestination.primary, showError, showInfo, showSuccess, updateSuggestionItem],
   );
 
   const handleSearchTrackAdd = useCallback(
@@ -494,11 +546,8 @@ function GlobalSearch({ settingsMode = false }) {
           <AddActionButton
             disabled={!!pendingArtistIds[artistId]}
             isLoading={!!pendingArtistIds[artistId]}
-            label="Add to Lidarr"
-            onClick={(event) => {
-              event.stopPropagation();
-              handleArtistAction(item);
-            }}
+            destination={libraryDestination}
+            onAdd={(managedBy) => handleArtistAction(item, managedBy)}
           />
         );
       }
@@ -508,17 +557,11 @@ function GlobalSearch({ settingsMode = false }) {
         const pending = !!pendingAlbumIds[item.id];
         return (
           <AddActionButton
-            onClick={(event) => {
-              event.stopPropagation();
-              handleAlbumAction(item);
-            }}
+            {...getAlbumAddAction(item, libraryDestination)}
+            ownerConflict={item.ownerConflict}
+            onAdd={(managedBy) => handleAlbumAction(item, managedBy)}
             isLoading={pending}
             disabled={pending || ALBUM_PENDING_STATUSES.has(item.status)}
-            label={getAlbumAddButtonLabel({
-              status: item.status,
-              inLibrary: item.inLibrary,
-              monitored: item.monitored,
-            })}
           />
         );
       }
@@ -548,6 +591,7 @@ function GlobalSearch({ settingsMode = false }) {
       canAddArtist,
       handleAlbumAction,
       handleArtistAction,
+      libraryDestination,
       handleSearchTrackAdd,
       loadSharedPlaylists,
       pendingAlbumIds,
@@ -698,7 +742,7 @@ function GlobalSearch({ settingsMode = false }) {
         </div>
       )}
 
-      {!loadingSuggestions && !settingsMode && suggestionRows.length > 0 && (
+      {!settingsMode && suggestionRows.length > 0 && (
         <div className="global-search__suggestions global-search__suggestions--grouped">
           {suggestionMode === "tag"
             ? suggestionRows.map((row, index) => (

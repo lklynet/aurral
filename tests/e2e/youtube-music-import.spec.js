@@ -13,7 +13,7 @@ test.beforeAll(() => {
 async function signIn(page) {
   await page.goto("/playlists");
   const signInHeading = page.getByRole("heading", { name: "Sign in" });
-  const playlistsHeading = page.getByRole("heading", { name: "Playlists", exact: true });
+  const playlistsHeading = page.getByRole("heading", { level: 1, name: /^Playlists\b/ });
   await expect(signInHeading.or(playlistsHeading)).toBeVisible();
   if (!await signInHeading.isVisible()) return;
   const signInUrl = new URL(page.url());

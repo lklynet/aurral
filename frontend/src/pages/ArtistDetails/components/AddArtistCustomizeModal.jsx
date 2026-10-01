@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
+import AddActionButton from "../../../components/AddActionButton";
 
 export function AddArtistCustomizeModal({
   show,
@@ -16,6 +17,7 @@ export function AddArtistCustomizeModal({
   onClose,
   onConfirm,
   confirming,
+  error,
 }) {
   const titleId = useId();
   const { dialogRef, handleBackdropClick } = useModalDialog({
@@ -45,11 +47,11 @@ export function AddArtistCustomizeModal({
       >
         <div className="artist-modal__header">
           <h3 id={titleId} className="artist-modal__title">
-            Customize Add
+            Customize Lidarr add
           </h3>
         </div>
         <p className="artist-modal__subcopy">
-          Choose where <strong>{artistName}</strong> should go for this add only.
+          Choose Lidarr options for <strong>{artistName}</strong> for this add only.
         </p>
 
         {loading ? (
@@ -129,6 +131,7 @@ export function AddArtistCustomizeModal({
           </div>
         )}
 
+        {error ? <p className="artist-subtext" role="alert">{error}</p> : null}
         <div className="artist-modal__actions">
           <button
             type="button"
@@ -138,15 +141,16 @@ export function AddArtistCustomizeModal({
           >
             Cancel
           </button>
-          <button
+          <AddActionButton
             type="button"
             onClick={onConfirm}
-            className="btn btn-primary"
+            label="Add to Lidarr"
+            className="btn-primary"
             disabled={loading || !configured || confirming}
           >
             {confirming ? <DotLoader size="sm" label={null} /> : null}
-            {confirming ? "Adding..." : "Add Artist"}
-          </button>
+            {confirming ? "Adding to Lidarr..." : "Add to Lidarr"}
+          </AddActionButton>
         </div>
       </div>
     </div>

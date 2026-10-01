@@ -1,3 +1,4 @@
+import { getAlbumAddAction } from "../../../utils/albumAddAction";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Music, Star } from "lucide-react";
@@ -47,6 +48,7 @@ export function ArtistDetailsDownloadTargets({
   canAddAlbum,
   requestingAlbum,
   handleRequestAlbum,
+  libraryDestination,
   artistName = "",
   playbackSource = null,
   onAddTrackToPlaylist,
@@ -217,13 +219,19 @@ export function ArtistDetailsDownloadTargets({
               {canAddAlbum && missingReleasePick.releaseGroupId && (
                 <div>
                   <AddActionButton
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleRequestAlbum(missingReleasePick.releaseGroupId, missingReleasePick.title);
-                    }}
+                    {...getAlbumAddAction({
+                      ...getAlbumStatus(missingReleasePick.releaseGroupId),
+                      managedBy: getAlbumStatus(missingReleasePick.releaseGroupId)?.albumInfo?.managedBy,
+                    }, libraryDestination)}
+                    ownerConflict={getAlbumStatus(missingReleasePick.releaseGroupId)?.ownerConflict}
+                    onAdd={(managedBy) =>
+                      handleRequestAlbum(
+                        missingReleasePick.releaseGroupId,
+                        missingReleasePick.title,
+                        managedBy,
+                      )}
                     isLoading={requestingAlbum === missingReleasePick.releaseGroupId}
                     disabled={requestingAlbum === missingReleasePick.releaseGroupId}
-                    label="Add to Lidarr"
                   />
                 </div>
               )}

@@ -13,9 +13,9 @@
 ![Discord](https://img.shields.io/discord/1457052417580339285?style=flat)
 [![Sponsor](https://img.shields.io/github/sponsors/lklynet?label=Sponsor&logo=GitHub-Sponsors&logoColor=fe8a76)](https://github.com/sponsors/lklynet/)
 
-Aurral is the Lidarr companion for self-hosted music discovery. Best-in-class recommendations, rotating flows, and playlist downloads, built on Lidarr instead of replacing it.
+Aurral is self-hosted music discovery that works on its own or alongside Lidarr. Best-in-class recommendations, rotating flows, playlist downloads, and a library that Aurral, Lidarr, or both can manage.
 
-## Quick Links
+## Quick links
 
 - [Website](https://aurral.org)
 - [Documentation](https://docs.aurral.org/)
@@ -23,14 +23,14 @@ Aurral is the Lidarr companion for self-hosted music discovery. Best-in-class re
 
 ## Features
 
-- **Discover**: Best-in-class personalized recommendations, trends, tags, recent releases, discover playlists, and nearby shows.
-- **Search**: Find artists and albums, preview tracks, and add to Lidarr with your defaults.
-- **Library**: Browse and search artists already in Lidarr.
-- **Playlists**: Run scheduled flows, adopt discover playlists like Release Radar, import Spotify, YouTube Music, Last.fm, or ListenBrainz playlists, and convert flows to fixed tracklists.
-- **Activity**: Queue and history for Lidarr requests, yt-dlp / slskd / Usenet downloads, plus Wanted actions for Aurral playlist jobs.
-- **Integrations**: Lidarr, Last.fm, ListenBrainz, Koito, yt-dlp, slskd, SABnzbd/NZBGet, Navidrome, Plex, Ticketmaster, Gotify, and webhooks.
-- **Playback**: Stream through API-synced Navidrome or Plex/Plexamp playlists from a dedicated download folder.
-- **Multi-user**: Per-user profiles, discovery layout, permissions, local auth, LAN auto-login, reverse-proxy SSO, and native OIDC.
+- **Discover**: Personal recommendations, trends, tags, recent and upcoming releases, discover playlists, artist news, and nearby shows.
+- **Search**: Find artists and albums, preview tracks, and add them to Aurral or Lidarr with your defaults.
+- **Library**: Browse, play, and search the artists, albums, and tracks that Aurral and Lidarr manage. Monitor Aurral artists for new albums without Lidarr.
+- **Playlists**: Run scheduled flows, adopt discover playlists such as Release Radar, import Spotify, YouTube Music, Last.fm, or ListenBrainz playlists, and convert flows to fixed tracklists.
+- **Activity**: Queue, history, and Wanted views for album requests and yt-dlp, slskd, Usenet, and deemix downloads. Cancel, retry, upgrade, or choose a download yourself.
+- **Integrations**: Lidarr, Last.fm, ListenBrainz, Koito, yt-dlp, slskd, Prowlarr, SABnzbd, NZBGet, deemix, Navidrome, Plex, Jellyfin, Ticketmaster, Gotify, and webhooks.
+- **Playback**: Play the Library in the browser, connect Subsonic and OpenSubsonic players such as Feishin and Music Assistant, or publish playlists to Navidrome, Plex, Plexamp, and Jellyfin.
+- **Multi-user**: Profiles, discovery layouts, permissions, and account status for each user. Sign in with a local password, LAN auto-login, reverse-proxy SSO, native OIDC, Google, or Plex.
 
 ## Screenshots
 
@@ -44,7 +44,7 @@ Aurral is the Lidarr companion for self-hosted music discovery. Best-in-class re
   <img src="docs/src/assets/screenshots/playlists.webp" width="205" alt="Aurral playlists" />
 </p>
 
-## Quick Start
+## Quick start
 
 Create a `docker-compose.yml`:
 
@@ -63,16 +63,15 @@ services:
       - ./config:/config
 ```
 
-Set `MEDIA_ROOT` to the **same host media path that Lidarr already mounts**. Keep `/data` as the container path and use that same mapping for your download clients and Navidrome or Plex. Then set Aurral's Downloads Folder to a container path such as `/data/downloads/aurral`. See [Filesystem and mounts](https://docs.aurral.org/getting-started/storage/).
+Set `MEDIA_ROOT` to your host media folder. If you use Lidarr, use the host folder that Lidarr already mounts. Keep `/data` as the container path, and use the same mount for your download clients and your playback server. Then set Aurral's Downloads Folder to a container path such as `/data/downloads/aurral`. See [Filesystem and mounts](https://docs.aurral.org/getting-started/storage/).
 
 ```bash
 docker compose up -d
 ```
 
-Open `http://localhost:3001` and create your admin account. Connect Lidarr if you want managed library changes and provider status.
+Open `http://localhost:3001` and create your admin account. Connect Lidarr if you want it to manage your library, or skip it and let Aurral keep your music in its Downloads Folder. Lidarr is optional, and you can connect it later.
 
-Want the latest merged changes? Use `ghcr.io/lklynet/aurral:nightly`. Nightly
-builds may be less stable than releases; see the [Docker image channels](https://docs.aurral.org/getting-started/docker/#which-image-tag-to-use).
+To get the latest merged changes, use `ghcr.io/lklynet/aurral:nightly`. Nightly builds can be less stable than releases. See [Choose an image tag](https://docs.aurral.org/getting-started/docker/#choose-an-image-tag).
 
 For a stack with Lidarr, slskd, and Navidrome, see [`docker-compose.example.yml`](docker-compose.example.yml). For Plex, see the [Plex setup guide](https://docs.aurral.org/integrations/plex/).
 
