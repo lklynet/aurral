@@ -146,8 +146,8 @@ test("implements starred and frequent album lists without inventing ratings", ()
   ).get("subsonic-album-lists");
   const insertPlay = db.prepare(`
     INSERT INTO play_events
-      (user_id, track_id, title, artist, album, played_at, source, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, 'subsonic', ?)
+      (user_id, track_id, title, artist, album, album_key, played_at, source, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'subsonic', ?)
   `);
 
   try {
@@ -158,6 +158,7 @@ test("implements starred and frequent album lists without inventing ratings", ()
       "Old Song",
       "Artist A",
       "Old Album",
+      "test-album:Old Album",
       1000,
       1000,
     );
@@ -167,6 +168,7 @@ test("implements starred and frequent album lists without inventing ratings", ()
       "Old Song",
       "Artist A",
       "Old Album",
+      "test-album:Old Album",
       2000,
       2000,
     );
@@ -176,6 +178,7 @@ test("implements starred and frequent album lists without inventing ratings", ()
       "New Song",
       "Artist A",
       "New Album",
+      "test-album:New Album",
       3000,
       3000,
     );
@@ -344,5 +347,55 @@ test("favorite reads preserve shared relationships, media filters, and user isol
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(guestAlbum.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(guest.id);
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(missing.id);
+  }
+});
+
+test("frequent albums keep same-titled releases separated by canonical identity", () => {
+  const artist = db.prepare("SELECT id, name FROM library_artists WHERE identity_key = ?")
+    .get("test-artist:artist-a");
+  const duplicate = upsertLibraryAlbum({
+    identityKey: "test-album:Old Album alternate release",
+    artistId: artist.id,
+    title: "Old Album",
+    albumArtist: artist.name,
+  });
+  const duplicateTrack = upsertLibraryTrack({
+    identityKey: "test-track:Old Song alternate release",
+    title: "Old Song Alternate",
+    artistName: artist.name,
+  });
+  linkLibraryAlbumTrack({ albumId: duplicate.id, trackId: duplicateTrack.id, trackNumber: 1 });
+  upsertLibraryMediaFile({
+    albumId: duplicate.id,
+    trackId: duplicateTrack.id,
+    source: "lidarr",
+    path: "/test/Old Album Alternate/Old Song Alternate.flac",
+    available: true,
+  });
+  const user = db.prepare(
+    "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, '', 'user', '{}') RETURNING id",
+  ).get("subsonic-same-title-albums");
+
+  try {
+    db.prepare(`
+      INSERT INTO play_events
+        (user_id, track_id, title, artist, album, album_key, played_at, source, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'subsonic', ?)
+    `).run(
+      user.id,
+      idFor("song", "test-track:Old Song"),
+      "Old Song",
+      artist.name,
+      "Old Album",
+      "test-album:Old Album",
+      1000,
+      1000,
+    );
+    assert.deepEqual(
+      getAlbumList({ type: "frequent" }, user).map((album) => album.id),
+      [idFor("album", "test-album:Old Album")],
+    );
+  } finally {
+    db.prepare("DELETE FROM users WHERE id = ?").run(user.id);
   }
 });

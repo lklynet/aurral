@@ -563,13 +563,8 @@ const getFrequentlyPlayedAlbumsStmt = db.prepare(`
   SELECT album.identity_key
   FROM play_album_stats AS played
   JOIN library_albums AS album
-    ON album.title = played.album COLLATE NOCASE
-  JOIN library_artists AS artist ON artist.id = album.artist_id
+    ON album.identity_key = played.album_key
   WHERE played.user_id = ?
-    AND (
-      artist.name = played.artist COLLATE NOCASE
-      OR album.album_artist = played.artist COLLATE NOCASE
-    )
     AND EXISTS (
       SELECT 1
       FROM library_album_tracks AS album_track

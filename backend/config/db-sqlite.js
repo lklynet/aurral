@@ -140,6 +140,7 @@ db.exec(`
     title TEXT NOT NULL,
     artist TEXT NOT NULL,
     album TEXT,
+    album_key TEXT,
     artist_mbid TEXT,
     album_mbid TEXT,
     track_mbid TEXT,
@@ -155,28 +156,15 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS play_album_stats (
     user_id INTEGER NOT NULL,
-    album TEXT NOT NULL,
-    artist TEXT NOT NULL,
+    album_key TEXT NOT NULL,
     play_count INTEGER NOT NULL DEFAULT 0,
     last_played_at INTEGER NOT NULL,
-    PRIMARY KEY (user_id, album, artist),
+    PRIMARY KEY (user_id, album_key),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
   CREATE INDEX IF NOT EXISTS idx_play_album_stats_user_ranking
     ON play_album_stats(user_id, play_count DESC, last_played_at DESC);
-
-  CREATE TRIGGER IF NOT EXISTS play_events_album_stats_insert
-    AFTER INSERT ON play_events
-    WHEN NEW.album IS NOT NULL AND TRIM(NEW.album) != ''
-  BEGIN
-    INSERT INTO play_album_stats
-      (user_id, album, artist, play_count, last_played_at)
-    VALUES (NEW.user_id, NEW.album, NEW.artist, 1, NEW.played_at)
-    ON CONFLICT(user_id, album, artist) DO UPDATE SET
-      play_count = play_album_stats.play_count + 1,
-      last_played_at = MAX(play_album_stats.last_played_at, excluded.last_played_at);
-  END;
 
   CREATE TABLE IF NOT EXISTS playlist_download_jobs (
     id TEXT PRIMARY KEY,
@@ -515,22 +503,79 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_honker_task_runs_job ON honker_task_runs(job_id, queue);
 `);
 
-const playAlbumStatsMigrationKey = "migration:play-album-stats-v1";
-if (!db.prepare("SELECT 1 FROM settings WHERE key = ?").get(playAlbumStatsMigrationKey)) {
-  db.transaction(() => {
-    db.exec(`
-      DELETE FROM play_album_stats;
+tryAddColumn("ALTER TABLE play_events ADD COLUMN album_key TEXT");
+
+db.transaction(() => {
+  const columns = db.prepare("PRAGMA table_info(play_album_stats)").all().map((column) => column.name);
+  if (!columns.includes("album_key")) {
+    db.exec("DROP TRIGGER IF EXISTS play_events_album_stats_insert; DROP TABLE play_album_stats;");
+  }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS play_album_stats (
+      user_id INTEGER NOT NULL,
+      album_key TEXT NOT NULL,
+      play_count INTEGER NOT NULL DEFAULT 0,
+      last_played_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, album_key),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_play_album_stats_user_ranking
+      ON play_album_stats(user_id, play_count DESC, last_played_at DESC);
+    CREATE TRIGGER IF NOT EXISTS play_events_album_stats_insert
+      AFTER INSERT ON play_events
+      WHEN NEW.album_key IS NOT NULL AND TRIM(NEW.album_key) != ''
+    BEGIN
       INSERT INTO play_album_stats
-        (user_id, album, artist, play_count, last_played_at)
-      SELECT user_id, album, artist, COUNT(*), MAX(played_at)
-      FROM play_events
-      WHERE album IS NOT NULL AND TRIM(album) != ''
-      GROUP BY user_id, album, artist;
-    `);
-    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)")
-      .run(playAlbumStatsMigrationKey, "1");
-  })();
-}
+        (user_id, album_key, play_count, last_played_at)
+      VALUES (NEW.user_id, NEW.album_key, 1, NEW.played_at)
+      ON CONFLICT(user_id, album_key) DO UPDATE SET
+        play_count = play_album_stats.play_count + 1,
+        last_played_at = MAX(play_album_stats.last_played_at, excluded.last_played_at);
+    END;
+  `);
+}).immediate();
+
+const playAlbumStatsMigrationKey = "migration:play-album-stats-v2";
+db.transaction(() => {
+  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(playAlbumStatsMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  db.exec(`
+    UPDATE play_events AS event
+    SET album_key = (
+      SELECT MIN(album.identity_key)
+      FROM library_albums AS album
+      JOIN library_artists AS artist ON artist.id = album.artist_id
+      WHERE (
+        event.album_mbid IS NOT NULL
+        AND TRIM(event.album_mbid) != ''
+        AND event.album_mbid IN (
+          album.identity_key,
+          COALESCE(album.mbid, ''),
+          COALESCE(album.release_group_mbid, ''),
+          CAST(album.id AS TEXT)
+        )
+      ) OR (
+        (event.album_mbid IS NULL OR TRIM(event.album_mbid) = '')
+        AND event.album = album.title COLLATE NOCASE
+        AND (
+          event.artist = artist.name COLLATE NOCASE
+          OR event.artist = album.album_artist COLLATE NOCASE
+        )
+      )
+      HAVING COUNT(*) = 1
+    )
+    WHERE album_key IS NULL;
+
+    DELETE FROM play_album_stats;
+    INSERT INTO play_album_stats
+      (user_id, album_key, play_count, last_played_at)
+    SELECT user_id, album_key, COUNT(*), MAX(played_at)
+    FROM play_events
+    WHERE album_key IS NOT NULL AND TRIM(album_key) != ''
+    GROUP BY user_id, album_key;
+  `);
+}).immediate();
 
 const releaseCalendarPrimaryKey = db
   .prepare("PRAGMA table_info(library_release_calendar)")

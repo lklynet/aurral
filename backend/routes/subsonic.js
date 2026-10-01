@@ -284,6 +284,7 @@ async function handleSubsonicRequest(req, res) {
           title: song.title,
           artist: song.artist,
           album: song.album,
+          albumId: song.albumId,
           durationMs: Number(song.duration || 0) * 1000,
           playedAt: times[index] || undefined,
           source: "subsonic",
