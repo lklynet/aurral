@@ -27,6 +27,7 @@ WORKDIR /app
 
 COPY --from=dependencies /app ./
 COPY . .
-RUN test "$(node -p 'require("@playwright/test/package.json").version')" = "1.63.0"
+RUN test "$(node -p 'require("@playwright/test/package.json").version')" = "1.63.0" \
+    && npm run build
 
 ENV HOME=/tmp
