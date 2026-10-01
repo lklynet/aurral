@@ -1,4 +1,6 @@
-FROM node:26.10.0-bookworm-slim@sha256:662933cf47f013bc8e4beb31a6116448427a82057ba7c42c97e4c5ba766504c2 AS node-base
+FROM node:26.10.0-trixie-slim@sha256:ec7758ee051e457b468b32bde57b0879010b325bb9862718e9615225ce4aaae1 AS node-base
+
+FROM mwader/static-ffmpeg:9.0.2@sha256:7d9bdaaf887f7e6ce6151f67325c344074b5ff1fb75316011c3376503e449a7b AS ffmpeg
 
 FROM node-base AS builder
 
@@ -42,13 +44,12 @@ FROM node-base AS runtime
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     gosu \
     fontconfig \
     fonts-dejavu-core \
     fonts-noto-color-emoji \
     python3 \
-    ffmpeg \
     ca-certificates \
     libjemalloc2 \
     && rm -rf /var/lib/apt/lists/* \
@@ -60,10 +61,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV LD_PRELOAD=libjemalloc.so.2 \
     MALLOC_CONF=background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000
 
+COPY --from=ffmpeg /ffmpeg /ffprobe /usr/local/bin/
+
 ADD --chmod=755 --checksum=sha256:1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6 \
     https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp \
     /usr/local/bin/yt-dlp
-RUN yt-dlp --version
+RUN yt-dlp --version && ffmpeg -version && ffprobe -version
 
 COPY package*.json ./
 COPY backend/package*.json ./backend/
