@@ -1,5 +1,6 @@
 import axios from "../../lib/axiosFetch.js";
 import crypto from "crypto";
+import { XMLParser } from "fast-xml-parser";
 import { AURRAL_FLOWS_DIR } from "./playlistPaths.js";
 import { readPlaylistPages, requirePlaylistPath } from "./playback/playlistUsage.js";
 
@@ -12,21 +13,19 @@ const MUSIC_AGENT = "tv.plex.agents.music";
 const MUSIC_SCANNER = "Plex Music";
 const TRACK_TYPE = 10; // Plex metadata type for audio tracks
 
-function parsePlexXmlTags(xml, tagName) {
-  const tagRe = new RegExp(`<${tagName}\\b([^>]*)/?\\s*>`, "gi");
-  const attrRe = /([\w:-]+)\s*=\s*"([^"]*)"/g;
-  const out = [];
-  let match;
-  while ((match = tagRe.exec(xml))) {
-    const attrs = {};
-    let attrMatch;
-    attrRe.lastIndex = 0;
-    while ((attrMatch = attrRe.exec(match[1]))) {
-      attrs[attrMatch[1]] = attrMatch[2];
+const xmlParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "", htmlEntities: true });
+
+function findPlexXmlElements(xml, name) {
+  const found = [];
+  const visit = (node) => {
+    if (!node || typeof node !== "object") return;
+    for (const [key, value] of Object.entries(node)) {
+      if (key.toLowerCase() === name) found.push(...[value].flat());
+      else [value].flat().forEach(visit);
     }
-    out.push(attrs);
-  }
-  return out;
+  };
+  visit(xmlParser.parse(xml));
+  return found;
 }
 
 function toBool(value) {
@@ -145,7 +144,7 @@ export class PlexClient {
 
     let rawUsers = [];
     if (typeof data === "string") {
-      rawUsers = parsePlexXmlTags(data, "[Uu]ser");
+      rawUsers = findPlexXmlElements(data, "user");
     } else if (Array.isArray(data?.users)) {
       rawUsers = data.users;
     } else if (Array.isArray(data?.MediaContainer?.User)) {
@@ -181,7 +180,7 @@ export class PlexClient {
       try {
         const { data } = await axios.post(path, null, { params, headers });
         if (typeof data === "string") {
-          const [tag] = parsePlexXmlTags(data, "user");
+          const [tag] = findPlexXmlElements(data, "user");
           const token = tag?.authenticationToken || tag?.authToken;
           if (token) return token;
         } else {

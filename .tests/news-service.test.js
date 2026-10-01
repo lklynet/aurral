@@ -15,10 +15,10 @@ test.after(async () => cleanupIsolatedState(isolatedState));
 
 test("parses RSS items, Atom entries, entities, and images", () => {
   const articles = rssNews.parseRssFeed(`
-    <rss><channel><title>Example Music</title><item>
+    <rss xmlns:media="http://search.yahoo.com/mrss/"><channel><title>Example Music</title><item>
       <title><![CDATA[Artist One &amp; the new album]]></title>
-      <description>A new story.</description>
-      <link>https://example.test/story</link>
+      <description>&lt;p&gt;A new R&amp;amp;B story.&lt;/p&gt;</description>
+      <link>https://example.test/story?utm_source=rss&#038;utm_medium=rss</link>
       <pubDate>2026-08-07T12:00:00Z</pubDate>
       <media:content url="https://example.test/image.jpg" />
     </item></channel></rss>
@@ -26,6 +26,8 @@ test("parses RSS items, Atom entries, entities, and images", () => {
 
   assert.equal(articles.length, 1);
   assert.equal(articles[0].title, "Artist One & the new album");
+  assert.equal(articles[0].description, "A new R&B story.");
+  assert.equal(articles[0].url, "https://example.test/story?utm_source=rss&utm_medium=rss");
   assert.equal(articles[0].source, "Example Music");
   assert.equal(articles[0].imageUrl, "https://example.test/image.jpg");
 });

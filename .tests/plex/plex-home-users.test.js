@@ -47,7 +47,7 @@ test("getHomeUsers tolerates a raw XML string response", async () => {
     data:
       '<MediaContainer size="2">' +
       '<User id="10" uuid="uuid-10" title="Kiddo" restricted="1" admin="0" guest="0"/>' +
-      '<User id="11" uuid="uuid-11" title="Guest User" username="guestacct" email="g@example.com" restricted="0"/>' +
+      '<User id="11" uuid="uuid-11" title="Tom &amp; Jerry&#039;s" username="guestacct" email="g@example.com" restricted="0"/>' +
       "</MediaContainer>",
   }));
   const users = await PlexClient.getHomeUsers("admin-token", "admin-client");
@@ -55,6 +55,7 @@ test("getHomeUsers tolerates a raw XML string response", async () => {
   assert.equal(users[0].id, "10");
   assert.equal(users[0].title, "Kiddo");
   assert.equal(users[0].restricted, true);
+  assert.equal(users[1].title, "Tom & Jerry's");
   assert.equal(users[1].username, "guestacct");
   assert.equal(users[1].restricted, false);
 });

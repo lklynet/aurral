@@ -1,44 +1,15 @@
 import { createHash } from "node:crypto";
+import { parseFeed } from "@rowanmanning/feed-parser";
+import { decode } from "html-entities";
 import axios from "../../lib/axiosFetch.js";
 import { assertPublicUrl } from "../../lib/publicUrl.js";
 
 const MAX_ITEMS_PER_FEED = 100;
-const ENTITY_MAP = {
-  amp: "&",
-  apos: "'",
-  gt: ">",
-  lt: "<",
-  nbsp: " ",
-  quot: '"',
-};
 
-const decodeXml = (value) => String(value || "")
-  .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-  .replace(/&#(x[\da-f]+|\d+);/gi, (_, code) => {
-    const parsed = code.toLowerCase().startsWith("x")
-      ? Number.parseInt(code.slice(1), 16)
-      : Number.parseInt(code, 10);
-    return Number.isFinite(parsed) ? String.fromCodePoint(parsed) : "";
-  })
-  .replace(/&([a-z]+);/gi, (_, name) => ENTITY_MAP[name.toLowerCase()] || `&${name};`)
+const htmlToText = (value) => String(value || "")
   .replace(/<[^>]+>/g, " ")
   .replace(/\s+/g, " ")
   .trim();
-
-const getTag = (xml, tag) => {
-  const match = String(xml || "").match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`, "i"));
-  return decodeXml(match?.[1] || "");
-};
-
-const getRawTag = (xml, tag) => {
-  const match = String(xml || "").match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`, "i"));
-  return match?.[1] || "";
-};
-
-const getAttribute = (xml, tag, attribute) => {
-  const match = String(xml || "").match(new RegExp(`<${tag}\\b[^>]*\\b${attribute}=["']([^"']+)["']`, "i"));
-  return decodeXml(match?.[1] || "");
-};
 
 const isUsableImageUrl = (value) => {
   const url = String(value || "").trim().toLowerCase();
@@ -54,36 +25,15 @@ const getHtmlImage = (html) => {
   return candidates.find(isUsableImageUrl) || null;
 };
 
-const getItemLink = (xml) =>
-  getTag(xml, "link") ||
-  getAttribute(xml, "link", "href") ||
-  getAttribute(xml, "enclosure", "url");
+const isImageMedia = (media) =>
+  media.type === "image" || media.mimeType?.startsWith("image/") || (!media.type && !media.mimeType);
 
-const getItemImage = (xml) =>
-  getAttribute(xml, "media:content", "url") ||
-  getAttribute(xml, "media:thumbnail", "url") ||
-  getAttribute(xml, "image", "href") ||
-  getTag(xml, "image") ||
-  (getAttribute(xml, "enclosure", "type").startsWith("image/")
-    ? getAttribute(xml, "enclosure", "url")
-    : null) ||
-  getHtmlImage(getRawTag(xml, "content:encoded")) ||
-  getHtmlImage(getRawTag(xml, "description")) ||
-  getTag(xml, "media:content");
-
-const parseItems = (xml) => {
-  const matches = [...String(xml || "").matchAll(/<(item|entry)\b[^>]*>([\s\S]*?)<\/\1>/gi)];
-  return matches.slice(0, MAX_ITEMS_PER_FEED).map(([, , itemXml]) => ({
-    title: getTag(itemXml, "title"),
-    description: getTag(itemXml, "description") || getTag(itemXml, "summary") || getTag(itemXml, "content"),
-    url: getItemLink(itemXml),
-    publishedAt: getTag(itemXml, "pubDate") || getTag(itemXml, "published") || getTag(itemXml, "updated") || null,
-    imageUrl: getItemImage(itemXml) || null,
-  })).filter((item) => item.title && item.url);
-};
-
-const getFeedTitle = (xml, feed) =>
-  getTag(xml, "title") || feed.name || new URL(feed.url).hostname;
+const getItemImage = (item) =>
+  [...item.media.filter(isImageMedia).map((media) => media.url), item.image?.url]
+    .map((url) => decode(url || ""))
+    .find(isUsableImageUrl) ||
+  getHtmlImage(item.content) ||
+  getHtmlImage(item.description);
 
 const resolveUrl = (value, base) => {
   try {
@@ -104,11 +54,21 @@ export const normalizeRssArticle = (article, feed) => ({
   imageUrl: article.imageUrl ? resolveUrl(article.imageUrl, feed.url) : null,
 });
 
-export const parseRssFeed = (xml, feed) =>
-  parseItems(xml).map((item) => normalizeRssArticle(item, {
-    ...feed,
-    name: getFeedTitle(xml, feed),
-  }));
+export const parseRssFeed = (xml, feed) => {
+  const parsed = parseFeed(xml);
+  const source = { ...feed, name: parsed.title || feed.name || new URL(feed.url).hostname };
+  return parsed.items
+    .slice(0, MAX_ITEMS_PER_FEED)
+    .map((item) => ({
+      title: htmlToText(item.title),
+      description: htmlToText(item.description || item.content),
+      url: decode(item.url || ""),
+      publishedAt: (item.published || item.updated)?.toISOString() || null,
+      imageUrl: getItemImage(item) || null,
+    }))
+    .filter((item) => item.title && item.url)
+    .map((item) => normalizeRssArticle(item, source));
+};
 
 export async function fetchRssFeed(feed, { signal } = {}) {
   const response = await axios.get(feed.url, {
