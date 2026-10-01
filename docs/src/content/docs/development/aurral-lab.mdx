@@ -1,0 +1,115 @@
+---
+title: Aurral Lab
+description: Run Aurral and its browser tests in disposable containers with simulated services.
+---
+
+Aurral Lab runs Aurral in Docker next to simulated metadata, Lidarr, and slskd services. You can try a change and run the browser tests without a media library, real services, or private settings. CI runs the same browser tests with the same command.
+
+## Requirements
+
+You need Docker Engine with the Compose v2 plugin and Node.js to run the npm scripts. The Lab commands use only Node's built-in modules, so they work before `npm install`.
+
+The first start pulls base images and builds Aurral from your checkout, which takes several minutes. Later starts reuse Docker's build cache.
+
+Lab has been checked on Linux. Docker Desktop on macOS and Windows has not been tested.
+
+## Start a development Lab
+
+```sh
+npm run lab:up
+```
+
+The command builds Aurral, seeds an empty Lab, starts it, and prints its URL. Sign in as `lab-admin` with the password `disposable-lab-password`. Both values live in `tests/lab/lab.env` and are only for Labs.
+
+Each worktree gets its own Lab on a random port on `127.0.0.1`. Print the URL again with `npm run --silent lab:url`. Show logs with `npm run lab:logs`, and add `--follow`, `--tail <lines>`, or a service name (`aurral`, `fixtures`, or `gateway`) when you need them.
+
+`npm run lab:down` stops the Lab and keeps its data in `backend/data/lab/dev/`. The next `npm run lab:up` starts where you left off. `npm run lab:reset` stops the Lab, deletes its data, and seeds it again.
+
+Run a second Lab from the same checkout by naming it:
+
+```sh
+AURRAL_LAB_ID=second npm run lab:up
+```
+
+Every Lab command accepts `AURRAL_LAB_ID`. Labs never touch another worktree's Lab or containers they did not create.
+
+## What a Lab contains
+
+A new Lab has a disposable admin, finished onboarding, and an untagged library artist with two short playable tracks. Aurral indexes those tracks during seeding with its own library scan.
+
+The fixtures service simulates three providers on their usual ports:
+
+- Brainzmash metadata for four artists and their albums, listed in `tests/lab/fixtures/catalog.json`.
+- A Lidarr that keeps the artists and albums Aurral adds or removes.
+- An slskd that answers searches from the same catalog. Downloads stay queued until Aurral cancels them, so the Lab can test monitoring and cancellation but not completed imports.
+
+Aurral and the browser cannot reach the internet from a Lab. Features that need public services, such as Last.fm, Deezer previews, YouTube Music, news feeds, and update checks, fail in a Lab. Each blocked connection appears once in the Aurral log as a `[lab-egress]` line.
+
+The simulators follow the requests Aurral makes today. A passing Lab run does not show that Aurral works with any particular Lidarr or slskd release.
+
+## Run the browser tests
+
+```sh
+npm run test:e2e
+npm run test:e2e -- tests/e2e/smoke.spec.js
+npm run test:e2e -- --grep "sign in" tests/e2e/smoke.spec.js
+```
+
+Each spec file runs in its own new Lab with the Chromium version that matches the project's Playwright package. Test runs never change your development Lab.
+
+Lab runs accept `--grep`, `--grep-invert`, `--repeat-each`, `--timeout`, `--max-failures`, and `--trace`. They reject options that would change Lab-owned output, reporters, workers, or retries.
+
+On CI, a failed spec gets up to two more attempts, and each attempt starts from a new Lab. Local runs do not retry unless you pass `--retries 1` or `--retries 2`. The summary marks a spec that passed only on a retry as flaky.
+
+Each attempt keeps its evidence in `test-results/lab/<run>/<spec>/<attempt>/`:
+
+- `report/` is the Playwright HTML report.
+- `artifacts/` has traces, videos, and screenshots from failed tests.
+- `aurral.log` and `fixtures.log` are the container logs.
+- `fixtures-journal.jsonl` records every request to the simulated services.
+- `manifest.json` and `runtime.json` record the commit, image IDs, and Node, Playwright, and browser versions.
+
+Open a trace with `npx playwright show-trace <path-to-trace.zip>`.
+
+`npm run test:all` runs lint, unit tests, integration tests, the frontend build, and the browser tests in order, and stops at the first failure.
+
+Aurral allows each client 5,000 requests every 15 minutes. A large spec run with a high `--repeat-each` can hit that limit, and the page then fails to load scripts with HTTP 429.
+
+## Run Playwright on your machine
+
+Host Playwright is useful when you want a headed browser or Playwright's UI mode against a running development Lab:
+
+```sh
+npx playwright install chromium
+AURRAL_BASE_URL="$(npm run --silent lab:url)" npm run test:e2e:host
+```
+
+The command signs in with the Lab credentials unless you set `AUTH_USER` and `AUTH_PASSWORD`. These tests write to your development Lab, so reset it if a test leaves data behind.
+
+## Add Lab data or simulated services
+
+Add artists and albums to `tests/lab/fixtures/catalog.json`. Change provider behavior in `tests/lab/services/`. Base each response on the provider's documentation or source, or on a response shape Aurral's tests already use. Today's sources are:
+
+- Brainzmash follows the payloads in `.tests/metadata-providers.test.js` and `.tests/library/aurral-monitoring.test.js`.
+- Lidarr follows the API v1 fake in `.tests/auth/lidarr-preferences.int.test.js`.
+- slskd follows the API v0 responses in `.tests/weekly-flow/slskd-client.test.js`.
+
+`.tests/lab-fixtures.int.test.js` drives Aurral's real clients against these modules. Extend it when you add a response Aurral depends on.
+
+When you change `tests/lab/seed.mjs`, raise `SEED_VERSION` in `scripts/lab.mjs`. Existing Labs then ask for `npm run lab:reset` instead of starting with old data.
+
+Tests in one spec file share a Lab, so each test must remove what it creates.
+
+The Lab runner image pins Playwright's Docker image by digest. Update it together with `@playwright/test`. The runner build launches Chromium and fails when the two do not match.
+
+## Fix common problems
+
+`Lab "dev" is not running` means there is nothing to show. Start it with `npm run lab:up`.
+
+`has incomplete data` or `was seeded with version` means the Lab's data does not match the current seed. Run `npm run lab:reset`.
+
+`Another Lab operation` means a command is still changing that Lab. Wait for it. If no command is running, delete the lock file the message names.
+
+`resources this worktree did not create` means a Docker project with the Lab's name belongs to someone else. Lab leaves it alone. Inspect it with the `docker ps` command in the message.
+
+Each worktree builds two images, `aurral-lab-<worktree>-<hash>:local` and `aurral-lab-<worktree>-<hash>-runner:local`. Lab commands keep them as a build cache. Remove them with `docker image rm` when you no longer need them.
