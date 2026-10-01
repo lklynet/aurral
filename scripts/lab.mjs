@@ -11,7 +11,7 @@ const specDir = path.join(repoRoot, "tests", "e2e");
 const labRoot = path.join(repoRoot, "backend", "data", "lab");
 const lockDir = path.join(labRoot, ".locks");
 const LAB_ID = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/;
-const SEED_VERSION = 2;
+const SEED_VERSION = 3;
 const FORWARDED_ENV = [
   "PATH",
   "HOME",

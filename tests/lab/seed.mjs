@@ -49,6 +49,12 @@ dbOps.updateSettings({
       qualityProfileId: 1,
       metadataProfileId: 1,
     },
+    slskd: {
+      ...settings.integrations?.slskd,
+      enabled: true,
+      url: process.env.AURRAL_LAB_SLSKD_URL,
+      apiKey: process.env.AURRAL_LAB_SLSKD_API_KEY,
+    },
   },
   security: { ...settings.security, localNetworkBypass: { enabled: false } },
 });

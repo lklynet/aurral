@@ -5,15 +5,17 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createBrainzmash } from "../tests/lab/services/brainzmash.mjs";
 import { createLidarr } from "../tests/lab/services/lidarr.mjs";
+import { createSlskd } from "../tests/lab/services/slskd.mjs";
 import { cleanupIsolatedState, createMockHttpServer, setupIsolatedBackend } from "./helpers/backendTestHarness.js";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const catalog = JSON.parse(readFileSync(join(repoRoot, "tests", "lab", "fixtures", "catalog.json"), "utf8"));
-const [paths, { dbOps }, provider, { lidarrClient }] = await setupIsolatedBackend(
+const [paths, { dbOps }, provider, { lidarrClient }, { slskdClient }] = await setupIsolatedBackend(
   "lab-fixtures",
   "backend/db/helpers/index.js",
   "backend/services/providers/brainzmashProvider.js",
   "backend/services/lidarrClient.js",
+  "backend/services/slskdClient.js",
 );
 test.after(() => cleanupIsolatedState(paths));
 
@@ -88,4 +90,34 @@ test("Aurral adds and removes a Lidarr artist through the Lab fixture", async (t
   const connection = await lidarrClient.testConnection();
   assert.notEqual(connection.connected, true);
   assert.deepEqual(lidarr.state.artists, []);
+});
+
+test("Aurral searches, queues, and cancels slskd downloads through the Lab fixture", async (t) => {
+  const apiKey = "lab-slskd-key";
+  const slskd = createSlskd(catalog, { apiKey });
+  const url = await serve(t, slskd);
+  const artist = catalog.artists.find((entry) => entry.albums.some((album) => album.tracks.length > 1));
+  const album = artist.albums.find((entry) => entry.tracks.length > 1);
+  configure({ slskd: { enabled: true, url, apiKey } });
+
+  const connection = await slskdClient.testConnection({ force: true });
+  assert.equal(connection.connected, true);
+  assert.ok(connection.downloadPath);
+
+  const search = await slskdClient.createSearch(`${artist.name} ${album.title}`);
+  const result = await slskdClient.getSearch(search.id);
+  const files = result.responses.flatMap((response) => response.files);
+  assert.equal(files.length, album.tracks.length);
+  assert.ok(album.tracks.every((title) => files.some((file) => file.filename.includes(title))));
+  assert.deepEqual((await slskdClient.createSearch(`${artist.name} not in the catalog`).then(({ id }) => slskdClient.getSearch(id))).responses, []);
+
+  const queued = await slskdClient.enqueueBatch({ username: result.responses[0].username, files: [files[0]] });
+  const transfer = await slskdClient.getTransfer(result.responses[0].username, queued.transferId);
+  assert.match(transfer.state, /Queued/);
+  assert.equal(await slskdClient.deleteTransfer(result.responses[0].username, queued.transferId), true);
+  assert.equal(await slskdClient.getTransfer(result.responses[0].username, queued.transferId), null);
+  assert.deepEqual(slskd.state.transfers, []);
+
+  configure({ slskd: { enabled: true, url, apiKey: "wrong-key" } });
+  assert.notEqual((await slskdClient.testConnection({ force: true })).connected, true);
 });

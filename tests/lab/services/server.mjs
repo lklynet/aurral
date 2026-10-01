@@ -2,6 +2,7 @@ import { appendFileSync, readFileSync } from "node:fs";
 import http from "node:http";
 import { createBrainzmash } from "./brainzmash.mjs";
 import { createLidarr } from "./lidarr.mjs";
+import { createSlskd } from "./slskd.mjs";
 
 const catalog = JSON.parse(readFileSync(new URL("../fixtures/catalog.json", import.meta.url), "utf8"));
 const journalPath = process.env.AURRAL_LAB_JOURNAL;
@@ -11,6 +12,7 @@ const faults = [];
 const providers = [
   { name: "brainzmash", port: 8601, handle: createBrainzmash(catalog) },
   { name: "lidarr", port: 8686, handle: createLidarr(catalog, { apiKey: process.env.AURRAL_LAB_LIDARR_API_KEY }) },
+  { name: "slskd", port: 5030, handle: createSlskd(catalog, { apiKey: process.env.AURRAL_LAB_SLSKD_API_KEY }) },
 ];
 
 function record(entry) {
@@ -31,8 +33,12 @@ async function readBody(request) {
   }
 }
 
-function send(response, { status, body }) {
-  response.writeHead(status, { "content-type": "application/json" });
+function send(response, { status, body, headers }) {
+  if (status === 204) {
+    response.writeHead(204, headers);
+    return response.end();
+  }
+  response.writeHead(status, { "content-type": "application/json", ...headers });
   response.end(JSON.stringify(body ?? null));
 }
 
