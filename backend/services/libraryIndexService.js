@@ -225,7 +225,7 @@ export async function scanConfiguredLibrary({
   } finally {
     if (scanFailed || artistsResolved || local?.changed || lidarr?.changed || flow?.changed) {
       if (!targeted || scanFailed || artistsResolved) rebuildLibrarySearchIndex();
-      rebuildCanonicalGenreStats();
+      if (!targeted) rebuildCanonicalGenreStats();
     }
   }
   return { local, lidarr, flow };
