@@ -1,20 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createBrainzmash } from "../tests/lab/services/brainzmash.mjs";
 import { createDeemix } from "../tests/lab/services/deemix.mjs";
 import { createLidarr } from "../tests/lab/services/lidarr.mjs";
-import { createDownloads, createTrackFiles } from "../tests/lab/services/runtime.mjs";
+import { createDownloads, createTrackFiles, writeTrack } from "../tests/lab/services/runtime.mjs";
+import { createJellyfin } from "../tests/lab/services/jellyfin.mjs";
+import { createKoito } from "../tests/lab/services/koito.mjs";
+import { createMediaIndex } from "../tests/lab/services/media.mjs";
+import { createNavidrome } from "../tests/lab/services/navidrome.mjs";
+import { createPlex } from "../tests/lab/services/plex.mjs";
 import { createSlskd } from "../tests/lab/services/slskd.mjs";
 import { createUsenet } from "../tests/lab/services/usenet.mjs";
 import { cleanupIsolatedState, createMockHttpServer, setupIsolatedBackend } from "./helpers/backendTestHarness.js";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const catalog = JSON.parse(readFileSync(join(repoRoot, "tests", "lab", "fixtures", "catalog.json"), "utf8"));
-const [paths, { dbOps }, provider, { lidarrClient }, { slskdClient }, { prowlarrClient }, { sabnzbdClient }, { nzbgetClient }, { deemixClient }, ytdlp] =
+const [paths, { dbOps }, provider, { lidarrClient }, { slskdClient }, { prowlarrClient }, { sabnzbdClient }, { nzbgetClient }, { deemixClient }, ytdlp, { NavidromeClient }, { PlexClient }, { JellyfinClient }, { fetchKoitoTopArtists }] =
   await setupIsolatedBackend(
     "lab-fixtures",
     "backend/db/helpers/index.js",
@@ -26,6 +31,10 @@ const [paths, { dbOps }, provider, { lidarrClient }, { slskdClient }, { prowlarr
     "backend/services/nzbgetClient.js",
     "backend/services/deemixClient.js",
     "backend/services/ytdlpClient.js",
+    "backend/services/navidrome.js",
+    "backend/services/plex.js",
+    "backend/services/jellyfin.js",
+    "backend/services/koitoClient.js",
   );
 test.after(() => cleanupIsolatedState(paths));
 
@@ -47,12 +56,22 @@ async function serve(t, handler) {
     for await (const chunk of request) chunks.push(chunk);
     const text = Buffer.concat(chunks).toString("utf8");
     const type = String(request.headers["content-type"] || "");
-    const body = !text ? undefined : type.includes("x-www-form-urlencoded") ? Object.fromEntries(new URLSearchParams(text)) : JSON.parse(text);
+    let body;
+    if (text && type.includes("x-www-form-urlencoded")) {
+      body = {};
+      for (const [key, value] of new URLSearchParams(text)) body[key] = key in body ? [].concat(body[key], value) : value;
+    } else if (text) {
+      body = JSON.parse(text);
+    }
     const result = (await handler({ method: request.method, url: new URL(request.url, "http://fixtures"), headers: request.headers, body })) ||
       { status: 501, body: { error: "unsupported" } };
     if (result.status === 204) {
       response.writeHead(204, result.headers);
       return response.end();
+    }
+    if (result.raw !== undefined) {
+      response.writeHead(result.status, result.headers);
+      return response.end(result.raw);
     }
     response.writeHead(result.status, { "content-type": "application/json", ...result.headers });
     response.end(JSON.stringify(result.body ?? null));
@@ -222,4 +241,92 @@ test("the Lab yt-dlp searches and writes tagged audio where Aurral asks", async 
   const { filePath } = await ytdlp.downloadAudio(video.url, { jobId: "lab-test" });
   assert.ok(statSync(filePath).size > 0);
   await ytdlp.cleanupStaging("lab-test");
+});
+
+function playbackLibrary(t) {
+  const context = labContext(t);
+  const playlistRoot = join(context.mediaRoot, "downloads", "aurral", "aurral-weekly-flow");
+  const files = album.tracks.map((title, index) => {
+    const file = join(context.mediaRoot, "downloads", "aurral", artist.name, album.title, `${index + 1} - ${title}.flac`);
+    writeTrack(file, { artist: artist.name, album: album.title, title, trackNumber: index + 1, durationSeconds: 2 });
+    return file;
+  });
+  mkdirSync(join(playlistRoot, "_flows"), { recursive: true });
+  return { ...context, media: createMediaIndex(context.mediaRoot), files, playlistRoot };
+}
+
+test("Navidrome indexes Lab media, prepares Aurral's library, and edits playlists through Subsonic", async (t) => {
+  const library = playbackLibrary(t);
+  const navidrome = createNavidrome({ ...library, username: "lab", password: "lab-pass" });
+  const client = new NavidromeClient(await serve(t, navidrome), "lab", "lab-pass");
+
+  await client.ping();
+  await client.scanLibrary();
+  const created = await client.ensureWeeklyFlowLibrary(library.playlistRoot);
+  assert.equal(created.path, library.playlistRoot);
+  const songs = await Promise.all(library.files.map((file) => client.findSong(null, null, { path: file })));
+  assert.ok(songs.every((song) => song?.id));
+
+  const playlist = await client.createPlaylist("Lab playlist", songs.map((song) => song.id));
+  assert.deepEqual((await client.getPlaylist(playlist.id)).entry.map((entry) => entry.path), library.files);
+  await client.updatePlaylist(playlist.id, { name: "Renamed playlist", songIds: [songs[1].id] });
+  const updated = await client.getPlaylist(playlist.id);
+  assert.equal(updated.name, "Renamed playlist");
+  assert.deepEqual(updated.entry.map((entry) => entry.id), [songs[1].id]);
+  await client.deletePlaylist(playlist.id);
+  await assert.rejects(client.getPlaylist(playlist.id), (error) => Number(error.code) === 70);
+
+  writeFileSync(join(library.playlistRoot, "Imported.m3u"), `#EXTM3U\n${library.files[0]}\n`);
+  await client.scanLibrary();
+  const imported = (await client.getPlaylists()).find((entry) => entry.name === "Imported");
+  assert.match(imported.comment, /Auto-imported from/);
+
+  await assert.rejects(new NavidromeClient(await serve(t, navidrome), "lab", "wrong").ping());
+});
+
+test("Plex creates Aurral's section, finds tracks by file, and syncs a playlist", async (t) => {
+  const library = playbackLibrary(t);
+  const plex = createPlex({ ...library, token: "lab-plex", machineIdentifier: "lab-machine" });
+  const client = new PlexClient(await serve(t, plex), "lab-plex", "lab-client");
+
+  assert.equal((await client.ping()).machineIdentifier, "lab-machine");
+  const section = await client.ensureWeeklyFlowLibrary(library.playlistRoot);
+  assert.equal(section.title, "Aurral");
+  const tracks = await client.getTracks("1");
+  assert.deepEqual(tracks.flatMap((track) => track.files).sort(), [...library.files].sort());
+
+  const synced = await client.syncPlaylist({ title: "Lab playlist", ratingKeys: tracks.map((track) => track.ratingKey) });
+  assert.equal((await client.getPlaylistItems(synced.ratingKey)).length, tracks.length);
+  await client.deletePlaylist(synced.ratingKey);
+  assert.deepEqual(await client.getPlaylists(), []);
+
+  await assert.rejects(new PlexClient(await serve(t, plex), "wrong", "lab-client").ping());
+});
+
+test("Jellyfin lists Lab audio and keeps Aurral's playlist entries in sync", async (t) => {
+  const library = playbackLibrary(t);
+  const jellyfin = createJellyfin({ ...library, apiKey: "lab-jellyfin", username: "lab" });
+  const client = new JellyfinClient(await serve(t, jellyfin), "lab-jellyfin", jellyfin.userId);
+
+  await client.ping();
+  await client.scanLibrary();
+  const audio = await client.getAudioItems();
+  assert.deepEqual(audio.map((item) => item.Path).sort(), [...library.files].sort());
+
+  const { Id } = await client.createPlaylist({ name: "Lab playlist", itemIds: [audio[0].Id] });
+  const result = await client.updatePlaylist(Id, { name: "Renamed playlist", itemIds: audio.map((item) => item.Id), managedItemIds: [audio[0].Id] });
+  assert.equal(result.managedItemIds.length, audio.length);
+  assert.equal((await client.getPlaylistMetadata(Id)).Name, "Renamed playlist");
+  assert.deepEqual((await client.getPlaylistItems(Id)).map((item) => item.Id).sort(), audio.map((item) => item.Id).sort());
+  await client.deletePlaylist(Id);
+  assert.deepEqual(jellyfin.state.playlists, []);
+
+  await assert.rejects(new JellyfinClient(await serve(t, jellyfin), "wrong", jellyfin.userId).ping());
+});
+
+test("Koito reports top artists with MusicBrainz IDs", async (t) => {
+  const url = await serve(t, createKoito(catalog, { token: "lab-koito" }));
+  const artists = await fetchKoitoTopArtists(url, { discoveryPeriod: "1month", limit: 3 });
+  assert.equal(artists.length, 3);
+  assert.ok(artists.every((entry) => catalog.artists.some((candidate) => candidate.id === entry.mbid)));
 });

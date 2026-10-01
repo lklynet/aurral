@@ -9,6 +9,11 @@ import { createCertificates, createDownloads, createTrackFiles } from "./runtime
 import { createSlskd } from "./slskd.mjs";
 import { createUsenet } from "./usenet.mjs";
 import { createDeemix } from "./deemix.mjs";
+import { createJellyfin } from "./jellyfin.mjs";
+import { createKoito } from "./koito.mjs";
+import { createMediaIndex } from "./media.mjs";
+import { createNavidrome } from "./navidrome.mjs";
+import { createPlex } from "./plex.mjs";
 
 const env = process.env;
 const catalog = JSON.parse(readFileSync(new URL("../fixtures/catalog.json", import.meta.url), "utf8"));
@@ -21,6 +26,10 @@ const ports = {
   sabnzbd: 8080,
   nzbget: 6789,
   deemix: 6595,
+  navidrome: 4533,
+  plex: 32400,
+  jellyfin: 8096,
+  koito: 4110,
   "public-http": 8079,
   "public-tls": 8443,
   control: 9000,
@@ -31,6 +40,7 @@ const context = {
   mediaRoot: env.AURRAL_LAB_MEDIA_ROOT || "/data",
   downloads: createDownloads(env.AURRAL_LAB_DOWNLOADS),
   tracks: createTrackFiles(path.join(os.tmpdir(), `aurral-lab-tracks-${process.pid}`)),
+  media: createMediaIndex(env.AURRAL_LAB_MEDIA_ROOT || "/data"),
 };
 const journal = [];
 const faults = [];
@@ -47,6 +57,19 @@ const services = [
   },
   { name: "slskd", handle: createSlskd(catalog, { ...context, apiKey: env.AURRAL_LAB_SLSKD_API_KEY }) },
   { name: "deemix", handle: createDeemix(catalog, context) },
+  {
+    name: "navidrome",
+    handle: createNavidrome({ ...context, username: env.AURRAL_LAB_NAVIDROME_USERNAME, password: env.AURRAL_LAB_NAVIDROME_PASSWORD }),
+  },
+  {
+    name: "plex",
+    handle: createPlex({ ...context, token: env.AURRAL_LAB_PLEX_TOKEN, machineIdentifier: env.AURRAL_LAB_PLEX_MACHINE_IDENTIFIER }),
+  },
+  {
+    name: "jellyfin",
+    handle: createJellyfin({ ...context, apiKey: env.AURRAL_LAB_JELLYFIN_API_KEY, username: env.AUTH_USER }),
+  },
+  { name: "koito", handle: createKoito(catalog, { token: env.AURRAL_LAB_KOITO_TOKEN }) },
 ];
 const usenet = createUsenet(catalog, {
   ...context,
@@ -93,7 +116,11 @@ async function readBody(request) {
       return buffer.toString("utf8");
     }
   }
-  if (type.includes("application/x-www-form-urlencoded")) return Object.fromEntries(new URLSearchParams(buffer.toString("utf8")));
+  if (type.includes("application/x-www-form-urlencoded")) {
+    const form = {};
+    for (const [key, value] of new URLSearchParams(buffer.toString("utf8"))) form[key] = key in form ? [].concat(form[key], value) : value;
+    return form;
+  }
   if (type.startsWith("text/") || type.includes("xml")) return buffer.toString("utf8");
   try {
     return JSON.parse(buffer.toString("utf8"));

@@ -14,7 +14,7 @@ const specDir = path.join(repoRoot, "tests", "e2e");
 const labRoot = path.join(repoRoot, "backend", "data", "lab");
 const lockDir = path.join(labRoot, ".locks");
 const LAB_ID = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/;
-const SEED_VERSION = 6;
+const SEED_VERSION = 7;
 const FIXTURE_PORTS = {
   brainzmash: 8601,
   lidarr: 8686,
@@ -23,6 +23,10 @@ const FIXTURE_PORTS = {
   sabnzbd: 8080,
   nzbget: 6789,
   deemix: 6595,
+  navidrome: 4533,
+  plex: 32400,
+  jellyfin: 8096,
+  koito: 4110,
   "public-http": 8079,
   "public-tls": 8443,
   control: 9000,

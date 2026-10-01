@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { jellyfinUserId } from "./services/jellyfin.mjs";
 import { writeTrack } from "./services/runtime.mjs";
 
 const PLAYBACK_ARTIST = "Lab Playback Artist";
@@ -90,10 +91,31 @@ dbOps.updateSettings({
       url: process.env.AURRAL_LAB_DEEMIX_URL,
     },
     ytdlp: { ...settings.integrations?.ytdlp, enabled: true },
+    navidrome: {
+      ...settings.integrations?.navidrome,
+      url: process.env.AURRAL_LAB_NAVIDROME_URL,
+      username: process.env.AURRAL_LAB_NAVIDROME_USERNAME,
+      password: process.env.AURRAL_LAB_NAVIDROME_PASSWORD,
+    },
+    plex: {
+      ...settings.integrations?.plex,
+      url: process.env.AURRAL_LAB_PLEX_URL,
+      token: process.env.AURRAL_LAB_PLEX_TOKEN,
+      clientId: "aurral-lab-client",
+      machineIdentifier: process.env.AURRAL_LAB_PLEX_MACHINE_IDENTIFIER,
+      mainLibrarySectionId: "1",
+    },
+    jellyfin: {
+      ...settings.integrations?.jellyfin,
+      url: process.env.AURRAL_LAB_JELLYFIN_URL,
+      apiKey: process.env.AURRAL_LAB_JELLYFIN_API_KEY,
+      userId: jellyfinUserId(username),
+    },
   },
   security: { ...settings.security, localNetworkBypass: { enabled: false } },
 });
-userOps.createUser(username, hashPassword(password), "admin", null, true, true, password);
+const admin = userOps.createUser(username, hashPassword(password), "admin", null, true, true, password);
+userOps.updateUser(admin.id, { listenHistoryProvider: "koito", listenHistoryUrl: process.env.AURRAL_LAB_KOITO_URL });
 
 const { scanConfiguredLibrary } = await backend("services/libraryIndexService.js");
 fs.mkdirSync(lidarrRoot, { recursive: true });
