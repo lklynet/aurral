@@ -40,12 +40,18 @@ test("genre reads retain inheritance, metadata shapes, availability, and updates
     { name: "Rock", artists: 1, albums: 0, tracks: 0 },
     { name: "Soul", artists: 0, albums: 0, tracks: 1 },
   ]);
+  assert.deepEqual(query.getCanonicalGenres(), ["Ambient", "Jazz", "Rock", "Soul"].map((value) => ({
+    value, albumCount: 1, songCount: 1,
+  })));
   store.upsertLibraryTrack({ identityKey: track.identity_key, title: track.title, metadata: { genre: "Folk" } });
   assert.equal(read("soul").total, 0);
   assert.equal(read("ambient").total, 0);
   assert.equal(read("folk").total, 1);
   assert.deepEqual(genres().map((entry) => entry.name), ["Folk", "Jazz", "Rock"]);
   store.upsertLibraryMediaFile({ ...file, available: false });
+  assert.deepEqual(query.getCanonicalGenres({ availableOnly: true }), []);
+  assert.deepEqual(query.getCanonicalGenres({ source: "lidarr" }), []);
+  assert.deepEqual(query.getCanonicalGenres().map((genre) => genre.value), ["Folk", "Jazz", "Rock"]);
   assert.equal(query.getCanonicalLibraryPage({ kind: "tracks", genre: "folk", availableOnly: true }).total, 0);
   assert.equal(read("folk").total, 1);
   assert.equal(query.getCanonicalLibraryPage({ kind: "tracks", genre: "folk", source: "lidarr" }).total, 0);
@@ -82,4 +88,32 @@ test("startup backfills existing genres, repairs missed updates, and leaves libr
   const changes = db.prepare("SELECT total_changes() AS total").get().total;
   initializeLibraryGenreIndex(db);
   assert.equal(db.prepare("SELECT total_changes() AS total").get().total, changes);
+});
+
+test("Subsonic genre counts deduplicate files and preserve inherited genres across albums", () => {
+  const artist = store.upsertLibraryArtist({ identityKey: "genre:counts-artist", name: "Counts Artist", metadata: { genre: ["Inherited", "Inherited"] } });
+  const first = store.upsertLibraryAlbum({ identityKey: "genre:counts-first", artistId: artist.id, title: "First", metadata: { genres: ["Album One"] } });
+  const second = store.upsertLibraryAlbum({ identityKey: "genre:counts-second", artistId: artist.id, title: "Second", metadata: { tags: { genre: ["Album Two"] } } });
+  const shared = store.upsertLibraryTrack({ identityKey: "genre:counts-shared", title: "Shared", metadata: { genres: ["Inherited", "Track Only", " Track Only "] } });
+  const missing = store.upsertLibraryTrack({ identityKey: "genre:counts-missing", title: "Missing", metadata: { genre: "Track Only" } });
+  for (const [albumId, trackId] of [[first.id, shared.id], [second.id, shared.id], [first.id, missing.id]]) {
+    store.linkLibraryAlbumTrack({ albumId, trackId });
+  }
+  for (const file of [
+    { trackId: shared.id, albumId: first.id, source: "flow", path: "/genre/counts-one.flac" },
+    { trackId: shared.id, albumId: first.id, source: "flow", path: "/genre/counts-duplicate.flac" },
+    { trackId: shared.id, albumId: second.id, source: "lidarr", path: "/genre/counts-two.flac" },
+    { trackId: missing.id, albumId: first.id, source: "flow", path: "/genre/counts-missing.flac", available: false },
+  ]) store.upsertLibraryMediaFile(file);
+  const expected = ["Album One", "Inherited", "Track Only"];
+  assert.deepEqual(query.getCanonicalGenres({ source: "flow", availableOnly: true }), expected.map((value) => ({ value, albumCount: 1, songCount: 1 })));
+  assert.deepEqual(query.getCanonicalGenres({ source: "flow" }), expected.map((value) => ({ value, albumCount: 1, songCount: 2 })));
+  assert.deepEqual(query.getCanonicalGenres({ source: "lidarr", availableOnly: true }), ["Album Two", "Inherited", "Track Only"].map((value) => ({ value, albumCount: 1, songCount: 1 })));
+  const values = new Set([...expected, "Album Two"]);
+  assert.deepEqual(query.getCanonicalGenres({ availableOnly: true }).filter((genre) => values.has(genre.value)), [
+    { value: "Album One", albumCount: 1, songCount: 1 },
+    { value: "Album Two", albumCount: 1, songCount: 1 },
+    { value: "Inherited", albumCount: 2, songCount: 2 },
+    { value: "Track Only", albumCount: 2, songCount: 2 },
+  ]);
 });

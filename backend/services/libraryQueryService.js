@@ -1159,7 +1159,6 @@ const pageSize = (value, max = MAX_PAGE_SIZE) =>
 
 const genreStatsCache = new Map();
 const GENRE_STATS_SETTING_PREFIX = "libraryGenreStats:";
-const GENRE_METADATA_PATHS = ["$.genres", "$.genre", "$.common.genre", "$.tags.genre"];
 
 const escapeLike = (value) => value.replace(/[\\%_]/g, "\\$&");
 
@@ -1802,23 +1801,12 @@ function computeCanonicalGenres(sourceFilter, availableOnly) {
     parameters.push(sourceFilter);
   }
   if (availableOnly === true) mediaConditions.push("media.available = 1");
-  const genreRows = (column) => GENRE_METADATA_PATHS.map((path) => `
-    SELECT album_id, track_id, TRIM(CAST(genre_value.value AS TEXT)) AS genre
-    FROM eligible_tracks
-    JOIN json_each(
-      CASE WHEN json_valid(${column}) THEN ${column} ELSE '{}' END,
-      '${path}'
-    ) AS genre_value
-    WHERE json_valid(${column})
-      AND TRIM(CAST(genre_value.value AS TEXT)) <> ''`).join(" UNION ");
   return db.prepare(
     `WITH eligible_tracks AS MATERIALIZED (
        SELECT DISTINCT
          album.id AS album_id,
          track.id AS track_id,
-         artist.metadata_json AS artist_metadata_json,
-         album.metadata_json AS album_metadata_json,
-         track.metadata_json AS track_metadata_json
+         artist.id AS artist_id
        FROM library_albums AS album
        JOIN library_artists AS artist ON artist.id = album.artist_id
        JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
@@ -1829,17 +1817,29 @@ function computeCanonicalGenres(sourceFilter, availableOnly) {
          WHERE ${mediaConditions.join(" AND ")}
        )
      ),
+     eligible_albums AS (
+       SELECT DISTINCT album_id, artist_id FROM eligible_tracks
+     ),
      direct_genres AS (
-       SELECT DISTINCT album_id, genre FROM (
-         ${genreRows("artist_metadata_json")}
-         UNION
-         ${genreRows("album_metadata_json")}
-       )
+       SELECT eligible.album_id, genres.name AS genre
+       FROM eligible_albums AS eligible
+       JOIN library_entity_genres AS genres
+         ON genres.entity_kind = 'artists' AND genres.entity_id = eligible.artist_id
+       UNION
+       SELECT eligible.album_id, genres.name AS genre
+       FROM eligible_albums AS eligible
+       JOIN library_entity_genres AS genres
+         ON genres.entity_kind = 'albums' AND genres.entity_id = eligible.album_id
      ),
      track_genres AS (
-       SELECT DISTINCT album_id, track_id, genre FROM (
-         ${genreRows("track_metadata_json")}
-       )
+       SELECT DISTINCT eligible.album_id, eligible.track_id, genres.name AS genre
+       FROM eligible_tracks AS eligible
+       CROSS JOIN library_entity_genres AS genres
+       WHERE genres.entity_kind = 'tracks' AND genres.entity_id = eligible.track_id
+         AND NOT EXISTS (
+           SELECT 1 FROM direct_genres AS direct
+           WHERE direct.album_id = eligible.album_id AND direct.genre = genres.name
+         )
      ),
      track_counts AS (
        SELECT album_id, COUNT(*) AS song_count
@@ -1853,10 +1853,6 @@ function computeCanonicalGenres(sourceFilter, availableOnly) {
        UNION ALL
        SELECT track.album_id, track.genre, COUNT(*) AS song_count
        FROM track_genres AS track
-       WHERE NOT EXISTS (
-         SELECT 1 FROM direct_genres AS direct
-         WHERE direct.album_id = track.album_id AND direct.genre = track.genre
-       )
        GROUP BY track.album_id, track.genre
      )
      SELECT genre AS value, COUNT(*) AS albumCount, SUM(song_count) AS songCount
