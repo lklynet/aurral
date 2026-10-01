@@ -182,4 +182,4 @@ AURRAL_DATA_DIR=/path/to/config node backend/scripts/restoreReleaseMetadataQueue
 
 For Docker, run the command in a temporary container using the current image and the same config volume. Keep the regular Aurral container stopped. Preserve a custom `AURRAL_DB_PATH` if your installation uses one.
 
-The command moves pending refreshes and their schedule to the legacy system queue. It preserves job ids, retry counts, deadlines, and the next scheduled refresh. It refuses to run while metadata jobs remain claimed. Let the current version finish those jobs, then stop it and retry the command before starting the older version.
+The command moves pending refreshes and their schedule to the legacy system queue. It preserves job ids, retry counts, deadlines, and the next scheduled refresh. It refuses to run while a metadata job is still claimed. Let the current version finish those jobs, then stop it and retry the command before starting the older version. If Aurral stopped during a refresh, the command returns that refresh to the queue once its claim expires, which can take up to an hour.

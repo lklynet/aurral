@@ -13,12 +13,14 @@ import {
   DEFAULT_METADATA_BASE_URL,
 } from "../backend/config/constants.js";
 
-const [isolatedState, { dbOps }, apiClients, brainzmashProvider] = await setupIsolatedBackend(
-  "metadata-providers",
-  "backend/db/helpers/index.js",
-  "backend/services/apiClients/index.js",
-  "backend/services/providers/brainzmashProvider.js",
-);
+const [isolatedState, { dbOps }, apiClients, brainzmashProvider, { getMetadataProviderBudget }] =
+  await setupIsolatedBackend(
+    "metadata-providers",
+    "backend/db/helpers/index.js",
+    "backend/services/apiClients/index.js",
+    "backend/services/providers/brainzmashProvider.js",
+    "backend/services/metadataProviderBudget.js",
+  );
 
 const {
   getMetadataProviderHealthSnapshot,
@@ -344,10 +346,13 @@ test("a metadata 403 opens a shared blocked cooldown for subsequent requests", a
     });
     clearMetadataProviderCaches();
 
-    await assert.rejects(
-      () => getArtistByMbid("blocked-artist"),
-      (error) => error.response?.status === 403,
-    );
+    const blocked = getArtistByMbid("blocked-artist").catch((error) => error);
+    const queued = getArtistByMbid("queued-artist").catch((error) => error);
+    assert.equal((await blocked).response?.status, 403);
+    const blockedUntil = getMetadataProviderBudget(server.url).forbidden_until;
+    assert.equal((await queued).code, "ERR_METADATA_FORBIDDEN");
+    assert.equal(getMetadataProviderBudget(server.url).forbidden_until, blockedUntil);
+    clearMetadataProviderCaches();
     await assert.rejects(
       () => getArtistByMbid("another-artist"),
       (error) => error.code === "ERR_METADATA_FORBIDDEN",

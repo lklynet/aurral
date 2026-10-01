@@ -461,7 +461,23 @@ export function enqueuePlayEventDelivery(payload) {
   return jobId;
 }
 
+function migrateLegacyReleaseMetadataJobs() {
+  const tx = getHonkerDb().transaction();
+  try {
+    tx.execute(`UPDATE _honker_live
+      SET queue = ?, state = 'pending', worker_id = NULL, claim_expires_at = NULL
+      WHERE queue = ? AND json_extract(payload, '$.kind') = ?
+        AND (state = 'pending' OR (state = 'processing' AND claim_expires_at <= unixepoch()))`,
+    ["release-metadata-refresh", "system-task", "release-metadata-refresh"]);
+    tx.commit();
+  } catch (error) {
+    tx.rollback();
+    throw error;
+  }
+}
+
 export function bootstrapHonkerSchedules() {
+  migrateLegacyReleaseMetadataJobs();
   const scheduler = getHonkerDb().scheduler();
   const canonicalByName = new Map(SCHEDULED_SYSTEM_TASKS.map((task) => [task.name, task]));
   const existingByName = new Map(scheduler.list().map((row) => [row.name, row]));
@@ -821,6 +837,9 @@ export function adjustHonkerClaimAttempts(job, queue, delta) {
 export function restoreReleaseMetadataQueueForRollback() {
   const tx = getHonkerDb().transaction();
   try {
+    tx.execute(`UPDATE _honker_live SET state = 'pending', worker_id = NULL, claim_expires_at = NULL
+      WHERE queue = ? AND state = 'processing' AND claim_expires_at <= unixepoch()`,
+    ["release-metadata-refresh"]);
     const processing = tx.query("SELECT id FROM _honker_live WHERE queue = ? AND state = 'processing' LIMIT 1",
       ["release-metadata-refresh"]);
     if (processing.length) throw new Error("Stop and drain the metadata worker before rollback");

@@ -50,7 +50,10 @@ export function scheduleReleaseMetadataRefresh({ delaySeconds = 0 } = {}) {
     return listHonkerJobs(name).map((job) => ({ ...job, queue: name }));
   }).filter((job) => job.payload?.kind === TASK_KIND &&
     (job.state === "pending" || job.state === "processing"));
-  const pending = active.find((job) => job.state === "pending");
+  const [pending, ...duplicates] = active
+    .filter((job) => job.state === "pending")
+    .sort((a, b) => Number(a.run_at || 0) - Number(b.run_at || 0));
+  for (const job of duplicates) getHonkerQueueByName(job.queue).cancel(job.id);
   if (pending?.id) {
     const existingRunAt = Number(pending.run_at || 0);
     if (

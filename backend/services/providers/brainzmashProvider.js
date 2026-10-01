@@ -28,7 +28,6 @@ import createRateLimiter from "../apiClients/rateLimiter.js";
 import { runSharedInflight } from "../sharedInflight.js";
 import { setTimeout as delay } from "node:timers/promises";
 import {
-  clearMetadataProviderCooldowns,
   getMetadataProviderBudget,
   reserveMetadataProviderRequest,
   setMetadataProviderCooldown,
@@ -67,7 +66,6 @@ export function clearMetadataProviderCaches() {
   metadataNotFoundCache.flushAll();
   releaseCache.flushAll();
   providerInflightRequests.clear();
-  clearMetadataProviderCooldowns();
 }
 
 const healthState = {
@@ -135,6 +133,10 @@ function createMetadataCircuitError(code, status, remainingMs) {
   error.retryAfterMs = Math.max(0, Math.ceil(remainingMs));
   error.response = { status };
   return error;
+}
+
+function isMetadataCircuitError(error) {
+  return error?.code === "ERR_METADATA_FORBIDDEN" || error?.code === "ERR_METADATA_RATE_LIMITED";
 }
 
 function getRetryAfterMs(error) {
@@ -270,7 +272,9 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
             ? `HTTP ${error.response.status}`
             : error?.code || error?.message || "Unknown error";
         if ([403, 429].includes(error?.response?.status)) {
-          openMetadataCircuit(baseUrl, error.response.status, error);
+          if (!isMetadataCircuitError(error)) {
+            openMetadataCircuit(baseUrl, error.response.status, error);
+          }
           throw error;
         }
         if (error?.response?.status === 404 && isEntityMetadataPath(path)) {

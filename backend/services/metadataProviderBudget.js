@@ -37,7 +37,3 @@ export function setMetadataProviderCooldown(baseUrl, status, until) {
     ON CONFLICT(base_url) DO UPDATE SET ${column} = MAX(${column}, excluded.${column})
   `).run(baseUrl, until);
 }
-
-export function clearMetadataProviderCooldowns() {
-  db.prepare("UPDATE metadata_provider_budget SET forbidden_until = 0, rate_limited_until = 0").run();
-}

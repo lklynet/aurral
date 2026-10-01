@@ -76,3 +76,57 @@ test("rollback moves only pending metadata and preserves its schedule and retrie
     honker.getSystemTaskQueue().cancel(id);
   }
 });
+
+test("startup moves pending and abandoned legacy metadata work to the metadata queue", () => {
+  const legacy = honker.getSystemTaskQueue();
+  const abandonedId = legacy.enqueue({ kind: "release-metadata-refresh" });
+  assert.equal(legacy.claimOne("crashed-owner").id, abandonedId);
+  db.prepare("UPDATE _honker_live SET claim_expires_at = unixepoch() - 1 WHERE id = ?").run(abandonedId);
+  const pendingId = legacy.enqueue({ kind: "release-metadata-refresh" });
+  const otherId = legacy.enqueue({ kind: "session-cleanup" });
+  try {
+    honker.bootstrapHonkerSchedules();
+    const moved = honker.listHonkerJobs("release-metadata-refresh");
+    assert.deepEqual(moved.map((job) => [job.id, job.state]), [[abandonedId, "pending"], [pendingId, "pending"]]);
+    assert.deepEqual(honker.listHonkerJobs("system-task").map((job) => job.id), [otherId]);
+  } finally {
+    for (const name of ["system-task", "release-metadata-refresh"]) {
+      const q = honker.getHonkerQueueByName(name);
+      for (const job of honker.listHonkerJobs(name)) q?.cancel(job.id);
+    }
+  }
+});
+
+test("manual metadata refresh keeps one pending refresh across both queues", () => {
+  const now = Math.floor(Date.now() / 1000);
+  const legacyId = honker.getSystemTaskQueue().enqueue({ kind: "release-metadata-refresh" }, { runAt: now + 60 });
+  honker.getReleaseMetadataQueue().enqueue({ kind: "release-metadata-refresh" }, { runAt: now + 90 });
+  try {
+    assert.equal(scheduleReleaseMetadataRefresh({ delaySeconds: 120 }), legacyId);
+    const pending = [...honker.listHonkerJobs("system-task"), ...honker.listHonkerJobs("release-metadata-refresh")]
+      .filter((job) => job.payload?.kind === "release-metadata-refresh" && job.state === "pending");
+    assert.deepEqual(pending.map((job) => job.id), [legacyId]);
+  } finally {
+    for (const name of ["system-task", "release-metadata-refresh"]) {
+      const q = honker.getHonkerQueueByName(name);
+      for (const job of honker.listHonkerJobs(name)) q?.cancel(job.id);
+    }
+  }
+});
+
+test("rollback recovers metadata work abandoned by a stopped worker", () => {
+  const queue = honker.getReleaseMetadataQueue();
+  const id = queue.enqueue({ kind: "release-metadata-refresh" });
+  const claim = queue.claimOne("crashed-owner");
+  db.prepare("UPDATE _honker_live SET claim_expires_at = unixepoch() - 1 WHERE id = ?").run(claim.id);
+  try {
+    assert.equal(honker.restoreReleaseMetadataQueueForRollback(), 1);
+    const restored = honker.getSystemTaskQueue().getJob(id);
+    assert.equal(restored.state, "pending");
+    assert.equal(restored.worker_id, null);
+  } finally {
+    honker.getSystemTaskQueue().cancel(id);
+    db.prepare("UPDATE _honker_scheduler_tasks SET queue = ? WHERE name = ?")
+      .run("release-metadata-refresh", "release-metadata-refresh");
+  }
+});
