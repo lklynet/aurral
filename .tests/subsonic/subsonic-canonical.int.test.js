@@ -119,15 +119,26 @@ test.before(async () => {
         title: "Canonical Album",
         foreignAlbumId: "22222222-2222-4222-8222-222222222222",
       }],
-      getTracksByAlbumId: async () => [{
-        id: 3,
-        albumId: 2,
-        title: "Canonical Song",
-        trackNumber: 1,
-        duration: 10,
-        foreignRecordingId: "33333333-3333-4333-8333-333333333333",
-        trackFileId: 4,
-      }],
+      getTracksByAlbumId: async () => [
+        {
+          id: 3,
+          albumId: 2,
+          title: "Canonical Song",
+          trackNumber: 1,
+          duration: 10,
+          foreignRecordingId: "33333333-3333-4333-8333-333333333333",
+          trackFileId: 4,
+        },
+        {
+          id: 5,
+          albumId: 2,
+          title: "Unavailable Canonical Song",
+          trackNumber: 2,
+          duration: 10,
+          foreignRecordingId: "66666666-6666-4666-8666-666666666666",
+          trackFileId: 0,
+        },
+      ],
       getTrackFilesByAlbumId: async () => [{
         id: 4,
         path: fixturePath,
@@ -282,6 +293,11 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
   assert.ok(Array.isArray(indexes.indexes.index));
   const albumList = responseJson(await request("getAlbumList2", { type: "newest", size: 10 }));
   assert.equal(albumList.albumList2.album[0].title, "Canonical Album");
+  assert.deepEqual(responseJson(await request("getAlbumList2", {
+    type: "newest",
+    size: 10,
+    musicFolderId: 2,
+  })).albumList2.album, []);
   assert.deepEqual(responseJson(await request("getGenres")).genres.genre, [
     { albumCount: 1, songCount: 1, value: "Rock" },
   ]);
@@ -291,6 +307,14 @@ test("browses canonical artists, albums, and songs with stable protocol IDs", as
     offset: 0,
   }));
   assert.equal(songsByGenre.songsByGenre.song[0].title, "Canonical Song");
+  assert.deepEqual(responseJson(await request("getSongsByGenre", {
+    genre: "Rock",
+    musicFolderId: 2,
+  })).songsByGenre.song, []);
+  assert.deepEqual(responseJson(await request("getRandomSongs", {
+    size: 10,
+    musicFolderId: 2,
+  })).randomSongs.song, []);
   assert.deepEqual(responseJson(await request("getStarred")).starred, {
     album: [],
     artist: [],
@@ -456,7 +480,7 @@ test("searches canonical records and exposes flow entries as playlist items", as
   assert.equal(artwork.body, "flow-artwork");
 });
 
-test("accepts Feishin's empty search request for the tracks view", async () => {
+test("accepts empty library searches from OpenSubsonic clients", async () => {
   const search = responseJson(await request("search3", {
     query: "",
     artistCount: 20,
@@ -464,6 +488,23 @@ test("accepts Feishin's empty search request for the tracks view", async () => {
     songCount: 20,
   }));
   assert.equal(search.searchResult3.song[0].title, "Canonical Song");
+  assert.equal(
+    search.searchResult3.song.some((song) => song.title === "Unavailable Canonical Song"),
+    false,
+  );
+
+  const quotedSearch = responseJson(await request("search3", {
+    query: '""',
+    artistOffset: 0,
+    artistCount: 500,
+    albumOffset: 0,
+    albumCount: 0,
+    songOffset: 0,
+    songCount: 0,
+  }));
+  assert.equal(quotedSearch.searchResult3.artist[0].name, "Canonical Artist");
+  assert.deepEqual(quotedSearch.searchResult3.album, []);
+  assert.deepEqual(quotedSearch.searchResult3.song, []);
 });
 
 test("exposes owned static playlists and keeps their entries playable", async () => {

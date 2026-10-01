@@ -4,6 +4,15 @@ import { scrobbleConnectionStore } from "./scrobbleConnectionStore.js";
 import { getKoitoListenBrainzBaseUrl } from "./koitoClient.js";
 
 const getEventStmt = db.prepare("SELECT * FROM play_events WHERE id = ?");
+const resolveAlbumKeyStmt = db.prepare(`
+  SELECT identity_key
+  FROM library_albums
+  WHERE identity_key = ?
+    OR mbid = ?
+    OR release_group_mbid = ?
+    OR CAST(id AS TEXT) = ?
+  LIMIT 2
+`);
 const getHistoryStmt = db.prepare(
   "SELECT * FROM play_events WHERE user_id = ? ORDER BY played_at DESC, id DESC LIMIT ? OFFSET ?",
 );
@@ -23,6 +32,28 @@ const positiveInt = (value, fallback = null) => {
   return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback;
 };
 
+const albumReference = (value) => {
+  const raw = text(value, 500);
+  if (!raw.startsWith("album:")) return raw;
+  try {
+    return decodeURIComponent(raw.slice("album:".length));
+  } catch {
+    return "";
+  }
+};
+
+const resolveAlbumKey = (input) => {
+  const explicit = albumReference(input.albumKey);
+  if (explicit) return explicit;
+  for (const value of [input.albumId, input.albumMbid]) {
+    const reference = albumReference(value);
+    if (!reference) continue;
+    const matches = resolveAlbumKeyStmt.all(reference, reference, reference, reference);
+    if (matches.length === 1) return matches[0].identity_key;
+  }
+  return null;
+};
+
 const toPublicEvent = (row) => row && ({
   id: row.id,
   userId: row.user_id,
@@ -30,6 +61,7 @@ const toPublicEvent = (row) => row && ({
   title: row.title,
   artist: row.artist,
   album: row.album,
+  albumKey: row.album_key,
   artistMbid: row.artist_mbid,
   albumMbid: row.album_mbid,
   trackMbid: row.track_mbid,
@@ -63,6 +95,7 @@ export const recordPlayEvent = (userId, input = {}) => {
   const playedAt = Number.isFinite(playedAtValue)
     ? (playedAtValue < 10_000_000_000 ? Math.trunc(playedAtValue * 1000) : Math.trunc(playedAtValue))
     : Date.now();
+  const albumKey = resolveAlbumKey(input);
   const connections = scrobbleConnectionStore.getConnections(userId);
   const honker = getHonkerDb();
   const tx = honker.transaction();
@@ -70,9 +103,9 @@ export const recordPlayEvent = (userId, input = {}) => {
   try {
     const rows = tx.query(`
       INSERT INTO play_events
-        (user_id, track_id, title, artist, album, artist_mbid, album_mbid, track_mbid,
-         duration_ms, played_at, source, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (user_id, track_id, title, artist, album, album_key, artist_mbid, album_mbid,
+         track_mbid, duration_ms, played_at, source, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id
     `, [
       userId,
@@ -80,6 +113,7 @@ export const recordPlayEvent = (userId, input = {}) => {
       title,
       artist,
       text(input.album, 500) || null,
+      albumKey,
       text(input.artistMbid, 100) || null,
       text(input.albumMbid, 100) || null,
       text(input.trackMbid, 100) || null,

@@ -14,6 +14,7 @@ import {
   getLibraryLastModified,
   getGenres,
   getMusicDirectory,
+  getRandomSongs,
   getSong,
   getSongsByGenre,
   getStarred,
@@ -29,6 +30,10 @@ import {
   updateSubsonicPlaylist,
   unstarMany,
 } from "../services/subsonicLibraryService.js";
+import {
+  getLibraryScanStatus,
+  getScheduledLibraryScanJobId,
+} from "../services/libraryScanWorker.js";
 import { recordPlayEvent } from "../services/playEventService.js";
 import { logger } from "../services/logger.js";
 
@@ -61,6 +66,11 @@ const getParameters = (req, names) =>
       .map((entry) => String(entry || "").trim())
       .filter(Boolean);
   });
+
+const normalizeSearchQuery = (value) => {
+  const query = String(value || "").trim();
+  return query === '""' ? "" : query;
+};
 
 const escapeXml = (value) =>
   String(value)
@@ -154,15 +164,26 @@ function requestedFormat(req) {
 function validateRequest(req, format) {
   if (!format) return { format: "xml", error: [0, "Unsupported response format. Use xml or json."] };
 
-  for (const parameter of ["u", "v", "c"]) {
+  const apiKey = getParameter(req, "apiKey");
+  for (const parameter of ["v", "c"]) {
     if (!getParameter(req, parameter)) {
       return { format, error: [10, `Required parameter is missing: ${parameter}`] };
     }
+  }
+  if (!apiKey && !getParameter(req, "u")) {
+    return { format, error: [10, "Required parameter is missing: u"] };
   }
 
   const password = getParameter(req, "p");
   const token = getParameter(req, "t");
   const salt = getParameter(req, "s");
+  const providedMechanisms = Number(Boolean(password)) + Number(Boolean(token || salt)) + Number(Boolean(apiKey));
+  if (providedMechanisms > 1 || (apiKey && getParameter(req, "u"))) {
+    return { format, error: [43, "Multiple conflicting authentication mechanisms provided"] };
+  }
+  if (apiKey) {
+    return { format, error: [42, "API key authentication is not supported"] };
+  }
   if (!password && !(token && salt)) {
     return { format, error: [10, "Required parameter is missing: p or t/s"] };
   }
@@ -264,6 +285,7 @@ async function handleSubsonicRequest(req, res) {
           title: song.title,
           artist: song.artist,
           album: song.album,
+          albumId: song.albumId,
           durationMs: Number(song.duration || 0) * 1000,
           playedAt: times[index] || undefined,
           source: "subsonic",
@@ -280,9 +302,35 @@ async function handleSubsonicRequest(req, res) {
       musicFolders: { musicFolder: [{ id: 1, name: APP_NAME }] },
     });
   }
-  if (method === "getalbumlist2") {
+  if (method === "getscanstatus") {
+    const jobId = getScheduledLibraryScanJobId();
+    const status = jobId == null ? null : getLibraryScanStatus(jobId);
     return sendResponse(res, format, "ok", null, {
-      albumList2: {
+      scanStatus: {
+        scanning: status?.status === "queued" || status?.status === "running",
+      },
+    });
+  }
+  if (method === "getnowplaying") {
+    return sendResponse(res, format, "ok", null, { nowPlaying: { entry: [] } });
+  }
+  if (method === "getbookmarks") {
+    return sendResponse(res, format, "ok", null, { bookmarks: { bookmark: [] } });
+  }
+  if (method === "getplayqueue") {
+    return sendResponse(res, format, "ok", null, {
+      playQueue: {
+        username: user.username,
+        changed: new Date(0).toISOString(),
+        changedBy: APP_NAME,
+        entry: [],
+      },
+    });
+  }
+  if (method === "getalbumlist" || method === "getalbumlist2") {
+    const responseKey = method === "getalbumlist" ? "albumList" : "albumList2";
+    return sendResponse(res, format, "ok", null, {
+      [responseKey]: {
         album: getAlbumList({
           fromYear: getParameter(req, "fromYear"),
           genre: getParameter(req, "genre"),
@@ -290,6 +338,7 @@ async function handleSubsonicRequest(req, res) {
           size: getParameter(req, "size"),
           toYear: getParameter(req, "toYear"),
           type: getParameter(req, "type"),
+          musicFolderId: getParameter(req, "musicFolderId"),
         }, user),
       },
     });
@@ -305,6 +354,20 @@ async function handleSubsonicRequest(req, res) {
         song: getSongsByGenre(genre, {
           count: getParameter(req, "count"),
           offset: getParameter(req, "offset"),
+          musicFolderId: getParameter(req, "musicFolderId"),
+        }, user),
+      },
+    });
+  }
+  if (method === "getrandomsongs") {
+    return sendResponse(res, format, "ok", null, {
+      randomSongs: {
+        song: getRandomSongs({
+          fromYear: getParameter(req, "fromYear"),
+          genre: getParameter(req, "genre"),
+          size: getParameter(req, "size"),
+          toYear: getParameter(req, "toYear"),
+          musicFolderId: getParameter(req, "musicFolderId"),
         }, user),
       },
     });
@@ -381,7 +444,7 @@ async function handleSubsonicRequest(req, res) {
       : sendError(res, format, 70, "Requested data was not found");
   }
   if (method === "search3" || method === "search2") {
-    const query = getParameter(req, "query");
+    const query = normalizeSearchQuery(getParameter(req, "query"));
     return sendResponse(res, format, "ok", null, {
       [method === "search3" ? "searchResult3" : "searchResult2"]: searchLibrary(query, requestParameters(req), user),
     });
