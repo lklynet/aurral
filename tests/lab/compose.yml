@@ -15,19 +15,9 @@ services:
       PUID: ${AURRAL_LAB_UID:?}
       PGID: ${AURRAL_LAB_GID:?}
       NODE_OPTIONS: --import=/app/tests/lab/egress.mjs
-      NODE_EXTRA_CA_CERTS: /lab-tls/ca.pem
-      PATH: /app/tests/lab/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-      OIDC_ENABLED: ${OIDC_ENABLED:?}
-      OIDC_ISSUER: ${OIDC_ISSUER:?}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?}
-      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?}
-      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:?}
-      OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:?}
-      OIDC_ADMIN_GROUPS: ${OIDC_ADMIN_GROUPS:?}
     volumes:
       - ${AURRAL_LAB_CONFIG_DIR:?}:/config
       - ${AURRAL_LAB_MEDIA_DIR:?}:/data
-      - ${AURRAL_LAB_TLS_DIR:?}:/lab-tls:ro
       - ./:/app/tests/lab:ro
     networks: [lab]
     labels: *lab-labels
@@ -48,15 +38,10 @@ services:
     environment:
       AURRAL_LAB_JOURNAL: /results/fixtures-journal.jsonl
       AURRAL_LAB_MEDIA_ROOT: /data
-      AURRAL_LAB_TLS_DIR: /lab-tls
-      AURRAL_LAB_FIXTURE_STATE: /lab-fixtures/state.json
-      AURRAL_LAB_DOWNLOADS: ${AURRAL_LAB_DOWNLOADS:-complete}
     volumes:
       - ./:/app/tests/lab:ro
       - ${AURRAL_LAB_RESULTS_DIR:?}:/results
       - ${AURRAL_LAB_MEDIA_DIR:?}:/data
-      - ${AURRAL_LAB_TLS_DIR:?}:/lab-tls
-      - ${AURRAL_LAB_FIXTURE_DIR:?}:/lab-fixtures
     networks: [lab]
     labels: *lab-labels
     healthcheck:
@@ -114,7 +99,6 @@ services:
     environment:
       CI: ${CI:-}
       AURRAL_BASE_URL: http://127.0.0.1:3001
-      AURRAL_LAB_PUBLIC_TLS: fixtures:8443
       AURRAL_LAB_RESULTS_DIR: /results
       PLAYWRIGHT_OUTPUT_DIR: /results/artifacts
       PLAYWRIGHT_HTML_OUTPUT_DIR: /results/report

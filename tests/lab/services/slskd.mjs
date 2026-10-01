@@ -1,39 +1,41 @@
 import { randomUUID } from "node:crypto";
-import path from "node:path";
-import { copyInto, includesAllWords, searchWords } from "./runtime.mjs";
 
 const PEER = "lab-peer";
 
-
-
-function remoteName(artist, album, index) {
-  return `@@lab\\Music\\${artist.name}\\${album.title}\\${String(index + 1).padStart(2, "0")} - ${album.tracks[index]}.flac`;
+function words(text) {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
 }
 
-export function createSlskd(catalog, { apiKey, mediaRoot, downloads, tracks }) {
-  const downloadsDir = path.join(mediaRoot, "slskd", "downloads");
+function includesAll(query, text) {
+  const wanted = words(text);
+  return wanted.length > 0 && wanted.every((word) => query.has(word));
+}
+
+export function createSlskd(catalog, { apiKey }) {
   const state = { searches: new Map(), transfers: [] };
-  const sources = new Map();
   const albums = catalog.artists.flatMap((artist) => artist.albums.map((album) => ({ artist, album })));
 
   function responsesFor(searchText) {
-    const query = new Set(searchWords(searchText));
+    const query = new Set(words(searchText));
     const files = [];
     for (const { artist, album } of albums) {
-      if (!includesAllWords(query, artist.name)) continue;
-      const wholeAlbum = includesAllWords(query, album.title);
+      if (!includesAll(query, artist.name)) continue;
+      const wholeAlbum = includesAll(query, album.title);
       album.tracks.forEach((title, index) => {
-        if (!wholeAlbum && !includesAllWords(query, title)) return;
-        const source = tracks.file(artist, album, index);
-        const filename = remoteName(artist, album, index);
-        sources.set(filename, source.path);
+        if (!wholeAlbum && !includesAll(query, title)) return;
         files.push({
-          filename,
-          size: source.size,
+          filename: `@@lab\\Music\\${artist.name}\\${album.title}\\${String(index + 1).padStart(2, "0")} - ${title}.flac`,
+          size: 20_000_000 + index * 1000,
           extension: "flac",
           bitDepth: 16,
           sampleRate: 44100,
-          length: 30 + index,
+          length: 180 + index,
           isLocked: false,
         });
       });
@@ -42,32 +44,8 @@ export function createSlskd(catalog, { apiKey, mediaRoot, downloads, tracks }) {
     return [{ username: PEER, fileCount: files.length, lockedFileCount: 0, hasFreeUploadSlot: true, queueLength: 0, uploadSpeed: 4_000_000, files }];
   }
 
-  function view(transfer) {
-    const { stage, fraction } = downloads.progress(transfer);
-    const bytesTransferred = Math.round(transfer.size * fraction);
-    return {
-      id: transfer.id,
-      username: transfer.username,
-      direction: "Download",
-      filename: transfer.filename,
-      size: transfer.size,
-      state: transfer.cancelled
-        ? "Completed, Cancelled"
-        : { queued: "Queued, Remotely", downloading: "InProgress", completed: "Completed, Succeeded" }[stage],
-      bytesTransferred,
-      bytesRemaining: transfer.size - bytesTransferred,
-      percentComplete: Math.round(fraction * 100),
-      requestedAt: transfer.requestedAt,
-      ...(stage === "completed" ? { endedAt: new Date(transfer.completedAt).toISOString() } : {}),
-    };
-  }
-
-  const find = (username, id) => state.transfers.find((entry) => entry.username === username && entry.id === id);
+  const findTransfer = (username, id) => state.transfers.find((entry) => entry.username === username && entry.id === id);
   const ok = (body, status = 200, headers) => ({ status, body, headers });
-  const remove = (transfer) => {
-    downloads.remove(transfer);
-    state.transfers = state.transfers.filter((entry) => entry !== transfer);
-  };
 
   const handler = ({ method, url, headers, body }) => {
     if (!url.pathname.startsWith("/api/v0/")) return null;
@@ -78,7 +56,7 @@ export function createSlskd(catalog, { apiKey, mediaRoot, downloads, tracks }) {
       return ok({ server: { state: "Connected, LoggedIn", isConnected: true, isLoggedIn: true }, version: { full: "lab" } });
     }
     if (method === "GET" && url.pathname === "/api/v0/options") {
-      return ok({ directories: { downloads: downloadsDir, incomplete: path.join(mediaRoot, "slskd", "incomplete") } });
+      return ok({ directories: { downloads: "/data/slskd/downloads", incomplete: "/data/slskd/incomplete" } });
     }
     if (method === "GET" && url.pathname === "/api/v0/events") return ok([], 200, { "x-total-count": "0" });
 
@@ -87,14 +65,13 @@ export function createSlskd(catalog, { apiKey, mediaRoot, downloads, tracks }) {
       if (method === "POST" && !id) {
         const searchId = String(body?.id || randomUUID());
         const responses = responsesFor(body?.searchText);
-        const now = new Date().toISOString();
         state.searches.set(searchId, {
           id: searchId,
           searchText: String(body?.searchText || ""),
           state: "Completed",
           isComplete: true,
-          startedAt: now,
-          endedAt: now,
+          startedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
           responseCount: responses.length,
           fileCount: responses.reduce((total, response) => total + response.fileCount, 0),
           lockedFileCount: 0,
@@ -118,10 +95,10 @@ export function createSlskd(catalog, { apiKey, mediaRoot, downloads, tracks }) {
 
     if (segments[0] === "transfers" && segments[1] === "downloads") {
       const [, , username, id] = segments;
-      if (method === "GET" && (!username || !id)) {
-        const users = [...new Set(state.transfers.map((transfer) => transfer.username))].filter((user) => !username || user === username);
-        const groups = users.map((user) => {
-          const files = state.transfers.filter((transfer) => transfer.username === user).map(view);
+      if (method === "GET" && !username) {
+        const users = [...new Set(state.transfers.map((transfer) => transfer.username))];
+        return ok(users.map((user) => {
+          const files = state.transfers.filter((transfer) => transfer.username === user);
           const directories = [...new Set(files.map((file) => file.filename.replace(/\\[^\\]*$/, "")))];
           return {
             username: user,
@@ -130,44 +107,37 @@ export function createSlskd(catalog, { apiKey, mediaRoot, downloads, tracks }) {
               return { directory, fileCount: directoryFiles.length, files: directoryFiles };
             }),
           };
-        });
-        return ok(username ? groups[0] || { username, directories: [] } : groups);
+        }));
       }
       if (method === "DELETE" && username === "all" && id === "completed") {
-        for (const transfer of [...state.transfers]) if (view(transfer).state.startsWith("Completed")) remove(transfer);
+        state.transfers = state.transfers.filter((transfer) => !transfer.state.startsWith("Completed"));
         return ok(null, 204);
       }
       if (method === "POST" && username && !id) {
         const requested = Array.isArray(body) ? body : [];
-        const enqueued = requested.map((file) => {
-          const filename = String(file.filename || "");
-          const source = sources.get(filename);
-          const local = filename.replace(/\\/g, "/").split("/");
-          const transfer = downloads.add({
-            id: randomUUID(),
-            username,
-            filename,
-            size: Number(file.size) || 0,
-            requestedAt: new Date().toISOString(),
-            complete: () => {
-              if (source) copyInto(source, path.join(downloadsDir, local.at(-2) || "", local.at(-1)));
-            },
-          });
-          state.transfers.push(transfer);
-          return view(transfer);
-        });
+        const enqueued = requested.map((file) => ({
+          id: randomUUID(),
+          username,
+          direction: "Download",
+          filename: String(file.filename || ""),
+          size: Number(file.size) || 0,
+          state: "Queued, Remotely",
+          bytesTransferred: 0,
+          bytesRemaining: Number(file.size) || 0,
+          percentComplete: 0,
+          requestedAt: new Date().toISOString(),
+          enqueuedAt: new Date().toISOString(),
+        }));
+        state.transfers.push(...enqueued);
         return ok({ enqueued, failed: [] }, 201);
       }
       if (username && id) {
-        const transfer = find(username, id);
+        const transfer = findTransfer(username, id);
         if (!transfer) return { status: 404, body: { message: "Transfer not found" } };
-        if (method === "GET") return ok(view(transfer));
+        if (method === "GET") return ok(transfer);
         if (method === "DELETE") {
-          if (url.searchParams.get("remove") === "true") remove(transfer);
-          else {
-            transfer.cancelled = true;
-            downloads.remove(transfer);
-          }
+          if (url.searchParams.get("remove") === "true") state.transfers = state.transfers.filter((entry) => entry !== transfer);
+          else transfer.state = "Completed, Cancelled";
           return ok(null, 204);
         }
       }

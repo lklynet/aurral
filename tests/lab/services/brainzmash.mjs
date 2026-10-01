@@ -1,6 +1,4 @@
 import { createHash } from "node:crypto";
-import { deezerIds } from "./deemix.mjs";
-import { trackDurationSeconds } from "./runtime.mjs";
 
 export function stableUuid(seed) {
   const hex = createHash("sha1").update(seed).digest("hex");
@@ -19,7 +17,7 @@ function artistSummary(artist) {
     genres: artist.genres,
     artistaliases: [],
     images: [],
-    links: [{ type: "deezer", target: `https://www.deezer.com/artist/${deezerIds(artist).artistId}` }],
+    links: [],
   };
 }
 
@@ -65,7 +63,7 @@ function albumBody(artist, album) {
           trackname: title,
           trackposition: index + 1,
           mediumnumber: 1,
-          durationms: trackDurationSeconds(index) * 1000,
+          durationms: 180000 + index * 1000,
           artistid: artist.id,
         })),
       },

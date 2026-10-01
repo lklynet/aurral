@@ -73,4 +73,4 @@ npm run test:e2e
 npm run test:e2e -- tests/e2e/smoke.spec.js
 ```
 
-Each spec file gets a new Lab, and the evidence from every run stays in `test-results/lab/`. Try your change in a browser with `npm run lab:dev`, which runs Aurral from source with live reload against the same simulated services, or with `npm run lab:up` for the Docker build. See [Aurral Lab](https://docs.aurral.org/development/aurral-lab/) for the other commands, host Playwright, and troubleshooting.
+Each spec file gets a new Lab, and the evidence from every run stays in `test-results/lab/`. Try your change in a browser with `npm run lab:dev`, which runs Aurral from source with live reload, or with `npm run lab:up` for the Docker build. See [Aurral Lab](https://docs.aurral.org/development/aurral-lab/) for the other commands, host Playwright, and troubleshooting.

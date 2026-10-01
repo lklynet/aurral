@@ -14,24 +14,8 @@ const specDir = path.join(repoRoot, "tests", "e2e");
 const labRoot = path.join(repoRoot, "backend", "data", "lab");
 const lockDir = path.join(labRoot, ".locks");
 const LAB_ID = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/;
-const SEED_VERSION = 8;
-const FIXTURE_PORTS = {
-  brainzmash: 8601,
-  lidarr: 8686,
-  slskd: 5030,
-  prowlarr: 9696,
-  sabnzbd: 8080,
-  nzbget: 6789,
-  deemix: 6595,
-  navidrome: 4533,
-  plex: 32400,
-  jellyfin: 8096,
-  koito: 4110,
-  notify: 8070,
-  "public-http": 8079,
-  "public-tls": 8443,
-  control: 9000,
-};
+const SEED_VERSION = 4;
+const FIXTURE_PORTS = { brainzmash: 8601, lidarr: 8686, slskd: 5030, control: 9000 };
 const FORWARDED_ENV = [
   "PATH",
   "HOME",
@@ -96,7 +80,7 @@ function selectLab(requestedId, mode = "docker") {
   return labFor(id, { mode });
 }
 
-function labFor(id, { resultsDir, mode = "docker", downloads = "complete" } = {}) {
+function labFor(id, { resultsDir, mode = "docker" } = {}) {
   const owner = createHash("sha256").update(repoRoot).digest("hex").slice(0, 12);
   const slug =
     path
@@ -111,9 +95,6 @@ function labFor(id, { resultsDir, mode = "docker", downloads = "complete" } = {}
     id,
     owner,
     mode,
-    downloads,
-    tlsDir: path.join(stateDir, "tls"),
-    fixtureDir: path.join(stateDir, "fixtures"),
     project: `${prefix}-${id}`,
     image: `${prefix}:local`,
     runnerImage: `${prefix}-runner:local`,
@@ -145,10 +126,6 @@ function dockerEnv(lab) {
     AURRAL_LAB_CONFIG_DIR: lab.configDir,
     AURRAL_LAB_MEDIA_DIR: lab.mediaDir,
     AURRAL_LAB_SEED_DIR: lab.seedingDir,
-    AURRAL_LAB_TLS_DIR: lab.tlsDir,
-    AURRAL_LAB_FIXTURE_DIR: lab.fixtureDir,
-    AURRAL_LAB_DOWNLOADS: lab.downloads,
-    ...ssoEnv(),
     AURRAL_LAB_UID: String(process.getuid?.() ?? 1000),
     AURRAL_LAB_GID: String(process.getgid?.() ?? 1000),
   };
@@ -164,19 +141,6 @@ function hostEnv() {
 
 function labEnv() {
   return parseEnv(fs.readFileSync(path.join(labDir, "lab.env"), "utf8"));
-}
-
-function ssoEnv(browserUrl = "http://127.0.0.1:3001") {
-  const env = labEnv();
-  return {
-    OIDC_ENABLED: "true",
-    OIDC_ISSUER: env.AURRAL_LAB_OIDC_ISSUER,
-    OIDC_CLIENT_ID: env.AURRAL_LAB_OIDC_CLIENT_ID,
-    OIDC_CLIENT_SECRET: env.AURRAL_LAB_OIDC_CLIENT_SECRET,
-    OIDC_REDIRECT_URI: `${browserUrl}/sso/callback`,
-    OIDC_GROUPS_CLAIM: "groups",
-    OIDC_ADMIN_GROUPS: "aurral-admins",
-  };
 }
 
 function execute(command, args, { env, output = "capture", cleanup = false } = {}) {
@@ -299,7 +263,7 @@ function checkRecord(lab) {
 
 function claimState(lab) {
   const record = checkRecord(lab);
-  for (const dir of [lab.mediaDir, lab.resultsDir, lab.tlsDir, lab.fixtureDir]) fs.mkdirSync(dir, { recursive: true });
+  for (const dir of [lab.mediaDir, lab.resultsDir]) fs.mkdirSync(dir, { recursive: true });
   if (!record) {
     fs.writeFileSync(
       lab.recordPath,
@@ -397,7 +361,7 @@ function needsSeed(lab) {
   );
 }
 
-async function seed(lab, browserUrl) {
+async function seed(lab) {
   for (const dir of [lab.seedingDir, lab.mediaDir]) {
     fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(dir, { recursive: true });
@@ -407,7 +371,7 @@ async function seed(lab, browserUrl) {
     lab.mode === "node"
       ? await execute(process.execPath, [path.join(labDir, "seed.mjs")], {
           output: "stderr",
-          env: { ...hostEnv(), ...labEnv(), AURRAL_DATA_DIR: lab.seedingDir, AURRAL_LAB_MEDIA_ROOT: lab.mediaDir, AURRAL_LAB_BROWSER_URL: browserUrl },
+          env: { ...hostEnv(), ...labEnv(), AURRAL_DATA_DIR: lab.seedingDir, AURRAL_LAB_MEDIA_ROOT: lab.mediaDir },
         })
       : await compose(lab, ["run", "--rm", "--no-deps", "-T", "seed"], { output: "stderr" });
   if (seeded.code !== 0) {
@@ -506,7 +470,7 @@ async function down(lab) {
 }
 
 function deleteLabData(lab) {
-  for (const target of [lab.configDir, lab.mediaDir, lab.seedingDir, lab.seedPath, lab.tlsDir, lab.fixtureDir]) {
+  for (const target of [lab.configDir, lab.mediaDir, lab.seedingDir, lab.seedPath]) {
     fs.rmSync(target, { recursive: true, force: true });
   }
   console.error(`Deleted the data for Lab "${lab.id}".`);
@@ -707,18 +671,15 @@ async function runTests(args) {
   if (built.code !== 0) throw new LabError("Building the test images failed. The build output is above.");
   const run = { id: runId, options, source: await sourceInfo(), images: await imageIds(buildLab) };
 
-  const scenarios = readJson(path.join(labDir, "scenarios.json")) || {};
   const outcomes = [];
   for (const [index, spec] of specs.entries()) {
     const scenario = path.basename(spec, ".spec.js");
-    const downloads = scenarios[path.basename(spec)]?.downloads || "complete";
     let attempt = 0;
     let exitCode = 1;
     while (exitCode !== 0 && attempt <= retries) {
       attempt++;
       const lab = labFor(`run-${token}-${index + 1}${attempt > 1 ? `-a${attempt}` : ""}`, {
         resultsDir: path.join(runDir, scenario, String(attempt)),
-        downloads,
       });
       exitCode = await runScenario(lab, { ...run, spec, attempt });
       if (exitCode !== 0 && attempt <= retries) console.error(`${spec} failed on attempt ${attempt}. Retrying in a fresh Lab.`);
@@ -772,7 +733,6 @@ async function dev(lab) {
     throw new LabError("npm run lab:dev runs Aurral from source. Install dependencies with npm install, then retry.");
   }
   await requireTool("ffmpeg", ["-version"], "to create the Lab's audio files");
-  await requireTool("openssl", ["version"], "to create the Lab's certificates");
   const webHost = process.env.AURRAL_LAB_HOST || "127.0.0.1";
   await withLock(lab, async () => {
     claimState(lab);
@@ -795,15 +755,11 @@ async function dev(lab) {
           ...labEnv(),
           AURRAL_LAB_PORTS: JSON.stringify(Object.fromEntries(Object.keys(FIXTURE_PORTS).map((name) => [name, ports[name]]))),
           AURRAL_LAB_MEDIA_ROOT: lab.mediaDir,
-          AURRAL_LAB_TLS_DIR: lab.tlsDir,
-          AURRAL_LAB_FIXTURE_STATE: path.join(lab.fixtureDir, "state.json"),
           AURRAL_LAB_JOURNAL: path.join(lab.resultsDir, "fixtures-journal.jsonl"),
-          AURRAL_LAB_DOWNLOADS: lab.downloads,
-          AURRAL_LAB_APP_URL: `http://127.0.0.1:${ports.app}`,
         },
       });
       await waitForUrl(`http://127.0.0.1:${ports.control}/health`, 15000, fixtures, "The fixtures service");
-      if (seedRequired) await seed(lab, `http://${webHost}:${ports.web}`);
+      if (seedRequired) await seed(lab);
 
       const redirects = Object.fromEntries(
         Object.entries(FIXTURE_PORTS).map(([name, port]) => [`fixtures:${port}`, `127.0.0.1:${ports[name]}`]),
@@ -812,15 +768,10 @@ async function dev(lab) {
         stdio: ["ignore", "inherit", "inherit"],
         env: {
           ...hostEnv(),
-          PATH: `${path.join(labDir, "bin")}${path.delimiter}${process.env.PATH || ""}`,
           PORT: String(ports.app),
           AURRAL_DATA_DIR: lab.configDir,
           NODE_OPTIONS: `--import=${pathToFileURL(path.join(labDir, "egress.mjs")).href}`,
-          NODE_EXTRA_CA_CERTS: path.join(lab.tlsDir, "ca.pem"),
           AURRAL_LAB_REDIRECTS: JSON.stringify(redirects),
-          AURRAL_LAB_PUBLIC_TLS: `127.0.0.1:${ports["public-tls"]}`,
-          AURRAL_LAB_PUBLIC_HTTP: `127.0.0.1:${ports["public-http"]}`,
-          ...ssoEnv(`http://${webHost}:${ports.web}`),
         },
       });
       await waitForUrl(`http://127.0.0.1:${ports.app}/api/health/live`, 120000, backend, "Aurral");
