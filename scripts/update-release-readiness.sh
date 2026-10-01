@@ -3,8 +3,6 @@ set -euo pipefail
 
 mode="${1:-}"
 repository="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
-owner="${repository%%/*}"
-repo="${repository#*/}"
 head_sha="${HEAD_SHA:-${GITHUB_SHA:?GITHUB_SHA is required}}"
 run_id="${GITHUB_RUN_ID:-unknown}"
 readiness_marker='<!-- aurral-release-readiness -->'
@@ -191,71 +189,27 @@ fi
 
 if [ "${mode}" = "nightly" ]; then
   if [ -n "${base_tag}" ]; then
-    commit_shas="$(gh api --paginate \
-      "repos/${repository}/compare/${base_tag}...${head_sha}" \
-      --jq '.commits[].sha')"
     change_range="${base_tag}...${head_sha:0:7}"
   else
-    commit_shas="${head_sha}"
     change_range="${head_sha:0:7}"
   fi
 
-  declare -A pull_numbers=()
-  while IFS= read -r commit_sha; do
-    [ -z "${commit_sha}" ] && continue
-    associated_pulls="$(gh api --paginate \
-      "repos/${repository}/commits/${commit_sha}/pulls" \
-      --jq '.[].number')"
-    while IFS= read -r pull_number; do
-      [ -z "${pull_number}" ] && continue
-      pull_numbers["${pull_number}"]=1
-    done <<< "${associated_pulls}"
-  done <<< "${commit_shas}"
+  changes="$(bash "$(dirname "$0")/list-release-changes.sh" "${base_tag}" "${head_sha}")"
+  pull_list=""
+  issue_list=""
+  while IFS=$'\t' read -r kind number _labels url title; do
+    case "${kind}" in
+      pull) pull_list+="- [#${number}](${url}) ${title}"$'\n' ;;
+      issue) issue_list+="- [#${number}](${url}) ${title}"$'\n' ;;
+    esac
+  done <<< "${changes}"
+  pull_list="${pull_list%$'\n'}"
+  issue_list="${issue_list%$'\n'}"
 
-  if [ "${#pull_numbers[@]}" -eq 0 ]; then
+  if [ -z "${pull_list}" ]; then
     echo "No merged pull requests found; no release-readiness issue is needed."
     exit 0
   fi
-
-  declare -A issue_numbers=()
-  for pull_number in $(printf '%s\n' "${!pull_numbers[@]}" | sort -n); do
-    closing_issues="$(gh api graphql \
-      -f query='query($owner: String!, $repo: String!, $number: Int!) {
-        repository(owner: $owner, name: $repo) {
-          pullRequest(number: $number) {
-            closingIssuesReferences(first: 100) {
-              nodes { number }
-            }
-          }
-        }
-      }' \
-      -f "owner=${owner}" \
-      -f "repo=${repo}" \
-      -F "number=${pull_number}" \
-      --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[]?.number')"
-    while IFS= read -r issue_number; do
-      [ -z "${issue_number}" ] && continue
-      issue_numbers["${issue_number}"]=1
-    done <<< "${closing_issues}"
-  done
-
-  pull_list=""
-  for pull_number in $(printf '%s\n' "${!pull_numbers[@]}" | sort -n); do
-    pull_line="$(gh api \
-      "repos/${repository}/pulls/${pull_number}" \
-      --jq '"- [#\(.number)](\(.html_url)) \(.title)"')"
-    pull_list+="${pull_line}"$'\n'
-  done
-  pull_list="${pull_list%$'\n'}"
-
-  issue_list=""
-  for issue_number in $(printf '%s\n' "${!issue_numbers[@]}" | sort -n); do
-    issue_line="$(gh api \
-      "repos/${repository}/issues/${issue_number}" \
-      --jq '"- [#\(.number)](\(.html_url)) \(.title)"')"
-    issue_list+="${issue_line}"$'\n'
-  done
-  issue_list="${issue_list%$'\n'}"
 fi
 
 if [ "${mode}" = "nightly" ]; then

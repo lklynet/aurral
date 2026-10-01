@@ -4,8 +4,6 @@ set -euo pipefail
 status="${1:-}"
 repository="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 head_sha="${HEAD_SHA:-${GITHUB_SHA:?GITHUB_SHA is required}}"
-owner="${repository%%/*}"
-repo="${repository#*/}"
 
 stable_tags="$(gh api --paginate \
   "repos/${repository}/git/matching-refs/tags/v" \
@@ -27,27 +25,9 @@ case "${status}" in
     ;;
 esac
 
-if [ -n "${base_tag}" ]; then
-  commit_shas="$(gh api --paginate \
-    "repos/${repository}/compare/${base_tag}...${head_sha}" \
-    --jq '.commits[].sha')"
-else
-  commit_shas="${head_sha}"
-fi
+changes="$(bash "$(dirname "$0")/list-release-changes.sh" "${base_tag}" "${head_sha}")"
 
-declare -A pull_numbers=()
-while IFS= read -r commit_sha; do
-  [ -z "${commit_sha}" ] && continue
-  associated_pulls="$(gh api --paginate \
-    "repos/${repository}/commits/${commit_sha}/pulls" \
-    --jq '.[].number')"
-  while IFS= read -r pull_number; do
-    [ -z "${pull_number}" ] && continue
-    pull_numbers["${pull_number}"]=1
-  done <<< "${associated_pulls}"
-done <<< "${commit_shas}"
-
-if [ "${#pull_numbers[@]}" -eq 0 ]; then
+if ! grep -q '^pull'$'\t' <<< "${changes}"; then
   echo "No merged pull requests found for ${status} notification."
   exit 0
 fi
@@ -62,31 +42,6 @@ gh label create released \
   --color 5319E7 \
   --description "Included in a stable release." \
   --force >/dev/null
-
-declare -A target_numbers=()
-declare -A closing_issue_numbers=()
-for pull_number in "${!pull_numbers[@]}"; do
-  target_numbers["${pull_number}"]=1
-  closing_issues="$(gh api graphql \
-    -f query='query($owner: String!, $repo: String!, $number: Int!) {
-      repository(owner: $owner, name: $repo) {
-        pullRequest(number: $number) {
-          closingIssuesReferences(first: 100) {
-            nodes { number }
-          }
-        }
-      }
-    }' \
-    -f "owner=${owner}" \
-    -f "repo=${repo}" \
-    -F "number=${pull_number}" \
-    --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[]?.number')"
-  while IFS= read -r issue_number; do
-    [ -z "${issue_number}" ] && continue
-    target_numbers["${issue_number}"]=1
-    closing_issue_numbers["${issue_number}"]=1
-  done <<< "${closing_issues}"
-done
 
 remove_issue_label() {
   local target_number="$1"
@@ -125,7 +80,19 @@ set_status_label() {
   done
 }
 
-for target_number in $(printf '%s\n' "${!target_numbers[@]}" | sort -n); do
+if [ "${status}" = "nightly" ]; then
+  done_label=nightly
+  other_label=released
+else
+  done_label=released
+  other_label=nightly
+fi
+
+while IFS=$'\t' read -r -u 3 _kind target_number labels _url _title; do
+  if [[ "${labels}" == *",${done_label},"* && "${labels}" != *",${other_label},"* ]]; then
+    continue
+  fi
+
   comment_state="$(gh api --paginate \
     "repos/${repository}/issues/${target_number}/comments" \
     --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- aurral-release-status -->"))) | "\(.id)\t\((if (.body | contains("### Included in stable release")) then "stable" else "nightly" end))"' \
@@ -134,11 +101,11 @@ for target_number in $(printf '%s\n' "${!target_numbers[@]}" | sort -n); do
   comment_status="${comment_state#*$'\t'}"
 
   if [ "${comment_status}" = "${status}" ]; then
+    set_status_label "${target_number}" "${done_label}" "${other_label}"
     continue
   fi
 
   if [ "${status}" = "nightly" ]; then
-    set_status_label "${target_number}" nightly released
     comment_body="$(cat <<EOF
 <!-- aurral-release-status -->
 ### Available on nightly
@@ -154,7 +121,6 @@ docker pull ghcr.io/${repository}:nightly
 EOF
     )"
   else
-    set_status_label "${target_number}" released nightly
     comment_body="$(cat <<EOF
 <!-- aurral-release-status -->
 ### Included in stable release ${release_version}
@@ -181,10 +147,11 @@ EOF
       "repos/${repository}/issues/${target_number}/comments" \
       -f "body=${comment_body}" >/dev/null
   fi
-done
+  set_status_label "${target_number}" "${done_label}" "${other_label}"
+done 3<<< "${changes}"
 
 if [ "${status}" = "stable" ]; then
-  for issue_number in $(printf '%s\n' "${!closing_issue_numbers[@]}" | sort -n); do
+  for issue_number in $(awk -F '\t' '$1 == "issue" { print $2 }' <<< "${changes}"); do
     issue_state="$(gh api \
       "repos/${repository}/issues/${issue_number}" \
       --jq 'if .pull_request then "pull" else .state end')"
