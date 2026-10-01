@@ -29,6 +29,7 @@
     "@russellthehippo/honker-node": "^0.5.1",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^13.0.3",
+    "cors": "^2.8.6",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "fast-xml-parser": "^5.11.2",

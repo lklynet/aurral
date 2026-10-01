@@ -11,7 +11,7 @@ const [isolatedState] = await setupIsolatedBackend("security-headers");
 let server;
 
 test.before(async () => {
-  server = await startServerProcess();
+  server = await startServerProcess({ extraEnv: { CORS_ORIGIN: "https://allowed.example" } });
 });
 
 test.after(async () => {
@@ -27,4 +27,22 @@ test("CSP permits direct HTTPS artwork", async () => {
     .find((directive) => directive.trim().startsWith("img-src "));
 
   assert.ok((imageSources || "").trim().split(/\s+/).includes("https:"));
+});
+
+test("CORS allows only configured origins on the JSON API", async () => {
+  const url = `http://127.0.0.1:${server.port}/api/health/live`;
+  const allowed = await fetch(url, { headers: { Origin: "https://allowed.example" } });
+  assert.equal(allowed.headers.get("access-control-allow-origin"), "https://allowed.example");
+  assert.match(allowed.headers.get("vary") || "", /Origin/);
+
+  const preflight = await fetch(url, {
+    method: "OPTIONS",
+    headers: { Origin: "https://allowed.example", "Access-Control-Request-Method": "POST" },
+  });
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get("access-control-allow-origin"), "https://allowed.example");
+  assert.match(preflight.headers.get("access-control-allow-methods") || "", /POST/);
+
+  const blocked = await fetch(url, { headers: { Origin: "https://other.example" } });
+  assert.equal(blocked.headers.get("access-control-allow-origin"), null);
 });

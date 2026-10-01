@@ -1,3 +1,4 @@
+import cors from "cors";
 import express from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
@@ -73,38 +74,17 @@ const isSubsonicRequest = (req) => req.path === "/rest" || req.path.startsWith("
 const isImageProxyRequest = (req) =>
   req.path === "/api/image-proxy" || req.path.startsWith("/api/image-proxy/");
 
+const corsDefaults = {
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+  allowedHeaders: "Content-Type, Authorization",
+};
+const publicCors = cors(corsDefaults);
+const apiCors = cors({ ...corsDefaults, origin: allowedCorsOrigins });
+
 function corsMiddleware(req, res, next) {
-  if (isSubsonicRequest(req) || isImageProxyRequest(req)) {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    if (req.method === "OPTIONS") {
-      res.status(204).end();
-      return;
-    }
-    next();
-    return;
-  }
-  if (allowedCorsOrigins.length === 0) {
-    if (req.method === "OPTIONS") {
-      res.status(403).end();
-      return;
-    }
-    next();
-    return;
-  }
-  const origin = req.headers.origin;
-  if (origin && allowedCorsOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Vary", "Origin");
-  }
-  res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") {
-    res.status(origin && allowedCorsOrigins.includes(origin) ? 204 : 403).end();
-    return;
-  }
-  next();
+  if (isSubsonicRequest(req) || isImageProxyRequest(req)) return publicCors(req, res, next);
+  if (allowedCorsOrigins.length > 0) return apiCors(req, res, next);
+  return next();
 }
 
 const trustProxyValue =
