@@ -329,3 +329,39 @@ test("manual Usenet release fails when none of its files match the requested tit
   assert.equal(selected.validation.valid, false);
   assert.match(selected.validation.reason, /does not contain a file matching/i);
 });
+
+test("manual Soulseek search retains ownership after an uncertain creation response", async () => {
+  const { createMockHttpServer } = await import("../helpers/backendTestHarness.js");
+  const { clearDownloadProviderWork, listDownloadProviderWork } = await import("../../backend/services/weeklyFlow/weeklyFlowDownloadCancellation.js");
+  let searchId;
+  const mock = await createMockHttpServer((req, res) => {
+    if (req.method === "DELETE") {
+      req.resume();
+      res.writeHead(502);
+      res.end();
+      return;
+    }
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", () => {
+      searchId = JSON.parse(body).id;
+      // Simulate another process clearing the record while creation is in flight.
+      clearDownloadProviderWork({ provider: "slskd-search", workId: searchId });
+      req.socket.destroy();
+    });
+  });
+  const settings = dbOps.getSettings();
+  try {
+    dbOps.updateSettings({ ...settings, integrations: { ...settings.integrations,
+      slskd: { enabled: true, url: mock.url, cleanupAfterRuns: false } } });
+    await assert.rejects(searchService.createManualMissingSearch({
+      job: { id: "manual-owned-job", artistName: "The Band", trackName: "First" },
+      sourceId: "slskd", actorId: "disposable-user", mode: "replacement",
+    }));
+    const owned = listDownloadProviderWork({ jobIds: ["manual-owned-job"], provider: "slskd-search" });
+    assert.deepEqual(owned.map((work) => work.work_id), [searchId]);
+  } finally {
+    dbOps.updateSettings(settings);
+    await mock.close();
+  }
+});

@@ -96,10 +96,19 @@ async function searchDeemixAlbum(payload, helpers, job, client) {
     const request = buildResolvedTrack(sibling);
     const queries = buildDeemixSearchQueries(request).slice(0, 2);
     const results = [];
+    const seen = new Set();
+    let eligible = [];
     for (const query of queries) {
       try {
-        results.push(...await client.search(query, { limit: SEARCH_LIMIT }));
-        if (results.length > 0) break;
+        if (!isPipelinePayloadActive(payload)) return null;
+        const found = await client.search(query, { limit: SEARCH_LIMIT });
+        if (!isPipelinePayloadActive(payload)) return null;
+        mergeSearchResults(results, seen, found, (entry) => String(entry.id || "").trim());
+        const suitable = results.filter((result) => result.readable !== false && result.albumId
+          && normalizeMatchText(result.album) === normalizeMatchText(job.albumName));
+        const evaluation = await buildSourceCandidates({ source: "deemix", results: suitable, request });
+        eligible = evaluation.evaluations.filter((entry) => ["accept", "verify"].includes(entry.decision));
+        if (eligible.length > 0) break;
       } catch (error) {
         searchFailed = true;
         logger.warn("deemix", "Album track search failed", {
@@ -107,13 +116,8 @@ async function searchDeemixAlbum(payload, helpers, job, client) {
         });
       }
     }
-    const suitable = results.filter((result) => result.readable !== false && result.albumId
-      && normalizeMatchText(result.album) === normalizeMatchText(job.albumName));
-    const evaluation = await buildSourceCandidates({
-      source: "deemix", results: suitable, request,
-    });
-    for (const entry of evaluation.evaluations) {
-      if (!["accept", "verify"].includes(entry.decision)) continue;
+    if (!isPipelinePayloadActive(payload)) return null;
+    for (const entry of eligible) {
       const result = entry.candidate.raw;
       const group = albums.get(result.albumId) || { albumId: result.albumId,
         albumUrl: result.albumUrl, album: result.album, matchedJobIds: new Set() };
@@ -168,6 +172,11 @@ async function handleDeemixSearch(payload, helpers) {
   const client = getDeemixClient();
   if (payload.albumGrab === true) return searchDeemixAlbum(payload, helpers, job, client);
   const queries = buildDeemixSearchQueries(resolvedTrack);
+  const deniedIds = new Set(
+    (Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [])
+      .filter((entry) => Array.isArray(entry) && entry[0] === "deemix")
+      .map((entry) => String(entry[1] || "").trim()),
+  );
   const aggregated = [];
   const seen = new Set();
   let lastError = "";
@@ -175,7 +184,7 @@ async function handleDeemixSearch(payload, helpers) {
     if (hasEnoughCandidates(aggregated, resolvedTrack)) break;
     try {
       const results = await client.search(query, { limit: SEARCH_LIMIT });
-      mergeSearchResults(aggregated, seen, results, (entry) => String(entry.id || "").trim());
+      mergeSearchResults(aggregated, seen, results.filter((entry) => !deniedIds.has(String(entry.id || "").trim())), (entry) => String(entry.id || "").trim());
     } catch (error) {
       lastError = safeLogDiagnostic(error);
       logger.warn("deemix", "deemix search failed", {
@@ -193,11 +202,6 @@ async function handleDeemixSearch(payload, helpers) {
     results: availableResults,
     request: resolvedTrack,
   });
-  const deniedIds = new Set(
-    (Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [])
-      .filter((entry) => Array.isArray(entry) && entry[0] === "deemix")
-      .map((entry) => String(entry[1] || "").trim()),
-  );
   const candidates = usableEvaluationEntries(evaluation)
     .filter((entry) => !deniedIds.has(String(entry.candidate?.provider?.id || "").trim()))
     .map(toPipelineCandidate);
