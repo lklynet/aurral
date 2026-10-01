@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createServer } from "vite";
+import { startFrontendServer } from "../helpers/frontendServer.js";
 
 const waitForRequestSignal = async (getSignal) => {
   const deadline = Date.now() + 1000;
@@ -11,12 +11,7 @@ const waitForRequestSignal = async (getSignal) => {
 };
 
 test("canonical cache invalidation does not abort an active request", async (t) => {
-  const vite = await createServer({
-    root: "frontend",
-    server: { middlewareMode: true },
-    appType: "custom",
-    optimizeDeps: { noDiscovery: true },
-  });
+  const vite = await startFrontendServer();
   t.after(() => vite.close());
 
   const { clearCanonicalLibraryPageCache } = await vite.ssrLoadModule(
@@ -50,12 +45,7 @@ test("canonical cache invalidation does not abort an active request", async (t) 
 });
 
 test("library requests forward caller cancellation", async (t) => {
-  const vite = await createServer({
-    root: "frontend",
-    server: { middlewareMode: true, hmr: false },
-    appType: "custom",
-    optimizeDeps: { noDiscovery: true },
-  });
+  const vite = await startFrontendServer();
   t.after(() => vite.close());
 
   const { getCanonicalLibraryPage, getLibraryFavorites } = await vite.ssrLoadModule(
@@ -119,12 +109,7 @@ test("library requests forward caller cancellation", async (t) => {
 });
 
 test("artist batch lookup stays within the API batch limit", async (t) => {
-  const vite = await createServer({
-    root: "frontend",
-    server: { middlewareMode: true, hmr: false },
-    appType: "custom",
-    optimizeDeps: { noDiscovery: true },
-  });
+  const vite = await startFrontendServer();
   t.after(() => vite.close());
 
   const { lookupArtistsInLibraryBatch } = await vite.ssrLoadModule(
@@ -154,12 +139,7 @@ test("artist batch lookup stays within the API batch limit", async (t) => {
 });
 
 test("artist adds publish an immediate shared library lookup", async (t) => {
-  const vite = await createServer({
-    root: "frontend",
-    server: { middlewareMode: true, hmr: false },
-    appType: "custom",
-    optimizeDeps: { noDiscovery: true },
-  });
+  const vite = await startFrontendServer();
   t.after(() => vite.close());
 
   const { addArtistToLibrary } = await vite.ssrLoadModule(
@@ -185,12 +165,7 @@ test("artist adds publish an immediate shared library lookup", async (t) => {
 });
 
 test("library refresh starts a new lookup after cancelling an active request", async (t) => {
-  const vite = await createServer({
-    root: "frontend",
-    server: { middlewareMode: true, hmr: false },
-    appType: "custom",
-    optimizeDeps: { noDiscovery: true },
-  });
+  const vite = await startFrontendServer();
   t.after(() => vite.close());
 
   const { lookupArtistInLibrary } = await vite.ssrLoadModule(

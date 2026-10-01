@@ -412,10 +412,3 @@ export function exchangeOidcCallback(code, req) {
 export function clearOidcTransactionCookie(req, res) {
   setTransactionCookie(req, res, "", 0);
 }
-
-export function resetOidcStateForTests() {
-  pendingLogins.clear();
-  pendingExchanges.clear();
-  discoveryConfig = null;
-  discoveryKey = "";
-}

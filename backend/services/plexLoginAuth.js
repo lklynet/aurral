@@ -160,7 +160,3 @@ export async function completePlexLogin(req, res) {
     },
   });
 }
-
-export function resetPlexLoginStateForTests() {
-  pendingLogins.clear();
-}

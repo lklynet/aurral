@@ -2,10 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  clearTerminalSexyCatalogCache,
   groupTerminalSexyCatalog,
   importTerminalSexyTheme,
-  loadTerminalSexyCatalog,
   normalizeTerminalSexyCatalog,
   searchTerminalSexyThemes,
   selectTerminalSexyFeaturedThemes,
@@ -24,10 +22,18 @@ const scheme = {
   ],
 };
 
+let catalogModuleCount = 0;
+const loadFreshCatalog = async () => {
+  catalogModuleCount += 1;
+  const { loadTerminalSexyCatalog } = await import(
+    `../../frontend/src/utils/terminalSexyThemes.js?catalog=${catalogModuleCount}`
+  );
+  return loadTerminalSexyCatalog;
+};
+
 test.afterEach(() => {
   globalThis.fetch = originalFetch;
   globalThis.setTimeout = originalSetTimeout;
-  clearTerminalSexyCatalogCache();
 });
 
 test("terminal.sexy catalogs normalize and discard unsafe paths", () => {
@@ -115,6 +121,7 @@ test("terminal.sexy catalog failures do not poison later retries", async () => {
     return new Response(JSON.stringify(["base16/solarized.dark"]));
   };
 
+  const loadTerminalSexyCatalog = await loadFreshCatalog();
   await assert.rejects(loadTerminalSexyCatalog(), /unavailable/);
   const catalog = await loadTerminalSexyCatalog();
   assert.equal(catalog[0].path, "base16/solarized.dark");
@@ -122,10 +129,10 @@ test("terminal.sexy catalog failures do not poison later retries", async () => {
 });
 
 test("terminal.sexy catalog rejects malformed and oversized responses", async () => {
+  const loadTerminalSexyCatalog = await loadFreshCatalog();
   globalThis.fetch = async () => new Response("not json");
   await assert.rejects(loadTerminalSexyCatalog(), /unavailable/);
 
-  clearTerminalSexyCatalogCache();
   globalThis.fetch = async () => new Response(JSON.stringify(["x".repeat(256 * 1024)]));
   await assert.rejects(loadTerminalSexyCatalog(), /unavailable/);
 });
@@ -141,6 +148,7 @@ test("terminal.sexy catalog requests abort when they exceed the timeout", async 
     throw new Error("aborted");
   };
 
+  const loadTerminalSexyCatalog = await loadFreshCatalog();
   await assert.rejects(loadTerminalSexyCatalog(), /unavailable/);
   assert.equal(requestSignal.aborted, true);
 });

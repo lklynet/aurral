@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createServer } from "vite";
+import { startFrontendServer } from "../helpers/frontendServer.js";
 
 const jsonResponse = (value) => new Response(JSON.stringify(value), {
   status: 200,
@@ -8,12 +8,7 @@ const jsonResponse = (value) => new Response(JSON.stringify(value), {
 });
 
 const openFavoritesHarness = async (t, suffix) => {
-  const vite = await createServer({
-    root: "frontend",
-    server: { middlewareMode: true },
-    appType: "custom",
-    optimizeDeps: { noDiscovery: true },
-  });
+  const vite = await startFrontendServer();
 
   const favorites = await vite.ssrLoadModule(`/src/utils/api/endpoints/library.js?${suffix}`);
   const { queryClient, queryKeys } = await vite.ssrLoadModule("/src/queryClient.js");

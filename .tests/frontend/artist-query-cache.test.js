@@ -1,14 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createServer } from "vite";
+import { startFrontendServer } from "../helpers/frontendServer.js";
 
 test("artist REST details coalesce identical requests through Query", async (t) => {
-  const vite = await createServer({
-    root: "frontend",
-    server: { middlewareMode: true, hmr: false },
-    appType: "custom",
-    optimizeDeps: { noDiscovery: true },
-  });
+  const vite = await startFrontendServer();
   const previousFetch = globalThis.fetch;
   let requestCount = 0;
   globalThis.fetch = async () => {
@@ -38,12 +33,7 @@ test("artist REST details coalesce identical requests through Query", async (t) 
 });
 
 test("artist cover refreshes do not reuse or get overwritten by normal requests", async (t) => {
-  const vite = await createServer({
-    root: "frontend",
-    server: { middlewareMode: true, hmr: false },
-    appType: "custom",
-    optimizeDeps: { noDiscovery: true },
-  });
+  const vite = await startFrontendServer();
   const previousFetch = globalThis.fetch;
   let requestCount = 0;
   let resolveNormal;
@@ -85,12 +75,7 @@ test("artist cover refreshes do not reuse or get overwritten by normal requests"
 });
 
 test("normal cover requests wait for active artist and release-group refreshes", async (t) => {
-  const vite = await createServer({
-    root: "frontend",
-    server: { middlewareMode: true, hmr: false },
-    appType: "custom",
-    optimizeDeps: { noDiscovery: true },
-  });
+  const vite = await startFrontendServer();
   const previousFetch = globalThis.fetch;
   const requestCounts = new Map();
   const releaseRefreshes = new Map();

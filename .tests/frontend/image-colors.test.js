@@ -1,14 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createServer } from "vite";
+import { startFrontendServer } from "../helpers/frontendServer.js";
 
 test("external artwork gradients do not request images in CORS mode", async (t) => {
-  const vite = await createServer({
-    root: "frontend",
-    server: { middlewareMode: true, hmr: false },
-    appType: "custom",
-    optimizeDeps: { noDiscovery: true },
-  });
+  const vite = await startFrontendServer();
   const previousDocument = globalThis.document;
   const previousImage = globalThis.Image;
   let loadedImage;

@@ -20,7 +20,7 @@ function areDraftsEqual(left, right) {
   );
 }
 
-export const isCurrentAccount = (activeAccountId, savedAccountId) =>
+const isCurrentAccount = (activeAccountId, savedAccountId) =>
   activeAccountId != null && activeAccountId === savedAccountId;
 
 export function useAccountSettings(authUser, showError) {

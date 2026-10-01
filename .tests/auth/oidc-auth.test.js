@@ -29,7 +29,6 @@ const {
   resolveOidcRole,
   getOidcBootstrapInfo,
   handleOidcCallback,
-  resetOidcStateForTests,
   startOidcLogin,
 } = oidcModule;
 
@@ -72,7 +71,6 @@ function resetOidcEnv() {
   delete process.env.OIDC_TOKEN_ENDPOINT_AUTH_METHOD;
   delete process.env.AUTH_PROXY_ENABLED;
   delete process.env.AUTH_PROXY_HEADER;
-  resetOidcStateForTests();
 }
 
 function enableOidcEnv(overrides = {}) {

@@ -24,7 +24,6 @@ const {
   handleGoogleCallback,
   exchangeGoogleCallback,
   isGoogleLoginEnabled,
-  resetGoogleStateForTests,
   setGoogleIssuerForTests,
 } = googleModule;
 
@@ -131,12 +130,10 @@ async function completeGoogleAuth(pending) {
 
 test.beforeEach(() => {
   resetDatabase(db);
-  resetGoogleStateForTests();
   dbOps.updateSettings({ onboardingComplete: false });
 });
 
 test.after(async () => {
-  resetGoogleStateForTests();
   await cleanupIsolatedState(isolatedState);
 });
 

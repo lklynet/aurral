@@ -17,7 +17,7 @@ const [isolatedState, { db }, { dbOps, userOps, userIdentityOps }, plexModule, p
   );
 
 const { PlexClient } = plexModule;
-const { completePlexLogin, resetPlexLoginStateForTests, startPlexLogin } = plexLogin;
+const { completePlexLogin, startPlexLogin } = plexLogin;
 
 const createResponse = () => ({
   statusCode: 200,
@@ -38,7 +38,6 @@ const createResponse = () => ({
 
 test.beforeEach(() => {
   resetDatabase(db);
-  resetPlexLoginStateForTests();
   dbOps.updateSettings({
     onboardingComplete: true,
     integrations: {

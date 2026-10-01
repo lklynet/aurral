@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createServer } from "vite";
+import { startFrontendServer } from "../helpers/frontendServer.js";
 
 const createStorage = (initial = {}) => {
   const values = new Map(Object.entries(initial));
@@ -18,12 +18,7 @@ const withApiClient = async (t) => {
     sessionStorage: globalThis.sessionStorage,
     window: globalThis.window,
   };
-  const vite = await createServer({
-    root: "frontend",
-    server: { middlewareMode: true },
-    appType: "custom",
-    optimizeDeps: { noDiscovery: true },
-  });
+  const vite = await startFrontendServer();
 
   t.after(async () => {
     await vite.close();

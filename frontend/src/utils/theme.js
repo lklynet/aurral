@@ -340,10 +340,6 @@ export function getCustomThemes() {
   return customThemeCache;
 }
 
-export function invalidateThemeCaches() {
-  customThemeCache = null;
-}
-
 export function subscribeToCustomThemes(listener) {
   customThemeListeners.add(listener);
   return () => customThemeListeners.delete(listener);

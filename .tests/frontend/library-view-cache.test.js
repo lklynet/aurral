@@ -1,14 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createServer } from "vite";
+import { startFrontendServer } from "../helpers/frontendServer.js";
 
 test("clearing canonical pages preserves the mounted view during favorite updates", async (t) => {
-  const vite = await createServer({
-    root: "frontend",
-    server: { middlewareMode: true, hmr: false },
-    appType: "custom",
-    optimizeDeps: { noDiscovery: true },
-  });
+  const vite = await startFrontendServer();
   t.after(() => vite.close());
 
   const { queryClient, queryKeys } = await vite.ssrLoadModule(

@@ -10,7 +10,6 @@ import {
   getCustomThemes,
   getThemeSettings,
   installCustomTheme,
-  invalidateThemeCaches,
   replaceCustomTheme,
   THEME_STORAGE_KEY,
   setThemeSelection,
@@ -23,7 +22,6 @@ const originalLocalStorage = globalThis.localStorage;
 test.afterEach(() => {
   globalThis.document = originalDocument;
   globalThis.localStorage = originalLocalStorage;
-  invalidateThemeCaches();
 });
 
 test("Aurral keeps its neutral light and dark palettes", () => {

@@ -154,10 +154,6 @@ async function fetchJson(url, signal, message) {
   }
 }
 
-export function clearTerminalSexyCatalogCache() {
-  catalogPromise = null;
-}
-
 export async function loadTerminalSexyCatalog() {
   if (!catalogPromise) {
     catalogPromise = fetchJson(

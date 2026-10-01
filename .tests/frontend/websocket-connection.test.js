@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createServer } from "vite";
+import { startFrontendServer } from "../helpers/frontendServer.js";
 
 const createStorage = (initial = {}) => {
   const values = new Map(Object.entries(initial));
@@ -54,27 +54,22 @@ test("a late close from an old WebSocket cannot orphan its replacement", async (
   globalThis.window = browserWindow();
   globalThis.WebSocket = FakeWebSocket;
 
-  const vite = await createServer({
-    root: "frontend",
-    server: { middlewareMode: true },
-    appType: "custom",
-    optimizeDeps: { noDiscovery: true },
-  });
+  const vite = await startFrontendServer();
 
   t.after(async () => {
     await vite.close();
     Object.assign(globalThis, originalGlobals);
   });
 
-  const { webSocketConnectionForTesting } = await vite.ssrLoadModule(
-    "/src/hooks/useWebSocket.js?late-close-test",
+  const webSocketConnection = await vite.ssrLoadModule(
+    "/src/utils/webSocketConnection.js?late-close-test",
   );
-  const unsubscribeStatus = webSocketConnectionForTesting.subscribeToStatus(() => {});
+  const unsubscribeStatus = webSocketConnection.subscribeToStatus(() => {});
   assert.equal(sockets.length, 1);
 
   const first = sockets[0];
   first.readyState = FakeWebSocket.CLOSING;
-  const unsubscribeFirstChannel = webSocketConnectionForTesting.subscribeToChannel(
+  const unsubscribeFirstChannel = webSocketConnection.subscribeToChannel(
     "first",
     () => {},
   );
@@ -86,7 +81,7 @@ test("a late close from an old WebSocket cannot orphan its replacement", async (
   replacement.readyState = FakeWebSocket.OPEN;
   replacement.onopen?.();
 
-  const unsubscribeSecondChannel = webSocketConnectionForTesting.subscribeToChannel(
+  const unsubscribeSecondChannel = webSocketConnection.subscribeToChannel(
     "second",
     () => {},
   );
@@ -133,22 +128,17 @@ test("a missed WebSocket heartbeat retires the dead socket for reconnection", as
   globalThis.window = browserWindow();
   globalThis.WebSocket = DeadWebSocket;
 
-  const vite = await createServer({
-    root: "frontend",
-    server: { middlewareMode: true },
-    appType: "custom",
-    optimizeDeps: { noDiscovery: true },
-  });
+  const vite = await startFrontendServer();
 
   t.after(async () => {
     await vite.close();
     Object.assign(globalThis, originalGlobals);
   });
 
-  const { webSocketConnectionForTesting } = await vite.ssrLoadModule(
-    "/src/hooks/useWebSocket.js?heartbeat-test",
+  const webSocketConnection = await vite.ssrLoadModule(
+    "/src/utils/webSocketConnection.js?heartbeat-test",
   );
-  const unsubscribe = webSocketConnectionForTesting.subscribeToStatus(() => {});
+  const unsubscribe = webSocketConnection.subscribeToStatus(() => {});
   const current = sockets[0];
   current.readyState = DeadWebSocket.OPEN;
 

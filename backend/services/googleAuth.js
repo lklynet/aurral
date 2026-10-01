@@ -267,11 +267,3 @@ export function exchangeGoogleCallback(code, req) {
 export function clearGoogleTransactionCookie(req, res) {
   setTransactionCookie(req, res, "", 0);
 }
-
-export function resetGoogleStateForTests() {
-  pendingLogins.clear();
-  pendingExchanges.clear();
-  discoveryConfig = null;
-  discoveryKey = "";
-  issuerOverride = null;
-}
