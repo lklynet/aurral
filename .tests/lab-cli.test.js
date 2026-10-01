@@ -462,11 +462,12 @@ test("test runs each spec in a fresh Lab, keeps evidence, and reports failures",
   const projects = runs.map(projectOf);
   assert.notEqual(projects[0], projects[1]);
   for (const [index, project] of projects.entries()) {
-    assert.deepEqual(commandsFor(lab, project), ["seed", "up", "runner", "logs", "down"]);
+    assert.deepEqual(commandsFor(lab, project), ["seed", "up", "runner", "logs", "logs", "down"]);
     const evidence = runs[index].env.AURRAL_LAB_RESULTS_DIR;
     assert.ok(evidence.startsWith(join(worktree, "test-results", "lab")));
     assert.ok(existsSync(join(evidence, "results.json")));
     assert.match(readFileSync(join(evidence, "aurral.log"), "utf8"), new RegExp(`logs for ${project}`));
+    assert.match(readFileSync(join(evidence, "fixtures.log"), "utf8"), new RegExp(`logs for ${project}`));
     assert.equal(JSON.parse(readFileSync(join(evidence, "manifest.json"), "utf8")).exitCode, index);
   }
   assert.deepEqual(runDirs(worktree), []);
@@ -498,7 +499,7 @@ test("a test Lab that fails to start keeps its logs and is removed", async (t) =
   assert.notEqual(result.code, 0);
 
   const [up] = lab.composeCalls("up");
-  assert.deepEqual(commandsFor(lab, projectOf(up)), ["seed", "up", "logs", "down"]);
+  assert.deepEqual(commandsFor(lab, projectOf(up)), ["seed", "up", "logs", "logs", "down"]);
   assert.match(readFileSync(join(up.env.AURRAL_LAB_RESULTS_DIR, "aurral.log"), "utf8"), /logs for /);
   assert.deepEqual(runDirs(worktree), []);
 });
@@ -517,7 +518,7 @@ test("an interrupted test run removes its Lab and reports the interruption", asy
 
   assert.equal(result.code, 130);
   const [run] = runnerCalls(lab);
-  assert.deepEqual(commandsFor(lab, projectOf(run)), ["seed", "up", "runner", "logs", "down"]);
+  assert.deepEqual(commandsFor(lab, projectOf(run)), ["seed", "up", "runner", "logs", "logs", "down"]);
   assert.equal(runnerCalls(lab).length, 1);
   assert.ok(existsSync(join(run.env.AURRAL_LAB_RESULTS_DIR, "aurral.log")));
   assert.deepEqual(runDirs(worktree), []);
@@ -603,7 +604,7 @@ test("a failed spec retries in a fresh Lab with separate evidence when retries a
     "settings/3",
   ]);
   assert.equal(new Set(runs.map(projectOf)).size, 5);
-  for (const run of runs) assert.deepEqual(commandsFor(lab, projectOf(run)), ["seed", "up", "runner", "logs", "down"]);
+  for (const run of runs) assert.deepEqual(commandsFor(lab, projectOf(run)), ["seed", "up", "runner", "logs", "logs", "down"]);
   assert.ok(dirs.every((dir) => existsSync(join(dir, "manifest.json"))));
   assert.match(ci.stderr, /smoke\.spec\.js.*attempt 2/);
   assert.match(ci.stderr, /settings\.spec\.js.*3 attempts/);

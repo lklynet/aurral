@@ -24,6 +24,27 @@ services:
       interval: 2s
       timeout: 5s
       retries: 90
+    depends_on:
+      fixtures:
+        condition: service_healthy
+
+  fixtures:
+    image: ${AURRAL_LAB_IMAGE:?}
+    entrypoint: ["node", "/app/tests/lab/services/server.mjs"]
+    user: "${AURRAL_LAB_UID:?}:${AURRAL_LAB_GID:?}"
+    env_file: lab.env
+    environment:
+      AURRAL_LAB_JOURNAL: /results/fixtures-journal.jsonl
+    volumes:
+      - ./:/app/tests/lab:ro
+      - ${AURRAL_LAB_RESULTS_DIR:?}:/results
+    networks: [lab]
+    labels: *lab-labels
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9000/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 1s
+      timeout: 5s
+      retries: 30
 
   seed:
     image: ${AURRAL_LAB_IMAGE:?}
@@ -36,6 +57,7 @@ services:
       PGID: ${AURRAL_LAB_GID:?}
     volumes:
       - ${AURRAL_LAB_SEED_DIR:?}:/config
+      - ${AURRAL_LAB_MEDIA_DIR:?}:/data
       - ./:/app/tests/lab:ro
     network_mode: none
     labels: *lab-labels

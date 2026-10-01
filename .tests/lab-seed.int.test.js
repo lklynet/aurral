@@ -37,6 +37,19 @@ test("the Lab seed creates an onboarded admin who signs in through Aurral", asyn
 
   const accepted = await login(labEnv.AUTH_PASSWORD);
   assert.equal(accepted.status, 200);
-  assert.equal((await accepted.json()).user.role, "admin");
+  const { token, user } = await accepted.json();
+  assert.equal(user.role, "admin");
   assert.equal((await login(`${labEnv.AUTH_PASSWORD}-wrong`)).status, 401);
+
+  const library = (kind) =>
+    fetch(`${baseUrl}/api/library/canonical?kind=${kind}&pageSize=100`, {
+      headers: { authorization: `Bearer ${token}` },
+    }).then((response) => response.json());
+  const artists = (await library("artists")).items;
+  assert.equal(artists.length, 1);
+  assert.equal(artists[0].mbid ?? null, null);
+  assert.equal(artists[0].providerId ?? null, null);
+  const tracks = (await library("tracks")).items;
+  assert.equal(tracks.length, 2);
+  assert.ok(tracks.every((track) => track.artistName === artists[0].name));
 });

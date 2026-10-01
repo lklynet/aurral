@@ -11,7 +11,7 @@ const specDir = path.join(repoRoot, "tests", "e2e");
 const labRoot = path.join(repoRoot, "backend", "data", "lab");
 const lockDir = path.join(labRoot, ".locks");
 const LAB_ID = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/;
-const SEED_VERSION = 1;
+const SEED_VERSION = 2;
 const FORWARDED_ENV = [
   "PATH",
   "HOME",
@@ -28,7 +28,7 @@ const FORWARDED_ENV = [
   "CI",
 ];
 const LOG_FLAGS = new Set(["--follow", "-f", "--timestamps", "-t"]);
-const LOG_SERVICES = new Set(["aurral", "gateway"]);
+const LOG_SERVICES = new Set(["aurral", "fixtures", "gateway"]);
 
 class LabError extends Error {
   constructor(message, exitCode = 1) {
@@ -239,6 +239,7 @@ function checkRecord(lab) {
 function claimState(lab) {
   const record = checkRecord(lab);
   fs.mkdirSync(lab.mediaDir, { recursive: true });
+  fs.mkdirSync(lab.resultsDir, { recursive: true });
   if (!record) {
     fs.writeFileSync(
       lab.recordPath,
@@ -337,8 +338,10 @@ function needsSeed(lab) {
 }
 
 async function seed(lab) {
-  fs.rmSync(lab.seedingDir, { recursive: true, force: true });
-  fs.mkdirSync(lab.seedingDir);
+  for (const dir of [lab.seedingDir, lab.mediaDir]) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
+  }
   console.error(`Seeding Lab "${lab.id}"...`);
   const seeded = await compose(lab, ["run", "--rm", "--no-deps", "-T", "seed"], { output: "stderr" });
   if (seeded.code !== 0) {
@@ -583,8 +586,10 @@ async function runScenario(lab, run) {
         );
         exitCode = ran.code;
       } finally {
-        const logs = await compose(lab, ["logs", "--no-color", "--timestamps", "aurral"], { cleanup: true });
-        fs.writeFileSync(path.join(lab.resultsDir, "aurral.log"), logs.stdout + logs.stderr);
+        for (const service of ["aurral", "fixtures"]) {
+          const logs = await compose(lab, ["logs", "--no-color", "--timestamps", service], { cleanup: true });
+          fs.writeFileSync(path.join(lab.resultsDir, `${service}.log`), logs.stdout + logs.stderr);
+        }
         const manifest = {
           runId: run.id,
           spec: run.spec,

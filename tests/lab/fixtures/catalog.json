@@ -1,0 +1,85 @@
+{
+  "artists": [
+    {
+      "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+      "name": "Radiohead",
+      "type": "Group",
+      "genres": ["alternative rock", "art rock"],
+      "albums": [
+        {
+          "id": "b1392450-e666-3926-a536-22c65f834433",
+          "title": "OK Computer",
+          "type": "Album",
+          "date": "1997-05-21",
+          "tracks": ["Airbag", "Paranoid Android", "Subterranean Homesick Alien"]
+        },
+        {
+          "id": "1ab0c001-5e1f-4c7a-9d10-000000000001",
+          "title": "Kid A",
+          "type": "Album",
+          "date": "2000-10-02",
+          "tracks": ["Everything in Its Right Place", "Kid A"]
+        }
+      ]
+    },
+    {
+      "id": "f22942a1-6f70-4f48-866e-238cb2308fbd",
+      "name": "Aphex Twin",
+      "type": "Person",
+      "genres": ["electronic", "ambient"],
+      "albums": [
+        {
+          "id": "1ab0c001-5e1f-4c7a-9d10-000000000002",
+          "title": "Selected Ambient Works 85-92",
+          "type": "Album",
+          "date": "1992-11-09",
+          "tracks": ["Xtal", "Tha", "Pulsewidth"]
+        },
+        {
+          "id": "1ab0c001-5e1f-4c7a-9d10-000000000003",
+          "title": "Windowlicker",
+          "type": "Single",
+          "date": "1999-03-22",
+          "tracks": ["Windowlicker"]
+        }
+      ]
+    },
+    {
+      "id": "69158f97-4c07-4c4e-baf8-4e4ab1ed666e",
+      "name": "Boards of Canada",
+      "type": "Group",
+      "genres": ["electronic", "downtempo"],
+      "albums": [
+        {
+          "id": "1ab0c001-5e1f-4c7a-9d10-000000000004",
+          "title": "Music Has the Right to Children",
+          "type": "Album",
+          "date": "1998-04-20",
+          "tracks": ["Wildlife Analysis", "An Eagle in Your Mind"]
+        }
+      ]
+    },
+    {
+      "id": "8f6bd1e4-fbe1-4f50-aa9b-94c450ec0f11",
+      "name": "Portishead",
+      "type": "Group",
+      "genres": ["trip hop"],
+      "albums": [
+        {
+          "id": "1ab0c001-5e1f-4c7a-9d10-000000000005",
+          "title": "Dummy",
+          "type": "Album",
+          "date": "1994-08-22",
+          "tracks": ["Mysterons", "Sour Times"]
+        },
+        {
+          "id": "1ab0c001-5e1f-4c7a-9d10-000000000006",
+          "title": "Third",
+          "type": "Album",
+          "date": "2008-04-28",
+          "tracks": ["Silence", "Hunter"]
+        }
+      ]
+    }
+  ]
+}
