@@ -1,17 +1,21 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { parseEnv } from "node:util";
 
 const repoRoot = fs.realpathSync(path.join(path.dirname(fileURLToPath(import.meta.url)), ".."));
-const composeFile = path.join(repoRoot, "tests", "lab", "compose.yml");
+const labDir = path.join(repoRoot, "tests", "lab");
+const composeFile = path.join(labDir, "compose.yml");
 const specDir = path.join(repoRoot, "tests", "e2e");
 const labRoot = path.join(repoRoot, "backend", "data", "lab");
 const lockDir = path.join(labRoot, ".locks");
 const LAB_ID = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/;
-const SEED_VERSION = 3;
+const SEED_VERSION = 4;
+const FIXTURE_PORTS = { brainzmash: 8601, lidarr: 8686, slskd: 5030, "public-http": 8080, "public-tls": 8443, control: 9000 };
 const FORWARDED_ENV = [
   "PATH",
   "HOME",
@@ -54,7 +58,8 @@ function relative(target) {
 }
 
 function labCommand(lab, command) {
-  return `${lab.id === "dev" ? "" : `AURRAL_LAB_ID=${lab.id} `}npm run lab:${command}`;
+  const defaultId = command === "dev" ? "node" : "dev";
+  return `${lab.id === defaultId ? "" : `AURRAL_LAB_ID=${lab.id} `}npm run lab:${command}`;
 }
 
 function readJson(file) {
@@ -65,17 +70,17 @@ function readJson(file) {
   }
 }
 
-function selectLab(requestedId) {
-  const id = requestedId || "dev";
+function selectLab(requestedId, mode = "docker") {
+  const id = requestedId || (mode === "node" ? "node" : "dev");
   if (!LAB_ID.test(id) || id.startsWith("run-")) {
     throw new LabError(
       `AURRAL_LAB_ID "${id}" is invalid. Use up to 24 lowercase letters, digits, and dashes that do not start with "run-".`,
     );
   }
-  return labFor(id);
+  return labFor(id, { mode });
 }
 
-function labFor(id, { resultsDir } = {}) {
+function labFor(id, { resultsDir, mode = "docker", downloads = "complete" } = {}) {
   const owner = createHash("sha256").update(repoRoot).digest("hex").slice(0, 12);
   const slug =
     path
@@ -89,6 +94,9 @@ function labFor(id, { resultsDir } = {}) {
   return {
     id,
     owner,
+    mode,
+    downloads,
+    tlsDir: path.join(stateDir, "tls"),
     project: `${prefix}-${id}`,
     image: `${prefix}:local`,
     runnerImage: `${prefix}-runner:local`,
@@ -120,9 +128,23 @@ function dockerEnv(lab) {
     AURRAL_LAB_CONFIG_DIR: lab.configDir,
     AURRAL_LAB_MEDIA_DIR: lab.mediaDir,
     AURRAL_LAB_SEED_DIR: lab.seedingDir,
+    AURRAL_LAB_TLS_DIR: lab.tlsDir,
+    AURRAL_LAB_DOWNLOADS: lab.downloads,
     AURRAL_LAB_UID: String(process.getuid?.() ?? 1000),
     AURRAL_LAB_GID: String(process.getgid?.() ?? 1000),
   };
+}
+
+function hostEnv() {
+  const env = {};
+  for (const key of ["PATH", "HOME", "USER", "LANG", "TMPDIR"]) {
+    if (process.env[key] !== undefined) env[key] = process.env[key];
+  }
+  return env;
+}
+
+function labEnv() {
+  return parseEnv(fs.readFileSync(path.join(labDir, "lab.env"), "utf8"));
 }
 
 function execute(command, args, { env, output = "capture", cleanup = false } = {}) {
@@ -233,17 +255,23 @@ function checkRecord(lab) {
         "Remove that directory only if you know it is a stale copy.",
     );
   }
+  const recordMode = record?.mode || "docker";
+  if (record && recordMode !== lab.mode) {
+    throw new LabError(
+      `Lab "${lab.id}" was created by ${recordMode === "node" ? "npm run lab:dev" : "npm run lab:up"}, and its data uses that mode's paths. ` +
+        "Use that command, or choose another AURRAL_LAB_ID.",
+    );
+  }
   return record;
 }
 
 function claimState(lab) {
   const record = checkRecord(lab);
-  fs.mkdirSync(lab.mediaDir, { recursive: true });
-  fs.mkdirSync(lab.resultsDir, { recursive: true });
+  for (const dir of [lab.mediaDir, lab.resultsDir, lab.tlsDir]) fs.mkdirSync(dir, { recursive: true });
   if (!record) {
     fs.writeFileSync(
       lab.recordPath,
-      `${JSON.stringify({ project: lab.project, labId: lab.id, worktree: repoRoot, createdAt: new Date().toISOString() }, null, 2)}\n`,
+      `${JSON.stringify({ project: lab.project, labId: lab.id, mode: lab.mode, worktree: repoRoot, createdAt: new Date().toISOString() }, null, 2)}\n`,
     );
   }
 }
@@ -343,9 +371,17 @@ async function seed(lab) {
     fs.mkdirSync(dir, { recursive: true });
   }
   console.error(`Seeding Lab "${lab.id}"...`);
-  const seeded = await compose(lab, ["run", "--rm", "--no-deps", "-T", "seed"], { output: "stderr" });
+  const seeded =
+    lab.mode === "node"
+      ? await execute(process.execPath, [path.join(labDir, "seed.mjs")], {
+          output: "stderr",
+          env: { ...hostEnv(), ...labEnv(), AURRAL_DATA_DIR: lab.seedingDir, AURRAL_LAB_MEDIA_ROOT: lab.mediaDir },
+        })
+      : await compose(lab, ["run", "--rm", "--no-deps", "-T", "seed"], { output: "stderr" });
   if (seeded.code !== 0) {
-    throw new LabError(`Seeding Lab "${lab.id}" failed. The output is above. Run ${labCommand(lab, "up")} to try again.`);
+    throw new LabError(
+      `Seeding Lab "${lab.id}" failed. The output is above. Run ${labCommand(lab, lab.mode === "node" ? "dev" : "up")} to try again.`,
+    );
   }
   fs.renameSync(lab.seedingDir, lab.configDir);
   fs.writeFileSync(lab.seedPath, `${JSON.stringify({ version: SEED_VERSION, seededAt: new Date().toISOString() }, null, 2)}\n`);
@@ -437,7 +473,22 @@ async function down(lab) {
   });
 }
 
+function deleteLabData(lab) {
+  for (const target of [lab.configDir, lab.mediaDir, lab.seedingDir, lab.seedPath, lab.tlsDir]) {
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+  console.error(`Deleted the data for Lab "${lab.id}".`);
+}
+
 async function reset(lab) {
+  if (readJson(lab.recordPath)?.mode === "node") {
+    const nodeLab = { ...lab, mode: "node" };
+    return withLock(nodeLab, async () => {
+      checkRecord(nodeLab);
+      deleteLabData(nodeLab);
+      console.error(`Run ${labCommand(nodeLab, "dev")} to seed and start it again.`);
+    });
+  }
   await requireDocker();
   await withLock(lab, async () => {
     checkRecord(lab);
@@ -446,10 +497,7 @@ async function reset(lab) {
     if ((await ownedResources(lab)).containers.length) {
       throw new LabError(`Lab "${lab.id}" still has containers, so its data was kept. Run ${labCommand(lab, "down")}, then retry.`);
     }
-    for (const target of [lab.configDir, lab.mediaDir, lab.seedingDir, lab.seedPath]) {
-      fs.rmSync(target, { recursive: true, force: true });
-    }
-    console.error(`Deleted the data for Lab "${lab.id}".`);
+    deleteLabData(lab);
     await start(lab);
   });
 }
@@ -627,15 +675,18 @@ async function runTests(args) {
   if (built.code !== 0) throw new LabError("Building the test images failed. The build output is above.");
   const run = { id: runId, options, source: await sourceInfo(), images: await imageIds(buildLab) };
 
+  const scenarios = readJson(path.join(labDir, "scenarios.json")) || {};
   const outcomes = [];
   for (const [index, spec] of specs.entries()) {
     const scenario = path.basename(spec, ".spec.js");
+    const downloads = scenarios[path.basename(spec)]?.downloads || "complete";
     let attempt = 0;
     let exitCode = 1;
     while (exitCode !== 0 && attempt <= retries) {
       attempt++;
       const lab = labFor(`run-${token}-${index + 1}${attempt > 1 ? `-a${attempt}` : ""}`, {
         resultsDir: path.join(runDir, scenario, String(attempt)),
+        downloads,
       });
       exitCode = await runScenario(lab, { ...run, spec, attempt });
       if (exitCode !== 0 && attempt <= retries) console.error(`${spec} failed on attempt ${attempt}. Retrying in a fresh Lab.`);
@@ -652,7 +703,134 @@ async function runTests(args) {
   if (outcomes.some(({ exitCode }) => exitCode !== 0)) process.exitCode = 1;
 }
 
-const COMMANDS = { up, url, logs, down, reset };
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+async function waitForUrl(url, timeoutMs, child, name) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    checkInterrupted();
+    if (child.exitCode !== null || child.signalCode !== null) throw new LabError(`${name} exited before it was ready. Its output is above.`);
+    try {
+      if ((await fetch(url, { signal: AbortSignal.timeout(1000) })).ok) return;
+    } catch {}
+    if (Date.now() > deadline) throw new LabError(`${name} did not become ready at ${url}.`);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+async function requireTool(command, args, purpose) {
+  try {
+    if ((await execute(command, args, { env: hostEnv() })).code === 0) return;
+  } catch {}
+  throw new LabError(`${command} is required ${purpose}. Install it, then retry.`);
+}
+
+async function dev(lab) {
+  checkRecord(lab);
+  if (!fs.existsSync(path.join(repoRoot, "node_modules", ".package-lock.json"))) {
+    throw new LabError("npm run lab:dev runs Aurral from source. Install dependencies with npm install, then retry.");
+  }
+  await requireTool("ffmpeg", ["-version"], "to create the Lab's audio files");
+  await requireTool("openssl", ["version"], "to create the Lab's certificates");
+  await withLock(lab, async () => {
+    claimState(lab);
+    const seedRequired = needsSeed(lab);
+    const ports = {};
+    for (const name of [...Object.keys(FIXTURE_PORTS), "app", "web"]) ports[name] = await freePort();
+    const children = [];
+    const startChild = (name, command, args, options) => {
+      const child = spawn(command, args, { cwd: repoRoot, ...options });
+      child.labName = name;
+      children.push(child);
+      return child;
+    };
+    try {
+      const fixturesLog = fs.openSync(path.join(lab.resultsDir, "fixtures.log"), "a");
+      const fixtures = startChild("The fixtures service", process.execPath, [path.join(labDir, "services", "server.mjs")], {
+        stdio: ["ignore", fixturesLog, fixturesLog],
+        env: {
+          ...hostEnv(),
+          ...labEnv(),
+          AURRAL_LAB_PORTS: JSON.stringify(Object.fromEntries(Object.keys(FIXTURE_PORTS).map((name) => [name, ports[name]]))),
+          AURRAL_LAB_MEDIA_ROOT: lab.mediaDir,
+          AURRAL_LAB_TLS_DIR: lab.tlsDir,
+          AURRAL_LAB_JOURNAL: path.join(lab.resultsDir, "fixtures-journal.jsonl"),
+          AURRAL_LAB_DOWNLOADS: lab.downloads,
+        },
+      });
+      await waitForUrl(`http://127.0.0.1:${ports.control}/health`, 15000, fixtures, "The fixtures service");
+      if (seedRequired) await seed(lab);
+
+      const redirects = Object.fromEntries(
+        Object.entries(FIXTURE_PORTS).map(([name, port]) => [`fixtures:${port}`, `127.0.0.1:${ports[name]}`]),
+      );
+      const backend = startChild("Aurral", process.execPath, ["--watch", path.join("backend", "server.js")], {
+        stdio: ["ignore", "inherit", "inherit"],
+        env: {
+          ...hostEnv(),
+          PATH: `${path.join(labDir, "bin")}${path.delimiter}${process.env.PATH || ""}`,
+          PORT: String(ports.app),
+          AURRAL_DATA_DIR: lab.configDir,
+          NODE_OPTIONS: `--import=${pathToFileURL(path.join(labDir, "egress.mjs")).href}`,
+          NODE_EXTRA_CA_CERTS: path.join(lab.tlsDir, "ca.pem"),
+          AURRAL_LAB_REDIRECTS: JSON.stringify(redirects),
+          AURRAL_LAB_PUBLIC_TLS: `127.0.0.1:${ports["public-tls"]}`,
+          AURRAL_LAB_PUBLIC_HTTP: `127.0.0.1:${ports["public-http"]}`,
+        },
+      });
+      await waitForUrl(`http://127.0.0.1:${ports.app}/api/health/live`, 120000, backend, "Aurral");
+      const web = startChild(
+        "The Vite dev server",
+        process.execPath,
+        [path.join(repoRoot, "node_modules", "vite", "bin", "vite.js"), "--host", "127.0.0.1", "--port", String(ports.web), "--strictPort"],
+        {
+          cwd: path.join(repoRoot, "frontend"),
+          stdio: ["ignore", "inherit", "inherit"],
+          env: { ...hostEnv(), AURRAL_API_PROXY_TARGET: `http://127.0.0.1:${ports.app}` },
+        },
+      );
+      await waitForUrl(`http://127.0.0.1:${ports.web}/`, 60000, web, "The Vite dev server");
+
+      const credentials = labEnv();
+      const url = `http://127.0.0.1:${ports.web}/`;
+      console.error(`\nLab "${lab.id}" is running from source at ${url}`);
+      console.error(`Sign in as ${credentials.AUTH_USER} with the password ${credentials.AUTH_PASSWORD}.`);
+      console.error("Frontend edits reload the page, and backend edits restart the server.");
+      console.error(`Lab controls are at http://127.0.0.1:${ports.control}. Press Ctrl-C to stop.`);
+      process.stdout.write(`${url}\n`);
+      const exited = await new Promise((resolve) => {
+        for (const child of children) child.once("exit", () => resolve(child));
+        for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => resolve(null));
+      });
+      if (exited && !interruption) throw new LabError(`${exited.labName} stopped unexpectedly. Its output is above.`);
+    } finally {
+      for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+      await Promise.all(
+        children
+          .filter((child) => child.exitCode === null && child.signalCode === null)
+          .map((child) => new Promise((resolve) => {
+            const timer = setTimeout(() => child.kill("SIGKILL"), 5000);
+            child.once("exit", () => {
+              clearTimeout(timer);
+              resolve();
+            });
+          })),
+      );
+    }
+  });
+  console.error(`Stopped Lab "${lab.id}". Its data is kept in ${relative(lab.stateDir)}.`);
+}
+
+const COMMANDS = { up, url, logs, down, reset, dev };
 
 async function main() {
   const [command, ...args] = process.argv.slice(2);
@@ -666,7 +844,7 @@ async function main() {
     });
   }
   if (command === "test") return runTests(args);
-  await handler(selectLab(process.env.AURRAL_LAB_ID), args);
+  await handler(selectLab(process.env.AURRAL_LAB_ID, command === "dev" ? "node" : "docker"), args);
 }
 
 main().catch((error) => {

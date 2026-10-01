@@ -16,7 +16,7 @@ test("the Lab seed creates an onboarded admin who signs in through Aurral", asyn
   t.after(() => rm(paths.baseDir, { recursive: true, force: true }));
 
   await promisify(execFile)(process.execPath, [join(repoRoot, "tests", "lab", "seed.mjs")], {
-    env: { PATH: process.env.PATH, AURRAL_DATA_DIR: paths.dataDir, ...labEnv },
+    env: { PATH: process.env.PATH, AURRAL_DATA_DIR: paths.dataDir, AURRAL_LAB_MEDIA_ROOT: join(paths.baseDir, "media"), ...labEnv },
   });
 
   const server = await startServerProcess({

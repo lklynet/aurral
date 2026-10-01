@@ -568,6 +568,31 @@ test("test rejects unsupported arguments before starting anything", async (t) =>
   assert.equal(lab.calls().length, 0);
 });
 
+test("a spec's scenario settings reach its Lab and no other", async (t) => {
+  const lab = await createLabSandbox(t);
+  const worktree = lab.worktree("aurral");
+  writeFileSync(join(worktree, "tests", "lab", "scenarios.json"), JSON.stringify({ "settings.spec.js": { downloads: "hold" } }));
+
+  const result = await lab.run(worktree, ["test", "tests/e2e/smoke.spec.js", "tests/e2e/settings.spec.js"]);
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(
+    runnerCalls(lab).map(({ args, env }) => [args.at(-1), env.AURRAL_LAB_DOWNLOADS]),
+    [["tests/e2e/smoke.spec.js", "complete"], ["tests/e2e/settings.spec.js", "hold"]],
+  );
+});
+
+test("a Lab keeps the mode that created it", async (t) => {
+  const lab = await createLabSandbox(t);
+  const worktree = lab.worktree("aurral");
+  assert.equal((await lab.run(worktree, ["up"])).code, 0);
+  const calls = lab.calls().length;
+
+  const result = await lab.run(worktree, ["dev"], { env: { AURRAL_LAB_ID: "dev" } });
+  assert.notEqual(result.code, 0);
+  assert.match(result.stderr, /lab:up/);
+  assert.equal(lab.calls().length, calls);
+});
+
 test("supported Playwright options reach the runner without replacing Lab controls", async (t) => {
   const lab = await createLabSandbox(t);
   const worktree = lab.worktree("aurral");

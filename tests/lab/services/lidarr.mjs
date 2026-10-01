@@ -1,4 +1,3 @@
-const ROOT_FOLDER = "/music";
 
 function statistics(albums = []) {
   const trackCount = albums.reduce((total, album) => total + album.statistics.trackCount, 0);
@@ -12,7 +11,8 @@ function statistics(albums = []) {
   };
 }
 
-export function createLidarr(catalog, { apiKey }) {
+export function createLidarr(catalog, { apiKey, mediaRoot }) {
+  const rootFolder = `${mediaRoot}/lidarr`;
   const state = { artists: [], albums: [], commands: [], nextArtistId: 1, nextAlbumId: 1, nextCommandId: 1 };
   const catalogArtists = new Map(catalog.artists.map((artist) => [artist.id, artist]));
 
@@ -90,7 +90,7 @@ export function createLidarr(catalog, { apiKey }) {
     if (method === "GET" && path === "/system/status") {
       return ok({ appName: "Lidarr", instanceName: "Aurral Lab Lidarr", version: "2.0.0.0-lab", isProduction: false });
     }
-    if (method === "GET" && path === "/rootfolder") return ok([{ id: 1, path: ROOT_FOLDER, accessible: true, freeSpace: 1e12 }]);
+    if (method === "GET" && path === "/rootfolder") return ok([{ id: 1, path: rootFolder, accessible: true, freeSpace: 1e12 }]);
     if (method === "GET" && path === "/qualityprofile") return ok([{ id: 1, name: "Lab Lossless" }]);
     if (method === "GET" && path === "/metadataprofile") return ok([{ id: 1, name: "Standard" }]);
     if (method === "GET" && path === "/tag") return ok([]);

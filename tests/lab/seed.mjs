@@ -1,6 +1,6 @@
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { writeTrack } from "./services/runtime.mjs";
 
 const PLAYBACK_ARTIST = "Lab Playback Artist";
 const PLAYBACK_ALBUM = "Lab Playback Album";
@@ -10,13 +10,16 @@ const PLAYBACK_TRACKS = [
 ];
 
 const dataDir = process.env.AURRAL_DATA_DIR;
+const mediaRoot = process.env.AURRAL_LAB_MEDIA_ROOT;
 const username = process.env.AUTH_USER;
 const password = process.env.AUTH_PASSWORD;
 
-if (!dataDir || !username || !password) {
-  console.error("AURRAL_DATA_DIR, AUTH_USER, and AUTH_PASSWORD are required.");
+if (!dataDir || !mediaRoot || !username || !password) {
+  console.error("AURRAL_DATA_DIR, AURRAL_LAB_MEDIA_ROOT, AUTH_USER, and AUTH_PASSWORD are required.");
   process.exit(1);
 }
+const libraryRoot = path.join(mediaRoot, "downloads", "aurral");
+const lidarrRoot = path.join(mediaRoot, "lidarr");
 process.env.AURRAL_DB_PATH = path.join(dataDir, "aurral.db");
 if (fs.existsSync(process.env.AURRAL_DB_PATH)) {
   console.error(`${dataDir} already contains an Aurral database. Seed only empty Lab state.`);
@@ -32,6 +35,7 @@ const settings = dbOps.getSettings();
 dbOps.updateSettings({
   ...settings,
   onboardingComplete: true,
+  downloadFolderPath: libraryRoot,
   integrations: {
     ...settings.integrations,
     general: { ...settings.integrations?.general, authUser: username, authPassword: password },
@@ -44,8 +48,8 @@ dbOps.updateSettings({
       ...settings.integrations?.lidarr,
       url: process.env.AURRAL_LAB_LIDARR_URL,
       apiKey: process.env.AURRAL_LAB_LIDARR_API_KEY,
-      rootFolderPath: "/music",
-      rootFolderPaths: ["/music"],
+      rootFolderPath: lidarrRoot,
+      rootFolderPaths: [lidarrRoot],
       qualityProfileId: 1,
       metadataProfileId: 1,
     },
@@ -60,24 +64,19 @@ dbOps.updateSettings({
 });
 userOps.createUser(username, hashPassword(password), "admin", null, true, true, password);
 
-const { resolvePlaylistRoot } = await backend("services/playlistPaths.js");
 const { scanConfiguredLibrary } = await backend("services/libraryIndexService.js");
-const albumDir = path.join(resolvePlaylistRoot(), PLAYBACK_ARTIST, PLAYBACK_ALBUM);
-fs.mkdirSync(albumDir, { recursive: true });
+fs.mkdirSync(lidarrRoot, { recursive: true });
+const albumDir = path.join(libraryRoot, PLAYBACK_ARTIST, PLAYBACK_ALBUM);
 for (const [index, [title, frequency]] of PLAYBACK_TRACKS.entries()) {
-  const target = path.join(albumDir, `${String(index + 1).padStart(2, "0")} - ${title}.flac`);
-  const encoded = spawnSync("ffmpeg", [
-    "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", `sine=frequency=${frequency}:duration=2`,
-    "-ac", "1", "-ar", "8000",
-    "-metadata", `artist=${PLAYBACK_ARTIST}`, "-metadata", `album_artist=${PLAYBACK_ARTIST}`,
-    "-metadata", `album=${PLAYBACK_ALBUM}`, "-metadata", `title=${title}`, "-metadata", `track=${index + 1}`,
-    target,
-  ], { encoding: "utf8" });
-  if (encoded.status !== 0) {
-    console.error(`Could not create ${target} with ffmpeg: ${encoded.error?.message || encoded.stderr}`);
-    process.exit(1);
-  }
+  writeTrack(path.join(albumDir, `${String(index + 1).padStart(2, "0")} - ${title}.flac`), {
+    artist: PLAYBACK_ARTIST,
+    album: PLAYBACK_ALBUM,
+    title,
+    trackNumber: index + 1,
+    durationSeconds: 2,
+    frequency,
+  });
 }
-await scanConfiguredLibrary({ includeLidarr: false });
+await scanConfiguredLibrary({ musicRoot: libraryRoot, includeLidarr: false });
 db.close();
 process.exit(0);

@@ -22,6 +22,7 @@
     "test:e2e": "node scripts/lab.mjs test",
     "test:e2e:host": "node --env-file=tests/lab/lab.env node_modules/@playwright/test/cli.js test",
     "test:all": "npm run lint && npm test && npm run test:integration && npm run build && npm run test:e2e",
+    "lab:dev": "node scripts/lab.mjs dev",
     "lab:up": "node scripts/lab.mjs up",
     "lab:url": "node scripts/lab.mjs url",
     "lab:logs": "node scripts/lab.mjs logs",

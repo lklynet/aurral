@@ -14,10 +14,12 @@ services:
       AURRAL_DATA_DIR: /config
       PUID: ${AURRAL_LAB_UID:?}
       PGID: ${AURRAL_LAB_GID:?}
-      NODE_OPTIONS: --import=/app/tests/lab/egress-journal.mjs
+      NODE_OPTIONS: --import=/app/tests/lab/egress.mjs
+      NODE_EXTRA_CA_CERTS: /lab-tls/ca.pem
     volumes:
       - ${AURRAL_LAB_CONFIG_DIR:?}:/config
       - ${AURRAL_LAB_MEDIA_DIR:?}:/data
+      - ${AURRAL_LAB_TLS_DIR:?}:/lab-tls:ro
       - ./:/app/tests/lab:ro
     networks: [lab]
     labels: *lab-labels
@@ -37,9 +39,14 @@ services:
     env_file: lab.env
     environment:
       AURRAL_LAB_JOURNAL: /results/fixtures-journal.jsonl
+      AURRAL_LAB_MEDIA_ROOT: /data
+      AURRAL_LAB_TLS_DIR: /lab-tls
+      AURRAL_LAB_DOWNLOADS: ${AURRAL_LAB_DOWNLOADS:-complete}
     volumes:
       - ./:/app/tests/lab:ro
       - ${AURRAL_LAB_RESULTS_DIR:?}:/results
+      - ${AURRAL_LAB_MEDIA_DIR:?}:/data
+      - ${AURRAL_LAB_TLS_DIR:?}:/lab-tls
     networks: [lab]
     labels: *lab-labels
     healthcheck:
@@ -55,6 +62,7 @@ services:
     env_file: lab.env
     environment:
       AURRAL_DATA_DIR: /config
+      AURRAL_LAB_MEDIA_ROOT: /data
       PUID: ${AURRAL_LAB_UID:?}
       PGID: ${AURRAL_LAB_GID:?}
     volumes:
