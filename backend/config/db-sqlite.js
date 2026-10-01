@@ -33,6 +33,10 @@ for (let attempt = 0; attempt < 5; attempt++) {
   }
 }
 db.pragma("synchronous = NORMAL");
+// Worker processes share this file. A deferred transaction that reads before it writes
+// fails with SQLITE_BUSY without waiting when another process writes first.
+const createTransaction = db.transaction.bind(db);
+db.transaction = (fn) => createTransaction(fn).immediate;
 db.pragma("cache_size = -24000");
 db.pragma("mmap_size = 25165824");
 
