@@ -493,6 +493,19 @@ export function searchLibrary(query, options = {}, user = null) {
   };
 }
 
+export function getRandomSongs(options = {}, user = null) {
+  const library = indexFocusedLibrary(getCanonicalTrackPage({
+    source: "all",
+    availableOnly: true,
+    genre: options.genre,
+    fromYear: options.fromYear,
+    toYear: options.toYear,
+    limit: normalizeLimit(options.size, 10),
+    random: true,
+  }), starredAtFor(user));
+  return library.tracks.map((track) => toSong(library, track));
+}
+
 export function getAlbumList(options = {}, user = null) {
   const type = String(options.type || "alphabeticalByName");
   if (type === "starred") return [];

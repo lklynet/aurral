@@ -1571,6 +1571,8 @@ export function getCanonicalTrackPage({
   availableOnly = false,
   query = "",
   genre = "",
+  fromYear = null,
+  toYear = null,
   artist = "",
   artistId = null,
   albumId = null,
@@ -1617,6 +1619,22 @@ export function getCanonicalTrackPage({
     conditions.push(predicate.sql);
     parameters.push(...predicate.parameters);
   }
+  const parsedFromYear = Number.parseInt(fromYear, 10);
+  const parsedToYear = Number.parseInt(toYear, 10);
+  const lowerYear = Number.isFinite(parsedFromYear) && Number.isFinite(parsedToYear)
+    ? Math.min(parsedFromYear, parsedToYear)
+    : parsedFromYear;
+  const upperYear = Number.isFinite(parsedFromYear) && Number.isFinite(parsedToYear)
+    ? Math.max(parsedFromYear, parsedToYear)
+    : parsedToYear;
+  if (Number.isFinite(lowerYear)) {
+    conditions.push("CAST(substr(COALESCE(album.release_date, ''), 1, 4) AS INTEGER) >= ?");
+    parameters.push(lowerYear);
+  }
+  if (Number.isFinite(upperYear)) {
+    conditions.push("CAST(substr(COALESCE(album.release_date, ''), 1, 4) AS INTEGER) <= ?");
+    parameters.push(upperYear);
+  }
   const boundedLimit = pageLimit(limit, 20);
   if (boundedLimit === 0) return { artists: [], albums: [], tracks: [] };
   const useSearchIndex = Boolean(searchMatch)
@@ -1648,6 +1666,7 @@ export function getCanonicalTrackPage({
     return library;
   }
   if (random && !normalizedQuery && !artistReference && !normalizedGenre
+    && !Number.isFinite(lowerYear) && !Number.isFinite(upperYear)
     && !(artistId !== null && artistId !== undefined && String(artistId).trim())
     && !(albumId !== null && albumId !== undefined && String(albumId).trim())) {
     const ids = getRandomTrackIds({

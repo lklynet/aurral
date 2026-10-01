@@ -456,7 +456,7 @@ test("searches canonical records and exposes flow entries as playlist items", as
   assert.equal(artwork.body, "flow-artwork");
 });
 
-test("accepts Feishin's empty search request for the tracks view", async () => {
+test("accepts empty library searches from OpenSubsonic clients", async () => {
   const search = responseJson(await request("search3", {
     query: "",
     artistCount: 20,
@@ -464,6 +464,19 @@ test("accepts Feishin's empty search request for the tracks view", async () => {
     songCount: 20,
   }));
   assert.equal(search.searchResult3.song[0].title, "Canonical Song");
+
+  const quotedSearch = responseJson(await request("search3", {
+    query: '""',
+    artistOffset: 0,
+    artistCount: 500,
+    albumOffset: 0,
+    albumCount: 0,
+    songOffset: 0,
+    songCount: 0,
+  }));
+  assert.equal(quotedSearch.searchResult3.artist[0].name, "Canonical Artist");
+  assert.deepEqual(quotedSearch.searchResult3.album, []);
+  assert.deepEqual(quotedSearch.searchResult3.song, []);
 });
 
 test("exposes owned static playlists and keeps their entries playable", async () => {
