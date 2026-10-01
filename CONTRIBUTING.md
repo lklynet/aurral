@@ -73,3 +73,5 @@ AURRAL_BASE_URL=http://127.0.0.1:3017 AUTH_USER=... AUTH_PASSWORD=... npm run te
 ```
 
 The command installs Chromium before running Playwright. Non-loopback URLs must use HTTPS.
+
+Playwright also reads `backend/.env` when it exists, so `AUTH_USER`, `AUTH_PASSWORD`, and `AURRAL_BASE_URL` can live there instead. Without `AURRAL_BASE_URL`, the suite targets `npm run dev` on `AURRAL_DEV_WEB_PORT`, or port 3017 when that is unset. `npm run dev` reads `AURRAL_DEV_API_PORT` and `AURRAL_DEV_WEB_PORT` from `backend/.env` and defaults to 3001 and 3009.
