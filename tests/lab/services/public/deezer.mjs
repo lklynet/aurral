@@ -70,7 +70,7 @@ export function createDeezer(catalog, { tracks }) {
     hosts: ["api.deezer.com", "e-cdns-images.dzcdn.net", "cdn-images.dzcdn.net", "cdnt-preview.dzcdn.net"],
     handle({ method, url, host }) {
       if (method !== "GET") return null;
-      if (host.endsWith("images.dzcdn.net")) {
+      if (host === "e-cdns-images.dzcdn.net" || host === "cdn-images.dzcdn.net") {
         return { status: 200, raw: solidPng(url.pathname, 120), headers: { "content-type": "image/png" } };
       }
       if (host === "cdnt-preview.dzcdn.net") {

@@ -205,7 +205,7 @@ function serve(resolve) {
         ? { status: fault.status, body: { error: `Injected Lab fault for ${name}` } }
         : service && (await service.handle({ method: request.method, url, headers: request.headers, body, host }));
     } catch (error) {
-      console.error(`${name} fixture failed on ${request.method} ${url.pathname}:`, error);
+      console.error("%s fixture failed on %s %s:", name, request.method, url.pathname, error);
       result = { status: 500, body: { error: `The Lab ${name} fixture failed: ${error.message}` } };
     }
     const unsupported = !result;

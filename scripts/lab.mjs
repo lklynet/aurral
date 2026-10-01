@@ -844,7 +844,10 @@ async function dev(lab) {
       console.error(`Lab controls are at http://127.0.0.1:${ports.control}. Press Ctrl-C to stop.`);
       process.stdout.write(`${url}\n`);
       const exited = await new Promise((resolve) => {
-        for (const child of children) child.once("exit", () => resolve(child));
+        for (const child of children) {
+          if (child.exitCode !== null || child.signalCode !== null) return resolve(child);
+          child.once("exit", () => resolve(child));
+        }
         for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => resolve(null));
       });
       if (exited && !interruption) throw new LabError(`${exited.labName} stopped unexpectedly. Its output is above.`);
