@@ -14,9 +14,11 @@ services:
       AURRAL_DATA_DIR: /config
       PUID: ${AURRAL_LAB_UID:?}
       PGID: ${AURRAL_LAB_GID:?}
+      NODE_OPTIONS: --import=/app/tests/lab/egress-journal.mjs
     volumes:
       - ${AURRAL_LAB_CONFIG_DIR:?}:/config
       - ${AURRAL_LAB_MEDIA_DIR:?}:/data
+      - ./:/app/tests/lab:ro
     networks: [lab]
     labels: *lab-labels
     healthcheck:
