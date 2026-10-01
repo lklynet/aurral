@@ -773,6 +773,7 @@ async function dev(lab) {
   }
   await requireTool("ffmpeg", ["-version"], "to create the Lab's audio files");
   await requireTool("openssl", ["version"], "to create the Lab's certificates");
+  const webHost = process.env.AURRAL_LAB_HOST || "127.0.0.1";
   await withLock(lab, async () => {
     claimState(lab);
     const seedRequired = needsSeed(lab);
@@ -802,7 +803,7 @@ async function dev(lab) {
         },
       });
       await waitForUrl(`http://127.0.0.1:${ports.control}/health`, 15000, fixtures, "The fixtures service");
-      if (seedRequired) await seed(lab, `http://127.0.0.1:${ports.web}`);
+      if (seedRequired) await seed(lab, `http://${webHost}:${ports.web}`);
 
       const redirects = Object.fromEntries(
         Object.entries(FIXTURE_PORTS).map(([name, port]) => [`fixtures:${port}`, `127.0.0.1:${ports[name]}`]),
@@ -819,24 +820,24 @@ async function dev(lab) {
           AURRAL_LAB_REDIRECTS: JSON.stringify(redirects),
           AURRAL_LAB_PUBLIC_TLS: `127.0.0.1:${ports["public-tls"]}`,
           AURRAL_LAB_PUBLIC_HTTP: `127.0.0.1:${ports["public-http"]}`,
-          ...ssoEnv(`http://127.0.0.1:${ports.web}`),
+          ...ssoEnv(`http://${webHost}:${ports.web}`),
         },
       });
       await waitForUrl(`http://127.0.0.1:${ports.app}/api/health/live`, 120000, backend, "Aurral");
       const web = startChild(
         "The Vite dev server",
         process.execPath,
-        [path.join(repoRoot, "node_modules", "vite", "bin", "vite.js"), "--host", "127.0.0.1", "--port", String(ports.web), "--strictPort"],
+        [path.join(repoRoot, "node_modules", "vite", "bin", "vite.js"), "--host", webHost, "--port", String(ports.web), "--strictPort"],
         {
           cwd: path.join(repoRoot, "frontend"),
           stdio: ["ignore", "inherit", "inherit"],
           env: { ...hostEnv(), AURRAL_API_PROXY_TARGET: `http://127.0.0.1:${ports.app}` },
         },
       );
-      await waitForUrl(`http://127.0.0.1:${ports.web}/`, 60000, web, "The Vite dev server");
+      await waitForUrl(`http://${webHost}:${ports.web}/`, 60000, web, "The Vite dev server");
 
       const credentials = labEnv();
-      const url = `http://127.0.0.1:${ports.web}/`;
+      const url = `http://${webHost}:${ports.web}/`;
       console.error(`\nLab "${lab.id}" is running from source at ${url}`);
       console.error(`Sign in as ${credentials.AUTH_USER} with the password ${credentials.AUTH_PASSWORD}.`);
       console.error("Frontend edits reload the page, and backend edits restart the server.");

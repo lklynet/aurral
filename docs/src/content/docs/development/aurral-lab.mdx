@@ -17,6 +17,8 @@ This runs the backend with `node --watch` and the frontend with Vite, so fronten
 
 You need `npm install`, `ffmpeg`, and `openssl`. Docker is not used.
 
+The app listens on `127.0.0.1`. To open it from another machine, set `AURRAL_LAB_HOST` to an address of this machine, such as `AURRAL_LAB_HOST=192.168.1.20 npm run lab:dev`. The controls URL stays on `127.0.0.1`.
+
 ## Run a Lab in Docker
 
 ```sh
