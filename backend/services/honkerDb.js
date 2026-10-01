@@ -329,6 +329,7 @@ const playlistMbidEnrichment = registerQueue({
   maxAttempts: 4,
   workerModule: "./playlistMbidEnrichmentWorker.js",
   workerStartFn: "startPlaylistMbidEnrichmentWorker",
+  skipInTest: true,
 });
 
 export const getPlaylistMbidEnrichmentQueue = playlistMbidEnrichment.getQueue;

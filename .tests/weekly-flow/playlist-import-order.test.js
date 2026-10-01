@@ -51,6 +51,7 @@ const [
 const { downloadTracker } = trackerModule;
 const {
   flowPlaylistConfig,
+  invalidateFlowPlaylistConfigCache,
   orderJobsBySharedPlaylistTracks,
   rebuildSharedPlaylistTracksFromJobs,
 } = playlistConfigModule;
@@ -208,6 +209,7 @@ test.beforeEach(async () => {
     playlistWorker: { existingFileMode: "reuse", concurrency: 1 },
     playlistArtwork: { style: "aurral" },
   });
+  invalidateFlowPlaylistConfigCache();
   downloadTracker.clearAll();
   weeklyFlowWorker.stop();
   await fs.rm(weeklyFlowRoot, { recursive: true, force: true });
