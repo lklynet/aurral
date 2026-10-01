@@ -129,11 +129,6 @@ export function ArtistDetailsAppearsOn({
                   .filter(Boolean)
                   .join(" · ")}
               </p>
-              {releaseGroup._appearsOnTrack && (
-                <p className="artist-release-card__meta artist-truncate">
-                  {releaseGroup._appearsOnTrack}
-                </p>
-              )}
               {metric.label && (
                 <p className="artist-release-card__metric">
                   <Star className="artist-star-icon" />
