@@ -100,3 +100,39 @@ test("one deemix album queue fills verified siblings and retries only a missing 
     await mock.close();
   }
 });
+
+for (const failure of ["wrong-album", "unreadable", "wrong-track"]) {
+  test(`deemix album search continues after ${failure} results`, async () => {
+    const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
+    const client = getDownloadClient("deemix");
+    const original = client.search;
+    const ids = ["First", "Second"].map((trackName, index) => downloadTracker.addJob({
+      artistName: "The Band", albumName: "Album", albumMbid: `album-${failure}`,
+      trackName, trackNumber: index + 1, durationMs: 180000,
+      requestGroupId: `group-${failure}`, albumTrackCount: 2, albumTrackTitles: ["First", "Second"],
+    }, "library"));
+    client.search = async (query) => {
+      const advanced = query.includes("artist:");
+      const title = query.includes("Second") ? "Second" : "First";
+      const result = { id: `${advanced}-${title}`, artist: "The Band", title,
+        albumId: "42", album: "Album", albumUrl: "https://album.invalid/42", durationSec: 180, readable: true };
+      if (advanced) {
+        if (failure === "wrong-album") result.album = "Other Album";
+        if (failure === "unreadable") result.readable = false;
+        if (failure === "wrong-track") result.title = "Unrelated Song";
+      }
+      return [result, { ...result }];
+    };
+    try {
+      const result = await processDeemixPipelinePayload({ phase: "search", source: "deemix", jobId: ids[0],
+        albumGrab: true, albumGroupJobIds: ids }, {
+        failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }),
+      });
+      assert.equal(result.phase, "download");
+      assert.equal(result.candidates[0].raw.albumId, "42");
+      assert.equal(result.candidates[0].raw.matchedJobIds.size, 2);
+    } finally {
+      client.search = original;
+    }
+  });
+}
