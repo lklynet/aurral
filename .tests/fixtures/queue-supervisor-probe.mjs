@@ -39,12 +39,11 @@ try {
       mock.timers.tick(30000);
     } else {
       mock.timers.tick(2000);
-      await pump();
-      assert.ok(queue.getJob(id), "direct enqueue should wait for the default fallback");
-      mock.timers.tick(28000);
     }
     await pump();
-    assert.equal(queue.getJob(id), null, "supervisor should process due or expired work by 30 seconds");
+    assert.equal(queue.getJob(id), null, scenario === "expiry"
+      ? "supervisor should recover expired work by 30 seconds"
+      : "supervisor should start work inserted without a wake by 2 seconds");
   }
 } finally {
   mock.timers.reset();

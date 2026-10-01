@@ -33,7 +33,7 @@ export function getIsolatedWorkerStatuses() {
 const WORKER_SUPERVISOR_POLL_MS = Math.max(
   process.env.AURRAL_BACKGROUND_WORKER_GROUP ? 1000 : 15000,
   Math.floor(Number(process.env.AURRAL_WORKER_SUPERVISOR_POLL_MS) ||
-    (process.env.AURRAL_BACKGROUND_WORKER_GROUP ? 30000 : 60000)),
+    (process.env.AURRAL_BACKGROUND_WORKER_GROUP ? 2000 : 60000)),
 );
 
 const WORKER_STARTS = {
