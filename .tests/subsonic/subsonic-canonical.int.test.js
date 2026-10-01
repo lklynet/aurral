@@ -99,7 +99,7 @@ test.before(async () => {
   });
   const alice = userOps.createUser("alice", hashPassword("password123"), "admin");
 
-  fixtureRoot = await mkdtemp(path.join(isolatedState.baseDir, "media-"));
+  fixtureRoot = await mkdtemp(path.join(isolatedState.baseDir, ".media-"));
   fixturePath = path.join(fixtureRoot, "Canonical Artist", "Canonical Album", "01 Canonical Song.flac");
   await mkdir(path.dirname(fixturePath), { recursive: true });
   await writeFile(fixturePath, "0123456789");

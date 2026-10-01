@@ -7,10 +7,7 @@ import { hasPermission, verifyTokenAuth } from "../../../middleware/auth.js";
 import {
   resolveExistingTrackPath as resolveExistingWeeklyFlowTrackPath,
 } from "../../../services/playlistPaths.js";
-import {
-  AUDIO_CONTENT_TYPES,
-  canAccessPlaylistType,
-} from "./utils.js";
+import { canAccessPlaylistType } from "./utils.js";
 import { flowPlaylistConfig } from "../../../services/weeklyFlow/weeklyFlowPlaylistConfig.js";
 
 const canAccessJob = (user, job) =>
@@ -57,8 +54,6 @@ export function registerStream(router) {
     } catch {
       return res.status(404).json({ error: "Track file missing" });
     }
-    const ext = path.extname(safePath).toLowerCase();
-    res.type(AUDIO_CONTENT_TYPES[ext] || "application/octet-stream");
     res.sendFile(path.basename(safePath), {
       root: path.dirname(safePath),
       dotfiles: "allow",
@@ -86,8 +81,6 @@ export function registerStream(router) {
     } catch {
       return res.status(404).json({ error: "Staging file no longer exists" });
     }
-    const ext = path.extname(job.stagingPath).toLowerCase();
-    res.type(AUDIO_CONTENT_TYPES[ext] || "application/octet-stream");
     res.sendFile(path.basename(job.stagingPath), {
       root: path.dirname(job.stagingPath),
       dotfiles: "allow",

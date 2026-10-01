@@ -22,14 +22,6 @@ import {
 import { logger } from "../../../services/logger.js";
 
 export const EXISTING_FILE_MODE_OPTIONS = ["download", "reuse"];
-export const AUDIO_CONTENT_TYPES = {
-  ".mp3": "audio/mpeg",
-  ".m4a": "audio/mp4",
-  ".aac": "audio/aac",
-  ".flac": "audio/flac",
-  ".ogg": "audio/ogg",
-  ".wav": "audio/wav",
-};
 export const DEFAULT_LIMIT = DEFAULT_SIZE;
 
 const getFlowEntryName = (value) => {

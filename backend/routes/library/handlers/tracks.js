@@ -256,7 +256,7 @@ export function registerTracks(router) {
     const filePath = resolveCanonicalTrackPath(req.params.albumId, req.params.trackId);
     if (!filePath) return res.status(404).json({ error: "Track file missing" });
     try {
-      if (!(await streamAudioFile(req, res, filePath)) && !res.headersSent) {
+      if (!(await streamAudioFile(res, filePath)) && !res.headersSent) {
         return res.status(404).json({ error: "Track file missing" });
       }
     } catch (error) {
@@ -278,7 +278,7 @@ export function registerTracks(router) {
       if (!track?.hasFile || !track.path) {
         return res.status(404).json({ error: "Track file missing" });
       }
-      if (!(await streamAudioFile(req, res, track.path))) {
+      if (!(await streamAudioFile(res, track.path))) {
         if (!res.headersSent) return res.status(404).json({ error: "Track file missing" });
       }
     } catch (error) {

@@ -556,7 +556,7 @@ async function handleSubsonicRequest(req, res) {
   if (method === "stream" || method === "download") {
     const filePath = resolveStreamPath(getParameter(req, "id"), user);
     if (!filePath) return handleBinaryError(res, "Track file missing");
-    const streamed = await streamAudioFile(req, res, filePath);
+    const streamed = await streamAudioFile(res, filePath);
     return streamed || res.headersSent ? undefined : handleBinaryError(res, "Track file missing");
   }
   if (method === "getcoverart") {
