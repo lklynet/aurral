@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 
 const LOSSY_CODECS = {
   ".m4a": ["-c:a", "aac", "-b:a", "256k"],
@@ -26,6 +27,42 @@ export function includesAllWords(query, text) {
 
 export function trackDurationSeconds(index) {
   return 30 + index;
+}
+
+export function catalogTracks(catalog) {
+  return catalog.artists.flatMap((artist) =>
+    artist.albums.flatMap((album) => album.tracks.map((title, index) => ({ artist, album, title, index }))));
+}
+
+export function similarArtists(catalog, artist) {
+  const shared = (other) => other.genres.filter((genre) => artist.genres.includes(genre)).length;
+  return catalog.artists
+    .filter((other) => other !== artist)
+    .map((other) => ({ artist: other, match: Math.min(1, 0.4 + shared(other) * 0.3) }))
+    .sort((left, right) => right.match - left.match || left.artist.name.localeCompare(right.artist.name));
+}
+
+export function solidPng(seed, size = 64) {
+  const [r, g, b] = createHash("sha1").update(String(seed)).digest();
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(zlib.crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(size, 0);
+  header.writeUInt32BE(size, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(size * 3).fill(Buffer.from([r, g, b]))]);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", header),
+    chunk("IDAT", zlib.deflateSync(Buffer.concat(Array(size).fill(row)))),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
 }
 
 export function numericId(seed) {

@@ -1,7 +1,12 @@
+import { readFileSync } from "node:fs";
 import { defineConfig, devices } from "@playwright/test";
 import { AUTH_STATE_PATH } from "./tests/e2e/global-setup.js";
 
 const outputDir = process.env.PLAYWRIGHT_OUTPUT_DIR || "test-results";
+const labPublicTls = process.env.AURRAL_LAB_PUBLIC_TLS;
+const labPublicHosts = labPublicTls
+  ? JSON.parse(readFileSync(new URL("./tests/lab/services/public-hosts.json", import.meta.url), "utf8"))
+  : [];
 
 export default defineConfig({
   testDir: "tests/e2e",
@@ -32,6 +37,12 @@ export default defineConfig({
     navigationTimeout: 30_000,
     actionTimeout: 10_000,
     ...devices["Desktop Chrome"],
+    ...(labPublicTls
+      ? {
+          ignoreHTTPSErrors: true,
+          launchOptions: { args: [`--host-rules=${labPublicHosts.map((host) => `MAP ${host} ${labPublicTls}`).join(",")}`] },
+        }
+      : {}),
   },
   outputDir,
 });

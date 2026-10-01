@@ -286,7 +286,7 @@ test("Navidrome indexes Lab media, prepares Aurral's library, and edits playlist
 
 test("Plex creates Aurral's section, finds tracks by file, and syncs a playlist", async (t) => {
   const library = playbackLibrary(t);
-  const plex = createPlex({ ...library, token: "lab-plex", machineIdentifier: "lab-machine" });
+  const plex = createPlex({ ...library, tokens: ["lab-plex"], machineIdentifier: "lab-machine" });
   const client = new PlexClient(await serve(t, plex), "lab-plex", "lab-client");
 
   assert.equal((await client.ping()).machineIdentifier, "lab-machine");

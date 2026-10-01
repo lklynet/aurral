@@ -14,7 +14,7 @@ const specDir = path.join(repoRoot, "tests", "e2e");
 const labRoot = path.join(repoRoot, "backend", "data", "lab");
 const lockDir = path.join(labRoot, ".locks");
 const LAB_ID = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/;
-const SEED_VERSION = 7;
+const SEED_VERSION = 8;
 const FIXTURE_PORTS = {
   brainzmash: 8601,
   lidarr: 8686,
@@ -27,6 +27,7 @@ const FIXTURE_PORTS = {
   plex: 32400,
   jellyfin: 8096,
   koito: 4110,
+  notify: 8070,
   "public-http": 8079,
   "public-tls": 8443,
   control: 9000,
@@ -147,6 +148,7 @@ function dockerEnv(lab) {
     AURRAL_LAB_TLS_DIR: lab.tlsDir,
     AURRAL_LAB_FIXTURE_DIR: lab.fixtureDir,
     AURRAL_LAB_DOWNLOADS: lab.downloads,
+    ...ssoEnv(),
     AURRAL_LAB_UID: String(process.getuid?.() ?? 1000),
     AURRAL_LAB_GID: String(process.getgid?.() ?? 1000),
   };
@@ -162,6 +164,19 @@ function hostEnv() {
 
 function labEnv() {
   return parseEnv(fs.readFileSync(path.join(labDir, "lab.env"), "utf8"));
+}
+
+function ssoEnv(browserUrl = "http://127.0.0.1:3001") {
+  const env = labEnv();
+  return {
+    OIDC_ENABLED: "true",
+    OIDC_ISSUER: env.AURRAL_LAB_OIDC_ISSUER,
+    OIDC_CLIENT_ID: env.AURRAL_LAB_OIDC_CLIENT_ID,
+    OIDC_CLIENT_SECRET: env.AURRAL_LAB_OIDC_CLIENT_SECRET,
+    OIDC_REDIRECT_URI: `${browserUrl}/sso/callback`,
+    OIDC_GROUPS_CLAIM: "groups",
+    OIDC_ADMIN_GROUPS: "aurral-admins",
+  };
 }
 
 function execute(command, args, { env, output = "capture", cleanup = false } = {}) {
@@ -382,7 +397,7 @@ function needsSeed(lab) {
   );
 }
 
-async function seed(lab) {
+async function seed(lab, browserUrl) {
   for (const dir of [lab.seedingDir, lab.mediaDir]) {
     fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(dir, { recursive: true });
@@ -392,7 +407,7 @@ async function seed(lab) {
     lab.mode === "node"
       ? await execute(process.execPath, [path.join(labDir, "seed.mjs")], {
           output: "stderr",
-          env: { ...hostEnv(), ...labEnv(), AURRAL_DATA_DIR: lab.seedingDir, AURRAL_LAB_MEDIA_ROOT: lab.mediaDir },
+          env: { ...hostEnv(), ...labEnv(), AURRAL_DATA_DIR: lab.seedingDir, AURRAL_LAB_MEDIA_ROOT: lab.mediaDir, AURRAL_LAB_BROWSER_URL: browserUrl },
         })
       : await compose(lab, ["run", "--rm", "--no-deps", "-T", "seed"], { output: "stderr" });
   if (seeded.code !== 0) {
@@ -787,7 +802,7 @@ async function dev(lab) {
         },
       });
       await waitForUrl(`http://127.0.0.1:${ports.control}/health`, 15000, fixtures, "The fixtures service");
-      if (seedRequired) await seed(lab);
+      if (seedRequired) await seed(lab, `http://127.0.0.1:${ports.web}`);
 
       const redirects = Object.fromEntries(
         Object.entries(FIXTURE_PORTS).map(([name, port]) => [`fixtures:${port}`, `127.0.0.1:${ports[name]}`]),
@@ -804,6 +819,7 @@ async function dev(lab) {
           AURRAL_LAB_REDIRECTS: JSON.stringify(redirects),
           AURRAL_LAB_PUBLIC_TLS: `127.0.0.1:${ports["public-tls"]}`,
           AURRAL_LAB_PUBLIC_HTTP: `127.0.0.1:${ports["public-http"]}`,
+          ...ssoEnv(`http://127.0.0.1:${ports.web}`),
         },
       });
       await waitForUrl(`http://127.0.0.1:${ports.app}/api/health/live`, 120000, backend, "Aurral");

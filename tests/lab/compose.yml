@@ -17,6 +17,13 @@ services:
       NODE_OPTIONS: --import=/app/tests/lab/egress.mjs
       NODE_EXTRA_CA_CERTS: /lab-tls/ca.pem
       PATH: /app/tests/lab/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      OIDC_ENABLED: ${OIDC_ENABLED:?}
+      OIDC_ISSUER: ${OIDC_ISSUER:?}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:?}
+      OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:?}
+      OIDC_ADMIN_GROUPS: ${OIDC_ADMIN_GROUPS:?}
     volumes:
       - ${AURRAL_LAB_CONFIG_DIR:?}:/config
       - ${AURRAL_LAB_MEDIA_DIR:?}:/data
@@ -107,6 +114,7 @@ services:
     environment:
       CI: ${CI:-}
       AURRAL_BASE_URL: http://127.0.0.1:3001
+      AURRAL_LAB_PUBLIC_TLS: fixtures:8443
       AURRAL_LAB_RESULTS_DIR: /results
       PLAYWRIGHT_OUTPUT_DIR: /results/artifacts
       PLAYWRIGHT_HTML_OUTPUT_DIR: /results/report

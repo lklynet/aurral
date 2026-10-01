@@ -52,4 +52,12 @@ test("the Lab seed creates an onboarded admin who signs in through Aurral", asyn
   const tracks = (await library("tracks")).items;
   assert.equal(tracks.length, 2);
   assert.ok(tracks.every((track) => track.artistName === artists[0].name));
+
+  const read = (path) => fetch(`${baseUrl}${path}`, { headers: { authorization: `Bearer ${token}` } }).then((response) => response.json());
+  const scrobbling = await read("/api/scrobbling/status");
+  assert.deepEqual(
+    ["lastfm", "listenbrainz", "koito"].filter((provider) => scrobbling[provider]?.connected),
+    ["lastfm", "listenbrainz", "koito"],
+  );
+  assert.equal((await read("/api/playlists/import/spotify/status")).connected, true);
 });

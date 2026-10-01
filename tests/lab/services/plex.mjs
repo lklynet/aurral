@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { numericId } from "./runtime.mjs";
 
-export function createPlex({ mediaRoot, media, token, machineIdentifier }) {
+export function createPlex({ mediaRoot, media, tokens, machineIdentifier }) {
   const state = {
     sections: [{ key: "1", title: "Music", type: "artist", agent: "tv.plex.agents.music", scanner: "Plex Music", locations: [mediaRoot] }],
     playlists: [],
@@ -67,7 +67,7 @@ export function createPlex({ mediaRoot, media, token, machineIdentifier }) {
   };
 
   const handler = ({ method, url, headers }) => {
-    if (headers["x-plex-token"] !== token && url.searchParams.get("X-Plex-Token") !== token) {
+    if (![headers["x-plex-token"], url.searchParams.get("X-Plex-Token")].some((token) => tokens.includes(token))) {
       return { status: 401, body: "Unauthorized" };
     }
     const parts = url.pathname.split("/").filter(Boolean);

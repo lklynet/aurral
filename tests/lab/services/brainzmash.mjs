@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { deezerIds } from "./deemix.mjs";
 import { trackDurationSeconds } from "./runtime.mjs";
 
 export function stableUuid(seed) {
@@ -18,7 +19,7 @@ function artistSummary(artist) {
     genres: artist.genres,
     artistaliases: [],
     images: [],
-    links: [],
+    links: [{ type: "deezer", target: `https://www.deezer.com/artist/${deezerIds(artist).artistId}` }],
   };
 }
 

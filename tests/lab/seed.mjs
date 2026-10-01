@@ -12,8 +12,10 @@ const PLAYBACK_TRACKS = [
 
 const dataDir = process.env.AURRAL_DATA_DIR;
 const mediaRoot = process.env.AURRAL_LAB_MEDIA_ROOT;
+const browserUrl = process.env.AURRAL_LAB_BROWSER_URL || "http://127.0.0.1:3001";
 const username = process.env.AUTH_USER;
 const password = process.env.AUTH_PASSWORD;
+const notifyAll = { notifyDiscoveryUpdated: true, notifyWeeklyFlowDone: true, notifyRequestMade: true, notifyRequestAvailable: true };
 
 if (!dataDir || !mediaRoot || !username || !password) {
   console.error("AURRAL_DATA_DIR, AURRAL_LAB_MEDIA_ROOT, AUTH_USER, and AUTH_PASSWORD are required.");
@@ -104,6 +106,8 @@ dbOps.updateSettings({
       clientId: "aurral-lab-client",
       machineIdentifier: process.env.AURRAL_LAB_PLEX_MACHINE_IDENTIFIER,
       mainLibrarySectionId: "1",
+      plexUsername: "lab-plex-owner",
+      loginEnabled: true,
     },
     jellyfin: {
       ...settings.integrations?.jellyfin,
@@ -111,11 +115,41 @@ dbOps.updateSettings({
       apiKey: process.env.AURRAL_LAB_JELLYFIN_API_KEY,
       userId: jellyfinUserId(username),
     },
+    lastfm: {
+      ...settings.integrations?.lastfm,
+      apiKey: process.env.AURRAL_LAB_LASTFM_API_KEY,
+      apiSecret: process.env.AURRAL_LAB_LASTFM_API_SECRET,
+    },
+    ticketmaster: { ...settings.integrations?.ticketmaster, apiKey: process.env.AURRAL_LAB_TICKETMASTER_API_KEY },
+    gotify: { ...settings.integrations?.gotify, url: process.env.AURRAL_LAB_GOTIFY_URL, token: process.env.AURRAL_LAB_GOTIFY_TOKEN, ...notifyAll },
+    webhooks: [{ url: process.env.AURRAL_LAB_WEBHOOK_URL, body: '{"event":"$event","artist":"$artistName","album":"$albumName","user":"$username"}', headers: [] }],
+    webhookEvents: notifyAll,
+    google: {
+      enabled: true,
+      clientId: process.env.AURRAL_LAB_GOOGLE_CLIENT_ID,
+      clientSecret: process.env.AURRAL_LAB_GOOGLE_CLIENT_SECRET,
+      redirectUri: `${browserUrl}/sso/google/callback`,
+    },
   },
   security: { ...settings.security, localNetworkBypass: { enabled: false } },
 });
 const admin = userOps.createUser(username, hashPassword(password), "admin", null, true, true, password);
 userOps.updateUser(admin.id, { listenHistoryProvider: "koito", listenHistoryUrl: process.env.AURRAL_LAB_KOITO_URL });
+const { scrobbleConnectionStore } = await backend("services/scrobbleConnectionStore.js");
+scrobbleConnectionStore.saveConnection(admin.id, "lastfm", { token: process.env.AURRAL_LAB_LASTFM_SESSION_KEY, displayName: "lab-listener" });
+scrobbleConnectionStore.saveConnection(admin.id, "listenbrainz", { token: process.env.AURRAL_LAB_LISTENBRAINZ_TOKEN, displayName: "lab-listener" });
+scrobbleConnectionStore.saveConnection(admin.id, "koito", {
+  token: process.env.AURRAL_LAB_KOITO_TOKEN,
+  baseUrl: process.env.AURRAL_LAB_KOITO_URL,
+  displayName: new URL(process.env.AURRAL_LAB_KOITO_URL).host,
+});
+const { spotifyConnectionStore } = await backend("services/spotify/spotifyConnectionStore.js");
+spotifyConnectionStore.saveConnection(admin.id, {
+  accessToken: "lab-expired-access-token",
+  refreshToken: process.env.AURRAL_LAB_SPOTIFY_REFRESH_TOKEN,
+  expiresAt: 1,
+  displayName: "Lab Listener",
+});
 
 const { scanConfiguredLibrary } = await backend("services/libraryIndexService.js");
 fs.mkdirSync(lidarrRoot, { recursive: true });

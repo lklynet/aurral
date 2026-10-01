@@ -13,7 +13,18 @@ import { createJellyfin } from "./jellyfin.mjs";
 import { createKoito } from "./koito.mjs";
 import { createMediaIndex } from "./media.mjs";
 import { createNavidrome } from "./navidrome.mjs";
+import { createNotify } from "./notify.mjs";
 import { createPlex } from "./plex.mjs";
+import { createConcerts } from "./public/concerts.mjs";
+import { createDeezer } from "./public/deezer.mjs";
+import { createLastfm } from "./public/lastfm.mjs";
+import { createListenbrainz } from "./public/listenbrainz.mjs";
+import { createMusicBrainz } from "./public/musicbrainz.mjs";
+import { createNews } from "./public/news.mjs";
+import { createOidc } from "./public/oidc.mjs";
+import { createPicsum } from "./public/picsum.mjs";
+import { createPlexTv, plexAccounts } from "./public/plextv.mjs";
+import { createSpotify } from "./public/spotify.mjs";
 
 const env = process.env;
 const catalog = JSON.parse(readFileSync(new URL("../fixtures/catalog.json", import.meta.url), "utf8"));
@@ -30,6 +41,7 @@ const ports = {
   plex: 32400,
   jellyfin: 8096,
   koito: 4110,
+  notify: 8070,
   "public-http": 8079,
   "public-tls": 8443,
   control: 9000,
@@ -63,13 +75,18 @@ const services = [
   },
   {
     name: "plex",
-    handle: createPlex({ ...context, token: env.AURRAL_LAB_PLEX_TOKEN, machineIdentifier: env.AURRAL_LAB_PLEX_MACHINE_IDENTIFIER }),
+    handle: createPlex({
+      ...context,
+      tokens: plexAccounts(env.AURRAL_LAB_PLEX_TOKEN).flatMap((account) => [account.accountToken, account.serverToken]),
+      machineIdentifier: env.AURRAL_LAB_PLEX_MACHINE_IDENTIFIER,
+    }),
   },
   {
     name: "jellyfin",
     handle: createJellyfin({ ...context, apiKey: env.AURRAL_LAB_JELLYFIN_API_KEY, username: env.AUTH_USER }),
   },
   { name: "koito", handle: createKoito(catalog, { token: env.AURRAL_LAB_KOITO_TOKEN }) },
+  { name: "notify", handle: createNotify({ gotifyToken: env.AURRAL_LAB_GOTIFY_TOKEN }) },
 ];
 const usenet = createUsenet(catalog, {
   ...context,
@@ -83,7 +100,30 @@ services.push(
   { name: "sabnzbd", handle: usenet.sabnzbd },
   { name: "nzbget", handle: usenet.nzbget },
 );
-const publicServices = [];
+const publicServices = [
+  createMusicBrainz(catalog),
+  createDeezer(catalog, context),
+  createLastfm(catalog, {
+    apiKey: env.AURRAL_LAB_LASTFM_API_KEY,
+    apiSecret: env.AURRAL_LAB_LASTFM_API_SECRET,
+    sessionKey: env.AURRAL_LAB_LASTFM_SESSION_KEY,
+  }),
+  createListenbrainz(catalog, { token: env.AURRAL_LAB_LISTENBRAINZ_TOKEN, username: "lab-listener" }),
+  createSpotify(catalog, {
+    clientId: "848082790c32436d8a0405fddca0aa18",
+    redirectUri: "https://spotify.lidarr.audio/auth",
+    refreshToken: env.AURRAL_LAB_SPOTIFY_REFRESH_TOKEN,
+  }),
+  createConcerts(catalog, { ticketmasterApiKey: env.AURRAL_LAB_TICKETMASTER_API_KEY }),
+  createNews(catalog),
+  createPicsum(),
+  createPlexTv({ serverToken: env.AURRAL_LAB_PLEX_TOKEN, machineIdentifier: env.AURRAL_LAB_PLEX_MACHINE_IDENTIFIER, serverUrl: env.AURRAL_LAB_PLEX_URL }),
+  createOidc({
+    google: { clientId: env.AURRAL_LAB_GOOGLE_CLIENT_ID, clientSecret: env.AURRAL_LAB_GOOGLE_CLIENT_SECRET },
+    sso: { issuer: env.AURRAL_LAB_OIDC_ISSUER, clientId: env.AURRAL_LAB_OIDC_CLIENT_ID, clientSecret: env.AURRAL_LAB_OIDC_CLIENT_SECRET },
+  }),
+];
+const allServices = [...services, ...publicServices];
 
 const servedHosts = publicServices.flatMap((service) => service.hosts);
 const unserved = publicHosts.filter((host) => !servedHosts.includes(host));
@@ -93,9 +133,9 @@ if (unserved.length || unlisted.length) {
 }
 if (env.AURRAL_LAB_FIXTURE_STATE && existsSync(env.AURRAL_LAB_FIXTURE_STATE)) {
   const saved = JSON.parse(readFileSync(env.AURRAL_LAB_FIXTURE_STATE, "utf8"));
-  for (const service of services) if (saved[service.name] && service.handle.restore) service.handle.restore(saved[service.name]);
+  for (const service of allServices) if (saved[service.name] && service.handle.restore) service.handle.restore(saved[service.name]);
 }
-const serviceNames = new Set([...services, ...publicServices].map((service) => service.name));
+const serviceNames = new Set(allServices.map((service) => service.name));
 
 function record(entry) {
   journal.push(entry);
@@ -200,7 +240,7 @@ http
     if (request.method === "GET" && url.pathname === "/health") return send(response, { status: 200, body: { ok: true } });
     if (request.method === "GET" && url.pathname === "/journal") return send(response, { status: 200, body: journal });
     if (request.method === "GET" && url.pathname.startsWith("/state/")) {
-      const service = services.find((entry) => entry.name === url.pathname.slice("/state/".length));
+      const service = allServices.find((entry) => entry.name === url.pathname.slice("/state/".length));
       if (!service?.handle.state) return send(response, { status: 404, body: { error: "That service has no inspectable state" } });
       const body = JSON.parse(JSON.stringify(service.handle.state, (_key, value) => (value instanceof Map ? Object.fromEntries(value) : value)));
       return send(response, { status: 200, body });
@@ -243,7 +283,7 @@ http
 function saveState() {
   if (!env.AURRAL_LAB_FIXTURE_STATE) return;
   const snapshot = Object.fromEntries(
-    services.filter((service) => service.handle.restore).map((service) => [service.name, service.handle.state]),
+    allServices.filter((service) => service.handle.restore).map((service) => [service.name, service.handle.state]),
   );
   const temporary = `${env.AURRAL_LAB_FIXTURE_STATE}.tmp`;
   writeFileSync(temporary, JSON.stringify(snapshot));
