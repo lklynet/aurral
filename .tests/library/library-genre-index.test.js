@@ -24,7 +24,7 @@ test("genre reads retain inheritance, metadata shapes, availability, and updates
   });
   const track = store.upsertLibraryTrack({
     identityKey: "genre:track", title: "Genre Track",
-    metadata: { genres: ["Soul", " Soul "], tags: { genre: { first: "Ambient" } } },
+    metadata: { genres: ["Soul", " Soul "], tags: { genre: { first: " Ambient " } } },
   });
   store.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
   const file = { trackId: track.id, albumId: album.id, source: "aurral", path: "/genre/track.flac" };
@@ -85,6 +85,14 @@ test("startup backfills existing genres, repairs missed updates, and leaves libr
   assert.equal(read("pop"), 0);
   assert.equal(read("classical"), 1);
   assert.deepEqual(query.getCanonicalLibraryPage({ kind: "genres" }).items.map((genre) => genre.name), ["Classical"]);
+  db.exec("DROP TRIGGER library_genres_tracks_update");
+  db.exec("CREATE TRIGGER library_genres_tracks_update AFTER UPDATE OF metadata_json ON library_tracks BEGIN SELECT 1; END");
+  db.prepare("UPDATE settings SET value = '0' WHERE key = 'libraryGenreIndexVersion'").run();
+  initializeLibraryGenreIndex(db);
+  db.prepare("UPDATE library_tracks SET metadata_json = ? WHERE id = ?").run(JSON.stringify({ genre: "Blues" }), track.id);
+  query.invalidateCanonicalLibraryCache({ persistedGenres: false });
+  assert.equal(read("classical"), 0);
+  assert.equal(read("blues"), 1);
   const changes = db.prepare("SELECT total_changes() AS total").get().total;
   initializeLibraryGenreIndex(db);
   assert.equal(db.prepare("SELECT total_changes() AS total").get().total, changes);

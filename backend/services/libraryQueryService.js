@@ -1273,7 +1273,7 @@ const genrePredicate = (aliases, genre) => {
   aliases.forEach((alias) => {
     clauses.push(`${alias}.id IN (
       SELECT entity_id FROM library_entity_genres
-      WHERE entity_kind = '${alias}s' AND lower(value) = lower(?)
+      WHERE entity_kind = '${alias}s' AND lower(name) = lower(?)
     )`);
     parameters.push(genre);
   });
