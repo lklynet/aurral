@@ -1,3 +1,4 @@
+import path from "path";
 import express from "express";
 
 import { APP_NAME, APP_VERSION } from "../config/constants.js";
@@ -499,7 +500,10 @@ async function handleSubsonicRequest(req, res) {
     const playlistArtwork = await resolvePlaylistArtwork(getParameter(req, "id"), user);
     if (playlistArtwork) {
       res.set("Cache-Control", "private, max-age=86400");
-      return res.sendFile(playlistArtwork.safePath);
+      return res.sendFile(path.basename(playlistArtwork.safePath), {
+        root: path.dirname(playlistArtwork.safePath),
+        dotfiles: "allow",
+      });
     }
     const artworkUrl = await resolveArtworkUrl(getParameter(req, "id"));
     if (!artworkUrl) return handleBinaryError(res, "Cover art not found");
