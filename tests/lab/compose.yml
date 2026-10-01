@@ -59,6 +59,27 @@ services:
       aurral:
         condition: service_healthy
 
+  runner:
+    build:
+      context: ../..
+      dockerfile: tests/lab/runner.Dockerfile
+    image: ${AURRAL_LAB_RUNNER_IMAGE:?}
+    profiles: [test]
+    entrypoint: ["node", "tests/lab/runner.mjs"]
+    user: "${AURRAL_LAB_UID:?}:${AURRAL_LAB_GID:?}"
+    network_mode: service:aurral
+    env_file: lab.env
+    environment:
+      CI: ${CI:-}
+      AURRAL_BASE_URL: http://127.0.0.1:3001
+      AURRAL_LAB_RESULTS_DIR: /results
+      PLAYWRIGHT_OUTPUT_DIR: /results/artifacts
+      PLAYWRIGHT_HTML_OUTPUT_DIR: /results/report
+      PLAYWRIGHT_JSON_OUTPUT_FILE: /results/results.json
+    volumes:
+      - ${AURRAL_LAB_RESULTS_DIR:?}:/results
+    labels: *lab-labels
+
 networks:
   lab:
     internal: true

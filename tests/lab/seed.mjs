@@ -2,11 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 const dataDir = process.env.AURRAL_DATA_DIR;
-const username = process.env.AURRAL_LAB_ADMIN_USER;
-const password = process.env.AURRAL_LAB_ADMIN_PASSWORD;
+const username = process.env.AUTH_USER;
+const password = process.env.AUTH_PASSWORD;
 
 if (!dataDir || !username || !password) {
-  console.error("AURRAL_DATA_DIR, AURRAL_LAB_ADMIN_USER, and AURRAL_LAB_ADMIN_PASSWORD are required.");
+  console.error("AURRAL_DATA_DIR, AUTH_USER, and AUTH_PASSWORD are required.");
   process.exit(1);
 }
 process.env.AURRAL_DB_PATH = path.join(dataDir, "aurral.db");

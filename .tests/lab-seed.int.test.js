@@ -28,15 +28,15 @@ test("the Lab seed creates an onboarded admin who signs in through Aurral", asyn
     fetch(`${baseUrl}/api/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username: labEnv.AURRAL_LAB_ADMIN_USER, password }),
+      body: JSON.stringify({ username: labEnv.AUTH_USER, password }),
     });
 
   const health = await (await fetch(`${baseUrl}/api/health`)).json();
   assert.equal(health.onboardingRequired, false);
   assert.equal(health.authRequired, true);
 
-  const accepted = await login(labEnv.AURRAL_LAB_ADMIN_PASSWORD);
+  const accepted = await login(labEnv.AUTH_PASSWORD);
   assert.equal(accepted.status, 200);
   assert.equal((await accepted.json()).user.role, "admin");
-  assert.equal((await login(`${labEnv.AURRAL_LAB_ADMIN_PASSWORD}-wrong`)).status, 401);
+  assert.equal((await login(`${labEnv.AUTH_PASSWORD}-wrong`)).status, 401);
 });

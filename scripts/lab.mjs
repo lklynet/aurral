@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fs.realpathSync(path.join(path.dirname(fileURLToPath(import.meta.url)), ".."));
 const composeFile = path.join(repoRoot, "tests", "lab", "compose.yml");
+const specDir = path.join(repoRoot, "tests", "e2e");
 const labRoot = path.join(repoRoot, "backend", "data", "lab");
 const lockDir = path.join(labRoot, ".locks");
 const LAB_ID = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/;
@@ -24,6 +25,7 @@ const FORWARDED_ENV = [
   "DOCKER_CERT_PATH",
   "DOCKER_TLS_VERIFY",
   "BUILDKIT_PROGRESS",
+  "CI",
 ];
 const LOG_FLAGS = new Set(["--follow", "-f", "--timestamps", "-t"]);
 const LOG_SERVICES = new Set(["aurral", "gateway"]);
@@ -70,6 +72,10 @@ function selectLab(requestedId) {
       `AURRAL_LAB_ID "${id}" is invalid. Use up to 24 lowercase letters, digits, and dashes that do not start with "run-".`,
     );
   }
+  return labFor(id);
+}
+
+function labFor(id, { resultsDir } = {}) {
   const owner = createHash("sha256").update(repoRoot).digest("hex").slice(0, 12);
   const slug =
     path
@@ -85,7 +91,9 @@ function selectLab(requestedId) {
     owner,
     project: `${prefix}-${id}`,
     image: `${prefix}:local`,
+    runnerImage: `${prefix}-runner:local`,
     stateDir,
+    resultsDir: resultsDir || path.join(stateDir, "results"),
     configDir: path.join(stateDir, "config"),
     mediaDir: path.join(stateDir, "media"),
     seedingDir: path.join(stateDir, ".seeding"),
@@ -107,6 +115,8 @@ function dockerEnv(lab) {
     AURRAL_LAB_OWNER: lab.owner,
     AURRAL_LAB_WORKTREE: repoRoot,
     AURRAL_LAB_IMAGE: lab.image,
+    AURRAL_LAB_RUNNER_IMAGE: lab.runnerImage,
+    AURRAL_LAB_RESULTS_DIR: lab.resultsDir,
     AURRAL_LAB_CONFIG_DIR: lab.configDir,
     AURRAL_LAB_MEDIA_DIR: lab.mediaDir,
     AURRAL_LAB_SEED_DIR: lab.seedingDir,
@@ -115,14 +125,14 @@ function dockerEnv(lab) {
   };
 }
 
-function docker(args, { lab, output = "capture" } = {}) {
+function execute(command, args, { env, output = "capture", cleanup = false } = {}) {
   const stdio = {
     capture: ["ignore", "pipe", "pipe"],
     stdout: ["ignore", "inherit", "inherit"],
     stderr: ["ignore", 2, 2],
   }[output];
   return new Promise((resolve, reject) => {
-    const child = spawn("docker", args, { cwd: repoRoot, env: dockerEnv(lab), stdio });
+    const child = spawn(command, args, { cwd: repoRoot, env, stdio });
     activeChild = child;
     let stdout = "";
     let stderr = "";
@@ -130,16 +140,12 @@ function docker(args, { lab, output = "capture" } = {}) {
     child.stderr?.on("data", (chunk) => (stderr += chunk));
     child.on("error", (error) => {
       activeChild = null;
-      reject(
-        error.code === "ENOENT"
-          ? new LabError("Docker is not installed or not on PATH. Install Docker Engine with the Compose plugin, then retry.")
-          : error,
-      );
+      reject(error);
     });
     child.on("close", (code) => {
       activeChild = null;
       try {
-        checkInterrupted();
+        if (!cleanup) checkInterrupted();
         resolve({ code: code ?? 1, stdout, stderr });
       } catch (error) {
         reject(error);
@@ -148,8 +154,20 @@ function docker(args, { lab, output = "capture" } = {}) {
   });
 }
 
+async function docker(args, { lab, ...options } = {}) {
+  try {
+    return await execute("docker", args, { ...options, env: dockerEnv(lab) });
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    throw new LabError("Docker is not installed or not on PATH. Install Docker Engine with the Compose plugin, then retry.");
+  }
+}
+
 function compose(lab, args, options = {}) {
-  return docker(["compose", "--project-name", lab.project, "--file", composeFile, ...args], { ...options, lab });
+  return docker(
+    ["compose", "--project-name", lab.project, "--file", composeFile, ...args],
+    { ...options, lab },
+  );
 }
 
 function firstLine(text) {
@@ -433,19 +451,165 @@ async function reset(lab) {
   });
 }
 
+function specArguments(args) {
+  const specs = args.length
+    ? args
+    : fs
+        .readdirSync(specDir)
+        .filter((name) => name.endsWith(".spec.js"))
+        .sort()
+        .map((name) => `tests/e2e/${name}`);
+  const normalized = specs.map((spec) => {
+    const resolved = path.resolve(repoRoot, spec);
+    if (path.dirname(resolved) !== specDir || !resolved.endsWith(".spec.js") || !fs.existsSync(resolved)) {
+      throw new LabError(`"${spec}" is not a spec file in tests/e2e. Pass spec files such as tests/e2e/smoke.spec.js.`);
+    }
+    return `tests/e2e/${path.basename(resolved)}`;
+  });
+  return [...new Set(normalized)];
+}
+
+async function sourceInfo() {
+  try {
+    const head = await execute("git", ["rev-parse", "HEAD"], { env: process.env });
+    if (head.code !== 0) return { commit: "unavailable" };
+    const status = await execute("git", ["status", "--porcelain"], { env: process.env });
+    return { commit: head.stdout.trim(), uncommittedChanges: status.stdout.trim() !== "" };
+  } catch {
+    return { commit: "unavailable" };
+  }
+}
+
+async function imageIds(lab) {
+  const ids = {};
+  for (const [name, image] of [["aurral", lab.image], ["runner", lab.runnerImage]]) {
+    const result = await docker(["image", "inspect", "--format", "{{.Id}}", image]);
+    ids[name] = result.code === 0 ? result.stdout.trim() : "unavailable";
+  }
+  return ids;
+}
+
+async function removeStaleRuns() {
+  const listed = await docker([
+    "ps",
+    "--all",
+    "--filter",
+    `label=org.aurral.lab.owner=${labFor("dev").owner}`,
+    "--format",
+    '{{.Label "org.aurral.lab.id"}}',
+  ]);
+  const ids = new Set(listed.stdout.split("\n").filter((id) => id.startsWith("run-")));
+  if (fs.existsSync(labRoot)) {
+    for (const name of fs.readdirSync(labRoot)) if (name.startsWith("run-")) ids.add(name);
+  }
+  for (const id of ids) {
+    const lab = labFor(id);
+    let release;
+    try {
+      release = acquireLock(lab);
+    } catch (error) {
+      if (error instanceof LabError) continue;
+      throw error;
+    }
+    try {
+      await stop(lab);
+      fs.rmSync(lab.stateDir, { recursive: true, force: true });
+      console.error(`Removed the stale test Lab "${id}" left by an interrupted run.`);
+    } finally {
+      release();
+    }
+  }
+}
+
+async function runScenario(lab, run) {
+  fs.mkdirSync(lab.resultsDir, { recursive: true });
+  const startedAt = new Date().toISOString();
+  let exitCode = 1;
+  try {
+    await withLock(lab, async () => {
+      try {
+        claimState(lab);
+        await ownedResources(lab);
+        await seed(lab);
+        const started = await compose(
+          lab,
+          ["up", "--detach", "--wait", "--wait-timeout", "300", "--no-build", "--pull", "never", "aurral"],
+          { output: "stderr" },
+        );
+        if (started.code !== 0) {
+          throw new LabError(`The test Lab for ${run.spec} did not start. Its logs are in ${relative(lab.resultsDir)}.`);
+        }
+        console.error(`Running ${run.spec} in Lab "${lab.id}"...`);
+        const ran = await compose(lab, ["run", "--rm", "--no-deps", "-T", "runner", "--retries=0", run.spec], {
+          output: "stdout",
+        });
+        exitCode = ran.code;
+      } finally {
+        const logs = await compose(lab, ["logs", "--no-color", "--timestamps", "aurral"], { cleanup: true });
+        fs.writeFileSync(path.join(lab.resultsDir, "aurral.log"), logs.stdout + logs.stderr);
+        const manifest = {
+          runId: run.id,
+          spec: run.spec,
+          attempt: run.attempt,
+          project: lab.project,
+          ...run.source,
+          images: run.images,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          exitCode,
+          interrupted: interruption || undefined,
+        };
+        fs.writeFileSync(path.join(lab.resultsDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+        await compose(lab, ["down", "--remove-orphans"], { output: "stderr", cleanup: true });
+        fs.rmSync(lab.stateDir, { recursive: true, force: true });
+      }
+    });
+  } catch (error) {
+    if (interruption || !(error instanceof LabError)) throw error;
+    console.error(error.message);
+  }
+  return exitCode;
+}
+
+async function runTests(args) {
+  const specs = specArguments(args);
+  await requireDocker();
+  await removeStaleRuns();
+  const token = randomBytes(3).toString("hex");
+  const runId = `${new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15)}-${token}`;
+  const runDir = path.join(repoRoot, "test-results", "lab", runId);
+  const labs = specs.map((spec, index) =>
+    labFor(`run-${token}-${index + 1}`, { resultsDir: path.join(runDir, path.basename(spec, ".spec.js"), "1") }),
+  );
+  console.error("Building Aurral and the browser runner...");
+  const built = await compose(labs[0], ["build", "aurral", "runner"], { output: "stderr" });
+  if (built.code !== 0) throw new LabError("Building the test images failed. The build output is above.");
+  const run = { id: runId, attempt: 1, source: await sourceInfo(), images: await imageIds(labs[0]) };
+
+  const outcomes = [];
+  for (const [index, spec] of specs.entries()) {
+    outcomes.push({ spec, exitCode: await runScenario(labs[index], { ...run, spec }) });
+  }
+  console.error("");
+  for (const { spec, exitCode } of outcomes) console.error(`${exitCode === 0 ? "passed" : "FAILED"}  ${spec}`);
+  console.error(`Evidence: ${relative(runDir)}`);
+  if (outcomes.some(({ exitCode }) => exitCode !== 0)) process.exitCode = 1;
+}
+
 const COMMANDS = { up, url, logs, down, reset };
 
 async function main() {
   const [command, ...args] = process.argv.slice(2);
-  const handler = COMMANDS[command];
-  if (!handler) throw new LabError(`Usage: node scripts/lab.mjs <${Object.keys(COMMANDS).join("|")}>`);
-  if (command !== "logs" && args.length) throw new LabError(`lab:${command} does not accept arguments.`);
+  const handler = command === "test" ? runTests : COMMANDS[command];
+  if (!handler) throw new LabError(`Usage: node scripts/lab.mjs <${[...Object.keys(COMMANDS), "test"].join("|")}>`);
+  if (!["logs", "test"].includes(command) && args.length) throw new LabError(`lab:${command} does not accept arguments.`);
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => {
       interruption ??= signal;
       activeChild?.kill(signal);
     });
   }
+  if (command === "test") return runTests(args);
   await handler(selectLab(process.env.AURRAL_LAB_ID), args);
 }
 

@@ -8,6 +8,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -24,6 +25,7 @@ const path = require("node:path");
 const statePath = path.join(__dirname, "state.json");
 const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
 const args = process.argv.slice(2);
+const started = Date.now();
 fs.appendFileSync(path.join(__dirname, "calls.jsonl"), JSON.stringify({ args, env: process.env }) + "\n");
 const save = () => fs.writeFileSync(statePath, JSON.stringify(state));
 const fail = (message) => {
@@ -40,9 +42,11 @@ if (state.daemonDown) fail("Cannot connect to the Docker daemon at unix:///var/r
 if (args[0] === "version") {
   console.log("26.1.5");
 } else if (args[0] === "ps" || (args[0] === "network" && args[1] === "ls")) {
-  const project = option("--filter").replace("label=com.docker.compose.project=", "");
+  const [key, value] = option("--filter").replace("label=", "").split("=");
   const items = args[0] === "ps" ? state.containers : state.networks;
-  for (const item of items.filter(inProject(project))) console.log(render(option("--format"), item));
+  for (const item of items.filter((entry) => entry.labels[key] === value)) console.log(render(option("--format"), item));
+} else if (args[0] === "image" && args[1] === "inspect") {
+  console.log("sha256:fake-" + args.at(-1));
 } else if (args[0] === "compose" && args[1] === "version") {
   console.log("2.29.7");
 } else if (args[0] === "compose") {
@@ -56,7 +60,7 @@ if (args[0] === "version") {
   });
   if (command === "build") {
     if (state.blockBuildUntil) {
-      while (!fs.existsSync(state.blockBuildUntil)) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+      while (!fs.existsSync(state.blockBuildUntil) && Date.now() < started + 15000) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
     }
   } else if (command === "up") {
     state.containers = state.containers.filter((item) => !inProject(project)(item));
@@ -66,6 +70,15 @@ if (args[0] === "version") {
     state.networks.push({ ID: project + "-lab", labels: labels("") });
     save();
     if (state.failUp) fail("container " + project + "-aurral-1 is unhealthy");
+  } else if (command === "run" && args.includes("runner")) {
+    const app = state.containers.find((item) => inProject(project)(item) && item.labels["com.docker.compose.service"] === "aurral");
+    if (!app || app.State !== "running") fail("service aurral is not running");
+    if (state.blockRunnerUntil) {
+      while (!fs.existsSync(state.blockRunnerUntil) && Date.now() < started + 15000) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+    fs.writeFileSync(path.join(process.env.AURRAL_LAB_RESULTS_DIR, "results.json"), "{}");
+    console.log("ran " + args.at(-1));
+    process.exit(state.runnerExit?.[args.at(-1)] ?? 0);
   } else if (command === "run") {
     if (state.failSeed) fail("seed failed");
     fs.writeFileSync(path.join(process.env.AURRAL_LAB_SEED_DIR, "aurral.db"), "seeded");
@@ -91,6 +104,9 @@ function createWorktree(root, name) {
   mkdirSync(join(worktree, "tests", "lab"), { recursive: true });
   copyFileSync(join(repoRoot, "scripts", "lab.mjs"), join(worktree, "scripts", "lab.mjs"));
   copyFileSync(join(repoRoot, "tests", "lab", "compose.yml"), join(worktree, "tests", "lab", "compose.yml"));
+  copyFileSync(join(repoRoot, "tests", "lab", "lab.env"), join(worktree, "tests", "lab", "lab.env"));
+  mkdirSync(join(worktree, "tests", "e2e"));
+  for (const name of ["smoke", "settings"]) writeFileSync(join(worktree, "tests", "e2e", `${name}.spec.js`), "");
   return worktree;
 }
 
@@ -150,6 +166,14 @@ async function createLabSandbox(t) {
 }
 
 const projectOf = (call) => call.args[call.args.indexOf("--project-name") + 1];
+
+async function waitFor(condition) {
+  const deadline = Date.now() + 10000;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error("Timed out waiting for the Lab command");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
 
 test("each worktree and Lab ID gets its own stable Docker project and state", async (t) => {
   const lab = await createLabSandbox(t);
@@ -313,7 +337,7 @@ test("a concurrent operation is refused and a killed operation's lock is recover
   lab.updateState({ blockBuildUntil: release });
 
   const blocked = lab.start(worktree, ["up"]);
-  while (lab.composeCalls("build").length === 0) await new Promise((resolve) => setTimeout(resolve, 20));
+  await waitFor(() => lab.composeCalls("build").length > 0);
 
   const concurrent = await lab.run(worktree, ["down"]);
   assert.notEqual(concurrent.code, 0);
@@ -405,4 +429,127 @@ test("logs forwards supported options and rejects others", async (t) => {
   const rejected = await lab.run(worktree, ["logs", "--volumes"]);
   assert.notEqual(rejected.code, 0);
   assert.equal(lab.composeCalls("logs").length, 1);
+});
+
+const runnerCalls = (lab) => lab.composeCalls("run").filter(({ args }) => args.includes("runner"));
+const inProjectOf = (project) => (item) => item.labels["com.docker.compose.project"] === project;
+const commandsFor = (lab, project) =>
+  lab.calls()
+    .filter((call) => call.args[0] === "compose" && projectOf(call) === project)
+    .map(({ args }) => args.slice(args.indexOf("--file") + 2))
+    .filter(([command]) => command !== "build")
+    .map(([command, ...rest]) => (command === "run" ? rest.find((arg) => !arg.startsWith("-")) : command));
+const runDirs = (worktree) =>
+  existsSync(join(worktree, "backend", "data", "lab"))
+    ? readdirSync(join(worktree, "backend", "data", "lab")).filter((name) => name.startsWith("run-"))
+    : [];
+
+test("test runs each spec in a fresh Lab, keeps evidence, and reports failures", async (t) => {
+  const lab = await createLabSandbox(t);
+  const worktree = lab.worktree("aurral");
+  lab.updateState({ runnerExit: { "tests/e2e/settings.spec.js": 1 } });
+
+  const result = await lab.run(worktree, ["test", "tests/e2e/smoke.spec.js", "tests/e2e/settings.spec.js"]);
+  assert.equal(result.code, 1, result.stderr);
+
+  const runs = runnerCalls(lab);
+  assert.deepEqual(runs.map(({ args }) => args.slice(-2)), [
+    ["--retries=0", "tests/e2e/smoke.spec.js"],
+    ["--retries=0", "tests/e2e/settings.spec.js"],
+  ]);
+  const projects = runs.map(projectOf);
+  assert.notEqual(projects[0], projects[1]);
+  for (const [index, project] of projects.entries()) {
+    assert.deepEqual(commandsFor(lab, project), ["seed", "up", "runner", "logs", "down"]);
+    const evidence = runs[index].env.AURRAL_LAB_RESULTS_DIR;
+    assert.ok(evidence.startsWith(join(worktree, "test-results", "lab")));
+    assert.ok(existsSync(join(evidence, "results.json")));
+    assert.match(readFileSync(join(evidence, "aurral.log"), "utf8"), new RegExp(`logs for ${project}`));
+    assert.equal(JSON.parse(readFileSync(join(evidence, "manifest.json"), "utf8")).exitCode, index);
+  }
+  assert.deepEqual(runDirs(worktree), []);
+  assert.deepEqual(lab.readState().containers, []);
+});
+
+test("a test run leaves the development Lab untouched", async (t) => {
+  const lab = await createLabSandbox(t);
+  const worktree = lab.worktree("aurral");
+  assert.equal((await lab.run(worktree, ["up"])).code, 0);
+  const dev = lab.composeCalls("up")[0];
+  writeFileSync(join(dev.env.AURRAL_LAB_CONFIG_DIR, "user-record.txt"), "keep");
+  const before = lab.calls().length;
+
+  const result = await lab.run(worktree, ["test", "tests/e2e/smoke.spec.js"]);
+  assert.equal(result.code, 0, result.stderr);
+
+  assert.ok(!lab.calls().slice(before).some((call) => call.args[0] === "compose" && projectOf(call) === projectOf(dev)));
+  assert.equal(readFileSync(join(dev.env.AURRAL_LAB_CONFIG_DIR, "user-record.txt"), "utf8"), "keep");
+  assert.equal(lab.readState().containers.filter(inProjectOf(projectOf(dev))).length, 2);
+});
+
+test("a test Lab that fails to start keeps its logs and is removed", async (t) => {
+  const lab = await createLabSandbox(t);
+  const worktree = lab.worktree("aurral");
+  lab.updateState({ failUp: true });
+
+  const result = await lab.run(worktree, ["test", "tests/e2e/smoke.spec.js"]);
+  assert.notEqual(result.code, 0);
+
+  const [up] = lab.composeCalls("up");
+  assert.deepEqual(commandsFor(lab, projectOf(up)), ["seed", "up", "logs", "down"]);
+  assert.match(readFileSync(join(up.env.AURRAL_LAB_RESULTS_DIR, "aurral.log"), "utf8"), /logs for /);
+  assert.deepEqual(runDirs(worktree), []);
+});
+
+test("an interrupted test run removes its Lab and reports the interruption", async (t) => {
+  const lab = await createLabSandbox(t);
+  const worktree = lab.worktree("aurral");
+  const release = join(lab.root, "release-runner");
+  lab.updateState({ blockRunnerUntil: release });
+
+  const running = lab.start(worktree, ["test", "tests/e2e/smoke.spec.js", "tests/e2e/settings.spec.js"]);
+  await waitFor(() => runnerCalls(lab).length > 0);
+  running.kill("SIGINT");
+  const result = await running.result;
+  writeFileSync(release, "");
+
+  assert.equal(result.code, 130);
+  const [run] = runnerCalls(lab);
+  assert.deepEqual(commandsFor(lab, projectOf(run)), ["seed", "up", "runner", "logs", "down"]);
+  assert.equal(runnerCalls(lab).length, 1);
+  assert.ok(existsSync(join(run.env.AURRAL_LAB_RESULTS_DIR, "aurral.log")));
+  assert.deepEqual(runDirs(worktree), []);
+});
+
+test("the next test run removes Labs left by a killed run", async (t) => {
+  const lab = await createLabSandbox(t);
+  const worktree = lab.worktree("aurral");
+  const release = join(lab.root, "release-runner");
+  lab.updateState({ blockRunnerUntil: release });
+
+  const killed = lab.start(worktree, ["test", "tests/e2e/smoke.spec.js"]);
+  await waitFor(() => runnerCalls(lab).length > 0);
+  killed.kill("SIGKILL");
+  writeFileSync(release, "");
+  await killed.result;
+  const stale = projectOf(runnerCalls(lab)[0]);
+  assert.equal(runDirs(worktree).length, 1);
+
+  const result = await lab.run(worktree, ["test", "tests/e2e/smoke.spec.js"]);
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stderr, /stale/i);
+  assert.equal(commandsFor(lab, stale).at(-1), "down");
+  assert.deepEqual(runDirs(worktree), []);
+  assert.deepEqual(lab.readState().containers, []);
+});
+
+test("test rejects unsupported arguments before starting anything", async (t) => {
+  const lab = await createLabSandbox(t);
+  const worktree = lab.worktree("aurral");
+
+  for (const args of [["--update-snapshots"], ["../outside.spec.js"], ["tests/e2e/missing.spec.js"], ["backend/server.js"]]) {
+    const result = await lab.run(worktree, ["test", ...args]);
+    assert.notEqual(result.code, 0, args.join(" "));
+  }
+  assert.equal(lab.calls().length, 0);
 });
