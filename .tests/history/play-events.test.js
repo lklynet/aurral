@@ -28,6 +28,7 @@ test("records local plays and aggregates artists without provider access", () =>
     title: "One",
     artist: "Artist A",
     album: "Album",
+    albumKey: "history-album",
     durationMs: 180000,
     playedAt: 1700000000,
     source: "subsonic",
@@ -48,6 +49,12 @@ test("records local plays and aggregates artists without provider access", () =>
     playcount: 2,
     lastPlayedAt: 1700000001000,
   });
+  assert.deepEqual(
+    db.prepare(
+      "SELECT album_key, play_count FROM play_album_stats WHERE user_id = ?",
+    ).all(1),
+    [{ album_key: "history-album", play_count: 1 }],
+  );
 });
 
 test("pins each scrobble delivery to the connection active when the play was recorded", () => {
