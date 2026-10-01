@@ -82,5 +82,5 @@ test("focused Subsonic requests never execute an unfiltered complete-library que
       && sql.includes("FROM library_artists AS artist"),
   );
   assert.ok(artistIndexQuery);
-  assert.doesNotMatch(artistIndexQuery, /library_(album_tracks|media_files)/);
+  assert.match(artistIndexQuery, /media\.available = 1/);
 });

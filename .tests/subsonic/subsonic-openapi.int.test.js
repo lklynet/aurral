@@ -151,6 +151,10 @@ test("system and browsing responses match the OpenSubsonic schema", async () => 
   await assertValid("getLicense");
   await assertValid("getOpenSubsonicExtensions");
   await assertValid("getMusicFolders");
+  await assertValid("getScanStatus");
+  await assertValid("getNowPlaying");
+  await assertValid("getBookmarks");
+  await assertValid("getPlayQueue");
   await assertValid("getIndexes");
   await assertValid("getGenres");
   await assertValid("getUser", { username: "alice" });
@@ -179,11 +183,22 @@ test("system and browsing responses match the OpenSubsonic schema", async () => 
 });
 
 test("list, search, playlist and annotation responses match the OpenSubsonic schema", async () => {
+  await assertValid("getAlbumList", { type: "newest", size: 10 });
   await assertValid("getAlbumList2", { type: "newest", size: 10 });
   await assertValid("getAlbumList2", { type: "alphabeticalByArtist", size: 10 });
   await assertValid("getSongsByGenre", { genre: "Rock" });
+  await assertValid("getRandomSongs", { size: 10, genre: "Rock" });
   await assertValid("search3", { query: "Schema" });
   await assertValid("search3", { query: "" });
+  await assertValid("search3", {
+    query: '""',
+    artistOffset: 0,
+    artistCount: 500,
+    albumOffset: 0,
+    albumCount: 0,
+    songOffset: 0,
+    songCount: 0,
+  });
   await assertValid("search2", { query: "Schema" });
 
   const artists = await assertValid("getArtists");
@@ -215,4 +230,19 @@ test("error responses match the OpenSubsonic schema", async () => {
   const body = JSON.parse(await token.text());
   assert.ok(validatorFor("ping")(body), ajv.errorsText(validatorFor("ping").errors));
   assert.equal(body["subsonic-response"].error.code, 41);
+
+  const conflicting = await fetch(
+    `http://127.0.0.1:${aurral.port}/rest/ping.view?u=alice&p=password123&t=deadbeef&s=salt&v=1.16.1&c=openapi-test&f=json`,
+  );
+  assert.equal((await conflicting.json())["subsonic-response"].error.code, 43);
+
+  const apiKey = await fetch(
+    `http://127.0.0.1:${aurral.port}/rest/ping.view?apiKey=unsupported&v=1.16.1&c=openapi-test&f=json`,
+  );
+  assert.equal((await apiKey.json())["subsonic-response"].error.code, 42);
+
+  const apiKeyWithUsername = await fetch(
+    `http://127.0.0.1:${aurral.port}/rest/ping.view?u=alice&apiKey=unsupported&v=1.16.1&c=openapi-test&f=json`,
+  );
+  assert.equal((await apiKeyWithUsername.json())["subsonic-response"].error.code, 43);
 });

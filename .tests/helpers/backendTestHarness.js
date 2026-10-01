@@ -13,6 +13,7 @@ const RESET_TABLES = [
   "user_identities",
   "lastfm_link_states",
   "subsonic_stars",
+  "play_album_stats",
   "play_events",
   "honker_task_runs",
   "slskd_transfer_history",

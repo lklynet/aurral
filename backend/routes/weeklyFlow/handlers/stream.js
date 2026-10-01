@@ -59,7 +59,10 @@ export function registerStream(router) {
     }
     const ext = path.extname(safePath).toLowerCase();
     res.type(AUDIO_CONTENT_TYPES[ext] || "application/octet-stream");
-    res.sendFile(safePath);
+    res.sendFile(path.basename(safePath), {
+      root: path.dirname(safePath),
+      dotfiles: "allow",
+    });
   });
 
   router.get("/staging-stream/:jobId", noCache, async (req, res) => {
@@ -85,6 +88,9 @@ export function registerStream(router) {
     }
     const ext = path.extname(job.stagingPath).toLowerCase();
     res.type(AUDIO_CONTENT_TYPES[ext] || "application/octet-stream");
-    res.sendFile(job.stagingPath);
+    res.sendFile(path.basename(job.stagingPath), {
+      root: path.dirname(job.stagingPath),
+      dotfiles: "allow",
+    });
   });
 }
