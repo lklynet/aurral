@@ -11,12 +11,8 @@ test.beforeAll(() => {
   }
 });
 
-async function signIn(page) {
+async function openApp(page) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
-  await page.getByLabel("Username").fill(username);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByLabel("Primary navigation")).toBeVisible();
 }
 
@@ -77,7 +73,7 @@ async function openRemovalDialog(page, itemName, dialogName) {
 
 test("an Aurral album and artist are removed with their files", async ({ page }) => {
   test.setTimeout(240_000);
-  await signIn(page);
+  await openApp(page);
 
   try {
     await ensureAurralArtist(page);
@@ -126,7 +122,7 @@ test("an Aurral album and artist are removed with their files", async ({ page })
     await page.goto(`/artist/${artist.mbid}`);
     await expect(page.getByRole("heading", { name: artist.name, level: 1 })).toBeVisible({ timeout: 30_000 });
     const actionBar = page.locator(".artist-action-bar");
-    await actionBar.getByRole("button", { name: /In Library/ }).click();
+    await actionBar.getByRole("button", { name: /In library/ }).click();
     await actionBar.getByRole("button", { name: "Remove from Library" }).click();
     const artistDialog = page.getByRole("alertdialog", { name: "Remove Artist from Library" });
     await expect(artistDialog).toBeVisible();
@@ -140,7 +136,7 @@ test("an Aurral album and artist are removed with their files", async ({ page })
 
     await page.reload();
     await expect(page.getByRole("heading", { name: artist.name, level: 1 })).toBeVisible({ timeout: 30_000 });
-    await expect(actionBar.getByRole("button", { name: /In Library/ })).toHaveCount(0);
+    await expect(actionBar.getByRole("button", { name: /In library/ })).toHaveCount(0);
     expect((await apiRequest(page, `/api/library/artists/${artist.mbid}`)).status).toBe(404);
   } finally {
     const leftover = await apiRequest(page, `/api/library/artists/${artist.mbid}`);

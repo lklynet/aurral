@@ -296,7 +296,7 @@ test("artist ownership conflict refreshes the existing manager instead of offeri
   await page.goto(`/artist/${artist.id}`);
   await page.locator(".artist-action-bar").getByRole("button", { name: "Add to…", exact: true }).click();
   await page.getByRole("menuitem", { name: "Add to Lidarr", exact: true }).click();
-  await expect(page.locator(".artist-action-bar").getByRole("button", { name: /In Library.*Managed by Aurral/ })).toBeVisible();
+  await expect(page.locator(".artist-action-bar").getByRole("button", { name: /In library.*Managed by Aurral/ })).toBeVisible();
   await expect(page.locator(".artist-action-bar").getByRole("button", { name: "Add to…", exact: true })).toHaveCount(0);
   expect(writes).toHaveLength(1);
 });

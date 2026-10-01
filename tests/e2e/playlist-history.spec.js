@@ -9,12 +9,8 @@ test.beforeAll(() => {
   }
 });
 
-async function signIn(page) {
+async function openApp(page) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
-  await page.getByLabel("Username").fill(username);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByLabel("Primary navigation")).toBeVisible();
 }
 
@@ -40,7 +36,7 @@ async function apiRequest(page, path, { method = "GET", body } = {}) {
 }
 
 test("shared playlist opens from Playlists and its scrobble setting persists", async ({ page }) => {
-  await signIn(page);
+  await openApp(page);
 
   const playlistName = `E2E history ${Date.now()}`;
   const createResponse = await apiRequest(page, "/api/playlists/shared-playlists", {

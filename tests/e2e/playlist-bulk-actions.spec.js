@@ -1,11 +1,8 @@
 import { test, expect } from "@playwright/test";
 
-async function signIn(page) {
+async function openApp(page) {
   if (!process.env.AUTH_USER || !process.env.AUTH_PASSWORD) throw new Error("AUTH_USER and AUTH_PASSWORD are required");
   await page.goto("/");
-  await page.getByLabel("Username").fill(process.env.AUTH_USER);
-  await page.getByLabel("Password").fill(process.env.AUTH_PASSWORD);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByLabel("Primary navigation")).toBeVisible();
 }
 
@@ -29,7 +26,7 @@ test("one bulk request reports partial completion against its original playlist"
       ? { state: "queued", outcomes: [] }
       : { state: "completed", targetPlaylistId: target.id, outcomes: [{ jobId: tracks[0].id, status: "moved" }, { jobId: tracks[1].id, status: "failed", message: "Provider cleanup failed" }] } });
   });
-  await signIn(page);
+  await openApp(page);
   await page.goto("/library/playlists");
   await page.locator(".playlists-page__title").filter({ hasText: source.name }).click();
   await page.getByRole("button", { name: "Select tracks", exact: true }).click();

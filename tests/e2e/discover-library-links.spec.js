@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 const username = String(process.env.AUTH_USER || "").trim();
 const password = String(process.env.AUTH_PASSWORD || "");
 
-const linkedMbid = "8f6bd1e4-fbe1-4f50-aa9b-94c450ec0f11";
+const linkedMbid = "10adbe5e-a2c0-4bf3-8249-2b4cbf6e6ca8";
 
 test.beforeAll(() => {
   if (!username || !password) {
@@ -11,12 +11,8 @@ test.beforeAll(() => {
   }
 });
 
-async function signIn(page) {
+async function openApp(page) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
-  await page.getByLabel("Username").fill(username);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByLabel("Primary navigation")).toBeVisible();
 }
 
@@ -52,7 +48,7 @@ async function findUntaggedArtist(page) {
 
 test("library and Discover artist pages link to each other", async ({ page }) => {
   test.setTimeout(120_000);
-  await signIn(page);
+  await openApp(page);
   const artist = await findUntaggedArtist(page);
   const libraryPath = `/library/artist/${encodeURIComponent(artist.id)}`;
   const openInDiscover = page.getByRole("link", { name: "Open in Discover", exact: true });
@@ -62,8 +58,9 @@ test("library and Discover artist pages link to each other", async ({ page }) =>
   await expect(page.getByRole("heading", { name: artist.name })).toBeVisible();
   await expect(openInDiscover).toHaveCount(0);
 
+  let linked = null;
   try {
-    const linked = await apiRequest(page, `/api/library/canonical/artists/${artist.id}/mbid`, {
+    linked = await apiRequest(page, `/api/library/canonical/artists/${artist.id}/mbid`, {
       method: "PUT",
       body: { mbid: linkedMbid },
     });
@@ -84,10 +81,12 @@ test("library and Discover artist pages link to each other", async ({ page }) =>
     await page.goBack();
     await expect(page).toHaveURL(new RegExp(`/artist/${linkedMbid}$`));
   } finally {
-    const restored = await apiRequest(page, `/api/library/canonical/artists/${artist.id}/mbid`, {
-      method: "PUT",
-      body: { mbid: null },
-    });
-    expect(restored.ok, `Restoring the untagged artist failed with ${restored.status}`).toBe(true);
+    if (linked?.ok && linked.body?.merged === false) {
+      const restored = await apiRequest(page, `/api/library/canonical/artists/${artist.id}/mbid`, {
+        method: "PUT",
+        body: { mbid: null },
+      });
+      expect(restored.ok, `Restoring the untagged artist failed with ${restored.status}`).toBe(true);
+    }
   }
 });

@@ -25,9 +25,6 @@ test("Flow status uses the canonical channel and refreshes after reconnect", asy
     };
   });
   await page.goto("/");
-  await page.getByLabel("Username").fill(username);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByLabel("Primary navigation")).toBeVisible();
   await page.locator("a[href='/flows']").click();
   await expect.poll(() => page.evaluate(() => window.flowStatusCheck.channels)).toContain("playlists");

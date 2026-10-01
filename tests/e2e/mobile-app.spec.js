@@ -19,12 +19,8 @@ test.beforeAll(() => {
   }
 });
 
-async function signIn(page) {
+async function openApp(page) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
-  await page.getByLabel("Username").fill(username);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in", exact: true }).tap();
   await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeVisible();
 }
 
@@ -60,7 +56,7 @@ function pageMetrics(page) {
 }
 
 test("the shell stays fixed, avoids input zoom, and reaches every section", async ({ page }) => {
-  await signIn(page);
+  await openApp(page);
 
   for (const path of ["/", "/library", "/activity/queue", `/artist/${release.artistMbid}`, "/settings"]) {
     await page.goto(path);
@@ -91,7 +87,7 @@ test("the shell stays fixed, avoids input zoom, and reaches every section", asyn
 
 test("search results open an artist and the back control returns to them", async ({ page }) => {
   test.setTimeout(90_000);
-  await signIn(page);
+  await openApp(page);
 
   const search = page.getByRole("textbox", { name: "Search music, artists, or tags" });
   await search.tap();
@@ -109,15 +105,15 @@ test("search results open an artist and the back control returns to them", async
 
 test("a release opened from a direct link names its artist", async ({ page }) => {
   test.setTimeout(90_000);
-  await signIn(page);
+  await openApp(page);
   await page.goto(`/artist/${release.artistMbid}/release/${release.mbid}`);
-  await expect(page.locator(".release-page__copy").getByText(release.artistName, { exact: true }))
+  await expect(page.getByRole("main").getByRole("link", { name: release.artistName, exact: true }))
     .toBeVisible({ timeout: 30_000 });
 });
 
 test("library playback moves between the mini player and the now playing sheet", async ({ page }) => {
   test.setTimeout(90_000);
-  await signIn(page);
+  await openApp(page);
   await page.goto("/library/tracks");
   const titles = page.locator(".native-library-track__title");
   await expect(titles.first(), "Eden's playback fixture is missing from the library").toBeVisible({
@@ -146,7 +142,7 @@ test("library playback moves between the mini player and the now playing sheet",
 });
 
 test("item menus open as bottom sheets and a tap outside only closes them", async ({ page }) => {
-  await signIn(page);
+  await openApp(page);
   await page.goto("/library/tracks");
   const firstTitle = page.locator(".native-library-track__title > span").first();
   await expect(firstTitle).toBeVisible({ timeout: 30_000 });
@@ -173,7 +169,7 @@ test("item menus open as bottom sheets and a tap outside only closes them", asyn
 
 test("an artist is added to the library from its page", async ({ page }) => {
   test.setTimeout(180_000);
-  await signIn(page);
+  await openApp(page);
   const existing = await apiRequest(page, `/api/library/artists/${disposableArtist.mbid}`);
   expect(existing.status, `${disposableArtist.name} must not already be in the candidate library`).toBe(404);
 

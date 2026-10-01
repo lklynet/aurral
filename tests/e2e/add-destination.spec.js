@@ -12,12 +12,8 @@ test.beforeAll(() => {
   }
 });
 
-async function signIn(page) {
+async function openApp(page) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
-  await page.getByLabel("Username").fill(username);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByLabel("Primary navigation")).toBeVisible();
 }
 
@@ -56,7 +52,7 @@ async function tabTo(page, locator) {
 
 test("a connected user adds to Lidarr, then adds to Aurral from the keyboard", async ({ page }) => {
   test.setTimeout(180_000);
-  await signIn(page);
+  await openApp(page);
 
   const ownerBefore = await apiRequest(page, "/api/users/me/library-owner");
   expect(ownerBefore.ok).toBe(true);
@@ -72,7 +68,7 @@ test("a connected user adds to Lidarr, then adds to Aurral from the keyboard", a
     await expect(page.getByRole("heading", { name: lidarrArtist.name, level: 1 })).toBeVisible({ timeout: 30_000 });
     await page.locator(".artist-action-bar").getByRole("button", { name: "Add to…", exact: true }).click();
     await page.getByRole("menuitem", { name: "Add to Lidarr", exact: true }).click();
-    await expect(page.getByRole("button", { name: /In Library/ })).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("button", { name: /In library/ })).toBeVisible({ timeout: 60_000 });
     await expect.poll(async () => (await lookupArtist(page, lidarrArtist.mbid))?.exists, { timeout: 30_000 }).toBe(true);
     const lidarrRecord = await apiRequest(page, `/api/library/artists/${lidarrArtist.mbid}`);
     expect(lidarrRecord.status).toBe(200);
@@ -104,7 +100,7 @@ test("a connected user adds to Lidarr, then adds to Aurral from the keyboard", a
     await page.keyboard.press("ArrowDown");
     await expect(aurralItem).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("button", { name: /In Library/ })).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("button", { name: /In library/ })).toBeVisible({ timeout: 60_000 });
 
     await expect
       .poll(async () => (await apiRequest(page, `/api/library/artists/${aurralArtist.mbid}`)).body?.managedBy, {

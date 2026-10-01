@@ -10,12 +10,8 @@ test.beforeAll(() => {
   }
 });
 
-async function signIn(page) {
+async function openApp(page) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
-  await page.getByLabel("Username").fill(username);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByLabel("Primary navigation")).toBeVisible();
 }
 
@@ -76,7 +72,7 @@ async function startReceiver() {
 }
 
 test("tests the selected webhook without saving settings", async ({ page }) => {
-  await signIn(page);
+  await openApp(page);
   const currentSettings = await apiRequest(page, "/api/settings");
   expect(currentSettings.ok).toBe(true);
   const originalWebhooks = currentSettings.body?.integrations?.webhooks || [];

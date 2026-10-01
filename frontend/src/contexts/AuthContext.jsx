@@ -110,11 +110,11 @@ export const AuthProvider = ({ children }) => {
 
   const login = useCallback(async (password, username) => {
     const normalizedUsername = String(username || "").trim();
-    if (!normalizedUsername || !password) return false;
+    if (!normalizedUsername || !password) return { ok: false };
 
     try {
       const result = await loginApi(normalizedUsername, password);
-      if (!result?.token) return false;
+      if (!result?.token) return { ok: false };
       authResolvedRef.current = true;
       clearLibraryFavoritesCache();
       queryClient.clear();
@@ -126,9 +126,9 @@ export const AuthProvider = ({ children }) => {
         setDateTimeFormat(bootstrap.dateTimeFormat);
         setBootstrap(bootstrap);
       } catch {}
-      return true;
-    } catch {
-      return false;
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, status: error?.response?.status };
     }
   }, []);
 

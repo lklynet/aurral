@@ -11,12 +11,8 @@ test.beforeAll(() => {
   }
 });
 
-async function signIn(page) {
+async function openApp(page) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
-  await page.getByLabel("Username").fill(username);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByLabel("Primary navigation")).toBeVisible();
 }
 
@@ -46,7 +42,7 @@ const ACTIVE_STATUS = /^(queued|downloading)$/;
 
 test("an Aurral artist and album are monitored, unmonitored with a warning, and monitored again", async ({ page }) => {
   test.setTimeout(240_000);
-  await signIn(page);
+  await openApp(page);
 
   const existing = await apiRequest(page, `/api/library/artists/${artist.mbid}`);
   if (existing.status !== 404) {
@@ -81,7 +77,7 @@ test("an Aurral artist and album are monitored, unmonitored with a warning, and 
     await page.goto(`/artist/${artist.mbid}`);
     await expect(page.getByRole("heading", { name: artist.name, level: 1 })).toBeVisible({ timeout: 30_000 });
     const actionBar = page.locator(".artist-action-bar");
-    await actionBar.getByRole("button", { name: /In Library/ }).click();
+    await actionBar.getByRole("button", { name: /In library/ }).click();
     await actionBar.getByRole("button", { name: /^Monitor:/ }).click();
 
     const optionLabels = ["None (artist only)", "All albums", "Future albums", "Missing albums", "Latest album", "First album"];
@@ -105,35 +101,37 @@ test("an Aurral artist and album are monitored, unmonitored with a warning, and 
     expect(albums.body[0].managedBy).toBe("aurral");
 
     await page.goto(`/library/album/${albumId}`);
-    const monitored = page.getByRole("switch", { name: "Monitored" });
-    await expect(monitored).toBeVisible({ timeout: 30_000 });
-    await expect(monitored).toHaveAttribute("aria-checked", "true");
+    const albumOptions = page.getByRole("button", { name: `${albums.body[0].title} options`, exact: true });
+    const managerMark = page.getByRole("img", { name: /^Managed by Aurral/ });
+    const chooseMonitoring = async (label) => {
+      await albumOptions.click();
+      await page.getByRole("menuitem", { name: label, exact: true }).click();
+    };
+    await expect(managerMark).toHaveAccessibleName("Managed by Aurral", { timeout: 30_000 });
     await expect(page.getByRole("status").filter({ hasText: /Queued|Downloading/ }).first()).toBeVisible({
       timeout: 30_000,
     });
 
-    await monitored.focus();
-    await page.keyboard.press("Space");
+    await chooseMonitoring("Stop monitoring album");
     const dialog = page.getByRole("alertdialog", { name: "Stop monitoring this album?" });
     await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText("cancels unfinished downloads");
+    await expect(dialog).toContainText("unfinished downloads will be cancelled");
     expect(albumMonitoringWrites).toHaveLength(0);
 
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
-    await expect(monitored).toHaveAttribute("aria-checked", "true");
+    await expect(managerMark).toHaveAccessibleName("Managed by Aurral");
     expect(albumMonitoringWrites).toHaveLength(0);
     expect((await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status).toMatch(
       ACTIVE_STATUS,
     );
 
-    await monitored.click();
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "Unmonitor" }).click();
+    await chooseMonitoring("Stop monitoring album");
+    await dialog.getByRole("button", { name: "Stop monitoring", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: /Cancelled \d+ downloads?/ })).toBeVisible({
       timeout: 30_000,
     });
-    await expect(monitored).toHaveAttribute("aria-checked", "false");
+    await expect(managerMark).toHaveAccessibleName("Managed by Aurral · Not monitored");
     expect(albumMonitoringWrites).toHaveLength(1);
     await expect
       .poll(async () => (await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status, {
@@ -141,15 +139,15 @@ test("an Aurral artist and album are monitored, unmonitored with a warning, and 
       })
       .toBe("cancelled");
 
-    await page.getByRole("button", { name: "Retry" }).click();
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
     await expect
       .poll(async () => (await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status, {
         timeout: 30_000,
       })
       .toMatch(ACTIVE_STATUS);
 
-    await monitored.click();
-    await expect(monitored).toHaveAttribute("aria-checked", "true");
+    await chooseMonitoring("Monitor album");
+    await expect(managerMark).toHaveAccessibleName("Managed by Aurral");
     expect(albumMonitoringWrites).toHaveLength(2);
     await expect
       .poll(async () => (await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status, {
