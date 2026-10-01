@@ -9,12 +9,14 @@ repo="${repository#*/}"
 
 pull_fields='
   associatedPullRequests(first: 5) {
+    totalCount
     nodes {
       number
       title
       url
       labels(first: 20) { nodes { name } }
       closingIssuesReferences(first: 25) {
+        totalCount
         nodes {
           number
           title
@@ -25,8 +27,10 @@ pull_fields='
     }
   }'
 
-line_def='def line($kind): [$kind, (.number | tostring), ("," + ([.labels.nodes[].name + ","] | join(""))), .url, .title] | join("\t");'
-pull_lines='.associatedPullRequests.nodes[] | line("pull"), (.closingIssuesReferences.nodes[] | line("issue"))'
+line_def='
+  def line($kind): [$kind, (.number | tostring), ("," + ([.labels.nodes[].name + ","] | join(""))), .url, .title] | join("\t");
+  def complete($what): if .totalCount > (.nodes | length) then error("Too many \($what) to list; raise the limit in list-release-changes.sh.") else .nodes[] end;'
+pull_lines='.associatedPullRequests | complete("pull requests on one commit") | . as $pr | line("pull"), (.closingIssuesReferences | complete("closing issues on #\($pr.number)") | line("issue"))'
 
 if [ -n "${base_tag}" ]; then
   gh api graphql --paginate \
