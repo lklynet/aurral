@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": "26.9.x"
+    "node": "26.10.x"
   },
   "workspaces": [
     "backend",
@@ -43,9 +43,8 @@
   "license": "MIT",
   "allowScripts": {
     "bcrypt@6.0.0": true,
-    "better-sqlite3@12.10.0": true,
     "fsevents@2.3.3": true,
-    "sharp@0.34.5": true
+    "better-sqlite3": false
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

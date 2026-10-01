@@ -6,7 +6,7 @@ FROM node-base AS builder
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY package*.json .npmrc ./
 COPY backend/package*.json ./backend/
 COPY frontend/package*.json ./frontend/
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-COPY package*.json ./
+COPY package*.json .npmrc ./
 COPY backend/package*.json ./backend/
 COPY frontend/package*.json ./frontend/
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
