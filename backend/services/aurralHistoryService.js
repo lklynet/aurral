@@ -704,8 +704,12 @@ export const syncAlbumSearchHistory = async (lidarrClient, historyEntries = null
   );
   if (!openEntries.length) return;
 
-  const { parseLidarrSearchContext, resolveAlbumSearchOutcome, albumHasTrackFiles } =
-    await import("./albumSearchState.js");
+  const {
+    parseLidarrSearchContext,
+    resolveAlbumSearchOutcome,
+    albumHasTrackFiles,
+    getLidarrAlbumsById,
+  } = await import("./albumSearchState.js");
   const [queue, history, commands] = await Promise.all([
     lidarrClient.getQueue().catch(() => []),
     lidarrClient.getHistory(1, 200).catch(() => ({ records: [] })),
@@ -734,14 +738,20 @@ export const syncAlbumSearchHistory = async (lidarrClient, historyEntries = null
     return match?.id != null ? String(match.id) : null;
   };
 
+  const resolvedEntries = [];
   for (const entry of openEntries) {
-    let albumId = entry.metadata?.albumId ? String(entry.metadata.albumId) : null;
-    if (!albumId) {
-      albumId = await resolveMissingAlbumId(entry);
-    }
-    if (!albumId) continue;
+    const albumId = entry.metadata?.albumId
+      ? String(entry.metadata.albumId)
+      : await resolveMissingAlbumId(entry);
+    if (albumId) resolvedEntries.push({ entry, albumId });
+  }
+  const albums = await getLidarrAlbumsById(
+    lidarrClient,
+    resolvedEntries.map(({ albumId }) => albumId),
+  );
 
-    const album = await lidarrClient.getAlbum(albumId).catch(() => null);
+  for (const { entry, albumId } of resolvedEntries) {
+    const album = albums.get(albumId);
     const albumHasFiles = albumHasTrackFiles(album);
     const outcome = resolveAlbumSearchOutcome(albumId, context, {
       searchStartedAt: entry.createdAt,
@@ -1091,7 +1101,8 @@ export const getAurralHistoryRequests = async (lidarrClient = null, user = null)
   const entryIds = new Set(entries.map((e) => e.id));
 
   const { downloadTracker } = await import("./weeklyFlow/weeklyFlowDownloadTracker.js");
-  for (const job of downloadTracker.getAll()) {
+  const jobs = downloadTracker.getAll();
+  for (const job of jobs) {
     if (job.status !== "blocked" && job.status !== "pending" && job.status !== "downloading") {
       continue;
     }
@@ -1107,7 +1118,7 @@ export const getAurralHistoryRequests = async (lidarrClient = null, user = null)
   }
 
   const now = Date.now();
-  const jobsById = new Map(downloadTracker.getAll().map((job) => [job.id, job]));
+  const jobsById = new Map(jobs.map((job) => [job.id, job]));
   const canViewEntry = (entry) => canViewPlaylistActivity(
     user, entry.metadata?.playlistId || entry.metadata?.playlistType, entry.metadata?.ownerUserId,
   );

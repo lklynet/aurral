@@ -1,12 +1,35 @@
+import { mapWithConcurrency } from "./discovery/helpers.js";
+
 const MIN_SEARCH_MS = 30 * 1000;
 const STALE_SEARCH_MS = 5 * 60 * 1000;
 const RECENT_COMMAND_MS = 2 * 60 * 60 * 1000;
 const RECENT_HISTORY_MS = 60 * 60 * 1000;
+const ALBUM_LOOKUP_TTL_MS = 30 * 1000;
+const ALBUM_LOOKUP_CONCURRENCY = 4;
+const albumLookupsByClient = new WeakMap();
 
 const normalizeItems = (value) => (Array.isArray(value) ? value : value?.records || []);
 
 export const albumHasTrackFiles = (album) =>
   Number(album?.statistics?.trackFileCount || 0) > 0;
+
+export const getLidarrAlbumsById = async (lidarrClient, albumIds) => {
+  const lookups = albumLookupsByClient.get(lidarrClient) || new Map();
+  albumLookupsByClient.set(lidarrClient, lookups);
+  const now = Date.now();
+  for (const [albumId, lookup] of lookups) {
+    if (now - lookup.at >= ALBUM_LOOKUP_TTL_MS) lookups.delete(albumId);
+  }
+  const ids = [...new Set(albumIds.map(String))];
+  const missing = ids.filter((albumId) => !lookups.has(albumId));
+  const fetched = mapWithConcurrency(missing, ALBUM_LOOKUP_CONCURRENCY, (albumId) =>
+    lidarrClient.getAlbum(albumId).catch(() => null));
+  missing.forEach((albumId, index) => {
+    lookups.set(albumId, { at: now, album: fetched.then((albums) => albums[index]) });
+  });
+  const albums = await Promise.all(ids.map((albumId) => lookups.get(albumId).album));
+  return new Map(ids.map((albumId, index) => [albumId, albums[index]]));
+};
 
 const getCommandAlbumIds = (command) => {
   if (Array.isArray(command?.body?.albumIds)) return command.body.albumIds;

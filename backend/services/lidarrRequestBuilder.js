@@ -1,4 +1,4 @@
-import { albumHasTrackFiles } from "./albumSearchState.js";
+import { albumHasTrackFiles, getLidarrAlbumsById } from "./albumSearchState.js";
 
 const STALE_GRABBED_MS = 15 * 60 * 1000;
 
@@ -90,6 +90,7 @@ export const buildLidarrRequests = async (lidarrClient, snapshot = null) => {
     }
   }
 
+  const failedHistory = [];
   for (const [albumId, { record, recordTime }] of latestHistoryByAlbum) {
     if (requestsByAlbumId.has(String(albumId))) continue;
 
@@ -139,9 +140,15 @@ export const buildLidarrRequests = async (lidarrClient, snapshot = null) => {
 
     if (isActive || isSuccessfulImport) continue;
     if (!(isFailedImport || isFailedDownload || isStaleGrabbed)) continue;
+    failedHistory.push({ albumId, record, albumName, artistName, artistMbid });
+  }
 
-    const album = await lidarrClient.getAlbum(albumId).catch(() => null);
-    if (albumHasTrackFiles(album)) continue;
+  const albums = await getLidarrAlbumsById(
+    lidarrClient,
+    failedHistory.map(({ albumId }) => albumId),
+  );
+  for (const { albumId, record, albumName, artistName, artistMbid } of failedHistory) {
+    if (albumHasTrackFiles(albums.get(String(albumId)))) continue;
 
     requestsByAlbumId.set(String(albumId), {
       id: `lidarr-history-${record.id || albumId}`,

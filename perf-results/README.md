@@ -14,8 +14,9 @@ uses five fresh processes. Cold page samples also use fresh processes, while
 warm page samples reuse a process. The operating system's file cache can stay
 warm across both groups. With five samples, p95 is the slowest sample.
 
-The guard requires broad `search3` median latency below 300 ms and one-song
-`starred` median latency below 75 ms. Target reads must complete with finite
+The guard requires broad `search3` median latency below 300 ms, one-song
+`starred` median latency below 75 ms, and `getGenres` median latency below
+75 ms after a scan. Target reads must complete with finite
 statistics and nonempty results. Existing checks also require warm page p95
 below 250 ms, cold page and selected read p95 below 750 ms, responses below
 2 MiB, and request RSS growth below 64 MiB. Lidarr call-count and bounded

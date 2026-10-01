@@ -1770,6 +1770,13 @@ export function getCanonicalTopTracks({
 
 export function getCanonicalGenres({ source = null, availableOnly = false } = {}) {
   const sourceFilter = normalizeSource(source);
+  return readGenreStats(
+    `subsonic:${genreStatsScope(sourceFilter, availableOnly)}`,
+    () => computeCanonicalGenres(sourceFilter, availableOnly),
+  );
+}
+
+function computeCanonicalGenres(sourceFilter, availableOnly) {
   const mediaConditions = [
     "media.track_id = album_track.track_id",
     albumMediaCondition("media", "album_track"),
@@ -1992,8 +1999,10 @@ function buildPageQuery({
   };
 }
 
-function getCanonicalGenreStats({ sourceFilter, availableOnly }) {
-  const cacheKey = `${sourceFilter || "all"}:${availableOnly === true ? "available" : "all"}`;
+const genreStatsScope = (sourceFilter, availableOnly) =>
+  `${sourceFilter || "all"}:${availableOnly === true ? "available" : "all"}`;
+
+function readGenreStats(cacheKey, compute) {
   const cached = genreStatsCache.get(cacheKey);
   if (cached) return cached;
   const settingKey = `${GENRE_STATS_SETTING_PREFIX}${cacheKey}`;
@@ -2005,9 +2014,16 @@ function getCanonicalGenreStats({ sourceFilter, availableOnly }) {
       return parsed;
     }
   }
-  const sortedStats = computeLibraryGenreStats(db, { sourceFilter, availableOnly });
-  genreStatsCache.set(cacheKey, sortedStats);
-  return sortedStats;
+  const stats = compute();
+  genreStatsCache.set(cacheKey, stats);
+  return stats;
+}
+
+function getCanonicalGenreStats({ sourceFilter, availableOnly }) {
+  return readGenreStats(
+    genreStatsScope(sourceFilter, availableOnly),
+    () => computeLibraryGenreStats(db, { sourceFilter, availableOnly }),
+  );
 }
 
 function getPageLibrary(kind, ids, sourceFilter, availableOnly, albumId = null) {
@@ -2452,6 +2468,10 @@ export function rebuildCanonicalGenreStats() {
   db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`${GENRE_STATS_SETTING_PREFIX}%`);
   genreStatsCache.clear();
   rebuildStoredLibraryGenreStats(db);
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(
+    `${GENRE_STATS_SETTING_PREFIX}subsonic:${genreStatsScope(null, true)}`,
+    JSON.stringify(computeCanonicalGenres(null, true)),
+  );
 }
 
 export function invalidateCanonicalLibraryCache({ persistedGenres = true } = {}) {

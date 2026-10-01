@@ -25,6 +25,7 @@ let allDownloadStatusesCache = {
   snapshot: null,
   pending: null,
   failures: 0,
+  checkedAt: 0,
   nextRefreshAt: 0,
   revision: 0,
 };
@@ -293,14 +294,19 @@ const staleSnapshot = (error) => ({
   error: error?.message || String(error),
 });
 
-export const getLidarrStatusSnapshot = async ({ force = false } = {}) => {
+export const getLidarrStatusSnapshot = async ({ refresh = false } = {}) => {
   const { lidarrClient } = await import("../../../services/lidarrClient.js");
   if (lidarrClient.isCircuitOpen()) {
     return staleSnapshot("Lidarr circuit is open");
   }
 
   const now = Date.now();
-  if (!force && allDownloadStatusesCache.snapshot && now < allDownloadStatusesCache.nextRefreshAt) {
+  const maxAgeMs = refresh ? ACTIVE_STATUS_CACHE_MS : Infinity;
+  if (
+    allDownloadStatusesCache.snapshot &&
+    now < allDownloadStatusesCache.nextRefreshAt &&
+    now - allDownloadStatusesCache.checkedAt < maxAgeMs
+  ) {
     return allDownloadStatusesCache.snapshot;
   }
   if (allDownloadStatusesCache.pending) {
@@ -321,6 +327,7 @@ export const getLidarrStatusSnapshot = async ({ force = false } = {}) => {
         error: null,
       };
       allDownloadStatusesCache.snapshot = snapshot;
+      allDownloadStatusesCache.checkedAt = refreshedAt;
       allDownloadStatusesCache.failures = 0;
       allDownloadStatusesCache.nextRefreshAt =
         refreshRevision === allDownloadStatusesCache.revision
@@ -330,7 +337,8 @@ export const getLidarrStatusSnapshot = async ({ force = false } = {}) => {
     })
     .catch((error) => {
       allDownloadStatusesCache.failures += 1;
-      const retryAt = Date.now() + Math.min(
+      allDownloadStatusesCache.checkedAt = Date.now();
+      const retryAt = allDownloadStatusesCache.checkedAt + Math.min(
         MAX_STATUS_RETRY_MS,
         ACTIVE_STATUS_CACHE_MS * 2 ** (allDownloadStatusesCache.failures - 1),
       );

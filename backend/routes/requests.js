@@ -76,9 +76,9 @@ const filterRedundantAurralRequests = (aurralRequests, lidarrRequests) => {
   });
 };
 
-const buildRequestsResponse = async (lidarrClient, { force = false, user = null } = {}) => {
+const buildRequestsResponse = async (lidarrClient, { refresh = false, user = null } = {}) => {
   const snapshot = lidarrClient?.isConfigured()
-    ? await getLidarrStatusSnapshot({ force })
+    ? await getLidarrStatusSnapshot({ refresh })
     : null;
   const [lidarrRequests, aurralRequests] = await Promise.all([
     snapshot ? buildLidarrRequests(lidarrClient, snapshot.provider) : Promise.resolve([]),
@@ -128,16 +128,8 @@ router.get("/", requireAuth, noCache, async (req, res) => {
       return res.json(filterDismissedRequests(cached.response));
     }
 
-    if (!lidarrClient?.isConfigured()) {
-      const requests = await refreshRequestsCache(lidarrClient, {
-        force: forceRefresh,
-        user: req.user,
-      });
-      return res.json(requests);
-    }
-
     const requests = await refreshRequestsCache(lidarrClient, {
-      force: forceRefresh,
+      refresh: forceRefresh,
       user: req.user,
     });
     res.json(requests);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router";
 import {
@@ -30,6 +30,42 @@ function formatTime(seconds) {
   const secs = total % 60;
   return `${mins}:${String(secs).padStart(2, "0")}`;
 }
+
+const UpNextList = memo(function UpNextList({ playbackQueue, currentIndex, repeatMode, skipTo }) {
+  const upNext = playbackQueue
+    .map((track, index) => ({ track, index }))
+    .slice(currentIndex + 1)
+    .concat(
+      repeatMode === "all"
+        ? playbackQueue.map((track, index) => ({ track, index })).slice(0, currentIndex)
+        : [],
+    );
+  if (upNext.length === 0) return null;
+  return (
+    <section className="now-playing__queue" aria-label="Up next">
+      <h3 className="now-playing__queue-title">Up next</h3>
+      <ol className="now-playing__queue-list">
+        {upNext.map(({ track, index }) => (
+          <li key={`${track.id}-${index}`}>
+            <button
+              type="button"
+              className="now-playing__queue-item"
+              onClick={() => skipTo(index)}
+            >
+              <span className="now-playing__queue-copy">
+                <span className="now-playing__queue-name">{track.title}</span>
+                {track.artist ? (
+                  <span className="now-playing__queue-artist">{track.artist}</span>
+                ) : null}
+              </span>
+              <Play className="now-playing__queue-play" aria-hidden="true" />
+            </button>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+});
 
 function GlobalPlayerBar() {
   const {
@@ -211,14 +247,6 @@ function GlobalPlayerBar() {
       : repeatMode === "all"
         ? "Repeat all tracks"
         : "Enable repeat";
-  const upNext = playbackQueue
-    .map((track, index) => ({ track, index }))
-    .slice(currentIndex + 1)
-    .concat(
-      repeatMode === "all"
-        ? playbackQueue.map((track, index) => ({ track, index })).slice(0, currentIndex)
-        : [],
-    );
 
   return (
     <div className="global-player" role="region" aria-label="Global audio player">
@@ -389,30 +417,12 @@ function GlobalPlayerBar() {
                 </button>
               </div>
 
-              {upNext.length > 0 ? (
-                <section className="now-playing__queue" aria-label="Up next">
-                  <h3 className="now-playing__queue-title">Up next</h3>
-                  <ol className="now-playing__queue-list">
-                    {upNext.map(({ track, index }) => (
-                      <li key={`${track.id}-${index}`}>
-                        <button
-                          type="button"
-                          className="now-playing__queue-item"
-                          onClick={() => skipTo(index)}
-                        >
-                          <span className="now-playing__queue-copy">
-                            <span className="now-playing__queue-name">{track.title}</span>
-                            {track.artist ? (
-                              <span className="now-playing__queue-artist">{track.artist}</span>
-                            ) : null}
-                          </span>
-                          <Play className="now-playing__queue-play" aria-hidden="true" />
-                        </button>
-                      </li>
-                    ))}
-                  </ol>
-                </section>
-              ) : null}
+              <UpNextList
+                playbackQueue={playbackQueue}
+                currentIndex={currentIndex}
+                repeatMode={repeatMode}
+                skipTo={skipTo}
+              />
             </div>
           </div>
         </div>,

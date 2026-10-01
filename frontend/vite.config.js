@@ -43,8 +43,14 @@ export default defineConfig(({ mode }) => {
           start_url: basePath,
           icons: [
             {
-              src: `${basePath}icons/aurral-icon-iOS-Default-1024x1024@1x.png`,
-              sizes: "1024x1024",
+              src: `${basePath}icons/aurral-icon-192.png`,
+              sizes: "192x192",
+              type: "image/png",
+              purpose: "any",
+            },
+            {
+              src: `${basePath}icons/aurral-icon-512.png`,
+              sizes: "512x512",
               type: "image/png",
               purpose: "any",
             },

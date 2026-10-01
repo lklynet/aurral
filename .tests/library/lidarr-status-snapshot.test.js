@@ -20,7 +20,7 @@ test("disabled status reads stay local", async (t) => {
   invalidateAllDownloadStatusesCache();
 
   assert.deepEqual(await getDownloadStatusesForAlbumIds([10]), {});
-  const snapshot = await getLidarrStatusSnapshot({ force: true });
+  const snapshot = await getLidarrStatusSnapshot({ refresh: true });
   assert.deepEqual(snapshot.provider, {
     queue: [],
     history: { records: [] },
@@ -65,8 +65,8 @@ test("Lidarr status consumers share refreshes, idle, failure, and recovery state
 
   invalidateAllDownloadStatusesCache();
   const [first, concurrent] = await Promise.all([
-    getLidarrStatusSnapshot({ force: true }),
-    getLidarrStatusSnapshot({ force: true }),
+    getLidarrStatusSnapshot({ refresh: true }),
+    getLidarrStatusSnapshot({ refresh: true }),
   ]);
   assert.deepEqual(calls, { queue: 1, history: 1, command: 1 });
   assert.equal(albumCalls, 0);
@@ -98,13 +98,15 @@ test("Lidarr status consumers share refreshes, idle, failure, and recovery state
 
   fail = false;
   active = false;
-  const recovered = await getLidarrStatusSnapshot({ force: true });
+  invalidateAllDownloadStatusesCache();
+  const recovered = await getLidarrStatusSnapshot({ refresh: true });
   assert.equal(recovered.stale, false);
   assert.equal(recovered.active, false);
   assert.deepEqual(calls, { queue: 4, history: 4, command: 4 });
 
   queueGate = Promise.withResolvers();
-  const pending = getLidarrStatusSnapshot({ force: true });
+  invalidateAllDownloadStatusesCache();
+  const pending = getLidarrStatusSnapshot({ refresh: true });
   while (calls.queue < 5) await new Promise((resolve) => setImmediate(resolve));
   invalidateAllDownloadStatusesCache();
   queueGate.resolve();
@@ -140,12 +142,13 @@ test("invalidating a failed refresh allows immediate recovery", async (t) => {
   });
 
   invalidateAllDownloadStatusesCache();
-  await getLidarrStatusSnapshot({ force: true });
+  await getLidarrStatusSnapshot({ refresh: true });
   assert.deepEqual(calls, { queue: 1, history: 1, command: 1 });
 
   fail = true;
   refreshGate = Promise.withResolvers();
-  const pending = getLidarrStatusSnapshot({ force: true });
+  invalidateAllDownloadStatusesCache();
+  const pending = getLidarrStatusSnapshot({ refresh: true });
   while (calls.queue < 2 || calls.history < 2 || calls.command < 2) {
     await new Promise((resolve) => setImmediate(resolve));
   }

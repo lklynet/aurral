@@ -8988,7 +8988,6 @@ button.native-library-genre-row:focus-visible {
   justify-content: center;
   border-radius: 999px;
   background: color-mix(in srgb, var(--aurral-overlay-base) 62%, transparent);
-  backdrop-filter: blur(6px);
 }
 
 .playlists-page__synced:focus-visible {

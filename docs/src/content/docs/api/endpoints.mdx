@@ -193,7 +193,9 @@ detail route instead.
 
 `GET /api/search` requires `q`. Its optional `scope` is `artist` (default),
 `album`, or `tag`. The route also accepts `limit` and `offset`. Album searches
-accept `releaseTypes` and `sort`. `GET /api/requests` accepts `refresh=true`.
+accept `releaseTypes` and `sort`. `GET /api/requests` accepts `refresh=true` to
+rebuild the list. A refreshed list reuses Lidarr's queue and history when
+Aurral read them in the last 10 seconds.
 
 ## Discovery
 

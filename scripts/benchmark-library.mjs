@@ -363,6 +363,7 @@ import { groupArtists } from "./backend/routes/subsonic.js";
 import {
   getAlbum,
   getFlowPlaylists,
+  getGenres,
   getStarred,
   getArtist,
   listArtists,
@@ -394,6 +395,7 @@ const read = {
   }).tracks,
   starred: () => getStarred(user),
   playlists: () => getFlowPlaylists(user),
+  genres: () => getGenres(),
 };
 const before = process.memoryUsage();
 const started = performance.now();
@@ -421,6 +423,7 @@ const counts = {
     songs: arrayCount(value, "song"),
   },
   playlists: { items: Array.isArray(value) ? value.length : 0 },
+  genres: { items: Array.isArray(value) ? value.length : 0 },
 }[operation] || {};
 console.log(JSON.stringify({
   elapsedMs: Number(elapsedMs.toFixed(3)),
@@ -632,6 +635,7 @@ async function main() {
       "randomSongs",
       "starred",
       "playlists",
+      "genres",
     ]) {
       const samples = [];
       for (let index = 0; index < options.repeats; index += 1) {
@@ -701,10 +705,11 @@ async function main() {
     const boundedReadCompleted = Object.values(subsonicReads).every((read) =>
       read.nonVacuous);
     const targetedReadChecks = {
-      nonVacuousCompletedSamples: ["search3", "starred"].every((name) =>
+      nonVacuousCompletedSamples: ["search3", "starred", "genres"].every((name) =>
         subsonicReads[name].nonVacuous && subsonicReads[name].statisticsComplete),
       searchMedianUnder300ms: isFiniteBelow(subsonicReads.search3.medianMs, 300),
       starredMedianUnder75ms: isFiniteBelow(subsonicReads.starred.medianMs, 75),
+      genresMedianUnder75ms: isFiniteBelow(subsonicReads.genres.medianMs, 75),
     };
     const checks = {
       boundedReadCompleted,
