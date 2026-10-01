@@ -380,6 +380,9 @@ test("validation reads original tags before any metadata repair happens", async 
 const ffmpegFixtureDir = hasFfmpeg
   ? mkdtempSync(join(tmpdir(), "aurral-postdownload-"))
   : null;
+test.after(() => {
+  if (ffmpegFixtureDir) rmSync(ffmpegFixtureDir, { recursive: true, force: true });
+});
 
 function generateTaggedAudio(fileName, { title, artist, durationSec = 4 }) {
   const filePath = join(ffmpegFixtureDir, fileName);
@@ -513,8 +516,4 @@ test("release selection with an unreadable file set returns nothing usable", { s
   });
   assert.equal(selection.filePath, null);
   assert.equal(selection.validation, null);
-});
-
-test("cleanup removes the ffmpeg fixture directory", { skip: hasFfmpeg ? false : "ffmpeg unavailable" }, () => {
-  rmSync(ffmpegFixtureDir, { recursive: true, force: true });
 });

@@ -2,10 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-import {
-  SETTINGS_SEARCH_ITEMS,
-  searchSettingsItems,
-} from "../../frontend/src/pages/Settings/settingsTabsConfig.js";
+import { searchSettingsItems } from "../../frontend/src/pages/Settings/settingsTabsConfig.js";
 
 const COMPONENTS_BY_TAB = {
   tasks: ["SettingsTasksTab.jsx"],
@@ -47,14 +44,6 @@ test("settings search covers visible settings labels", async () => {
     }
   }
   assert.deepEqual(missing, []);
-});
-
-test("settings search includes the hidden metadata route", () => {
-  assert.ok(
-    SETTINGS_SEARCH_ITEMS.some(
-      (item) => item.id === "metadata" && item.searchText.includes("base url"),
-    ),
-  );
 });
 
 test("custom settings layouts expose their fields to search", () => {

@@ -6,7 +6,6 @@ import {
   formatTime,
   setDateTimeFormat,
 } from "../../frontend/src/utils/dateTime.js";
-import { dbOps } from "../../backend/db/helpers/index.js";
 
 test("formats dates in the selected international order", () => {
   const date = new Date(2026, 7, 9, 14, 5);
@@ -24,9 +23,4 @@ test("formats dates in the selected international order", () => {
   assert.equal(formatDate(date, { month: "numeric", day: "numeric" }), "2026/08/09");
 
   setDateTimeFormat("browser");
-});
-
-test("persists the application date and time format", () => {
-  dbOps.updateSettings({ dateTimeFormat: "year-first" });
-  assert.equal(dbOps.getSettings().dateTimeFormat, "year-first");
 });

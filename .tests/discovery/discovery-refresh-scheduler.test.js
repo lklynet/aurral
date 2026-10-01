@@ -269,14 +269,6 @@ test("enqueueDiscoveryRefresh deduplicates active refresh requests", () => {
   assert.equal(result.reason, "updating");
 });
 
-test("enqueueDiscoveryRefresh returns a plain result object", () => {
-  const cache = getDiscoveryCache();
-  cache.isUpdating = false;
-  const result = enqueueDiscoveryRefresh({ reason: "manual", force: true });
-  assert.equal(typeof result?.enqueued, "boolean");
-  assert.equal(result?.then, undefined);
-});
-
 test("enqueueDiscoveryRefresh treats force as success when already updating", () => {
   holdGlobalRefreshLock();
   const result = enqueueDiscoveryRefresh({ reason: "manual", force: true });

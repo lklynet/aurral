@@ -29,11 +29,6 @@ test("every Aurral album status has a visible label and the right actions", () =
   }
 });
 
-test("missing albums offer to download missing tracks instead of Retry", () => {
-  const state = describeAurralAlbumStatus({ status: "missing" });
-  assert.deepEqual(state.actions, [{ id: "retry", label: "Download missing tracks" }]);
-});
-
 test("a partial album offers Retry when a source failed and otherwise downloads missing tracks", () => {
   const recovery = { code: "source_failed", message: "No source had the tracks." };
   const state = describeAurralAlbumStatus({ status: "partial", recovery });

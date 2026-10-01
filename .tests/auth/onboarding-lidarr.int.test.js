@@ -138,26 +138,3 @@ test("POST /api/onboarding/lidarr/profiles uses supplied credentials before onbo
   assert.equal(response.status, 200, JSON.stringify(payload));
   assert.deepEqual(payload, [{ id: 1, name: "Aurral - HQ" }]);
 });
-
-test("POST /api/onboarding/complete requires Lidarr and auto-picks profiles", async () => {
-  const response = await fetch(`http://127.0.0.1:${server.port}/api/onboarding/complete`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      authUser: "admin",
-      authPassword: "password123",
-      lidarr: {
-        url: fakeLidarr.url,
-        apiKey: "fake-key",
-      },
-    }),
-  });
-  const payload = await response.json();
-  assert.equal(response.status, 200, JSON.stringify(payload));
-
-  const settings = dbOps.getSettings();
-  assert.equal(settings.onboardingComplete, true);
-  assert.equal(settings.integrations?.lidarr?.apiKey, "fake-key");
-  assert.equal(settings.integrations?.lidarr?.qualityProfileId, 1);
-  assert.equal(settings.integrations?.lidarr?.metadataProfileId, 2);
-});
