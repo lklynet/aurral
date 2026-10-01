@@ -20,14 +20,14 @@ FROM mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b7
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
-    && ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
-    && test "$(node --version)" = "v26.9.0"
+    && ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
 WORKDIR /app
 
 COPY --from=dependencies /app ./
 COPY . .
-RUN test "$(node -p 'require("@playwright/test/package.json").version')" = "1.63.0" \
+RUN test "$(node --version)" = "v$(cat .nvmrc)" \
+    && node -e 'require("@playwright/test").chromium.launch().then((browser) => browser.close())' \
     && npm run build
 
 ENV HOME=/tmp

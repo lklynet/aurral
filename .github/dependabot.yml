@@ -80,6 +80,22 @@ updates:
           - "minor"
           - "patch"
 
+  - package-ecosystem: "docker"
+    directory: "/tests/lab"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "07:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 1
+    groups:
+      lab-images:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
   - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
