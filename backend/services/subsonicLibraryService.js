@@ -559,11 +559,32 @@ export function getGenres() {
 const getStarsStmt = db.prepare(
   "SELECT entity_kind, entity_key, created_at FROM subsonic_stars WHERE user_id = ? ORDER BY created_at, entity_kind, entity_key",
 );
-const getPlayedTracksStmt = db.prepare(`
-  SELECT track_id, album, COUNT(*) AS play_count, MAX(played_at) AS last_played_at
-  FROM play_events
-  WHERE user_id = ?
-  GROUP BY track_id, album
+const getFrequentlyPlayedAlbumsStmt = db.prepare(`
+  SELECT album.identity_key
+  FROM play_album_stats AS played
+  JOIN library_albums AS album
+    ON album.title = played.album COLLATE NOCASE
+  JOIN library_artists AS artist ON artist.id = album.artist_id
+  WHERE played.user_id = ?
+    AND (
+      artist.name = played.artist COLLATE NOCASE
+      OR album.album_artist = played.artist COLLATE NOCASE
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM library_album_tracks AS album_track
+      JOIN library_media_files AS media
+        ON media.track_id = album_track.track_id
+        AND (media.album_id = album_track.album_id OR media.album_id IS NULL)
+      WHERE album_track.album_id = album.id
+        AND media.available = 1
+    )
+  GROUP BY album.id
+  ORDER BY SUM(played.play_count) DESC,
+    MAX(played.last_played_at) DESC,
+    album.title COLLATE NOCASE,
+    album.id
+  LIMIT ? OFFSET ?
 `);
 const addStarStmt = db.prepare(
   "INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (?, ?, ?, ?)",
@@ -581,45 +602,18 @@ const getStarsChangedStmt = db.prepare(
 
 function getFrequentlyPlayedAlbums(user, { offset, limit }) {
   if (!user?.id || limit === 0) return [];
-  const played = getPlayedTracksStmt.all(user.id)
-    .map((row) => ({ ...row, parsed: parseId(row.track_id) }))
-    .filter((row) => row.parsed?.kind === "song");
-  if (!played.length) return [];
-
-  const trackKeys = [...new Set(played.map((row) => row.parsed.key))];
+  const albumKeys = getFrequentlyPlayedAlbumsStmt
+    .all(user.id, limit, offset)
+    .map((row) => row.identity_key);
+  if (!albumKeys.length) return [];
   const library = indexFocusedLibrary(getCanonicalLibrary({
     availableOnly: true,
-    favoriteKeys: trackKeys.map((key) => ({ kind: "song", key })),
+    favoriteKeys: albumKeys.map((key) => ({ kind: "album", key })),
   }), starredAtFor(user));
-  const rankings = new Map();
-
-  for (const row of played) {
-    const track = library.tracksByIdentity.get(row.parsed.key);
-    if (!track) continue;
-    const albums = track.albums
-      .map((relation) => library.albumsById.get(relation.albumId))
-      .filter(Boolean);
-    const albumName = String(row.album || "").trim().toLocaleLowerCase();
-    const album = albums.find((entry) => entry.title.toLocaleLowerCase() === albumName) || albums[0];
-    if (!album) continue;
-    const previous = rankings.get(album.identityKey) || {
-      album,
-      playCount: 0,
-      lastPlayedAt: 0,
-    };
-    previous.playCount += Number(row.play_count) || 0;
-    previous.lastPlayedAt = Math.max(previous.lastPlayedAt, Number(row.last_played_at) || 0);
-    rankings.set(album.identityKey, previous);
-  }
-
-  return [...rankings.values()]
-    .sort((left, right) =>
-      right.playCount - left.playCount ||
-      right.lastPlayedAt - left.lastPlayedAt ||
-      left.album.title.localeCompare(right.album.title),
-    )
-    .slice(offset, offset + limit)
-    .map(({ album }) => toAlbumSummary(library, album));
+  return albumKeys
+    .map((key) => library.albumsByIdentity.get(key))
+    .filter(Boolean)
+    .map((album) => toAlbumSummary(library, album));
 }
 
 // Clients compare lastModified for equality/greater-than, so a star change must land strictly after

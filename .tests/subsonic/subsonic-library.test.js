@@ -188,6 +188,11 @@ test("implements starred and frequent album lists without inventing ratings", ()
       getAlbumList({ type: "frequent" }, user).map((album) => album.title),
       ["Old Album", "New Album"],
     );
+    assert.deepEqual(
+      getAlbumList({ type: "frequent", size: 1, offset: 1 }, user)
+        .map((album) => album.title),
+      ["New Album"],
+    );
     assert.deepEqual(getAlbumList({ type: "highest" }, user), []);
     assert.deepEqual(getAlbumList({ musicFolderId: "2" }, user), []);
   } finally {

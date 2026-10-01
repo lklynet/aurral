@@ -48,6 +48,12 @@ test("records local plays and aggregates artists without provider access", () =>
     playcount: 2,
     lastPlayedAt: 1700000001000,
   });
+  assert.deepEqual(
+    db.prepare(
+      "SELECT album, artist, play_count FROM play_album_stats WHERE user_id = ?",
+    ).all(1),
+    [{ album: "Album", artist: "Artist A", play_count: 1 }],
+  );
 });
 
 test("pins each scrobble delivery to the connection active when the play was recorded", () => {
