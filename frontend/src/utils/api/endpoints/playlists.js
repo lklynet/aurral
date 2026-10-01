@@ -64,6 +64,9 @@ export const getFlowJobs = (flowId, limit = null, options = {}) => {
 export const getAllFlowJobs = (options = {}) =>
   getData("/playlists/jobs", options);
 
+export const getFlowJobFiles = (jobId, options = {}) =>
+  getData(`/playlists/jobs/${encodeURIComponent(jobId)}/files`, options);
+
 export const getManualMissingSearchSources = (jobId, { mode = "missing", playlistId = null } = {}) =>
   getData(`/playlists/jobs/${encodeURIComponent(jobId)}/manual-search/sources`, {
     params: { mode, ...(playlistId ? { playlistId } : {}) },

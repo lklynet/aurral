@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import {
   ExternalLink,
   Heart,
+  Info,
   ListMusic,
   Play,
   Pause,
@@ -108,6 +109,7 @@ function FlowTrackKebabMenu({
   canPlay = false,
   isPlaying = false,
   onPlay,
+  onViewInfo,
   onAddToLibrary,
   isAddingToLibrary = false,
   isFavorite = false,
@@ -139,6 +141,14 @@ function FlowTrackKebabMenu({
           icon: isPlaying ? Pause : Play,
           disabled: !canPlay,
           onSelect: () => onPlay(track),
+        }
+      : null,
+    onViewInfo
+      ? {
+          id: "info",
+          label: "View info",
+          icon: Info,
+          onSelect: () => onViewInfo(track),
         }
       : null,
     canAddToLibrary
@@ -352,6 +362,7 @@ export function FlowTracksPanel({
   onAddTrackToPlaylist,
   onMoveTrackToPlaylist,
   onAddTrackToLibrary,
+  onViewTrackInfo,
   libraryTrackSavingKey = "",
   getTrackFavoriteId,
   favoriteTrackIds = new Set(),
@@ -545,6 +556,7 @@ export function FlowTracksPanel({
           canPlay={canPlay}
           isPlaying={isCurrent && isPlaying}
           onPlay={showPlaybackControls ? handlePlayTrack : null}
+          onViewInfo={onViewTrackInfo}
           onAddToLibrary={onAddTrackToLibrary}
           isAddingToLibrary={libraryTrackSavingKey === String(track.id)}
           isFavorite={favoriteTrackIds.has(trackFavoriteId)}

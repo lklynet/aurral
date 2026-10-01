@@ -28,6 +28,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import { FlowTracksPanel } from "./flowComponents/flowTrackComponents.jsx";
 import ManualMissingSearchModal from "../activity/ManualMissingSearchModal.jsx";
+import LibraryInfoModal from "../LibraryInfoModal.jsx";
 import { getTrackSearchAction } from "./trackAvailability.js";
 import {
   normalizeNameKey,
@@ -60,6 +61,7 @@ export function PlaylistTracks({
   const { showSuccess, showError } = useToast();
   const [reSearchingTrackIds, setReSearchingTrackIds] = useState({});
   const [manualReplacement, setManualReplacement] = useState(null);
+  const [trackInfo, setTrackInfo] = useState(null);
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
   const [playlistMenuError, setPlaylistMenuError] = useState("");
   const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
@@ -428,6 +430,14 @@ export function PlaylistTracks({
             : (track, target) => saveTrackToPlaylist(track, target, { moveFromPlaylistId: entry.id })
         }
         onAddTrackToLibrary={handleAddTrackToLibrary}
+        onViewTrackInfo={(track) =>
+          setTrackInfo({
+            kind: "track",
+            source: "playlist",
+            entity: track,
+            trackNumber: track.trackNumber,
+          })
+        }
         libraryTrackSavingKey={libraryTrackSavingKey}
         getTrackFavoriteId={getTrackFavoriteId}
         favoriteTrackIds={favoriteTrackIds}
@@ -438,6 +448,7 @@ export function PlaylistTracks({
         artworkByAlbumMbid={trackArtworkByAlbumMbid}
         showTrackAvailability={showTrackAvailability}
       />
+      <LibraryInfoModal item={trackInfo} onClose={() => setTrackInfo(null)} />
       <ManualMissingSearchModal
         job={manualReplacement}
         mode="replacement"

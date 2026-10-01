@@ -101,6 +101,11 @@ function getAccessibleManualSearchJob(user, jobId, { mode = "missing", playlistI
   return job;
 }
 
+function toPublicJob({ stagingPath: _stagingPath, finalPath, externalPath: _externalPath, ...job }) {
+  const streamFormat = finalPath ? path.extname(finalPath).slice(1).toLowerCase() : "";
+  return { ...job, streamFormat: streamFormat || null };
+}
+
 async function runQualityChecksLocally(playlistIds) {
   let queued = 0;
   for (const playlistId of playlistIds) {
@@ -157,7 +162,7 @@ export function registerJobs(router) {
     const libraryOwnership = getCanonicalTrackOwnershipBatch(accessibleJobs);
     res.json(
       accessibleJobs.map((job, index) => ({
-        ...job,
+        ...toPublicJob(job),
         libraryOwned: libraryOwnership[index] === true,
       })),
     );
@@ -170,7 +175,13 @@ export function registerJobs(router) {
       status ? downloadTracker.getByStatus(status) : downloadTracker.getAll(),
     );
     const profile = getQualityProfile();
-    res.json(jobs.map((job) => decorateJobQuality(job, profile)));
+    res.json(jobs.map((job) => toPublicJob(decorateJobQuality(job, profile))));
+  });
+
+  router.get("/jobs/:jobId/files", requireAdmin, noCache, (req, res) => {
+    const job = downloadTracker.getJob(req.params.jobId);
+    if (!job) return res.status(404).json({ error: "Track not found" });
+    res.json({ paths: [job.finalPath].filter(Boolean) });
   });
 
   router.get("/jobs/:jobId/manual-search/sources", noCache, (req, res) => {

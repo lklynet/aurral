@@ -2,7 +2,7 @@ import { libraryManager } from "../../../services/libraryManager.js";
 import { cacheMiddleware } from "../../../middleware/cache.js";
 import { noCache } from "../../../middleware/cache.js";
 import { hasPermission, verifyTokenAuth } from "../../../middleware/auth.js";
-import { requireAuth } from "../../../middleware/requirePermission.js";
+import { requireAdmin, requireAuth } from "../../../middleware/requirePermission.js";
 import { getAlbumTracksByAlbumMbid } from "../../../services/providers/brainzmashProvider.js";
 import { enrichTracksWithDeezerPreviews } from "../../../services/apiClients/index.js";
 import fsp from "fs/promises";
@@ -13,6 +13,7 @@ import {
   getCanonicalLibraryReadModelForAlbumReferences,
   resolveCanonicalTrackPath,
 } from "../../../services/canonicalLibraryReadAdapter.js";
+import { getCanonicalLibraryForTrackIds } from "../../../services/libraryQueryService.js";
 import { stripFilesystemPaths } from "./canonical.js";
 import { streamAudioFile } from "../../../services/audioFileStream.js";
 
@@ -87,6 +88,12 @@ export function registerTracks(router) {
         message: error.message,
       });
     }
+  });
+
+  router.get("/tracks/:id/files", requireAdmin, noCache, (req, res) => {
+    const [track] = getCanonicalLibraryForTrackIds({ ids: [req.params.id] }).tracks;
+    if (!track) return res.status(404).json({ error: "Track not found" });
+    res.json({ paths: track.files.map((file) => file.path).filter(Boolean) });
   });
 
   router.get("/tracks", cacheMiddleware(120), async (req, res) => {

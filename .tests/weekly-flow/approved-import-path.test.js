@@ -157,6 +157,41 @@ test("playlist jobs annotate tracks that are already in the canonical library", 
   );
 });
 
+test("playlist job file paths are only returned to admins", async (t) => {
+  const playlistId = "job-file-paths";
+  flowPlaylistConfig.createSharedPlaylist({ id: playlistId, name: "File paths", tracks: [] });
+  const [jobId] = downloadTracker.addJobs(
+    [{ artistName: "Path Artist", trackName: "Path Track" }],
+    playlistId,
+  );
+  const finalPath = path.join(process.env.DOWNLOAD_FOLDER, "Path Artist", "Path Track.FLAC");
+  downloadTracker.setDownloading(jobId, path.join(process.env.DOWNLOAD_FOLDER, "staging.flac"));
+  downloadTracker.setDone(jobId, finalPath, "Path Album");
+  t.after(() => {
+    requestUser = { role: "admin" };
+  });
+
+  const listed = await (await fetch(`${baseUrl}/jobs/${playlistId}`)).json();
+  const [allListed] = await (await fetch(`${baseUrl}/jobs`)).json();
+  for (const job of [listed[0], allListed]) {
+    assert.equal(job.id, jobId);
+    assert.equal(job.streamFormat, "flac");
+    assert.deepEqual(Object.keys(job).filter((key) => /path$/i.test(key)), []);
+  }
+
+  const adminResponse = await fetch(`${baseUrl}/jobs/${jobId}/files`);
+  assert.equal(adminResponse.status, 200);
+  assert.deepEqual(await adminResponse.json(), { paths: [finalPath] });
+
+  requestUser = { id: 1, role: "user", permissions: { accessFlow: true } };
+  const userResponse = await fetch(`${baseUrl}/jobs/${jobId}/files`);
+  assert.equal(userResponse.status, 403);
+  assert.equal(JSON.stringify(await userResponse.json()).includes(finalPath), false);
+
+  requestUser = { role: "admin" };
+  assert.equal((await fetch(`${baseUrl}/jobs/missing-job/files`)).status, 404);
+});
+
 test.after(async () => {
   await new Promise((resolve) => server.close(resolve));
   db.close();

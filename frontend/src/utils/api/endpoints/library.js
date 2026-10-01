@@ -87,6 +87,9 @@ export const updateLibraryArtistMbid = async (artistId, mbid) => {
   return result;
 };
 
+export const getLibraryTrackFiles = (trackId, options = {}) =>
+  getData(`/library/tracks/${encodeURIComponent(trackId)}/files`, options);
+
 export const getActiveLibraryRefresh = () => getData("/library/refresh");
 
 export const getLibraryRefreshStatus = (jobId) =>
