@@ -14,6 +14,25 @@ import { selectCanonicalFile } from "./canonicalFileSelector.js";
 
 const SOURCES = new Set(["aurral", "lidarr", "flow"]);
 const libraryCache = new Map();
+const pageCountCache = new Map();
+const countDataVersion = db.prepare("PRAGMA data_version");
+const countLocalChanges = db.prepare("SELECT total_changes() AS total");
+let pageCountVersion;
+
+function getPageTotal(sql, parameters) {
+  if (db.inTransaction) return db.prepare(sql).get(...parameters).total;
+  const version = `${countDataVersion.get().data_version}:${countLocalChanges.get().total}`;
+  if (version !== pageCountVersion) {
+    pageCountCache.clear();
+    pageCountVersion = version;
+  }
+  const key = JSON.stringify([sql, parameters]);
+  if (pageCountCache.has(key)) return pageCountCache.get(key);
+  const total = db.prepare(sql).get(...parameters).total;
+  if (pageCountCache.size >= 64) pageCountCache.delete(pageCountCache.keys().next().value);
+  pageCountCache.set(key, total);
+  return total;
+}
 
 onLibraryManagementChange(() => {
   libraryCache.clear();
@@ -1253,15 +1272,11 @@ const genrePredicate = (aliases, genre) => {
   const clauses = [];
   const parameters = [];
   aliases.forEach((alias) => {
-    GENRE_METADATA_PATHS.forEach((path) => {
-      clauses.push(
-        `(json_valid(${alias}.metadata_json) AND EXISTS (
-          SELECT 1 FROM json_each(${alias}.metadata_json, '${path}') AS genre_value
-          WHERE lower(CAST(genre_value.value AS TEXT)) = lower(?)
-        ))`,
-      );
-      parameters.push(genre);
-    });
+    clauses.push(`${alias}.id IN (
+      SELECT entity_id FROM library_entity_genres
+      WHERE entity_kind = '${alias}s' AND lower(value) = lower(?)
+    )`);
+    parameters.push(genre);
   });
   return { sql: `(${clauses.join(" OR ")})`, parameters };
 };
@@ -2369,17 +2384,33 @@ export function getCanonicalLibraryPage({
     artistId,
     albumId,
   });
-  const total = db.prepare(
+  const total = getPageTotal(
     `SELECT COUNT(DISTINCT ${queryDefinition.idExpression}) AS total
      ${queryDefinition.from}
      WHERE ${queryDefinition.where}`,
-  ).get(...queryDefinition.parameters).total;
-  const ids = db.prepare(
-    `SELECT ${queryDefinition.idExpression} AS page_id
+    queryDefinition.parameters,
+  );
+  const matchingIds = `SELECT ${queryDefinition.idExpression} AS page_id
      ${queryDefinition.from}
-     WHERE ${queryDefinition.where}
+     WHERE ${queryDefinition.where}`;
+  const broadTrackSearch = normalizedKind === "tracks" && normalizedQuery
+    && normalizedSort === "name" && !queryDefinition.groupBy
+    && currentOffset + currentPageSize <= 1000
+    && total > getPageTotal("SELECT COUNT(*) AS total FROM library_tracks", []) / 2;
+  const pageQuery = broadTrackSearch
+    ? `SELECT track.id AS page_id
+       FROM library_tracks AS track INDEXED BY idx_library_tracks_title
+       CROSS JOIN library_search_documents AS search_document
+       CROSS JOIN library_search_fts AS search_fts
+       WHERE search_document.entity_kind = 'track' AND search_document.entity_id = track.id
+         AND search_fts.rowid = search_document.id AND library_search_fts MATCH ?
+         AND ${queryDefinition.where}
+       ORDER BY ${queryDefinition.orderBy}`
+    : `${matchingIds}
      ${queryDefinition.groupBy ? `GROUP BY ${queryDefinition.groupBy}` : ""}
-     ORDER BY ${queryDefinition.orderBy}
+     ORDER BY ${queryDefinition.orderBy}`;
+  const ids = db.prepare(
+    `${pageQuery}
      LIMIT ? OFFSET ?`,
   ).all(
     ...queryDefinition.parameters,
@@ -2476,6 +2507,7 @@ export function rebuildCanonicalGenreStats() {
 
 export function invalidateCanonicalLibraryCache({ persistedGenres = true } = {}) {
   libraryCache.clear();
+  pageCountCache.clear();
   genreStatsCache.clear();
   invalidateLibraryManagementCache();
   if (persistedGenres) {

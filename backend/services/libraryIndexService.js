@@ -185,7 +185,7 @@ export async function scanConfiguredLibrary({
           changedPaths: targeted ? localPaths : null,
           force,
           metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
-          syncSearch: false,
+          syncSearch: targeted,
         });
     if (!targeted) {
       flow = await syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force);
@@ -202,7 +202,7 @@ export async function scanConfiguredLibrary({
           changedPaths: targeted ? changedPaths : null,
           force,
           source: "lidarr",
-          syncSearch: false,
+          syncSearch: targeted,
         });
       } catch (error) {
         scanFailed = true;
@@ -224,7 +224,7 @@ export async function scanConfiguredLibrary({
     throw error;
   } finally {
     if (scanFailed || artistsResolved || local?.changed || lidarr?.changed || flow?.changed) {
-      rebuildLibrarySearchIndex();
+      if (!targeted || scanFailed || artistsResolved) rebuildLibrarySearchIndex();
       rebuildCanonicalGenreStats();
     }
   }

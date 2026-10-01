@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { initializeSchemaOnStartup } from "./schema-migration-v2.js";
 import { initializeLibrarySearchIndex } from "./library-search-index.js";
+import { initializeLibraryGenreIndex } from "./library-genre-index.js";
 import { ensureUniqueLidarrArtistIdIndex } from "./lidarr-artist-index.js";
 import { syncDownloadFolderPath } from "../services/downloadFolderConfig.js";
 import { ensureDataDir } from "./data-dir.js";
@@ -39,6 +40,7 @@ const createTransaction = db.transaction.bind(db);
 db.transaction = (fn) => createTransaction(fn).immediate;
 db.pragma("cache_size = -24000");
 db.pragma("mmap_size = 25165824");
+db.pragma("temp_store = MEMORY");
 
 function tryAddColumn(sql) {
   try {
@@ -933,6 +935,7 @@ db.exec(`
       WHERE id = substr(settings.key, length('activeDownloadAttempt:') + 1) AND status != 'done'
     );
 `);
+initializeLibraryGenreIndex(db);
 initializeLibrarySearchIndex(db);
 
 const existingDownloadFolder = db

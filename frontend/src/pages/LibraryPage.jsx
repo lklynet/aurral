@@ -461,6 +461,7 @@ function LibraryPage() {
   const { playQueue, currentTrack, isPlaying, isLoading, togglePlayPause, matchesSource } =
     useAudioQueue();
   const [query, setQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState("name");
   const [sortDirection, setSortDirection] = useState("asc");
   const [viewMode, setViewMode] = useState("grid");
@@ -616,10 +617,24 @@ function LibraryPage() {
   const previewQuery = forcePreview ? "?preview=1" : "";
   const sectionLabel = LIBRARY_VIEWS.find((view) => view.id === section)?.label || "Library";
   const librarySource = useMemo(() => ({ type: "native-library", id: "library" }), []);
-  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const normalizedQuery = query.trim() ? searchQuery : "";
+
+  useEffect(() => {
+    const nextQuery = query.trim().toLocaleLowerCase();
+    if (!nextQuery) {
+      setSearchQuery("");
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      setSearchQuery(nextQuery);
+      setPageIndex(1);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   useEffect(() => {
     setQuery("");
+    setSearchQuery("");
     setSortMode("name");
     setSortDirection("asc");
     setViewMode(section === "tracks" || section === "genres" ? "list" : "grid");
@@ -2932,7 +2947,7 @@ function LibraryPage() {
                     type="search"
                     value={query}
                     onChange={(event) => {
-                      setPageIndex(1);
+                      if (!event.target.value.trim()) setPageIndex(1);
                       setQuery(event.target.value);
                     }}
                     placeholder={"Search " + sectionLabel.toLocaleLowerCase()}

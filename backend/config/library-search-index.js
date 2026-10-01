@@ -46,36 +46,24 @@ const genreMediaExists = (kind, sourceFilter, availableOnly) => {
 
 export function computeLibraryGenreStats(db, { sourceFilter = null, availableOnly = false } = {}) {
   const entities = [
-    ["artists", "library_artists AS artist", "artist.id", "artist.metadata_json"],
+    ["artists", "library_artists AS artist", "artist.id"],
     [
       "albums",
       "library_albums AS album JOIN library_artists AS artist ON artist.id = album.artist_id",
       "album.id",
-      "album.metadata_json",
     ],
-    ["tracks", "library_tracks AS track", "track.id", "track.metadata_json"],
+    ["tracks", "library_tracks AS track", "track.id"],
   ];
   const parameters = [];
-  const rows = entities.map(([kind, from, id, metadata]) => {
+  const rows = entities.map(([kind, from, id]) => {
     const media = genreMediaExists(kind, sourceFilter, availableOnly);
     parameters.push(...media.parameters);
-    const validMetadata = `CASE WHEN json_valid(${metadata}) THEN ${metadata} ELSE '{}' END`;
     return `SELECT '${kind}' AS entity_kind, ${id} AS entity_id,
-      TRIM(CAST(genre_value.value AS TEXT)) AS name
+      genres.name
       FROM ${from}
-      JOIN json_each(json_array(
-        json_extract(${validMetadata}, '$.genres'),
-        json_extract(${validMetadata}, '$.genre'),
-        json_extract(${validMetadata}, '$.common.genre'),
-        json_extract(${validMetadata}, '$.tags.genre')
-      )) AS selected_genre
-      JOIN json_each(CASE
-        WHEN selected_genre.type IN ('array', 'object') THEN selected_genre.value
-        ELSE json_array(selected_genre.value)
-      END) AS genre_value
-      WHERE selected_genre.value IS NOT NULL
-        AND TRIM(CAST(genre_value.value AS TEXT)) <> ''
-        AND ${media.sql}`;
+      JOIN library_entity_genres AS genres
+        ON genres.entity_kind = '${kind}' AND genres.entity_id = ${id}
+      WHERE ${media.sql}`;
   });
   return db.prepare(
     `WITH genre_entities AS (

@@ -139,7 +139,7 @@ function artistProjectionSummary(artists) {
   return { itemCount: artists.length };
 }
 
-function seedDatabase(database, { tracks, tracksPerAlbum }) {
+function seedDatabase(database, { tracks, tracksPerAlbum, musicRoot }) {
   const albumCount = Math.ceil(tracks / tracksPerAlbum);
   const artistCount = Math.ceil(albumCount / 10);
   const metadata = JSON.stringify({ genres: ["Rock"], tags: ["benchmark"] });
@@ -228,7 +228,7 @@ function seedDatabase(database, { tracks, tracksPerAlbum }) {
       insertFile.run(
         trackId,
         albumId,
-        `/synthetic/Benchmark Artist ${String(artistIndex).padStart(5, "0")}/${
+        `${musicRoot}/Benchmark Artist ${String(artistIndex).padStart(5, "0")}/${
           `Benchmark Album ${String(albumIndex).padStart(6, "0")}`
         }/${String((trackIndex % tracksPerAlbum) + 1).padStart(2, "0")}.flac`,
         now,
@@ -579,7 +579,8 @@ async function main() {
       "../backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js"
     );
     const seedStarted = performance.now();
-    const seed = seedDatabase(database, options);
+    const musicRoot = path.join(dataDir, "music");
+    const seed = seedDatabase(database, { ...options, musicRoot });
     rebuildLibrarySearchIndex();
     queryService.rebuildCanonicalGenreStats();
     const benchmarkUser = seedSubsonicFavorite(database);
@@ -595,6 +596,15 @@ async function main() {
       ["tracks", { kind: "tracks", page: 1, pageSize: 100 }],
       ["tracks-search", { kind: "tracks", page: 1, pageSize: 100, query: String(options.tracks - 1) }],
       ["genres", { kind: "genres", page: 1, pageSize: 100 }],
+      ["tracks-playable", { kind: "tracks", page: 1, pageSize: 100, availableOnly: true }],
+      ["tracks-newest", { kind: "tracks", page: 1, pageSize: 100, availableOnly: true, sort: "newest" }],
+      ["tracks-by-artist", { kind: "tracks", page: 1, pageSize: 100, availableOnly: true, sort: "artist" }],
+      ["tracks-genre", { kind: "tracks", page: 1, pageSize: 100, availableOnly: true, genre: "Rock" }],
+      ["tracks-broad-search", { kind: "tracks", page: 1, pageSize: 100, availableOnly: true, query: "Benchmark" }],
+      ["tracks-short-search", { kind: "tracks", page: 1, pageSize: 100, availableOnly: true, query: "Be" }],
+      ["tracks-last-page", {
+        kind: "tracks", page: Math.ceil(options.tracks / 100), pageSize: 100, availableOnly: true,
+      }],
     ];
     const pages = {};
     for (const [name, pageOptions] of pageCases) {
@@ -624,6 +634,27 @@ async function main() {
       pageSize: 100,
     });
     const artistProjectionPlanDetails = artistProjectionPlan.map((row) => String(row.detail || ""));
+    const { getAvailableLibraryMediaPaths } = await import("../backend/services/libraryMediaStore.js");
+    const { scanConfiguredLibrary } = await import("../backend/services/libraryIndexService.js");
+    const target = database.prepare("SELECT path FROM library_media_files ORDER BY id DESC LIMIT 1").get().path;
+    const scopedPathSamples = [];
+    const targetedScanSamples = [];
+    for (let index = 0; index < options.repeats; index += 1) {
+      const sample = measure(() => getAvailableLibraryMediaPaths("lidarr", [target]).size);
+      scopedPathSamples.push(sample);
+      const scanStarted = performance.now();
+      const result = await scanConfiguredLibrary({
+        musicRoot,
+        lidarrRoots: [musicRoot],
+        lidarrClient: { isEnabled: () => true },
+        changedPaths: [target],
+      });
+      targetedScanSamples.push({ elapsedMs: performance.now() - scanStarted, changed: result.lidarr.changed });
+      database.prepare("UPDATE library_media_files SET available = 1 WHERE path = ?").run(target);
+    }
+    queryService.rebuildCanonicalGenreStats();
+    const scopedPaths = summarizeSamples(scopedPathSamples);
+    const targetedScans = summarizeSamples(targetedScanSamples);
     database.close();
     database = null;
     const subsonicReads = {};
@@ -730,6 +761,10 @@ async function main() {
           /SEARCH album USING (?:COVERING )?INDEX .*artist_id/.test(detail),
         )
         && !artistProjectionPlanDetails.some((detail) => detail === "SCAN album"),
+      scopedPathsBounded: scopedPathSamples.every((sample) => sample.value === 1)
+        && isFiniteBelow(scopedPaths.p95Ms, 20),
+      targetedScanUnder750ms: targetedScanSamples.every((sample) => sample.changed)
+        && isFiniteBelow(targetedScans.p95Ms, 750),
     };
     output = {
       benchmark: "aurral-library",
@@ -742,6 +777,8 @@ async function main() {
       seed: { ...seed, elapsedMs: seedElapsedMs },
       subsonicReads,
       pages,
+      scopedPaths,
+      targetedScans,
       artistProjectionPlan,
       budgets: {
         targets: {
@@ -751,6 +788,8 @@ async function main() {
           starredMedianMs: 75,
           responseBytes: 2 * 1024 * 1024,
           requestRssDeltaBytes: 64 * 1024 * 1024,
+          scopedPathP95Ms: 20,
+          targetedScanP95Ms: 750,
         },
         measuredQueryChecks,
         targetedReadChecks,

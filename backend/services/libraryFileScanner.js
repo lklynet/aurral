@@ -399,7 +399,7 @@ export async function scanMusicRoot({
       if (requestedFiles) {
         const scopes = reconcilePaths || requestedFiles;
         const matchesReconcileScope = createPathScopeMatcher(scopes);
-        const missingIndexedPaths = [...getAvailableLibraryMediaPaths(source)].filter((filePath) =>
+        const missingIndexedPaths = [...getAvailableLibraryMediaPaths(source, scopes)].filter((filePath) =>
           matchesReconcileScope(filePath) &&
           !seenPaths.has(filePath) &&
           !failedPaths.has(filePath),

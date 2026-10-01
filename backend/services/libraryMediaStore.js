@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import path from "node:path";
 import { db, dbHelpers } from "../config/db-sqlite.js";
 import { invalidateCanonicalLibraryCache } from "./libraryQueryService.js";
 import {
@@ -699,12 +700,29 @@ export function upsertLibraryMediaFile({
   return getLibraryMediaFileStmt.get(fileSource, filePath);
 }
 
-export function getAvailableLibraryMediaPaths(source) {
-  return new Set(
-    db.prepare(
+export function getAvailableLibraryMediaPaths(source, scopes = null) {
+  const mediaSource = normalizeText(source);
+  const paths = new Set();
+  if (!Array.isArray(scopes)) {
+    for (const row of db.prepare(
       "SELECT path FROM library_media_files WHERE source = ? AND available = 1",
-    ).all(normalizeText(source)).map((row) => row.path),
+    ).iterate(mediaSource)) paths.add(row.path);
+    return paths;
+  }
+  const readScope = db.prepare(
+    `SELECT path FROM library_media_files WHERE source = ? AND available = 1 AND path = ?
+     UNION ALL
+     SELECT path FROM library_media_files
+     WHERE source = ? AND available = 1 AND path >= ? AND path < ?`,
   );
+  for (const scope of new Set(scopes.map((scope) => path.resolve(scope)))) {
+    const prefix = scope.endsWith(path.sep) ? scope : `${scope}${path.sep}`;
+    const upperBound = `${prefix.slice(0, -1)}${String.fromCharCode(path.sep.charCodeAt(0) + 1)}`;
+    for (const row of readScope.iterate(mediaSource, scope, mediaSource, prefix, upperBound)) {
+      paths.add(row.path);
+    }
+  }
+  return paths;
 }
 
 export function getLibraryMediaPaths(source) {
