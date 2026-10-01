@@ -119,15 +119,26 @@ test.before(async () => {
         title: "Canonical Album",
         foreignAlbumId: "22222222-2222-4222-8222-222222222222",
       }],
-      getTracksByAlbumId: async () => [{
-        id: 3,
-        albumId: 2,
-        title: "Canonical Song",
-        trackNumber: 1,
-        duration: 10,
-        foreignRecordingId: "33333333-3333-4333-8333-333333333333",
-        trackFileId: 4,
-      }],
+      getTracksByAlbumId: async () => [
+        {
+          id: 3,
+          albumId: 2,
+          title: "Canonical Song",
+          trackNumber: 1,
+          duration: 10,
+          foreignRecordingId: "33333333-3333-4333-8333-333333333333",
+          trackFileId: 4,
+        },
+        {
+          id: 5,
+          albumId: 2,
+          title: "Unavailable Canonical Song",
+          trackNumber: 2,
+          duration: 10,
+          foreignRecordingId: "66666666-6666-4666-8666-666666666666",
+          trackFileId: 0,
+        },
+      ],
       getTrackFilesByAlbumId: async () => [{
         id: 4,
         path: fixturePath,
@@ -464,6 +475,10 @@ test("accepts empty library searches from OpenSubsonic clients", async () => {
     songCount: 20,
   }));
   assert.equal(search.searchResult3.song[0].title, "Canonical Song");
+  assert.equal(
+    search.searchResult3.song.some((song) => song.title === "Unavailable Canonical Song"),
+    false,
+  );
 
   const quotedSearch = responseJson(await request("search3", {
     query: '""',

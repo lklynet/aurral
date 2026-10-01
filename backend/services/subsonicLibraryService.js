@@ -391,7 +391,7 @@ export function getLibraryLastModified(user) {
 
 export function listArtists(user) {
   const library = { starredAt: starredAtFor(user) };
-  return getCanonicalArtistPage({ source: "all", availableOnly: false }).artists.map(
+  return getCanonicalArtistPage({ source: "all", availableOnly: true }).artists.map(
     (artist) => toArtistSummary(artist, library),
   );
 }
@@ -401,7 +401,7 @@ export function getArtist(value, user) {
   if (parsed?.kind !== "artist") return null;
   const library = indexFocusedLibrary(getCanonicalLibraryForArtistReferences({
     source: "all",
-    availableOnly: false,
+    availableOnly: true,
     references: [parsed.key],
   }), starredAtFor(user));
   const artist = findCanonical(library, parsed);
@@ -413,7 +413,7 @@ export function getAlbum(value, user) {
   if (parsed?.kind !== "album") return null;
   const library = indexFocusedLibrary(getCanonicalLibraryForAlbumReferences({
     source: "all",
-    availableOnly: false,
+    availableOnly: true,
     references: [parsed.key],
   }), starredAtFor(user));
   const album = findCanonical(library, parsed);
@@ -436,7 +436,7 @@ export function getSong(value, user) {
   const library = indexFocusedLibrary(getCanonicalTrack({
     trackId: parsed.key,
     source: "all",
-    availableOnly: false,
+    availableOnly: true,
   }), starredAtFor(user));
   const track = findCanonical(library, parsed);
   return track?.identityKey ? toSong(library, track) : null;
@@ -473,7 +473,7 @@ export function searchLibrary(query, options = {}, user = null) {
   const needle = String(query || "").trim().toLocaleLowerCase();
   const result = getCanonicalSearchPage({
     source: "all",
-    availableOnly: false,
+    availableOnly: true,
     query: needle,
     artistLimit: normalizeLimit(options.artistCount),
     artistOffset: normalizeOffset(options.artistOffset),
@@ -511,7 +511,7 @@ export function getAlbumList(options = {}, user = null) {
   if (type === "starred") return [];
   const library = indexFocusedLibrary(getCanonicalAlbumPage({
     source: "all",
-    availableOnly: false,
+    availableOnly: true,
     type,
     genre: options.genre,
     fromYear: options.fromYear,
@@ -527,7 +527,7 @@ export function getSongsByGenre(genre, options = {}, user = null) {
   if (!target) return [];
   const library = indexFocusedLibrary(getCanonicalTrackPage({
     source: "all",
-    availableOnly: false,
+    availableOnly: true,
     genre: target,
     offset: normalizeOffset(options.offset),
     limit: normalizeLimit(options.count),
@@ -536,7 +536,7 @@ export function getSongsByGenre(genre, options = {}, user = null) {
 }
 
 export function getGenres() {
-  return getCanonicalGenres({ source: "all", availableOnly: false });
+  return getCanonicalGenres({ source: "all", availableOnly: true });
 }
 
 const getStarsStmt = db.prepare(
@@ -1085,6 +1085,7 @@ export function getStarredWithLibrary(user) {
   });
   const canonicalRows = rows.filter((row) => ["artist", "album", "song"].includes(row.entity_kind));
   const library = getCanonicalLibrary({
+    availableOnly: true,
     favoriteKeys: canonicalRows.map((row) => ({ kind: row.entity_kind, key: row.entity_key })),
   });
   return { starred: buildStarred(indexFocusedLibrary(library, starredAtFromRows(rows)), rows, user), library };
@@ -1103,7 +1104,7 @@ export function getTopSongs(artist, options = {}, user = null) {
   if (!target) return [];
   const library = indexFocusedLibrary(getCanonicalTopTracks({
     source: "all",
-    availableOnly: false,
+    availableOnly: true,
     artist: target,
     limit: normalizeLimit(options.count),
   }), starredAtFor(user));

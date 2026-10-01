@@ -253,7 +253,8 @@ test("favorite reads preserve shared relationships, media filters, and user isol
     assert.equal(result.starred.song[0].starred, new Date(1000).toISOString());
     assert.equal(result.library.tracks.length, 1);
     assert.equal(result.library.tracks[0].albums.length, 2);
-    assert.equal(result.library.tracks[0].files.length, 2);
+    assert.equal(result.library.tracks[0].files.length, 1);
+    assert.equal(result.library.tracks[0].files[0].available, true);
     assert.deepEqual(subsonic.getStarred(second), { artist: [], album: [], song: [] });
     assert.deepEqual(subsonic.getStarredWithLibrary(second).library.tracks, []);
 
