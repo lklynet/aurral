@@ -11,9 +11,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate:
+  checks:
+    name: Lint, build, and start
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -27,50 +28,13 @@ jobs:
         with:
           node-version: 26.9.0
           cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Ensure validation runtime dependencies
-        run: |
-          if command -v fc-match >/dev/null 2>&1 && command -v ffmpeg >/dev/null 2>&1 && [ "$(fc-match -f '%{family}' 'Noto Color Emoji')" = "Noto Color Emoji" ]; then
-            exit 0
-          fi
-
-          apt_prefix=()
-          if [ "$(id -u)" -ne 0 ]; then
-            if command -v sudo >/dev/null 2>&1; then
-              apt_prefix=(sudo)
-            else
-              echo "ffmpeg and fontconfig are required for validation."
-              echo "Install ffmpeg, fontconfig, fonts-dejavu-core, and fonts-noto-color-emoji on the runner."
-              exit 1
-            fi
-          fi
-
-          chrome_sources=()
-          restore_chrome_sources() {
-            for source in "${chrome_sources[@]}"; do
-              "${apt_prefix[@]}" mv "$source.disabled" "$source"
-            done
-          }
-          trap restore_chrome_sources EXIT
-
-          while IFS= read -r source; do
-            "${apt_prefix[@]}" mv "$source" "$source.disabled"
-            chrome_sources+=("$source")
-          done < <(grep -ril 'dl.google.com/linux/chrome' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true)
-
-          "${apt_prefix[@]}" apt-get update
-          "${apt_prefix[@]}" apt-get install -y ffmpeg fontconfig fonts-dejavu-core fonts-noto-color-emoji
+          cache-dependency-path: |
+            package-lock.json
+            docs/package-lock.json
 
       - run: npm ci
 
       - run: npm run lint
-
-      - name: Run test suite
-        run: npm test
-
-      - name: Run integration tests
-        run: npm run test:integration
 
       - name: Build app
         run: npm run build
@@ -119,6 +83,102 @@ jobs:
             kill "$(cat /tmp/aurral.pid)" || true
           fi
 
+  unit-tests:
+    name: Unit tests (${{ matrix.shard }}/2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26.9.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # The runner's Ubuntu mirror sometimes serves packages at under 100 kB/s.
+      - name: Restore validation package cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/apt-archives
+          key: validation-apt-${{ runner.arch }}-${{ env.ImageOS }}-${{ env.ImageVersion }}
+          restore-keys: |
+            validation-apt-${{ runner.arch }}-${{ env.ImageOS }}-
+
+      - name: Ensure validation runtime dependencies
+        run: |
+          mkdir -p ~/apt-archives
+
+          if command -v fc-match >/dev/null 2>&1 && command -v ffmpeg >/dev/null 2>&1 && [ "$(fc-match -f '%{family}' 'Noto Color Emoji')" = "Noto Color Emoji" ]; then
+            exit 0
+          fi
+
+          apt_prefix=()
+          if [ "$(id -u)" -ne 0 ]; then
+            if command -v sudo >/dev/null 2>&1; then
+              apt_prefix=(sudo)
+            else
+              echo "ffmpeg and fontconfig are required for validation."
+              echo "Install ffmpeg, fontconfig, fonts-dejavu-core, and fonts-noto-color-emoji on the runner."
+              exit 1
+            fi
+          fi
+
+          chrome_sources=()
+          restore_chrome_sources() {
+            for source in "${chrome_sources[@]}"; do
+              "${apt_prefix[@]}" mv "$source.disabled" "$source"
+            done
+          }
+          trap restore_chrome_sources EXIT
+
+          while IFS= read -r source; do
+            "${apt_prefix[@]}" mv "$source" "$source.disabled"
+            chrome_sources+=("$source")
+          done < <(grep -ril 'dl.google.com/linux/chrome' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true)
+
+          find ~/apt-archives -name '*.deb' -exec "${apt_prefix[@]}" cp -t /var/cache/apt/archives/ {} +
+          "${apt_prefix[@]}" apt-get update
+          "${apt_prefix[@]}" apt-get install -y --no-install-recommends -o APT::Keep-Downloaded-Packages=true \
+            ffmpeg fontconfig fonts-dejavu-core fonts-noto-color-emoji
+          find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp -t ~/apt-archives/ {} +
+
+      - run: npm ci
+
+      - name: Run test suite
+        run: npm test
+        env:
+          NODE_OPTIONS: --test-shard=${{ matrix.shard }}/2
+
+  integration-tests:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26.9.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+
+      - name: Run integration tests
+        run: npm run test:integration
+
+  container:
+    name: Production container
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Check Dockerfile
         run: docker build --check .
 
@@ -162,3 +222,21 @@ jobs:
             'fetch("http://127.0.0.1:3001/api/health").then((r) => r.json()).then((body) => { if (body.matcher?.available !== true || !body.matcher?.policyVersion) { console.error("native matcher not available in health payload:", JSON.stringify(body.matcher)); process.exit(1); } })'
 
           docker logs "$CONTAINER"
+
+  # Branch protection requires this check name.
+  validate:
+    if: ${{ !cancelled() }}
+    needs: [checks, unit-tests, integration-tests, container]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every validation job
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            if [ "$result" != "success" ]; then
+              echo "Validation jobs did not all succeed: $RESULTS"
+              exit 1
+            fi
+          done
