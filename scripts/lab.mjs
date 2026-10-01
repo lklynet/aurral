@@ -451,6 +451,42 @@ async function reset(lab) {
   });
 }
 
+const TEST_OPTIONS = {
+  "--grep": [/./, "a pattern"],
+  "-g": [/./, "a pattern"],
+  "--grep-invert": [/./, "a pattern"],
+  "--repeat-each": [/^[1-9]\d*$/, "a positive number"],
+  "--timeout": [/^[1-9]\d*$/, "a positive number of milliseconds"],
+  "--max-failures": [/^[1-9]\d*$/, "a positive number"],
+  "--trace": [/^(on|off|retain-on-failure)$/, "on, off, or retain-on-failure"],
+  "--retries": [/^[0-2]$/, "0, 1, or 2"],
+};
+
+function testArguments(args) {
+  const options = [];
+  const specs = [];
+  let retries = process.env.CI ? 2 : 0;
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (!arg.startsWith("-")) {
+      specs.push(arg);
+      continue;
+    }
+    const [name, inline] = arg.split(/=(.*)/s);
+    const rule = TEST_OPTIONS[name];
+    if (!rule) {
+      throw new LabError(
+        `Unsupported test option "${name}". Lab runs support ${Object.keys(TEST_OPTIONS).join(", ")}, and spec files in tests/e2e.`,
+      );
+    }
+    const value = inline ?? args[++index];
+    if (value === undefined || !rule[0].test(value)) throw new LabError(`${name} needs ${rule[1]}.`);
+    if (name === "--retries") retries = Number(value);
+    else options.push(...(inline === undefined ? [name, value] : [arg]));
+  }
+  return { options, retries, specs: specArguments(specs) };
+}
+
 function specArguments(args) {
   const specs = args.length
     ? args
@@ -540,9 +576,11 @@ async function runScenario(lab, run) {
           throw new LabError(`The test Lab for ${run.spec} did not start. Its logs are in ${relative(lab.resultsDir)}.`);
         }
         console.error(`Running ${run.spec} in Lab "${lab.id}"...`);
-        const ran = await compose(lab, ["run", "--rm", "--no-deps", "-T", "runner", "--retries=0", run.spec], {
-          output: "stdout",
-        });
+        const ran = await compose(
+          lab,
+          ["run", "--rm", "--no-deps", "-T", "runner", ...run.options, "--retries=0", run.spec],
+          { output: "stdout" },
+        );
         exitCode = ran.code;
       } finally {
         const logs = await compose(lab, ["logs", "--no-color", "--timestamps", "aurral"], { cleanup: true });
@@ -572,26 +610,39 @@ async function runScenario(lab, run) {
 }
 
 async function runTests(args) {
-  const specs = specArguments(args);
+  const { options, retries, specs } = testArguments(args);
   await requireDocker();
   await removeStaleRuns();
   const token = randomBytes(3).toString("hex");
   const runId = `${new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15)}-${token}`;
   const runDir = path.join(repoRoot, "test-results", "lab", runId);
-  const labs = specs.map((spec, index) =>
-    labFor(`run-${token}-${index + 1}`, { resultsDir: path.join(runDir, path.basename(spec, ".spec.js"), "1") }),
-  );
+  const buildLab = labFor(`run-${token}-1`);
   console.error("Building Aurral and the browser runner...");
-  const built = await compose(labs[0], ["build", "aurral", "runner"], { output: "stderr" });
+  const built = await compose(buildLab, ["build", "aurral", "runner"], { output: "stderr" });
   if (built.code !== 0) throw new LabError("Building the test images failed. The build output is above.");
-  const run = { id: runId, attempt: 1, source: await sourceInfo(), images: await imageIds(labs[0]) };
+  const run = { id: runId, options, source: await sourceInfo(), images: await imageIds(buildLab) };
 
   const outcomes = [];
   for (const [index, spec] of specs.entries()) {
-    outcomes.push({ spec, exitCode: await runScenario(labs[index], { ...run, spec }) });
+    const scenario = path.basename(spec, ".spec.js");
+    let attempt = 0;
+    let exitCode = 1;
+    while (exitCode !== 0 && attempt <= retries) {
+      attempt++;
+      const lab = labFor(`run-${token}-${index + 1}${attempt > 1 ? `-a${attempt}` : ""}`, {
+        resultsDir: path.join(runDir, scenario, String(attempt)),
+      });
+      exitCode = await runScenario(lab, { ...run, spec, attempt });
+      if (exitCode !== 0 && attempt <= retries) console.error(`${spec} failed on attempt ${attempt}. Retrying in a fresh Lab.`);
+    }
+    outcomes.push({ spec, exitCode, attempt });
   }
   console.error("");
-  for (const { spec, exitCode } of outcomes) console.error(`${exitCode === 0 ? "passed" : "FAILED"}  ${spec}`);
+  for (const { spec, exitCode, attempt } of outcomes) {
+    if (exitCode !== 0) console.error(`FAILED  ${spec} (${attempt} ${attempt === 1 ? "attempt" : "attempts"})`);
+    else if (attempt > 1) console.error(`flaky   ${spec} (passed on attempt ${attempt})`);
+    else console.error(`passed  ${spec}`);
+  }
   console.error(`Evidence: ${relative(runDir)}`);
   if (outcomes.some(({ exitCode }) => exitCode !== 0)) process.exitCode = 1;
 }

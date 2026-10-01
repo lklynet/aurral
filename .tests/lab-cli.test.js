@@ -78,7 +78,9 @@ if (args[0] === "version") {
     }
     fs.writeFileSync(path.join(process.env.AURRAL_LAB_RESULTS_DIR, "results.json"), "{}");
     console.log("ran " + args.at(-1));
-    process.exit(state.runnerExit?.[args.at(-1)] ?? 0);
+    const exits = [].concat(state.runnerExit?.[args.at(-1)] ?? 0);
+    const attempt = Number(path.basename(process.env.AURRAL_LAB_RESULTS_DIR));
+    process.exit(exits[Math.min(attempt, exits.length) - 1]);
   } else if (command === "run") {
     if (state.failSeed) fail("seed failed");
     fs.writeFileSync(path.join(process.env.AURRAL_LAB_SEED_DIR, "aurral.db"), "seeded");
@@ -547,9 +549,65 @@ test("test rejects unsupported arguments before starting anything", async (t) =>
   const lab = await createLabSandbox(t);
   const worktree = lab.worktree("aurral");
 
-  for (const args of [["--update-snapshots"], ["../outside.spec.js"], ["tests/e2e/missing.spec.js"], ["backend/server.js"]]) {
+  for (const args of [
+    ["--update-snapshots"],
+    ["../outside.spec.js"],
+    ["tests/e2e/missing.spec.js"],
+    ["backend/server.js"],
+    ["--output", "/tmp/elsewhere"],
+    ["--reporter=dot"],
+    ["--workers", "4"],
+    ["--grep"],
+    ["--repeat-each", "many"],
+    ["--retries", "5"],
+  ]) {
     const result = await lab.run(worktree, ["test", ...args]);
     assert.notEqual(result.code, 0, args.join(" "));
   }
   assert.equal(lab.calls().length, 0);
+});
+
+test("supported Playwright options reach the runner without replacing Lab controls", async (t) => {
+  const lab = await createLabSandbox(t);
+  const worktree = lab.worktree("aurral");
+
+  const result = await lab.run(worktree, [
+    "test", "--grep", "sign in; rm -rf /", "--repeat-each=2", "tests/e2e/smoke.spec.js", "--timeout", "45000",
+  ]);
+  assert.equal(result.code, 0, result.stderr);
+  const [run] = runnerCalls(lab);
+  const forwarded = run.args.slice(run.args.indexOf("runner") + 1);
+  assert.deepEqual(forwarded, [
+    "--grep", "sign in; rm -rf /", "--repeat-each=2", "--timeout", "45000", "--retries=0", "tests/e2e/smoke.spec.js",
+  ]);
+});
+
+test("a failed spec retries in a fresh Lab with separate evidence when retries are allowed", async (t) => {
+  const lab = await createLabSandbox(t);
+  const worktree = lab.worktree("aurral");
+  lab.updateState({ runnerExit: { "tests/e2e/smoke.spec.js": [1, 0], "tests/e2e/settings.spec.js": 1 } });
+
+  const local = await lab.run(worktree, ["test", "tests/e2e/smoke.spec.js"]);
+  assert.equal(local.code, 1);
+  assert.equal(runnerCalls(lab).length, 1);
+
+  const ci = await lab.run(worktree, ["test", "tests/e2e/smoke.spec.js", "tests/e2e/settings.spec.js"], { env: { CI: "true" } });
+  assert.equal(ci.code, 1);
+  const runs = runnerCalls(lab).slice(1);
+  const dirs = runs.map(({ env }) => env.AURRAL_LAB_RESULTS_DIR);
+  assert.deepEqual(dirs.map((dir) => dir.split("/").slice(-2).join("/")), [
+    "smoke/1",
+    "smoke/2",
+    "settings/1",
+    "settings/2",
+    "settings/3",
+  ]);
+  assert.equal(new Set(runs.map(projectOf)).size, 5);
+  for (const run of runs) assert.deepEqual(commandsFor(lab, projectOf(run)), ["seed", "up", "runner", "logs", "down"]);
+  assert.ok(dirs.every((dir) => existsSync(join(dir, "manifest.json"))));
+  assert.match(ci.stderr, /smoke\.spec\.js.*attempt 2/);
+  assert.match(ci.stderr, /settings\.spec\.js.*3 attempts/);
+
+  const retried = await lab.run(worktree, ["test", "--retries", "1", "tests/e2e/smoke.spec.js"]);
+  assert.equal(retried.code, 0, retried.stderr);
 });
