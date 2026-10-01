@@ -80,6 +80,12 @@ export default defineConfig(({ mode }) => {
           xfwd: true,
           secure: false,
         },
+        "/sso/google/callback": {
+          target: apiTarget,
+          changeOrigin: true,
+          xfwd: true,
+          secure: false,
+        },
         "/ws": {
           target: apiTarget.replace(/^http/, "ws"),
           ws: true,
