@@ -124,7 +124,8 @@ export function prefilterCandidates({ request, source, candidates = [] } = {}) {
     matcherCandidate(candidate, trackRequest, null)));
   return normalized.map((candidate, index) => {
     const contradictions = assessment.candidates[index].contradictions;
-    const rejected = candidate.provider?.locked === true || contradictions.length > 0;
+    const rejected = candidate.provider?.locked === true || contradictions.length > 0
+      || assessment.candidates[index].titleSimilarity < MATCH_POLICY.minTitleSimilarity;
     return {
       candidateIndex: index,
       candidate,

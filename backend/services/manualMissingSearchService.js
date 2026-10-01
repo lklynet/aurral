@@ -1,3 +1,4 @@
+import { registerDownloadProviderWork, clearDownloadProviderWork } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
@@ -97,11 +98,16 @@ function toStoredCandidate(source, raw) {
   return { raw };
 }
 
-async function searchSlskd(query) {
+async function searchSlskd(query, workContext) {
   const results = await getDownloadClient("slskd").searchQuery(query, {
     fileLimit: 5000,
     responseLimit: 250,
     timeoutMs: 120000,
+    emptyTimeoutMs: 120000,
+    gracePeriodMs: 0,
+    cleanupTimeoutMs: 20000,
+    onSearchCreated: (id) => registerDownloadProviderWork({ ...workContext, provider: "slskd-search", workId: id }),
+    onSearchSettled: (id) => clearDownloadProviderWork({ provider: "slskd-search", workId: id }),
   });
   return results.filter((entry) => {
     if (entry?.locked === true) return false;
@@ -109,8 +115,8 @@ async function searchSlskd(query) {
   });
 }
 
-async function searchSource(source, query) {
-  if (source === "slskd") return searchSlskd(query);
+async function searchSource(source, query, workContext) {
+  if (source === "slskd") return searchSlskd(query, workContext);
   if (source === "deemix") {
     return (await getDownloadClient("deemix").search(query, { limit: 50 }))
       .filter((entry) => entry?.readable !== false);
@@ -150,7 +156,7 @@ export async function createManualMissingSearch({
   if (!sourceOption) throw new Error("That download client is not currently available");
   const query = buildQuery(job);
   if (!query) throw new Error("This track has no searchable artist or title");
-  const rawResults = (await searchSource(sourceOption.source, query)).slice(0, MAX_RESULTS);
+  const rawResults = (await searchSource(sourceOption.source, query, { jobId: job.id, playlistId })).slice(0, MAX_RESULTS);
   return storeManualMissingSearch({
     jobId: job.id,
     actorId,
