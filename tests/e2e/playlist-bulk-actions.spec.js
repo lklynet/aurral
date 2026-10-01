@@ -13,7 +13,7 @@ test("one bulk request reports partial completion against its original playlist"
   const status = { flows: [], sharedPlaylists: [source, target], worker: {}, capabilities: { unavailableSources: {} } };
   const submissions = [];
   let resultReads = 0;
-  await page.routeWebSocket("**/ws", () => {});
+  await page.routeWebSocket(/\/ws(?:\?|$)/, () => {});
   await page.route("**/api/playlists/status", (route) => route.fulfill({ json: status }));
   await page.route("**/api/playlists/jobs/*", (route) => route.fulfill({ json: route.request().url().endsWith(source.id) ? tracks : [] }));
   await page.route("**/track-moves", async (route) => {

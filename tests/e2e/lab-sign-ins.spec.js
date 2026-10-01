@@ -2,11 +2,8 @@ import { expect, test } from "@playwright/test";
 
 test.skip(!process.env.AURRAL_LAB_PUBLIC_TLS, "These journeys need an Aurral Lab's simulated public services");
 
-async function signIn(page) {
+async function openApp(page) {
   await page.goto("/");
-  await page.getByLabel("Username").fill(process.env.AUTH_USER);
-  await page.getByLabel("Password").fill(process.env.AUTH_PASSWORD);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByLabel("Primary navigation")).toBeVisible();
 }
 
@@ -16,18 +13,22 @@ const currentUser = (page) =>
     return (await response.json()).user;
   });
 
-test("SSO sign-in creates a member account through the identity provider", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Sign in with SSO" }).click();
-  await page.getByRole("link", { name: "Continue as Lab SSO Member" }).click();
-  await expect(page.getByLabel("Primary navigation")).toBeVisible();
-  const user = await currentUser(page);
-  expect(user.username).toBe("lab-sso-member");
-  expect(user.role).toBe("user");
+test.describe("signed out", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test("SSO sign-in creates a member account through the identity provider", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Sign in with SSO" }).click();
+    await page.getByRole("link", { name: "Continue as Lab SSO Member" }).click();
+    await expect(page.getByLabel("Primary navigation")).toBeVisible();
+    const user = await currentUser(page);
+    expect(user.username).toBe("lab-sso-member");
+    expect(user.role).toBe("user");
+  });
 });
 
 test("Spotify reconnects through its sign-in pages and lists every playlist", async ({ page }) => {
-  await signIn(page);
+  await openApp(page);
   await page.goto("/playlists");
   await page.getByRole("button", { name: "Create playlist" }).click();
   await page.getByRole("menuitem", { name: "Import playlist" }).click();
@@ -45,7 +46,7 @@ test("Spotify reconnects through its sign-in pages and lists every playlist", as
 });
 
 test("Last.fm relinks through its authorization page", async ({ page }) => {
-  await signIn(page);
+  await openApp(page);
   await page.goto("/settings/playback");
   const linked = page.getByRole("switch", { name: "Last.fm — lab-listener" });
   const unlinked = page.getByRole("switch", { name: "Last.fm", exact: true });
