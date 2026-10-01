@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { once } from "node:events";
+import { Worker } from "node:worker_threads";
 
 import {
   setupIsolatedBackend,
@@ -57,6 +59,34 @@ test("removing and readding a canonical membership renews its incarnation", () =
   assert.notEqual(readded.tracks[0].membershipId, first);
 });
 
+
+test("playlist changes wait for another process's write instead of failing as locked", async () => {
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Busy Database", tracks: [] });
+  const writer = new Worker(`
+    const { parentPort, workerData } = require("node:worker_threads");
+    const Database = require("better-sqlite3");
+    const db = new Database(workerData.dbPath);
+    db.exec("BEGIN IMMEDIATE");
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('otherProcess', '1')").run();
+    parentPort.postMessage("locked");
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    db.exec("COMMIT");
+    db.close();
+  `, { eval: true, workerData: { dbPath: isolatedState.dbPath } });
+  const exited = once(writer, "exit");
+  await once(writer, "message");
+
+  flowPlaylistConfig.appendSharedPlaylistTracks(playlist.id, [{ artistName: "Artist", trackName: "Track" }]);
+  await exited;
+
+  invalidateFlowPlaylistConfigCache();
+  dbOps.invalidateSettingsCache();
+  assert.deepEqual(
+    flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks.map((track) => track.trackName),
+    ["Track"],
+  );
+  assert.equal(db.prepare("SELECT value FROM settings WHERE key = 'otherProcess'").get()?.value, "1");
+});
 
 test("creates flows with normalized scheduling and enforces unique names", () => {
   const flow = flowPlaylistConfig.createFlow({
