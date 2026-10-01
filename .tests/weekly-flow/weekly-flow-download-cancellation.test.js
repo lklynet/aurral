@@ -79,6 +79,21 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
+test("provider cancellation retry retains IDs from pipeline rows removed on the first attempt", async (t) => {
+  const { getDownloadClient } = await importFromRepo("backend/services/download/downloadClientSettings.js");
+  const client = getDownloadClient("deemix");
+  t.mock.method(client, "isConfigured", () => true);
+  let succeeds = false;
+  const remove = t.mock.method(client, "removeFromQueue", async () => succeeds);
+  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, "cancellation-retry");
+  honkerModule.getPipelineQueue().enqueue({ jobId, playlistId: "cancellation-retry", playlistGeneration: 0, source: "deemix", phase: "poll", queueUuid: "provider-id-only-in-payload" });
+  await assert.rejects(cancellationServiceModule.cancelDownloadWorkForJobs([downloadTracker.getJob(jobId)]));
+  succeeds = true;
+  await cancellationServiceModule.cancelDownloadWorkForJobs([downloadTracker.getJob(jobId)]);
+  assert.equal(remove.mock.callCount(), 2);
+  assert.equal(remove.mock.calls[1].arguments[0], "provider-id-only-in-payload");
+});
+
 test("playlist deletion invalidates queued payloads across recreation", () => {
   const playlistId = "shared-playlist";
   const firstGeneration = activatePlaylistDownloadGeneration(playlistId);
@@ -459,7 +474,7 @@ test("failed provider cancellation keeps durable slskd work for a later retry", 
   }
 });
 
-test("failed shared-playlist replacement restores newly cancelled jobs", async () => {
+test("failed shared-playlist replacement preserves membership and leaves a recoverable job", async () => {
   const playlistId = "shared-playlist-edit-provider-retry";
   const track = { artistName: "Retry Artist", trackName: "Retry Song" };
   const originalSettings = dbOps.getSettings();
@@ -502,8 +517,9 @@ test("failed shared-playlist replacement restores newly cancelled jobs", async (
     );
 
     assert.equal(flowPlaylistConfig.getSharedPlaylist(playlistId)?.tracks.length, 1);
-    assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
+    assert.equal(downloadTracker.getJob(jobId)?.status, "failed");
     assert.equal(isDownloadJobCancelled(jobId), false);
+    downloadTracker.setPending(jobId);
     assert.equal(downloadTracker.getNextPending()?.id, jobId);
     assert.equal(
       listDownloadProviderWork({ jobIds: [jobId], provider: "slskd-search" }).length,
@@ -515,7 +531,7 @@ test("failed shared-playlist replacement restores newly cancelled jobs", async (
   }
 });
 
-test("failed shared-playlist deletion keeps the playlist downloading", async () => {
+test("failed shared-playlist deletion preserves membership and leaves a recoverable job", async () => {
   const playlistId = "shared-playlist-delete-provider-retry";
   const originalSettings = dbOps.getSettings();
   const mock = await createMockHttpServer((request, response) => {
@@ -561,6 +577,9 @@ test("failed shared-playlist deletion keeps the playlist downloading", async () 
       isPipelinePayloadActive({ jobId, playlistId, playlistGeneration: generation }),
       true,
     );
+    assert.equal(downloadTracker.getJob(jobId).status, "failed");
+    assert.equal(downloadTracker.getNextPending(), null);
+    assert.ok(downloadTracker.setPending(jobId, null));
     assert.equal(downloadTracker.getNextPending()?.id, jobId);
   } finally {
     dbOps.updateSettings(originalSettings);

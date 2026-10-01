@@ -1,3 +1,4 @@
+import { PlaylistBulkActionsProvider } from "./pages/flows/usePlaylistBulkActions.js";
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from "react-router";
 import { useState, useEffect, Suspense, lazy, useRef } from "react";
 import Layout from "./components/Layout";
@@ -213,6 +214,7 @@ function AppContent() {
           element={
             <DiscoverRecentProvider>
               <ProtectedRoute>
+                <PlaylistBulkActionsProvider>
                 <Layout
                   headerActions={
                     <UpdateIndicator
@@ -342,6 +344,7 @@ function AppContent() {
                     </Routes>
                   </Suspense>
                 </Layout>
+                </PlaylistBulkActionsProvider>
               </ProtectedRoute>
             </DiscoverRecentProvider>
           }

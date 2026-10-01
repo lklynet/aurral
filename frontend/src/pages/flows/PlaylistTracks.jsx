@@ -1,3 +1,4 @@
+import { usePlaylistBulkActions } from "./usePlaylistBulkActions.js";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
@@ -54,6 +55,7 @@ export function PlaylistTracks({
   recordHistory = true,
 }) {
   const isFlow = kind === "flow";
+  const bulkActions = usePlaylistBulkActions();
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const [reSearchingTrackIds, setReSearchingTrackIds] = useState({});
@@ -161,10 +163,10 @@ export function PlaylistTracks({
     }
   };
 
-  const copyOrMoveTracks = async (selected, target, { move }) => {
+  const copyTracks = async (selected, target) => {
     const payloads = selected.map((track) => normalizeSharedTrackEntry(track)).filter(Boolean);
     if (payloads.length === 0) {
-      showError(move ? "No valid tracks to move" : "No valid tracks to add");
+      showError("No valid tracks to add");
       return;
     }
     setBulkActionLoading(true);
@@ -180,40 +182,19 @@ export function PlaylistTracks({
           sharedPlaylists.find((playlist) => playlist.id === target?.playlistId)?.name ||
           "playlist";
       }
-      if (move) {
-        for (const track of selected) {
-          if (track?.id) await deleteSharedPlaylistTrack(entry.id, track.id);
-        }
-      }
-      showSuccess(
-        `${move ? "Moved" : "Added"} ${trackCountLabel(payloads.length)} to ${targetName}`,
-      );
+      showSuccess(`Added ${trackCountLabel(payloads.length)} to ${targetName}`);
       await refreshAll();
     } catch (err) {
-      showError(errorMessage(err, move ? "Failed to move tracks" : "Failed to add tracks"));
+      showError(errorMessage(err, "Failed to add tracks"));
     } finally {
       setBulkActionLoading(false);
     }
   };
 
-  const handleBulkDelete = async (selected) => {
-    setBulkActionLoading(true);
-    let removed = 0;
-    const failed = [];
-    for (const track of selected) {
-      if (!track?.id) continue;
-      try {
-        await deleteSharedPlaylistTrack(entry.id, track.id);
-        removed += 1;
-      } catch {
-        failed.push(track.trackName || "unknown");
-      }
-    }
-    if (removed > 0) showSuccess(`Removal queued for ${trackCountLabel(removed)}`);
-    if (failed.length > 0) showError(`Failed to remove: ${failed.join(", ")}`);
-    setBulkActionLoading(false);
-    await refreshAll();
-  };
+  const moveTracks = (selected, target) => bulkActions.moveTracks(entry, selected,
+    target?.mode === "new"
+      ? { ...target, name: String(target.name || "").trim() || getNextPlaylistName("Playlist") }
+      : target);
 
   const handleDeleteTrack = async (track) => {
     const jobId = track?.id;
@@ -419,13 +400,13 @@ export function PlaylistTracks({
         activityHint={activityHint}
         emptyMessage={emptyMessage}
         allowBulkEdit={!isFlow}
-        bulkActionLoading={bulkActionLoading}
-        onBulkDelete={isFlow ? undefined : handleBulkDelete}
+        bulkActionLoading={bulkActionLoading || bulkActions.bulkLoading}
+        onBulkDelete={isFlow ? undefined : (selected) => bulkActions.removeTracks(entry, selected)}
         onBulkAddToPlaylist={
-          isFlow ? undefined : (selected, target) => copyOrMoveTracks(selected, target, { move: false })
+          isFlow ? undefined : (selected, target) => copyTracks(selected, target)
         }
         onBulkMoveToPlaylist={
-          isFlow ? undefined : (selected, target) => copyOrMoveTracks(selected, target, { move: true })
+          isFlow ? undefined : (selected, target) => moveTracks(selected, target)
         }
         playlists={sharedPlaylists}
         playlistSavingKey={playlistMenuSavingKey}

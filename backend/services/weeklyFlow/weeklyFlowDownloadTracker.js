@@ -21,6 +21,8 @@ import { logger } from "../logger.js";
 import { recordAlbumGrabQueued, recordAlbumTrackState } from "../albumGrabActivity.js";
 import {
   cancelDownloadJob,
+  beginDownloadAttempt,
+  setActiveDownloadAttemptId,
   cancelDownloadJobs,
   getPlaylistDownloadGeneration,
   isDownloadJobCancelled,
@@ -278,6 +280,7 @@ function buildPipelinePayload(job) {
   );
   return {
     phase: "search",
+    downloadAttemptId: beginDownloadAttempt(job.id),
     jobId: job.id,
     playlistId,
     playlistGeneration: job.playlistGeneration,
@@ -333,6 +336,10 @@ export class WeeklyFlowDownloadTracker {
     const jobsRevision = persistedRevisionStmt.get()?.revision;
     if (jobsRevision === this.externalJobsRevision) return;
     this.externalJobsRevision = jobsRevision;
+    this.reconcileCommittedJobs();
+  }
+
+  reconcileCommittedJobs(redirects = []) {
     const previousJobs = this.jobs;
     const previousRetryIds = this.pendingRetrySet;
     const nextJobs = new Map();
@@ -347,6 +354,10 @@ export class WeeklyFlowDownloadTracker {
     this.slskdDispatched = new Set(
       [...this.slskdDispatched].filter((id) => nextJobs.has(id)),
     );
+    for (const { fromJobId, toJobId, dispatched } of redirects) {
+      this.slskdDispatched.delete(fromJobId);
+      if (dispatched && nextJobs.has(toJobId)) this.slskdDispatched.add(toJobId);
+    }
     this._rebuildStatsByPlaylistType();
     for (const id of previousRetryIds) {
       const job = nextJobs.get(id);
@@ -356,6 +367,8 @@ export class WeeklyFlowDownloadTracker {
       this.pendingRetryQueue.push(id);
     }
     this._touchRevision();
+    this.externalDataVersion = dataVersionStmt.get()?.data_version;
+    this.externalJobsRevision = persistedRevisionStmt.get()?.revision;
   }
 
   _touchRevision() {
@@ -477,7 +490,10 @@ export class WeeklyFlowDownloadTracker {
         .sort((left, right) => Number(left.trackNumber || 0) - Number(right.trackNumber || 0)
           || String(left.id).localeCompare(String(right.id)))
         .map((entry) => entry.id)];
-      for (const sibling of siblings) this.setAlbumGrabAttempted(sibling.id, true);
+      for (const sibling of siblings) {
+        setActiveDownloadAttemptId(sibling.id, payload.downloadAttemptId);
+        this.setAlbumGrabAttempted(sibling.id, true);
+      }
       for (const sibling of siblings) {
         if (sibling.id !== jobId) this.setDownloading(sibling.id);
       }

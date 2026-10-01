@@ -30,6 +30,7 @@ import {
 } from "../../../services/playlistDownloadUtils.js";
 import { finalizePipelineJobSuccess } from "../../../services/pipelineHelpers.js";
 import {
+  getActiveDownloadAttemptId,
   withPipelineCommitLock,
 } from "../../../services/weeklyFlow/weeklyFlowDownloadCancellation.js";
 import path from "path";
@@ -402,6 +403,7 @@ export function registerJobs(router) {
     if (!job || job.status !== "blocked") {
       return res.status(404).json({ error: "Blocked job not found" });
     }
+    const downloadAttemptId = getActiveDownloadAttemptId(job.id);
     const sourcePath = String(job.stagingPath || "").trim();
     if (!sourcePath) {
       return res.status(400).json({ error: "Staging file path missing" });
@@ -428,6 +430,7 @@ export function registerJobs(router) {
           jobId: job.id,
           playlistId,
           playlistGeneration: job.playlistGeneration,
+          downloadAttemptId,
         },
         async () => {
           const committedPath = await commitImportToPlaylistLibrary(sourcePath, finalPath);

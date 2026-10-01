@@ -229,3 +229,12 @@ export const syncSharedPlaylistImport = (playlistId) =>
 
 export const getFlowLidarrImportListUrl = (flowId) =>
   getData(`/playlists/flows/${encodeURIComponent(flowId)}/lidarr-import-list`);
+
+export const removeSharedPlaylistTracks = (playlistId, jobIds) =>
+  postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/track-removals`, { jobIds });
+
+export const moveSharedPlaylistTracks = (playlistId, jobIds, target) =>
+  postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/track-moves`, { jobIds, target });
+
+export const getSharedPlaylistOperation = (playlistId, operationId, options) =>
+  getData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/operations/${encodeURIComponent(operationId)}`, options);

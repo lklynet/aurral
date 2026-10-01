@@ -827,6 +827,21 @@ db.exec(`
       UPDATE playlist_download_jobs_revision SET revision = revision + 1 WHERE id = 1;
     END;
 `);
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS playlist_download_attempt_delete
+    AFTER DELETE ON playlist_download_jobs BEGIN
+      DELETE FROM settings WHERE key = 'activeDownloadAttempt:' || OLD.id;
+    END;
+  CREATE TRIGGER IF NOT EXISTS playlist_download_attempt_complete
+    AFTER UPDATE OF status ON playlist_download_jobs WHEN NEW.status = 'done' BEGIN
+      DELETE FROM settings WHERE key = 'activeDownloadAttempt:' || NEW.id;
+    END;
+  DELETE FROM settings WHERE key LIKE 'activeDownloadAttempt:%'
+    AND NOT EXISTS (
+      SELECT 1 FROM playlist_download_jobs
+      WHERE id = substr(settings.key, length('activeDownloadAttempt:') + 1) AND status != 'done'
+    );
+`);
 initializeLibrarySearchIndex(db);
 
 const existingDownloadFolder = db

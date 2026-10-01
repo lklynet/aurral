@@ -3,6 +3,7 @@ import { getWeeklyFlowOperationQueue } from "../honkerDb.js";
 import { processWeeklyFlowOperation } from "./weeklyFlowOperations.js";
 import { setWeeklyFlowOperationWorkerState } from "./weeklyFlowOperationQueue.js";
 import { logger } from "../logger.js";
+import { getBulkOperation, saveBulkOperation } from "./weeklyFlowBulkOperationStore.js";
 
 const PERMANENT_ERROR_CODES = new Set([
   "SHARED_PLAYLIST_NAME_CONFLICT",
@@ -32,7 +33,15 @@ function syncWorkerState() {
 const worker = createHonkerWorker({
   name: "weekly-flow-operation",
   getQueue: getWeeklyFlowOperationQueue,
-  processJob: processWeeklyFlowOperation,
+  async processJob(payload, job) {
+    if (payload.kind !== "shared-playlist-bulk") return processWeeklyFlowOperation(payload);
+    const record = getBulkOperation(job.id);
+    if (!record || ["completed", "failed"].includes(record.state)) return;
+    saveBulkOperation({ ...record, state: "running", updatedAt: Date.now() });
+    await processWeeklyFlowOperation({ ...payload, operationId: job.id });
+    const applied = getBulkOperation(job.id);
+    saveBulkOperation({ ...applied, state: "completed", updatedAt: Date.now() });
+  },
   idlePollS: 5,
   retryDelayS: 60,
   shouldLogFailure: (job) => !isPlaylistImport(job.payload),
@@ -56,9 +65,22 @@ const worker = createHonkerWorker({
       });
     }
   },
-  onJobError() {
+  onJobError(error, job) {
     currentLabel = null;
     syncWorkerState();
+    if (job.payload.kind === "shared-playlist-bulk") {
+      const record = getBulkOperation(job.id);
+      if (record && record.state !== "completed") {
+        saveBulkOperation({ ...record, state: "queued", message: error.message, updatedAt: Date.now() });
+      }
+    }
+  },
+  onFinalFailure(job, error) {
+    if (job.payload.kind !== "shared-playlist-bulk") return;
+    const record = getBulkOperation(job.id);
+    if (record && record.state !== "completed") {
+      saveBulkOperation({ ...record, state: "failed", message: error.message, updatedAt: Date.now() });
+    }
   },
   resolveRetry(error, job) {
     const message = error?.message || String(error);

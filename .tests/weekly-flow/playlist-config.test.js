@@ -25,13 +25,14 @@ const [
     "backend/routes/weeklyFlow/handlers/flows.js",
     "backend/services/libraryScanWorker.js",
   );
-const { flowPlaylistConfig, normalizeImportSource, tracksShareMembership } = playlistConfigModule;
+const { flowPlaylistConfig, normalizeImportSource, tracksShareMembership, invalidateFlowPlaylistConfigCache } = playlistConfigModule;
 const { validateFlowPayload } = flowHandlerUtils;
 const { registerFlows } = flowHandlersModule;
 const { clearScheduledLibraryScan, getScheduledLibraryScanJobId } = libraryScanWorker;
 
 test.beforeEach(() => {
   resetDatabase(db);
+  invalidateFlowPlaylistConfigCache();
   dbOps.updateSettings({
     integrations: {},
     onboardingComplete: true,
@@ -43,6 +44,19 @@ test.beforeEach(() => {
 test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
+
+test("removing and readding a canonical membership renews its incarnation", () => {
+  const track = { artistName: "Artist", trackName: "Track", canonicalJobId: "canonical-job" };
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Membership", tracks: [track] });
+  const first = playlist.tracks[0].membershipId;
+  assert.ok(first);
+  const renamed = flowPlaylistConfig.updateSharedPlaylist(playlist.id, { name: "Renamed" });
+  assert.equal(renamed.tracks[0].membershipId, first);
+  flowPlaylistConfig.updateSharedPlaylist(playlist.id, { tracks: [] });
+  const readded = flowPlaylistConfig.appendSharedPlaylistTracks(playlist.id, [{ ...track, membershipId: first }]);
+  assert.notEqual(readded.tracks[0].membershipId, first);
+});
+
 
 test("creates flows with normalized scheduling and enforces unique names", () => {
   const flow = flowPlaylistConfig.createFlow({
@@ -517,7 +531,9 @@ test("preserves rich track metadata when shared playlists are updated", () => {
     ],
   });
 
-  assert.deepEqual(updated?.tracks?.[0], {
+  const { membershipId, ...metadata } = updated.tracks[0];
+  assert.ok(membershipId);
+  assert.deepEqual(metadata, {
     artistName: "Artist B",
     trackName: "Song B",
     albumName: "Album B",

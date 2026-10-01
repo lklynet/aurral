@@ -209,6 +209,19 @@ A `playlist` wrapper:
 - When Aurral reuses an existing file, it marks the track as complete at once.
 - The playlist keeps the imported track order, in Aurral and in Navidrome.
 
+## Moving and removing selected tracks
+
+Select tracks in a static playlist, then choose **Move** or **Remove selected**.
+Aurral queues the selection as one action and reports completion separately.
+If some tracks fail, their source memberships remain available. Review the result
+before retrying. A move saves the destination membership before removing the source.
+If the destination already contains a separate membership for a selected track,
+Aurral keeps the source and reports that track as failed.
+
+Removing a track or its original playlist preserves downloads and files that
+another static playlist still uses. If a request times out, check the playlists
+before submitting it again because the action may already be queued.
+
 ## Download retries and failures
 
 A static playlist handles failed downloads differently from a flow:
