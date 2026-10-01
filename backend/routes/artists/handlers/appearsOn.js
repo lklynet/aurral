@@ -24,7 +24,7 @@ export function registerAppearsOn(router) {
     });
 
     try {
-      let availableItems = await musicbrainzGetArtistAppearsOnReleaseGroups(mbid, [], {
+      let availableItems = await musicbrainzGetArtistAppearsOnReleaseGroups(mbid, {
         limit: 250,
         offset: 0,
         signal: controller.signal,
@@ -33,7 +33,7 @@ export function registerAppearsOn(router) {
       let unseenItems = availableItems.filter((item) => !excludeIds.has(item.id));
       const cachedScanState = getMusicbrainzAppearsOnScanState(mbid);
       if (unseenItems.length < limit && !cachedScanState.complete) {
-        availableItems = await musicbrainzGetArtistAppearsOnReleaseGroups(mbid, [], {
+        availableItems = await musicbrainzGetArtistAppearsOnReleaseGroups(mbid, {
           limit: 250,
           offset: 0,
           signal: controller.signal,
@@ -47,9 +47,7 @@ export function registerAppearsOn(router) {
       return res.json({
         items,
         offset,
-        hasMore:
-          unseenItems.length > items.length ||
-          (!scanState.complete && scanState.nextOffset < 1000),
+        hasMore: unseenItems.length > items.length || !scanState.complete,
       });
     } catch (error) {
       if (controller.signal.aborted || error?.name === "AbortError") return;

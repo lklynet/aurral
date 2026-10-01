@@ -134,8 +134,8 @@ export function registerStream(router) {
             metadataArtistPromise,
             namePromise,
             releaseGroupsPromise,
-          ]).then(async ([metadataArtist, name, releaseGroups]) => {
-            if (!isClientConnected()) return null;
+          ]).then(([metadataArtist, name, releaseGroups]) => {
+            if (!isClientConnected()) return;
             const releaseGroupsWithCovers = attachCachedCoverUrls(releaseGroups, 12);
             sendArtist({
               ...buildArtistBase(name, resolvedMbid, metadataArtist),
@@ -143,28 +143,24 @@ export function registerStream(router) {
               "release-group-count": releaseGroupsWithCovers.length,
               "release-count": releaseGroupsWithCovers.length,
             });
-            return { metadataArtist, name, releaseGroups: releaseGroupsWithCovers };
           });
           tasks.push(discographyTask);
 
-          const appearsOnTask = discographyTask.then(async (ctx) => {
-            if (!ctx || !isClientConnected()) return [];
-            const appearsOnReleaseGroups = await musicbrainzGetArtistAppearsOnReleaseGroups(
-              resolvedMbid,
-              ctx.releaseGroups,
-              { limit: appearsOnLimit, signal: requestController.signal },
-            ).catch(() => []);
-            if (!isClientConnected()) return appearsOnReleaseGroups;
-            const appearsOnWithCovers = attachCachedCoverUrls(
-              appearsOnReleaseGroups,
-              appearsOnLimit || 6,
-            );
-            sendArtist({
-              id: resolvedMbid,
-              "appears-on-release-groups": appearsOnWithCovers,
+          const appearsOnTask = musicbrainzGetArtistAppearsOnReleaseGroups(resolvedMbid, {
+            limit: appearsOnLimit,
+            signal: requestController.signal,
+          })
+            .catch(() => [])
+            .then((appearsOnReleaseGroups) => {
+              if (!isClientConnected()) return;
+              sendArtist({
+                id: resolvedMbid,
+                "appears-on-release-groups": attachCachedCoverUrls(
+                  appearsOnReleaseGroups,
+                  appearsOnLimit || 6,
+                ),
+              });
             });
-            return appearsOnWithCovers;
-          });
           tasks.push(appearsOnTask);
 
         }

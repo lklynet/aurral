@@ -171,18 +171,18 @@ export function registerDetails(router) {
         const metadataArtist = coreOnly
           ? null
           : await getArtistByMbid(artistMbid).catch(() => null);
-        const releaseGroups = await musicbrainzGetArtistReleaseGroups(
-          artistMbid,
-          selectedReleaseTypes,
-          { includeTrackCounts: !appearsOnLimit },
-        );
-        const appearsOnReleaseGroups = coreOnly
-          ? []
-          : await musicbrainzGetArtistAppearsOnReleaseGroups(
-              artistMbid,
-              releaseGroups,
-              { limit: appearsOnLimit },
-            );
+        const [releaseGroups, appearsOnReleaseGroups] = await Promise.all([
+          musicbrainzGetArtistReleaseGroups(
+            artistMbid,
+            selectedReleaseTypes,
+            { includeTrackCounts: !appearsOnLimit },
+          ),
+          coreOnly
+            ? []
+            : musicbrainzGetArtistAppearsOnReleaseGroups(artistMbid, {
+                limit: appearsOnLimit,
+              }).catch(() => []),
+        ]);
         const tagPayload = coreOnly
           ? { tags: [], genres: [] }
           : await getArtistTagPayload(
@@ -222,18 +222,18 @@ export function registerDetails(router) {
         const tagPayload = coreOnly
           ? { tags: [], genres: [] }
           : await getArtistTagPayload(resolvedMbid, name, metadataArtist);
-        const releaseGroups = await musicbrainzGetArtistReleaseGroups(
-          resolvedMbid,
-          selectedReleaseTypes,
-          { includeTrackCounts: !appearsOnLimit },
-        );
-        const appearsOnReleaseGroups = coreOnly
-          ? []
-          : await musicbrainzGetArtistAppearsOnReleaseGroups(
-              resolvedMbid,
-              releaseGroups,
-              { limit: appearsOnLimit },
-            );
+        const [releaseGroups, appearsOnReleaseGroups] = await Promise.all([
+          musicbrainzGetArtistReleaseGroups(
+            resolvedMbid,
+            selectedReleaseTypes,
+            { includeTrackCounts: !appearsOnLimit },
+          ),
+          coreOnly
+            ? []
+            : musicbrainzGetArtistAppearsOnReleaseGroups(resolvedMbid, {
+                limit: appearsOnLimit,
+              }).catch(() => []),
+        ]);
         return {
           ...buildArtistBase(name, resolvedMbid, metadataArtist),
           tags: tagPayload.tags,

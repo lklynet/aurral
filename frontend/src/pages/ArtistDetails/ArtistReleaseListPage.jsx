@@ -439,11 +439,6 @@ function ArtistReleaseListPage({ mode = "releases" }) {
           <div className="artist-min-0">
             <h2 className="artist-release-card__title artist-truncate">{releaseGroup.title}</h2>
             <p className="artist-release-card__meta artist-truncate">{metaLabel}</p>
-            {isAppearsOn && releaseGroup._appearsOnTrack ? (
-              <p className="artist-release-card__meta artist-truncate">
-                {releaseGroup._appearsOnTrack}
-              </p>
-            ) : null}
           </div>
           <div className="artist-row-actions">
             {metric.label && (
@@ -526,11 +521,6 @@ function ArtistReleaseListPage({ mode = "releases" }) {
           </h2>
         </Tooltip>
         <p className="artist-release-card__meta artist-truncate">{metaLabel}</p>
-        {isAppearsOn && releaseGroup._appearsOnTrack ? (
-          <p className="artist-release-card__meta artist-truncate">
-            {releaseGroup._appearsOnTrack}
-          </p>
-        ) : null}
         {metric.label && (
           <p className="artist-release-card__metric">
             <Star className="artist-star-icon" />
