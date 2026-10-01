@@ -58,3 +58,19 @@ test("an escaped async context cannot reuse a released lease", async () => {
   await holder;
   assert.equal(await delayed, "late");
 });
+
+test("a provider stage that needs another playlist lock fails instead of running again", { timeout: 2000 }, async () => {
+  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Stage owner" });
+  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Stage track" }, playlist.id);
+  let runs = 0;
+  await assert.rejects(processOrchestratorJob({ jobId, playlistId: playlist.id, playlistGeneration: 0 }, {
+    async processPipelinePayload() {
+      runs++;
+      if (runs > 1) throw new Error("provider stage ran again");
+      return guards.withPlaylistMutationLock("unlocked-playlist", () => null);
+    },
+    async continuePipeline() {},
+  }), (error) => error.code === "DOWNLOAD_LOCK_SET_CHANGED");
+  assert.equal(runs, 1);
+});

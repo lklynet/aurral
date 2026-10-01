@@ -128,19 +128,12 @@ function payloadOwners(payload) {
 export async function withDownloadPayloadMutation(payload, operation) {
   while (true) {
     const owners = payloadOwners(resolveTransferredDownloadPayload(payload));
-    try {
-      return await withPlaylistMutationLock(owners, () => {
-        const current = resolveTransferredDownloadPayload(payload);
-        if (!payloadOwners(current).every((owner) => owners.includes(owner))) {
-          const error = new Error("Download ownership changed before mutation");
-          error.code = "DOWNLOAD_LOCK_SET_CHANGED";
-          throw error;
-        }
-        return operation(current);
-      });
-    } catch (error) {
-      if (error.code !== "DOWNLOAD_LOCK_SET_CHANGED" || mutationLeases.getStore()?.active) throw error;
-    }
+    const result = await withPlaylistMutationLock(owners, async () => {
+      const current = resolveTransferredDownloadPayload(payload);
+      if (!payloadOwners(current).every((owner) => owners.includes(owner))) return { retryLocks: true };
+      return { value: await operation(current) };
+    });
+    if (!result.retryLocks) return result.value;
   }
 }
 
