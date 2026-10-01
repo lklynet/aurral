@@ -1,9 +1,9 @@
 import { test, expect } from "@playwright/test";
+import { openApp, requireCredentials } from "./helpers.js";
+
+requireCredentials();
 
 test("Flow status uses the canonical channel and refreshes after reconnect", async ({ page }) => {
-  const username = process.env.AUTH_USER;
-  const password = process.env.AUTH_PASSWORD;
-  if (!username || !password) throw new Error("AUTH_USER and AUTH_PASSWORD are required");
   await page.addInitScript(() => {
     window.flowStatusCheck = { sockets: [], channels: [], reads: 0 };
     const NativeWebSocket = window.WebSocket;
@@ -24,8 +24,7 @@ test("Flow status uses the canonical channel and refreshes after reconnect", asy
       return nativeFetch.call(this, input, ...args);
     };
   });
-  await page.goto("/");
-  await expect(page.getByLabel("Primary navigation")).toBeVisible();
+  await openApp(page);
   await page.locator("a[href='/flows']").click();
   await expect.poll(() => page.evaluate(() => window.flowStatusCheck.channels)).toContain("playlists");
   expect(await page.evaluate(() => window.flowStatusCheck.channels)).not.toContain("weekly-flow");

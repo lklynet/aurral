@@ -17,8 +17,6 @@ import { queryClient } from "../queryClient.js";
 
 const AuthContext = createContext(null);
 
-export const shouldResetAuthAfterBootstrapFailure = (hasResolvedAuth) => !hasResolvedAuth;
-
 export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
@@ -93,7 +91,7 @@ export const AuthProvider = ({ children }) => {
       }
       return true;
     } catch {
-      if (shouldResetAuthAfterBootstrapFailure(authResolvedRef.current)) {
+      if (!authResolvedRef.current) {
         setBootstrap(null);
         setUser(null);
         setIsAuthenticated(false);

@@ -1,40 +1,8 @@
 import { createServer } from "node:http";
 import { expect, test } from "@playwright/test";
+import { apiRequest, openApp, requireCredentials } from "./helpers.js";
 
-const username = String(process.env.AUTH_USER || "").trim();
-const password = String(process.env.AUTH_PASSWORD || "");
-
-test.beforeAll(() => {
-  if (!username || !password) {
-    throw new Error("AUTH_USER and AUTH_PASSWORD are required for the full browser suite");
-  }
-});
-
-async function openApp(page) {
-  await page.goto("/");
-  await expect(page.getByLabel("Primary navigation")).toBeVisible();
-}
-
-async function apiRequest(page, path, { method = "GET", body } = {}) {
-  return page.evaluate(async ({ requestPath, requestMethod, requestBody }) => {
-    const token = localStorage.getItem("auth_token");
-    const headers = {
-      ...(requestBody === undefined ? {} : { "content-type": "application/json" }),
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    };
-    const response = await fetch(requestPath, {
-      method: requestMethod,
-      headers,
-      body: requestBody === undefined ? undefined : JSON.stringify(requestBody),
-      credentials: "include",
-    });
-    return {
-      ok: response.ok,
-      status: response.status,
-      body: await response.json().catch(() => null),
-    };
-  }, { requestPath: path, requestMethod: method, requestBody: body });
-}
+requireCredentials();
 
 async function startReceiver() {
   const requests = [];

@@ -1,45 +1,16 @@
 import { devices, expect, test } from "@playwright/test";
+import { openApp, requireCredentials } from "./helpers.js";
 
 const { defaultBrowserType: _defaultBrowserType, ...iPhone } = devices["iPhone 13"];
 test.use(iPhone);
 
-const username = String(process.env.AUTH_USER || "").trim();
-const password = String(process.env.AUTH_PASSWORD || "");
-
-const disposableArtist = { mbid: "f22942a1-6f70-4f48-866e-238cb2308fbd", name: "Aphex Twin" };
 const release = {
   artistMbid: "a74b1b7f-71a5-4011-9441-d0b5e4122711",
   mbid: "b1392450-e666-3926-a536-22c65f834433",
   artistName: "Radiohead",
 };
 
-test.beforeAll(() => {
-  if (!username || !password) {
-    throw new Error("AUTH_USER and AUTH_PASSWORD are required for the full browser suite");
-  }
-});
-
-async function openApp(page) {
-  await page.goto("/");
-  await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeVisible();
-}
-
-async function apiRequest(page, path, { method = "GET", body } = {}) {
-  return page.evaluate(async ({ requestPath, requestMethod, requestBody }) => {
-    const token = localStorage.getItem("auth_token");
-    const response = await fetch(requestPath, {
-      method: requestMethod,
-      headers: {
-        ...(requestBody === undefined ? {} : { "content-type": "application/json" }),
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-      },
-      body: requestBody === undefined ? undefined : JSON.stringify(requestBody),
-      credentials: "include",
-      cache: "no-store",
-    });
-    return { ok: response.ok, status: response.status, body: await response.json().catch(() => null) };
-  }, { requestPath: path, requestMethod: method, requestBody: body });
-}
+requireCredentials();
 
 function pageMetrics(page) {
   return page.evaluate(() => ({
@@ -56,7 +27,7 @@ function pageMetrics(page) {
 }
 
 test("the shell stays fixed, avoids input zoom, and reaches every section", async ({ page }) => {
-  await openApp(page);
+  await openApp(page, "Mobile navigation");
 
   for (const path of ["/", "/library", "/activity/queue", `/artist/${release.artistMbid}`, "/settings"]) {
     await page.goto(path);
@@ -87,7 +58,7 @@ test("the shell stays fixed, avoids input zoom, and reaches every section", asyn
 
 test("search results open an artist and the back control returns to them", async ({ page }) => {
   test.setTimeout(90_000);
-  await openApp(page);
+  await openApp(page, "Mobile navigation");
 
   const search = page.getByRole("textbox", { name: "Search music, artists, or tags" });
   await search.tap();
@@ -105,7 +76,7 @@ test("search results open an artist and the back control returns to them", async
 
 test("a release opened from a direct link names its artist", async ({ page }) => {
   test.setTimeout(90_000);
-  await openApp(page);
+  await openApp(page, "Mobile navigation");
   await page.goto(`/artist/${release.artistMbid}/release/${release.mbid}`);
   await expect(page.getByRole("main").getByRole("link", { name: release.artistName, exact: true }))
     .toBeVisible({ timeout: 30_000 });
@@ -113,7 +84,7 @@ test("a release opened from a direct link names its artist", async ({ page }) =>
 
 test("library playback moves between the mini player and the now playing sheet", async ({ page }) => {
   test.setTimeout(90_000);
-  await openApp(page);
+  await openApp(page, "Mobile navigation");
   await page.goto("/library/tracks");
   const titles = page.locator(".native-library-track__title");
   await expect(titles.first(), "Eden's playback fixture is missing from the library").toBeVisible({
@@ -142,7 +113,7 @@ test("library playback moves between the mini player and the now playing sheet",
 });
 
 test("item menus open as bottom sheets and a tap outside only closes them", async ({ page }) => {
-  await openApp(page);
+  await openApp(page, "Mobile navigation");
   await page.goto("/library/tracks");
   const firstTitle = page.locator(".native-library-track__title > span").first();
   await expect(firstTitle).toBeVisible({ timeout: 30_000 });
@@ -165,36 +136,4 @@ test("item menus open as bottom sheets and a tap outside only closes them", asyn
   await page.mouse.click(viewport.width / 2, viewport.height * 0.35);
   await expect(menu).toHaveCount(0);
   await expect(page).toHaveURL(/\/library\/tracks$/);
-});
-
-test("an artist is added to the library from its page", async ({ page }) => {
-  test.setTimeout(180_000);
-  await openApp(page);
-  const existing = await apiRequest(page, `/api/library/artists/${disposableArtist.mbid}`);
-  expect(existing.status, `${disposableArtist.name} must not already be in the candidate library`).toBe(404);
-
-  try {
-    await page.goto(`/artist/${disposableArtist.mbid}`);
-    await expect(page.getByRole("heading", { name: disposableArtist.name, level: 1 })).toBeVisible({
-      timeout: 30_000,
-    });
-    await page.locator(".artist-action-bar").getByRole("button", { name: "Add to…" }).tap();
-    await page.getByRole("menuitem", { name: "Add to Aurral" }).tap();
-    await expect(page.locator(".artist-action-bar").getByRole("button", { name: /In library/i })).toBeVisible({
-      timeout: 60_000,
-    });
-    await apiRequest(page, `/api/library/artists/${disposableArtist.mbid}`, {
-      method: "PUT",
-      body: { monitored: false, monitorOption: "none" },
-    });
-    const added = await apiRequest(page, `/api/library/artists/${disposableArtist.mbid}`);
-    expect(added.body?.managedBy).toBe("aurral");
-  } finally {
-    const leftover = await apiRequest(page, `/api/library/artists/${disposableArtist.mbid}`);
-    if (leftover.status !== 404 && leftover.body?.managedBy === "aurral") {
-      await apiRequest(page, `/api/library/artists/${disposableArtist.mbid}?deleteFiles=true`, {
-        method: "DELETE",
-      });
-    }
-  }
 });

@@ -103,6 +103,13 @@ jobs:
           fi
           exit 1
 
+      - name: Run browser checks with faked APIs
+        env:
+          AURRAL_BASE_URL: http://127.0.0.1:3001
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test tests/e2e/library-add-menu.spec.js tests/e2e/playlist-bulk-actions.spec.js
+
       - name: Print app log on failure
         if: failure()
         run: |

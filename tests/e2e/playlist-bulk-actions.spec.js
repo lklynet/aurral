@@ -1,10 +1,7 @@
 import { test, expect } from "@playwright/test";
+import { openApp } from "./helpers.js";
 
-async function openApp(page) {
-  if (!process.env.AUTH_USER || !process.env.AUTH_PASSWORD) throw new Error("AUTH_USER and AUTH_PASSWORD are required");
-  await page.goto("/");
-  await expect(page.getByLabel("Primary navigation")).toBeVisible();
-}
+test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
 test("one bulk request reports partial completion against its original playlist", async ({ page }) => {
   const tracks = [1, 2].map((id) => ({ id: `bulk-${id}`, artistName: "Disposable artist", trackName: `Bulk track ${id}`, status: "pending", playlistType: "bulk-source" }));
@@ -13,7 +10,12 @@ test("one bulk request reports partial completion against its original playlist"
   const status = { flows: [], sharedPlaylists: [source, target], worker: {}, capabilities: { unavailableSources: {} } };
   const submissions = [];
   let resultReads = 0;
-  await page.routeWebSocket("**/ws", () => {});
+  await page.route("**/api/**", (route) => (new URL(route.request().url()).pathname.startsWith("/api/")
+    ? route.fulfill({ json: [] })
+    : route.continue()));
+  await page.route("**/api/health/bootstrap", (route) =>
+    route.fulfill({ json: { authRequired: false, onboardingRequired: false } }));
+  await page.routeWebSocket("**/ws**", () => {});
   await page.route("**/api/playlists/status", (route) => route.fulfill({ json: status }));
   await page.route("**/api/playlists/jobs/*", (route) => route.fulfill({ json: route.request().url().endsWith(source.id) ? tracks : [] }));
   await page.route("**/track-moves", async (route) => {

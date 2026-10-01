@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
+
 const artist = {
   id: "library-menu-artist",
   name: "Menu Test Artist",

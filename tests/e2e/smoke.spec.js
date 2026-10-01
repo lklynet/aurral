@@ -1,14 +1,7 @@
-import { isIP } from "node:net";
 import { expect, test } from "@playwright/test";
+import { assertSafeCredentialTransport, credentials, requireCredentials } from "./helpers.js";
 
-const username = String(process.env.AUTH_USER || "").trim();
-const password = String(process.env.AUTH_PASSWORD || "");
-
-test.beforeAll(() => {
-  if (!username || !password) {
-    throw new Error("AUTH_USER and AUTH_PASSWORD are required for the full browser suite");
-  }
-});
+requireCredentials();
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -17,18 +10,10 @@ test("health, login, and authenticated navigation work", async ({ page }) => {
   expect(health.ok()).toBe(true);
 
   await page.goto("/");
-  const signInUrl = new URL(page.url());
-  const hostname = signInUrl.hostname.replace(/^\[|\]$/g, "");
-  const isLoopback =
-    hostname === "localhost" ||
-    hostname === "::1" ||
-    (isIP(hostname) === 4 && hostname.startsWith("127."));
-  if (signInUrl.protocol !== "https:" && !isLoopback) {
-    throw new Error("Refusing to submit test credentials over insecure transport");
-  }
+  assertSafeCredentialTransport(page.url());
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
-  await page.getByLabel("Username").fill(username);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Username").fill(credentials.username);
+  await page.getByLabel("Password").fill(credentials.password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
 
   await expect(page.getByLabel("Primary navigation")).toBeVisible();
