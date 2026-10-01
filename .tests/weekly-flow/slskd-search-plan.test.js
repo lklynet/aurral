@@ -91,3 +91,17 @@ test("hasSlskdSearchCandidates waits for a small floor of valid candidates", () 
     true,
   );
 });
+
+test("Soulseek early exit ignores denied files and blacklisted peers", () => {
+  const results = Array.from({ length: 3 }, (_, index) => ({
+    user: `peer-${index}`, file: "music/From Autumn to Ashes/The Fiction We Live/01 The After Dinner Payback.flac",
+    slots: 1, speed: 700000,
+  }));
+  const options = { deniedSourceKeys: new Set(results.map((entry) => `${entry.user}\0${entry.file}`.toLowerCase())) };
+  assert.equal(hasSlskdSearchCandidates(results, fataTrack, options), false);
+  assert.equal(hasSlskdSearchCandidates(results, fataTrack, {
+    isUserBlacklisted: () => true,
+  }), false);
+  const permitted = results.map((entry) => ({ ...entry, user: `allowed-${entry.user}` }));
+  assert.equal(hasSlskdSearchCandidates([...results, ...permitted], fataTrack, options), true);
+});

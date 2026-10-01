@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWebSocketChannel } from "../../hooks/useWebSocket";
 import { getFlowStatus } from "../../utils/api/endpoints/playlists.js";
@@ -12,17 +12,16 @@ export function usePlaylistStatusQuery({ enabled = true } = {}) {
     if (message?.type !== "playlist_status" || !message.status) return;
     queryClient.setQueryData(queryKeys.playlistStatus, message.status);
   }, []);
-  const { isConnected: playlistsSocketConnected } = useWebSocketChannel(
+  const { isConnected: socketConnected } = useWebSocketChannel(
     "playlists",
     applyStatusMessage,
     { enabled },
   );
-  const { isConnected: weeklyFlowSocketConnected } = useWebSocketChannel(
-    "weekly-flow",
-    applyStatusMessage,
-    { enabled },
-  );
-  const socketConnected = playlistsSocketConnected || weeklyFlowSocketConnected;
+  useEffect(() => {
+    if (enabled && socketConnected) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.playlistStatus });
+    }
+  }, [enabled, socketConnected]);
   const query = useQuery({
     queryKey: queryKeys.playlistStatus,
     queryFn: ({ signal }) => getFlowStatus({ signal, bypassCache: true }),
@@ -47,5 +46,5 @@ export function usePlaylistStatusQuery({ enabled = true } = {}) {
     }
   }, [query]);
 
-  return { ...query, fetchStatus };
+  return { ...query, fetchStatus, socketConnected };
 }

@@ -97,13 +97,16 @@ function ActivityPage() {
     },
   );
   const { isConnected: playlistsWsConnected } = useWebSocketChannel(
-    "weekly-flow",
+    "playlists",
     (message) => {
       if (message?.type === "playlist_status") refreshFromStatusEvent();
     },
     { enabled: hasFlowAccess },
   );
   const activityWsConnected = downloadsWsConnected && (!hasFlowAccess || playlistsWsConnected);
+  useEffect(() => {
+    if (activityWsConnected) refreshFromStatusEvent();
+  }, [activityWsConnected, refreshFromStatusEvent]);
   const activityQuery = useQuery({
     queryKey: activityQueryKey,
     queryFn: ({ signal }) => getRequests({ refresh: isListLikeView, signal }),
