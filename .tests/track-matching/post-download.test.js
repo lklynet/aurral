@@ -280,25 +280,49 @@ btest("strong tags with a conflicting duration require review, never automatic i
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
   assert.equal(outcome.blocked, true);
   assert.ok(outcome.contradictions.includes("duration"));
+  assert.equal(outcome.reason, "downloaded file is 362.0s longer than the requested track");
 });
 
-btest("strict mode refuses the relaxed duration window for verify-tier candidates", async () => {
-  const parsed = stubParsed({ title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories" }, 249.5);
-  const relaxed = await validateDownloadedTrackFile({
+btest("strict mode keeps the tight duration window unless original tags confirm title and artist", async () => {
+  const validate = (tags, durationSec, strict) => validateDownloadedTrackFile({
     request: GET_LUCKY,
     filePath: "/staging/Get Lucky.flac",
     source: "deemix",
-    options: { parseFile: stubParseFile(parsed), strict: false },
+    options: { parseFile: stubParseFile(stubParsed(tags, durationSec)), strict },
   });
-  assert.equal(relaxed.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  const strongTags = { title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories" };
+  const artistOnly = { artist: "Daft Punk", album: "Random Access Memories" };
 
-  const strict = await validateDownloadedTrackFile({
+  assert.equal((await validate(strongTags, 249.5, true)).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+
+  const beyondWindow = await validate(strongTags, 250.5, true);
+  assert.equal(beyondWindow.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
+  assert.equal(beyondWindow.reason, "downloaded file is 2.5s longer than the requested track");
+
+  assert.equal((await validate(artistOnly, 249.5, false)).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  const filenameTitle = await validate(artistOnly, 249.5, true);
+  assert.equal(filenameTitle.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
+  assert.equal(filenameTitle.reason, "downloaded file is 1.5s longer than the requested track");
+});
+
+test("review reasons name every missing piece of recording evidence", async () => {
+  const outcome = await validateDownloadedTrackFile({
     request: GET_LUCKY,
-    filePath: "/staging/Get Lucky.flac",
-    source: "deemix",
-    options: { parseFile: stubParseFile(parsed), strict: true },
+    filePath: "/staging/abc123.mp3",
+    source: "ytdlp",
+    options: {
+      parseFile: stubParseFile(stubParsed(
+        { title: "Get Lucky", artist: "DaftPunkVEVO" },
+        244,
+        { lossless: false, bitrate: 320000, container: "MPEG", codec: "MPEG 1 Layer 3" },
+      )),
+    },
   });
-  assert.equal(strict.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
+  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
+  assert.equal(
+    outcome.reason,
+    "downloaded file is 4.0s shorter than the requested track and has an artist tag that only partly matches the requested artist",
+  );
 });
 
 test("weak identity tags are conflicted regardless of duration", async () => {

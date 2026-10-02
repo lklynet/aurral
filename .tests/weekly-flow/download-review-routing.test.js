@@ -219,7 +219,7 @@ async function assertReviewable(jobId, filePath, source) {
   assert.equal(job.status, "blocked");
   assert.equal(job.downloadSource, source);
   assert.equal(job.stagingPath, filePath);
-  assert.match(job.error, /duration mismatch/);
+  assert.equal(job.error, "downloaded file is 99.0s shorter than the requested track");
   await access(filePath);
 }
 
@@ -353,7 +353,10 @@ btest("yt-dlp holds partially-matching identity for review", async () => {
   assert.equal(result, null);
   const job = downloadTracker.getJob(jobId);
   assert.equal(job.status, "blocked");
-  assert.match(job.error, /insufficient recording evidence/);
+  assert.equal(
+    job.error,
+    "downloaded file has a title that only partly matches the requested track",
+  );
   assert.equal(job.stagingPath, filePath);
   await access(filePath);
 });
