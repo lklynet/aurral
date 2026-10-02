@@ -21,25 +21,13 @@ import {
   getAccessibleSharedPlaylist,
 } from "./utils.js";
 import {
-  buildAurralTrackDestination,
-  resolvePlaylistRoot,
-} from "../../../services/playlistPaths.js";
-import {
-  commitImportToPlaylistLibrary,
-  joinUnderRoot,
-  sanitizePathPart,
-} from "../../../services/playlistDownloadUtils.js";
-import { finalizePipelineJobSuccess } from "../../../services/pipelineHelpers.js";
-import {
-  getActiveDownloadAttemptId,
-  withPipelineCommitLock,
-} from "../../../services/weeklyFlow/weeklyFlowDownloadCancellation.js";
+  approveBlockedJob,
+  denyBlockedJob,
+} from "../../../services/weeklyFlow/weeklyFlowBlockedJobReview.js";
 import path from "path";
-import fs from "fs/promises";
 import { invalidateRequestsCache } from "../../requests.js";
 import {
   decorateJobQuality,
-  classifyQualityJob,
   getQualityProfile,
   isAurralOwnedPath,
   queueQualityUpgrade,
@@ -65,6 +53,9 @@ const getAccessiblePlaylistIds = (user) => [
     ...flowPlaylistConfig.getSharedPlaylistsForUser(user),
   ].map((playlist) => playlist.id)),
 ];
+
+const BLOCKED_JOB_REVIEW_TIMEOUT_MS = 16 * 60 * 1000;
+const reviewBlockedJobLocally = { approveBlockedJob, denyBlockedJob };
 
 const getActorId = (user) => String(user?.id || user?.username || "").trim();
 
@@ -414,87 +405,31 @@ export function registerJobs(router) {
     res.json({ success: true, cleared: count });
   });
 
-  router.post("/jobs/:jobId/approve", async (req, res) => {
-    const job = downloadTracker.getJob(req.params.jobId);
-    if (!job || job.status !== "blocked") {
-      return res.status(404).json({ error: "Blocked job not found" });
-    }
-    const downloadAttemptId = getActiveDownloadAttemptId(job.id);
-    const sourcePath = String(job.stagingPath || "").trim();
-    if (!sourcePath) {
-      return res.status(400).json({ error: "Staging file path missing" });
-    }
+  const reviewBlockedJob = async (method, req, res) => {
     try {
-      await fs.access(sourcePath);
-    } catch {
-      return res.status(404).json({ error: "Staging file no longer exists" });
-    }
-    const playlistRoot = resolvePlaylistRoot();
-    const ext = path.extname(sourcePath).toLowerCase();
-    const albumDir = sanitizePathPart(job.albumName, "Unknown Album");
-    const artistDir = sanitizePathPart(job.artistName, "Unknown Artist");
-    const playlistId = job.playlistId || job.playlistType;
-    const destination = buildAurralTrackDestination(playlistId, artistDir, albumDir, {
-      ephemeral: Boolean(flowPlaylistConfig.getFlow(playlistId)),
-    });
-    const finalDir = joinUnderRoot(playlistRoot, destination);
-    const finalName = `${sanitizePathPart(job.trackName, "Unknown Track")}${ext || ".mp3"}`;
-    const finalPath = path.join(finalDir, finalName);
-    try {
-      const committed = await withPipelineCommitLock(
-        {
-          jobId: job.id,
-          playlistId,
-          playlistGeneration: job.playlistGeneration,
-          downloadAttemptId,
-        },
-        async () => {
-          const committedPath = await commitImportToPlaylistLibrary(sourcePath, finalPath);
-          await finalizePipelineJobSuccess({
-            downloadTracker,
-            job,
-            committedFinalPath: committedPath,
-            album: job.albumName,
-          });
-          return committedPath;
-        },
-      );
-      if (committed.cancelled) {
-        return res.status(409).json({ error: "Download job was removed" });
+      const outcome = isFlowOwnerProcess()
+        ? await reviewBlockedJobLocally[method](req.params.jobId)
+        : await requestFlowOwner(method, [req.params.jobId], {
+          timeoutMs: BLOCKED_JOB_REVIEW_TIMEOUT_MS,
+        });
+      if (outcome.status !== 200) {
+        return res.status(outcome.status).json({ error: outcome.error });
       }
-      await classifyQualityJob(downloadTracker.getJob(job.id));
       invalidateRequestsCache();
-      res.json({ success: true, path: committed.result });
+      return res.json({ success: true, ...(outcome.path ? { path: outcome.path } : {}) });
     } catch (error) {
-      res.status(500).json({ error: "Import failed", message: error.message });
+      return res.status(500).json({
+        error: method === "approveBlockedJob" ? "Import failed" : "Deny failed",
+        message: error.message,
+      });
     }
-  });
+  };
 
-  router.post("/jobs/:jobId/deny", async (req, res) => {
-    const job = downloadTracker.getJob(req.params.jobId);
-    if (!job || job.status !== "blocked") {
-      return res.status(404).json({ error: "Blocked job not found" });
-    }
-    const sourcePath = String(job.stagingPath || "").trim();
-    if (sourcePath) {
-      await fs.rm(sourcePath, { force: true }).catch(() => {});
-    }
-    const deniedSourceKey = ["usenet", "ytdlp", "deemix"].includes(job.downloadSource)
-      ? String(job.releaseGuid || "").trim()
-      : `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`;
-    if (job.downloadSource && deniedSourceKey) {
-      downloadTracker.recordDeniedSource(job.id, job.downloadSource, deniedSourceKey);
-    }
-    downloadTracker.setPending(job.id, "Denied by user", { asRetryCycle: false });
-    import("../../../services/aurralHistoryService.js")
-      .then(({ recordTrackJobFailed }) =>
-        recordTrackJobFailed(job, "Denied by user — will retry"),
-      )
-      .catch(() => {});
-    invalidateRequestsCache();
-    weeklyFlowWorker.wake();
-    res.json({ success: true });
-  });
+  router.post("/jobs/:jobId/approve", (req, res) =>
+    reviewBlockedJob("approveBlockedJob", req, res));
+
+  router.post("/jobs/:jobId/deny", (req, res) =>
+    reviewBlockedJob("denyBlockedJob", req, res));
 
   router.delete("/jobs/all", requireAdmin, async (req, res) => {
     try {

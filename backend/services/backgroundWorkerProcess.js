@@ -30,6 +30,7 @@ const FLOW_COMMANDS = new Set([
   "runQualityUpgradeChecks", "queueQualityUpgradeForJob", "clearPendingByPlaylist",
   "wakeOrStart", "syncSharedPlaylistImport",
   "enqueueManualMissingSelection", "enqueueManualReplacementSelection",
+  "approveBlockedJob", "denyBlockedJob",
 ]);
 
 async function handleFlowCommand(message) {
@@ -51,6 +52,9 @@ async function handleFlowCommand(message) {
     } else if (method === "enqueueManualReplacementSelection") {
       const { downloadTracker } = await import("./weeklyFlow/weeklyFlowDownloadTracker.js");
       result = downloadTracker.enqueueManualReplacementSelection(args[0], args[1]);
+    } else if (method === "approveBlockedJob" || method === "denyBlockedJob") {
+      const review = await import("./weeklyFlow/weeklyFlowBlockedJobReview.js");
+      result = await review[method](args[0]);
     } else if (method === "clearPendingByPlaylist") {
       const { downloadTracker } = await import("./weeklyFlow/weeklyFlowDownloadTracker.js");
       result = downloadTracker.clearPendingByPlaylistType(args[0]);

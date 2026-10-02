@@ -103,14 +103,19 @@ export class WeeklyFlowPlaylistManager {
 
   async refreshPlaylist(playlistType) {
     const key = String(playlistType || "");
-    if (this._refreshInFlight.has(key)) {
-      return this._refreshInFlight.get(key);
+    const current = this._refreshInFlight.get(key);
+    if (current) {
+      current.followUp ??= current.task
+        .catch(() => {})
+        .then(() => this.refreshPlaylist(playlistType));
+      return current.followUp;
     }
-    const task = this._refreshPlaylistInternal(playlistType).finally(() => {
+    const entry = { followUp: null };
+    entry.task = this._refreshPlaylistInternal(playlistType).finally(() => {
       this._refreshInFlight.delete(key);
     });
-    this._refreshInFlight.set(key, task);
-    return task;
+    this._refreshInFlight.set(key, entry);
+    return entry.task;
   }
 
   async _refreshPlaylistInternal(playlistType) {
