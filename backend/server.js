@@ -165,6 +165,7 @@ app.use(authMiddleware);
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
+  skipSuccessfulRequests: true,
 });
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/oidc/login", authLimiter);
