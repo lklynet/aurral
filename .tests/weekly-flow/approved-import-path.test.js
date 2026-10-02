@@ -281,6 +281,77 @@ test("approving a reviewed download releases the playlist lock before publishing
   assert.equal(response.status, 200, JSON.stringify(await response.json()));
 });
 
+test("a track committed while an approved review is publishing still reaches the playlist", async (t) => {
+  const playlistId = "reviewed-concurrent-commit";
+  flowPlaylistConfig.createSharedPlaylist({
+    id: playlistId,
+    name: "Reviewed concurrent commit",
+    tracks: [
+      { artistName: "Artist", trackName: "Reviewed", albumName: "Album" },
+      { artistName: "Artist", trackName: "Pipeline", albumName: "Album" },
+      { artistName: "Artist", trackName: "Still pending", albumName: "Album" },
+    ],
+  });
+  const sourcePath = path.join(isolatedState.baseDir, "review", "Reviewed.flac");
+  const pipelinePath = path.join(process.env.DOWNLOAD_FOLDER, "Artist", "Album", "Pipeline.flac");
+  await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+  await fs.mkdir(path.dirname(pipelinePath), { recursive: true });
+  await fs.writeFile(sourcePath, "reviewed audio");
+  await fs.writeFile(pipelinePath, "pipeline audio");
+  const reviewedJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Reviewed", albumName: "Album" },
+    playlistId,
+  );
+  const pipelineJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Pipeline", albumName: "Album" },
+    playlistId,
+  );
+  downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Still pending", albumName: "Album" },
+    playlistId,
+  );
+  downloadTracker.setBlocked(reviewedJobId, "blocked-duration-mismatch", sourcePath);
+
+  let enterPublish;
+  let releasePublish;
+  const publishEntered = new Promise((resolve) => {
+    enterPublish = resolve;
+  });
+  const publishGate = new Promise((resolve) => {
+    releasePublish = resolve;
+  });
+  const published = [];
+  const registry = playlistManager.destinationRegistry;
+  const run = registry.run.bind(registry);
+  t.mock.method(registry, "run", async (operation, snapshot) => {
+    if (operation !== "publishPlaylist" || snapshot?.entityId !== playlistId) {
+      return run(operation, snapshot);
+    }
+    published.push(snapshot.tracks.map((track) => track.path));
+    if (published.length === 1) {
+      enterPublish();
+      await publishGate;
+    }
+    return [];
+  });
+
+  const approve = fetch(`${baseUrl}/jobs/${reviewedJobId}/approve`, { method: "POST" });
+  let pipelineRefresh;
+  try {
+    await publishEntered;
+    downloadTracker.setDownloading(pipelineJobId, pipelinePath);
+    downloadTracker.setDone(pipelineJobId, pipelinePath, "Album");
+    pipelineRefresh = playlistManager.refreshPlaylist(playlistId);
+  } finally {
+    releasePublish();
+  }
+  await pipelineRefresh;
+  const response = await approve;
+
+  assert.equal(response.status, 200, JSON.stringify(await response.json()));
+  assert.ok(published.at(-1).includes(pipelinePath), JSON.stringify(published));
+});
+
 test("approval cannot commit an orphaned job into a recreated playlist", async () => {
   const playlistId = "reviewed-stale-generation";
   flowPlaylistConfig.createSharedPlaylist({
