@@ -23,7 +23,11 @@ import { Link, useLocation, useParams } from "react-router";
 import { ExternalLink } from "lucide-react";
 import AddActionButton from "../../components/AddActionButton";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
-import { buildAlbumAddAction, describeAlbumRequestResult } from "../../utils/albumAddAction";
+import {
+  buildAlbumAddAction,
+  countReleaseTracks,
+  describeAlbumRequestResult,
+} from "../../utils/albumAddAction";
 import { buildAlbumRequestPayload, getManagerName } from "../../utils/libraryDestination";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
@@ -243,8 +247,11 @@ function ReleasePage() {
   const durationLabel = formatAlbumDuration(totalDurationMs);
   const metric = getReleaseMetric(release);
   const libraryDisplay = useMemo(
-    () => resolveReleaseLibraryDisplay(libraryInfo, downloadStatus),
-    [downloadStatus, libraryInfo],
+    () => resolveReleaseLibraryDisplay(
+      countReleaseTracks(libraryInfo, trackCount),
+      downloadStatus,
+    ),
+    [downloadStatus, libraryInfo, trackCount],
   );
   const isComplete = libraryDisplay.isComplete;
   const triggerSearch = libraryDisplay.triggerSearch;

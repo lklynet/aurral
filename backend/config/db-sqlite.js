@@ -943,6 +943,70 @@ db.transaction(() => {
   `);
 }).immediate();
 
+const aurralTrackMonitoringMigrationKey = "migration:aurral-track-monitoring-v1";
+db.transaction(() => {
+  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(aurralTrackMonitoringMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  const monitoredAlbumIds = `
+    SELECT management.entity_id FROM library_management AS management
+    JOIN library_albums AS album ON album.id = management.entity_id
+    WHERE management.entity_kind = 'album'
+      AND management.managed_by = 'aurral'
+      AND COALESCE(management.monitor_mode, '') != 'unmonitored'
+      AND json_valid(album.metadata_json)
+      AND json_extract(album.metadata_json, '$.monitored') = 1
+  `;
+  const unownedAurralAlbumIds = `
+    SELECT album.id FROM library_albums AS album
+    WHERE NOT EXISTS (
+      SELECT 1 FROM library_management AS management
+      WHERE management.entity_kind = 'album' AND management.entity_id = album.id
+    )
+    AND EXISTS (
+      SELECT 1 FROM library_media_files AS media
+      WHERE media.album_id = album.id AND media.source = 'aurral'
+    )
+  `;
+  db.exec(`
+    UPDATE library_tracks SET monitored = 0
+    WHERE id IN (
+      SELECT link.track_id FROM library_album_tracks AS link
+      JOIN library_management AS management
+        ON management.entity_kind = 'album' AND management.entity_id = link.album_id
+      WHERE management.managed_by = 'aurral'
+    )
+    AND id NOT IN (
+      SELECT link.track_id FROM library_album_tracks AS link
+      WHERE link.album_id IN (${monitoredAlbumIds})
+    );
+
+    UPDATE library_tracks SET monitored = 0
+    WHERE id IN (
+      SELECT link.track_id FROM library_album_tracks AS link
+      WHERE link.album_id IN (${unownedAurralAlbumIds})
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM library_media_files AS media
+      JOIN playlist_download_jobs AS job ON job.final_path = media.path AND job.status = 'done'
+      WHERE media.track_id = library_tracks.id AND media.source = 'aurral'
+    );
+
+    UPDATE library_albums
+    SET metadata_json = json_set(
+      CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END,
+      '$.monitored',
+      json('false')
+    )
+    WHERE id IN (${unownedAurralAlbumIds});
+  `);
+  const now = Date.now();
+  db.prepare(`
+    INSERT INTO library_management (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at)
+    SELECT 'album', id, 'aurral', NULL, ?, ? FROM (${unownedAurralAlbumIds})
+  `).run(now, now);
+}).immediate();
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS playlist_download_jobs_revision (
     id INTEGER PRIMARY KEY CHECK (id = 1),

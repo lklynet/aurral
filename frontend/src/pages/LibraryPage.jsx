@@ -68,6 +68,7 @@ import {
   getRequests,
   downloadTrackToLibrary,
   reSearchLibraryTrack,
+  requestAlbumFromSearch,
   requestLibraryRefresh,
   updateLibraryArtist,
   updateLibraryFavorites,
@@ -91,6 +92,7 @@ import {
 } from "../utils/libraryPageData.js";
 import {
   aurralAlbumStatusKey,
+  buildAurralAlbumRetryPayload,
   describeAurralAlbumStatus,
   shouldPollAlbumStatuses,
 } from "../utils/aurralAlbumStatus.js";
@@ -98,6 +100,7 @@ import { describeAlbumBadges, trackSourceLabel } from "../utils/librarySourceBad
 import { getMonitorOptionsForManager } from "../utils/libraryDestination.js";
 import {
   MONITOR_OPTIONS,
+  canDownloadAurralAlbum,
   describeArtistMonitoringResult,
   describeAurralMonitoringError,
 } from "../utils/aurralMonitoring.js";
@@ -1059,7 +1062,7 @@ function LibraryPage() {
 
   const downloadMissingTrack = useCallback(
     async (track) => {
-      if (!track || firstAvailableFile(track) || isPreviewLibrary) return;
+      if (!track || firstAvailableFile(track) || isPreviewLibrary) return null;
       const album = getAlbumForTrack(track);
       const artist = getArtistForAlbum(album);
       const payload = {
@@ -1071,10 +1074,11 @@ function LibraryPage() {
         trackMbid: track?.mbid || track?.trackMbid || "",
         releaseYear: yearOf(album?.releaseDate),
         durationMs: trackDurationMs(track),
+        canonicalTrackId: /^\d+$/.test(String(track?.id ?? "")) ? String(track.id) : null,
       };
       if (!payload.artistName || !payload.trackName) {
         showError("Track details are incomplete");
-        return;
+        return null;
       }
       const key = trackDownloadIdentity(track, payload.trackName);
       setTrackDownloadStates((current) => ({
@@ -1101,6 +1105,7 @@ function LibraryPage() {
               ? `Queued ${payload.trackName} for your library`
               : `Added ${payload.trackName} to your library`,
         );
+        return result;
       } catch (requestError) {
         setTrackDownloadStates(({ [key]: _, ...rest }) => rest);
         showError(
@@ -1109,6 +1114,7 @@ function LibraryPage() {
             requestError.message ||
             "Failed to add track to library",
         );
+        return null;
       }
     },
     [getAlbumForTrack, getArtistForAlbum, isPreviewLibrary, showError, showSuccess],
@@ -1408,6 +1414,7 @@ function LibraryPage() {
     album: libraryAlbum,
     enabled: Boolean(libraryAlbum) && !isPreviewLibrary,
     canChange: canChangeMonitoring,
+    hasMissingTracks: hasMissingAlbumTracks,
     onChanged: updateAlbumMonitoringState,
   });
   const updateTrackMonitoringState = useCallback(
@@ -1426,7 +1433,6 @@ function LibraryPage() {
     [refreshLibraryActivity, setLibrary],
   );
   const trackMonitoring = useAurralTrackMonitoring({
-    albumMonitored: albumMonitoring.monitored,
     canChange: canChangeMonitoring,
     onChanged: updateTrackMonitoringState,
   });
@@ -1438,6 +1444,40 @@ function LibraryPage() {
     });
     await loadAlbumTracks(libraryAlbum).catch(() => {});
   }, [libraryAlbum, loadAlbumTracks]);
+
+  const [albumDownloadPending, setAlbumDownloadPending] = useState(false);
+  const canDownloadAlbum =
+    canAddTracks &&
+    !isPreviewLibrary &&
+    Boolean(libraryAlbum) &&
+    canDownloadAurralAlbum(libraryAlbum, { hasMissingTracks: hasMissingAlbumTracks });
+  const downloadLibraryAlbum = useCallback(async () => {
+    if (!libraryAlbum) return;
+    const title = libraryAlbum.title || "album";
+    setAlbumDownloadPending(true);
+    try {
+      const result = await requestAlbumFromSearch(
+        buildAurralAlbumRetryPayload({ album: libraryAlbum, artist: getArtistForAlbum(libraryAlbum) }),
+      );
+      const queued = result?.jobIds?.length || 0;
+      showSuccess(
+        queued > 0
+          ? `Queued ${queued} ${queued === 1 ? "track" : "tracks"} from ${title}`
+          : `Monitoring ${title}`,
+      );
+      updateAlbumMonitoringState(libraryAlbum.id, { monitored: true });
+      await reloadLibraryAlbumTracks();
+    } catch (requestError) {
+      showError(
+        requestError.response?.data?.message ||
+          requestError.response?.data?.error ||
+          requestError.message ||
+          `Failed to download ${title}`,
+      );
+    } finally {
+      setAlbumDownloadPending(false);
+    }
+  }, [getArtistForAlbum, libraryAlbum, reloadLibraryAlbumTracks, showError, showSuccess, updateAlbumMonitoringState]);
 
   useEffect(() => {
     if (!libraryAlbum || isPreviewLibrary) return undefined;
@@ -1824,7 +1864,15 @@ function LibraryPage() {
           (entry) => String(entry.albumId) === String(album?.id),
         )?.trackNumber;
         const isFavorite = favoriteIds.has(favoriteId("song", track));
-        const monitoringItem = trackMonitoring.getMenuItem(track, { downloadPending });
+        const monitoringItem = trackMonitoring.getMenuItem(track, {
+          aurral: album?.managedBy === "aurral",
+          hasFile: Boolean(file),
+          downloadPending,
+        });
+        const downloadTrack = () =>
+          downloadMissingTrack(track).then((result) => {
+            if (result?.monitored) updateTrackMonitoringState(track.id, result);
+          });
         const trackMenuItems = [
           {
             id: "play",
@@ -1854,7 +1902,7 @@ function LibraryPage() {
                   label: downloadLabel,
                   icon: Download,
                   separatorBefore: true,
-                  onSelect: () => downloadMissingTrack(track),
+                  onSelect: downloadTrack,
                   disabled: isPreviewLibrary || downloadPending,
                 },
               ]
@@ -1933,7 +1981,7 @@ function LibraryPage() {
           trailing: !file ? (
             <TooltipButton
               className="native-library-track__download"
-              onClick={() => downloadMissingTrack(track)}
+              onClick={downloadTrack}
               disabled={downloadPending}
               label={downloadLabel}
               aria-label={downloadLabel}
@@ -2417,7 +2465,7 @@ function LibraryPage() {
             </>
           }
           status={
-            libraryAlbum.managedBy === "aurral" && !isPreviewLibrary ? (
+            albumMonitoring.monitored && !isPreviewLibrary ? (
               <AurralAlbumStatus
                 key={libraryAlbum.id}
                 album={libraryAlbum}
@@ -2444,6 +2492,17 @@ function LibraryPage() {
                 label={libraryAlbum.title || "album"}
                 onClick={() => toggleFavorite("album", libraryAlbum)}
               />
+              {canDownloadAlbum && (
+                <TooltipButton
+                  className="native-library-favorite"
+                  onClick={downloadLibraryAlbum}
+                  disabled={albumDownloadPending}
+                  label="Download album"
+                  aria-label={"Download " + (libraryAlbum.title || "album")}
+                >
+                  {albumDownloadPending ? <DotLoader size="sm" label={null} /> : <Download aria-hidden="true" />}
+                </TooltipButton>
+              )}
               {discoverArtist && (
                 <CrossViewLink
                   view="discover"

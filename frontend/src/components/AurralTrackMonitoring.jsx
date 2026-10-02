@@ -3,7 +3,10 @@ import { Eye, EyeOff } from "lucide-react";
 
 import { useToast } from "../contexts/ToastContext";
 import { setAurralTrackMonitoring } from "../utils/api/endpoints/library.js";
-import { describeTrackMonitoringResult } from "../utils/aurralMonitoring.js";
+import {
+  describeTrackMonitoringResult,
+  getMonitoringMenuAction,
+} from "../utils/aurralMonitoring.js";
 import { ConfirmModal } from "../pages/flows/flowComponents/ConfirmModal.jsx";
 
 const errorMessage = (error) =>
@@ -12,7 +15,7 @@ const errorMessage = (error) =>
   error?.message ||
   "Could not update track monitoring";
 
-export function useAurralTrackMonitoring({ albumMonitored, canChange, onChanged }) {
+export function useAurralTrackMonitoring({ canChange, onChanged }) {
   const { showSuccess, showError } = useToast();
   const [pendingId, setPendingId] = useState(null);
   const [confirming, setConfirming] = useState(null);
@@ -32,18 +35,10 @@ export function useAurralTrackMonitoring({ albumMonitored, canChange, onChanged 
     }
   };
 
-  const getMenuItem = (track, { downloadPending = false } = {}) => {
-    if (albumMonitored == null || !canChange || !Number.isInteger(Number(track?.id))) return null;
-    if (!albumMonitored) {
-      return {
-        id: "monitoring",
-        label: "Album isn't monitored",
-        icon: EyeOff,
-        separatorBefore: true,
-        disabled: true,
-      };
-    }
+  const getMenuItem = (track, { aurral = false, hasFile = false, downloadPending = false } = {}) => {
+    if (!aurral || !canChange || !Number.isInteger(Number(track?.id))) return null;
     const monitored = track.monitored !== false;
+    if (!getMonitoringMenuAction({ monitored, hasMissing: !hasFile })) return null;
     return {
       id: "monitoring",
       label: monitored ? "Stop monitoring track" : "Monitor track",

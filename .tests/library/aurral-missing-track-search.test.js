@@ -139,6 +139,7 @@ function createAlbum({
       }
       return { ...track, mbid: trackMbid };
     });
+    if (!monitored) for (const track of albumTracks) setTrackMonitored(track.id, false);
     return { artist, album, albumMbid, tracks: albumTracks, jobIds };
   });
 }
@@ -147,6 +148,9 @@ const searchTime = (albumId) =>
   db.prepare(
     "SELECT last_missing_search_at FROM library_management WHERE entity_kind = 'album' AND entity_id = ?",
   ).get(albumId)?.last_missing_search_at ?? null;
+
+const trackMonitored = (trackId) =>
+  db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(trackId)?.monitored;
 
 const setTrackMonitored = (trackId, monitored) =>
   db.prepare("UPDATE library_tracks SET monitored = ? WHERE id = ?").run(monitored ? 1 : 0, trackId);
@@ -296,8 +300,10 @@ test("a daily run counts an album as due when its wait ends within the hour", as
   assert.equal(albumJobs(notYetDue.albumMbid).length, 0);
 });
 
-test("only monitored Aurral albums without cancelled or active downloads are searched", async () => {
+test("only Aurral albums with monitored missing tracks and no cancelled or active downloads are searched", async () => {
   const unmonitored = createAlbum({ monitored: false });
+  const singleFromPlaylist = createAlbum({ monitored: false, tracks: ["missing", "missing"] });
+  setTrackMonitored(singleFromPlaylist.tracks[0].id, true);
   const lidarrManaged = createAlbum({ managedBy: "lidarr" });
   const downloading = createAlbum({ tracks: ["pending", "missing"] });
   const cancelledByUser = createAlbum({ tracks: ["cancelled", "failed"] });
@@ -307,8 +313,12 @@ test("only monitored Aurral albums without cancelled or active downloads are sea
 
   const searched = await runMissingTrackSearch();
 
-  assert.equal(searched, 1);
+  assert.equal(searched, 2);
   assert.equal(albumJobs(underUnmonitoredArtist.albumMbid).length, 1);
+  assert.deepEqual(
+    albumJobs(singleFromPlaylist.albumMbid).map((job) => job.trackMbid),
+    [singleFromPlaylist.tracks[0].mbid],
+  );
   for (const skipped of [unmonitored, lidarrManaged, downloading, cancelledByUser, waitingForReview, withoutMbid]) {
     assert.equal(searchTime(skipped.album.id), null);
   }
@@ -371,7 +381,7 @@ test("an album whose only missing tracks are unmonitored is not due", async () =
   assert.equal(searchTime(album.id), null);
 });
 
-test("Retry and turning an album back on skip unmonitored tracks", async () => {
+test("Retry skips unmonitored tracks, and turning an album back on monitors all of its tracks", async () => {
   const retried = createAlbum({ tracks: ["missing", "missing"] });
   setTrackMonitored(retried.tracks[0].id, false);
   await libraryManager.addAlbum(retried.artist.id, retried.albumMbid, retried.album.title, { managedBy: "aurral" });
@@ -381,7 +391,11 @@ test("Retry and turning an album back on skip unmonitored tracks", async () => {
   setTrackMonitored(toggled.tracks[1].id, false);
   await libraryManager.setAurralAlbumMonitoring(toggled.album.id, { monitored: false });
   await libraryManager.setAurralAlbumMonitoring(toggled.album.id, { monitored: true });
-  assert.deepEqual(albumJobs(toggled.albumMbid).map((job) => job.trackMbid), [toggled.tracks[0].mbid]);
+  assert.deepEqual(
+    albumJobs(toggled.albumMbid).map((job) => job.trackMbid).sort(),
+    toggled.tracks.map((track) => track.mbid).sort(),
+  );
+  assert.deepEqual(toggled.tracks.map((track) => trackMonitored(track.id)), [1, 1]);
 });
 
 test("a library rescan keeps a track unmonitored, and the Library reports it", () => {
@@ -448,13 +462,12 @@ test("searching an album leaves cancelled tracks alone, including an older cance
   assert.equal(result.queuedTrackCount, 2);
 });
 
-test("searching an album that is no longer monitored queues nothing", async () => {
+test("searching an album after it was unmonitored queues nothing", async () => {
   const { album, albumMbid, jobIds } = createAlbum({ tracks: ["failed", "missing"] });
   await libraryManager.setAurralAlbumMonitoring(album.id, { monitored: false });
 
-  const result = await libraryManager.searchAurralAlbumMissingTracks(album.id);
+  await libraryManager.searchAurralAlbumMissingTracks(album.id);
 
-  assert.equal(result.status, "skipped");
   assert.equal(downloadTracker.getJob(jobIds[0]).status, "failed");
   assert.equal(albumJobs(albumMbid).length, 1);
 });

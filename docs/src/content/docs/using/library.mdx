@@ -67,24 +67,28 @@ Aurral checks monitored artists for new releases once a day. It does not touch a
 
 ### Albums and tracks
 
-A monitored album gets everything Aurral does by itself: Aurral downloads it, searches again for its missing tracks, and upgrades files below your quality cutoff. A track gets this only when both the track and its album are monitored. An unmonitored album or track stays as it is.
+Downloading something monitors it. When you download an album, Aurral monitors the album and every track on it. When you download one track, Aurral monitors that track only. A monitored track gets everything Aurral does by itself: Aurral downloads it, searches again when it is missing, and upgrades its file below your quality cutoff. An unmonitored track stays as it is.
 
-- To stop monitoring an album, open its Library page, open the album's menu, and select **Stop monitoring album**.
-- To stop monitoring one track, open its menu on the album page and select **Stop monitoring track**. Use this to keep a file you are happy with from being upgraded. An unmonitored track shows a crossed-out eye. While its album is unmonitored, you cannot change the track.
+A track can be monitored on its own. A single that a synced playlist downloaded puts its album in your Library. The album is unmonitored, and the playlist's track is monitored. Files that Aurral did not download, such as music you copied into the download folder, start unmonitored.
 
-If the album or track has unfinished downloads, Aurral asks you to confirm. It then cancels those downloads and keeps every finished file. When you select **Monitor album** or **Monitor track** again, Aurral fetches what is missing. An album stays unmonitored when you change the artist's option later.
+- To get the rest of an album, open its Library page and select the download button next to **Add to favorites**. Aurral looks up the full track list and downloads what is missing.
+- To get one missing track, select the download button on its row.
+- To stop monitoring an album, open the album's menu and select **Stop monitoring album**. This stops monitoring every track on it.
+- To stop monitoring one track, open its menu on the album page and select **Stop monitoring track**. Use this to keep a file you are happy with from being upgraded. An unmonitored track shows a crossed-out eye.
 
-**Wanted** does not list unmonitored albums and tracks. **Retry** on an album skips the tracks you unmonitored. **Re-search** on one track still works when it is unmonitored.
+If the album or track has unfinished downloads, Aurral asks you to confirm. It then cancels those downloads and keeps every finished file. To monitor something again, download it. When nothing is missing, the menu offers **Monitor album** or **Monitor track** instead. An album you unmonitored stays unmonitored when you change the artist's option later.
+
+**Wanted** does not list unmonitored tracks. **Retry** on an album skips the tracks you unmonitored. **Re-search** on one track still works when it is unmonitored.
 
 ### Search again for missing tracks
 
-Aurral can search again for the missing tracks of monitored albums. This is off by default. To turn it on, open **Settings > Download clients > Quality profile** and go to **Missing tracks**.
+Aurral can search again for missing tracks that you monitor. This is off by default. To turn it on, open **Settings > Download clients > Quality profile** and go to **Missing tracks**.
 
-Aurral checks once a day and searches every monitored album whose **Search interval** has passed since its last search or download. It skips unmonitored tracks. After you cancel an album's downloads, Aurral leaves that album alone until you select **Retry**.
+Aurral checks once a day and searches every album with a monitored missing track whose **Search interval** has passed since its last search or download. It skips unmonitored tracks. After you cancel an album's downloads, Aurral leaves that album alone until you select **Retry**.
 
 ## Follow an Aurral album download
 
-An album that Aurral manages shows its download state on its page, such as **Queued**, **Downloading**, **Partially available**, or **Needs attention**.
+A monitored album shows its download state on its page, such as **Queued**, **Downloading**, **Partially available**, or **Needs attention**.
 
 - To stop unfinished tracks, select **Cancel downloads**. Finished tracks stay in the Library.
 - To search again for cancelled and failed tracks, select **Retry**.

@@ -7,6 +7,7 @@ import { getAurralAlbumStatus, setAurralAlbumMonitoring } from "../utils/api/end
 import {
   describeAlbumMonitoringResult,
   getAlbumMonitoredState,
+  getMonitoringMenuAction,
   shouldConfirmUnmonitor,
 } from "../utils/aurralMonitoring.js";
 import { ConfirmModal } from "../pages/flows/flowComponents/ConfirmModal.jsx";
@@ -17,7 +18,7 @@ const errorMessage = (error) =>
   error?.message ||
   "Could not update album monitoring";
 
-export function useAurralAlbumMonitoring({ album, enabled, canChange, onChanged }) {
+export function useAurralAlbumMonitoring({ album, enabled, canChange, hasMissingTracks, onChanged }) {
   const { showSuccess, showError } = useToast();
   const [pending, setPending] = useState(false);
   const [confirmingId, setConfirmingId] = useState(null);
@@ -55,9 +56,11 @@ export function useAurralAlbumMonitoring({ album, enabled, canChange, onChanged 
     else apply(false);
   };
 
+  const action = getMonitoringMenuAction({ monitored, hasMissing: hasMissingTracks });
+
   return {
     monitored,
-    menuItem: {
+    menuItem: action && {
       id: "monitoring",
       label: monitored ? "Stop monitoring album" : "Monitor album",
       icon: monitored ? EyeOff : Eye,
@@ -70,7 +73,7 @@ export function useAurralAlbumMonitoring({ album, enabled, canChange, onChanged 
       <ConfirmModal
         open={confirmingId === albumId}
         title="Stop monitoring this album?"
-        body="Aurral will skip this album when it downloads releases for this artist, and unfinished downloads will be cancelled. Tracks already in your library are kept."
+        body="Aurral will stop searching for and upgrading every track on this album, and skip it when it downloads releases for this artist. Unfinished downloads will be cancelled. Tracks already in your library are kept."
         confirmLabel="Stop monitoring"
         busyLabel="Stopping"
         busy={pending}

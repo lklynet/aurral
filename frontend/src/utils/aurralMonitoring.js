@@ -88,6 +88,16 @@ export const getAlbumMonitoredState = (album) => {
   return monitored === true && album.monitorMode !== "unmonitored";
 };
 
+export const getMonitoringMenuAction = ({ monitored, hasMissing }) => {
+  if (monitored) return "stop";
+  return hasMissing ? null : "monitor";
+};
+
+export const canDownloadAurralAlbum = (album, { hasMissingTracks }) =>
+  getAlbumMonitoredState(album) === false &&
+  hasMissingTracks &&
+  Boolean(album.mbid || album.releaseGroupMbid);
+
 export const shouldConfirmUnmonitor = (status) =>
   status == null || shouldPollAlbumStatus(status);
 

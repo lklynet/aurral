@@ -472,6 +472,7 @@ export function upsertLibraryTrack({
   title,
   artistName = null,
   metadata = null,
+  monitored = true,
   syncSearch = true,
 }) {
   const timestamp = now();
@@ -495,15 +496,15 @@ export function upsertLibraryTrack({
       return existing;
     }
     db.prepare(
-      `INSERT INTO library_tracks (identity_key, mbid, title, artist_name, metadata_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO library_tracks (identity_key, mbid, title, artist_name, metadata_json, monitored, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(identity_key) DO UPDATE SET
          mbid = COALESCE(excluded.mbid, library_tracks.mbid),
          title = excluded.title,
          artist_name = COALESCE(excluded.artist_name, library_tracks.artist_name),
          metadata_json = COALESCE(excluded.metadata_json, library_tracks.metadata_json),
          updated_at = excluded.updated_at`,
-    ).run(key, trackMbid, trackTitle, trackArtistName, metadataText, timestamp, timestamp);
+    ).run(key, trackMbid, trackTitle, trackArtistName, metadataText, monitored ? 1 : 0, timestamp, timestamp);
     libraryChanged = true;
     const row = db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
     if (syncSearch) syncLibrarySearchTrack(row?.id);

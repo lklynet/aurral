@@ -4,10 +4,12 @@ import assert from "node:assert/strict";
 import { getMonitorOptionsForManager } from "../../frontend/src/utils/libraryDestination.js";
 import {
   MONITOR_OPTIONS,
+  canDownloadAurralAlbum,
   describeAlbumMonitoringResult,
   describeArtistMonitoringResult,
   describeAurralMonitoringError,
   getAlbumMonitoredState,
+  getMonitoringMenuAction,
   resolveCurrentMonitorOption,
   shouldConfirmUnmonitor,
   summarizeAurralMonitoring,
@@ -186,6 +188,22 @@ test("albums that Aurral does not manage have no monitored toggle", () => {
   assert.equal(getAlbumMonitoredState({ managedBy: "lidarr", monitored: true }), null);
   assert.equal(getAlbumMonitoredState({ monitored: true }), null);
   assert.equal(getAlbumMonitoredState(null), null);
+});
+
+test("anything with missing files is monitored by downloading it, so the menu only offers stopping", () => {
+  assert.equal(getMonitoringMenuAction({ monitored: true, hasMissing: true }), "stop");
+  assert.equal(getMonitoringMenuAction({ monitored: true, hasMissing: false }), "stop");
+  assert.equal(getMonitoringMenuAction({ monitored: false, hasMissing: true }), null);
+  assert.equal(getMonitoringMenuAction({ monitored: false, hasMissing: false }), "monitor");
+});
+
+test("the album download is offered for unmonitored Aurral albums with missing tracks", () => {
+  const album = { managedBy: "aurral", monitored: false, monitorMode: null, releaseGroupMbid: "rg" };
+  assert.equal(canDownloadAurralAlbum(album, { hasMissingTracks: true }), true);
+  assert.equal(canDownloadAurralAlbum(album, { hasMissingTracks: false }), false);
+  assert.equal(canDownloadAurralAlbum({ ...album, monitored: true }, { hasMissingTracks: true }), false);
+  assert.equal(canDownloadAurralAlbum({ ...album, releaseGroupMbid: null }, { hasMissingTracks: true }), false);
+  assert.equal(canDownloadAurralAlbum({ ...album, managedBy: "lidarr" }, { hasMissingTracks: true }), false);
 });
 
 test("unmonitoring asks first only while downloads are unfinished", () => {

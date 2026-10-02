@@ -430,6 +430,20 @@ export function registerDownloads(router) {
       });
       if (alreadyOwned) return res.json({ success: true, alreadyOwned: true, queued: false });
 
+      const monitoredTrack = await libraryManager.monitorAurralTrack({
+        canonicalTrackId: body.canonicalTrackId,
+        trackMbid: track.trackMbid,
+      });
+      if (monitoredTrack) {
+        await invalidateActivityRequestsCache();
+        return res.status(202).json({
+          success: true,
+          queued: monitoredTrack.queuedJobIds.length > 0,
+          jobId: monitoredTrack.queuedJobIds[0] || null,
+          monitored: true,
+        });
+      }
+
       const { downloadTracker } = await import(
         "../../../services/weeklyFlow/weeklyFlowDownloadTracker.js"
       );

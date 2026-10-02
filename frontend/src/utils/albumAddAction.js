@@ -68,6 +68,22 @@ export const isAlbumCompleteInLibrary = ({
   Number(sizeOnDisk) > 0 ||
   Number(trackFileCount) > 0;
 
+export const countReleaseTracks = (libraryInfo, releaseTrackCount) => {
+  const trackCount = Number(libraryInfo?.trackCount || 0);
+  if (
+    libraryInfo?.managedBy !== "aurral" ||
+    libraryInfo.monitored !== false ||
+    releaseTrackCount <= trackCount
+  ) {
+    return libraryInfo;
+  }
+  return {
+    ...libraryInfo,
+    trackCount: releaseTrackCount,
+    percentOfTracks: (Number(libraryInfo.trackFileCount || 0) / releaseTrackCount) * 100,
+  };
+};
+
 export const describeAlbumRequestResult = (result, title, managedBy = result?.managedBy) => {
   const manager = getManagerName(managedBy);
   const added = `Added ${title} to ${manager}`;

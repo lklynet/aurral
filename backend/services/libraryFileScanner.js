@@ -14,6 +14,10 @@ import {
   upsertLibraryTrack,
   withLibraryScan,
 } from "./libraryMediaStore.js";
+import {
+  getLibraryManagementEntry,
+  setLibraryManagement,
+} from "./libraryManagementStore.js";
 import { parseAurralIdentityComment } from "./playlistDownloadUtils.js";
 
 const AUDIO_EXTENSIONS = new Set([
@@ -73,14 +77,19 @@ const parseNativeAurralIdentityComment = (metadata) => {
   return null;
 };
 
-const applyMetadataEnrichment = (metadata, enrichment = null) => {
-  const common = { ...normalizeMetadata(metadata) };
-  const embedded = Object.assign(
+const readEmbeddedAurralIdentity = (metadata) => {
+  const common = normalizeMetadata(metadata);
+  return Object.assign(
     {},
     parseNativeAurralIdentityComment(metadata) || {},
     parseAurralIdentityComment(common.comment) || {},
     parseAurralIdentityComment(common.grouping) || {},
   );
+};
+
+const applyMetadataEnrichment = (metadata, enrichment = null) => {
+  const common = { ...normalizeMetadata(metadata) };
+  const embedded = readEmbeddedAurralIdentity(metadata);
   if (
     (!enrichment || typeof enrichment !== "object") &&
     Object.keys(embedded).length === 0
@@ -282,6 +291,18 @@ function normalizeScanPaths(rootPath, filePaths) {
   )];
 }
 
+function claimUnownedAlbum(album) {
+  if (getLibraryManagementEntry("album", album.id)) return;
+  setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
+  upsertLibraryAlbum({
+    identityKey: album.identity_key,
+    artistId: album.artist_id,
+    title: album.title,
+    metadata: { monitored: false },
+    syncSearch: false,
+  });
+}
+
 export async function scanMusicRoot({
   rootPath,
   source = "aurral",
@@ -332,12 +353,12 @@ export async function scanMusicRoot({
             continue;
           }
           const metadata = await metadataReader(filePath, { skipCovers: true });
-          const enrichedMetadata = applyMetadataEnrichment(
-            metadata,
-            typeof metadataEnricher === "function"
-              ? await metadataEnricher(metadata, filePath)
-              : null,
-          );
+          const enrichment = typeof metadataEnricher === "function"
+            ? await metadataEnricher(metadata, filePath)
+            : null;
+          const enrichedMetadata = applyMetadataEnrichment(metadata, enrichment);
+          const downloadedByAurral =
+            Boolean(enrichment) || Object.keys(readEmbeddedAurralIdentity(metadata)).length > 0;
           const record = buildMetadataRecord(enrichedMetadata, filePath, resolvedRoot);
           const artist = upsertLibraryArtist({
             identityKey: record.artistKey,
@@ -357,12 +378,14 @@ export async function scanMusicRoot({
             metadata: record.albumMetadata,
             syncSearch,
           });
+          if (source === "aurral") claimUnownedAlbum(album);
           const track = upsertLibraryTrack({
             identityKey: record.trackKey,
             mbid: record.trackMbid,
             title: record.title,
             artistName: record.artistName,
             metadata: record.trackMetadata,
+            monitored: source !== "aurral" || downloadedByAurral,
             syncSearch,
           });
           linkLibraryAlbumTrack({

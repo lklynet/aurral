@@ -2,7 +2,7 @@ import { db } from "../config/db-sqlite.js";
 import { dbOps } from "../db/helpers/index.js";
 import { ACTIVE_JOB_STATUSES, indexAurralAlbumJobs, jobMatchesTrack } from "./aurralAlbumJobs.js";
 import { recordMissingTrackSearch } from "./aurralHistoryService.js";
-import { MONITORED_AURRAL_ALBUM_CONDITION, monitoredTrackCondition } from "./aurralMonitoring.js";
+import { AURRAL_ALBUM_CONDITION, monitoredTrackCondition } from "./aurralMonitoring.js";
 import { isAnyDownloadSourceConfigured } from "./downloadSourceService.js";
 import { libraryManager } from "./libraryManager.js";
 import { albumMediaCondition } from "./libraryQueryService.js";
@@ -32,7 +32,7 @@ const candidateAlbumsStmt = db.prepare(`
   FROM library_management AS management
   JOIN library_albums AS album ON album.id = management.entity_id
   JOIN library_artists AS artist ON artist.id = album.artist_id
-  WHERE ${MONITORED_AURRAL_ALBUM_CONDITION}
+  WHERE ${AURRAL_ALBUM_CONDITION}
     AND COALESCE(album.mbid, album.release_group_mbid) IS NOT NULL
     AND (management.last_missing_search_at IS NULL OR management.last_missing_search_at <= ?)
     AND EXISTS (

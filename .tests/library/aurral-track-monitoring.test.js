@@ -158,15 +158,15 @@ test("monitoring a track again fetches only that track when its album is monitor
   assert.deepEqual(albumJobs(albumMbid).map((job) => [job.trackMbid, job.status]), [[tracks[0].mbid, "pending"]]);
 });
 
-test("monitoring a track in an unmonitored album queues nothing", async () => {
-  const { albumMbid, tracks } = await createAlbum({ monitored: false, tracks: ["missing"] });
-  await libraryManager.setAurralTrackMonitoring(tracks[0].id, { monitored: false });
+test("monitoring a track in an unmonitored album queues only that track", async () => {
+  const { album, albumMbid, tracks } = await createAlbum({ tracks: ["missing", "missing"] });
+  await libraryManager.setAurralAlbumMonitoring(album.id, { monitored: false });
 
   const result = await libraryManager.setAurralTrackMonitoring(tracks[0].id, { monitored: true });
 
   assert.equal(result.monitored, true);
-  assert.equal(trackMonitored(tracks[0].id), 1);
-  assert.equal(albumJobs(albumMbid).length, 0);
+  assert.deepEqual(tracks.map((track) => trackMonitored(track.id)), [1, 0]);
+  assert.deepEqual(albumJobs(albumMbid).map((job) => [job.trackMbid, job.status]), [[tracks[0].mbid, "pending"]]);
 });
 
 test("a track unmonitored while its album is turned back on is not queued", async () => {

@@ -46,7 +46,7 @@ let sequence = 0;
 async function createLibraryJob({
   state = "done",
   albumMonitored = true,
-  trackMonitored = true,
+  trackMonitored = albumMonitored,
   inLibrary = true,
   jobHasAlbum = true,
   fileHasAlbum = true,
@@ -151,13 +151,18 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("Wanted reports jobs of unmonitored albums and tracks as not monitored", async () => {
+test("Wanted reports jobs by their track's monitoring, whatever the album's", async () => {
   const monitoredMissing = await createLibraryJob({ state: "failed" });
   const missingInUnmonitoredAlbum = await createLibraryJob({ state: "failed", albumMonitored: false });
   const missingUnmonitoredTrack = await createLibraryJob({ state: "failed", trackMonitored: false });
   const monitoredFile = await createLibraryJob();
   const fileInUnmonitoredAlbum = await createLibraryJob({ albumMonitored: false });
   const unindexedUnmonitoredTrack = await createLibraryJob({ trackMonitored: false, inLibrary: false });
+  const monitoredTrackInUnmonitoredAlbum = await createLibraryJob({
+    state: "failed",
+    albumMonitored: false,
+    trackMonitored: true,
+  });
 
   const monitoredById = new Map((await request("/jobs")).map((job) => [job.id, job.monitored]));
 
@@ -169,12 +174,13 @@ test("Wanted reports jobs of unmonitored albums and tracks as not monitored", as
       monitoredFile,
       fileInUnmonitoredAlbum,
       unindexedUnmonitoredTrack,
+      monitoredTrackInUnmonitoredAlbum,
     ].map((jobId) => monitoredById.get(jobId)),
-    [true, false, false, true, false, false],
+    [true, false, false, true, false, false, true],
   );
 });
 
-test("Search all in Wanted skips unmonitored albums and tracks", async () => {
+test("Search all in Wanted skips unmonitored tracks and keeps monitored tracks of unmonitored albums", async () => {
   const monitoredMissing = await createLibraryJob({ state: "failed" });
   const missingInUnmonitoredAlbum = await createLibraryJob({ state: "failed", albumMonitored: false });
   const missingUnmonitoredTrack = await createLibraryJob({ state: "failed", trackMonitored: false });
@@ -188,6 +194,10 @@ test("Search all in Wanted skips unmonitored albums and tracks", async () => {
     jobHasAlbum: false,
     fileHasAlbum: false,
   });
+  const fileOfMonitoredTrackInUnmonitoredAlbum = await createLibraryJob({
+    albumMonitored: false,
+    trackMonitored: true,
+  });
 
   const missing = await request("/research-missing", { method: "POST" });
   const upgrades = await request("/quality-upgrades", { method: "POST" });
@@ -199,7 +209,7 @@ test("Search all in Wanted skips unmonitored albums and tracks", async () => {
     ["pending", "failed", "failed"],
   );
   const upgraded = upgradedJobIds();
-  assert.equal(upgrades.queued, 2);
+  assert.equal(upgrades.queued, 3);
   assert.deepEqual(
     [
       monitoredFile,
@@ -208,7 +218,8 @@ test("Search all in Wanted skips unmonitored albums and tracks", async () => {
       fileOutsideLibrary,
       olderJobOfUnmonitoredTrack,
       olderFileInUnmonitoredAlbum,
+      fileOfMonitoredTrackInUnmonitoredAlbum,
     ].map((jobId) => upgraded.has(jobId)),
-    [true, false, false, true, false, false],
+    [true, false, false, true, false, false, true],
   );
 });

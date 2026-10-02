@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  countReleaseTracks,
   describeAlbumRequestResult,
   getAlbumAddAction,
   isAlbumCompleteInLibrary,
@@ -69,4 +70,25 @@ test("describeAlbumRequestResult does not claim a blocked album is downloading",
   const available = describeAlbumRequestResult({ status: "available" }, "Dummy", "aurral");
   assert.match(available.message, /Aurral/);
   assert.doesNotMatch(available.message, /queued|downloading/i);
+});
+
+test("an unmonitored Aurral album counts the release's tracks, so a downloaded single isn't complete", () => {
+  const single = {
+    inLibrary: true,
+    managedBy: "aurral",
+    monitored: false,
+    trackCount: 1,
+    trackFileCount: 1,
+    percentOfTracks: 100,
+  };
+  const counted = countReleaseTracks(single, 4);
+
+  assert.deepEqual([counted.trackCount, counted.percentOfTracks], [4, 25]);
+  for (const library of [
+    { ...single, monitored: true },
+    { ...single, managedBy: "lidarr" },
+    { ...single, trackCount: 4, trackFileCount: 4 },
+  ]) {
+    assert.equal(countReleaseTracks(library, 4), library);
+  }
 });

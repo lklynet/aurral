@@ -7,7 +7,7 @@ requireCredentials();
 
 const ACTIVE_STATUS = /^(queued|downloading)$/;
 
-test("an Aurral artist and album are monitored, unmonitored with a warning, and monitored again", async ({ page }) => {
+test("an Aurral artist and album are monitored, unmonitored with a warning, and downloaded again", async ({ page }) => {
   test.setTimeout(240_000);
   await openApp(page);
 
@@ -82,7 +82,7 @@ test("an Aurral artist and album are monitored, unmonitored with a warning, and 
     await chooseMonitoring("Stop monitoring album");
     const dialog = page.getByRole("alertdialog", { name: "Stop monitoring this album?" });
     await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText("unfinished downloads will be cancelled");
+    await expect(dialog).toContainText("Unfinished downloads will be cancelled");
     expect(albumMonitoringWrites).toHaveLength(0);
 
     await page.keyboard.press("Escape");
@@ -107,21 +107,23 @@ test("an Aurral artist and album are monitored, unmonitored with a warning, and 
       })
       .toBe("cancelled");
 
-    await page.getByRole("button", { name: "Retry", exact: true }).click();
-    await expect
-      .poll(async () => (await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status, {
-        timeout: 30_000,
-      })
-      .toMatch(ACTIVE_STATUS);
+    await albumOptions.click();
+    await expect(page.getByRole("menuitem", { name: "Stop monitoring album", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Monitor album", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
 
-    await chooseMonitoring("Monitor album");
+    await page.getByRole("button", { name: `Download ${albums.body[0].title}`, exact: true }).click();
     await expect(managerMark).toHaveAccessibleName("Managed by Aurral");
-    expect(albumMonitoringWrites).toHaveLength(2);
+    expect(albumMonitoringWrites).toHaveLength(1);
+    await expect(page.getByRole("status").filter({ hasText: /Queued|Downloading/ }).first()).toBeVisible({
+      timeout: 30_000,
+    });
     await expect
       .poll(async () => (await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status, {
         timeout: 30_000,
       })
       .toMatch(ACTIVE_STATUS);
+    await page.screenshot({ path: test.info().outputPath("album-downloaded-again.png") });
   } finally {
     if (albumId) {
       await apiRequest(page, `/api/library/albums/aurral/${albumId}/cancel`, { method: "POST" });
