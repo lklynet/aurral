@@ -58,7 +58,14 @@ export function blockPipelineJobForReview({
   return true;
 }
 
-export async function finalizePipelineJobSuccess({
+export async function finalizePipelineJobSuccess(options) {
+  if (await recordPipelineJobSuccess(options)) {
+    await refreshCompletedPipelinePlaylist(options.job);
+  }
+  return null;
+}
+
+export async function recordPipelineJobSuccess({
   downloadTracker,
   job,
   committedFinalPath,
@@ -69,9 +76,10 @@ export async function finalizePipelineJobSuccess({
   if (job.upgradeForJobId) {
     const { finalizeQualityUpgradeSuccess } = await import("./qualityProfileService.js");
     if (onSuccess) await onSuccess();
-    return finalizeQualityUpgradeSuccess(job, committedFinalPath, quality);
+    await finalizeQualityUpgradeSuccess(job, committedFinalPath, quality);
+    return false;
   }
-  if (downloadTracker.setDone(job.id, committedFinalPath, album) === false) return null;
+  if (downloadTracker.setDone(job.id, committedFinalPath, album) === false) return false;
   if (quality) downloadTracker.updateQuality(job.id, quality);
 
   if (job.playlistType === "library" && job.managedBy === "aurral" && committedFinalPath) {
@@ -92,12 +100,14 @@ export async function finalizePipelineJobSuccess({
         reason: error?.message || String(error),
       });
     });
+  return true;
+}
 
+export async function refreshCompletedPipelinePlaylist(job) {
   const playlistType = job.playlistId || job.playlistType;
   const { playlistManager } = await import("./weeklyFlow/weeklyFlowPlaylistManager.js");
   await playlistManager.refreshPlaylist(playlistType);
   const { weeklyFlowWorker } = await import("./weeklyFlow/weeklyFlowWorker.js");
   weeklyFlowWorker.wake(0);
   await weeklyFlowWorker.checkPlaylistComplete(playlistType);
-  return null;
 }

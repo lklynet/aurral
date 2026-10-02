@@ -230,6 +230,57 @@ test("approving a reviewed download commits it inside the managed playlist libra
   await assert.rejects(fs.access(path.join(playlistManager.libraryRoot, "Reviewed.m3u")));
 });
 
+test("approving a reviewed download releases the playlist lock before publishing the playlist", async (t) => {
+  const playlistId = "reviewed-slow-publish";
+  flowPlaylistConfig.createSharedPlaylist({
+    id: playlistId,
+    name: "Reviewed slow publish",
+    tracks: [{ artistName: "Artist", trackName: "Slow Track", albumName: "Album" }],
+  });
+  const sourcePath = path.join(isolatedState.baseDir, "review", "Slow Track.flac");
+  await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+  await fs.writeFile(sourcePath, "reviewed audio");
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Slow Track", albumName: "Album" },
+    playlistId,
+  );
+  downloadTracker.setBlocked(jobId, "blocked-duration-mismatch", sourcePath);
+
+  let enterPublish;
+  let releasePublish;
+  const publishEntered = new Promise((resolve) => {
+    enterPublish = resolve;
+  });
+  const publishGate = new Promise((resolve) => {
+    releasePublish = resolve;
+  });
+  t.mock.method(playlistManager.navidromeDestination.client, "getPlaylists", async () => {
+    enterPublish();
+    await publishGate;
+    return [];
+  });
+
+  const approve = fetch(`${baseUrl}/jobs/${jobId}/approve`, { method: "POST" });
+  try {
+    await publishEntered;
+    assert.equal(downloadTracker.getJob(jobId)?.status, "done");
+    const pipelineCommit = withPipelineCommitLock(
+      { jobId, playlistId, playlistGeneration: downloadTracker.getJob(jobId).playlistGeneration },
+      async () => "committed",
+    );
+    const state = await Promise.race([
+      pipelineCommit.then(({ result }) => result),
+      new Promise((resolve) => setTimeout(() => resolve("blocked"), 1000)),
+    ]);
+    assert.equal(state, "committed");
+  } finally {
+    releasePublish();
+  }
+
+  const response = await approve;
+  assert.equal(response.status, 200, JSON.stringify(await response.json()));
+});
+
 test("approval cannot commit an orphaned job into a recreated playlist", async () => {
   const playlistId = "reviewed-stale-generation";
   flowPlaylistConfig.createSharedPlaylist({
