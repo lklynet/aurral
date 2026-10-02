@@ -80,6 +80,8 @@ COPY --chmod=755 backend/docker-entrypoint.sh /usr/local/bin/
 
 ARG APP_VERSION=unknown
 ENV APP_VERSION=$APP_VERSION
+ARG GITHUB_REPO=lklynet/aurral
+ENV GITHUB_REPO=$GITHUB_REPO
 
 EXPOSE 3001
 

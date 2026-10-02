@@ -6,6 +6,7 @@ import {
   selectNightlyUpdate,
 } from "../../../lib/release-version";
 import TooltipButton from "./TooltipButton";
+import api from "../utils/api/core";
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const NIGHTLY_CHECK_INTERVAL_MS = 2 * 60 * 60 * 1000;
@@ -50,12 +51,12 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
   const isNightly = releaseChannel === "nightly";
   const checkIntervalMs = isNightly ? NIGHTLY_CHECK_INTERVAL_MS : CHECK_INTERVAL_MS;
   const cacheKey = useMemo(
-    () => `aurral:updateCache:${repo}:${releaseChannel}`,
-    [releaseChannel, repo],
+    () => `aurral:updateCache:${isNightly ? "v2:" : ""}${repo}:${releaseChannel}`,
+    [isNightly, releaseChannel, repo],
   );
   const checkMetaKey = useMemo(
-    () => `aurral:updateCheckMeta:${repo}:${releaseChannel}`,
-    [releaseChannel, repo],
+    () => `aurral:updateCheckMeta:${isNightly ? "v2:" : ""}${repo}:${releaseChannel}`,
+    [isNightly, releaseChannel, repo],
   );
 
   useEffect(() => {
@@ -71,30 +72,26 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
     }
 
     let cached = readStorage(cacheKey);
-    if (cached?.sourceVersion === resolvedVersion && cached.update) {
-      setUpdateInfo(cached.update);
-    }
+    setUpdateInfo(cached?.sourceVersion === resolvedVersion ? cached.update : null);
 
     const resolveNightlyUpdate = async () => {
-      const head = await fetchJson(`https://api.github.com/repos/${repo}/commits/main`);
-      const update = selectNightlyUpdate(resolvedVersion, head?.sha);
+      const { data: published } = await api.get("/updates/nightly");
+      const update = selectNightlyUpdate(resolvedVersion, published?.sha);
       if (!update) return null;
 
-      let notes = [];
-      try {
-        const comparison = await fetchJson(
-          `https://api.github.com/repos/${repo}/compare/${update.current}...${head.sha}`,
-        );
-        notes = (Array.isArray(comparison?.commits) ? comparison.commits : [])
-          .map((commit) => String(commit?.commit?.message || "").split(/\r?\n/, 1)[0].trim())
-          .filter(Boolean)
-          .slice(-MAX_NIGHTLY_NOTES);
-      } catch {}
+      const comparison = await fetchJson(
+        `https://api.github.com/repos/${repo}/compare/${update.current}...${published.sha}`,
+      );
+      if (comparison?.status !== "ahead") return null;
+      const notes = (Array.isArray(comparison?.commits) ? comparison.commits : [])
+        .map((commit) => String(commit?.commit?.message || "").split(/\r?\n/, 1)[0].trim())
+        .filter(Boolean)
+        .slice(-MAX_NIGHTLY_NOTES);
 
       return {
         ...update,
         channel: "nightly",
-        url: `https://github.com/${repo}/compare/${update.current}...${head.sha}`,
+        url: `https://github.com/${repo}/compare/${update.current}...${published.sha}`,
         notes,
       };
     };
@@ -145,7 +142,13 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
         setUpdateInfo(nextUpdate);
         cached = { sourceVersion: resolvedVersion, update: nextUpdate };
         writeStorage(cacheKey, cached);
-      } catch {}
+      } catch {
+        if (active && isNightly) {
+          setUpdateInfo(null);
+          cached = { sourceVersion: resolvedVersion, update: null };
+          writeStorage(cacheKey, cached);
+        }
+      }
     };
 
     checkForUpdate();
@@ -180,7 +183,7 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
   if (!updateInfo) return null;
 
   const updateLabel = `Update available: ${updateInfo.latest}`;
-  const notesTitle = isNightly ? "What's coming" : "What's changed";
+  const notesTitle = "What's changed";
 
   return (
     <div ref={indicatorRef} className="app-update-indicator">
