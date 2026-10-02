@@ -1587,7 +1587,7 @@ export class LibraryManager {
       return { error: "Lidarr is not configured" };
     }
     try {
-      const lidarrArtist = await lidarr.getArtistByMbid(mbid);
+      const lidarrArtist = await lidarr.getArtistByMbid(mbid, { forceRefresh: true });
       if (!lidarrArtist) return { error: "Artist not found in Lidarr" };
       if (updates.monitored !== undefined || updates.monitorOption !== undefined) {
         const monitorOption = updates.monitorOption || lidarrArtist.monitor || "none";

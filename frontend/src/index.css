@@ -9017,9 +9017,13 @@ button.native-library-genre-row:focus-visible {
   justify-content: center;
 }
 
-.native-library-track__title > span > :is(.flow-page__track-status-dot, .flow-page__track-availability-indicator, .search-library-check, .native-library-track__unmonitored) {
+.native-library-track__title > span > :is(.flow-page__track-status-dot, .flow-page__track-availability-indicator, .search-library-check, .library-check, .native-library-track__unmonitored) {
   margin-right: 0.45rem;
   vertical-align: -0.1rem;
+}
+
+.native-library-track__title > span > .library-check {
+  display: inline-block;
 }
 
 .native-library-track__unmonitored {

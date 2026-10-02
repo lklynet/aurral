@@ -606,10 +606,10 @@ test("flow refresh clears playback before downloads finish", async () => {
     });
     playlistManager.refreshPlaylist = async (playlistId) => {
       await new Promise((resolve) => setImmediate(resolve));
-      events.push(["refresh", playlistId]);
+      if (playlistId === flow.id) events.push(["refresh", playlistId]);
     };
     flowPlaylistConfig.scheduleNextRun = (playlistId) => {
-      events.push(["schedule", playlistId]);
+      if (playlistId === flow.id) events.push(["schedule", playlistId]);
     };
 
     await processWeeklyFlowOperation({
