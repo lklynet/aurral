@@ -103,17 +103,18 @@ test("stopping immediately after start preserves an unexecuted final-attempt cla
 test("lease renewal failure aborts a blocked provider request", async (t) => {
   const { acquireReleaseMetadataLease } = await import("../../backend/services/releaseMetadataLease.js");
   const { refreshReleaseMetadata } = await import("../../backend/services/releaseMetadataSync.js");
+  const { default: axios } = await import("../../lib/axiosFetch.js");
   t.mock.timers.enable({ apis: ["setInterval"] });
   const lease = await acquireReleaseMetadataLease();
   let requested;
   const started = new Promise((resolve) => { requested = resolve; });
+  t.mock.method(axios, "get", (_url, { signal }) => new Promise((_resolve, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    requested();
+  }));
   const refresh = refreshReleaseMetadata({
     lease,
     artists: [{ id: 999, mbid: "45454545-4545-4454-8454-454545454545" }],
-    listAlbums: (_mbid, { signal }) => new Promise((_resolve, reject) => {
-      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-      requested();
-    }),
   });
   try {
     await started;

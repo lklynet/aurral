@@ -361,8 +361,8 @@ export async function getArtistByMbid(mbid, { signal } = {}) {
   return toNormalizedArtist(data);
 }
 
-export async function getAlbumByMbid(albumMbid, { signal } = {}) {
-  const data = await request(`/album/${albumMbid}`, {}, { signal });
+export async function getAlbumByMbid(albumMbid, { signal, forceRefresh = false } = {}) {
+  const data = await request(`/album/${albumMbid}`, {}, { signal, forceRefresh });
   const normalized = toNormalizedAlbum(data);
   storeAlbumReleaseMappings(normalized);
   return normalized;

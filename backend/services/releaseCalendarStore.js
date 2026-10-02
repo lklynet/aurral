@@ -35,16 +35,34 @@ const upsertRelease = db.prepare(`
 `);
 
 const selectArtistReleases = db.prepare(`
-  SELECT release_group_mbid, present
+  SELECT release_group_mbid, release_date, refreshed_at, present
   FROM library_release_calendar
   WHERE artist_id = ?
 `);
 
 const markReleaseAbsent = db.prepare(`
   UPDATE library_release_calendar
-  SET present = 0, refreshed_at = ?, updated_at = ?
+  SET present = 0, updated_at = ?
   WHERE release_group_mbid = ? AND artist_id = ?
 `);
+
+const ownedReleaseGroupCondition = (releaseGroupMbid) => `EXISTS (
+  SELECT 1
+  FROM library_albums AS owned_album
+  JOIN library_album_tracks AS owned_relation ON owned_relation.album_id = owned_album.id
+  JOIN library_media_files AS owned_media
+    ON owned_media.track_id = owned_relation.track_id
+    AND (owned_media.album_id = owned_relation.album_id OR owned_media.album_id IS NULL)
+  WHERE (
+      owned_album.release_group_mbid = ${releaseGroupMbid}
+      OR owned_album.mbid = ${releaseGroupMbid}
+    )
+    AND owned_media.available = 1
+)`;
+
+const selectReleaseGroupOwned = db.prepare(
+  `SELECT ${ownedReleaseGroupCondition("@releaseGroupMbid")} AS owned`,
+);
 
 export function upsertReleaseCalendarEntry({
   releaseGroupMbid,
@@ -71,6 +89,21 @@ export function upsertReleaseCalendarEntry({
   );
 }
 
+export function getArtistReleaseCalendar(artistId) {
+  return new Map(
+    selectArtistReleases.all(Number(artistId)).map((row) => [
+      row.release_group_mbid,
+      { releaseDate: row.release_date, refreshedAt: Number(row.refreshed_at) },
+    ]),
+  );
+}
+
+export function isReleaseGroupOwned(releaseGroupMbid) {
+  return selectReleaseGroupOwned.get({
+    releaseGroupMbid: String(releaseGroupMbid || "").trim(),
+  }).owned === 1;
+}
+
 export function markUnseenReleaseCalendarEntries(artistId, seenReleaseGroupMbids, refreshedAt = Date.now()) {
   const seen = new Set(seenReleaseGroupMbids);
   const timestamp = Number(refreshedAt) || Date.now();
@@ -78,7 +111,6 @@ export function markUnseenReleaseCalendarEntries(artistId, seenReleaseGroupMbids
   for (const row of selectArtistReleases.all(Number(artistId))) {
     if (seen.has(row.release_group_mbid) || row.present === 0) continue;
     stale += markReleaseAbsent.run(
-      timestamp,
       timestamp,
       row.release_group_mbid,
       Number(artistId),
@@ -99,19 +131,7 @@ export function getReleaseCalendarEntries({
   const conditions = [
     "calendar.present = 1",
     "calendar.release_date >= ?",
-    `NOT EXISTS (
-      SELECT 1
-      FROM library_albums AS owned_album
-      JOIN library_album_tracks AS owned_relation ON owned_relation.album_id = owned_album.id
-      JOIN library_media_files AS owned_media
-        ON owned_media.track_id = owned_relation.track_id
-        AND (owned_media.album_id = owned_relation.album_id OR owned_media.album_id IS NULL)
-      WHERE (
-          owned_album.release_group_mbid = calendar.release_group_mbid
-          OR owned_album.mbid = calendar.release_group_mbid
-        )
-        AND owned_media.available = 1
-    )`,
+    `NOT ${ownedReleaseGroupCondition("calendar.release_group_mbid")}`,
   ];
   const parameters = [fromDate];
   if (toDate) {

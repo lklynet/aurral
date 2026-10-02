@@ -9,8 +9,10 @@ import {
 } from "./honkerDb.js";
 import { iterateCanonicalArtistProjection } from "./libraryQueryService.js";
 import { logger } from "./logger.js";
-import { listArtistAlbums } from "./providers/brainzmashProvider.js";
+import { getAlbumByMbid, listArtistAlbums } from "./providers/brainzmashProvider.js";
 import {
+  getArtistReleaseCalendar,
+  isReleaseGroupOwned,
   markUnseenReleaseCalendarEntries,
   upsertReleaseCalendarEntry,
 } from "./releaseCalendarStore.js";
@@ -18,15 +20,24 @@ import {
 import { acquireReleaseMetadataLease } from "./releaseMetadataLease.js";
 
 const TASK_KIND = "release-metadata-refresh";
-const RECENT_RELEASE_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 
 const text = (value) => String(value || "").trim();
 
-function getReleaseTime(release) {
-  const releaseDate = text(release?.firstReleaseDate || release?.releaseDate);
-  if (!releaseDate) return null;
-  const releaseTime = new Date(releaseDate).getTime();
+function getReleaseTime(releaseDate) {
+  if (!text(releaseDate)) return null;
+  const releaseTime = new Date(text(releaseDate)).getTime();
   return Number.isFinite(releaseTime) ? releaseTime : null;
+}
+
+function shouldFetchReleaseDate(stored, nowMs) {
+  if (!stored) return true;
+  const age = nowMs - stored.refreshedAt;
+  if (age > 60 * DAY_MS) return true;
+  if (age < 12 * HOUR_MS) return false;
+  const releaseTime = getReleaseTime(stored.releaseDate);
+  return releaseTime != null && releaseTime > nowMs - 30 * DAY_MS;
 }
 
 function isValidCatalogueRelease(release) {
@@ -71,7 +82,6 @@ export function scheduleReleaseMetadataRefresh({ delaySeconds = 0 } = {}) {
 }
 
 export async function refreshReleaseMetadata({
-  listAlbums = listArtistAlbums,
   artists = null,
   now = Date.now(),
   signal,
@@ -80,7 +90,7 @@ export async function refreshReleaseMetadata({
   if (!lease) {
     const acquired = await acquireReleaseMetadataLease({ signal });
     try {
-      return await refreshReleaseMetadata({ listAlbums, artists, now, lease: acquired });
+      return await refreshReleaseMetadata({ artists, now, lease: acquired });
     } finally {
       acquired.release();
     }
@@ -88,7 +98,6 @@ export async function refreshReleaseMetadata({
   lease.signal.throwIfAborted();
   const requestedNow = new Date(now).getTime();
   const nowMs = Number.isFinite(requestedNow) ? requestedNow : Date.now();
-  const cutoffMs = nowMs - RECENT_RELEASE_WINDOW_MS;
   const catalogueArtists = Array.isArray(artists)
     ? artists
     : [...iterateCanonicalArtistProjection({ pageSize: 100 })];
@@ -96,14 +105,15 @@ export async function refreshReleaseMetadata({
   let artistsRefreshed = 0;
   let artistsFailed = 0;
   let releasesSeen = 0;
-  let releasesStored = 0;
+  let releasesFetched = 0;
+  let releasesFailed = 0;
   let releasesStale = 0;
 
   for (const artist of eligibleArtists) {
     const seenReleaseGroupMbids = new Set();
     let releases;
     try {
-      releases = await listAlbums(artist.mbid, {
+      releases = await listArtistAlbums(artist.mbid, {
         hydrateLimit: 0,
         forceRefresh: true,
         signal: lease.signal,
@@ -124,30 +134,50 @@ export async function refreshReleaseMetadata({
       continue;
     }
 
-    lease.write(() => {
-      for (const release of releases) {
-        if (!isEligibleAurralRelease(release)) continue;
-        const releaseGroupMbid = text(release.id);
-        const releaseTime = getReleaseTime(release);
-        if (releaseTime == null) {
-          seenReleaseGroupMbids.add(releaseGroupMbid);
+    const calendar = getArtistReleaseCalendar(artist.id);
+    const entries = [];
+    for (const release of releases) {
+      if (!isEligibleAurralRelease(release)) continue;
+      const releaseGroupMbid = text(release.id);
+      releasesSeen += 1;
+      seenReleaseGroupMbids.add(releaseGroupMbid);
+      if (isReleaseGroupOwned(releaseGroupMbid)) continue;
+      const stored = calendar.get(releaseGroupMbid);
+      let releaseDate = stored?.releaseDate || "";
+      let refreshedAt = stored?.refreshedAt;
+      if (shouldFetchReleaseDate(stored, nowMs)) {
+        try {
+          const album = await getAlbumByMbid(releaseGroupMbid, {
+            forceRefresh: true,
+            signal: lease.signal,
+          });
+          releaseDate = text(album?.releaseDate) || releaseDate;
+          refreshedAt = nowMs;
+          releasesFetched += 1;
+        } catch (error) {
+          lease.signal.throwIfAborted();
+          releasesFailed += 1;
+          logger.warn("library", "BrainzMash release date refresh failed", {
+            releaseGroupMbid,
+            message: error?.message || String(error),
+          });
           continue;
         }
-        if (releaseTime < cutoffMs) continue;
-        releasesSeen += 1;
-        seenReleaseGroupMbids.add(releaseGroupMbid);
-        upsertReleaseCalendarEntry({
-          releaseGroupMbid,
-          artistId: artist.id,
-          title: text(release.title) || "Unknown Album",
-          releaseDate: text(release.firstReleaseDate || release.releaseDate) || null,
-          releaseType: release.type || null,
-          secondaryTypes: release.secondaryTypes,
-          releaseStatuses: release.releaseStatuses,
-          refreshedAt: nowMs,
-        });
-        releasesStored += 1;
       }
+      entries.push({
+        releaseGroupMbid,
+        artistId: artist.id,
+        title: text(release.title) || "Unknown Album",
+        releaseDate,
+        releaseType: release.type || null,
+        secondaryTypes: release.secondaryTypes,
+        releaseStatuses: release.releaseStatuses,
+        refreshedAt,
+      });
+    }
+
+    lease.write(() => {
+      for (const entry of entries) upsertReleaseCalendarEntry(entry);
       releasesStale += markUnseenReleaseCalendarEntries(
         artist.id,
         seenReleaseGroupMbids,
@@ -169,6 +199,8 @@ export async function refreshReleaseMetadata({
     artistsRefreshed,
     artistsFailed,
     releases: releasesSeen,
+    releaseDatesFetched: releasesFetched,
+    releaseDatesFailed: releasesFailed,
     staleReleases: releasesStale,
   });
   return {
@@ -176,7 +208,8 @@ export async function refreshReleaseMetadata({
     artistsRefreshed,
     artistsFailed,
     releasesSeen,
-    releasesStored,
+    releasesFetched,
+    releasesFailed,
     releasesStale,
   };
 }
