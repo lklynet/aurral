@@ -2,12 +2,17 @@ name: Validate
 
 on:
   workflow_call:
+    inputs:
+      concurrency-key:
+        description: Additional key for callers that must validate separate commits independently.
+        type: string
+        default: ""
 
 permissions:
   contents: read
 
 concurrency:
-  group: validate-${{ github.workflow }}-${{ github.ref }}
+  group: validate-${{ github.workflow }}-${{ github.ref }}-${{ inputs.concurrency-key }}
   cancel-in-progress: true
 
 jobs:

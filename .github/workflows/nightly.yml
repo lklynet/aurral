@@ -8,16 +8,18 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: nightly
-  cancel-in-progress: true
-
 jobs:
   validate:
     uses: ./.github/workflows/validate.yml
+    with:
+      concurrency-key: ${{ github.sha }}
 
   publish-image:
     needs: validate
+    concurrency:
+      group: nightly-publication
+      queue: max
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -29,6 +31,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
 
       - name: Verify manual run uses main
         if: github.event_name == 'workflow_dispatch'
@@ -52,13 +58,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push nightly image
+        id: image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           push: true
           provenance: mode=max
           sbom: true
-          tags: ghcr.io/${{ github.repository }}:nightly
+          tags: ghcr.io/${{ github.repository }}:nightly-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           platforms: linux/amd64
           build-args: |
             APP_VERSION=${{ steps.version.outputs.value }}
@@ -67,13 +74,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Promote nightly image without replacing a newer commit
+        id: promote
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NIGHTLY_DIGEST: ${{ steps.image.outputs.digest }}
+        run: node scripts/promote-nightly-image.js
+
       - name: Update release readiness record
+        if: steps.promote.outputs.promoted == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NIGHTLY_VERSION: ${{ steps.version.outputs.value }}
         run: bash scripts/update-release-readiness.sh nightly
 
       - name: Notify merged pull requests and linked issues
+        if: steps.promote.outputs.promoted == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NIGHTLY_VERSION: ${{ steps.version.outputs.value }}

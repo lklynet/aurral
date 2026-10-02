@@ -52,10 +52,12 @@ Continue with [First run](/getting-started/first-run/).
 | --- | --- | --- |
 | `latest` | The newest stable release | You want a tested release. |
 | `2.10.0`, `2.10`, `2` | An exact version, or the newest release in that line | You pin versions or need to roll back. |
-| `nightly` | Every change merged since the last release | You want fixes and features early and can report bugs. |
+| `nightly` | The newest successfully published nightly build | You want fixes and features early and can report bugs. |
 | `pr-<number>` | The preview image for an open pull request | A maintainer asked you to test a proposed change. |
 
 Aurral checks for a newer build in your channel. When one exists, an update icon appears in the top-right corner. Select it to read the changes and open the GitHub release or commit list.
+
+On nightly, the update check uses the image published to GHCR. Changes still building, or whose builds failed or were cancelled, do not trigger the icon. Nightly checks run every two hours and require access to GHCR and GitHub. If either service cannot be checked, the nightly update icon stays hidden.
 
 On a nightly or preview image, the sidebar shows artwork for that channel. To hide it, turn off **Profile > Appearance > Environment art**.
 
