@@ -154,6 +154,32 @@ test("adding a Deezer playlist creates one synced library playlist with its trac
   assert.equal((await getEditorialPlaylist({ id: 8 }, "1306931615")).libraryPlaylistId, null);
 });
 
+test("adding the same Deezer playlist twice at once queues it only once", async (t) => {
+  stubDeezer(t, rockEssentials([deezerTrack("Paranoid", "Black Sabbath")]));
+  const payloads = captureEnqueues(t);
+
+  const [first, second] = await Promise.all([
+    addEditorialPlaylistToLibrary(OWNER, "1306931615"),
+    addEditorialPlaylistToLibrary(OWNER, "1306931615"),
+  ]);
+
+  assert.equal(payloads.length, 1);
+  assert.equal(second.playlistId, first.playlistId);
+});
+
+test("duplicate Deezer tracks keep the preview and artwork of the first entry", async (t) => {
+  const first = { ...deezerTrack("Paranoid", "Black Sabbath"), preview: "https://p/first.mp3", album: { id: 1, title: "Paranoid", cover_medium: "https://c/first.jpg" } };
+  const later = { ...deezerTrack("Paranoid", "Black Sabbath"), preview: "https://p/later.mp3", album: { id: 2, title: "Paranoid", cover_medium: "https://c/later.jpg" } };
+  stubDeezer(t, rockEssentials([first, later]));
+
+  const { tracks } = await getEditorialPlaylist(OWNER, "1306931615");
+
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0].preview_url, "https://p/first.mp3");
+  assert.equal(tracks[0].artworkUrl, "https://c/first.jpg");
+  assert.equal(tracks[0].deezerAlbumId, "1");
+});
+
 test("a Deezer playlist whose name is taken gets a distinct library name", async (t) => {
   t.mock.method(weeklyFlowWorker, "start", async () => false);
   stubDeezer(t, rockEssentials([deezerTrack("Paranoid", "Black Sabbath")]));

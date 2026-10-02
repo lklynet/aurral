@@ -132,12 +132,13 @@ const normalizeTracks = (rows) => {
     }
     seen.add(identity);
   }
-  const deezerFields = new Map(
-    raw.map(({ preview_url, artworkUrl, deezerAlbumId, ...track }) => [
-      buildSharedTrackIdentity(track),
-      { preview_url, artworkUrl, deezerAlbumId },
-    ]),
-  );
+  const deezerFields = new Map();
+  for (const { preview_url, artworkUrl, deezerAlbumId, ...track } of raw) {
+    const identity = buildSharedTrackIdentity(track);
+    if (!deezerFields.has(identity)) {
+      deezerFields.set(identity, { preview_url, artworkUrl, deezerAlbumId });
+    }
+  }
   const tracks = dedupeSharedTracks(raw).map((track) => ({
     ...track,
     ...deezerFields.get(buildSharedTrackIdentity(track)),

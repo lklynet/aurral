@@ -17,6 +17,7 @@ const SYNC_INTERVAL_HOURS = 24;
 const FOR_YOU_TERMS = 6;
 const FOR_YOU_PER_TERM = 2;
 const FOR_YOU_LIMIT = 12;
+const pendingAdds = new Map();
 
 const findLibraryPlaylist = (userId, deezerPlaylistId) =>
   flowPlaylistConfig
@@ -108,6 +109,17 @@ export async function getEditorialPlaylist(user, value) {
 
 export async function addEditorialPlaylistToLibrary(user, value) {
   const id = validateDeezerPlaylistId(value);
+  const key = `${user.id}:${id}`;
+  if (!pendingAdds.has(key)) {
+    pendingAdds.set(
+      key,
+      addToLibrary(user, id).finally(() => pendingAdds.delete(key)),
+    );
+  }
+  return pendingAdds.get(key);
+}
+
+async function addToLibrary(user, id) {
   const existing = findLibraryPlaylist(user.id, id);
   if (existing) {
     return { playlistId: existing.id, name: existing.name, alreadyAdded: true };

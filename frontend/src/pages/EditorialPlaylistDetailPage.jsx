@@ -98,7 +98,7 @@ export default function EditorialPlaylistDetailPage() {
 
   const handleAdd = async () => {
     if (playlist?.libraryPlaylistId) {
-      navigate(playlistPath(playlist.libraryPlaylistId));
+      navigate(playlistPath(playlist.libraryPlaylistId), { state: { created: true } });
       return;
     }
     setAdding(true);
