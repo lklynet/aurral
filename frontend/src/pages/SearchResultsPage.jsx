@@ -74,7 +74,7 @@ import {
 } from "lucide-react";
 import TooltipButton from "../components/TooltipButton";
 import Tooltip from "../components/Tooltip";
-import { buildArtistAddMenuItems, describeArtistAdd } from "../utils/artistMonitoring.js";
+import { buildArtistAddMenuItems, describeArtistAdd, getArtistAddMenuLabel } from "../utils/artistMonitoring.js";
 
 const RECOMMENDED_SORT_OPTIONS = [
   { value: "name", label: "Name" },
@@ -1069,8 +1069,9 @@ function SearchResultsPage() {
             disabled={!!pendingArtistIds[artistId]}
             isLoading={!!pendingArtistIds[artistId]}
             destination={libraryDestination}
+            label={getArtistAddMenuLabel(libraryDestination.primary)}
             items={buildArtistAddMenuItems({
-              destination: libraryDestination,
+              manager: libraryDestination.primary,
               onAdd: (managedBy, monitorOption) => handleArtistAction(item, managedBy, monitorOption),
             })}
           />

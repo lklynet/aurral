@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildAlbumRequestPayload,
   buildArtistAddPayload,
+  canRemoveLibraryAlbum,
   getAddToManagerLabel,
   getLibraryOwnerConflict,
   getMonitorOptionsForManager,
@@ -11,36 +12,19 @@ import {
   resolveLibraryDestination,
 } from "../../frontend/src/utils/libraryDestination.js";
 
-test("resolveLibraryDestination keeps Lidarr first for connected users without a preference", () => {
-  assert.deepEqual(
-    resolveLibraryDestination({ libraryOwner: null, lidarrConfigured: true }),
-    { primary: "lidarr", alternative: "aurral" },
-  );
+test("Lidarr manages artists and albums when it is connected, otherwise Aurral does", () => {
+  assert.deepEqual(resolveLibraryDestination({ lidarrConfigured: true }), { primary: "lidarr" });
+  assert.deepEqual(resolveLibraryDestination({ lidarrConfigured: false }), { primary: "aurral" });
 });
 
-test("resolveLibraryDestination puts a saved Aurral preference first", () => {
-  assert.deepEqual(
-    resolveLibraryDestination({ libraryOwner: "aurral", lidarrConfigured: true }),
-    { primary: "aurral", alternative: "lidarr" },
-  );
-});
-
-test("resolveLibraryDestination offers only Aurral when Lidarr is unavailable", () => {
-  assert.deepEqual(
-    resolveLibraryDestination({ libraryOwner: null, lidarrConfigured: false }),
-    { primary: "aurral", alternative: null },
-  );
-});
-
-test("resolveLibraryDestination falls back when the saved manager is unavailable", () => {
-  assert.deepEqual(
-    resolveLibraryDestination({ libraryOwner: "lidarr", lidarrConfigured: false }),
-    { primary: "aurral", alternative: null },
-  );
-  assert.deepEqual(
-    resolveLibraryDestination({ libraryOwner: "plex", lidarrConfigured: true }),
-    { primary: "lidarr", alternative: "aurral" },
-  );
+test("albums can only be removed through the active manager", () => {
+  const aurralAlbum = { managedBy: "aurral", mbid: "rg1" };
+  const lidarrAlbum = { managedBy: null, sources: ["lidarr"], mbid: "rg2" };
+  assert.equal(canRemoveLibraryAlbum(aurralAlbum, "aurral"), true);
+  assert.equal(canRemoveLibraryAlbum(aurralAlbum, "lidarr"), false);
+  assert.equal(canRemoveLibraryAlbum(lidarrAlbum, "lidarr"), true);
+  assert.equal(canRemoveLibraryAlbum(lidarrAlbum, "aurral"), false);
+  assert.equal(canRemoveLibraryAlbum({ sources: ["lidarr"] }, "lidarr"), false);
 });
 
 test("add labels name each manager", () => {

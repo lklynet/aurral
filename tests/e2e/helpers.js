@@ -51,3 +51,21 @@ export function apiRequest(page, path, { method = "GET", body } = {}) {
     };
   }, { requestPath: path, requestMethod: method, requestBody: body });
 }
+
+export async function useAurralWithoutLidarr(page) {
+  const settings = await apiRequest(page, "/api/settings");
+  expect(settings.ok).toBe(true);
+  const wasEnabled = settings.body?.integrations?.lidarr?.enabled !== false;
+  const setEnabled = async (enabled) => {
+    const response = await apiRequest(page, "/api/settings", {
+      method: "POST",
+      body: { integrations: { lidarr: { enabled } } },
+    });
+    expect(response.ok).toBe(true);
+  };
+  await setEnabled(false);
+  await expect
+    .poll(async () => (await apiRequest(page, "/api/health")).body?.lidarrConfigured)
+    .toBe(false);
+  return () => (wasEnabled ? setEnabled(true) : undefined);
+}

@@ -6,7 +6,7 @@ import {
   buildManagerMonitoringItems,
   describeArtistAdd,
   describeArtistMonitoringChange,
-  describeManagerMonitoring,
+  describeArtistMonitoring,
 } from "../../frontend/src/utils/artistMonitoring.js";
 
 const labels = (items) => items.map((item) => item.label);
@@ -46,26 +46,23 @@ test("adding offers Lidarr without monitoring but never a do-nothing Aurral choi
   assert.equal(aurral.some((item) => item.id === "aurral:none"), false);
 });
 
-test("the buttons read each manager's state", () => {
-  const state = { aurral: { mode: "none" }, lidarr: { inLidarr: false } };
-  assert.equal(describeManagerMonitoring("aurral", state), "Unmonitored");
-  assert.equal(describeManagerMonitoring("aurral", { aurral: { mode: "latest" } }), "Latest album");
-  assert.equal(describeManagerMonitoring("lidarr", state), "Add to Lidarr");
-  assert.equal(describeManagerMonitoring("lidarr", { lidarr: { inLidarr: true, monitorOption: "existing" } }), "Existing albums");
-  assert.equal(describeManagerMonitoring("lidarr", { lidarr: { inLidarr: true, monitorOption: null } }), "Custom");
+test("the button reads the active manager's state", () => {
+  assert.equal(describeArtistMonitoring({ manager: "aurral", added: false, monitorOption: "none" }), "Unmonitored");
+  assert.equal(describeArtistMonitoring({ manager: "aurral", added: true, monitorOption: "latest" }), "Latest album");
+  assert.equal(describeArtistMonitoring({ manager: "lidarr", added: false, monitorOption: "none" }), "Add to Lidarr");
+  assert.equal(describeArtistMonitoring({ manager: "lidarr", added: true, monitorOption: "existing" }), "Existing albums");
+  assert.equal(describeArtistMonitoring({ manager: "lidarr", added: true, monitorOption: "none" }), "None");
+  assert.equal(describeArtistMonitoring({ manager: "lidarr", added: true, monitorOption: null }), "Custom");
 });
 
-test("card add menus have one submenu per manager, default first", () => {
+test("card add menus list the active manager's choices", () => {
   const added = [];
-  const both = buildArtistAddMenuItems({
-    destination: { primary: "lidarr", alternative: "aurral" },
-    onAdd: (manager, option) => added.push([manager, option]),
-  });
-  const aurralOnly = buildArtistAddMenuItems({ destination: { primary: "aurral" }, onAdd: () => {} });
+  const lidarr = buildArtistAddMenuItems({ manager: "lidarr", onAdd: (manager, option) => added.push([manager, option]) });
+  const aurral = buildArtistAddMenuItems({ manager: "aurral", onAdd: (manager, option) => added.push([manager, option]) });
 
-  assert.deepEqual(labels(both), ["Add to Lidarr", "Monitor with Aurral"]);
-  assert.deepEqual(labels(aurralOnly), ["Monitor with Aurral"]);
-  both[1].submenuItems[0].onSelect();
+  assert.equal(lidarr[0].label, "Add without monitoring");
+  assert.equal(aurral.some((item) => item.id === "aurral:none"), false);
+  aurral[0].onSelect();
   assert.deepEqual(added, [["aurral", "all"]]);
 });
 

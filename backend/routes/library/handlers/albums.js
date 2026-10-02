@@ -70,7 +70,7 @@ export function registerAlbums(router) {
 
         let managedBy;
         try {
-          managedBy = await libraryManager.resolveManagedBy(requestedManagedBy, req.user);
+          managedBy = await libraryManager.resolveManagedBy(requestedManagedBy);
         } catch (error) {
           return res.status(error.statusCode || 400).json({
             error: error.message,

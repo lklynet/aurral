@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { apiRequest, openApp, requireCredentials } from "./helpers.js";
+import { apiRequest, openApp, requireCredentials, useAurralWithoutLidarr } from "./helpers.js";
 
 const artist = { mbid: "f22942a1-6f70-4f48-866e-238cb2308fbd", name: "Aphex Twin" };
 
@@ -38,15 +38,16 @@ async function openRemovalDialog(page, itemName, dialogName) {
   return dialog;
 }
 
-test("an Aurral album and artist are removed with their files", async ({ page }) => {
+test("without Lidarr, an Aurral album and artist are removed with their files", async ({ page }) => {
   test.setTimeout(240_000);
   await openApp(page);
+  const restoreLidarr = await useAurralWithoutLidarr(page);
 
   try {
     await ensureAurralArtist(page);
     await apiRequest(page, `/api/library/artists/${artist.mbid}`, {
       method: "PUT",
-      body: { monitored: false, monitorOption: "none" },
+      body: { monitorOption: "none" },
     });
 
     const details = await apiRequest(page, `/api/artists/${artist.mbid}`);
@@ -112,5 +113,6 @@ test("an Aurral album and artist are removed with their files", async ({ page })
     if (leftover.status !== 404 && leftover.body?.managedBy === "aurral") {
       await apiRequest(page, `/api/library/artists/${artist.mbid}?deleteFiles=true`, { method: "DELETE" });
     }
+    await restoreLidarr();
   }
 });

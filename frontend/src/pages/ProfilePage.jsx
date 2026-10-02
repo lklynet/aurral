@@ -56,9 +56,6 @@ function ProfilePage() {
         setLidarrRootFolderPath={account.setLidarrRootFolderPath}
         lidarrQualityProfileId={account.lidarrQualityProfileId}
         setLidarrQualityProfileId={account.setLidarrQualityProfileId}
-        libraryOwner={account.libraryOwner}
-        saveLibraryOwner={account.saveLibraryOwner}
-        savingLibraryOwner={account.savingLibraryOwner}
         loading={account.loading}
         handleSave={account.handleSave}
         showSuccess={showSuccess}

@@ -21,28 +21,21 @@ export const buildManagerMonitoringItems = ({ manager, current = "none", adding 
       onSelect: () => onSelect(option),
     }));
 
-export const describeManagerMonitoring = (manager, state) => {
-  if (manager === "aurral") return getManagerOptionLabel(state?.aurral?.mode || "none", "aurral");
-  if (!state?.lidarr?.inLidarr) return "Add to Lidarr";
-  const option = state.lidarr.monitorOption;
-  return option ? getManagerOptionLabel(option) : "Custom";
+export const describeArtistMonitoring = (state) => {
+  if (state?.manager === "lidarr" && !state.added) return "Add to Lidarr";
+  const option = state?.monitorOption;
+  return option ? getManagerOptionLabel(option, state?.manager) : "Custom";
 };
 
-export const buildArtistAddMenuItems = ({ destination = {}, onAdd }) => {
-  const lidarrAvailable = [destination.primary, destination.alternative].includes("lidarr");
-  const managers = lidarrAvailable
-    ? [destination.primary, destination.alternative].filter(Boolean)
-    : ["aurral"];
-  return managers.map((manager) => ({
-    id: `add-${manager}`,
-    label: manager === "aurral" ? "Monitor with Aurral" : "Add to Lidarr",
-    submenuItems: buildManagerMonitoringItems({
-      manager,
-      adding: true,
-      onSelect: (option) => onAdd(manager, option),
-    }),
-  }));
-};
+export const getArtistAddMenuLabel = (manager) =>
+  manager === "aurral" ? "Monitor with Aurral" : "Add to Lidarr";
+
+export const buildArtistAddMenuItems = ({ manager, onAdd }) =>
+  buildManagerMonitoringItems({
+    manager,
+    adding: true,
+    onSelect: (option) => onAdd(manager, option),
+  });
 
 export const describeArtistMonitoringChange = ({ name, manager, option, response }) => {
   if (option === "none") return `${getManagerName(manager)} no longer monitors ${name}`;

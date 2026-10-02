@@ -100,18 +100,13 @@ test("downloading a single's album with Lidarr hands the album to Lidarr and sto
   assert.equal(typeof metadata.aurralHandoverAt, "number");
 });
 
-test("an album you chose for Aurral stays Aurral's and Lidarr is not asked to add it", async () => {
-  const { album } = seedAlbum({ monitored: true, monitorMode: "monitored" });
-  let lidarrAdds = 0;
-  lidarrClient.addAlbum = async () => {
-    lidarrAdds += 1;
-    return lidarrAlbum;
-  };
+test("an album Aurral was monitoring is handed to Lidarr too", async () => {
+  const { album, track } = seedAlbum({ monitored: true, monitorMode: "monitored" });
 
-  await assert.rejects(requestFromLidarr(), (error) => error.statusCode === 409);
+  await requestFromLidarr();
 
-  assert.equal(managementStore.getManagedBy("album", album.id), "aurral");
-  assert.equal(lidarrAdds, 0);
+  assert.equal(managementStore.getManagedBy("album", album.id), "lidarr");
+  assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(track.id).monitored, 0);
 });
 
 test("a Lidarr album in the Library is removed from Lidarr by its MusicBrainz ID", async () => {

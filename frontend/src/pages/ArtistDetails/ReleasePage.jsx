@@ -255,11 +255,7 @@ function ReleasePage() {
   );
   const isComplete = libraryDisplay.isComplete;
   const triggerSearch = libraryDisplay.triggerSearch;
-  const albumAddAction = buildAlbumAddAction(
-    triggerSearch,
-    libraryInfo?.managedBy,
-    libraryDestination,
-  );
+  const albumAddAction = buildAlbumAddAction(triggerSearch, libraryDestination);
   const lastfmUrl = artistName && releaseTitle ? buildLastfmAlbumUrl(artistName, releaseTitle) : "";
 
   const releaseMeta = [

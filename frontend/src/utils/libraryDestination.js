@@ -3,8 +3,6 @@ const MANAGER_NAMES = {
   lidarr: "Lidarr",
 };
 
-export const ADD_TO_MENU_LABEL = "Add to…";
-
 export const normalizeLibraryManager = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
   return Object.hasOwn(MANAGER_NAMES, normalized) ? normalized : null;
@@ -14,10 +12,9 @@ export const resolveAlbumManager = (album) =>
   normalizeLibraryManager(album?.managedBy) ||
   (Array.isArray(album?.sources) && album.sources.includes("lidarr") ? "lidarr" : null);
 
-export const canRemoveLibraryAlbum = (album) => {
-  const manager = resolveAlbumManager(album);
-  if (manager === "aurral") return true;
-  return manager === "lidarr" && Boolean(album.mbid || album.releaseGroupMbid || album.providerId);
+export const canRemoveLibraryAlbum = (album, manager) => {
+  if (!manager || resolveAlbumManager(album) !== manager) return false;
+  return manager === "aurral" || Boolean(album.mbid || album.releaseGroupMbid || album.providerId);
 };
 
 export const getManagerName = (manager) =>
@@ -30,20 +27,9 @@ export const getManagedByLabel = (manager) => {
   return normalized ? `Managed by ${MANAGER_NAMES[normalized]}` : null;
 };
 
-export const resolveLibraryDestination = ({ libraryOwner = null, lidarrConfigured = false } = {}) => {
-  const available = lidarrConfigured ? ["lidarr", "aurral"] : ["aurral"];
-  const saved = normalizeLibraryManager(libraryOwner);
-  const primary = available.includes(saved) ? saved : available[0];
-  return {
-    primary,
-    alternative: available.find((manager) => manager !== primary) ?? null,
-  };
-};
-
-export const getItemDestination = (managedBy, destination = {}) => {
-  const manager = normalizeLibraryManager(managedBy);
-  return manager ? { ...destination, primary: manager, alternative: null } : destination;
-};
+export const resolveLibraryDestination = ({ lidarrConfigured = false } = {}) => ({
+  primary: lidarrConfigured ? "lidarr" : "aurral",
+});
 
 const describeAvailability = (availability) => {
   if (!availability) return null;

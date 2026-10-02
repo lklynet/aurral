@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Ban, Library, MoreVertical, Plus, RefreshCw, ThumbsDown, ThumbsUp } from "lucide-react";
 import { getDiscoveryFeedbackLabel } from "../utils/discoveryFeedback";
-import { buildArtistAddMenuItems } from "../utils/artistMonitoring";
+import { buildArtistAddMenuItems, getArtistAddMenuLabel } from "../utils/artistMonitoring";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import AddActionButton from "./AddActionButton";
 import { LibraryItemMenu } from "./LibraryItemMenu";
@@ -56,8 +56,10 @@ export function ArtistContextMenu({
     onSelect: () => destination.retry(),
   }] : !destination.ready ? [{
     id: "checking-destinations", label: "Checking library destinations", icon: Library, disabled: true,
-  }] : buildArtistAddMenuItems({ destination, onAdd: addArtist })
-    .map((item) => ({ ...item, icon: Plus })) : [];
+  }] : [{
+    id: "add-artist", label: getArtistAddMenuLabel(destination.primary), icon: Plus,
+    submenuItems: buildArtistAddMenuItems({ manager: destination.primary, onAdd: addArtist }),
+  }] : [];
 
   if (!hasLibraryItem && !onFeedback) return null;
 
@@ -76,7 +78,8 @@ export function ArtistContextMenu({
         {canAdd ? (
           <AddActionButton
             destination={destination}
-            items={buildArtistAddMenuItems({ destination, onAdd: addArtist })}
+            label={getArtistAddMenuLabel(destination.primary)}
+            items={buildArtistAddMenuItems({ manager: destination.primary, onAdd: addArtist })}
             isLoading={pendingAction === "library"}
             disabled={!!pendingAction}
           />

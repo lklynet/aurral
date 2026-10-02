@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { apiRequest, openApp, requireCredentials } from "./helpers.js";
+import { apiRequest, openApp, requireCredentials, useAurralWithoutLidarr } from "./helpers.js";
 
 const artist = { mbid: "8f6bd1e4-fbe1-4f50-aa9b-94c450ec0f11", name: "Portishead" };
 
@@ -7,9 +7,10 @@ requireCredentials();
 
 const ACTIVE_STATUS = /^(queued|downloading)$/;
 
-test("an Aurral artist and album are monitored, unmonitored with a warning, and downloaded again", async ({ page }) => {
+test("without Lidarr, an Aurral artist and album are monitored, unmonitored with a warning, and downloaded again", async ({ page }) => {
   test.setTimeout(240_000);
   await openApp(page);
+  const restoreLidarr = await useAurralWithoutLidarr(page);
 
   const existing = await apiRequest(page, `/api/library/artists/${artist.mbid}`);
   if (existing.status !== 404) {
@@ -132,7 +133,8 @@ test("an Aurral artist and album are monitored, unmonitored with a warning, and 
     }
     await apiRequest(page, `/api/library/artists/${artist.mbid}`, {
       method: "PUT",
-      body: { monitored: false, monitorOption: "none" },
+      body: { monitorOption: "none" },
     });
+    await restoreLidarr();
   }
 });

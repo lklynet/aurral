@@ -51,7 +51,7 @@ const aurralAlbumMbid = "c2222222-2222-4222-8222-222222222201";
 const otherAlbumMbid = "c2222222-2222-4222-8222-222222222202";
 const admin = { role: "admin" };
 
-const lidarr = { artist: null, albums: [], calls: [] };
+const lidarr = { configured: true, artist: null, albums: [], calls: [] };
 const originalClient = { ...lidarrClient };
 
 const lidarrAlbum = (id, foreignAlbumId, monitored) => ({
@@ -64,7 +64,7 @@ const lidarrAlbum = (id, foreignAlbumId, monitored) => ({
 });
 
 test.before(() => {
-  lidarrClient.isConfigured = () => true;
+  lidarrClient.isConfigured = () => lidarr.configured;
   lidarrClient.getArtistByMbid = async () => lidarr.artist;
   lidarrClient.getArtist = async () => lidarr.artist;
   lidarrClient.getMetadataProfiles = async () => [];
@@ -100,10 +100,12 @@ test.before(() => {
 
 test.beforeEach(() => {
   db.prepare("DELETE FROM library_management").run();
+  db.prepare("DELETE FROM library_album_tracks").run();
+  db.prepare("DELETE FROM library_tracks").run();
   db.prepare("DELETE FROM library_albums").run();
   db.prepare("DELETE FROM library_artists").run();
   managementStore.invalidateLibraryManagementCache();
-  Object.assign(lidarr, { artist: null, albums: [], calls: [] });
+  Object.assign(lidarr, { configured: true, artist: null, albums: [], calls: [] });
 });
 
 test.after(async () => {
@@ -121,54 +123,108 @@ function seedArtist(managedBy, monitorMode) {
   return artist;
 }
 
-const artistManagement = (artistId) => {
-  const entry = managementStore.getLibraryManagementEntry("artist", artistId);
-  return [entry?.managedBy, entry?.monitorMode];
-};
-
-test("choosing Aurral for a Lidarr artist stops Lidarr's automation and starts Aurral's", async () => {
-  const artist = seedArtist("lidarr", "all");
-  lidarr.artist = { id: 41, artistName: "Automation Artist", foreignArtistId: artistMbid, monitorNewItems: "all" };
-
-  const result = await libraryManager.setArtistAutomation(artistMbid, {
-    manager: "aurral",
-    monitorOption: "future",
-    user: admin,
-  });
-
-  assert.equal(result.error, undefined);
-  assert.deepEqual(lidarr.calls, [["monitor", "none"]]);
-  assert.deepEqual(artistManagement(artist.id), ["aurral", "future"]);
-});
-
-test("choosing Lidarr adds the artist and keeps Aurral's albums out of Lidarr's monitoring", async () => {
-  const artist = seedArtist("aurral", "future");
-  const aurralAlbum = libraryStore.upsertLibraryAlbum({
+function seedAurralAlbum(artistId) {
+  const album = libraryStore.upsertLibraryAlbum({
     identityKey: `release-group:${aurralAlbumMbid}`,
     mbid: aurralAlbumMbid,
     releaseGroupMbid: aurralAlbumMbid,
-    artistId: artist.id,
+    artistId,
     title: "Album 1",
   });
-  managementStore.setLibraryManagement({ entityKind: "album", entityId: aurralAlbum.id, managedBy: "aurral" });
-  lidarr.albums = [lidarrAlbum(1, aurralAlbumMbid, true), lidarrAlbum(2, otherAlbumMbid, false)];
+  managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral", monitorMode: "monitored" });
+  const track = libraryStore.upsertLibraryTrack({ identityKey: "track:automation", title: "Track", artistName: "Automation Artist" });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  return { album, track };
+}
 
-  const result = await libraryManager.setArtistAutomation(artistMbid, {
-    manager: "lidarr",
-    monitorOption: "all",
-    user: admin,
-  });
+const management = (entityKind, id) => {
+  const entry = managementStore.getLibraryManagementEntry(entityKind, id);
+  return [entry?.managedBy, entry?.monitorMode];
+};
+
+const lidarrArtist = (overrides = {}) => ({
+  id: 41,
+  artistName: "Automation Artist",
+  foreignArtistId: artistMbid,
+  monitored: true,
+  monitorNewItems: "none",
+  ...overrides,
+});
+
+test("with Lidarr connected, monitoring an artist adds it to Lidarr and Lidarr takes Aurral's albums", async () => {
+  const artist = seedArtist("aurral", "future");
+  const { album, track } = seedAurralAlbum(artist.id);
+  lidarr.albums = [lidarrAlbum(1, aurralAlbumMbid, false), lidarrAlbum(2, otherAlbumMbid, false)];
+
+  const result = await libraryManager.setArtistMonitoring(artistMbid, { monitorOption: "all", user: admin });
 
   assert.equal(result.error, undefined);
   assert.deepEqual(lidarr.calls, [["add", "none"], ["monitor", "all"]]);
-  assert.deepEqual(artistManagement(artist.id), ["lidarr", "all"]);
-  assert.deepEqual(lidarr.albums.map((album) => album.monitored), [false, true]);
+  assert.deepEqual(management("artist", artist.id), ["lidarr", "all"]);
+  assert.deepEqual(lidarr.albums.map((entry) => entry.monitored), [true, true]);
+  assert.equal(management("album", album.id)[0], "lidarr");
+  assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(track.id).monitored, 0);
+});
+
+test("with Lidarr connected, Aurral cannot add or monitor artists and albums", async () => {
+  const artist = seedArtist("aurral", "none");
+  const { album } = seedAurralAlbum(artist.id);
+  managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral", monitorMode: "unmonitored" });
+
+  const add = await callRoute("POST /artists", {
+    body: { foreignArtistId: artistMbid, artistName: "Automation Artist", managedBy: "aurral", monitorOption: "all" },
+  });
+  const monitorAlbum = await libraryManager.setAurralAlbumMonitoring(album.id, { monitored: true });
+  const reconciled = await libraryManager.reconcileAurralMonitoring();
+
+  assert.equal(add.statusCode, 409);
+  assert.equal(monitorAlbum.statusCode, 409);
+  assert.deepEqual(reconciled, { artists: 0, queuedAlbums: 0, failedArtists: 0 });
+  assert.deepEqual(management("artist", artist.id), ["aurral", "none"]);
+  assert.deepEqual(management("album", album.id), ["aurral", "unmonitored"]);
+});
+
+test("without Lidarr, Aurral monitors the artist and Lidarr is never asked", async () => {
+  lidarr.configured = false;
+  const neverAdded = "c3333333-3333-4333-8333-333333333333";
+
+  const result = await libraryManager.setArtistMonitoring(artistMbid, {
+    monitorOption: "future",
+    artistName: "Automation Artist",
+    user: admin,
+  });
+  const untouched = await libraryManager.setArtistMonitoring(neverAdded, {
+    monitorOption: "none",
+    artistName: "Never Added",
+    user: admin,
+  });
+  const lidarrAdd = await callRoute("POST /artists", {
+    body: { foreignArtistId: neverAdded, artistName: "Never Added", managedBy: "lidarr" },
+  });
+
+  assert.equal(result.error, undefined);
+  const artistId = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid).id;
+  assert.deepEqual(management("artist", artistId), ["aurral", "future"]);
+  assert.equal(untouched.error, undefined);
+  assert.equal(lidarrAdd.statusCode, 409);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE mbid = ?").get(neverAdded).n, 0);
+  assert.deepEqual(lidarr.calls, []);
+});
+
+test("an Aurral monitoring change that cannot load releases leaves the artist as it was", async () => {
+  lidarr.configured = false;
+  const artist = seedArtist("aurral", "none");
+
+  const result = await libraryManager.setArtistMonitoring(artistMbid, { monitorOption: "all", user: admin });
+
+  assert.equal(result.statusCode, 503);
+  assert.deepEqual(management("artist", artist.id), ["aurral", "none"]);
 });
 
 test("the Lidarr option chosen in Aurral reads back until Lidarr changes", async () => {
   seedArtist("aurral", "none");
-  lidarr.artist = { id: 41, artistName: "Automation Artist", foreignArtistId: artistMbid, monitorNewItems: "none" };
-  await libraryManager.setArtistAutomation(artistMbid, { manager: "lidarr", monitorOption: "future", user: admin });
+  lidarr.artist = lidarrArtist();
+  await libraryManager.setArtistMonitoring(artistMbid, { monitorOption: "future", user: admin });
 
   const chosen = await libraryManager.getArtist(artistMbid, { managedBy: "lidarr", forceRefresh: true });
   lidarr.artist = { ...lidarr.artist, monitorNewItems: "none" };
@@ -178,29 +234,39 @@ test("the Lidarr option chosen in Aurral reads back until Lidarr changes", async
   assert.equal(changedInLidarr.monitorOption, "none");
 });
 
-test("turning monitoring off stops both managers", async () => {
-  const artist = seedArtist("aurral", "future");
-  lidarr.artist = { id: 41, artistName: "Automation Artist", foreignArtistId: artistMbid, monitorNewItems: "all" };
+test("the Lidarr option reads back for an artist Lidarr knows by another provider's ID", async () => {
+  const addArtist = lidarrClient.addArtist;
+  lidarrClient.addArtist = async (mbid, artistName, options) => {
+    const added = await addArtist(mbid, artistName, options);
+    lidarr.artist = { ...added, foreignArtistId: "1098@deezer" };
+    return lidarr.artist;
+  };
+  try {
+    await libraryManager.setArtistMonitoring(artistMbid, {
+      monitorOption: "future",
+      artistName: "Automation Artist",
+      user: admin,
+    });
+  } finally {
+    lidarrClient.addArtist = addArtist;
+  }
 
-  const result = await libraryManager.setArtistAutomation(artistMbid, { manager: null, user: admin });
+  const state = await libraryManager.getArtistMonitoring(artistMbid);
 
-  assert.equal(result.error, undefined);
-  assert.deepEqual(lidarr.calls, [["monitor", "none"]]);
-  assert.deepEqual(artistManagement(artist.id), ["aurral", "none"]);
+  assert.deepEqual([state.added, state.monitorOption], [true, "future"]);
 });
 
-test("a switch that would add the artist needs permission to add artists", async () => {
+test("adding an artist through monitoring needs permission to add artists", async () => {
   const artist = seedArtist("aurral", "future");
 
-  const result = await libraryManager.setArtistAutomation(artistMbid, {
-    manager: "lidarr",
+  const result = await libraryManager.setArtistMonitoring(artistMbid, {
     monitorOption: "all",
     user: { role: "user", permissions: { changeMonitoring: true } },
   });
 
   assert.equal(result.statusCode, 403);
   assert.deepEqual(lidarr.calls, []);
-  assert.deepEqual(artistManagement(artist.id), ["aurral", "future"]);
+  assert.deepEqual(management("artist", artist.id), ["aurral", "future"]);
 });
 
 test("adding to Lidarr without monitoring overrides the default monitor option", async () => {
@@ -219,76 +285,40 @@ test("adding to Lidarr without monitoring overrides the default monitor option",
   }
 });
 
-test("the monitoring state reports both managers and which one is active", async () => {
+test("the monitoring state reports only the manager in charge", async () => {
   seedArtist("aurral", "future");
-  lidarr.artist = { id: 41, artistName: "Automation Artist", foreignArtistId: artistMbid, monitored: true, monitorNewItems: "none" };
 
-  const aurralActive = await libraryManager.getArtistMonitoring(artistMbid);
-  await libraryManager.setArtistAutomation(artistMbid, { manager: "lidarr", monitorOption: "all", user: admin });
-  const lidarrActive = await libraryManager.getArtistMonitoring(artistMbid);
+  const notInLidarr = await libraryManager.getArtistMonitoring(artistMbid);
+  lidarr.artist = lidarrArtist({ monitorNewItems: "all" });
+  const inLidarr = await libraryManager.getArtistMonitoring(artistMbid);
+  lidarr.configured = false;
+  const aurral = await libraryManager.getArtistMonitoring(artistMbid);
 
-  assert.deepEqual(aurralActive, {
-    aurral: { known: true, inLibrary: true, mode: "future" },
-    lidarr: { available: true, inLidarr: true, monitorOption: "none", error: null },
-    active: "aurral",
-  });
-  assert.deepEqual(
-    [lidarrActive.active, lidarrActive.aurral.mode, lidarrActive.lidarr.monitorOption],
-    ["lidarr", "none", "all"],
-  );
+  assert.deepEqual(notInLidarr, { manager: "lidarr", added: false, monitorOption: "none", error: null });
+  assert.deepEqual(inLidarr, { manager: "lidarr", added: true, monitorOption: null, error: null });
+  assert.deepEqual(aurral, { manager: "aurral", added: true, monitorOption: "future", error: null });
 });
 
-test("removing an artist from Lidarr leaves its Aurral side alone", async () => {
+test("removing an artist removes it from the manager in charge only", async () => {
   const artist = seedArtist("aurral", "none");
-  lidarr.artist = { id: 41, artistName: "Automation Artist", foreignArtistId: artistMbid, monitorNewItems: "none" };
+  lidarr.artist = lidarrArtist();
 
-  const result = await libraryManager.deleteArtist(artistMbid, false, { manager: "lidarr" });
+  const fromLidarr = await callRoute("DELETE /artists/:mbid", { params: { mbid: artistMbid } });
+
+  assert.equal(fromLidarr.statusCode, 200);
+  assert.deepEqual(lidarr.calls, [["delete", 41]]);
+  assert.deepEqual(management("artist", artist.id), ["aurral", "none"]);
+});
+
+test("without Lidarr, removing an artist keeps the record Lidarr left behind", async () => {
+  lidarr.configured = false;
+  const artist = seedArtist("lidarr", "none");
+
+  const result = await libraryManager.deleteArtist(artistMbid, false);
 
   assert.equal(result.success, true);
-  assert.deepEqual(lidarr.calls, [["delete", 41]]);
-  assert.deepEqual(artistManagement(artist.id), ["aurral", "none"]);
-});
-
-test("None on one manager leaves the other manager and the artist's owner alone", async () => {
-  const artist = seedArtist("aurral", "none");
-  lidarr.artist = { id: 41, artistName: "Automation Artist", foreignArtistId: artistMbid, monitorNewItems: "all" };
-
-  await libraryManager.setArtistAutomation(artistMbid, { manager: "lidarr", monitorOption: "none", user: admin });
-  const neverAurral = "c3333333-3333-4333-8333-333333333333";
-  const untouched = await libraryManager.setArtistAutomation(neverAurral, {
-    manager: "aurral",
-    monitorOption: "none",
-    artistName: "Never Aurral",
-    user: admin,
-  });
-
-  assert.deepEqual(artistManagement(artist.id), ["aurral", "none"]);
-  assert.deepEqual(lidarr.calls, [["monitor", "none"]]);
-  assert.equal(untouched.error, undefined);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE mbid = ?").get(neverAurral).n, 0);
-});
-
-test("Lidarr keeps monitoring when Aurral cannot start monitoring the artist", async () => {
-  const artist = seedArtist("lidarr", "all");
-  lidarr.artist = { id: 41, artistName: "Automation Artist", foreignArtistId: artistMbid, monitorNewItems: "all" };
-
-  const result = await libraryManager.setArtistAutomation(artistMbid, { manager: "aurral", monitorOption: "all", user: admin });
-
-  assert.equal(result.statusCode, 503);
-  assert.deepEqual(lidarr.calls, []);
-  assert.deepEqual(artistManagement(artist.id), ["lidarr", "all"]);
-});
-
-test("removing an artist with an unknown manager is refused and touches nothing", async () => {
-  seedArtist("aurral", "none");
-  lidarr.artist = { id: 41, artistName: "Automation Artist", foreignArtistId: artistMbid, monitorNewItems: "none" };
-
-  for (const manager of ["aurral ", ["lidarr"], "both"]) {
-    const response = await callRoute("DELETE /artists/:mbid", { params: { mbid: artistMbid }, query: { manager } });
-    assert.equal(response.statusCode, 400, JSON.stringify(manager));
-  }
-  assert.deepEqual(lidarr.calls, []);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE mbid = ?").get(artistMbid).n, 1);
+  assert.deepEqual(management("artist", artist.id), ["lidarr", "none"]);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE id = ?").get(artist.id).n, 1);
 });
 
 test("Lidarr monitoring defaults leave Lidarr alone when given Aurral's own album records", async () => {
@@ -313,14 +343,4 @@ test("Lidarr monitoring defaults leave Lidarr alone when given Aurral's own albu
 
   assert.equal(canonicalAlbums.length, 1);
   assert.equal(lidarr.albums[0].monitored, false);
-});
-
-test("removing Aurral's side keeps a Lidarr artist's record", async () => {
-  const artist = seedArtist("lidarr", "none");
-
-  const result = await libraryManager.deleteArtist(artistMbid, false, { manager: "aurral" });
-
-  assert.equal(result.success, true);
-  assert.deepEqual(artistManagement(artist.id), ["lidarr", "none"]);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE id = ?").get(artist.id).n, 1);
 });

@@ -337,18 +337,6 @@ test("adding an artist reports a metadata outage during monitoring", async () =>
   assert.equal(metadata.monitorOption, "none");
 });
 
-test("ensureArtistMonitored reactivates an Aurral artist set to none", async () => {
-  const added = await addAurralArtist("none");
-  const updated = await libraryManager.ensureArtistMonitored(added.body.artist);
-  assert.equal(updated.monitorOption, "all");
-  assert.equal(managementStore.getLibraryManagementEntry("artist", Number(updated.id)).monitorMode, "all");
-
-  await libraryManager.updateArtist(artistMbid, { monitored: false });
-  const reactivated = await libraryManager.updateArtist(artistMbid, { monitored: true });
-  assert.equal(reactivated.monitorOption, "all");
-  assert.equal(managementStore.getLibraryManagementEntry("artist", Number(updated.id)).monitorMode, "all");
-});
-
 test("the artist add service activates monitoring for an existing Aurral artist", async () => {
   await addAurralArtist("none");
   const artist = await libraryManager.addArtistWithResolvedOptions(artistMbid, "Monitor Artist", {

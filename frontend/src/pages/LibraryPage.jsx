@@ -63,7 +63,6 @@ import {
   fetchCanonicalLibraryPage,
   getActiveLibraryRefresh,
   getCanonicalLibraryPage,
-  getArtistMonitoring,
   getDownloadStatus,
   getLibraryFavorites,
   getLibraryRefreshStatus,
@@ -103,7 +102,6 @@ import { canRemoveLibraryAlbum, getManagerName, resolveAlbumManager } from "../u
 import { describeAlbumRequestResult } from "../utils/albumAddAction.js";
 import {
   canDownloadAurralAlbum,
-  isProvisionalAurralAlbum,
   getMonitoringMenuAction,
 } from "../utils/aurralMonitoring.js";
 import { ManagerLogo, useArtistMonitoring } from "../components/ArtistMonitoringButtons";
@@ -965,7 +963,7 @@ function LibraryPage() {
     try {
       if (!isPreviewLibrary) {
         if (removal.kind === "artist") {
-          await deleteArtistFromLibrary(entity.mbid, deleteFiles, removal.manager);
+          await deleteArtistFromLibrary(entity.mbid, deleteFiles);
         } else if (removal.kind === "album" && resolveAlbumManager(entity) === "aurral") {
           await deleteAurralAlbumFromLibrary(entity.canonicalId || entity.id, deleteFiles);
         } else if (removal.kind === "album" && /^\d+$/.test(String(entity.providerId ?? ""))) {
@@ -974,18 +972,6 @@ function LibraryPage() {
           await deleteLidarrAlbumFromLibrary(entity.mbid || entity.releaseGroupMbid, deleteFiles);
         } else {
           await deleteTrackFromLibrary(entity.id);
-        }
-      }
-      if (removal.kind === "artist" && removal.manager && !isPreviewLibrary) {
-        const remaining = await getArtistMonitoring(entity.mbid).catch(() => null);
-        if (remaining?.aurral?.inLibrary || remaining?.lidarr?.inLidarr) {
-          setLibraryRemoval(null);
-          showSuccess(`Artist removed from ${getManagerName(removal.manager)}`);
-          clearCanonicalLibraryPageCache();
-          void queryClient.invalidateQueries({ queryKey: queryKeys.libraryArtist(entity.mbid) });
-          void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
-          void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
-          return;
         }
       }
       removeLocalLibraryEntity(removal);
@@ -1325,38 +1311,31 @@ function LibraryPage() {
     canAdd: canEditArtistMbid,
     onChanged: refreshLibraryArtistMonitoring,
   });
+  const libraryManager = libraryArtistMonitoring.manager;
   const libraryArtistMonitoringItems =
     libraryArtist?.mbid && !isPreviewLibrary && libraryArtistMonitoring.ready
-      ? libraryArtistMonitoring.managers.map((manager, index) => {
-          const reason = libraryArtistMonitoring.reasonFor(manager);
-          return {
-            id: `monitoring-${manager}`,
-            label: libraryArtistMonitoring.isAdding(manager)
-              ? "Add to Lidarr"
-              : `${getManagerName(manager)}: ${libraryArtistMonitoring.labelFor(manager)}`,
-            icon: ManagerLogo[manager],
-            separatorBefore: index === 0,
-            submenuItems: reason
-              ? [{ id: `${manager}-blocked`, label: reason, disabled: true }]
-              : libraryArtistMonitoring.itemsFor(manager),
-          };
-        })
+      ? [{
+          id: "monitoring",
+          label: libraryArtistMonitoring.adding
+            ? "Add to Lidarr"
+            : `${getManagerName(libraryManager)}: ${libraryArtistMonitoring.label}`,
+          icon: ManagerLogo[libraryManager],
+          separatorBefore: true,
+          submenuItems: libraryArtistMonitoring.reason
+            ? [{ id: "monitoring-blocked", label: libraryArtistMonitoring.reason, disabled: true }]
+            : libraryArtistMonitoring.items,
+        }]
       : [];
   const libraryArtistRemovalItems =
-    canDeleteArtist && libraryArtist?.mbid && !isPreviewLibrary && libraryArtistMonitoring.state
-      ? [
-          libraryArtistMonitoring.state.aurral.inLibrary && "aurral",
-          libraryArtistMonitoring.state.lidarr.inLidarr && "lidarr",
-        ]
-          .filter(Boolean)
-          .map((manager, index) => ({
-            id: `remove-${manager}`,
-            label: `Remove from ${getManagerName(manager)}`,
-            icon: Trash2,
-            danger: true,
-            separatorBefore: index === 0,
-            onSelect: () => openLibraryRemoval("artist", libraryArtist, manager),
-          }))
+    canDeleteArtist && libraryArtist?.mbid && !isPreviewLibrary && libraryArtistMonitoring.state?.added
+      ? [{
+          id: "remove",
+          label: `Remove from ${getManagerName(libraryManager)}`,
+          icon: Trash2,
+          danger: true,
+          separatorBefore: true,
+          onSelect: () => openLibraryRemoval("artist", libraryArtist, libraryManager),
+        }]
       : [];
   const hasMissingAlbumTracks = Boolean(
     libraryAlbum && getAlbumTracks(libraryAlbum).some((track) => !firstAvailableFile(track)),
@@ -1466,7 +1445,7 @@ function LibraryPage() {
 
   const [albumDownloadPending, setAlbumDownloadPending] = useState(false);
   const albumManager = resolveAlbumManager(libraryAlbum);
-  const lidarrAvailable = [libraryDestination.primary, libraryDestination.alternative].includes("lidarr");
+  const activeManager = libraryDestination.primary;
   const lidarrAlbumId =
     albumManager === "lidarr" && /^\d+$/.test(String(libraryAlbum?.providerId ?? ""))
       ? libraryAlbum.providerId
@@ -1475,33 +1454,26 @@ function LibraryPage() {
     albumManager === "aurral" ? albumMonitoring.monitored
       : lidarrAlbumId ? libraryAlbum.monitored === true
         : null;
-  const albumDownloadManagers = (() => {
-    if (!canAddTracks || isPreviewLibrary || !libraryAlbum || !hasMissingAlbumTracks) return [];
-    if (!(libraryAlbum.mbid || libraryAlbum.releaseGroupMbid)) return [];
-    if (albumManager === "aurral") {
-      if (!canDownloadAurralAlbum(libraryAlbum, { hasMissingTracks: true })) return [];
-      return lidarrAvailable && isProvisionalAurralAlbum(libraryAlbum)
-        ? [libraryDestination.primary, libraryDestination.alternative]
-        : ["aurral"];
-    }
-    if (albumManager === "lidarr") return lidarrAvailable ? ["lidarr"] : [];
-    return lidarrAvailable
-      ? [libraryDestination.primary, libraryDestination.alternative]
-      : ["aurral"];
+  const canDownloadLibraryAlbum = (() => {
+    if (!canAddTracks || isPreviewLibrary || !libraryAlbum || !hasMissingAlbumTracks) return false;
+    if (!libraryDestination.ready || !(libraryAlbum.mbid || libraryAlbum.releaseGroupMbid)) return false;
+    if (activeManager === "lidarr") return true;
+    if (albumManager === "aurral") return canDownloadAurralAlbum(libraryAlbum, { hasMissingTracks: true });
+    return albumManager !== "lidarr";
   })();
-  const downloadLibraryAlbum = useCallback(async (manager) => {
+  const downloadLibraryAlbum = useCallback(async () => {
     if (!libraryAlbum) return;
     const title = libraryAlbum.title || "album";
     setAlbumDownloadPending(true);
     try {
       const result = await requestAlbumFromSearch({
         ...buildAurralAlbumRetryPayload({ album: libraryAlbum, artist: getArtistForAlbum(libraryAlbum) }),
-        managedBy: manager,
-        triggerSearch: manager === "lidarr",
+        managedBy: activeManager,
+        triggerSearch: activeManager === "lidarr",
       });
       const queued = result?.jobIds?.length || 0;
       showSuccess(
-        manager === "lidarr"
+        activeManager === "lidarr"
           ? describeAlbumRequestResult(result, title, "lidarr").message
           : queued > 0
             ? `Queued ${queued} ${queued === 1 ? "track" : "tracks"} from ${title}`
@@ -1510,7 +1482,7 @@ function LibraryPage() {
       setLibrary((current) => ({
         ...current,
         albums: current.albums.map((entry) =>
-          String(entry.id) === String(libraryAlbum.id) ? { ...entry, managedBy: manager } : entry,
+          String(entry.id) === String(libraryAlbum.id) ? { ...entry, managedBy: activeManager } : entry,
         ),
       }));
       updateAlbumMonitoringState(libraryAlbum.id, { monitored: true });
@@ -1525,7 +1497,7 @@ function LibraryPage() {
     } finally {
       setAlbumDownloadPending(false);
     }
-  }, [getArtistForAlbum, libraryAlbum, reloadLibraryAlbumTracks, setLibrary, showError, showSuccess, updateAlbumMonitoringState]);
+  }, [activeManager, getArtistForAlbum, libraryAlbum, reloadLibraryAlbumTracks, setLibrary, showError, showSuccess, updateAlbumMonitoringState]);
 
   const setLidarrAlbumMonitored = useCallback(async (monitored) => {
     if (!lidarrAlbumId) return;
@@ -1556,7 +1528,9 @@ function LibraryPage() {
         closeBeforeSelect: true,
         onSelect: () => setLidarrAlbumMonitored(lidarrAlbumAction !== "stop"),
       }
-    : albumMonitoring.menuItem;
+    : activeManager === "aurral" || albumMonitoring.monitored
+      ? albumMonitoring.menuItem
+      : null;
 
   useEffect(() => {
     if (!libraryAlbum || isPreviewLibrary) return undefined;
@@ -2287,7 +2261,7 @@ function LibraryPage() {
                     },
                   ]
                 : []),
-              ...(canDeleteAlbum && canRemoveLibraryAlbum(album)
+              ...(canDeleteAlbum && canRemoveLibraryAlbum(album, libraryDestination.primary)
                 ? [
                     {
                       id: "delete",
@@ -2557,10 +2531,10 @@ function LibraryPage() {
                 label={libraryAlbum.title || "album"}
                 onClick={() => toggleFavorite("album", libraryAlbum)}
               />
-              {albumDownloadManagers.length === 1 && (
+              {canDownloadLibraryAlbum && (
                 <TooltipButton
                   className="native-library-favorite"
-                  onClick={() => downloadLibraryAlbum(albumDownloadManagers[0])}
+                  onClick={downloadLibraryAlbum}
                   disabled={albumDownloadPending}
                   label={albumManager === "lidarr" && albumMonitored ? "Search for album" : "Download album"}
                   aria-label={
@@ -2576,25 +2550,6 @@ function LibraryPage() {
                     <Download aria-hidden="true" />
                   )}
                 </TooltipButton>
-              )}
-              {albumDownloadManagers.length > 1 && (
-                <LibraryItemMenu
-                  label={libraryAlbum.title || "Album"}
-                  menuLabel="Download with"
-                  triggerLabel="Download album"
-                  triggerIcon={
-                    albumDownloadPending ? <DotLoader size="sm" label={null} /> : <Download aria-hidden="true" />
-                  }
-                  disabled={albumDownloadPending}
-                  contextMenu={false}
-                  items={albumDownloadManagers.map((manager) => ({
-                    id: manager,
-                    label: `Download with ${getManagerName(manager)}`,
-                    icon: Download,
-                    closeBeforeSelect: true,
-                    onSelect: () => downloadLibraryAlbum(manager),
-                  }))}
-                />
               )}
               {discoverArtist && (
                 <CrossViewLink
@@ -2630,7 +2585,7 @@ function LibraryPage() {
                     onSelect: () => toggleFavorite("album", libraryAlbum),
                   },
                   ...(albumMonitoringMenuItem ? [albumMonitoringMenuItem] : []),
-                  ...(canDeleteAlbum && canRemoveLibraryAlbum(libraryAlbum)
+                  ...(canDeleteAlbum && canRemoveLibraryAlbum(libraryAlbum, activeManager)
                     ? [
                         {
                           id: "delete",

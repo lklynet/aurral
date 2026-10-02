@@ -255,9 +255,9 @@ export const addArtistToLibrary = async (artistData) => {
   return result;
 };
 
-export const deleteArtistFromLibrary = (mbid, deleteFiles = false, manager = null) =>
+export const deleteArtistFromLibrary = (mbid, deleteFiles = false) =>
   deleteData(`/library/artists/${mbid}`, {
-    params: { deleteFiles, ...(manager ? { manager } : {}) },
+    params: { deleteFiles },
   });
 
 export const getArtistMonitoring = (mbid, { signal } = {}) =>

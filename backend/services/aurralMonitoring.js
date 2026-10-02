@@ -17,9 +17,6 @@ export const MONITORED_AURRAL_ALBUM_CONDITION = `
 
 export const monitoredTrackCondition = (trackAlias) => `${trackAlias}.monitored = 1`;
 
-export const isProvisionalAurralAlbum = (album) =>
-  album?.managedBy === "aurral" && !album.monitorMode && album.monitored !== true;
-
 export function resolveAurralMonitorMode(value) {
   const mode = String(value ?? "none").trim().toLowerCase() || "none";
   if (AURRAL_MONITOR_MODES.has(mode)) return { mode };

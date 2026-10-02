@@ -871,9 +871,6 @@ db.exec(`
   WHERE needs_identity_migration = 1
     AND id IN (SELECT DISTINCT user_id FROM user_identities)
 `);
-if (!userColumns.includes("default_library_owner")) {
-  tryAddColumn("ALTER TABLE users ADD COLUMN default_library_owner TEXT");
-}
 if (!userColumns.includes("subsonic_password")) {
   tryAddColumn("ALTER TABLE users ADD COLUMN subsonic_password TEXT");
 }

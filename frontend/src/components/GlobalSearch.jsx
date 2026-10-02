@@ -54,7 +54,7 @@ import { TrackPlaylistMenu } from "../pages/ArtistDetails/components/TrackPlayli
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { searchSettingsItems } from "../pages/Settings/settingsTabsConfig";
-import { buildArtistAddMenuItems, describeArtistAdd } from "../utils/artistMonitoring.js";
+import { buildArtistAddMenuItems, describeArtistAdd, getArtistAddMenuLabel } from "../utils/artistMonitoring.js";
 
 const EMPTY_SUGGESTION_RESULTS = { library: null, catalog: null };
 
@@ -549,8 +549,9 @@ function GlobalSearch({ settingsMode = false }) {
             disabled={!!pendingArtistIds[artistId]}
             isLoading={!!pendingArtistIds[artistId]}
             destination={libraryDestination}
+            label={getArtistAddMenuLabel(libraryDestination.primary)}
             items={buildArtistAddMenuItems({
-              destination: libraryDestination,
+              manager: libraryDestination.primary,
               onAdd: (managedBy, monitorOption) => handleArtistAction(item, managedBy, monitorOption),
             })}
           />

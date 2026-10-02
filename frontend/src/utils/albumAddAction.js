@@ -1,4 +1,4 @@
-import { getAddToManagerLabel, getItemDestination, getManagerName } from "./libraryDestination.js";
+import { getAddToManagerLabel, getManagerName } from "./libraryDestination.js";
 
 const ACTIVE_ALBUM_STATUSES = new Set([
   "adding",
@@ -41,18 +41,13 @@ export const shouldTriggerAlbumSearch = ({
   return Boolean(inLibrary && monitored);
 };
 
-export const buildAlbumAddAction = (search, managedBy, destination = {}) => {
-  const itemDestination = getItemDestination(managedBy, destination);
-  return search
-    ? {
-        label: "Search Album",
-        destination: { ...itemDestination, alternative: null },
-      }
-    : { label: getAddToManagerLabel(itemDestination.primary), destination: itemDestination };
-};
+export const buildAlbumAddAction = (search, destination = {}) => ({
+  label: search ? "Search Album" : getAddToManagerLabel(destination.primary),
+  destination,
+});
 
 export const getAlbumAddAction = (input = {}, destination = {}) =>
-  buildAlbumAddAction(shouldTriggerAlbumSearch(input), input.managedBy, destination);
+  buildAlbumAddAction(shouldTriggerAlbumSearch(input), destination);
 
 export const isAlbumCompleteInLibrary = ({
   status = "",

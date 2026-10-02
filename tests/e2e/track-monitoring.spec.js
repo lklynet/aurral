@@ -163,13 +163,12 @@ test("a track with an unfinished download asks before cancelling it", async ({ p
   expect(library.writes).toEqual([{ id: 812, monitored: false }]);
 });
 
-test("tracks in an unmonitored album explain why they cannot be toggled", async ({ page }) => {
+test("a track in an unmonitored album can still be unmonitored on its own", async ({ page }) => {
   const library = createLibrary({ albumMonitored: false });
   await fixture(page, library);
   await page.goto("/library/album/802");
 
-  await trackOptions(page, "Kept Track").click();
-  await expect(page.getByRole("menuitem", { name: "Album isn't monitored", exact: true })).toBeDisabled();
-  await expect(page.getByRole("menuitem", { name: "Stop monitoring track", exact: true })).toHaveCount(0);
-  expect(library.writes).toEqual([]);
+  await chooseFromTrackMenu(page, "Kept Track", "Stop monitoring track");
+  await expect(trackRow(page, "Kept Track").getByRole("img", { name: "Not monitored" })).toBeVisible();
+  expect(library.writes).toEqual([{ id: 811, monitored: false }]);
 });

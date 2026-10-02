@@ -590,13 +590,6 @@ textarea {
   color: var(--aurral-text-muted);
 }
 
-.artist-monitoring-buttons {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-}
-
 .artist-monitoring-button__logo {
   width: 1rem;
   height: 1rem;

@@ -11,7 +11,6 @@ import {
 import {
   buildAlbumRequestPayload,
   buildArtistAddPayload,
-  getItemDestination,
   getManagerName,
 } from "../utils/libraryDestination";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
@@ -398,7 +397,7 @@ export function useDiscoverData() {
   );
 
   const handleRecentReleaseAlbumAction = useCallback(
-    async (album, managedBy = getItemDestination(album?.managedBy, libraryDestination).primary) => {
+    async (album, managedBy = libraryDestination.primary) => {
       const albumKey = getRecentReleaseKey(album);
       const albumMbid = album?.mbid || album?.foreignAlbumId;
       const artistMbid = album?.artistMbid || album?.foreignArtistId;

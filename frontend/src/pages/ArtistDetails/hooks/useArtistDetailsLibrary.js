@@ -191,7 +191,7 @@ export function useArtistDetailsLibrary({
   const { refetch: refetchLibraryAlbums } = libraryAlbumsQuery;
   const refreshArtistMutation = useMutation({ mutationFn: refreshLibraryArtist });
   const deleteArtistMutation = useMutation({
-    mutationFn: ({ mbid, deleteFiles, manager }) => deleteArtistFromLibrary(mbid, deleteFiles, manager),
+    mutationFn: ({ mbid, deleteFiles }) => deleteArtistFromLibrary(mbid, deleteFiles),
     onSuccess: (_result, { mbid }) => invalidateLibraryQueries(mbid),
   });
   const addArtistMutation = useMutation({
@@ -318,7 +318,7 @@ export function useArtistDetailsLibrary({
     if (!mbid) return;
     const manager = deleteManager;
     try {
-      await deleteArtistMutation.mutateAsync({ mbid, deleteFiles, manager });
+      await deleteArtistMutation.mutateAsync({ mbid, deleteFiles });
     } catch (err) {
       showError(
         `Failed to remove artist: ${

@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import express from "express";
 
 import {
   setupIsolatedBackend,
@@ -8,7 +7,7 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps, userOps }] = await setupIsolatedBackend(
+const [isolatedState, { db }] = await setupIsolatedBackend(
   "library-management-state",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
@@ -301,76 +300,4 @@ test("root overlap warnings cover equal and nested roots without rejecting", () 
   });
   assert.equal(backslashRoot.length, 1);
   assert.equal(backslashRoot[0].type, "nested-a-in-b");
-});
-
-test("per-user library owner preference normalizes and defaults by connectivity", async () => {
-  const userId = userOps.createUser("owner-pref", "hash").id;
-  const stored = userOps.getUserById(userId);
-  assert.equal(stored.defaultLibraryOwner, null);
-
-  const updated = userOps.updateUser(userId, { defaultLibraryOwner: "AURRAL" });
-  assert.equal(updated.defaultLibraryOwner, "aurral");
-
-  const reset = userOps.updateUser(userId, { defaultLibraryOwner: "not-a-manager" });
-  assert.equal(reset.defaultLibraryOwner, null);
-
-  userOps.updateUser(userId, { defaultLibraryOwner: "lidarr" });
-  const authUser = userOps.getUserAuthById(userId);
-  assert.equal(authUser.defaultLibraryOwner, "lidarr");
-});
-
-test("library owner routes resolve stored preference with a connectivity fallback", async () => {
-  const app = express();
-  app.use(express.json());
-  let currentUser = null;
-  app.use((req, _res, next) => {
-    req.user = currentUser;
-    next();
-  });
-  const usersRouter = (await import("../../backend/routes/users.js")).default;
-  app.use("/api/users", usersRouter);
-
-  const settings = dbOps.getSettings();
-  dbOps.updateSettings({
-    ...settings,
-    integrations: {
-      ...(settings.integrations || {}),
-      lidarr: { ...(settings.integrations?.lidarr || {}), url: "", apiKey: "", enabled: false },
-    },
-  });
-  const userId = userOps.createUser("owner-route", "hash").id;
-  currentUser = { id: userId };
-
-  const server = await new Promise((resolve) => {
-    const listening = app.listen(0, "127.0.0.1", () => resolve(listening));
-  });
-  const port = server.address().port;
-
-  const get = async (path) => {
-    const response = await fetch(`http://127.0.0.1:${port}${path}`);
-    return { status: response.status, body: await response.json() };
-  };
-  const post = async (path, body) => {
-    const response = await fetch(`http://127.0.0.1:${port}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return { status: response.status, body: await response.json() };
-  };
-
-  const initial = await get("/api/users/me/library-owner");
-  assert.equal(initial.status, 200);
-  assert.equal(initial.body.defaultLibraryOwner, "aurral");
-  assert.equal(initial.body.storedDefaultLibraryOwner, null);
-
-  const saved = await post("/api/users/me/library-owner", { defaultLibraryOwner: "aurral" });
-  assert.equal(saved.status, 200);
-  assert.equal(saved.body.storedDefaultLibraryOwner, "aurral");
-
-  const invalid = await post("/api/users/me/library-owner", { defaultLibraryOwner: "slskd" });
-  assert.equal(invalid.status, 400);
-
-  server.closeAllConnections?.();
-  await new Promise((resolve) => server.close(resolve));
 });

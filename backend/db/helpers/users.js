@@ -13,18 +13,18 @@ const getUserByUsernameStmt = db.prepare(
   "SELECT * FROM users WHERE username = ?"
 );
 const getAllUsersStmt = db.prepare(
-  "SELECT id, username, role, permissions, lastfm_username, listen_history_provider, listen_history_username, listen_history_url, lidarr_root_folder_path, lidarr_quality_profile_id, status, is_protected, role_source, has_local_password, needs_identity_migration, allow_identity_adoption, default_library_owner FROM users ORDER BY username"
+  "SELECT id, username, role, permissions, lastfm_username, listen_history_provider, listen_history_username, listen_history_url, lidarr_root_folder_path, lidarr_quality_profile_id, status, is_protected, role_source, has_local_password, needs_identity_migration, allow_identity_adoption FROM users ORDER BY username"
 );
 const getUserByIdStmt = db.prepare("SELECT * FROM users WHERE id = ?");
 const getUserAuthByIdStmt = db.prepare(
-  "SELECT id, username, role, permissions, status, is_protected, role_source, default_library_owner FROM users WHERE id = ?"
+  "SELECT id, username, role, permissions, status, is_protected, role_source FROM users WHERE id = ?"
 );
 const countUsersStmt = db.prepare("SELECT COUNT(*) AS count FROM users");
 const insertUserStmt = db.prepare(
   "INSERT INTO users (username, password_hash, subsonic_password, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id, has_local_password, is_protected) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 );
 const updateUserStmt = db.prepare(
-  "UPDATE users SET username = ?, password_hash = ?, subsonic_password = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, status = ?, role_source = ?, has_local_password = ?, needs_identity_migration = ?, allow_identity_adoption = ?, default_library_owner = ? WHERE id = ?"
+  "UPDATE users SET username = ?, password_hash = ?, subsonic_password = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, status = ?, role_source = ?, has_local_password = ?, needs_identity_migration = ?, allow_identity_adoption = ? WHERE id = ?"
 );
 const getSubsonicPasswordByIdStmt = db.prepare(
   "SELECT subsonic_password FROM users WHERE id = ?",
@@ -47,12 +47,6 @@ const DEFAULT_PERMISSIONS = {
   deleteAlbum: false,
   deleteTrack: false,
 };
-
-function normalizeDefaultLibraryOwner(value) {
-  if (value === null || value === "") return null;
-  const normalized = String(value || "").trim().toLowerCase();
-  return normalized === "aurral" || normalized === "lidarr" ? normalized : null;
-}
 
 function encryptSubsonicPassword(password) {
   const value = password == null ? "" : String(password);
@@ -94,7 +88,6 @@ export const userOps = {
       hasLocalPassword: !!row.has_local_password,
       needsIdentityMigration: !!row.needs_identity_migration,
       allowIdentityAdoption: !!row.allow_identity_adoption,
-      defaultLibraryOwner: normalizeDefaultLibraryOwner(row.default_library_owner),
       ...history,
     };
   },
@@ -121,7 +114,6 @@ export const userOps = {
       hasLocalPassword: !!row.has_local_password,
       needsIdentityMigration: !!row.needs_identity_migration,
       allowIdentityAdoption: !!row.allow_identity_adoption,
-      defaultLibraryOwner: normalizeDefaultLibraryOwner(row.default_library_owner),
       ...history,
     };
   },
@@ -138,7 +130,6 @@ export const userOps = {
       status: row.status || "active",
       isProtected: !!row.is_protected,
       roleSource: row.role_source || "local",
-      defaultLibraryOwner: normalizeDefaultLibraryOwner(row.default_library_owner),
     };
   },
   getSubsonicPasswordById(id) {
@@ -179,7 +170,6 @@ export const userOps = {
       hasLocalPassword: !!r.has_local_password,
       needsIdentityMigration: !!r.needs_identity_migration,
       allowIdentityAdoption: !!r.allow_identity_adoption,
-      defaultLibraryOwner: normalizeDefaultLibraryOwner(r.default_library_owner),
     }));
   },
   createUser(
@@ -225,7 +215,6 @@ export const userOps = {
         hasLocalPassword: !!hasLocalPassword,
         needsIdentityMigration: false,
         allowIdentityAdoption: false,
-        defaultLibraryOwner: null,
       };
     } catch (e) {
       return null;
@@ -313,10 +302,6 @@ export const userOps = {
       data.allowIdentityAdoption !== undefined
         ? !!data.allowIdentityAdoption
         : existing.allowIdentityAdoption;
-    const defaultLibraryOwner =
-      data.defaultLibraryOwner !== undefined
-        ? normalizeDefaultLibraryOwner(data.defaultLibraryOwner)
-        : normalizeDefaultLibraryOwner(existing.defaultLibraryOwner);
     try {
       updateUserStmt.run(
         username.toLowerCase(),
@@ -335,7 +320,6 @@ export const userOps = {
         hasLocalPassword ? 1 : 0,
         needsIdentityMigration ? 1 : 0,
         allowIdentityAdoption ? 1 : 0,
-        defaultLibraryOwner,
         parseInt(id, 10)
       );
       return {
@@ -355,7 +339,6 @@ export const userOps = {
         hasLocalPassword,
         needsIdentityMigration,
         allowIdentityAdoption,
-        defaultLibraryOwner,
       };
     } catch (e) {
       return null;

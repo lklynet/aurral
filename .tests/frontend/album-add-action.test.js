@@ -19,35 +19,14 @@ test("shouldTriggerAlbumSearch follows monitored state", () => {
   assert.equal(shouldTriggerAlbumSearch({ status: "inLibrary", monitored: false }), false);
 });
 
-test("getAlbumAddAction labels adds with the destination manager", () => {
-  const destination = { primary: "lidarr", alternative: "aurral", ready: true };
-  assert.deepEqual(getAlbumAddAction({ status: "unmonitored" }, destination), {
+test("album actions always go to the active manager, whoever holds the album now", () => {
+  const lidarr = { primary: "lidarr", ready: true };
+  assert.deepEqual(getAlbumAddAction({ status: "unmonitored", inLibrary: true, managedBy: "aurral" }, lidarr), {
     label: "Add to Lidarr",
-    destination,
+    destination: lidarr,
   });
-  assert.equal(
-    getAlbumAddAction({ inLibrary: true, monitored: false }, { primary: "aurral", alternative: null }).label,
-    "Add to Aurral",
-  );
-});
-
-test("getAlbumAddAction searches a monitored album through its own manager without a menu", () => {
-  const action = getAlbumAddAction(
-    { status: "monitored", managedBy: "aurral" },
-    { primary: "lidarr", alternative: "aurral", ready: true },
-  );
-  assert.equal(action.label, "Search Album");
-  assert.deepEqual(action.destination, { primary: "aurral", alternative: null, ready: true });
-});
-
-test("an unmonitored album stays with its owner when the default is another manager", () => {
-  const action = getAlbumAddAction(
-    { status: "unmonitored", inLibrary: true, managedBy: "aurral" },
-    { primary: "lidarr", alternative: "aurral", ready: true },
-  );
-  assert.equal(action.destination.primary, "aurral");
-  assert.equal(action.destination.alternative, null);
-  assert.equal(action.label, "Add to Aurral");
+  assert.equal(getAlbumAddAction({ status: "monitored", managedBy: "aurral" }, lidarr).label, "Search Album");
+  assert.equal(getAlbumAddAction({ inLibrary: true, monitored: false }, { primary: "aurral" }).label, "Add to Aurral");
 });
 
 test("isAlbumCompleteInLibrary only treats on-disk albums as complete", () => {

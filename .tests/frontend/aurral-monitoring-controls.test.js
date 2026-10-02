@@ -10,7 +10,6 @@ import {
   describeAurralMonitoringError,
   getAlbumMonitoredState,
   getMonitoringMenuAction,
-  isProvisionalAurralAlbum,
   resolveCurrentMonitorOption,
   shouldConfirmUnmonitor,
   summarizeAurralMonitoring,
@@ -205,13 +204,6 @@ test("the album download is offered for unmonitored Aurral albums with missing t
   assert.equal(canDownloadAurralAlbum({ ...album, monitored: true }, { hasMissingTracks: true }), false);
   assert.equal(canDownloadAurralAlbum({ ...album, releaseGroupMbid: null }, { hasMissingTracks: true }), false);
   assert.equal(canDownloadAurralAlbum({ ...album, managedBy: "lidarr" }, { hasMissingTracks: true }), false);
-});
-
-test("only an album Aurral claimed from a download, not one you chose, is still open to Lidarr", () => {
-  assert.equal(isProvisionalAurralAlbum({ managedBy: "aurral", monitored: false, monitorMode: null }), true);
-  assert.equal(isProvisionalAurralAlbum({ managedBy: "aurral", monitored: false, monitorMode: "unmonitored" }), false);
-  assert.equal(isProvisionalAurralAlbum({ managedBy: "aurral", monitored: true, monitorMode: "monitored" }), false);
-  assert.equal(isProvisionalAurralAlbum({ managedBy: "lidarr", monitored: false, monitorMode: null }), false);
 });
 
 test("unmonitoring asks first only while downloads are unfinished", () => {
