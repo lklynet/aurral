@@ -8,7 +8,9 @@ export const getAlbumCoverId = (album) => album?.releaseGroupMbid || album?.mbid
 export const favoriteId = (kind, entity) => {
   const id = text(entity?.id);
   if (kind === "song" && /^(flow|shared)-song:/.test(id)) return id;
-  return kind + ":" + encodeURIComponent(text(entity?.identityKey));
+  // Keep `:` readable, as the backend's `idFor` does, so ids from the
+  // favorites endpoint match.
+  return kind + ":" + encodeURIComponent(text(entity?.identityKey)).replaceAll("%3A", ":");
 };
 
 export const firstAvailableFile = (track, albumId = null) =>

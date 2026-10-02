@@ -8,6 +8,7 @@ import {
 } from "../../../services/weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { weeklyFlowOperationQueue } from "../../../services/weeklyFlow/weeklyFlowOperationQueue.js";
 import { getWeeklyFlowStatusSnapshot } from "../../../services/weeklyFlow/weeklyFlowStatusSnapshot.js";
+import { indexUnmonitoredJobs } from "../../../services/aurralUnmonitoredJobs.js";
 import { noCache } from "../../../middleware/cache.js";
 import { requireAdmin } from "../../../middleware/requirePermission.js";
 import {
@@ -175,7 +176,11 @@ export function registerJobs(router) {
       status ? downloadTracker.getByStatus(status) : downloadTracker.getAll(),
     );
     const profile = getQualityProfile();
-    res.json(jobs.map((job) => toPublicJob(decorateJobQuality(job, profile))));
+    const isUnmonitored = indexUnmonitoredJobs();
+    res.json(jobs.map((job) => ({
+      ...toPublicJob(decorateJobQuality(job, profile)),
+      monitored: !isUnmonitored(job),
+    })));
   });
 
   router.get("/jobs/:jobId/files", requireAdmin, noCache, (req, res) => {

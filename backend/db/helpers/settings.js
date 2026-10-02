@@ -11,7 +11,10 @@ import {
 } from "../../services/downloadFolderConfig.js";
 import { normalizeExistingFileMode } from "../../services/weeklyFlow/weeklyFlowFileReuseMode.js";
 import { normalizeDateTimeFormat } from "../../config/constants.js";
-import { normalizeQualityProfile } from "../../services/qualityProfileModel.js";
+import {
+  normalizeIntervalDays,
+  normalizeQualityProfile,
+} from "../../services/qualityProfileModel.js";
 
 const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
 const upsertSettingStmt = db.prepare(
@@ -36,6 +39,14 @@ function normalizePlaylistArtworkSettings(raw) {
   const style = String(artwork.style || "photo").trim().toLowerCase();
   return {
     style: style === "aurral" ? "aurral" : "photo",
+  };
+}
+
+function normalizeMissingTrackSearchSettings(raw) {
+  const search = raw && typeof raw === "object" ? raw : {};
+  return {
+    enabled: search.enabled === true,
+    intervalDays: normalizeIntervalDays(search.intervalDays, 1),
   };
 }
 
@@ -170,6 +181,9 @@ export const dbOps = {
     const playlistArtwork = normalizePlaylistArtworkSettings(
       readStoredSettingJson("playlistArtwork"),
     );
+    const missingTrackSearch = normalizeMissingTrackSearchSettings(
+      readStoredSettingJson("missingTrackSearch"),
+    );
     const inbox = dbHelpers.parseJSON(getSettingStmt.get("inbox")?.value) || {};
     const blocklist = dbHelpers.parseJSON(
       getSettingStmt.get("blocklist")?.value
@@ -212,6 +226,7 @@ export const dbOps = {
       },
       playlistWorker,
       playlistArtwork,
+      missingTrackSearch,
       inbox: {
         enabled: inbox.enabled !== false,
         releases: inbox.releases !== false,
@@ -377,6 +392,14 @@ export const dbOps = {
           "playlistArtwork",
           dbHelpers.stringifyJSON(
             normalizePlaylistArtworkSettings(settings.playlistArtwork),
+          ),
+        );
+      }
+      if (settings.missingTrackSearch !== undefined) {
+        upsertSettingStmt.run(
+          "missingTrackSearch",
+          dbHelpers.stringifyJSON(
+            normalizeMissingTrackSearchSettings(settings.missingTrackSearch),
           ),
         );
       }

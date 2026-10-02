@@ -91,20 +91,24 @@ export const getAlbumMonitoredState = (album) => {
 export const shouldConfirmUnmonitor = (status) =>
   status == null || shouldPollAlbumStatus(status);
 
-export const describeAlbumMonitoringResult = (result) => {
-  if (result?.monitored !== false) return { message: "Album monitored", warning: false };
+const describeMonitoringResult = (result, subject) => {
+  if (result?.monitored !== false) return { message: `${subject} monitored`, warning: false };
   const cancelled = result.cancelledJobIds?.length || 0;
   if (result.cleanupFailed) {
     return {
-      message: `Album unmonitored. Cancelled ${plural(cancelled, "download")}, but the download client may still hold the work.`,
+      message: `${subject} unmonitored. Cancelled ${plural(cancelled, "download")}, but the download client may still hold the work.`,
       warning: true,
     };
   }
   if (cancelled > 0) {
     return {
-      message: `Album unmonitored. Cancelled ${plural(cancelled, "download")}.`,
+      message: `${subject} unmonitored. Cancelled ${plural(cancelled, "download")}.`,
       warning: false,
     };
   }
-  return { message: "Album unmonitored", warning: false };
+  return { message: `${subject} unmonitored`, warning: false };
 };
+
+export const describeAlbumMonitoringResult = (result) => describeMonitoringResult(result, "Album");
+
+export const describeTrackMonitoringResult = (result) => describeMonitoringResult(result, "Track");

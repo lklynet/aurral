@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { idFor } from "../../backend/services/subsonicLibraryService.js";
 import { startFrontendServer } from "../helpers/frontendServer.js";
 
 const vite = await startFrontendServer();
@@ -80,4 +81,16 @@ test("library favorites include playlist-backed Subsonic songs", () => {
   ]);
   assert.equal(favoriteId("song", library.tracks[1]), playlistSong.id);
   assert.match(library.tracks[1].files[0].previewUrl, /\/playlists\/stream\/job-id/);
+});
+
+test("favorite ids match the ids the favorites endpoint returns", () => {
+  const entities = [
+    ["artist", { identityKey: "mbid:artist:4a3c2f0e-0000-4000-8000-000000000000" }],
+    ["album", { identityKey: "name:album:sol:the album" }],
+    ["song", { identityKey: "name:track:name album:1:1:sol" }],
+  ];
+
+  for (const [kind, entity] of entities) {
+    assert.equal(favoriteId(kind, entity), idFor(kind, entity.identityKey));
+  }
 });

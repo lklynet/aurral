@@ -63,6 +63,7 @@ export function useAurralAlbumMonitoring({ album, enabled, canChange, onChanged 
       icon: monitored ? EyeOff : Eye,
       separatorBefore: true,
       disabled: pending,
+      closeBeforeSelect: true,
       onSelect: toggle,
     },
     dialog: (

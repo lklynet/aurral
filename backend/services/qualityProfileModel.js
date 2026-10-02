@@ -40,6 +40,11 @@ export function createDefaultQualityProfile(slskd = {}) {
   };
 }
 
+export function normalizeIntervalDays(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.min(365, Math.max(1, Math.round(parsed))) : fallback;
+}
+
 export function normalizeQualityProfile(value, slskd = {}) {
   const fallback = createDefaultQualityProfile(slskd);
   const raw = value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -61,15 +66,12 @@ export function normalizeQualityProfile(value, slskd = {}) {
   const cutoff = enabled.includes(requestedCutoff)
     ? requestedCutoff
     : order.find((id) => enabled.includes(id));
-  const parsedInterval = Number(raw.intervalDays);
   return {
     order,
     enabled,
     cutoff,
     automaticUpgrades: raw.automaticUpgrades === true,
-    intervalDays: Number.isFinite(parsedInterval)
-      ? Math.min(365, Math.max(1, Math.round(parsedInterval)))
-      : 2,
+    intervalDays: normalizeIntervalDays(raw.intervalDays, 2),
   };
 }
 

@@ -402,6 +402,9 @@ export function upsertLibraryAlbum({
   let libraryChanged = false;
   const album = db.transaction(() => {
     const existing = db.prepare("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
+    const mergedMetadataText = existing && metadata
+      ? stringify({ ...dbHelpers.parseJSON(existing.metadata_json), ...metadata })
+      : metadataText;
     if (
       existing &&
       (albumMbid == null || albumMbid === existing.mbid) &&
@@ -410,7 +413,7 @@ export function upsertLibraryAlbum({
       albumTitle === existing.title &&
       (albumArtistName == null || albumArtistName === existing.album_artist) &&
       (albumReleaseDate == null || albumReleaseDate === existing.release_date) &&
-      (metadataText == null || metadataText === existing.metadata_json)
+      (mergedMetadataText == null || mergedMetadataText === existing.metadata_json)
     ) {
       const searchChanged = syncSearch && syncLibrarySearchAlbum(existing.id);
       if (searchChanged) {
@@ -443,7 +446,7 @@ export function upsertLibraryAlbum({
       albumTitle,
       albumArtistName,
       albumReleaseDate,
-      metadataText,
+      mergedMetadataText,
       timestamp,
       timestamp,
     );

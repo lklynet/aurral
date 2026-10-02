@@ -29,6 +29,11 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       await libraryManager.reconcileAurralMonitoring();
       return;
     }
+    case "aurral-missing-track-search": {
+      const { runMissingTrackSearch } = await import("./aurralMissingTrackSearch.js");
+      await runMissingTrackSearch();
+      return;
+    }
     case "session-cleanup":
       cleanExpiredSessions();
       return;

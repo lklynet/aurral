@@ -8992,9 +8992,19 @@ button.native-library-genre-row:focus-visible {
   justify-content: center;
 }
 
-.native-library-track__title > span > :is(.flow-page__track-status-dot, .flow-page__track-availability-indicator, .search-library-check) {
+.native-library-track__title > span > :is(.flow-page__track-status-dot, .flow-page__track-availability-indicator, .search-library-check, .native-library-track__unmonitored) {
   margin-right: 0.45rem;
   vertical-align: -0.1rem;
+}
+
+.native-library-track__unmonitored {
+  display: inline-flex;
+  color: var(--aurral-text-subtle);
+}
+
+.native-library-track__unmonitored svg {
+  width: 13px;
+  height: 13px;
 }
 
 .native-library-track.is-search-focused {

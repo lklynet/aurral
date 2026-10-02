@@ -7,6 +7,7 @@ import { buildFlowRunPlanIsolated } from "./weeklyFlowPlanRunner.js";
 import { dbOps, userOps } from "../../db/helpers/index.js";
 import { resolveWeeklyFlowTrackContext } from "./weeklyFlowTrackResolver.js";
 import { getListenHistoryProfile } from "../listeningHistory.js";
+import { indexUnmonitoredJobs } from "../aurralUnmonitoredJobs.js";
 import { safeLogDiagnostic } from "../logger.js";
 import {
   normalizeExistingFileMode,
@@ -605,9 +606,10 @@ export class WeeklyFlowWorker {
 
   async researchMissingTracks(playlistType) {
     const jobs = downloadTracker.getByPlaylistType(playlistType);
+    const isUnmonitored = indexUnmonitoredJobs();
     let requeued = 0;
     for (const job of jobs) {
-      if (job.status !== "failed") continue;
+      if (job.status !== "failed" || isUnmonitored(job)) continue;
       const priorError = String(job?.error || "").trim();
       const reason = ["Manual re-search", priorError].filter(Boolean).join(" • ");
       if (downloadTracker.setPending(job.id, reason || null, { asRetryCycle: true })) {

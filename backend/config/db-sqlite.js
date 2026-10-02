@@ -915,6 +915,33 @@ export const dbHelpers = {
 };
 
 initializeSchemaOnStartup(db, dbHelpers);
+tryAddColumn("ALTER TABLE library_management ADD COLUMN last_missing_search_at INTEGER");
+tryAddColumn("ALTER TABLE library_tracks ADD COLUMN monitored INTEGER NOT NULL DEFAULT 1");
+
+const aurralAlbumMonitoredMigrationKey = "migration:aurral-album-monitored-v1";
+db.transaction(() => {
+  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(aurralAlbumMonitoredMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  db.exec(`
+    UPDATE library_albums
+    SET metadata_json = json_set(
+      CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END,
+      '$.monitored',
+      json('true')
+    )
+    WHERE id IN (
+      SELECT entity_id FROM library_management
+      WHERE entity_kind = 'album'
+        AND managed_by = 'aurral'
+        AND COALESCE(monitor_mode, '') != 'unmonitored'
+    )
+    AND CASE
+      WHEN json_valid(metadata_json) THEN json_type(metadata_json, '$.monitored') IS NULL
+      ELSE 1
+    END
+  `);
+}).immediate();
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS playlist_download_jobs_revision (

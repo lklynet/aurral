@@ -131,6 +131,7 @@ export function registerGeneral(router) {
         pathMappings,
         security,
         playlistArtwork,
+        missingTrackSearch,
         inbox,
         dateTimeFormat,
       } = req.body;
@@ -538,6 +539,10 @@ export function registerGeneral(router) {
               }
             : currentSettings.playlistArtwork ||
               defaultData.settings.playlistArtwork,
+        missingTrackSearch:
+          missingTrackSearch && typeof missingTrackSearch === "object"
+            ? { ...currentSettings.missingTrackSearch, ...missingTrackSearch }
+            : currentSettings.missingTrackSearch,
       };
 
       if (updatedSettings?.integrations?.coverArtArchive) {

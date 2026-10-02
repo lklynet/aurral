@@ -87,6 +87,7 @@ test("an Aurral artist and album are monitored, unmonitored with a warning, and 
 
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
+    await expect(albumOptions).toBeFocused();
     await expect(managerMark).toHaveAccessibleName("Managed by Aurral");
     expect(albumMonitoringWrites).toHaveLength(0);
     expect((await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status).toMatch(

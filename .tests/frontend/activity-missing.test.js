@@ -12,6 +12,7 @@ test("missing activity includes failed Aurral jobs but not upgrades", () => {
   assert.equal(isMissingAurralJob({ status: "failed" }), true);
   assert.equal(isMissingAurralJob({ status: "failed", upgradeForJobId: "job-1" }), false);
   assert.equal(isMissingAurralJob({ status: "done" }), false);
+  assert.equal(isMissingAurralJob({ status: "failed", monitored: false }), false);
 });
 
 test("cutoff activity includes owned files below the preferred quality", () => {
@@ -25,6 +26,10 @@ test("cutoff activity includes owned files below the preferred quality", () => {
   );
   assert.equal(
     isCutoffUnmetAurralJob({ status: "done", qualityOwned: false, qualityState: "upgrade" }),
+    false,
+  );
+  assert.equal(
+    isCutoffUnmetAurralJob({ status: "done", qualityOwned: true, qualityState: "upgrade", monitored: false }),
     false,
   );
 });

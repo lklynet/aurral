@@ -3,6 +3,16 @@ import { listArtistAlbums } from "./providers/brainzmashProvider.js";
 const AURRAL_MONITOR_MODES = new Set(["none", "all", "missing", "latest", "first", "future"]);
 const ELIGIBLE_RELEASE_TYPES = new Set(["album", "ep"]);
 
+export const MONITORED_AURRAL_ALBUM_CONDITION = `
+  management.entity_kind = 'album'
+  AND management.managed_by = 'aurral'
+  AND COALESCE(management.monitor_mode, '') != 'unmonitored'
+  AND json_valid(album.metadata_json)
+  AND json_extract(album.metadata_json, '$.monitored') = 1
+`;
+
+export const monitoredTrackCondition = (trackAlias) => `${trackAlias}.monitored = 1`;
+
 export function resolveAurralMonitorMode(value) {
   const mode = String(value ?? "none").trim().toLowerCase() || "none";
   if (AURRAL_MONITOR_MODES.has(mode)) return { mode };

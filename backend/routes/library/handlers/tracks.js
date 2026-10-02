@@ -2,7 +2,7 @@ import { libraryManager } from "../../../services/libraryManager.js";
 import { cacheMiddleware } from "../../../middleware/cache.js";
 import { noCache } from "../../../middleware/cache.js";
 import { hasPermission, verifyTokenAuth } from "../../../middleware/auth.js";
-import { requireAdmin, requireAuth } from "../../../middleware/requirePermission.js";
+import { requireAdmin, requireAuth, requirePermission } from "../../../middleware/requirePermission.js";
 import { getAlbumTracksByAlbumMbid } from "../../../services/providers/brainzmashProvider.js";
 import { enrichTracksWithDeezerPreviews } from "../../../services/apiClients/index.js";
 import fsp from "fs/promises";
@@ -70,6 +70,30 @@ export function registerTracks(router) {
         return res.status(500).json({
           error: "Failed to delete track",
           message: "Failed to delete track",
+        });
+      }
+    },
+  );
+
+  router.put(
+    "/tracks/aurral/:canonicalId",
+    requireAuth,
+    requirePermission("changeMonitoring"),
+    async (req, res) => {
+      try {
+        const result = await libraryManager.setAurralTrackMonitoring(
+          req.params.canonicalId,
+          { monitored: req.body?.monitored },
+        );
+        if (result?.error) {
+          const { error, statusCode, ...details } = result;
+          return res.status(statusCode || 500).json({ ...details, error });
+        }
+        return res.json(result);
+      } catch (error) {
+        return res.status(500).json({
+          error: "Failed to update track monitoring",
+          message: error.message,
         });
       }
     },

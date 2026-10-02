@@ -11,6 +11,7 @@ import {
   getCanonicalArtistProjection,
   getCanonicalLibraryForAlbumReferences,
   getCanonicalLibraryForArtistReferences,
+  getCanonicalLibraryForTrackIds,
   getCanonicalLibraryPage,
   getCanonicalTrack,
   invalidateCanonicalLibraryCache,
@@ -42,6 +43,7 @@ import { restoreDownloadJobCancellations } from "./weeklyFlow/weeklyFlowDownload
 import { removePlaylistFileIfUnshared } from "./weeklyFlow/weeklyFlowFileReuse.js";
 import {
   cancelAurralAlbumJobs,
+  cancelAurralTrackJobs,
   findAurralAlbumJobs,
   jobMatchesTrack,
   summarizeAurralAlbum,
@@ -52,6 +54,8 @@ import {
 } from "./downloadSourceService.js";
 import {
   listAurralArtistReleases,
+  MONITORED_AURRAL_ALBUM_CONDITION,
+  monitoredTrackCondition,
   resolveAurralMonitorMode,
   selectAurralReleases,
 } from "./aurralMonitoring.js";
@@ -99,6 +103,23 @@ let _artistsInflight = null;
 const _tracksCache = new Map();
 const _albumMonitoringUpdates = new Map();
 const _artistMonitoringUpdates = new Map();
+const _trackMonitoringUpdates = new Map();
+
+const monitoredAurralAlbumStmt = db.prepare(`
+  SELECT 1 FROM library_management AS management
+  JOIN library_albums AS album ON album.id = management.entity_id
+  WHERE management.entity_id = ? AND ${MONITORED_AURRAL_ALBUM_CONDITION}
+`);
+
+const isMonitoredAurralAlbum = (albumId) => Boolean(monitoredAurralAlbumStmt.get(Number(albumId)));
+
+const monitoredTrackStmt = db.prepare(
+  `SELECT 1 FROM library_tracks AS track WHERE track.id = ? AND ${monitoredTrackCondition("track")}`,
+);
+
+const isMonitoredTrack = (trackId) => Boolean(monitoredTrackStmt.get(Number(trackId)));
+
+const setTrackMonitoredStmt = db.prepare("UPDATE library_tracks SET monitored = ? WHERE id = ?");
 
 async function serializeMonitoringUpdate(updates, id, update) {
   const previous = updates.get(id) || Promise.resolve();
@@ -229,7 +250,7 @@ function mapCanonicalTrack(track, album) {
     source: file?.source || null,
     managedBy: album?.managedBy || null,
     monitorMode: album?.monitorMode || null,
-    monitored: album?.metadata?.monitored === true,
+    monitored: track.monitored !== false,
     sources: track.sources,
     size: Number(file?.size || 0),
     quality:
@@ -1603,30 +1624,42 @@ export class LibraryManager {
     if (options.monitoringMode && !this._canAcquireMonitoredAlbum(options.artistMbid, album.mbid, options.monitoringMode)) {
       return { status: "skipped" };
     }
+    if (options.requireMonitoredAlbum && !isMonitoredAurralAlbum(album.id)) {
+      return { status: "skipped" };
+    }
 
     const artist = library.artists.find((entry) => entry.id === album.artistId);
     const mappedAlbum = mapCanonicalAlbum(album, artist, library.tracks);
     const albumMbid = album.mbid || album.releaseGroupMbid || null;
     const albumTracks = library.tracks.filter((track) => album.trackIds.includes(track.id));
-    const allAlbumJobs = findAurralAlbumJobs(albumMbid);
+    let albumJobs = findAurralAlbumJobs(albumMbid);
     const requestGroupId =
       options.requestGroupId ||
-      allAlbumJobs.find((job) => job.requestGroupId)?.requestGroupId ||
+      albumJobs.find((job) => job.requestGroupId)?.requestGroupId ||
       randomUUID();
     const albumTrackTitles = albumTracks.map((track) => track.title).filter(Boolean);
-    const missingTracks = albumTracks.filter((track) => track.available !== true);
+    const requestedTrackIds = Array.isArray(options.trackIds)
+      ? new Set(options.trackIds.map(Number))
+      : null;
+    const missingTracks = albumTracks.filter((track) =>
+      track.available !== true &&
+      track.monitored !== false &&
+      (!requestedTrackIds || requestedTrackIds.has(Number(track.id))));
     const sourceConfigured = isAnyDownloadSourceConfigured();
     const jobIds = [];
     const trackedJobIds = [];
     let blockedTracks = 0;
-    const applyJobChange = (change) => {
-      if (!options.monitoringMode) return { value: change() };
-      return db.transaction(() => {
-        if (!this._canAcquireMonitoredAlbum(options.artistMbid, albumMbid, options.monitoringMode)) {
-          return { skipped: true };
-        }
-        return { value: change() };
+    const canChangeJobs = () =>
+      (!options.monitoringMode ||
+        this._canAcquireMonitoredAlbum(options.artistMbid, albumMbid, options.monitoringMode)) &&
+      (!options.requireMonitoredAlbum || isMonitoredAurralAlbum(album.id));
+    const applyJobChange = (change, trackId) => {
+      const result = db.transaction(() => {
+        if (!canChangeJobs()) return { skipped: true };
+        return isMonitoredTrack(trackId) ? { value: change() } : { trackSkipped: true };
       }).immediate();
+      albumJobs = findAurralAlbumJobs(albumMbid);
+      return result;
     };
 
     for (const track of missingTracks) {
@@ -1634,7 +1667,7 @@ export class LibraryManager {
         return { status: "skipped" };
       }
       const relation = (track.albums || []).find((entry) => entry.albumId === album.id);
-      const matchingJobs = findAurralAlbumJobs(albumMbid).filter((job) => jobMatchesTrack(job, track));
+      const matchingJobs = albumJobs.filter((job) => jobMatchesTrack(job, track));
       const activeJob = matchingJobs.find((job) =>
         job.status === "pending" || job.status === "downloading" || job.status === "cancel_requested",
       );
@@ -1642,6 +1675,7 @@ export class LibraryManager {
         trackedJobIds.push(activeJob.id);
         continue;
       }
+      if (options.skipCancelledTracks && matchingJobs.at(-1)?.status === "cancelled") continue;
 
       const completedJob = matchingJobs.find((job) => job.status === "done");
       if (completedJob) {
@@ -1660,14 +1694,14 @@ export class LibraryManager {
           return { status: "skipped" };
         }
         if (!sourceConfigured) {
-          if (applyJobChange(() => downloadTracker.setFailed(completedJob.id, "Completed file is missing")).skipped) {
+          if (applyJobChange(() => downloadTracker.setFailed(completedJob.id, "Completed file is missing"), track.id).skipped) {
             return { status: "skipped" };
           }
           continue;
         }
         const retriedCompletedJob = applyJobChange(() => downloadTracker.setPending(completedJob.id, "Completed file is missing", {
           asRetryCycle: true,
-        }));
+        }), track.id);
         if (retriedCompletedJob.skipped) return { status: "skipped" };
         if (retriedCompletedJob.value) {
           jobIds.push(completedJob.id);
@@ -1678,14 +1712,15 @@ export class LibraryManager {
 
       if (!sourceConfigured) continue;
 
-      const retryJob = matchingJobs.find((job) => job.status === "failed" || job.status === "cancelled");
+      const retryJob = matchingJobs.find((job) =>
+        job.status === "failed" || (!options.skipCancelledTracks && job.status === "cancelled"));
       if (retryJob) {
         const retriedJob = applyJobChange(() => {
           restoreDownloadJobCancellations([retryJob.id]);
           return downloadTracker.setPending(retryJob.id, "Retrying missing Aurral album track", {
             asRetryCycle: true,
           });
-        });
+        }, track.id);
         if (retriedJob.skipped) return { status: "skipped" };
         if (retriedJob.value) {
           jobIds.push(retryJob.id);
@@ -1718,7 +1753,7 @@ export class LibraryManager {
           reason: "Aurral album request",
         },
         "library",
-      ));
+      ), track.id);
       if (queuedJob.skipped) return { status: "skipped" };
       const jobId = queuedJob.value;
       if (jobId) {
@@ -2053,6 +2088,60 @@ export class LibraryManager {
       canonicalId: mappedAlbum.canonicalId,
       ...this._summarizeAurralAlbum(album, library.tracks),
     };
+  }
+
+  async setAurralTrackMonitoring(canonicalId, { monitored } = {}) {
+    if (typeof monitored !== "boolean") {
+      return { error: "monitored must be true or false", statusCode: 400, code: "invalid_monitored" };
+    }
+    const reference = String(canonicalId ?? "").trim();
+    const trackId = Number(reference);
+    if (!/^\d+$/.test(reference) || !Number.isSafeInteger(trackId) || trackId <= 0) {
+      return {
+        error: "canonicalId must be a positive integer",
+        statusCode: 400,
+        code: "invalid_canonical_id",
+      };
+    }
+    return serializeMonitoringUpdate(_trackMonitoringUpdates, trackId, async () => {
+      const library = getCanonicalLibraryForTrackIds({ ids: [trackId] });
+      const track = library.tracks.find((entry) => entry.id === trackId);
+      if (!track) {
+        return { error: "Track was not found in the canonical library", statusCode: 404, code: "not_found" };
+      }
+      const aurralAlbums = library.albums.filter((album) => album.managedBy === "aurral");
+      if (aurralAlbums.length === 0) {
+        return {
+          error: "Track is not managed by Aurral",
+          statusCode: 409,
+          code: "track_owner_conflict",
+          managedBy: library.albums[0]?.managedBy || null,
+        };
+      }
+      setTrackMonitoredStmt.run(monitored ? 1 : 0, trackId);
+      invalidateCanonicalLibraryCache({ persistedGenres: false });
+      const cancelledJobIds = [];
+      const queuedJobIds = [];
+      let cleanupFailed = false;
+      for (const album of aurralAlbums) {
+        if (!monitored) {
+          const cancellation = await cancelAurralTrackJobs(album.mbid || album.releaseGroupMbid, track);
+          cancelledJobIds.push(...cancellation.cancelledJobIds);
+          cleanupFailed ||= cancellation.cleanupFailed;
+        } else if (isMonitoredAurralAlbum(album.id)) {
+          const result = await serializeMonitoringUpdate(_albumMonitoringUpdates, album.id, () =>
+            this._finishAurralAlbum(album.id, { trackIds: [trackId] }));
+          queuedJobIds.push(...(result?.jobIds || []));
+        }
+      }
+      return { canonicalId: String(trackId), monitored, cancelledJobIds, queuedJobIds, cleanupFailed };
+    });
+  }
+
+  async searchAurralAlbumMissingTracks(canonicalId) {
+    const albumId = Number(canonicalId);
+    return serializeMonitoringUpdate(_albumMonitoringUpdates, albumId, () =>
+      this._finishAurralAlbum(albumId, { skipCancelledTracks: true, requireMonitoredAlbum: true }));
   }
 
   async cancelAurralAlbum(canonicalId) {

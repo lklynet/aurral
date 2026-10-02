@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { parseFile } from "music-metadata";
 import { dbOps } from "../db/helpers/index.js";
+import { indexUnmonitoredJobs } from "./aurralUnmonitoredJobs.js";
 import { resolvePlaylistRoot, isPathInsideRoot } from "./playlistPaths.js";
 import { getEnabledDownloadSources } from "./downloadSourceService.js";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
@@ -166,6 +167,7 @@ export async function runQualityUpgradeCheck({ force = false, playlistId = null,
   const profile = getQualityProfile();
   if (!force && !profile.automaticUpgrades) return 0;
   const dueBefore = Date.now() - profile.intervalDays * DAY_MS;
+  const isUnmonitored = indexUnmonitoredJobs();
   const seen = new Set();
   let queued = 0;
   for (const job of downloadTracker.getAll()) {
@@ -175,7 +177,7 @@ export async function runQualityUpgradeCheck({ force = false, playlistId = null,
     const filePath = path.resolve(job.finalPath);
     if (seen.has(filePath)) continue;
     seen.add(filePath);
-    if (!isAurralOwnedPath(filePath)) continue;
+    if (!isAurralOwnedPath(filePath) || isUnmonitored(job)) continue;
     if (!job.qualityCheckedAt) await classifyQualityJob(job);
     const current = downloadTracker.getJob(job.id);
     if (getQualityState({ tier: current?.qualityTier }, profile) === "preferred") continue;

@@ -85,6 +85,7 @@ test("canonical track reads remove nested filesystem paths", async () => {
         routes.set(routePath, handlers.at(-1));
         routeChains.set(routePath, handlers);
       },
+      put() {},
     });
 
     const getTrackFiles = async (id, user) => {

@@ -393,6 +393,9 @@ export const cancelAurralAlbum = (canonicalId) =>
 export const setAurralAlbumMonitoring = (canonicalId, monitored) =>
   putData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}`, { monitored });
 
+export const setAurralTrackMonitoring = (canonicalId, monitored) =>
+  putData(`/library/tracks/aurral/${encodeURIComponent(canonicalId)}`, { monitored });
+
 export const refreshLibraryArtist = (mbid) =>
   postData(`/library/artists/${mbid}/refresh`);
 

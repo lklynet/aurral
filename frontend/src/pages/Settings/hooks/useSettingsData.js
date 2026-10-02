@@ -48,6 +48,10 @@ const defaultSettings = {
     automaticUpgrades: false,
     intervalDays: 2,
   },
+  missingTrackSearch: {
+    enabled: false,
+    intervalDays: 1,
+  },
   releaseTypes: allReleaseTypes,
   integrations: {
     navidrome: {

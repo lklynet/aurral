@@ -1,10 +1,11 @@
 export const isMissingAurralJob = (job) =>
-  job?.status === "failed" && !job?.upgradeForJobId;
+  job?.status === "failed" && !job?.upgradeForJobId && job?.monitored !== false;
 
 export const isCutoffUnmetAurralJob = (job) =>
   job?.status === "done" &&
   job?.qualityOwned === true &&
-  job?.qualityState !== "preferred";
+  job?.qualityState !== "preferred" &&
+  job?.monitored !== false;
 
 export const getMissingJobKey = (job) => String(job?.id || "");
 

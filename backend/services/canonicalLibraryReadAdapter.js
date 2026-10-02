@@ -134,7 +134,7 @@ const buildTrack = (track, album) => {
     source: file?.source || null,
     managedBy: album.managedBy ?? null,
     monitorMode: album.monitorMode ?? null,
-    monitored: Boolean(album.metadata?.monitored),
+    monitored: track.monitored !== false,
     available: Boolean(file?.available),
     sources: track.sources,
   };

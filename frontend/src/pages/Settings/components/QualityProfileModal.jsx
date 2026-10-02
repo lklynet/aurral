@@ -14,6 +14,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { useState } from "react";
 import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { GripVertical } from "lucide-react";
 import { SettingsInput } from "./SettingsField";
@@ -86,10 +87,17 @@ function SortableQuality({ id, enabled, cutoff, aboveCutoff, onToggle, onCutoff 
   );
 }
 
-export function QualityProfileModal({ profile, onChange, onClose }) {
+export function QualityProfileModal({
+  profile,
+  onChange,
+  missingTrackSearch,
+  onMissingTrackSearchChange,
+  onClose,
+}) {
   const order = Array.isArray(profile.order) ? profile.order : Object.keys(QUALITY_TIER_LABELS);
   const enabled = new Set(Array.isArray(profile.enabled) ? profile.enabled : order);
   const cutoffIndex = order.indexOf(profile.cutoff);
+  const [intervalDraft, setIntervalDraft] = useState(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -157,6 +165,41 @@ export function QualityProfileModal({ profile, onChange, onClose }) {
             value={profile.intervalDays ?? 2}
             disabled={profile.automaticUpgrades !== true}
             onChange={(event) => onChange({ intervalDays: Number.parseInt(event.target.value, 10) || 2 })}
+          />
+        </SettingsModalField>
+      </SettingsModalSection>
+      <SettingsModalSection title="Missing tracks">
+        <SettingsModalToggle
+          label="Search again for missing tracks"
+          checked={missingTrackSearch.enabled === true}
+          onChange={(event) => onMissingTrackSearchChange({ enabled: event.target.checked })}
+        />
+        <SettingsModalField
+          label="Search interval"
+          htmlFor="missing-track-search-interval"
+          hint="Checked once a day. Days to wait after an album's last search or download. Albums with cancelled downloads wait for Retry."
+        >
+          <SettingsInput
+            id="missing-track-search-interval"
+            type="number"
+            min="1"
+            max="365"
+            value={intervalDraft ?? missingTrackSearch.intervalDays ?? 1}
+            disabled={missingTrackSearch.enabled !== true}
+            onChange={(event) => {
+              setIntervalDraft(event.target.value);
+              if (event.target.value !== "" && event.target.validity.valid) {
+                onMissingTrackSearchChange({ intervalDays: Number(event.target.value) });
+              }
+            }}
+            onBlur={(event) => {
+              const days = Math.round(Number(event.target.value));
+              if (event.target.value !== "" && Number.isFinite(days) && !event.target.validity.valid) {
+                const { min, max } = event.target;
+                onMissingTrackSearchChange({ intervalDays: Math.min(Number(max), Math.max(Number(min), days)) });
+              }
+              setIntervalDraft(null);
+            }}
           />
         </SettingsModalField>
       </SettingsModalSection>

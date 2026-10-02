@@ -188,6 +188,21 @@ function captureSettingsRoutes() {
   return { postSettings, getSettings };
 }
 
+test("the missing-track search setting keeps fields a save leaves out and never stores an unusable interval", async () => {
+  const { getSettings, postSettings } = captureSettingsRoutes();
+
+  await postSettings({ missingTrackSearch: { enabled: true, intervalDays: 3 } });
+  const disabled = await postSettings({ missingTrackSearch: { enabled: false } });
+  assert.equal(disabled.statusCode, 200);
+  assert.deepEqual((await getSettings()).body.missingTrackSearch, { enabled: false, intervalDays: 3 });
+
+  for (const intervalDays of [0, -3, "soon", null]) {
+    await postSettings({ missingTrackSearch: { intervalDays } });
+    const saved = dbOps.getSettings().missingTrackSearch.intervalDays;
+    assert.ok(Number.isInteger(saved) && saved >= 1, `${String(intervalDays)} was stored as ${saved}`);
+  }
+});
+
 test("saves overlapping roots with an equal overlap warning", async () => {
   const { postSettings } = captureSettingsRoutes();
   const sharedRoot = join(isolatedState.baseDir, "roots", "shared");

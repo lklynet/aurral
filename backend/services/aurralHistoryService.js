@@ -325,6 +325,31 @@ export const recordAlbumSearchStarted = ({
     user,
   });
 
+export const recordMissingTrackSearch = ({
+  albumId,
+  albumName,
+  artistName,
+  artistMbid,
+  queuedTrackCount = 0,
+} = {}) => {
+  const count = Number(queuedTrackCount) || 0;
+  if (count <= 0) return null;
+  const name = String(albumName || "").trim() || "Album";
+  const artist = String(artistName || "").trim();
+  const searchedAt = Date.now();
+  return upsertAurralHistory({
+    referenceId: String(albumId),
+    kind: "missing_track_search",
+    title: `Searching again for ${count === 1 ? "1 missing track" : `${count} missing tracks`} on ${name}`,
+    subtitle: artist || null,
+    status: "completed",
+    statusLabel: "Queued",
+    href: buildArtistHref(artistMbid),
+    metadata: { albumId, albumName: name, artistName: artist, artistMbid, queuedTrackCount: count, searchedAt },
+    createdAt: searchedAt,
+  });
+};
+
 export const recordAlbumSearchFailed = ({
   albumId,
   albumName,

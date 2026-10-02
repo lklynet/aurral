@@ -48,20 +48,39 @@ Lidarr additions use your Lidarr defaults. To change them for one artist, select
 
 If an album already has a manager, Aurral shows **Managed by Aurral** or **Managed by Lidarr** instead of an add button. Connecting Lidarr does not move anything. Aurral does not move artists, albums, or files between managers.
 
-## Monitor Aurral artists
+## Monitor Aurral music
 
-Aurral can monitor the artists that it manages, without Lidarr. It looks only for official albums and EPs. It skips singles, live albums, compilations, and other releases with a secondary type. Choose one of these options on the artist page:
+Monitoring decides what Aurral does by itself for the music it manages. It works at three levels: artist, album, and track. Unmonitoring never deletes files. To remove music, see [Remove tracks, albums, and artists](#remove-tracks-albums-and-artists).
 
+### Artists
+
+An artist's option decides which albums Aurral adds by itself. Aurral looks only for official albums and EPs. It skips singles, live albums, compilations, and other releases with a secondary type. Choose one of these options on the artist page:
+
+- **None** is the default. Aurral adds no albums by itself, and you add the ones you want.
 - **All albums** and **Missing albums** download every album that is not complete.
 - **Latest album** and **First album** download the newest or the oldest album.
 - **Future albums** downloads only albums released after you start monitoring.
-- **None** stops new downloads and keeps what you already have.
 
-After you change the option, Aurral reports how many albums it queued and why it skipped the others. If Aurral cannot load the artist's releases, it tells you and keeps the old option.
+After you change the option, Aurral reports how many albums it queued and why it skipped the others. If Aurral cannot load the artist's releases, it tells you and keeps the old option. The artist's option never changes whether its albums are monitored.
 
 Aurral checks monitored artists for new releases once a day. It does not touch albums that Lidarr manages. The **Existing albums** option applies only to Lidarr.
 
-To stop monitoring one album, turn off **Monitored** on its Library page. If the album has unfinished downloads, Aurral asks you to confirm. It then cancels those downloads and keeps the finished tracks. The album stays unmonitored when you change the artist's option later.
+### Albums and tracks
+
+A monitored album gets everything Aurral does by itself: Aurral downloads it, searches again for its missing tracks, and upgrades files below your quality cutoff. A track gets this only when both the track and its album are monitored. An unmonitored album or track stays as it is.
+
+- To stop monitoring an album, open its Library page, open the album's menu, and select **Stop monitoring album**.
+- To stop monitoring one track, open its menu on the album page and select **Stop monitoring track**. Use this to keep a file you are happy with from being upgraded. An unmonitored track shows a crossed-out eye. While its album is unmonitored, you cannot change the track.
+
+If the album or track has unfinished downloads, Aurral asks you to confirm. It then cancels those downloads and keeps every finished file. When you select **Monitor album** or **Monitor track** again, Aurral fetches what is missing. An album stays unmonitored when you change the artist's option later.
+
+**Wanted** does not list unmonitored albums and tracks. **Retry** on an album skips the tracks you unmonitored. **Re-search** on one track still works when it is unmonitored.
+
+### Search again for missing tracks
+
+Aurral can search again for the missing tracks of monitored albums. This is off by default. To turn it on, open **Settings > Download clients > Quality profile** and go to **Missing tracks**.
+
+Aurral checks once a day and searches every monitored album whose **Search interval** has passed since its last search or download. It skips unmonitored tracks. After you cancel an album's downloads, Aurral leaves that album alone until you select **Retry**.
 
 ## Follow an Aurral album download
 
