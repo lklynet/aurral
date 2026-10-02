@@ -81,13 +81,6 @@ export const QUEUE_DEFINITIONS = [
     worker: "discovery-refresh",
   },
   {
-    queue: "discovery-playlist-build",
-    label: "Discovery Playlist Builds",
-    workerLabel: "Discovery Playlist Builder",
-    description: "Creates generated discovery playlists in the background.",
-    worker: "discovery-playlist-build",
-  },
-  {
     queue: "discovery-user-refresh",
     label: "Listening History Refreshes",
     workerLabel: "Listening History Worker",
@@ -169,7 +162,6 @@ const PAYLOAD_LABEL_KEY = {
   "playlist-reserve-build": "playlistType",
   "playlist-mbid-enrichment": "playlistId",
   "library-scan": (p) => (p?.force ? "Manual" : null),
-  "discovery-playlist-build": "playlistId",
   "discovery-user-refresh": (p) =>
     p?.listenHistoryProfile?.listenHistoryUsername || null,
 };

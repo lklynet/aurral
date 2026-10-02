@@ -10,7 +10,6 @@ const DEMAND_POLL_MS = 2000;
 const JOB_TIMEOUT_MS = Object.freeze({
   library: 6 * 60 * 60 * 1000,
   "discovery-refresh": 2 * 60 * 60 * 1000,
-  "discovery-playlist-build": 2 * 60 * 60 * 1000,
   "discovery-user-refresh": 2 * 60 * 60 * 1000,
   maintenance: 15 * 60 * 1000,
   inbox: 15 * 60 * 1000,

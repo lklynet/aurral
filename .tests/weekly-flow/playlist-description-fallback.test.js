@@ -15,8 +15,6 @@ const [isolatedState, { db }, { dbOps }, playlistConfigModule] = await setupIsol
 );
 const { flowPlaylistConfig } = playlistConfigModule;
 const { getDiscoverPlaylistPreset } = await import("../../backend/config/discoverPlaylistPresets.js");
-const { EDITORIAL_PLAYLIST_POOL } = await import("../../backend/config/editorialPlaylistPresets.js");
-const editorialDescription = (id) => EDITORIAL_PLAYLIST_POOL.find((preset) => preset.id === id).description;
 
 test.beforeEach(() => {
   resetDatabase(db);
@@ -65,24 +63,13 @@ test("a flow whose discoverPresetId doesn't match any known preset falls back to
   assert.equal(flow.description, null);
 });
 
-test("editorial preset descriptions are found too (a separate catalog from personal presets)", () => {
-  const flow = flowPlaylistConfig.createFlow({
-    name: "Metal Mayhem",
-    size: 20,
-    discoverPresetId: "top-metal",
-    type: "editorial",
-  });
-  assert.equal(flow.description, editorialDescription("top-metal"));
-});
-
 test("shared playlists get the same fallback treatment as flows", () => {
   const playlist = flowPlaylistConfig.createSharedPlaylist({
     name: "Heavy Rotation",
     sourceName: "Heavy Rotation",
-    discoverPresetId: "top-metal",
-    type: "editorial",
+    discoverPresetId: "discover-weekly",
   });
-  assert.equal(playlist.description, editorialDescription("top-metal"));
+  assert.equal(playlist.description, getDiscoverPlaylistPreset("discover-weekly").description);
 });
 
 test("an explicit shared playlist description is kept as-is", () => {

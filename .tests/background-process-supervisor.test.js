@@ -10,7 +10,7 @@ import {
 
 test("only the owning process supervises isolated queues", () => {
   assert.deepEqual(ISOLATED_WORKER_GROUPS, [
-    "release-metadata", "library", "discovery-refresh", "discovery-playlist-build",
+    "release-metadata", "library", "discovery-refresh",
     "discovery-user-refresh", "maintenance", "inbox", "notifications",
     "play-events", "flow", "scheduler",
   ]);

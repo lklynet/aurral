@@ -4,6 +4,7 @@ import { playlistManager } from "../../../services/weeklyFlow/weeklyFlowPlaylist
 import {
   buildSharedTrackIdentity,
   flowPlaylistConfig,
+  isRetiredFlow,
 } from "../../../services/weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { weeklyFlowOperationQueue } from "../../../services/weeklyFlow/weeklyFlowOperationQueue.js";
 import {
@@ -33,6 +34,12 @@ import {
   restoreMarkedPlaylistDownloadWork,
 } from "../../../services/weeklyFlow/weeklyFlowDownloadCancellationService.js";
 import { logger } from "../../../services/logger.js";
+import {
+  buildFlowFromTemplate,
+  listFlowTemplates,
+} from "../../../services/weeklyFlow/flowTemplates.js";
+
+const RETIRED_FLOW_MESSAGE = "This flow's source was retired, so it no longer updates";
 
 export function registerFlows(router) {
   router.post("/start/:flowId", async (req, res) => {
@@ -42,6 +49,9 @@ export function registerFlows(router) {
       const flow = getAccessibleFlow(req.user, flowId);
       if (!flow) {
         return res.status(404).json({ error: "Flow not found" });
+      }
+      if (isRetiredFlow(flow)) {
+        return res.status(409).json({ error: RETIRED_FLOW_MESSAGE, message: RETIRED_FLOW_MESSAGE });
       }
 
       const unavailableError = getUnavailableFlowSourceError(flow.mix);
@@ -82,6 +92,14 @@ export function registerFlows(router) {
     }
   });
 
+  router.get("/flow-templates", async (req, res) => {
+    try {
+      res.json({ templates: await listFlowTemplates(req.user) });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to load flow templates", message: error.message });
+    }
+  });
+
   router.post("/flows", async (req, res) => {
     try {
       const ownerUserId = Number(req.user?.id);
@@ -90,6 +108,17 @@ export function registerFlows(router) {
           error: "Flow ownership requires a real user",
           message: "Authenticate as a user account before creating a flow.",
         });
+      }
+      const body = req.body || {};
+      let payload = body;
+      if (body.templateId) {
+        try {
+          payload = await buildFlowFromTemplate(req.user, body.templateId);
+        } catch (error) {
+          if (!error?.statusCode) throw error;
+          return res.status(error.statusCode).json({ error: error.message, message: error.message });
+        }
+        if (String(body.name || "").trim()) payload.name = String(body.name).trim();
       }
       const {
         name,
@@ -103,8 +132,8 @@ export function registerFlows(router) {
         relatedArtists,
         scheduleDays,
         scheduleTime,
-      } = req.body || {};
-      const validationError = validateFlowPayload(req.body || {});
+      } = payload;
+      const validationError = validateFlowPayload(payload);
       if (validationError) {
         return res.status(400).json({ error: validationError, message: validationError });
       }
@@ -121,6 +150,8 @@ export function registerFlows(router) {
         scheduleDays,
         scheduleTime,
         ownerUserId,
+        discoverPresetId: body.templateId ? payload.discoverPresetId : null,
+        description: body.templateId ? payload.description : null,
       });
       await playlistManager.ensureSmartPlaylists();
       res.json({ success: true, flow });
@@ -259,6 +290,9 @@ export function registerFlows(router) {
       }
 
       if (enabled) {
+        if (isRetiredFlow(flow)) {
+          return res.status(409).json({ error: RETIRED_FLOW_MESSAGE, message: RETIRED_FLOW_MESSAGE });
+        }
         const unavailableError = getUnavailableFlowSourceError(flow.mix);
         if (unavailableError) {
           return res.status(400).json({

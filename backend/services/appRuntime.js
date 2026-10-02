@@ -47,7 +47,6 @@ const WORKER_STARTS = {
   "_outbox:play-events": ["./playEventOutboxWorker.js", "startPlayEventOutboxWorker"],
   "slskd-pipeline": ["./slskdOrchestratorWorker.js", "startSlskdOrchestratorWorker"],
   "discovery-refresh": ["./discoveryRefreshWorker.js", "startDiscoveryRefreshWorker"],
-  "discovery-playlist-build": ["./discoveryPlaylistBuildWorker.js", "startDiscoveryPlaylistBuildWorker"],
   "discovery-user-refresh": ["./discoveryUserRefreshWorker.js", "startDiscoveryUserRefreshWorker"],
   "weekly-flow-operation": ["./weeklyFlow/weeklyFlowOperationWorker.js", "startWeeklyFlowOperationWorker"],
   "playlist-retry": ["./weeklyFlow/weeklyFlowPlaylistRetryWorker.js", "startWeeklyFlowPlaylistRetryWorker"],
@@ -357,19 +356,15 @@ export function startBackgroundWorkers({ logger = console } = {}) {
         logger.warn?.(`[AppRuntime] Could not recover ${group} jobs:`, error?.message || error);
       });
       if (retired) return recovery;
-      if (group !== "discovery-refresh" && group !== "discovery-playlist-build") return recovery;
+      if (group !== "discovery-refresh") return recovery;
       void forwardWorkerBroadcast({
         type: "websocket-broadcast",
         channel: "discovery",
-        data: group === "discovery-refresh" ? {
+        data: {
           type: "discovery_update",
           isUpdating: false,
           phase: "error",
           progressMessage: "Discovery refresh stopped; queued jobs will retry",
-        } : {
-          type: "discovery_update",
-          playlistsUpdating: false,
-          playlistsUpdateMessage: "Playlist build stopped; queued jobs will retry",
         },
       }).catch((error) => {
         logger.warn?.("[AppRuntime] Failed to report discovery restart:", error?.message || error);

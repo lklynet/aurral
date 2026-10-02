@@ -26,6 +26,7 @@ import { DiscoverRail } from "../components/DiscoverRail";
 import { NewsArticleCard } from "../components/NewsArticleCard";
 import { DiscoverLayoutModal } from "./DiscoverLayoutModal";
 import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
+import { useEditorialShelf } from "./useEditorialShelf";
 import { AlbumCard, ArtistCard, ViewAllCard } from "./DiscoverCards";
 import { useDiscoverLayoutState } from "./useDiscoverLayoutState";
 import {
@@ -45,10 +46,9 @@ const getArtistId = (artist) => getArtistRecordId(artist);
 
 function DiscoverPage() {
   useDocumentTitle("Discover");
-  const { user: authUser, hasPermission, bootstrap } = useAuth();
+  const { user: authUser, bootstrap } = useAuth();
   const navigate = useDiscoverNavigation();
   const { showSuccess, showError } = useToast();
-  const canAdoptPlaylist = hasPermission("accessFlow");
   const newsConfigured = bootstrap?.newsConfigured === true;
   const {
     articles: newsArticles,
@@ -184,86 +184,28 @@ function DiscoverPage() {
     globalTop = [],
     topGenres = [],
     basedOn = [],
-    discoverPlaylists = [],
     provider = "lastfm",
     capabilities,
     lastUpdated,
     isUpdating,
     updateProgressMessage,
-    playlistsUpdating,
-    playlistsUpdateMessage,
     configured = true,
   } = data || {};
-  const [adoptedFlowIds, setAdoptedFlowIds] = useState({});
-  const [adoptedStaticPlaylistIds, setAdoptedStaticPlaylistIds] = useState({});
+  const { data: editorialShelf } = useEditorialShelf();
   const isListenBrainzFallback = provider === "listenbrainz-fallback";
 
   const nearbyShows = nearbyShowsData?.shows || [];
   const nearbyLocationLabel =
     nearbyShowsData?.location?.label || nearbyShowsData?.location?.postalCode || "your area";
-  const displayDiscoverPlaylists = useMemo(
-    () =>
-      discoverPlaylists.map((playlist) => ({
-        ...playlist,
-        adoptedFlowId: playlist.adoptedFlowId || adoptedFlowIds[playlist.presetId] || null,
-        adoptedPlaylistId:
-          playlist.adoptedPlaylistId || adoptedStaticPlaylistIds[playlist.presetId] || null,
-      })),
-    [adoptedFlowIds, adoptedStaticPlaylistIds, discoverPlaylists],
-  );
-
-  useEffect(() => {
-    setAdoptedFlowIds((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      for (const playlist of discoverPlaylists) {
-        if (playlist.adoptedFlowId) {
-          if (next[playlist.presetId] !== playlist.adoptedFlowId) {
-            next[playlist.presetId] = playlist.adoptedFlowId;
-            changed = true;
-          }
-        } else if (next[playlist.presetId]) {
-          delete next[playlist.presetId];
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-    setAdoptedStaticPlaylistIds((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      for (const playlist of discoverPlaylists) {
-        if (playlist.adoptedPlaylistId) {
-          if (next[playlist.presetId] !== playlist.adoptedPlaylistId) {
-            next[playlist.presetId] = playlist.adoptedPlaylistId;
-            changed = true;
-          }
-        } else if (next[playlist.presetId]) {
-          delete next[playlist.presetId];
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [discoverPlaylists]);
-
-  const handleFlowAdopted = useCallback((presetId, flowId) => {
-    if (!presetId || !flowId) return;
-    setAdoptedFlowIds((prev) => ({ ...prev, [presetId]: flowId }));
-  }, []);
-
-  const handleStaticPlaylistAdopted = useCallback((presetId, playlistId) => {
-    if (!presetId || !playlistId) return;
-    setAdoptedStaticPlaylistIds((prev) => ({
-      ...prev,
-      [presetId]: playlistId,
-    }));
-  }, []);
+  const featuredPlaylists = useMemo(() => {
+    const forYou = editorialShelf?.forYou || [];
+    return forYou.length > 0 ? forYou : editorialShelf?.genres?.[0]?.playlists || [];
+  }, [editorialShelf]);
 
   const sectionAvailability = useMemo(
     () => ({
       recentlyAdded: recentlyAdded.length > 0,
-      playlists: displayDiscoverPlaylists.length > 0 || !!playlistsUpdating,
+      playlists: featuredPlaylists.length > 0,
       recentReleases: recentReleases.length > 0,
       news: newsConfigured,
       recommended:
@@ -277,8 +219,7 @@ function DiscoverPage() {
     }),
     [
       recentlyAdded,
-      displayDiscoverPlaylists,
-      playlistsUpdating,
+      featuredPlaylists,
       recentReleases,
       newsConfigured,
       globalTop,
@@ -560,13 +501,9 @@ function DiscoverPage() {
       return (
         <DiscoverPlaylistSection
           key="playlists"
-          playlists={displayDiscoverPlaylists}
-          artworkVersion={lastUpdated}
-          canAdopt={canAdoptPlaylist}
-          playlistsUpdating={playlistsUpdating}
-          playlistsUpdateMessage={playlistsUpdateMessage}
-          onFlowAdopted={handleFlowAdopted}
-          onPlaylistAdopted={handleStaticPlaylistAdopted}
+          title="Playlists"
+          playlists={featuredPlaylists}
+          showViewAll
         />
       );
     }
@@ -989,10 +926,8 @@ function DiscoverPage() {
                 <h1 className="page-title">Discover</h1>
                 <DiscoveryStatusPill
                   isUpdating={isUpdating}
-                  playlistsUpdating={playlistsUpdating}
                   lastUpdated={lastUpdated}
                   updateProgressMessage={updateProgressMessage}
-                  playlistsUpdateMessage={playlistsUpdateMessage}
                 />
               </div>
               {heroBasedOn.length > 0 && (

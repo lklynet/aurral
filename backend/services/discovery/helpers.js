@@ -43,13 +43,6 @@ export const getDiscoveryRecommendationsPerRefresh = () => {
   return Math.min(DISCOVERY_RECOMMENDATIONS_MAX, Math.max(50, parsed));
 };
 
-export const isDiscoveryPersonalizedEnabled = () => {
-  const settings = dbOps.getSettings();
-  const value = settings.integrations?.lastfm?.discoveryPersonalizedEnabled;
-  if (typeof value === "boolean") return value;
-  return true;
-};
-
 export const getDiscoveryAutoRefreshHours = () => {
   const settings = dbOps.getSettings();
   const parsed = parseInt(
@@ -107,21 +100,6 @@ export const normalizeTextList = (value) => {
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
     out.push(normalized);
-  }
-  return out;
-};
-
-export const normalizePlaylistBuildStringList = (value, limit = 10) => {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set();
-  const out = [];
-  for (const entry of value) {
-    const text = String(entry || "").trim();
-    const key = text.toLowerCase();
-    if (!text || seen.has(key)) continue;
-    seen.add(key);
-    out.push(text);
-    if (out.length >= limit) break;
   }
   return out;
 };

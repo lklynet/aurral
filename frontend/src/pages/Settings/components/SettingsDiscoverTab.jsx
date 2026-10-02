@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { RefreshCw, Trash2, X } from "lucide-react";
-import PillToggle from "../../../components/PillToggle";
 import { DotLoader } from "../../../components/DotLoader";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
@@ -63,7 +62,6 @@ export function SettingsDiscoverTab({
   const discoveryMode = settings.integrations?.lastfm?.discoveryMode || "balanced";
   const discoveryRecommendationsPerRefresh =
     settings.integrations?.lastfm?.discoveryRecommendationsPerRefresh ?? 200;
-  const discoveryPersonalizedEnabled = settings.integrations?.lastfm?.discoveryPersonalizedEnabled !== false;
   const discoveryProvider =
     health?.discovery?.provider === "listenbrainz-fallback" ? "ListenBrainz fallback" : "Last.fm";
   const isListenBrainzFallback = health?.discovery?.provider === "listenbrainz-fallback";
@@ -195,21 +193,6 @@ export function SettingsDiscoverTab({
                       discoveryRecommendationsPerRefresh: value,
                     });
                   }}
-                />
-              </SettingsArrFormGroup>
-              <SettingsArrFormGroup
-                label="Recommended playlists"
-                help="Personalized playlists; off shows editorial playlists only."
-              >
-                <PillToggle
-                  className="settings-toggle"
-                  checked={discoveryPersonalizedEnabled}
-                  onChange={(e) =>
-                    updateLastfmDiscovery({
-                      discoveryPersonalizedEnabled: e.target.checked,
-                    })
-                  }
-                  aria-label="Recommended playlists"
                 />
               </SettingsArrFormGroup>
             </>

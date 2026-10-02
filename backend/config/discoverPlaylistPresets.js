@@ -41,39 +41,7 @@ export const FIXED_DISCOVER_PLAYLIST_ARTWORK_COLORS = {
   "library-blend": "#ffe119",
   "focus-listening-history": "#4363d8",
   "release-radar": "#f58231",
-  "top-rock": "#911eb4",
-  "top-indie": "#42d4f4",
-  "top-hiphop": "#f032e6",
-  "top-electronic": "#bfef45",
-  "top-pop": "#fabed4",
-  "top-rnb": "#469990",
-  "top-metal": "#dcbeff",
-  "top-jazz": "#9A6324",
-  "top-punk": "#3b82f6",
-  "top-blues": "#1e3a8a",
-  "top-folk": "#d97706",
-  "top-country": "#b45309",
-  "top-reggae": "#22c55e",
-  "top-soul": "#9333ea",
-  "top-funk": "#f97316",
-  "top-latin": "#ef4444",
-  "era-60s": "#fbbf24",
-  "era-70s": "#d946ef",
-  "era-80s": "#fffac8",
-  "era-90s": "#800000",
-  "era-00s": "#94a3b8",
-  "mood-chill": "#aaffc3",
-  "mood-energetic": "#808000",
-  "mood-ambient": "#818cf8",
-  "mood-party": "#ec4899",
-  "mood-rainy": "#64748b",
 };
-
-export const isFixedDiscoverPlaylistPreset = (presetId) =>
-  Object.prototype.hasOwnProperty.call(
-    FIXED_DISCOVER_PLAYLIST_ARTWORK_COLORS,
-    String(presetId || "").trim(),
-  );
 
 export const RELEASE_RADAR_PRESET = {
   id: "release-radar",

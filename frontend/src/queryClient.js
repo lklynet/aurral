@@ -24,6 +24,8 @@ export const queryClient = new QueryClient({
 export const queryKeys = {
   authBootstrap: ["auth", "bootstrap"],
   discovery: (userId) => ["discovery", "home", userId || null],
+  editorialShelf: (userId) => ["discovery", "editorial", "shelf", userId || null],
+  editorialPlaylist: (userId, playlistId) => ["discovery", "editorial", "playlist", userId || null, playlistId],
   appHealth: ["app", "health"],
   appSettings: ["settings", "app"],
   playbackSettings: ["settings", "playback"],
@@ -98,6 +100,7 @@ export const queryKeys = {
   recentReleases: (userId) => ["library", "recent-releases", userId || null],
   news: (userId, mode, limit) => ["news", "library", userId || null, mode, limit],
   playlistStatus: ["playlists", "status"],
+  flowTemplates: (userId) => ["playlists", "flow-templates", userId || null],
   playlistJobs: (flowId) => ["playlists", "jobs", flowId || "all"],
   playlistArtworkRevisions: ["playlists", "artwork-revisions"],
   releaseGroupDetails: (id) => ["artists", "release-group", id],

@@ -1505,7 +1505,6 @@ textarea {
       .native-library-item-menu__panel,
       .artist-dropdown,
       .artist-options-menu,
-      .artist-options-menu--discover,
       .artist-floating-menu,
       .artist-playlist-menu) {
     position: fixed !important;
@@ -1534,7 +1533,6 @@ textarea {
       .native-library-item-menu__panel,
       .artist-dropdown,
       .artist-options-menu,
-      .artist-options-menu--discover,
       .artist-floating-menu,
       .artist-playlist-menu)::after {
     content: none;
@@ -1544,7 +1542,6 @@ textarea {
       .native-library-item-menu__panel,
       .artist-dropdown,
       .artist-options-menu,
-      .artist-options-menu--discover,
       .artist-floating-menu,
       .artist-playlist-menu) .artist-menu-item {
     min-height: 3rem;
@@ -1556,7 +1553,6 @@ textarea {
       .native-library-item-menu__panel,
       .artist-dropdown,
       .artist-options-menu,
-      .artist-options-menu--discover,
       .artist-floating-menu,
       .artist-playlist-menu) .artist-menu-submenu__panel {
     position: static !important;
@@ -1575,7 +1571,6 @@ textarea {
       .native-library-item-menu__panel,
       .artist-dropdown,
       .artist-options-menu,
-      .artist-options-menu--discover,
       .artist-floating-menu,
       .artist-playlist-menu) .artist-menu-submenu:not(.is-open) .artist-menu-submenu__panel {
     display: none !important;
@@ -1585,7 +1580,6 @@ textarea {
       .native-library-item-menu__panel,
       .artist-dropdown,
       .artist-options-menu,
-      .artist-options-menu--discover,
       .artist-floating-menu,
       .artist-playlist-menu) .artist-menu-submenu.is-open .artist-menu-submenu__panel {
     display: block !important;
@@ -1595,7 +1589,6 @@ textarea {
       .native-library-item-menu__panel,
       .artist-dropdown,
       .artist-options-menu,
-      .artist-options-menu--discover,
       .artist-floating-menu,
       .artist-playlist-menu) .artist-menu-submenu__panel .artist-menu-item {
     justify-content: flex-start;
@@ -1606,7 +1599,6 @@ textarea {
       .native-library-item-menu__panel,
       .artist-dropdown,
       .artist-options-menu,
-      .artist-options-menu--discover,
       .artist-floating-menu,
       .artist-playlist-menu) .artist-menu-submenu.is-open .artist-menu-submenu__trigger svg:last-child {
     transform: rotate(90deg);
@@ -1616,7 +1608,6 @@ textarea {
       .native-library-item-menu__panel,
       .artist-dropdown,
       .artist-options-menu,
-      .artist-options-menu--discover,
       .artist-floating-menu,
       .artist-playlist-menu)) :is(.app-mobile-nav, .global-player) {
     z-index: 0;
@@ -1626,7 +1617,6 @@ textarea {
       .native-library-item-menu__panel,
       .artist-dropdown,
       .artist-options-menu,
-      .artist-options-menu--discover,
       .artist-floating-menu,
       .artist-playlist-menu)) .app-content {
     pointer-events: none;
@@ -1636,12 +1626,10 @@ textarea {
       .native-library-item-menu__panel,
       .artist-dropdown,
       .artist-options-menu,
-      .artist-options-menu--discover,
       .artist-floating-menu,
       .artist-playlist-menu)) :is(.native-library-item-menu__panel,
       .artist-dropdown,
       .artist-options-menu,
-      .artist-options-menu--discover,
       .artist-floating-menu,
       .artist-playlist-menu, .artist-backdrop-button) {
     pointer-events: auto;
@@ -1689,7 +1677,6 @@ textarea {
       .native-library-item-menu__panel,
       .artist-dropdown,
       .artist-options-menu,
-      .artist-options-menu--discover,
       .artist-floating-menu,
       .artist-playlist-menu) {
     animation: none;
@@ -4516,8 +4503,7 @@ textarea {
   position: relative;
 }
 
-.artist-options-menu,
-.artist-options-menu--discover {
+.artist-options-menu {
   overflow: hidden;
   padding: 0.25rem;
   background: var(--aurral-surface-popover);
@@ -4532,12 +4518,6 @@ textarea {
   width: 14rem;
 }
 
-.artist-options-menu--discover {
-  position: fixed;
-  z-index: 70;
-  width: max-content;
-  transform: translateY(-100%);
-}
 
 .artist-context-menu--inline {
   display: flex;
@@ -5662,56 +5642,14 @@ textarea {
   white-space: nowrap;
 }
 
-.artist-options-menu--discover.is-below {
-  transform: none;
-}
 
-.artist-menu-item--discover {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 0.5rem;
-  padding: 0.5rem 0.625rem;
-  white-space: nowrap;
-  border-radius: var(--aurral-radius-sm);
-  color: var(--aurral-text-muted);
-  font-size: 0.875rem;
-  text-align: left;
-}
 
-.artist-menu-item--discover:hover:not(:disabled) {
-  background: var(--aurral-surface-hover);
-  color: var(--aurral-text);
-}
 
-.artist-menu-item--discover:disabled {
-  opacity: 0.55;
-}
 
-.artist-menu-item--discover.is-selected {
-  background: var(--aurral-surface-selected);
-  color: var(--aurral-text);
-}
 
-.artist-menu-item--discover.is-selected:hover:not(:disabled) {
-  background: var(--aurral-surface-hover);
-  color: var(--aurral-text);
-}
 
-.artist-menu-item--discover.artist-menu-item--danger {
-  color: var(--aurral-danger);
-}
 
-.artist-menu-item--discover.artist-menu-item--danger:hover:not(:disabled) {
-  color: var(--aurral-danger);
-}
 
-.artist-menu-item__main--discover {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
 
 .artist-show-card--discover {
   position: relative;
@@ -14351,20 +14289,6 @@ button.native-library-genre-row:focus-visible {
   gap: 0.5rem;
   flex-wrap: wrap;
 }
-.discover-playlists-page__cover-label {
-  position: absolute;
-  bottom: 4px;
-  left: 4px;
-  right: 4px;
-  font-size: 0.625rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .discover-playlist-detail__cover-fallback {
   width: 100%;
   height: 100%;
@@ -14372,20 +14296,6 @@ button.native-library-genre-row:focus-visible {
   align-items: center;
   justify-content: center;
   position: relative;
-}
-.discover-playlist-detail__cover-label {
-  position: absolute;
-  bottom: 8px;
-  left: 8px;
-  right: 8px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .global-search__suggestions,
@@ -14395,7 +14305,6 @@ button.native-library-genre-row:focus-visible {
 .artist-menu-submenu__panel,
 .artist-floating-menu,
 .artist-options-menu,
-.artist-options-menu--discover,
 .native-library-item-menu__panel,
 .artist-playlist-menu,
 .artist-nearby-zip-editor:not(.artist-nearby-zip-editor--menu),
@@ -14752,7 +14661,6 @@ button.native-library-genre-row:focus-visible {
   .artist-menu-submenu__panel,
   .artist-floating-menu,
   .artist-options-menu,
-  .artist-options-menu--discover,
   .native-library-item-menu__panel,
   .artist-playlist-menu,
   .artist-nearby-zip-editor:not(.artist-nearby-zip-editor--menu),
@@ -14929,96 +14837,6 @@ button.native-library-genre-row:focus-visible {
   line-height: 1.5;
 }
 
-.discover-playlists-page .artist-albums-grid {
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
-  gap: 1.5rem 1rem;
-}
-
-.discover-playlists-page .artist-release-card {
-  padding: 0;
-  border-radius: 0;
-  transition: none;
-}
-
-.discover-playlists-page .artist-release-card:hover:not(:disabled),
-.discover-playlists-page .artist-release-card:focus-within {
-  background: transparent;
-}
-
-.discover-playlists-page .artist-release-card:focus-visible {
-  outline-offset: 5px;
-}
-
-.discover-playlists-page .artist-release-card__cover {
-  margin-bottom: 0.75rem;
-  border: 1px solid var(--aurral-border);
-  border-radius: var(--aurral-radius);
-}
-
-.discover-playlists-page .artist-release-card__cover > img,
-.discover-playlists-page .artist-release-card__cover > .artist-release-card__placeholder {
-  border-radius: inherit;
-}
-
-.discover-playlists-page__card-title {
-  overflow: hidden;
-  margin: 0;
-  color: var(--aurral-text);
-  font-size: 0.9375rem;
-  font-weight: 600;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.discover-playlists-page__cover-link,
-.discover-playlists-page__title-link {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  padding: 0;
-  text-align: left;
-}
-
-.discover-playlists-page__cover-link {
-  border: 1px solid var(--aurral-border);
-  cursor: pointer;
-}
-
-.discover-playlists-page__title-link {
-  overflow: hidden;
-  color: inherit;
-  font: inherit;
-  font-weight: inherit;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.discover-playlists-page__cover-link:focus-visible,
-.discover-playlists-page__title-link:focus-visible {
-  outline: 2px solid var(--aurral-ring);
-  outline-offset: 3px;
-  border-radius: var(--aurral-radius-sm);
-}
-
-.discover-playlists-page .artist-release-card__meta-row {
-  margin-top: 0.375rem;
-}
-
-.discover-playlists-page .artist-release-card__meta {
-  line-height: 1.4;
-}
-
-.discover-playlists-page__cover-label,
-.discover-playlist-detail__cover-label {
-  letter-spacing: 0.01em;
-  text-transform: none;
-}
-
 .discover-playlists-page__status-panel {
   min-height: 14rem;
 }
@@ -15174,15 +14992,7 @@ button.native-library-genre-row:focus-visible {
   min-height: 2.25rem;
 }
 
-.artist-options-menu--discover {
-  min-width: 14rem;
-  padding: 0.25rem;
-  border-radius: var(--aurral-radius);
-}
 
-.artist-menu-item--discover {
-  min-height: 2.5rem;
-}
 
 .shows-page .page-section-mobile-nav__label {
   letter-spacing: 0;

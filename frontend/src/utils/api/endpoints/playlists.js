@@ -94,6 +94,8 @@ export const reSearchAllMissingTracks = () =>
 
 export const createFlow = (payload) => postData("/playlists/flows", payload);
 
+export const getFlowTemplates = (options = {}) => getData("/playlists/flow-templates", options);
+
 export const updateFlow = (flowId, payload) =>
   putData(`/playlists/flows/${flowId}`, payload);
 

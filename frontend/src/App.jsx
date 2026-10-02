@@ -54,7 +54,7 @@ const FlowsPage = lazy(() => import("./pages/flows/FlowsPage"));
 const FlowDetailPage = lazy(() => import("./pages/flows/FlowDetailPage"));
 const PlaylistRedirect = lazy(() => import("./pages/flows/PlaylistRedirect"));
 const DiscoverPlaylistsPage = lazy(() => import("./pages/DiscoverPlaylistsPage"));
-const DiscoverPlaylistDetailPage = lazy(() => import("./pages/DiscoverPlaylistDetailPage"));
+const EditorialPlaylistDetailPage = lazy(() => import("./pages/EditorialPlaylistDetailPage"));
 const NewsPage = lazy(() => import("./pages/NewsPage"));
 
 const PageLoader = () => (
@@ -267,7 +267,7 @@ function AppContent() {
                       <Route path="/shows/:filter" element={<ShowsPage />} />
                       <Route path="/search" element={<SearchResultsPage />} />
                       <Route path="/discover" element={<Navigate to="/" replace />} />
-                      <Route path="/discover/playlists/:presetId" element={<DiscoverPlaylistDetailPage />} />
+                      <Route path="/discover/playlists/deezer/:playlistId" element={<EditorialPlaylistDetailPage />} />
                       <Route path="/discover/playlists" element={<DiscoverPlaylistsPage />} />
                       <Route path="/discover/news" element={<NewsPage />} />
                       <Route

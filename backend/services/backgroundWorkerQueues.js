@@ -4,7 +4,6 @@ export const ISOLATED_QUEUE_GROUPS = Object.freeze({
   "release-metadata-refresh": "release-metadata",
   "library-scan": "library",
   "discovery-refresh": "discovery-refresh",
-  "discovery-playlist-build": "discovery-playlist-build",
   "discovery-user-refresh": "discovery-user-refresh",
   "system-task-maintenance": "maintenance",
   "system-task-inbox": "inbox",

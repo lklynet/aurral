@@ -163,22 +163,6 @@ export function ReleaseRadarRecipeFields(props) {
   );
 }
 
-export function EditorialRecipeFields({ tag = "", ...props }) {
-  const tagLabel = tag ? tag.charAt(0).toUpperCase() + tag.slice(1) : "";
-  return (
-    <PresetRecipeFields
-      {...props}
-      title={tagLabel ? `${tagLabel} picks` : "Curated picks"}
-      description={
-        <>
-          The top tracks from Last.fm&rsquo;s {tag || "genre"} chart right now, refreshed on your
-          schedule below.
-        </>
-      }
-    />
-  );
-}
-
 export function FlowFormFields({
   draft,
   inputClassName = "flow-page__field-control",

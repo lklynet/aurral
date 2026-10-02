@@ -208,8 +208,10 @@ Aurral read them in the last 10 seconds.
 | `GET` | `/api/discover/tags` | Discovery tags |
 | `GET` | `/api/discover/by-tag` | Recommendations for a tag |
 | `GET` | `/api/discover/nearby-shows` | Nearby events |
-| `GET` | `/api/discover/artwork/:presetId` | Discovery artwork |
-| `GET` | `/api/discover/playlists/:presetId/previews` | Deezer previews for an editorial playlist |
+| `GET` | `/api/discover/editorial` | Deezer editorial playlists: matches for the user's top genres and tags, and playlists grouped by genre |
+| `GET` | `/api/discover/editorial/:playlistId` | A Deezer editorial playlist with track previews |
+| `GET` | `/api/discover/editorial/links` | Find the MusicBrainz artist and album for a Deezer track |
+| `POST` | `/api/discover/editorial/:playlistId/library` | Add a Deezer editorial playlist to your library as a synced playlist |
 | `GET` | `/api/discover/feedback` | Discovery feedback |
 | `POST` | `/api/discover/feedback` | Record discovery feedback |
 | `DELETE` | `/api/discover/feedback/:id` | Delete discovery feedback |
@@ -217,8 +219,6 @@ Aurral read them in the last 10 seconds.
 | `GET` | `/api/discover/preferences` | Discovery preferences |
 | `POST` | `/api/discover/preferences` | Update discovery preferences |
 | `POST` | `/api/discover/preferences/reset` | Reset discovery preferences |
-| `POST` | `/api/discover/playlists/adopt` | Create a flow from a discovery preset |
-| `POST` | `/api/discover/playlists/adopt-playlist` | Create a static playlist from a discovery preset |
 | `POST` | `/api/discover/refresh` | Refresh discovery data |
 | `POST` | `/api/discover/clear` | Clear artwork links, native-library image files, and metadata-provider caches |
 | `POST` | `/api/discover/clear-discovery` | Clear the discovery cache |
@@ -264,7 +264,8 @@ The routes call a static playlist a shared playlist.
 | `POST` | `/api/playlists/jobs/:jobId/manual-search` | Search one download client for a track. Send `sourceId`, and `mode` set to `missing` or `replacement` |
 | `POST` | `/api/playlists/jobs/:jobId/manual-search/select` | Queue one result from a manual search |
 | `POST` | `/api/playlists/start/:flowId` | Run a flow |
-| `POST` | `/api/playlists/flows` | Create a flow |
+| `GET` | `/api/playlists/flow-templates` | List flow templates |
+| `POST` | `/api/playlists/flows` | Create a flow, optionally from a template with `templateId` |
 | `PUT` | `/api/playlists/flows/:flowId` | Update a flow |
 | `DELETE` | `/api/playlists/flows/:flowId` | Delete a flow |
 | `PUT` | `/api/playlists/flows/:flowId/enabled` | Enable or disable a flow |

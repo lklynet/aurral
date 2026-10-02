@@ -21,7 +21,6 @@ export const HONKER_QUEUE_NAMES = [
   "playlist-mbid-enrichment",
   "library-scan",
   "discovery-refresh",
-  "discovery-playlist-build",
   "discovery-user-refresh",
   "_outbox:notifications",
   "_outbox:play-events",
@@ -271,16 +270,6 @@ const discoveryRefresh = registerQueue({
 });
 export const getDiscoveryRefreshQueue = discoveryRefresh.getQueue;
 export const enqueueDiscoveryRefreshJob = discoveryRefresh.enqueueJob;
-
-const discoveryPlaylistBuild = registerQueue({
-  name: "discovery-playlist-build",
-  visibilityTimeoutS: 3600,
-  maxAttempts: 4,
-  workerModule: "./discoveryPlaylistBuildWorker.js",
-  workerStartFn: "startDiscoveryPlaylistBuildWorker",
-});
-export const getDiscoveryPlaylistBuildQueue = discoveryPlaylistBuild.getQueue;
-export const enqueueDiscoveryPlaylistBuildJob = discoveryPlaylistBuild.enqueueJob;
 
 const discoveryUserRefresh = registerQueue({
   name: "discovery-user-refresh",

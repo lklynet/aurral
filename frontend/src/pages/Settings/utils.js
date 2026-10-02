@@ -25,10 +25,6 @@ export const normalizeSettings = (savedSettings) => {
   const normalizedRecommendationsPerRefresh = Number.isFinite(parsedRecommendationsPerRefresh)
     ? Math.min(500, Math.max(50, parsedRecommendationsPerRefresh))
     : 200;
-  const personalizationEnabled = lastfm.discoveryPersonalizedEnabled;
-  if (typeof personalizationEnabled !== "boolean") {
-    lastfm.discoveryPersonalizedEnabled = true;
-  }
   const playlistArtwork = savedSettings.playlistArtwork || {};
   const playlistArtworkStyle =
     playlistArtwork.style === "aurral" || lastfm.discoverFlowArtworkStyle === "aurral"
@@ -104,7 +100,6 @@ export const normalizeSettings = (savedSettings) => {
         discoveryPeriod: "1month",
         discoveryAutoRefreshHours: normalizedAutoRefreshHours,
         discoveryRecommendationsPerRefresh: normalizedRecommendationsPerRefresh,
-        discoveryPersonalizedEnabled: lastfm.discoveryPersonalizedEnabled === false ? false : true,
         discoveryMode:
           lastfm.discoveryMode === "safer" || lastfm.discoveryMode === "deeper"
             ? lastfm.discoveryMode

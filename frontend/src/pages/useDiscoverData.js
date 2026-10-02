@@ -206,63 +206,6 @@ export function useDiscoverData() {
         return;
       }
 
-      if (msg.playlistsUpdating || msg.phase === "playlists_building") {
-        lastDiscoveryWsMessageAtRef.current = Date.now();
-        setData((prev) =>
-          normalizeDiscoveryData({
-            ...(prev || {}),
-            playlistsUpdating: true,
-            playlistsUpdateMessage:
-              msg.playlistsUpdateMessage ||
-              msg.progressMessage ||
-              "Updating recommended playlists...",
-            isUpdating: false,
-            configured: true,
-            stale: false,
-            recommendations: Array.isArray(msg.recommendations) ? msg.recommendations : prev?.recommendations,
-            globalTop: Array.isArray(msg.globalTop) ? msg.globalTop : prev?.globalTop,
-            basedOn: Array.isArray(msg.basedOn) ? msg.basedOn : prev?.basedOn,
-            topTags: Array.isArray(msg.topTags) ? msg.topTags : prev?.topTags,
-            topGenres: Array.isArray(msg.topGenres) ? msg.topGenres : prev?.topGenres,
-            fallbackGenres: Array.isArray(msg.fallbackGenres) ? msg.fallbackGenres : prev?.fallbackGenres,
-            discoverPlaylists: Array.isArray(msg.discoverPlaylists) ? msg.discoverPlaylists : prev?.discoverPlaylists,
-            provider: msg.provider || prev?.provider || "lastfm",
-            lastUpdated: msg.lastUpdated || prev?.lastUpdated || null,
-          }),
-        );
-        return;
-      }
-
-      if (msg.phase === "playlists_completed") {
-        lastDiscoveryWsMessageAtRef.current = Date.now();
-        setData((prev) =>
-          normalizeDiscoveryData({
-            ...(prev || {}),
-            discoverPlaylists: Array.isArray(msg.discoverPlaylists)
-              ? msg.discoverPlaylists
-              : prev?.discoverPlaylists || [],
-            playlistsUpdating: false,
-            playlistsUpdateMessage: null,
-            lastUpdated: msg.lastUpdated || prev?.lastUpdated || null,
-            configured: true,
-            stale: false,
-          }),
-        );
-        fetchAndApplyDiscovery(true);
-        return;
-      }
-
-      if (msg.phase === "playlists_error") {
-        setData((prev) =>
-          normalizeDiscoveryData({
-            ...(prev || {}),
-            playlistsUpdating: false,
-            playlistsUpdateMessage: null,
-          }),
-        );
-        return;
-      }
-
       if (msg.isUpdating) {
         lastDiscoveryWsMessageAtRef.current = Date.now();
         setData((prev) =>
@@ -296,7 +239,6 @@ export function useDiscoverData() {
               topTags: msg.topTags || [],
               topGenres: msg.topGenres || [],
               fallbackGenres: msg.fallbackGenres || [],
-              discoverPlaylists: msg.discoverPlaylists || [],
               provider: msg.provider || "lastfm",
               capabilities: msg.capabilities || null,
               lastUpdated: msg.lastUpdated || null,
@@ -304,14 +246,6 @@ export function useDiscoverData() {
               updatePhase: null,
               updateProgress: null,
               updateProgressMessage: null,
-              playlistsUpdating:
-                typeof msg.playlistsUpdating === "boolean"
-                  ? msg.playlistsUpdating
-                  : prev?.playlistsUpdating,
-              playlistsUpdateMessage:
-                msg.playlistsUpdateMessage ??
-                prev?.playlistsUpdateMessage ??
-                null,
               recommendationQuality:
                 msg.recommendationQuality || prev?.recommendationQuality || null,
               isEnriching:
@@ -344,12 +278,6 @@ export function useDiscoverData() {
               updatePhase: null,
               updateProgress: null,
               updateProgressMessage: null,
-              playlistsUpdating:
-                typeof msg.playlistsUpdating === "boolean"
-                  ? msg.playlistsUpdating
-                  : prev?.playlistsUpdating,
-              playlistsUpdateMessage:
-                msg.playlistsUpdateMessage ?? prev?.playlistsUpdateMessage ?? null,
               recommendationQuality:
                 msg.recommendationQuality || prev?.recommendationQuality || null,
               isEnriching:
@@ -375,7 +303,7 @@ export function useDiscoverData() {
   );
 
   useEffect(() => {
-    if (!data?.isUpdating && !data?.isEnriching && !data?.playlistsUpdating) {
+    if (!data?.isUpdating && !data?.isEnriching) {
       return;
     }
     const pollDiscovery = () => {
@@ -396,7 +324,6 @@ export function useDiscoverData() {
     authUser?.id,
     data?.isUpdating,
     data?.isEnriching,
-    data?.playlistsUpdating,
     isDiscoverySocketConnected,
     fetchAndApplyDiscovery,
   ]);
@@ -520,10 +447,6 @@ export function useDiscoverData() {
               ...section,
               artists: (section?.artists || []).filter(keepArtist),
             })),
-            discoverPlaylists: (current.discoverPlaylists || []).map((playlist) => {
-              const tracks = (playlist?.tracks || []).filter(keepArtist);
-              return { ...playlist, tracks, trackCount: tracks.length };
-            }),
           };
           return next;
         });

@@ -1,4 +1,4 @@
-import { getData, postData, deleteData, buildAuthenticatedApiUrl } from "../core.js";
+import { getData, postData, deleteData } from "../core.js";
 
 export const getDiscovery = (options = false) => {
   const params = {};
@@ -15,22 +15,19 @@ export const getDiscovery = (options = false) => {
   return getData("/discover", { params, signal });
 };
 
-export const adoptDiscoverPlaylistAsFlow = (presetId) =>
-  postData("/discover/playlists/adopt", { presetId });
+export const getEditorialShelf = (options = {}) => getData("/discover/editorial", options);
 
-export const adoptDiscoverPlaylistAsStatic = (presetId) =>
-  postData("/discover/playlists/adopt-playlist", {
-    presetId,
+export const getEditorialPlaylist = (playlistId, options = {}) =>
+  getData(`/discover/editorial/${encodeURIComponent(playlistId)}`, options);
+
+export const addEditorialPlaylistToLibrary = (playlistId) =>
+  postData(`/discover/editorial/${encodeURIComponent(playlistId)}/library`);
+
+export const resolveEditorialTrackLinks = ({ artistName, albumName, deezerAlbumId }, options = {}) =>
+  getData("/discover/editorial/links", {
+    ...options,
+    params: { artist: artistName, album: albumName || undefined, albumId: deezerAlbumId || undefined },
   });
-
-export const getDiscoverPlaylistPreviews = (presetId, options = {}) =>
-  getData(`/discover/playlists/${encodeURIComponent(presetId)}/previews`, options);
-
-export const getDiscoverArtworkUrl = (presetId, version) =>
-  buildAuthenticatedApiUrl(
-    `/discover/artwork/${encodeURIComponent(presetId)}`,
-    { v: version },
-  );
 
 export const getNearbyShows = async (zipCode = "", limit, options = {}) => {
   const params = {};

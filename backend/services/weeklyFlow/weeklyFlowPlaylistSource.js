@@ -1739,22 +1739,6 @@ export class WeeklyFlowPlaylistSource {
         },
       };
     }
-    if (flow?.type === "editorial" && flow?.tag) {
-      const generatedTracks = await this.getEditorialTagTracks(flow.tag, targetSize);
-      const primaryTracks = this._filterTracksByArtists(
-        generatedTracks,
-        null,
-        new Set(this._buildFeedbackExcludeKeys(flow?.ownerUserId)),
-      );
-      return {
-        primaryTracks,
-        reserveTracks: [],
-        diagnostics: {
-          targets: { editorial: targetSize, maxSize: targetSize },
-          achieved: { primary: primaryTracks.length, reserve: 0 },
-        },
-      };
-    }
     const mix = flow?.mix || { discover: 34, mix: 33, trending: 33, focus: 0 };
     const _sourceTargets = this._buildSourceTargets(targetSize, mix);
     const feedbackExcludeKeys = this._buildFeedbackExcludeKeys(flow?.ownerUserId);
@@ -2292,44 +2276,6 @@ export class WeeklyFlowPlaylistSource {
     });
 
     return resolved.filter(Boolean).slice(0, limit);
-  }
-
-  async getEditorialTagTracks(tag, limit) {
-    if (!tag || limit <= 0) return [];
-    if (!getLastfmApiKey()) return [];
-
-    let result;
-    try {
-      result = await lastfmRequest("tag.getTopTracks", { tag, limit });
-    } catch (error) {
-      console.warn(`[FlowEditorial] Failed to fetch tag "${tag}": ${error.message}`);
-      return [];
-    }
-
-    if (!result) return [];
-    if (result.error) {
-      console.warn(`[FlowEditorial] Last.fm error for tag "${tag}": ${result.error} — ${result.message || ""}`);
-      return [];
-    }
-
-    const rawTracks = result?.tracks?.track;
-    const tracks = Array.isArray(rawTracks) ? rawTracks : rawTracks ? [rawTracks] : [];
-    if (tracks.length === 0) return [];
-
-    const entries = [];
-    for (const track of tracks) {
-      const entry = this._buildTrackEntry({
-        artistName: track?.artist?.name || null,
-        trackName: track?.name || null,
-        albumName: null,
-        artistMbid: track?.artist?.mbid || null,
-        trackMbid: track?.mbid || null,
-        reason: `Last.fm tag: ${tag}`,
-      });
-      if (entry) entries.push(entry);
-    }
-
-    return entries.slice(0, limit);
   }
 }
 

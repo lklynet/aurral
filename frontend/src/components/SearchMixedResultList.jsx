@@ -1,7 +1,6 @@
 import { Music } from "lucide-react";
 import ArtistImage from "./ArtistImage";
 import { getSearchResultKey, navigateFromSearchResult } from "../utils/searchNavigation";
-import { getDiscoverArtworkUrl } from "../utils/api/endpoints/discovery.js";
 import { getFlowArtworkUrl } from "../utils/api/endpoints/playlists.js";
 import { getArtistRecordId } from "../utils/artistTaste";
 import Tooltip from "./Tooltip";
@@ -15,18 +14,8 @@ const handleMainKeyDown = (event, onClick) => {
 function getSearchPlaylistArtworkUrl(playlist) {
   if (!playlist) return null;
   if (playlist.coverUrl) return playlist.coverUrl;
-  const presetId = String(playlist.discoverPresetId || "").trim();
-  if (playlist.source === "discover" && presetId) {
-    return getDiscoverArtworkUrl(presetId);
-  }
   const playlistId = String(playlist.id || "").trim();
-  if (playlistId && !playlistId.startsWith("discover:")) {
-    return getFlowArtworkUrl(playlistId);
-  }
-  if (presetId) {
-    return getDiscoverArtworkUrl(presetId);
-  }
-  return null;
+  return playlistId ? getFlowArtworkUrl(playlistId) : null;
 }
 
 function getTypeLabel(item) {
@@ -56,8 +45,7 @@ function getSecondaryLabel(item) {
     return [item.artistName, item.albumTitle].filter(Boolean).join(" · ") || null;
   }
   if (item.type === "playlist" && item.trackCount != null) {
-    const prefix = item.source === "discover" ? "Discover · " : "";
-    return `${prefix}${item.trackCount} track${item.trackCount === 1 ? "" : "s"}`;
+    return `${item.trackCount} track${item.trackCount === 1 ? "" : "s"}`;
   }
   return null;
 }

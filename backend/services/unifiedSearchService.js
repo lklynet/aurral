@@ -8,7 +8,6 @@ import { searchAlbums, searchArtists } from "./providers/brainzmashProvider.js";
 import { flowPlaylistConfig } from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { getCachedArtists } from "./libraryManager.js";
 import { getCanonicalSearchPage } from "./libraryQueryService.js";
-import { getDiscoveryCache } from "./discovery/index.js";
 import { compareSearchResults, getLocalMatchThreshold } from "./searchRanking.js";
 import { parsePositiveInt } from "./searchService.js";
 
@@ -497,38 +496,6 @@ async function searchCatalog(query, limit, signal) {
   };
 }
 
-function getDiscoverPlaylistsForSearch(user) {
-  try {
-    const cache = user ? getDiscoveryCache(user) : getDiscoveryCache();
-    return (Array.isArray(cache?.discoverPlaylists) ? cache.discoverPlaylists : [])
-      .map((playlist) => {
-        const presetId = String(playlist?.presetId || playlist?.id || "").trim();
-        const name = String(playlist?.name || "").trim();
-        if (!presetId || !name) return null;
-        const tracks = Array.isArray(playlist?.tracks) ? playlist.tracks : [];
-        return {
-          id: playlist.adoptedPlaylistId || `discover:${presetId}`,
-          name,
-          tracks,
-          trackCount: tracks.length,
-          discoverPresetId: presetId,
-          sourceFlowId: playlist.adoptedFlowId || null,
-          isDiscoverPlaylist: !playlist.adoptedPlaylistId,
-        };
-      })
-      .filter(Boolean);
-  } catch (error) {
-    console.warn("[UnifiedSearch] Failed to read discover playlists:", error.message);
-    return [];
-  }
-}
-
-function getAllPlaylistsForSearch(user) {
-  const shared = getVisiblePlaylistsForUser(user);
-  const discover = getDiscoverPlaylistsForSearch(user);
-  const seen = new Set(shared.map((playlist) => playlist.id));
-  return [...shared, ...discover.filter((playlist) => !seen.has(playlist.id))];
-}
 
 function getVisiblePlaylistsForUser(user) {
   try {
@@ -540,7 +507,7 @@ function getVisiblePlaylistsForUser(user) {
 }
 
 function loadSearchContext(user) {
-  const playlists = getAllPlaylistsForSearch(user);
+  const playlists = getVisiblePlaylistsForUser(user);
   const artists = getCachedArtists();
   const context = {
     playlists,
@@ -747,7 +714,7 @@ function getSearchContextOrFallback(user) {
     return getSearchContext(user);
   } catch (error) {
     console.warn("[UnifiedSearch] Local search context failed:", error.message);
-    const playlists = getAllPlaylistsForSearch(user);
+    const playlists = getVisiblePlaylistsForUser(user);
     return {
       playlists,
       artists: [],

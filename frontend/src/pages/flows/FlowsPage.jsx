@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { Sparkles } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { AudioWaveform, ChevronDown, Sparkles } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
+import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
-import { createFlow } from "../../utils/api/endpoints/playlists.js";
+import { createFlow, getFlowTemplates } from "../../utils/api/endpoints/playlists.js";
+import { queryKeys } from "../../queryClient.js";
 import { PlaylistArtworkThumb } from "./flowComponents/PlaylistArtworkThumb.jsx";
 import { FlowEnabledSwitch } from "./FlowEnabledSwitch.jsx";
 import { getFlowDisplayTrackCount } from "./flowStats";
@@ -30,19 +33,31 @@ export default function FlowsPage() {
   const [creating, setCreating] = useState(false);
   const canCreate = Object.keys(status?.capabilities?.unavailableSources || {}).length === 0;
 
-  const handleCreate = async () => {
+  const templatesQuery = useQuery({
+    queryKey: queryKeys.flowTemplates(user?.id),
+    queryFn: ({ signal }) => getFlowTemplates({ signal }),
+    enabled: canCreate,
+    staleTime: 5 * 60 * 1000,
+  });
+  const templates = (templatesQuery.data?.templates || []).filter((template) => template.available);
+
+  const handleCreate = async (template = null) => {
     if (creating) return;
     setCreating(true);
     try {
-      const draft = flowToForm({
-        ...NEW_FLOW_TEMPLATE,
-        name: getNextFlowName(flows, NEW_FLOW_TEMPLATE.name),
-      });
-      const response = await createFlow(buildFlowFromForm(draft));
-      showSuccess(`Created ${response?.flow?.name || draft.name}`);
+      const payload = template
+        ? { templateId: template.id, name: getNextFlowName(flows, template.name) }
+        : buildFlowFromForm(
+            flowToForm({
+              ...NEW_FLOW_TEMPLATE,
+              name: getNextFlowName(flows, NEW_FLOW_TEMPLATE.name),
+            }),
+          );
+      const response = await createFlow(payload);
+      showSuccess(`Created ${response?.flow?.name || payload.name}`);
       await fetchStatus();
       if (response?.flow?.id) {
-        navigate(flowPath(response.flow.id), { state: { tab: "recipe" } });
+        navigate(flowPath(response.flow.id), template ? undefined : { state: { tab: "recipe" } });
       }
     } catch (err) {
       showError(err.response?.data?.message || err.message || "Failed to create flow");
@@ -50,6 +65,34 @@ export default function FlowsPage() {
       setCreating(false);
     }
   };
+
+  const renderNewFlowMenu = (triggerClassName) => (
+    <LibraryItemMenu
+      label="New flow"
+      contextMenu={false}
+      disabled={creating}
+      triggerLabel="New flow"
+      triggerClassName={triggerClassName}
+      triggerIcon={
+        <>
+          {creating ? <DotLoader size="sm" label={null} /> : <Sparkles aria-hidden="true" />}
+          {creating ? "Creating…" : "New flow"}
+          <ChevronDown aria-hidden="true" />
+        </>
+      }
+      menuLabel="Start a flow"
+      items={[
+        { id: "blank", label: "Blank flow", icon: Sparkles, onSelect: () => handleCreate() },
+        ...templates.map((template, index) => ({
+          id: template.id,
+          label: template.name,
+          icon: AudioWaveform,
+          separatorBefore: index === 0,
+          onSelect: () => handleCreate(template),
+        })),
+      ]}
+    />
+  );
 
   const describeFlow = (flow) => {
     const stats = getPlaylistStats(flow.id);
@@ -87,15 +130,7 @@ export default function FlowsPage() {
         <div className="native-library-state">
           <strong>No flows yet</strong>
           <span>A flow builds a fresh playlist on a schedule from a recipe you choose.</span>
-          <button
-            type="button"
-            className="native-library-state__action"
-            onClick={handleCreate}
-            disabled={creating}
-          >
-            {creating ? <DotLoader size="sm" label={null} /> : <Sparkles aria-hidden="true" />}
-            {creating ? "Creating…" : "New flow"}
-          </button>
+          {renderNewFlowMenu("native-library-state__action")}
         </div>
       ) : (
         <div className="native-library-state">
@@ -154,15 +189,7 @@ export default function FlowsPage() {
           </div>
           {canCreate && flows.length > 0 ? (
             <div className="native-library-header-actions">
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={handleCreate}
-                disabled={creating}
-              >
-                {creating ? <DotLoader size="sm" label={null} /> : <Sparkles aria-hidden="true" />}
-                {creating ? "Creating…" : "New flow"}
-              </button>
+              {renderNewFlowMenu("btn btn-secondary btn-sm")}
             </div>
           ) : null}
         </div>

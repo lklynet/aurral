@@ -186,14 +186,6 @@ export const writeStoredRecentReleases = (value, userId) => {
   }
 };
 
-export const stripDiscoverPlaylistAdoptionFields = (playlists) =>
-  (Array.isArray(playlists) ? playlists : []).map((playlist) => {
-    const rest = { ...playlist };
-    delete rest.adoptedFlowId;
-    delete rest.adoptedPlaylistId;
-    return rest;
-  });
-
 export const normalizeDiscoveryData = (value) => {
   if (!value || typeof value !== "object") return null;
   return {
@@ -207,9 +199,6 @@ export const normalizeDiscoveryData = (value) => {
     fallbackGenres: Array.isArray(value.fallbackGenres)
       ? value.fallbackGenres
       : [],
-    discoverPlaylists: Array.isArray(value.discoverPlaylists)
-      ? value.discoverPlaylists
-      : [],
     provider: value.provider || "lastfm",
     capabilities:
       value.capabilities && typeof value.capabilities === "object"
@@ -221,8 +210,6 @@ export const normalizeDiscoveryData = (value) => {
     updateProgress:
       typeof value.updateProgress === "number" ? value.updateProgress : null,
     updateProgressMessage: value.updateProgressMessage || null,
-    playlistsUpdating: !!value.playlistsUpdating,
-    playlistsUpdateMessage: value.playlistsUpdateMessage || null,
     recommendationQuality:
       value.recommendationQuality === "initial" ||
       value.recommendationQuality === "enriching" ||
@@ -252,8 +239,6 @@ export const stripDiscoveryStatusForStorage = (value) => {
     updatePhase: null,
     updateProgress: null,
     updateProgressMessage: null,
-    playlistsUpdating: false,
-    playlistsUpdateMessage: null,
     isEnriching: false,
     enrichmentProgressMessage: null,
     stale: false,
@@ -274,10 +259,6 @@ export const mergeDiscoveryHttp = (
     next.updateProgress = prev.updateProgress;
     next.updateProgressMessage = prev.updateProgressMessage;
   }
-  if (prev.playlistsUpdating && !next.playlistsUpdating) {
-    next.playlistsUpdating = true;
-    next.playlistsUpdateMessage = prev.playlistsUpdateMessage;
-  }
   if (prev.isEnriching && !next.isEnriching) {
     next.isEnriching = true;
     next.enrichmentProgressMessage = prev.enrichmentProgressMessage;
@@ -286,16 +267,7 @@ export const mergeDiscoveryHttp = (
 };
 
 export const readStoredDiscoveryData = (userId) => {
-  const fromStorage = (raw) => {
-    const normalized = stripDiscoveryStatusForStorage(raw);
-    if (!normalized) return null;
-    return {
-      ...normalized,
-      discoverPlaylists: stripDiscoverPlaylistAdoptionFields(
-        normalized.discoverPlaylists,
-      ),
-    };
-  };
+  const fromStorage = stripDiscoveryStatusForStorage;
   try {
     const primaryKey = getDiscoveryCacheStorageKey(userId);
     const primary = fromStorage(
@@ -317,12 +289,7 @@ export const writeStoredDiscoveryData = (value, userId) => {
   try {
     localStorage.setItem(
       getDiscoveryCacheStorageKey(userId),
-      JSON.stringify({
-        ...normalized,
-        discoverPlaylists: stripDiscoverPlaylistAdoptionFields(
-          normalized.discoverPlaylists,
-        ),
-      }),
+      JSON.stringify(normalized),
     );
     markStoredAt(getDiscoveryCacheStorageKey(userId));
   } catch {

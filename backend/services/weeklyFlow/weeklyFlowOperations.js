@@ -14,6 +14,7 @@ import {
   dedupeSharedTracks,
   filterMissingSharedTracks,
   flowPlaylistConfig,
+  isRetiredFlow,
   normalizeSharedTrack,
   rebuildSharedPlaylistTracksFromJobs,
   tracksShareMembership,
@@ -277,13 +278,14 @@ async function runFlowSeed({
   if (!isLatestWeeklyFlowOperationToken(tokenScope, token)) {
     return { cancelled: true };
   }
+  const flow = flowPlaylistConfig.getFlow(safeFlowId);
+  if (!flow) return { missing: true };
+  if (isRetiredFlow(flow)) return { skipped: true, retired: true };
   if (!isAnyDownloadSourceConfigured()) {
     const error = new Error(getDownloadSourceNotConfiguredMessage());
     error.code = "NO_DOWNLOAD_SOURCE";
     throw error;
   }
-  const flow = flowPlaylistConfig.getFlow(safeFlowId);
-  if (!flow) return { missing: true };
   if (requireEnabled && flow.enabled !== true) return { skipped: true };
   if (!isOwnerActive(flow.ownerUserId)) return { skipped: true, inactiveOwner: true };
   const unavailableError = getUnavailableFlowSourceError(flow.mix);

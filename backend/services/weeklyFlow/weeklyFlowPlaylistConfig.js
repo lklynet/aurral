@@ -2,15 +2,16 @@ import { randomBytes, randomUUID } from "crypto";
 import { dbOps } from "../../db/helpers/index.js";
 import { downloadTracker } from "./weeklyFlowDownloadTracker.js";
 import { getDiscoverPlaylistPreset } from "../../config/discoverPlaylistPresets.js";
-import { EDITORIAL_PLAYLIST_POOL } from "../../config/editorialPlaylistPresets.js";
 
 const LEGACY_TYPES = ["discover", "mix", "trending"];
+export const isRetiredFlow = (flow) => flow?.type === "editorial";
 export const IMPORT_SOURCE_PROVIDERS = new Set([
   "spotify-playlist",
   "listenbrainz-playlist",
   "listenbrainz-createdfor",
   "lastfm-station",
   "youtube-music-playlist",
+  "deezer-playlist",
 ]);
 const DEFAULT_MIX = { discover: 34, mix: 33, trending: 33, focus: 0 };
 export const DEFAULT_SIZE = 30;
@@ -235,9 +236,7 @@ const normalizeMix = (mix) => {
 const resolvePresetDescription = (discoverPresetId) => {
   const id = String(discoverPresetId || "").trim();
   if (!id) return null;
-  const preset =
-    getDiscoverPlaylistPreset(id) || EDITORIAL_PLAYLIST_POOL.find((entry) => entry.id === id);
-  return preset?.description || null;
+  return getDiscoverPlaylistPreset(id)?.description || null;
 };
 
 const normalizeFlow = (flow) => {
@@ -899,7 +898,11 @@ export const flowPlaylistConfig = {
   getDueForRefresh() {
     const now = Date.now();
     return getStoredFlows().filter(
-      (flow) => flow.enabled === true && flow.nextRunAt != null && flow.nextRunAt <= now,
+      (flow) =>
+        flow.enabled === true &&
+        !isRetiredFlow(flow) &&
+        flow.nextRunAt != null &&
+        flow.nextRunAt <= now,
     );
   },
 

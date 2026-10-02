@@ -4,25 +4,14 @@ import { DotLoader } from "./DotLoader";
 
 export default function DiscoveryStatusPill({
   isUpdating = false,
-  playlistsUpdating = false,
   lastUpdated = null,
   updateProgressMessage,
-  playlistsUpdateMessage,
 }) {
   if (isUpdating) {
     return (
       <span className="artist-discover-hero__updated artist-discover-hero__updated--refreshing">
         <DotLoader size="sm" label={null} className="artist-discover-hero__updated-icon" />
         {updateProgressMessage || "Refreshing discovery..."}
-      </span>
-    );
-  }
-
-  if (playlistsUpdating) {
-    return (
-      <span className="artist-discover-hero__updated artist-discover-hero__updated--refreshing">
-        <DotLoader size="sm" label={null} className="artist-discover-hero__updated-icon" />
-        {playlistsUpdateMessage || "Updating playlists..."}
       </span>
     );
   }

@@ -18,7 +18,8 @@ import lastfmLogo from "../../../images/logos/last-fm-color.svg";
 import listenbrainzLogo from "../../../images/logos/listenbrainz-color.svg";
 import spotifyLogo from "../../../images/logos/spotify-color.svg";
 import youtubeMusicLogo from "../../../images/logos/youtube-music-color.svg";
-import { formatTrackCountLabel } from "./flowStats";
+import deezerLogo from "../../../images/logos/deezer-color.svg";
+import { formatTrackCountLabel, isEditorialFlow } from "./flowStats";
 
 export const SYNCABLE_IMPORT_PROVIDERS = new Set([
   "spotify-playlist",
@@ -26,6 +27,7 @@ export const SYNCABLE_IMPORT_PROVIDERS = new Set([
   "listenbrainz-createdfor",
   "lastfm-station",
   "youtube-music-playlist",
+  "deezer-playlist",
 ]);
 
 export const SYNC_INTERVAL_OPTIONS = [
@@ -40,6 +42,7 @@ export function getImportedProviderLogo(provider) {
   if (String(provider || "").startsWith("listenbrainz-")) return listenbrainzLogo;
   if (provider === "lastfm-station") return lastfmLogo;
   if (provider === "youtube-music-playlist") return youtubeMusicLogo;
+  if (provider === "deezer-playlist") return deezerLogo;
   if (provider === "spotify-playlist") return spotifyLogo;
   return null;
 }
@@ -48,6 +51,7 @@ export function getImportedProviderLabel(provider) {
   if (String(provider || "").startsWith("listenbrainz-")) return "ListenBrainz";
   if (provider === "lastfm-station") return "Last.fm";
   if (provider === "youtube-music-playlist") return "YouTube Music";
+  if (provider === "deezer-playlist") return "Deezer";
   return "Spotify";
 }
 
@@ -69,6 +73,7 @@ export const formatFlowTrackLabel = (count, stats) =>
   Number(stats?.total || 0) > 0 ? formatTrackCountLabel(count, stats) : formatTrackTotal(count);
 
 export function describeFlowSchedule(flow, now) {
+  if (isEditorialFlow(flow)) return "No longer updates";
   if (flow?.enabled !== true) return "Off";
   const next = formatNextRun(flow.nextRunAt, now);
   if (!next) return null;

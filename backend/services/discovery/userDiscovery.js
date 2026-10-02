@@ -1,7 +1,6 @@
 import {
   getDiscoveryCache,
   getDiscoveryUpdateStatus,
-  getDiscoveryPlaylistBuildStatus,
   getDiscoveryMode,
   getDiscoveryFeedback,
   getBlockedArtistKeys,
@@ -58,7 +57,6 @@ export async function getUserDiscovery(userId, limit = 50, offset = 0) {
     topTags,
     topGenres,
     fallbackGenres = [],
-    discoverPlaylists = [],
     lastUpdated,
     recommendationQuality,
     isEnriching,
@@ -126,22 +124,6 @@ export async function getUserDiscovery(userId, limit = 50, offset = 0) {
         ? "updating"
         : "empty";
 
-  const { annotateDiscoverPlaylistsForUser } =
-    await import("./playlistBuilder.js");
-  const playlists = annotateDiscoverPlaylistsForUser(discoverPlaylists, userId)
-    .map((playlist) => {
-      const tracks = filterBlockedArtistsForUser(userId || "global", playlist.tracks || [], blockedKeys);
-      return {
-        ...playlist,
-        tracks,
-        trackCount: tracks.length,
-      };
-    })
-    .filter((playlist) => playlist.trackCount > 0);
-
-  const playlistBuildStatus =
-    getDiscoveryPlaylistBuildStatus(effectiveCacheNamespace);
-
   const limitClamped = Math.max(limit, 1);
   const offsetClamped = Math.max(offset, 0);
 
@@ -157,7 +139,6 @@ export async function getUserDiscovery(userId, limit = 50, offset = 0) {
       topTags,
       topGenres,
       fallbackGenres,
-      discoverPlaylists: playlists,
       lastUpdated,
       isUpdating,
       recommendationQuality,
@@ -167,12 +148,6 @@ export async function getUserDiscovery(userId, limit = 50, offset = 0) {
       enrichmentCompletedAt,
       enrichmentProgressMessage,
       ...(isUpdating ? getDiscoveryUpdateStatus() : {}),
-      playlistsUpdating: playlistBuildStatus.playlistsUpdating,
-      ...(playlistBuildStatus.playlistsUpdating
-        ? {
-            playlistsUpdateMessage: playlistBuildStatus.playlistsUpdateMessage,
-          }
-        : {}),
       stale: isStale,
       configured: true,
       provider,

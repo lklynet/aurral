@@ -4,6 +4,7 @@ import { parseSpotifyPlaylistItems } from "./spotifyTracks.js";
 import { listenbrainzPlaylistClient } from "./listenbrainzPlaylists.js";
 import { lastfmStationClient } from "./lastfmStations.js";
 import { youtubeMusicPlaylistClient } from "./youtubeMusicPlaylists.js";
+import { getDeezerPlaylist } from "./deezerPlaylists.js";
 import { normalizeImportSource } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
 import { weeklyFlowOperationQueue } from "../weeklyFlow/weeklyFlowOperationQueue.js";
 import { logger } from "../logger.js";
@@ -36,6 +37,10 @@ export async function fetchImportedPlaylistTracks({
     );
     return { tracks, stats, excluded };
   }
+  if (provider === "deezer-playlist") {
+    const { tracks, stats, excluded } = await getDeezerPlaylist(externalId);
+    return { tracks, stats, excluded };
+  }
   const error = new Error(`Unsupported playlist import provider: ${provider || "unknown"}`);
   error.statusCode = 400;
   throw error;
@@ -45,6 +50,7 @@ export async function enqueueImportedPlaylist({
   ownerUserId,
   name,
   sourceName,
+  description = null,
   provider,
   externalId,
   externalUsername,
@@ -73,6 +79,7 @@ export async function enqueueImportedPlaylist({
     playlistId: safePlaylistId,
     name,
     sourceName,
+    description,
     tracks,
     ownerUserId,
     importSource,
@@ -85,5 +92,5 @@ export async function enqueueImportedPlaylist({
     trackCount: tracks.length,
     ...(sourceStats ? { skipped: sourceStats } : {}),
   });
-  return { ...result, tracksQueued: tracks.length };
+  return { ...result, playlistId: safePlaylistId, tracksQueued: tracks.length };
 }

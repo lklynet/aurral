@@ -583,6 +583,21 @@ db.transaction(() => {
   `);
 }).immediate();
 
+const retiredDiscoverPlaylistsMigrationKey = "migration:retire-discover-playlists-v1";
+db.transaction(() => {
+  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(retiredDiscoverPlaylistsMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  db.prepare("DELETE FROM discovery_cache WHERE key LIKE '%discoverPlaylists'").run();
+  const hasHonkerQueue = db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_honker_live'")
+    .get();
+  if (hasHonkerQueue) {
+    db.prepare("DELETE FROM _honker_live WHERE queue = 'discovery-playlist-build'").run();
+  }
+  fs.rmSync(path.join(DATA_DIR, "discover-artwork"), { recursive: true, force: true });
+}).immediate();
+
 const releaseCalendarPrimaryKey = db
   .prepare("PRAGMA table_info(library_release_calendar)")
   .all()

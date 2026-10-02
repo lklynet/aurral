@@ -56,7 +56,7 @@ test("resetting discovery tastes preserves artist blocks", () => {
   assert.deepEqual(remaining.map((entry) => entry.action), ["block_artist"]);
 });
 
-test("flows exclude only hard-blocked artists, including editorial flows", async () => {
+test("flows exclude only hard-blocked artists", async () => {
   discovery.addDiscoveryFeedback("7", {
     artistName: "Blocked Artist",
     action: "block_artist",
@@ -72,7 +72,7 @@ test("flows exclude only hard-blocked artists, including editorial flows", async
 
   const source = new WeeklyFlowPlaylistSource();
 
-  source.getEditorialTagTracks = async () => [
+  source.getReleaseRadarTracks = async () => [
     { artistName: "Blocked Artist", trackName: "Blocked Track" },
     {
       artistName: "Renamed Artist",
@@ -83,8 +83,7 @@ test("flows exclude only hard-blocked artists, including editorial flows", async
   ];
   const plan = await source.buildFlowRunPlan({
     ownerUserId: 7,
-    type: "editorial",
-    tag: "indie",
+    discoverPresetId: "release-radar",
     size: 2,
   });
 

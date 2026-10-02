@@ -5,7 +5,6 @@ export {
   getDiscoveryRecommendationsPerRefresh,
   getDiscoveryRecommendationPoolLimit,
   getDiscoveryUserRefreshDelaySeconds,
-  isDiscoveryPersonalizedEnabled,
   DISCOVERY_QUALITY_INITIAL,
   DISCOVERY_QUALITY_ENRICHING,
   DISCOVERY_QUALITY_ENRICHED,
@@ -30,8 +29,6 @@ export {
   recordDiscoveryUpdateProgress,
   clearDiscoveryUpdateProgress,
   getDiscoveryUpdateStatus,
-  clearDiscoverPlaylistBuildProgress,
-  getDiscoveryPlaylistBuildStatus,
   isGlobalDiscoveryRefreshInProgress,
 } from "./persistence.js";
 
@@ -43,7 +40,3 @@ export {
   updateUserDiscoveryCache,
 } from "./provider.js";
 
-export {
-  runQueuedDiscoverPlaylistBuild,
-  emitDiscoverPlaylistBuildFailure,
-} from "./playlists.js";

@@ -72,34 +72,3 @@ export const isLibraryArtist = (artist, existingArtistKeys) => {
     return key && existingArtistKeys.has(key);
   });
 };
-
-export const handleDiscoverAdoptError = (res, error, fallbackError) => {
-  if (error?.statusCode === 400) {
-    return res.status(400).json({
-      error: error.error || "Bad Request",
-      message: error.message,
-    });
-  }
-  if (error?.statusCode === 404) {
-    return res.status(404).json({
-      error: error.error || "Playlist preview not available",
-      message: error.message,
-    });
-  }
-  if (error?.code === "FLOW_NAME_CONFLICT") {
-    return res.status(400).json({
-      error: "Flow name already exists",
-      message: error.message,
-    });
-  }
-  if (error?.code === "SHARED_PLAYLIST_NAME_CONFLICT") {
-    return res.status(400).json({
-      error: "Shared playlist name already exists",
-      message: error.message,
-    });
-  }
-  return res.status(500).json({
-    error: fallbackError,
-    message: error.message,
-  });
-};

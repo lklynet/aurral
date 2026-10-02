@@ -1,5 +1,6 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import {
+  Download,
   ExternalLink,
   Heart,
   Info,
@@ -130,8 +131,10 @@ function FlowTrackKebabMenu({
 }) {
   const [openSubmenu, setOpenSubmenu] = useState(null);
   const trackLabel = track?.trackName || "track";
-  const canNavigateAlbum = Boolean(track?.albumMbid && onNavigateAlbum);
-  const canNavigateArtist = Boolean(track?.artistMbid && onNavigateArtist);
+  const canNavigateAlbum = Boolean(
+    onNavigateAlbum && (track?.albumMbid || (track?.resolvesLinks && track?.albumName)),
+  );
+  const canNavigateArtist = Boolean(onNavigateArtist && (track?.artistMbid || track?.resolvesLinks));
   const canAddToLibrary = shouldShowAddToLibrary(track, onAddToLibrary);
   const actionItems = [
     onPlay
@@ -380,6 +383,8 @@ export function FlowTracksPanel({
   allowBulkEdit = false,
   onBulkDelete,
   onBulkAddToPlaylist,
+  bulkAddLabel = "Copy",
+  onBulkAddToLibrary,
   onBulkMoveToPlaylist,
   bulkActionLoading = false,
 }) {
@@ -480,6 +485,10 @@ export function FlowTracksPanel({
     const trackFavoriteId = getTrackFavoriteId?.(track) || "";
     const hasPlaylistMenu =
       track.artistName && track.trackName && (onAddTrackToPlaylist || onMoveTrackToPlaylist);
+    const canOpenArtist = Boolean(onNavigateArtist && (track.artistMbid || track.resolvesLinks));
+    const canOpenAlbum = Boolean(
+      onNavigateAlbum && (track.albumMbid || (track.resolvesLinks && track.albumName)),
+    );
     const playlistMenuProps = hasPlaylistMenu
       ? {
           track,
@@ -507,16 +516,16 @@ export function FlowTracksPanel({
       subtitle: track.artistName,
       artist: {
         label: track.artistName,
-        onOpen: track.artistMbid && onNavigateArtist ? () => onNavigateArtist(track) : null,
+        onOpen: canOpenArtist ? () => onNavigateArtist(track) : null,
       },
       album: {
         label: track.albumName || "",
-        onOpen: track.albumMbid && onNavigateAlbum ? () => onNavigateAlbum(track) : null,
+        onOpen: canOpenAlbum ? () => onNavigateAlbum(track) : null,
       },
       cover: {
         src: track.artworkUrl || track.coverUrl || artworkByAlbumMbid[String(track.albumMbid || "")] || "",
         label: track.albumName || track.trackName,
-        onOpen: track.albumMbid && onNavigateAlbum ? () => onNavigateAlbum(track) : null,
+        onOpen: canOpenAlbum ? () => onNavigateAlbum(track) : null,
       },
       time: formatTrackDuration(track.durationMs),
       active: isCurrent,
@@ -603,12 +612,26 @@ export function FlowTracksPanel({
                 <BulkPlaylistAction
                   {...bulkMenuProps}
                   icon={Plus}
-                  label="Copy"
+                  label={bulkAddLabel}
                   onSelect={(target) => {
                     onBulkAddToPlaylist(selectedTracks, target);
                     handleExitEditMode();
                   }}
                 />
+              ) : null}
+              {onBulkAddToLibrary ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={bulkActionLoading || !selectedCount}
+                  onClick={async () => {
+                    await onBulkAddToLibrary(selectedTracks);
+                    handleExitEditMode();
+                  }}
+                >
+                  <Download className="artist-icon-sm" />
+                  <span>Add to library</span>
+                </button>
               ) : null}
               {onBulkMoveToPlaylist ? (
                 <BulkPlaylistAction

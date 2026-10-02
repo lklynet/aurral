@@ -7,7 +7,6 @@ import {
 import {
   getListenHistoryCacheNamespace,
 } from "../listeningHistory.js";
-import { isHonkerLockHeld } from "../honkerDb.js";
 
 export const EMPTY_CACHE = {
   recommendations: [],
@@ -17,7 +16,6 @@ export const EMPTY_CACHE = {
   topGenres: [],
   fallbackGenres: [],
   fallbackGenrePools: {},
-  discoverPlaylists: [],
   provider: DISCOVERY_PROVIDER_LASTFM,
   capabilities: getDiscoveryCapabilities(true),
   lastUpdated: null,
@@ -32,8 +30,6 @@ export const EMPTY_CACHE = {
   updatePhase: null,
   updateProgress: null,
   updateProgressMessage: null,
-  playlistsUpdating: false,
-  playlistsUpdateMessage: null,
 };
 
 let discoveryCache = { ...EMPTY_CACHE };
@@ -55,7 +51,6 @@ if (
     topGenres: dbData.topGenres || [],
     fallbackGenres: dbData.fallbackGenres || [],
     fallbackGenrePools: dbData.fallbackGenrePools || {},
-    discoverPlaylists: dbData.discoverPlaylists || [],
     provider: dbData.provider || DISCOVERY_PROVIDER_LASTFM,
     capabilities: getDiscoveryCapabilities(
       (dbData.provider || DISCOVERY_PROVIDER_LASTFM) ===
@@ -117,10 +112,6 @@ export const getDiscoveryCache = (listenHistoryProfile = null) => {
             : discoveryCache.topGenres || [],
         fallbackGenres: discoveryCache.fallbackGenres || [],
         fallbackGenrePools: discoveryCache.fallbackGenrePools || {},
-        discoverPlaylists:
-          userDbData.discoverPlaylists?.length > 0
-            ? userDbData.discoverPlaylists
-            : discoveryCache.discoverPlaylists || [],
         provider: discoveryCache.provider || DISCOVERY_PROVIDER_LASTFM,
         capabilities:
           discoveryCache.capabilities ||
@@ -169,12 +160,12 @@ export const getDiscoveryCache = (listenHistoryProfile = null) => {
 
 export function synchronizeDiscoveryCacheFromWorker(update = {}) {
   if (!update || typeof update !== "object") return;
-  if (update.isUpdating === false || update.playlistsUpdating === false) {
+  if (update.isUpdating === false) {
     reloadDiscoveryPersistedCache();
   }
   for (const key of [
     "recommendations", "globalTop", "basedOn", "topTags", "topGenres",
-    "fallbackGenres", "discoverPlaylists", "provider", "capabilities",
+    "fallbackGenres", "provider", "capabilities",
     "lastUpdated", "recommendationQuality", "isEnriching", "discoveryRunId",
     "enrichmentStartedAt", "enrichmentCompletedAt", "enrichmentProgressMessage",
   ]) {
@@ -182,7 +173,6 @@ export function synchronizeDiscoveryCacheFromWorker(update = {}) {
   }
   for (const key of [
     "isUpdating", "updatePhase", "updateProgress", "updateProgressMessage",
-    "playlistsUpdating", "playlistsUpdateMessage",
   ]) {
     if (Object.hasOwn(update, key)) discoveryCache[key] = update[key];
   }
@@ -237,76 +227,7 @@ export const getDiscoveryUpdateStatus = () => ({
   updateProgressMessage: discoveryCache.updateProgressMessage || null,
 });
 
-export const recordDiscoverPlaylistBuildProgress = (
-  progressMessage = "Updating recommended playlists...",
-  extra = {},
-) => {
-  discoveryCache.playlistsUpdating = true;
-  discoveryCache.playlistsUpdateMessage = progressMessage || "";
-  websocketService.emitDiscoveryUpdate({
-    playlistsUpdating: true,
-    playlistsUpdateMessage: progressMessage,
-    phase: "playlists_building",
-    progress: 98,
-    progressMessage,
-    isUpdating: false,
-    configured: true,
-    ...extra,
-  });
-};
-
-export const clearDiscoverPlaylistBuildProgress = () => {
-  discoveryCache.playlistsUpdating = false;
-  discoveryCache.playlistsUpdateMessage = null;
-};
-
-const discoveryPlaylistBuildTokens = new Map();
-const BUILD_TOKEN_TTL_MS = 60 * 60 * 1000;
-
-const pruneDiscoveryPlaylistBuildTokens = () => {
-  const cutoff = Date.now() - BUILD_TOKEN_TTL_MS;
-  for (const [key, entry] of discoveryPlaylistBuildTokens) {
-    if (entry.createdAt < cutoff) discoveryPlaylistBuildTokens.delete(key);
-  }
-};
-
-export const setDiscoveryPlaylistBuildToken = (buildKey, token) => {
-  pruneDiscoveryPlaylistBuildTokens();
-  discoveryPlaylistBuildTokens.set(buildKey, { token, createdAt: Date.now() });
-};
-
-export const getDiscoveryPlaylistBuildToken = (buildKey) => {
-  pruneDiscoveryPlaylistBuildTokens();
-  return discoveryPlaylistBuildTokens.get(buildKey)?.token || null;
-};
-
-export const clearDiscoveryPlaylistBuildToken = (buildKey, token) => {
-  if (discoveryPlaylistBuildTokens.get(buildKey)?.token === token) {
-    discoveryPlaylistBuildTokens.delete(buildKey);
-  }
-};
-
-const getDiscoveryPlaylistBuildKey = (cacheNamespace = null) =>
-  String(cacheNamespace || "global");
-
-export const getDiscoveryPlaylistBuildStatus = (cacheNamespace = null) => {
-  const buildKey = getDiscoveryPlaylistBuildKey(cacheNamespace);
-  const lockHeld = isHonkerLockHeld(`discovery-playlist-build:${buildKey}`);
-  pruneDiscoveryPlaylistBuildTokens();
-  const tokenPending = discoveryPlaylistBuildTokens.has(buildKey);
-  const cacheFlag = !cacheNamespace && !!discoveryCache.playlistsUpdating;
-  const updating = cacheFlag || lockHeld || tokenPending;
-  const message = cacheFlag
-    ? discoveryCache.playlistsUpdateMessage ||
-      "Updating recommended playlists..."
-    : "Updating recommended playlists...";
-  return {
-    playlistsUpdating: updating,
-    playlistsUpdateMessage: updating ? message : null,
-  };
-};
-
-export { discoveryCache, getDiscoveryPlaylistBuildKey };
+export { discoveryCache };
 
 export const isGlobalDiscoveryRefreshInProgress = () =>
   isHonkerLockHeld("discovery-global-refresh");

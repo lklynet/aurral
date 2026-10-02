@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto";
 import { dbOps, userOps } from "../../db/helpers/index.js";
 import {
   lastfmRequest,
@@ -30,10 +29,7 @@ import {
   getDiscoveryCapabilities,
   DISCOVERY_PROVIDER_LASTFM,
 } from "../listenbrainzDiscoveryFallback.js";
-import {
-  enqueueDiscoveryPlaylistBuildJob,
-  enqueueDiscoveryUserRefreshJob,
-} from "../honkerDb.js";
+import { enqueueDiscoveryUserRefreshJob } from "../honkerDb.js";
 import { websocketService } from "../websocketService.js";
 
 import {
@@ -49,7 +45,6 @@ import {
   createDiscoveryRunId,
   selectDiscoverySeedSample,
   buildTrendingArtistEntry,
-  normalizePlaylistBuildStringList,
   mapWithConcurrency,
   DISCOVERY_QUALITY_ENRICHED,
 } from "./helpers.js";
@@ -59,10 +54,6 @@ import {
   getDiscoveryCache,
   recordDiscoveryUpdateProgress,
   clearDiscoveryUpdateProgress,
-  recordDiscoverPlaylistBuildProgress,
-  clearDiscoverPlaylistBuildProgress,
-  setDiscoveryPlaylistBuildToken,
-  getDiscoveryPlaylistBuildKey,
   isGlobalDiscoveryRefreshInProgress,
 } from "./persistence.js";
 import { buildTasteProfile, collectSeedTagsAndGenres } from "./tasteProfile.js";
@@ -328,9 +319,6 @@ const buildDiscoveryUpdatePayload = (
     progressMessage = "Discovery refresh completed",
   } = {},
 ) => {
-  if (phase === "playlists_completed") {
-    clearDiscoverPlaylistBuildProgress();
-  }
   return {
     recommendations: discoveryData.recommendations || [],
     globalTop: discoveryData.globalTop || [],
@@ -338,7 +326,6 @@ const buildDiscoveryUpdatePayload = (
     topTags: discoveryData.topTags || [],
     topGenres: discoveryData.topGenres || [],
     fallbackGenres: discoveryData.fallbackGenres || [],
-    discoverPlaylists: discoveryData.discoverPlaylists || [],
     provider: discoveryData.provider || DISCOVERY_PROVIDER_LASTFM,
     capabilities:
       discoveryData.capabilities ||
@@ -376,9 +363,6 @@ const buildDiscoveryUpdatePayload = (
     progress,
     progressMessage,
     discoveryMode: getDiscoveryMode(),
-    ...(phase === "playlists_completed"
-      ? { playlistsUpdating: false, playlistsUpdateMessage: null }
-      : {}),
   };
 };
 
@@ -386,34 +370,6 @@ const emitDiscoveryDataUpdate = (discoveryData, options = {}) => {
   websocketService.emitDiscoveryUpdate(
     buildDiscoveryUpdatePayload(discoveryData, options),
   );
-};
-
-const scheduleDiscoverPlaylistBuild = ({
-  cacheNamespace = null,
-  listenHistoryProfile = null,
-  historyTopArtists = [],
-  publishUpdate = true,
-  progressExtra = {},
-} = {}) => {
-  if (!getLastfmApiKey()) return;
-
-  const buildKey = getDiscoveryPlaylistBuildKey(cacheNamespace);
-  const buildToken = randomUUID();
-  setDiscoveryPlaylistBuildToken(buildKey, buildToken);
-
-  const payload = {
-    cacheNamespace,
-    buildToken,
-    publishUpdate,
-    requestedAt: Date.now(),
-    listenHistoryProfile,
-    historyTopArtists: normalizePlaylistBuildStringList(historyTopArtists, 3),
-  };
-
-  enqueueDiscoveryPlaylistBuildJob(payload);
-  if (publishUpdate) {
-    recordDiscoverPlaylistBuildProgress("Updating recommended playlists...", progressExtra);
-  }
 };
 
 export const updateDiscoveryCache = async (options = {}) => {
@@ -748,10 +704,10 @@ export const updateDiscoveryCache = async (options = {}) => {
     const listeningHistoryUsersConfigured = userOps
       .getAllListeningHistoryUsers()
       .some((user) => hasListenHistoryProfile(getListenHistoryProfile(user)));
+    emitDiscoveryDataUpdate(discoveryData, {
+      progressMessage: "Discovery refresh completed",
+    });
     if (listeningHistoryUsersConfigured) {
-      emitDiscoveryDataUpdate(discoveryData, {
-        progressMessage: "Discovery refresh completed",
-      });
       const queuedUserRefreshes = enqueueListeningHistoryUserRefreshes({
         reason: "global_refresh_completed",
       });
@@ -763,25 +719,6 @@ export const updateDiscoveryCache = async (options = {}) => {
           } after global refresh.`,
         );
       }
-    } else {
-      scheduleDiscoverPlaylistBuild({
-        historyTopArtists: historyArtists
-          .slice(0, 3)
-          .map((artist) => artist.artistName)
-          .filter(Boolean),
-        progressExtra: {
-          recommendations: discoveryData.recommendations || [],
-          globalTop: discoveryData.globalTop || [],
-          basedOn: discoveryData.basedOn || [],
-          topTags: discoveryData.topTags || [],
-          topGenres: discoveryData.topGenres || [],
-          fallbackGenres: discoveryData.fallbackGenres || [],
-          discoverPlaylists: discoveryCache.discoverPlaylists || [],
-          provider: discoveryData.provider || DISCOVERY_PROVIDER_LASTFM,
-          lastUpdated: discoveryData.lastUpdated,
-        },
-      });
-      logger.info('discovery', "Global refresh complete. Starting playlist build.");
     }
 
     const { recordDiscoveryUpdated } =
@@ -1024,14 +961,6 @@ export const updateUserDiscoveryCache = async (
     };
 
     dbOps.updateDiscoveryCache(userData, cacheNamespace);
-    scheduleDiscoverPlaylistBuild({
-      cacheNamespace,
-      listenHistoryProfile: profile,
-      historyTopArtists: historyArtists
-        .slice(0, 3)
-        .map((artist) => artist.artistName)
-        .filter(Boolean),
-    });
     logger.info(
       'discovery',
       `[Discovery] ${profile.listenHistoryProvider}:${profile.listenHistoryUsername} refresh complete: ${recommendationsArray.length} recommendations from global pool.`,

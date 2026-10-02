@@ -210,10 +210,6 @@ export function navigateFromSearchResult(navigate, item, { query = "" } = {}) {
   }
 
   if (item.type === "playlist" && item.id) {
-    if (item.discoverPresetId && item.source === "discover") {
-      navigate("/discover");
-      return;
-    }
     if (item.sourceFlowId) {
       navigate(flowPath(item.sourceFlowId));
       return;

@@ -26,7 +26,6 @@ import {
   isReleaseRadarFlow,
 } from "./flowStats";
 import {
-  buildEditorialFlowFromForm,
   buildFlowFromForm,
   buildReleaseRadarFlowFromForm,
   flowToForm,
@@ -57,11 +56,6 @@ const FlowFormFields = lazy(() =>
 const ReleaseRadarRecipeFields = lazy(() =>
   import("./flowComponents/flowFormComponents.jsx").then((m) => ({
     default: m.ReleaseRadarRecipeFields,
-  })),
-);
-const EditorialRecipeFields = lazy(() =>
-  import("./flowComponents/flowFormComponents.jsx").then((m) => ({
-    default: m.EditorialRecipeFields,
   })),
 );
 
@@ -141,13 +135,15 @@ function FlowDetail({ flow }) {
   const stats = getPlaylistStats(flow.id);
   const enabled = flow.enabled === true;
   const disabledSources = status?.capabilities?.unavailableSources || {};
-  const isPresetRecipe = isReleaseRadarFlow(flow) || isEditorialFlow(flow);
+  const retired = isEditorialFlow(flow);
+  const activeTab = retired ? "tracks" : tab;
+  const isPresetRecipe = isReleaseRadarFlow(flow);
   const recipeDirty = isPresetRecipe
     ? isScheduleOnlyFlowDirty(flow, draft)
     : isFlowDirty(flow, draft);
   const activity = getFlowActivityMessage({ flow, status, stats, rerunning: running });
   const lastRun = formatFlowLastRun(flow.lastRunAt);
-  const canRunNow = enabled && !running && !activity;
+  const canRunNow = !retired && enabled && !running && !activity;
   const metaParts = [
     flow.ownerUsername || user?.username || null,
     formatFlowTrackLabel(getFlowDisplayTrackCount(flow, stats, tracks.length), stats),
@@ -180,9 +176,7 @@ function FlowDetail({ flow }) {
       }
       const payload = isReleaseRadarFlow(flow)
         ? buildReleaseRadarFlowFromForm(flow, draft)
-        : isEditorialFlow(flow)
-          ? buildEditorialFlowFromForm(flow, draft)
-          : buildFlowFromForm(draft);
+        : buildFlowFromForm(draft);
       const response = await updateFlow(flow.id, payload);
       setDraft(flowToForm(response?.flow || { ...flow, ...payload }));
       showSuccess("Recipe saved");
@@ -308,11 +302,13 @@ function FlowDetail({ flow }) {
             onClick={() => canRunNow && handleRunNow()}
             aria-disabled={!canRunNow}
             label={
-              !enabled
-                ? "Turn the flow on to run it"
-                : running || activity
-                  ? "Flow is running"
-                  : "Run now"
+              retired
+                ? "This flow no longer updates"
+                : !enabled
+                  ? "Turn the flow on to run it"
+                  : running || activity
+                    ? "Flow is running"
+                    : "Run now"
             }
           >
             {running ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
@@ -327,6 +323,11 @@ function FlowDetail({ flow }) {
               <DotLoader size="xs" label={null} />
               {activity}
             </p>
+          ) : retired ? (
+            <p className="native-library-detail__meta">
+              Editorial playlists now come from Deezer, so this flow no longer updates. Its tracks
+              stay as they are. <Link to="/discover/playlists">Browse playlists</Link>
+            </p>
           ) : null
         }
         actions={
@@ -339,10 +340,12 @@ function FlowDetail({ flow }) {
               onPlay={playback.handlePlayAll}
               onShuffle={playback.handleShufflePlay}
             />
-            <span className="playlist-detail__switch">
-              <FlowEnabledSwitch flow={flow} onChanged={fetchStatus} />
-              <span aria-hidden="true">{enabled ? "On" : "Off"}</span>
-            </span>
+            {retired ? null : (
+              <span className="playlist-detail__switch">
+                <FlowEnabledSwitch flow={flow} onChanged={fetchStatus} />
+                <span aria-hidden="true">{enabled ? "On" : "Off"}</span>
+              </span>
+            )}
             <LibraryItemMenu
               label={flow.name}
               contextMenu={false}
@@ -410,7 +413,12 @@ function FlowDetail({ flow }) {
       />
 
       <div>
-        <div className="artist-segmented playlist-detail__tabs" role="tablist" aria-label="Flow views">
+        <div
+          className="artist-segmented playlist-detail__tabs"
+          role="tablist"
+          aria-label="Flow views"
+          hidden={retired}
+        >
           {DETAIL_TABS.map((entry) => (
             <button
               key={entry.id}
@@ -431,11 +439,11 @@ function FlowDetail({ flow }) {
         </div>
         <div
           role="tabpanel"
-          id={`flow-panel-${tab}`}
-          aria-labelledby={`flow-tab-${tab}`}
+          id={`flow-panel-${activeTab}`}
+          aria-labelledby={`flow-tab-${activeTab}`}
           className="playlist-detail__panel"
         >
-          {tab === "tracks" ? (
+          {activeTab === "tracks" ? (
             <PlaylistTracks
               entry={flow}
               kind="flow"
@@ -454,13 +462,11 @@ function FlowDetail({ flow }) {
               recordHistory={flow.recordHistory !== false}
             />
           ) : null}
-          {tab === "recipe" ? (
+          {activeTab === "recipe" ? (
             <div className="flow-page__form flow-page__detail-recipe">
               <Suspense fallback={null}>
                 {isReleaseRadarFlow(flow) ? (
                   <ReleaseRadarRecipeFields {...recipeFieldProps} />
-                ) : isEditorialFlow(flow) ? (
-                  <EditorialRecipeFields {...recipeFieldProps} tag={flow.tag || ""} />
                 ) : (
                   <FlowFormFields
                     {...recipeFieldProps}

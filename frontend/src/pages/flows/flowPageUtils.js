@@ -379,7 +379,7 @@ export const isScheduleOnlyFlowDirty = (flow, draft) => {
   return JSON.stringify(base) !== JSON.stringify(next);
 };
 
-export const buildScheduleOnlyFlowFromForm = (flow, draft, { sizeError, extra = {} } = {}) => {
+export const buildScheduleOnlyFlowFromForm = (flow, draft, { sizeError } = {}) => {
   const sizeValue = Number(draft?.size);
   if (!Number.isFinite(sizeValue) || sizeValue <= 0) {
     throw new Error(sizeError || "Tracks must be a positive number");
@@ -400,15 +400,8 @@ export const buildScheduleOnlyFlowFromForm = (flow, draft, { sizeError, extra = 
     yearTo: flow?.yearTo ?? null,
     scheduleDays,
     scheduleTime: normalizeScheduleTime(draft?.scheduleTime),
-    ...extra,
   };
 };
-
-export const buildEditorialFlowFromForm = (flow, draft) =>
-  buildScheduleOnlyFlowFromForm(flow, draft, {
-    sizeError: "Tracks must be a positive number",
-    extra: { tag: flow?.tag || null },
-  });
 
 export const buildReleaseRadarFlowFromForm = (flow, draft) =>
   buildScheduleOnlyFlowFromForm(flow, draft, {
