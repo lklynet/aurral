@@ -2663,7 +2663,6 @@ function LibraryPage() {
           variant: "release",
         })}
         {albumMonitoring.dialog}
-        {trackMonitoring.dialog}
       </section>
     );
   };
@@ -2812,6 +2811,7 @@ function LibraryPage() {
         onConfirm={handleLibraryRemovalConfirm}
         deleting={deletingLibraryEntity}
       />
+      {trackMonitoring.dialog}
       <DeleteAlbumModal
         show={libraryRemoval?.kind === "album"}
         title={libraryRemoval?.entity?.title || libraryRemoval?.entity?.albumName}

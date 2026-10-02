@@ -942,9 +942,10 @@ export class LibraryManager {
     if (artist.managedBy === "aurral") return;
 
     const lidarr = await getLidarrClient();
-    let eligibleAlbums = Array.isArray(albums)
+    let eligibleAlbums = (Array.isArray(albums)
       ? albums
-      : await this.getAlbums(artist.id, null, { forceRefresh: true });
+      : await this.getAlbums(artist.id, null, { forceRefresh: true }))
+      .filter((album) => album.canonicalId == null);
 
     if (lidarr && lidarr.isConfigured() && artist?.id) {
       try {
@@ -2454,8 +2455,10 @@ export class LibraryManager {
         return { success: false, code: result.code, statusCode: result.statusCode, error: result.error };
       }
     }
-    if (ownsArtist) clearLibraryManagement("artist", Number(artist.id));
-    removeLibraryArtistIfEmpty(artist.id);
+    if (ownsArtist) {
+      clearLibraryManagement("artist", Number(artist.id));
+      removeLibraryArtistIfEmpty(artist.id);
+    }
     logger.info("library", `[LibraryManager] Removed Aurral artist "${artist.name}"`);
     return { success: true };
   }

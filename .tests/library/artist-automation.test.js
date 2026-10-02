@@ -290,3 +290,37 @@ test("removing an artist with an unknown manager is refused and touches nothing"
   assert.deepEqual(lidarr.calls, []);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE mbid = ?").get(artistMbid).n, 1);
 });
+
+test("Lidarr monitoring defaults leave Lidarr alone when given Aurral's own album records", async () => {
+  const artist = seedArtist("aurral", "none");
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: `release-group:${aurralAlbumMbid}`,
+    mbid: aurralAlbumMbid,
+    releaseGroupMbid: aurralAlbumMbid,
+    artistId: artist.id,
+    title: "Album 1",
+  });
+  const track = libraryStore.upsertLibraryTrack({ identityKey: "track:automation-fallback", title: "Track", artistName: "Automation Artist" });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  lidarr.albums = [lidarrAlbum(album.id, otherAlbumMbid, false)];
+  const canonicalAlbums = await libraryManager.getAlbums(artist.id, null, { managedBy: "aurral" });
+  assert.equal(canonicalAlbums[0].id, String(album.id));
+
+  await libraryManager.applyArtistMonitoringDefaults(
+    { id: "41", monitored: true, monitorOption: "all", managedBy: "lidarr" },
+    canonicalAlbums,
+  );
+
+  assert.equal(canonicalAlbums.length, 1);
+  assert.equal(lidarr.albums[0].monitored, false);
+});
+
+test("removing Aurral's side keeps a Lidarr artist's record", async () => {
+  const artist = seedArtist("lidarr", "none");
+
+  const result = await libraryManager.deleteArtist(artistMbid, false, { manager: "aurral" });
+
+  assert.equal(result.success, true);
+  assert.deepEqual(artistManagement(artist.id), ["lidarr", "none"]);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE id = ?").get(artist.id).n, 1);
+});
