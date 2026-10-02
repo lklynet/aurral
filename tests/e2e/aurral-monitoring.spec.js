@@ -44,16 +44,18 @@ test("an Aurral artist and album are monitored, unmonitored with a warning, and 
     await page.goto(`/artist/${artist.mbid}`);
     await expect(page.getByRole("heading", { name: artist.name, level: 1 })).toBeVisible({ timeout: 30_000 });
     const actionBar = page.locator(".artist-action-bar");
-    await actionBar.getByRole("button", { name: /In library/ }).click();
-    await actionBar.getByRole("button", { name: /^Monitor:/ }).click();
+    await actionBar.getByRole("button", { name: /^Aurral monitoring/ }).click();
+    await expect(page.getByRole("menuitemradio", { name: "Unmonitored", exact: true })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("menuitemradio")).toHaveText([
+      "Unmonitored",
+      "All albums",
+      "Future albums",
+      "Missing albums",
+      "Latest album",
+      "First album",
+    ]);
 
-    const optionLabels = ["None (artist only)", "All albums", "Future albums", "Missing albums", "Latest album", "First album"];
-    for (const label of optionLabels) {
-      await expect(actionBar.getByRole("button", { name: label, exact: true })).toBeVisible();
-    }
-    await expect(actionBar.getByRole("button", { name: "Existing albums", exact: true })).toHaveCount(0);
-
-    await actionBar.getByRole("button", { name: "Latest album", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Latest album", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "Queued 1 album for download" })).toBeVisible({
       timeout: 60_000,
     });

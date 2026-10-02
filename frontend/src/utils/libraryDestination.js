@@ -10,6 +10,10 @@ export const normalizeLibraryManager = (value) => {
   return Object.hasOwn(MANAGER_NAMES, normalized) ? normalized : null;
 };
 
+export const resolveAlbumManager = (album) =>
+  normalizeLibraryManager(album?.managedBy) ||
+  (Array.isArray(album?.sources) && album.sources.includes("lidarr") ? "lidarr" : null);
+
 export const getManagerName = (manager) =>
   MANAGER_NAMES[normalizeLibraryManager(manager)] || MANAGER_NAMES.aurral;
 

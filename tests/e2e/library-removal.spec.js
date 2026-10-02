@@ -89,21 +89,23 @@ test("an Aurral album and artist are removed with their files", async ({ page })
     await page.goto(`/artist/${artist.mbid}`);
     await expect(page.getByRole("heading", { name: artist.name, level: 1 })).toBeVisible({ timeout: 30_000 });
     const actionBar = page.locator(".artist-action-bar");
-    await actionBar.getByRole("button", { name: /In library/ }).click();
-    await actionBar.getByRole("button", { name: "Remove from Library" }).click();
-    const artistDialog = page.getByRole("alertdialog", { name: "Remove Artist from Library" });
+    await actionBar.getByRole("button", { name: /^Aurral monitoring/ }).click();
+    await page.getByRole("menuitem", { name: "Remove from Aurral", exact: true }).click();
+    const artistDialog = page.getByRole("alertdialog", { name: "Remove artist from Aurral" });
     await expect(artistDialog).toBeVisible();
     await expect(artistDialog.getByRole("button", { name: "Cancel" })).toBeFocused();
     await artistDialog.getByLabel("Delete artist files").check();
     await artistDialog.getByRole("button", { name: "Remove Artist" }).click();
     await expect(artistDialog).toHaveCount(0, { timeout: 30_000 });
     await expect(
-      page.getByRole("status").filter({ hasText: `Successfully removed ${artist.name} from library and deleted files` }),
+      page.getByRole("status").filter({ hasText: `Removed ${artist.name} from Aurral and deleted its files` }),
     ).toBeVisible();
 
     await page.reload();
     await expect(page.getByRole("heading", { name: artist.name, level: 1 })).toBeVisible({ timeout: 30_000 });
-    await expect(actionBar.getByRole("button", { name: /In library/ })).toHaveCount(0);
+    await actionBar.getByRole("button", { name: /^Aurral monitoring/ }).click();
+    await expect(page.getByRole("menuitem", { name: "Remove from Aurral", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
     expect((await apiRequest(page, `/api/library/artists/${artist.mbid}`)).status).toBe(404);
   } finally {
     const leftover = await apiRequest(page, `/api/library/artists/${artist.mbid}`);

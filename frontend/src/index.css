@@ -590,6 +590,34 @@ textarea {
   color: var(--aurral-text-muted);
 }
 
+.artist-monitoring-buttons {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.artist-monitoring-button__logo {
+  width: 1rem;
+  height: 1rem;
+  object-fit: contain;
+}
+
+.artist-monitoring-button__blocked {
+  display: inline-flex;
+  border-radius: var(--aurral-radius-sm);
+}
+
+.artist-monitoring-button__blocked:focus-visible {
+  outline: 2px solid var(--aurral-ring);
+  outline-offset: 2px;
+}
+
+.btn-add-action.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (pointer: coarse) {
   .btn-add-action {
     min-width: 2.75rem;

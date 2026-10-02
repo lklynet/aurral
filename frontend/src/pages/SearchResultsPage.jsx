@@ -74,6 +74,7 @@ import {
 } from "lucide-react";
 import TooltipButton from "../components/TooltipButton";
 import Tooltip from "../components/Tooltip";
+import { describeArtistAdd } from "../utils/artistMonitoring.js";
 
 const RECOMMENDED_SORT_OPTIONS = [
   { value: "name", label: "Name" },
@@ -976,21 +977,22 @@ function SearchResultsPage() {
   );
 
   const handleArtistAction = useCallback(
-    async (artist, managedBy = libraryDestination.primary) => {
+    async (artist, managedBy = libraryDestination.primary, monitorOption = null) => {
       const artistId = getArtistRecordId(artist);
       if (!artist?.name || !artistId || !libraryDestination.ready) return false;
       setPendingArtistIds((prev) => ({ ...prev, [artistId]: true }));
       try {
-        await addArtistToLibrary(buildArtistAddPayload({
+        const response = await addArtistToLibrary(buildArtistAddPayload({
           artistMbid: artistId,
           artistName: artist.name,
           managedBy,
+          ...(monitorOption ? { monitorOption } : {}),
         }));
         setLibraryLookup((prev) => ({
           ...prev,
           [artistId]: true,
         }));
-        showSuccess(`Added ${artist.name} to ${getManagerName(managedBy)}`);
+        showSuccess(describeArtistAdd({ name: artist.name, manager: managedBy, monitorOption, response }));
         return true;
       } catch (err) {
         const conflict = settleLibraryOwnerConflict(err);

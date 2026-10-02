@@ -38,6 +38,7 @@ import { useWebSocketChannel } from "../hooks/useWebSocket";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
 import { queryClient, queryKeys } from "../queryClient.js";
+import { describeArtistAdd } from "../utils/artistMonitoring.js";
 const getArtistId = (artist) => getArtistRecordId(artist);
 
 export function useDiscoverData() {
@@ -364,20 +365,21 @@ export function useDiscoverData() {
   );
 
   const handleAddArtistToLibrary = useCallback(
-    async (artist, managedBy = libraryDestination.primary) => {
+    async (artist, managedBy = libraryDestination.primary, monitorOption = null) => {
       const artistId = getArtistId(artist);
       if (!artist?.name || !artistId || !libraryDestination.ready) return false;
       try {
-        await addArtistToLibrary(buildArtistAddPayload({
+        const response = await addArtistToLibrary(buildArtistAddPayload({
           artistMbid: artistId,
           artistName: artist.name,
           managedBy,
+          ...(monitorOption ? { monitorOption } : {}),
         }));
         setLibraryLookup((prev) => ({
           ...prev,
           [artistId]: true,
         }));
-        showSuccess(`Added ${artist.name} to ${getManagerName(managedBy)}`);
+        showSuccess(describeArtistAdd({ name: artist.name, manager: managedBy, monitorOption, response }));
         return true;
       } catch (err) {
         const conflict = settleLibraryOwnerConflict(err);

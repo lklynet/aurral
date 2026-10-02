@@ -1,30 +1,24 @@
 import { useState } from "react";
 import {
   Ban,
-  ChevronDown,
   MoreHorizontal,
-  MoreVertical,
   Pause,
   Pencil,
   Play,
   RefreshCw,
   ThumbsDown,
   ThumbsUp,
-  Trash2,
 } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
-import AddActionButton from "../../../components/AddActionButton";
-import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import { getDiscoveryFeedbackLabel } from "../../../utils/discoveryFeedback";
 import TooltipButton from "../../../components/TooltipButton";
 import Tooltip from "../../../components/Tooltip";
-import { getManagedByLabel, getMonitorOptionsForManager } from "../../../utils/libraryDestination";
-import { MONITOR_OPTIONS } from "../../../utils/aurralMonitoring";
+import { ArtistMonitoringButtons } from "../../../components/ArtistMonitoringButtons";
 
 export function ArtistDetailsActionBar({
   library,
-  libraryDestination,
-  artistManagedBy = null,
+  mbid,
+  artistName = "",
   existsInLibrary,
   libraryLink = null,
   loadingLibrary,
@@ -41,7 +35,6 @@ export function ArtistDetailsActionBar({
   tasteActionPending = null,
 }) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
-  const currentMonitorOption = library.getCurrentMonitorOption?.();
   const isPreviewPlaying = isArtistPlaybackActive;
 
   const renderLibraryAction = () => {
@@ -54,107 +47,17 @@ export function ArtistDetailsActionBar({
       );
     }
 
-    if (existsInLibrary) {
-      const hasLibraryMenu = canChangeMonitoring || canDeleteArtist;
-      const libraryStateLabel = [
-        "In library",
-        getManagedByLabel(artistManagedBy),
-      ].filter(Boolean).join(" · ");
-      return (
-        <div className="artist-relative">
-          <TooltipButton
-            label={libraryStateLabel}
-            onClick={hasLibraryMenu
-              ? () => library.setShowRemoveDropdown(!library.showRemoveDropdown)
-              : undefined}
-            className={`btn btn-add-action btn-add-action--labeled${hasLibraryMenu ? " btn-add-action--menu" : ""}${library.showRemoveDropdown ? " is-open" : ""}`}
-            aria-haspopup={hasLibraryMenu ? "menu" : undefined}
-            aria-expanded={hasLibraryMenu ? library.showRemoveDropdown : undefined}
-          >
-            <span className="btn-add-action__icon">
-              <SearchLibraryCheck action aria-hidden="true" aria-label={undefined} />
-            </span>
-            <span className="btn-add-action__label">In library</span>
-            {hasLibraryMenu && <MoreVertical className="btn-add-action__more" aria-hidden="true" />}
-          </TooltipButton>
-          {library.showRemoveDropdown && hasLibraryMenu && (
-            <>
-              <button
-                type="button"
-                className="artist-backdrop-button"
-                onClick={() => library.setShowRemoveDropdown(false)}
-                aria-label="Close library actions"
-              />
-              <div className="artist-dropdown artist-dropdown--left">
-                {canChangeMonitoring && (
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      library.setShowMonitorOptionMenu(!library.showMonitorOptionMenu);
-                    }}
-                    disabled={library.updatingMonitor}
-                    className="artist-menu-item"
-                  >
-                    <span>Monitor: {currentMonitorOption ?? "custom"}</span>
-                    <ChevronDown
-                      className={`artist-icon-sm${library.showMonitorOptionMenu ? " artist-chevron--open" : ""}`}
-                    />
-                  </button>
-                )}
-                {canChangeMonitoring && library.showMonitorOptionMenu && (
-                  <div className="artist-menu-section">
-                    {getMonitorOptionsForManager(MONITOR_OPTIONS, artistManagedBy).map((option) => {
-                      const isActive = option.value === currentMonitorOption;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            library.handleUpdateMonitorOption(option.value);
-                            library.setShowMonitorOptionMenu(false);
-                            library.setShowRemoveDropdown(false);
-                          }}
-                          disabled={library.updatingMonitor}
-                          className={`artist-menu-item${isActive ? " is-active" : ""}`}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {canDeleteArtist && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      library.handleDeleteClick();
-                      library.setShowRemoveDropdown(false);
-                    }}
-                    className="artist-menu-item artist-menu-item--danger"
-                  >
-                    <Trash2 className="artist-icon-sm" />
-                    Remove from Library
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      );
-    }
-
-    if (!canAddArtist) return null;
-
     return (
-        <AddActionButton
-          destination={libraryDestination}
-          onAdd={library.handleAddToLibrary}
-          onCustomize={library.handleOpenAddCustomizeModal}
-          isLoading={library.addingToLibrary}
-          showLabel
-        />
+      <ArtistMonitoringButtons
+        mbid={mbid}
+        artistName={artistName}
+        canChange={canChangeMonitoring}
+        canAdd={canAddArtist}
+        canRemove={canDeleteArtist}
+        onRemove={library.handleDeleteClick}
+        onCustomizeLidarr={library.handleOpenAddCustomizeModal}
+        onChanged={library.reloadLibraryState}
+      />
     );
   };
 

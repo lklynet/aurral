@@ -255,10 +255,13 @@ export const addArtistToLibrary = async (artistData) => {
   return result;
 };
 
-export const deleteArtistFromLibrary = (mbid, deleteFiles = false) =>
+export const deleteArtistFromLibrary = (mbid, deleteFiles = false, manager = null) =>
   deleteData(`/library/artists/${mbid}`, {
-    params: { deleteFiles },
+    params: { deleteFiles, ...(manager ? { manager } : {}) },
   });
+
+export const getArtistMonitoring = (mbid, { signal } = {}) =>
+  getData(`/library/artists/${encodeURIComponent(mbid)}/monitoring`, { signal });
 
 export const deleteAlbumFromLibrary = (id, deleteFiles = false) =>
   deleteData(`/library/albums/${id}`, {

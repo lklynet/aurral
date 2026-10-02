@@ -2,6 +2,7 @@ import { useId } from "react";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
 import AddActionButton from "../../../components/AddActionButton";
+import { MONITOR_OPTIONS } from "../../../utils/aurralMonitoring";
 
 export function AddArtistCustomizeModal({
   show,
@@ -14,6 +15,8 @@ export function AddArtistCustomizeModal({
   setQualityProfileId,
   tagId,
   setTagId,
+  monitorOption,
+  setMonitorOption,
   onClose,
   onConfirm,
   confirming,
@@ -60,6 +63,28 @@ export function AddArtistCustomizeModal({
           </div>
         ) : (
           <div className="artist-modal__fields">
+            <div>
+              <label className="artist-field-label" htmlFor={`${titleId}-monitor`}>Monitoring</label>
+              <div className="artist-modal-field aurral-radius-round">
+                <select
+                  id={`${titleId}-monitor`}
+                  className="artist-modal-select"
+                  value={monitorOption}
+                  onChange={(e) => setMonitorOption(e.target.value)}
+                  disabled={!configured || confirming}
+                >
+                  <option value="">
+                    {configured ? "Use default monitoring" : "Lidarr is not configured"}
+                  </option>
+                  {MONITOR_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.value === "none" ? "Add without monitoring" : option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <div>
               <label className="artist-field-label">Root Folder</label>
               <div className="artist-modal-field aurral-radius-round">

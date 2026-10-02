@@ -56,6 +56,7 @@ import { buildArtistAddPayload, getManagerName } from "../../utils/libraryDestin
 import { queryClient, queryKeys } from "../../queryClient.js";
 import TooltipButton from "../../components/TooltipButton";
 import CrossViewLink from "../../components/CrossViewLink";
+import { describeArtistAdd } from "../../utils/artistMonitoring.js";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ArtistDetailsPage() {
@@ -206,16 +207,17 @@ function ArtistDetailsPage() {
   );
 
   const handleAddSimilarArtistToLibrary = useCallback(
-    async (similarArtist, managedBy = libraryDestination.primary) => {
+    async (similarArtist, managedBy = libraryDestination.primary, monitorOption = null) => {
       const artistId = similarArtist?.id || similarArtist?.mbid;
       if (!similarArtist?.name || !artistId || !libraryDestination.ready) return false;
       try {
-        await addSimilarArtist(buildArtistAddPayload({
+        const response = await addSimilarArtist(buildArtistAddPayload({
           artistMbid: artistId,
           artistName: similarArtist.name,
           managedBy,
+          ...(monitorOption ? { monitorOption } : {}),
         }));
-        showSuccess(`Added ${similarArtist.name} to ${getManagerName(managedBy)}`);
+        showSuccess(describeArtistAdd({ name: similarArtist.name, manager: managedBy, monitorOption, response }));
         return true;
       } catch (err) {
         const conflict = settleLibraryOwnerConflict(err);
@@ -534,8 +536,8 @@ function ArtistDetailsPage() {
 
       <ArtistDetailsActionBar
         library={library}
-        libraryDestination={libraryDestination}
-        artistManagedBy={libraryArtist?.managedBy}
+        mbid={mbid}
+        artistName={artist?.name || artistNameFromNav || ""}
         existsInLibrary={existsInLibrary}
         libraryLink={
           libraryCanonicalId ? (
@@ -703,10 +705,10 @@ function ArtistDetailsPage() {
       )}
 
       <DeleteArtistModal
-        show={library.showDeleteModal && !!libraryArtist}
+        show={library.showDeleteModal}
         artistName={artist?.name}
         libraryArtistName={libraryArtist?.artistName}
-        managedBy={libraryArtist?.managedBy}
+        managedBy={library.deleteManager || libraryArtist?.managedBy}
         deleteFiles={library.deleteFiles}
         onDeleteFilesChange={library.setDeleteFiles}
         onCancel={library.handleDeleteCancel}
@@ -738,6 +740,8 @@ function ArtistDetailsPage() {
         setQualityProfileId={library.setCustomizeQualityProfileId}
         tagId={library.customizeTagId}
         setTagId={library.setCustomizeTagId}
+        monitorOption={library.customizeMonitorOption}
+        setMonitorOption={library.setCustomizeMonitorOption}
         onClose={() => library.setShowAddCustomizeModal(false)}
         onConfirm={library.handleCustomizeAddToLibrary}
         confirming={library.addingToLibrary}

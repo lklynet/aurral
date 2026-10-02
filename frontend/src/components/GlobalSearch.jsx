@@ -54,6 +54,7 @@ import { TrackPlaylistMenu } from "../pages/ArtistDetails/components/TrackPlayli
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { searchSettingsItems } from "../pages/Settings/settingsTabsConfig";
+import { buildArtistAddMenuItems, describeArtistAdd } from "../utils/artistMonitoring.js";
 
 const EMPTY_SUGGESTION_RESULTS = { library: null, catalog: null };
 
@@ -408,18 +409,19 @@ function GlobalSearch({ settingsMode = false }) {
   }, []);
 
   const handleArtistAction = useCallback(
-    async (artist, managedBy = libraryDestination.primary) => {
+    async (artist, managedBy = libraryDestination.primary, monitorOption = null) => {
       const artistId = getArtistRecordId(artist);
       if (!artist?.name || !artistId || !libraryDestination.ready) return false;
       setPendingArtistIds((prev) => ({ ...prev, [artistId]: true }));
       try {
-        await addArtistToLibrary(buildArtistAddPayload({
+        const response = await addArtistToLibrary(buildArtistAddPayload({
           artistMbid: artistId,
           artistName: artist.name,
           managedBy,
+          ...(monitorOption ? { monitorOption } : {}),
         }));
         updateSuggestionItem(artist, { inLibrary: true });
-        showSuccess(`Added ${artist.name} to ${getManagerName(managedBy)}`);
+        showSuccess(describeArtistAdd({ name: artist.name, manager: managedBy, monitorOption, response }));
         return true;
       } catch (err) {
         const conflict = settleLibraryOwnerConflict(err);
@@ -547,7 +549,10 @@ function GlobalSearch({ settingsMode = false }) {
             disabled={!!pendingArtistIds[artistId]}
             isLoading={!!pendingArtistIds[artistId]}
             destination={libraryDestination}
-            onAdd={(managedBy) => handleArtistAction(item, managedBy)}
+            items={buildArtistAddMenuItems({
+              destination: libraryDestination,
+              onAdd: (managedBy, monitorOption) => handleArtistAction(item, managedBy, monitorOption),
+            })}
           />
         );
       }

@@ -7,6 +7,7 @@ import {
   getAddToManagerLabel,
   getLibraryOwnerConflict,
   getMonitorOptionsForManager,
+  resolveAlbumManager,
   resolveLibraryDestination,
 } from "../../frontend/src/utils/libraryDestination.js";
 
@@ -117,4 +118,11 @@ test("getMonitorOptionsForManager never offers existing to Aurral", () => {
     ["none", "all"],
   );
   assert.deepEqual(getMonitorOptionsForManager(options, "lidarr"), options);
+});
+
+test("an album without a recorded manager belongs to Lidarr when Lidarr has its files", () => {
+  assert.equal(resolveAlbumManager({ managedBy: "aurral", sources: ["lidarr"] }), "aurral");
+  assert.equal(resolveAlbumManager({ managedBy: null, sources: ["lidarr", "aurral"] }), "lidarr");
+  assert.equal(resolveAlbumManager({ managedBy: null, sources: ["flow"] }), null);
+  assert.equal(resolveAlbumManager(null), null);
 });

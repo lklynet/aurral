@@ -17,7 +17,7 @@ async function tabTo(page, locator) {
   throw new Error("Keyboard focus never reached the Add to… menu");
 }
 
-test("a connected user adds to Lidarr, then adds to Aurral from the keyboard", async ({ page }) => {
+test("a connected user adds to Lidarr, then adds to Aurral with future albums from the keyboard", async ({ page }) => {
   test.setTimeout(180_000);
   await openApp(page);
 
@@ -33,9 +33,9 @@ test("a connected user adds to Lidarr, then adds to Aurral from the keyboard", a
   try {
     await page.goto(`/artist/${lidarrArtist.mbid}`);
     await expect(page.getByRole("heading", { name: lidarrArtist.name, level: 1 })).toBeVisible({ timeout: 30_000 });
-    await page.locator(".artist-action-bar").getByRole("button", { name: "Add to…", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Add to Lidarr", exact: true }).click();
-    await expect(page.getByRole("button", { name: /In library/ })).toBeVisible({ timeout: 60_000 });
+    await page.locator(".artist-action-bar").getByRole("button", { name: "Add to Lidarr", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Add without monitoring", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Lidarr monitoring: None" })).toBeVisible({ timeout: 60_000 });
     await expect.poll(async () => (await lookupArtist(page, lidarrArtist.mbid))?.exists, { timeout: 30_000 }).toBe(true);
     const lidarrRecord = await apiRequest(page, `/api/library/artists/${lidarrArtist.mbid}`);
     expect(lidarrRecord.status).toBe(200);
@@ -43,7 +43,7 @@ test("a connected user adds to Lidarr, then adds to Aurral from the keyboard", a
 
     await page.goto(`/artist/${aurralArtist.mbid}`);
     await expect(page.getByRole("heading", { name: aurralArtist.name, level: 1 })).toBeVisible({ timeout: 30_000 });
-    const menuTrigger = page.locator(".artist-action-bar").getByRole("button", { name: "Add to…", exact: true });
+    const menuTrigger = page.locator(".artist-action-bar").getByRole("button", { name: "Aurral monitoring: Unmonitored", exact: true });
     await expect(menuTrigger).toBeVisible({ timeout: 30_000 });
     await expect(menuTrigger).toBeEnabled();
     await expect(menuTrigger).toHaveAttribute("aria-haspopup", "menu");
@@ -52,22 +52,25 @@ test("a connected user adds to Lidarr, then adds to Aurral from the keyboard", a
     await page.locator("body").focus();
     await tabTo(page, menuTrigger);
     await page.keyboard.press("Enter");
-    const menu = page.getByRole("menu", { name: "Add to…" });
-    const aurralItem = menu.getByRole("menuitem", { name: "Add to Aurral" });
+    const menu = page.getByRole("menu", { name: "Aurral monitoring" });
+    const aurralFutureItem = menu.getByRole("menuitemradio", { name: "Future albums", exact: true });
     await expect(menuTrigger).toHaveAttribute("aria-expanded", "true");
-    await expect(menu.getByRole("menuitem", { name: "Add to Lidarr", exact: true })).toBeFocused();
-    await expect(menu.getByRole("menuitem")).toHaveCount(3);
+    await expect(menu.getByRole("menuitemradio", { name: "Unmonitored", exact: true })).toBeFocused();
+    await expect(menu.getByRole("menuitemradio")).toHaveCount(6);
 
     await page.keyboard.press("Escape");
     await expect(menu).toHaveCount(0);
     await expect(menuTrigger).toHaveAttribute("aria-expanded", "false");
     await expect(menuTrigger).toBeFocused();
 
-    await page.keyboard.press("ArrowDown");
-    await page.keyboard.press("ArrowDown");
-    await expect(aurralItem).toBeFocused();
+    for (let step = 0; step < 3; step += 1) await page.keyboard.press("ArrowDown");
+    await expect(aurralFutureItem).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("button", { name: /In library/ })).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("button", { name: "Aurral monitoring: Future albums" })).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator(".artist-monitoring-button__blocked")).toHaveAttribute(
+      "aria-label",
+      "Add to Lidarr. Aurral monitors this artist. Set Aurral to Unmonitored to use Lidarr.",
+    );
 
     await expect
       .poll(async () => (await apiRequest(page, `/api/library/artists/${aurralArtist.mbid}`)).body?.managedBy, {

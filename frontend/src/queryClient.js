@@ -69,6 +69,7 @@ export const queryKeys = {
   libraryAlbums: (artistId) => ["library", "albums", artistId || null],
   libraryAlbumsPrefix: ["library", "albums"],
   libraryArtist: (mbid) => ["library", "artist", mbid || null],
+  artistMonitoring: (mbid) => ["library", "artist", mbid || null, "monitoring"],
   libraryLookupDetails: (mbid) => ["library", "lookup-details", mbid || null],
   libraryView: (options) => [...LIBRARY_VIEW_QUERY_KEY, options],
   libraryLookup: (id) => ["library", "lookup", id],

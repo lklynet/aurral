@@ -17,6 +17,7 @@ const AddActionButton = forwardRef(function AddActionButton(
     destination = null,
     onAdd,
     onCustomize,
+    items = null,
     ownerConflict = null,
     icon: Icon = Plus,
     isLoading = false,
@@ -81,26 +82,31 @@ const AddActionButton = forwardRef(function AddActionButton(
     );
   }
 
-  if (alternative && onAdd) {
-    const managers = ["lidarr", "aurral"].filter(
-      (manager) => manager === primary || manager === alternative,
-    );
-    const items = managers.map((manager) => ({
-      id: manager,
-      label: getAddToManagerLabel(manager),
-      icon: Plus,
-      onSelect: () => onAdd(manager),
-    }));
-    if (onCustomize && managers.includes("lidarr")) {
-      items.push({
-        id: "customize-lidarr",
-        label: "Customize Lidarr add…",
-        icon: SlidersHorizontal,
-        separatorBefore: true,
-        closeBeforeSelect: true,
-        onSelect: onCustomize,
-      });
-    }
+  const managers = ["lidarr", "aurral"].filter(
+    (manager) => manager === primary || manager === alternative,
+  );
+  const menuItems = items ?? (alternative && onAdd
+    ? [
+        ...managers.map((manager) => ({
+          id: manager,
+          label: getAddToManagerLabel(manager),
+          icon: Plus,
+          onSelect: () => onAdd(manager),
+        })),
+        ...(onCustomize && managers.includes("lidarr")
+          ? [{
+              id: "customize-lidarr",
+              label: "Customize Lidarr add…",
+              icon: SlidersHorizontal,
+              separatorBefore: true,
+              closeBeforeSelect: true,
+              onSelect: onCustomize,
+            }]
+          : []),
+      ]
+    : null);
+
+  if (menuItems) {
     return (
       <div onKeyDown={keepActivationKeysLocal}>
         <LibraryItemMenu
@@ -120,7 +126,7 @@ const AddActionButton = forwardRef(function AddActionButton(
           disabled={isDisabled}
           contextMenu={false}
           align="start"
-          items={items}
+          items={menuItems}
         />
       </div>
     );

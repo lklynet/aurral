@@ -1,6 +1,7 @@
 import { useId, useRef } from "react";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
+import { getManagerName, normalizeLibraryManager } from "../../../utils/libraryDestination.js";
 
 export function DeleteArtistModal({
   show,
@@ -23,6 +24,7 @@ export function DeleteArtistModal({
   });
 
   if (!show) return null;
+  const managerName = normalizeLibraryManager(managedBy) ? getManagerName(managedBy) : "your library";
   return (
     <div className="artist-modal-backdrop">
       <div
@@ -34,11 +36,10 @@ export function DeleteArtistModal({
         tabIndex={-1}
       >
         <h3 id={titleId} className="artist-modal__title">
-          Remove Artist from Library
+          Remove artist from {managerName}
         </h3>
         <p className="artist-modal__copy">
-          Are you sure you want to remove <strong>{artistName || libraryArtistName}</strong> from
-          library?
+          Remove <strong>{artistName || libraryArtistName}</strong> from {managerName}?
         </p>
 
         <div>

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Ban, Library, MoreVertical, Plus, RefreshCw, ThumbsDown, ThumbsUp } from "lucide-react";
 import { getDiscoveryFeedbackLabel } from "../utils/discoveryFeedback";
-import { getAddToManagerLabel } from "../utils/libraryDestination";
+import { buildArtistAddMenuItems } from "../utils/artistMonitoring";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import AddActionButton from "./AddActionButton";
 import { LibraryItemMenu } from "./LibraryItemMenu";
@@ -38,11 +38,11 @@ export function ArtistContextMenu({
     onSelect: () => onFeedback(artist, item.id, { isSelected: !!feedbackUsed[item.id] }),
   })) : [];
 
-  const addArtist = async (manager) => {
+  const addArtist = async (manager, monitorOption) => {
     if (!destination.ready || pendingAction) return;
     setPendingAction("library");
     try {
-      return await onAddToLibrary(artist, manager);
+      return await onAddToLibrary(artist, manager, monitorOption);
     } finally {
       setPendingAction(null);
     }
@@ -56,12 +56,8 @@ export function ArtistContextMenu({
     onSelect: () => destination.retry(),
   }] : !destination.ready ? [{
     id: "checking-destinations", label: "Checking library destinations", icon: Library, disabled: true,
-  }] : ["lidarr", "aurral"].filter(
-    (manager) => manager === destination.primary || manager === destination.alternative,
-  ).map((manager) => ({
-    id: manager, label: getAddToManagerLabel(manager), icon: Plus,
-    onSelect: () => addArtist(manager),
-  })) : [];
+  }] : buildArtistAddMenuItems({ destination, onAdd: addArtist })
+    .map((item) => ({ ...item, icon: Plus })) : [];
 
   if (!hasLibraryItem && !onFeedback) return null;
 
@@ -78,7 +74,12 @@ export function ArtistContextMenu({
     return (
       <div className={`${className} artist-context-menu--inline`} onClick={(event) => event.stopPropagation()}>
         {canAdd ? (
-          <AddActionButton destination={destination} onAdd={addArtist} isLoading={pendingAction === "library"} disabled={!!pendingAction} />
+          <AddActionButton
+            destination={destination}
+            items={buildArtistAddMenuItems({ destination, onAdd: addArtist })}
+            isLoading={pendingAction === "library"}
+            disabled={!!pendingAction}
+          />
         ) : isInLibrary && onOpenInLibrary ? (
           <TooltipButton label="Open in library" onClick={() => onOpenInLibrary(artist)} className="btn btn-icon-square artist-context-menu__inline-action is-selected">
             <Library className="artist-icon-sm" />
