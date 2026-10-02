@@ -31,8 +31,6 @@ function SearchArtistResults({
   artistImages,
   libraryLookup,
   navigate,
-  canAddArtist,
-  onAddArtistToLibrary,
   onArtistFeedback,
   artistFeedbackLookup,
   variant = "square",
@@ -146,8 +144,6 @@ function SearchArtistResults({
             <ArtistContextMenu
               artist={artist}
               isInLibrary={!!libraryLookup[artistId]}
-              canAddArtist={canAddArtist}
-              onAddToLibrary={onAddArtistToLibrary}
               onFeedback={onArtistFeedback}
               menuLayout={isList ? "inline" : "text"}
               feedbackUsed={

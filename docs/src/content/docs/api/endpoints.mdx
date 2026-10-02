@@ -82,10 +82,10 @@ WebSocket connections.
 | `POST` | `/api/library/artists` | Add an artist |
 | `GET` | `/api/library/artists/:mbid/monitoring` | Get the active manager's monitoring for an artist |
 | `PUT` | `/api/library/artists/:mbid` | Update artist monitoring |
-| `DELETE` | `/api/library/artists/:mbid` | Remove an artist from the active manager |
+| `DELETE` | `/api/library/artists/:mbid?manager=aurral\|lidarr` | Remove an artist from one manager, or from the active manager without `manager`. `lidarr` returns `503` while Lidarr is not connected |
 | `POST` | `/api/library/artists/:mbid/refresh` | Refresh an artist in Lidarr |
 | `PUT` | `/api/library/canonical/artists/:id/mbid` | Set a library artist's MusicBrainz ID with `{ "mbid": "…" }`, or clear it with `{ "mbid": null }` |
-| `GET` | `/api/library/albums?artistId=:id` | List an artist's albums |
+| `GET` | `/api/library/albums?artistId=:id&managedBy=aurral\|lidarr` | List an artist's albums. Send the artist's `managedBy` so a Lidarr ID is never read as an Aurral ID |
 | `GET` | `/api/library/albums/:id` | Get an album |
 | `POST` | `/api/library/albums` | Add an album |
 | `POST` | `/api/library/albums/request` | Request an album from search data |
@@ -142,7 +142,8 @@ artist to Lidarr when needed, which requires the `addArtist` permission, and
 hands Lidarr any album it starts monitoring that Aurral has tracks from.
 Aurral accepts `none`, `all`, `missing`, `latest`, `first`, and `future`.
 Lidarr also accepts `existing`. The monitoring read returns
-`{ manager, added, monitorOption, error }`, where `monitorOption` is `null`
+`{ manager, added, monitorOption, inAurral, error }`, where `inAurral` says
+whether Aurral holds part of the artist, and `monitorOption` is `null`
 when the artist's Lidarr monitoring was changed in Lidarr itself.
 
 For Aurral, the response includes `monitoring.releaseGroupIds` for the albums

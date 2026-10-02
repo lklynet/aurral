@@ -45,10 +45,10 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
     await page.goto(`/artist/${artist.mbid}`);
     await expect(page.getByRole("heading", { name: artist.name, level: 1 })).toBeVisible({ timeout: 30_000 });
     const actionBar = page.locator(".artist-action-bar");
-    await actionBar.getByRole("button", { name: /^Aurral monitoring/ }).click();
-    await expect(page.getByRole("menuitemradio", { name: "Unmonitored", exact: true })).toHaveAttribute("aria-checked", "true");
+    await actionBar.getByRole("button", { name: /^Monitoring: / }).click();
+    await expect(page.getByRole("menuitemradio", { name: "Not monitored", exact: true })).toHaveAttribute("aria-checked", "true");
     await expect(page.getByRole("menuitemradio")).toHaveText([
-      "Unmonitored",
+      "Not monitored",
       "All albums",
       "Future albums",
       "Missing albums",

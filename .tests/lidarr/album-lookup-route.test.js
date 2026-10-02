@@ -389,7 +389,7 @@ test("album batch lookup bypasses stale cache and unrelated broken albums", asyn
   }
 });
 
-test("canonical album lookup reports partial ownership and the complete track count", async () => {
+test("canonical album lookup reports partial ownership, its manager, and the complete track count", async () => {
   const key = `album-lookup-partial-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -416,6 +416,7 @@ test("canonical album lookup reports partial ownership and the complete track co
   });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: ownedTrack.id, trackNumber: 1 });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: missingTrack.id, trackNumber: 2 });
+  setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
   const ownedPath = `/tmp/${key}/owned.flac`;
   upsertLibraryMediaFile({
     trackId: ownedTrack.id,
@@ -456,7 +457,9 @@ test("canonical album lookup reports partial ownership and the complete track co
     assert.equal(result?.trackFileCount, 1);
     assert.equal(result?.percentOfTracks, 50);
     assert.deepEqual(result?.ownedTrackMbids, [ownedTrack.mbid]);
+    assert.equal(result?.managedBy, "aurral");
   } finally {
+    db.prepare("DELETE FROM library_management WHERE entity_kind = 'album' AND entity_id = ?").run(album.id);
     db.prepare("DELETE FROM library_media_files WHERE path = ?").run(ownedPath);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
     db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(ownedTrack.id, missingTrack.id);

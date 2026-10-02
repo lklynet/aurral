@@ -13,16 +13,11 @@ const artist = {
 const release = { id: "library-menu-album", title: "Menu Test Album", "primary-type": "Album" };
 
 const aurralButton = (page) =>
-  page.locator(".artist-action-bar").getByRole("button", { name: /^Aurral monitoring/ });
+  page.locator(".artist-action-bar").getByRole("button", { name: /^Monitoring: / });
 const lidarrAddButton = (page) =>
   page.locator(".artist-action-bar").getByRole("button", { name: "Add to Lidarr", exact: true });
-
-async function chooseFromCard(page, menu, label) {
-  const trigger = page.getByRole("menuitem", { name: menu, exact: true });
-  const submenu = page.locator(".artist-menu-submenu").filter({ has: trigger });
-  await trigger.click();
-  await submenu.locator(".artist-menu-submenu__panel").getByRole("menuitem", { name: label, exact: true }).click();
-}
+const customizeButton = (page) =>
+  page.locator(".artist-action-bar").getByRole("button", { name: "Customize Lidarr add", exact: true });
 
 async function fixture(page, { configured = true, add, update, albumAdd, health, monitoring, existingAfterAdd, albumOwner, releases = [] } = {}) {
   const writes = [];
@@ -105,7 +100,7 @@ const monitoringPath = `/library/artists/${artist.id}`;
 test("without Lidarr, the artist page offers Aurral monitoring only", async ({ page }) => {
   const writes = await fixture(page, { configured: false });
   await page.goto(`/artist/${artist.id}`);
-  await expect(aurralButton(page)).toHaveAccessibleName("Aurral monitoring: Unmonitored");
+  await expect(aurralButton(page)).toHaveAccessibleName("Monitoring: Not monitored");
   await expect(lidarrAddButton(page)).toHaveCount(0);
   await aurralButton(page).click();
   expect(writes).toEqual([]);
@@ -128,12 +123,11 @@ test("with Lidarr, the artist page has only the Lidarr button", async ({ page })
   expect(writes).toEqual([]);
 });
 
-test("customization opens from the Lidarr button and cancel writes nothing", async ({ page }) => {
+test("customization opens from the button next to Add to Lidarr and cancel writes nothing", async ({ page }) => {
   const writes = await fixture(page);
   await page.goto(`/artist/${artist.id}`);
-  const trigger = lidarrAddButton(page);
+  const trigger = customizeButton(page);
   await trigger.click();
-  await page.getByRole("menuitem", { name: "Customize Lidarr add…", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Customize Lidarr add", exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Add to Lidarr", exact: true })).toBeEnabled();
@@ -148,8 +142,7 @@ test("customization opens from the Lidarr button and cancel writes nothing", asy
 test("customized Lidarr failure keeps the dialog available and never falls back to Aurral", async ({ page }) => {
   const writes = await fixture(page);
   await page.goto(`/artist/${artist.id}`);
-  await lidarrAddButton(page).click();
-  await page.getByRole("menuitem", { name: "Customize Lidarr add…", exact: true }).click();
+  await customizeButton(page).click();
   const dialog = page.getByRole("dialog", { name: "Customize Lidarr add", exact: true });
   await expect(dialog.getByRole("button", { name: "Add to Lidarr", exact: true })).toBeEnabled();
   await dialog.getByRole("combobox").nth(1).selectOption("/fixture-music");
@@ -205,65 +198,56 @@ test("unknown configuration prevents a guessed add and health retry recovers", a
 });
 
 for (const surface of ["discover", "search", "similar"]) {
-  test(`${surface} artist options list Lidarr's choices and submit the selected one`, async ({ page }) => {
+  test(`${surface} artist cards leave adding to the artist page`, async ({ page }) => {
     const writes = await fixture(page);
     const url = surface === "similar" ? `/artist/${artist.id}` : surface === "search" ? "/search?q=Menu&type=artist" : "/discover";
     await page.goto(url);
     const name = surface === "similar" ? "Similar Menu Artist" : artist.name;
     await page.getByRole("button", { name: `Artist options for ${name}`, exact: true }).click();
-    const initialUrl = page.url();
-    await expect(page.getByRole("menuitem", { name: "Monitor with Aurral", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("menuitemcheckbox", { name: "More like this", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: /^(Add to|Monitor with) / })).toHaveCount(0);
     expect(writes).toEqual([]);
-    await chooseFromCard(page, "Add to Lidarr", "All albums");
-    await expect.poll(() => writes.length).toBe(1);
-    expect(writes[0].body).toMatchObject({ managedBy: "lidarr", monitorOption: "all" });
-    await expect(page).toHaveURL(initialUrl);
   });
 }
 
-test("search result artists offer the active manager's choices", async ({ page }) => {
-  const writes = await fixture(page);
+test("search results have no artist add button", async ({ page }) => {
+  await fixture(page);
   const top = { ...artist, type: "artist" };
-  const second = { ...artist, id: "second-menu-artist", name: "Second Menu Artist", type: "artist" };
   await page.route("**/api/search/unified**", (route) =>
-    route.fulfill({ json: { top, catalog: { artists: [top, second], albums: [], tracks: [] } } }));
+    route.fulfill({ json: { top, catalog: { artists: [top], albums: [], tracks: [] } } }));
   await page.goto("/search?q=Menu");
-  await page.getByRole("button", { name: "Add to Lidarr", exact: true }).first().click();
-  await expect(page.getByRole("menuitem", { name: "Add without monitoring", exact: true })).toBeVisible();
-  expect(writes).toEqual([]);
-  await page.getByRole("menuitem", { name: "Latest album", exact: true }).click();
-  await expect.poll(() => writes.length).toBe(1);
-  expect(writes[0].body).toMatchObject({ managedBy: "lidarr", monitorOption: "latest" });
+  await expect(page.getByRole("button", { name: `Open ${artist.name}`, exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /^(Add to|Monitor with) / })).toHaveCount(0);
 });
 
-test("disconnected Discover names Aurral and omits Lidarr", async ({ page }) => {
-  const writes = await fixture(page, { configured: false });
-  await page.goto("/discover");
-  await page.getByRole("button", { name: `Artist options for ${artist.name}`, exact: true }).click();
-  await expect(page.getByRole("menuitem", { name: "Add to Lidarr", exact: true })).toHaveCount(0);
-  await chooseFromCard(page, "Monitor with Aurral", "All albums");
-  await expect.poll(() => writes.length).toBe(1);
-  expect(writes[0].body).toMatchObject({ managedBy: "aurral", monitorOption: "all" });
-});
-
-for (const outcome of ["success", "conflict"]) {
-test(`a similar-artist ${outcome} removes the add choices`, async ({ page }) => {
-  const writes = await fixture(page, { add: (route, body) => route.fulfill({
-    status: outcome === "conflict" ? 409 : 200,
-    json: outcome === "conflict"
-      ? { code: "artist_owner_conflict", managedBy: "lidarr", error: "Already managed by Lidarr" }
-      : { id: body.foreignArtistId, managedBy: body.managedBy },
-  }) });
+test("an artist in Lidarr reads In library and removes either side", async ({ page }) => {
+  const writes = await fixture(page, {
+    monitoring: () => ({ manager: "lidarr", added: true, monitorOption: "all", inAurral: true, error: null }),
+  });
   await page.goto(`/artist/${artist.id}`);
-  const trigger = page.getByRole("button", { name: "Artist options for Similar Menu Artist", exact: true });
+  const trigger = page.locator(".artist-action-bar").getByRole("button", { name: /^In library/ });
+  await expect(trigger).toHaveAccessibleName("In library. Lidarr monitoring: All albums");
   await trigger.click();
-  await chooseFromCard(page, "Add to Lidarr", "All albums");
-  await expect.poll(() => writes.length).toBe(1);
-  await expect(page.getByRole("menu")).toHaveCount(0);
-  await trigger.click();
-  await expect(page.getByRole("menuitem", { name: /^(Add to|Monitor with) / })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Monitor: All albums", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Remove from Lidarr", exact: true })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Remove from Aurral", exact: true }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Remove artist from Aurral" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  expect(writes).toEqual([]);
 });
-}
+
+test("without Lidarr, removal does not name Aurral", async ({ page }) => {
+  await fixture(page, {
+    configured: false,
+    monitoring: () => ({ manager: "aurral", added: true, monitorOption: "none", inAurral: true, error: null }),
+  });
+  await page.goto(`/artist/${artist.id}`);
+  await aurralButton(page).click();
+  await expect(page.getByRole("menuitem", { name: /Aurral/ })).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "Remove from library", exact: true }).click();
+  await expect(page.getByRole("alertdialog", { name: "Remove artist from your library" })).toBeVisible();
+});
 
 for (const view of ["cards", "list"]) {
   test(`artist release ${view} add goes to the active manager without navigating`, async ({ page }) => {

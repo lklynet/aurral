@@ -26,7 +26,7 @@ test("album actions always go to the active manager, whoever holds the album now
     destination: lidarr,
   });
   assert.equal(getAlbumAddAction({ status: "monitored", managedBy: "aurral" }, lidarr).label, "Search Album");
-  assert.equal(getAlbumAddAction({ inLibrary: true, monitored: false }, { primary: "aurral" }).label, "Add to Aurral");
+  assert.equal(getAlbumAddAction({ inLibrary: true, monitored: false }, { primary: "aurral" }).label, "Add to library");
 });
 
 test("isAlbumCompleteInLibrary only treats on-disk albums as complete", () => {
@@ -38,7 +38,7 @@ test("isAlbumCompleteInLibrary only treats on-disk albums as complete", () => {
 test("describeAlbumRequestResult does not claim a blocked album is downloading", () => {
   const queued = describeAlbumRequestResult({ status: "queued", jobIds: ["a"] }, "Dummy", "aurral");
   assert.equal(queued.kind, "success");
-  assert.match(queued.message, /Aurral/);
+  assert.match(queued.message, /your library/);
   assert.match(queued.message, /queued/i);
   assert.doesNotMatch(queued.message, /downloading/i);
   const blocked = describeAlbumRequestResult({ status: "blocked", albumStatus: { recovery: { code: "download_source_missing" } } }, "Dummy", "lidarr");
@@ -47,7 +47,7 @@ test("describeAlbumRequestResult does not claim a blocked album is downloading",
   assert.match(blocked.message, /nothing is downloading/);
   assert.equal(describeAlbumRequestResult({ albumStatus: { status: "blocked" } }, "Dummy").kind, "info");
   const available = describeAlbumRequestResult({ status: "available" }, "Dummy", "aurral");
-  assert.match(available.message, /Aurral/);
+  assert.match(available.message, /your library/);
   assert.doesNotMatch(available.message, /queued|downloading/i);
 });
 

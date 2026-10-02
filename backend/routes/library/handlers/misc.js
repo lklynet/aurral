@@ -40,6 +40,7 @@ const canonicalAlbumResult = (album, ownedTrackMbids = []) => ({
         ? "available"
         : "partial",
   monitored: album.monitored,
+  managedBy: album.managedBy || null,
   percentOfTracks: Number(album.statistics?.percentOfTracks || 0),
   sizeOnDisk: Number(album.statistics?.sizeOnDisk || 0),
   trackCount: Number(album.statistics?.trackCount || 0),

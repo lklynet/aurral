@@ -22,7 +22,7 @@ const POLL_INTERVAL_MS = 4000;
 const errorMessage = (error, fallback) =>
   error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback;
 
-export function AurralAlbumStatus({ album, artist, canManage = false, onChanged, onSettled }) {
+export function AurralAlbumStatus({ album, artist, canManage = false, canRetry = true, onChanged, onSettled }) {
   const { showError } = useToast();
   const [pendingAction, setPendingAction] = useState(null);
   const statusQuery = useQuery({
@@ -46,6 +46,7 @@ export function AurralAlbumStatus({ album, artist, canManage = false, onChanged,
   }, [onSettled, statusQuery.data?.status]);
 
   if (!state || state.status === "complete") return null;
+  const actions = canRetry ? state.actions : state.actions.filter((action) => action.id === "cancel");
 
   const runAction = async (action) => {
     setPendingAction(action.id);
@@ -86,9 +87,9 @@ export function AurralAlbumStatus({ album, artist, canManage = false, onChanged,
           )}
         </p>
       )}
-      {canManage && state.actions.length > 0 && (
+      {canManage && actions.length > 0 && (
         <div className="native-library-album-status__actions">
-          {state.actions.map((action) => (
+          {actions.map((action) => (
             <button
               key={action.id}
               type="button"

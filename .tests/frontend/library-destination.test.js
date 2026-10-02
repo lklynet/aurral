@@ -5,6 +5,7 @@ import {
   buildAlbumRequestPayload,
   buildArtistAddPayload,
   canRemoveLibraryAlbum,
+  getRemovalTarget,
   getAddToManagerLabel,
   getLibraryOwnerConflict,
   getMonitorOptionsForManager,
@@ -17,18 +18,25 @@ test("Lidarr manages artists and albums when it is connected, otherwise Aurral d
   assert.deepEqual(resolveLibraryDestination({ lidarrConfigured: false }), { primary: "aurral" });
 });
 
-test("albums can only be removed through the active manager", () => {
+test("Aurral albums can always be removed, Lidarr albums only while Lidarr is connected", () => {
   const aurralAlbum = { managedBy: "aurral", mbid: "rg1" };
   const lidarrAlbum = { managedBy: null, sources: ["lidarr"], mbid: "rg2" };
-  assert.equal(canRemoveLibraryAlbum(aurralAlbum, "aurral"), true);
-  assert.equal(canRemoveLibraryAlbum(aurralAlbum, "lidarr"), false);
-  assert.equal(canRemoveLibraryAlbum(lidarrAlbum, "lidarr"), true);
-  assert.equal(canRemoveLibraryAlbum(lidarrAlbum, "aurral"), false);
-  assert.equal(canRemoveLibraryAlbum({ sources: ["lidarr"] }, "lidarr"), false);
+  assert.equal(canRemoveLibraryAlbum(aurralAlbum, { lidarrConnected: true }), true);
+  assert.equal(canRemoveLibraryAlbum(aurralAlbum, { lidarrConnected: false }), true);
+  assert.equal(canRemoveLibraryAlbum(lidarrAlbum, { lidarrConnected: true }), true);
+  assert.equal(canRemoveLibraryAlbum(lidarrAlbum, { lidarrConnected: false }), false);
+  assert.equal(canRemoveLibraryAlbum({ sources: ["lidarr"] }, { lidarrConnected: true }), false);
+  assert.equal(canRemoveLibraryAlbum({ sources: ["flow"] }, { lidarrConnected: true }), false);
+});
+
+test("removal names Aurral only when Lidarr is connected", () => {
+  assert.equal(getRemovalTarget("lidarr", "lidarr"), "Lidarr");
+  assert.equal(getRemovalTarget("aurral", "lidarr"), "Aurral");
+  assert.equal(getRemovalTarget("aurral", "aurral"), "library");
 });
 
 test("add labels name each manager", () => {
-  assert.equal(getAddToManagerLabel("aurral"), "Add to Aurral");
+  assert.equal(getAddToManagerLabel("aurral"), "Add to library");
   assert.equal(getAddToManagerLabel("lidarr"), "Add to Lidarr");
 });
 

@@ -18,7 +18,8 @@ import {
 import {
   buildAlbumRequestPayload,
   buildArtistAddPayload,
-  getManagerName,
+  describeRemovalTarget,
+  getDestinationName,
 } from "../../../utils/libraryDestination.js";
 import { describeArtistAdd } from "../../../utils/artistMonitoring.js";
 import { describeAlbumRequestResult } from "../../../utils/albumAddAction.js";
@@ -171,7 +172,8 @@ export function useArtistDetailsLibrary({
   const libraryAlbumsQueryKey = queryKeys.libraryAlbums(libraryArtist?.id);
   const libraryAlbumsQuery = useQuery({
     queryKey: libraryAlbumsQueryKey,
-    queryFn: ({ signal }) => getLibraryAlbums(libraryArtist.id, { signal }),
+    queryFn: ({ signal }) =>
+      getLibraryAlbums(libraryArtist.id, { signal, managedBy: libraryArtist.managedBy || null }),
     enabled: Boolean(libraryArtist?.id),
     initialData: libraryAlbums,
     initialDataUpdatedAt: 0,
@@ -191,7 +193,7 @@ export function useArtistDetailsLibrary({
   const { refetch: refetchLibraryAlbums } = libraryAlbumsQuery;
   const refreshArtistMutation = useMutation({ mutationFn: refreshLibraryArtist });
   const deleteArtistMutation = useMutation({
-    mutationFn: ({ mbid, deleteFiles }) => deleteArtistFromLibrary(mbid, deleteFiles),
+    mutationFn: ({ mbid, deleteFiles, manager }) => deleteArtistFromLibrary(mbid, deleteFiles, manager),
     onSuccess: (_result, { mbid }) => invalidateLibraryQueries(mbid),
   });
   const addArtistMutation = useMutation({
@@ -318,7 +320,7 @@ export function useArtistDetailsLibrary({
     if (!mbid) return;
     const manager = deleteManager;
     try {
-      await deleteArtistMutation.mutateAsync({ mbid, deleteFiles });
+      await deleteArtistMutation.mutateAsync({ mbid, deleteFiles, manager });
     } catch (err) {
       showError(
         `Failed to remove artist: ${
@@ -328,7 +330,7 @@ export function useArtistDetailsLibrary({
       return;
     }
     showSuccess(
-      `Removed ${artist?.name || "artist"} from ${manager ? getManagerName(manager) : "your library"}${
+      `Removed ${artist?.name || "artist"} from ${describeRemovalTarget(manager, libraryDestination.primary)}${
         deleteFiles ? " and deleted its files" : ""
       }`,
     );
@@ -362,7 +364,10 @@ export function useArtistDetailsLibrary({
       await refreshArtistMutation.mutateAsync(fullArtist.mbid || fullArtist.foreignArtistId);
     }
     if (hydrateAlbums) {
-      const albums = await getLibraryAlbums(fullArtist.id, { bypassCache: true });
+      const albums = await getLibraryAlbums(fullArtist.id, {
+        bypassCache: true,
+        managedBy: fullArtist.managedBy || null,
+      });
       setLibraryAlbums(deduplicateAlbums(albums));
     }
     return fullArtist;
@@ -474,7 +479,7 @@ export function useArtistDetailsLibrary({
         showInfo(`${artist.name}: ${conflict.message}`);
         return false;
       }
-      const message = `Failed to add artist to ${getManagerName(managedBy)}: ${
+      const message = `Failed to add artist to ${getDestinationName(managedBy)}: ${
           err.response?.data?.message || err.response?.data?.error || err.message
         }`;
       if (showAddCustomizeModal) setCustomizeAddError(message);
@@ -514,7 +519,7 @@ export function useArtistDetailsLibrary({
       const addedArtist = result?.artist;
       const addedAlbum = result?.album;
       if (!addedArtist?.id || !addedAlbum?.id) {
-        throw new Error(`${getManagerName(managedBy)} did not return the completed album request`);
+        throw new Error("The album request did not complete");
       }
 
       setLibraryArtist((previous) => ({
@@ -563,7 +568,7 @@ export function useArtistDetailsLibrary({
         return;
       }
       showError(
-        `Failed to add album to ${getManagerName(managedBy)}: ${
+        `Failed to add album to ${getDestinationName(managedBy)}: ${
           err.response?.data?.message || err.response?.data?.error || err.message
         }`,
       );

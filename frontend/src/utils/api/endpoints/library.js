@@ -255,9 +255,9 @@ export const addArtistToLibrary = async (artistData) => {
   return result;
 };
 
-export const deleteArtistFromLibrary = (mbid, deleteFiles = false) =>
+export const deleteArtistFromLibrary = (mbid, deleteFiles = false, manager = null) =>
   deleteData(`/library/artists/${mbid}`, {
-    params: { deleteFiles },
+    params: { deleteFiles, ...(manager ? { manager } : {}) },
   });
 
 export const getArtistMonitoring = (mbid, { signal } = {}) =>
@@ -281,9 +281,9 @@ export const deleteAurralAlbumFromLibrary = (canonicalId, deleteFiles = false) =
 export const deleteTrackFromLibrary = (id) =>
   deleteData(`/library/tracks/${encodeURIComponent(id)}`);
 
-const fetchLibraryAlbums = async (artistId, { signal } = {}) => {
+const fetchLibraryAlbums = async (artistId, { signal, managedBy = null } = {}) => {
   const data = await getData("/library/albums", {
-    params: { artistId },
+    params: { artistId, ...(managedBy ? { managedBy } : {}) },
     signal,
   });
   return data.map((album) => ({
@@ -292,11 +292,11 @@ const fetchLibraryAlbums = async (artistId, { signal } = {}) => {
   }));
 };
 
-export const getLibraryAlbums = (artistId, { signal, bypassCache = false } = {}) => {
-  if (signal && !bypassCache) return fetchLibraryAlbums(artistId, { signal });
+export const getLibraryAlbums = (artistId, { signal, bypassCache = false, managedBy = null } = {}) => {
+  if (signal && !bypassCache) return fetchLibraryAlbums(artistId, { signal, managedBy });
   return queryClient.fetchQuery({
-    queryKey: queryKeys.libraryAlbums(artistId),
-    queryFn: ({ signal: querySignal }) => fetchLibraryAlbums(artistId, { signal: querySignal }),
+    queryKey: [...queryKeys.libraryAlbums(artistId), managedBy],
+    queryFn: ({ signal: querySignal }) => fetchLibraryAlbums(artistId, { signal: querySignal, managedBy }),
     staleTime: bypassCache ? 0 : 15_000,
   });
 };

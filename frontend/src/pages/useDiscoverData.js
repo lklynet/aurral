@@ -2,7 +2,6 @@ import { describeAlbumRequestResult } from "../utils/albumAddAction";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  addArtistToLibrary,
   getRecentlyAdded,
   getRecentReleases,
   requestAlbumFromSearch,
@@ -10,12 +9,10 @@ import {
 } from "../utils/api/endpoints/library.js";
 import {
   buildAlbumRequestPayload,
-  buildArtistAddPayload,
-  getManagerName,
+  getDestinationName,
 } from "../utils/libraryDestination";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { getDiscovery } from "../utils/api/endpoints/discovery.js";
-import { getArtistRecordId } from "../utils/artistTaste";
 import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
 import { artistsShareDiscoveryIdentity } from "../utils/discoveryFeedback";
 import { useNearbyShows } from "../hooks/useNearbyShows";
@@ -37,8 +34,6 @@ import { useWebSocketChannel } from "../hooks/useWebSocket";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
 import { queryClient, queryKeys } from "../queryClient.js";
-import { describeArtistAdd } from "../utils/artistMonitoring.js";
-const getArtistId = (artist) => getArtistRecordId(artist);
 
 export function useDiscoverData() {
   const { user: authUser, hasPermission, bootstrap } = useAuth();
@@ -115,7 +110,6 @@ export function useDiscoverData() {
     useArtistTasteFeedback();
   const lastDiscoveryWsMessageAtRef = useRef(0);
   const discoveryPollInFlightRef = useRef(false);
-  const canAddArtist = hasPermission("addArtist");
   const canAddAlbum = hasPermission("addAlbum");
 
   useEffect(() => {
@@ -363,39 +357,6 @@ export function useDiscoverData() {
     [],
   );
 
-  const handleAddArtistToLibrary = useCallback(
-    async (artist, managedBy = libraryDestination.primary, monitorOption = null) => {
-      const artistId = getArtistId(artist);
-      if (!artist?.name || !artistId || !libraryDestination.ready) return false;
-      try {
-        const response = await addArtistToLibrary(buildArtistAddPayload({
-          artistMbid: artistId,
-          artistName: artist.name,
-          managedBy,
-          ...(monitorOption ? { monitorOption } : {}),
-        }));
-        setLibraryLookup((prev) => ({
-          ...prev,
-          [artistId]: true,
-        }));
-        showSuccess(describeArtistAdd({ name: artist.name, manager: managedBy, monitorOption, response }));
-        return true;
-      } catch (err) {
-        const conflict = settleLibraryOwnerConflict(err);
-        if (conflict) {
-          setLibraryLookup((previous) => ({ ...previous, [artistId]: true }));
-          showInfo(`${artist.name}: ${conflict.message}`);
-          return false;
-        }
-        showError(`Failed to add artist to ${getManagerName(managedBy)}: ${
-          err.response?.data?.message || err.response?.data?.error || err.message
-        }`);
-        return false;
-      }
-    },
-    [libraryDestination.primary, libraryDestination.ready, showError, showInfo, showSuccess],
-  );
-
   const handleRecentReleaseAlbumAction = useCallback(
     async (album, managedBy = libraryDestination.primary) => {
       const albumKey = getRecentReleaseKey(album);
@@ -423,7 +384,7 @@ export function useDiscoverData() {
           showInfo(`${album.albumName || "Album"}: ${conflict.message}`);
           return;
         }
-        showError(`Failed to add album to ${getManagerName(managedBy)}: ${
+        showError(`Failed to add album to ${getDestinationName(managedBy)}: ${
           err.response?.data?.message || err.response?.data?.error || err.message
         }`);
       } finally {
@@ -476,7 +437,6 @@ export function useDiscoverData() {
     setNearbyLocationMode,
     appliedNearbyZip,
     setAppliedNearbyZip,
-    canAddArtist,
     canAddAlbum,
     isDiscoverySocketConnected,
     applyDiscoveryData,
@@ -484,7 +444,6 @@ export function useDiscoverData() {
     getLibraryArtistImage,
     getRecentReleaseKey,
     libraryDestination,
-    handleAddArtistToLibrary,
     handleRecentReleaseAlbumAction,
     handleDiscoveryFeedback,
     lastDiscoveryWsMessageAtRef,

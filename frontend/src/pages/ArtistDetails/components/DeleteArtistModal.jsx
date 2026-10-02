@@ -1,13 +1,14 @@
 import { useId, useRef } from "react";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.js";
-import { getManagerName, normalizeLibraryManager } from "../../../utils/libraryDestination.js";
+import { describeRemovalTarget } from "../../../utils/libraryDestination.js";
 
 export function DeleteArtistModal({
   show,
   artistName,
   libraryArtistName,
   managedBy,
+  activeManager = null,
   deleteFiles,
   onDeleteFilesChange,
   onCancel,
@@ -24,7 +25,7 @@ export function DeleteArtistModal({
   });
 
   if (!show) return null;
-  const managerName = normalizeLibraryManager(managedBy) ? getManagerName(managedBy) : "your library";
+  const managerName = describeRemovalTarget(managedBy, activeManager);
   return (
     <div className="artist-modal-backdrop">
       <div

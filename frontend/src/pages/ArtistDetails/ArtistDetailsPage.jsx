@@ -9,8 +9,6 @@ import {
   updateArtistOverrides,
 } from "../../utils/api/endpoints/artists.js";
 import {
-  addArtistToLibrary,
-  settleLibraryOwnerConflict,
   downloadTrackToLibrary,
   lookupArtistInLibrary,
 } from "../../utils/api/endpoints/library.js";
@@ -52,11 +50,9 @@ import { DeleteArtistModal } from "./components/DeleteArtistModal";
 import { DeleteAlbumModal } from "./components/DeleteAlbumModal";
 import { AddArtistCustomizeModal } from "./components/AddArtistCustomizeModal";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
-import { buildArtistAddPayload, getManagerName } from "../../utils/libraryDestination";
-import { queryClient, queryKeys } from "../../queryClient.js";
+import { queryKeys } from "../../queryClient.js";
 import TooltipButton from "../../components/TooltipButton";
 import CrossViewLink from "../../components/CrossViewLink";
-import { describeArtistAdd } from "../../utils/artistMonitoring.js";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ArtistDetailsPage() {
@@ -105,13 +101,8 @@ function ArtistDetailsPage() {
   const saveArtistOverridesMutation = useMutation({
     mutationFn: ({ artistMbid, values }) => updateArtistOverrides(artistMbid, values),
   });
-  const addSimilarArtistMutation = useMutation({
-    mutationFn: addArtistToLibrary,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix }),
-  });
   const downloadTrackMutation = useMutation({ mutationFn: downloadTrackToLibrary });
   const { mutateAsync: saveArtistOverrides } = saveArtistOverridesMutation;
-  const { mutateAsync: addSimilarArtist } = addSimilarArtistMutation;
   const { mutateAsync: downloadTrack } = downloadTrackMutation;
   const idsLoading = artistOverridesQuery.isFetching;
   const idsSaving = saveArtistOverridesMutation.isPending;
@@ -204,34 +195,6 @@ function ArtistDetailsPage() {
       });
     },
     [currentArtistFeedback, handleArtistTasteFeedback, tasteArtist],
-  );
-
-  const handleAddSimilarArtistToLibrary = useCallback(
-    async (similarArtist, managedBy = libraryDestination.primary, monitorOption = null) => {
-      const artistId = similarArtist?.id || similarArtist?.mbid;
-      if (!similarArtist?.name || !artistId || !libraryDestination.ready) return false;
-      try {
-        const response = await addSimilarArtist(buildArtistAddPayload({
-          artistMbid: artistId,
-          artistName: similarArtist.name,
-          managedBy,
-          ...(monitorOption ? { monitorOption } : {}),
-        }));
-        showSuccess(describeArtistAdd({ name: similarArtist.name, manager: managedBy, monitorOption, response }));
-        return true;
-      } catch (err) {
-        const conflict = settleLibraryOwnerConflict(err);
-        if (conflict) {
-          showInfo(`${similarArtist.name}: ${conflict.message}`);
-          return true;
-        }
-        showError(`Failed to add artist to ${getManagerName(managedBy)}: ${
-          err.response?.data?.message || err.response?.data?.error || err.message
-        }`);
-        return false;
-      }
-    },
-    [addSimilarArtist, libraryDestination.primary, libraryDestination.ready, showError, showInfo, showSuccess],
   );
 
   const library = useArtistDetailsLibrary({
@@ -697,8 +660,6 @@ function ArtistDetailsPage() {
               },
             })
           }
-          canAddArtist={canAddArtist}
-          onAddToLibrary={handleAddSimilarArtistToLibrary}
           onArtistFeedback={handleArtistTasteFeedback}
           artistFeedbackLookup={artistFeedbackLookup}
         />
@@ -709,6 +670,7 @@ function ArtistDetailsPage() {
         artistName={artist?.name}
         libraryArtistName={libraryArtist?.artistName}
         managedBy={library.deleteManager || libraryArtist?.managedBy}
+        activeManager={libraryDestination.primary}
         deleteFiles={library.deleteFiles}
         onDeleteFilesChange={library.setDeleteFiles}
         onCancel={library.handleDeleteCancel}

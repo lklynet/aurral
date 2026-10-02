@@ -1035,7 +1035,8 @@ export class LibraryManager {
       await Promise.allSettled(
         albumsToMonitor.map(async (album) => {
           try {
-            await this.updateAlbum(album.id, { monitored: true });
+            const updated = await this.updateAlbum(album.id, { monitored: true });
+            if (updated?.error) throw new Error(updated.error);
             await this._handAurralAlbumToLidarr(album.mbid);
             if (searchOnAdd) {
               await lidarr.request("/command", "POST", {
@@ -1227,8 +1228,7 @@ export class LibraryManager {
 
   async getArtist(mbid, { forceRefresh = false, managedBy = null } = {}) {
     const canonical = canonicalArtistFallback(mbid);
-    if (normalizeLibraryManager(managedBy) === "aurral" ||
-      (managedBy == null && canonical?.managedBy === "aurral")) return canonical;
+    if (normalizeLibraryManager(managedBy) === "aurral") return canonical;
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) return canonical;
     if (!forceRefresh) {
@@ -1604,13 +1604,16 @@ export class LibraryManager {
     }
   }
 
-  async deleteArtist(mbid, deleteFiles = false) {
-    if (await getActiveLibraryManager() === "aurral") {
+  async deleteArtist(mbid, deleteFiles = false, { manager = null } = {}) {
+    if ((manager || await getActiveLibraryManager()) === "aurral") {
       const canonicalArtist = canonicalArtistFallback(mbid);
       if (!canonicalArtist) return { success: false, error: "Artist not found in Aurral", statusCode: 404 };
       return this._deleteAurralArtist(canonicalArtist, deleteFiles);
     }
     const lidarr = await getLidarrClient();
+    if (!lidarr?.isConfigured()) {
+      return { success: false, error: "Lidarr is not configured", statusCode: 503 };
+    }
     try {
       const lidarrArtist = await lidarr.getArtistByMbid(mbid);
       if (!lidarrArtist) return { success: false, error: "Artist not found in Lidarr" };
@@ -1868,16 +1871,19 @@ export class LibraryManager {
 
   async getArtistMonitoring(mbid) {
     const manager = await getActiveLibraryManager();
+    const artist = canonicalArtistFallback(mbid);
+    const inAurral = artist?.managedBy === "aurral" ||
+      Boolean(artist && canonicalAlbumsForArtist(artist.id).some((album) => album.managedBy === "aurral"));
     if (manager === "aurral") {
-      const artist = canonicalArtistFallback(mbid);
       return {
         manager,
         added: Boolean(artist),
         monitorOption: artist?.managedBy === "aurral" ? artist.monitorMode || "none" : "none",
+        inAurral,
         error: null,
       };
     }
-    const state = { manager, added: false, monitorOption: "none", error: null };
+    const state = { manager, added: false, monitorOption: "none", inAurral, error: null };
     try {
       const lidarrArtist = await (await getLidarrClient()).getArtistByMbid(mbid, { forceRefresh: true });
       if (lidarrArtist) {
@@ -2994,9 +3000,9 @@ export class LibraryManager {
   }
 
   async getAlbums(artistId, lidarrArtist = null, options = {}) {
-    const canonicalArtist = canonicalArtistFallback(artistId);
-    if (normalizeLibraryManager(options.managedBy) === "aurral" ||
-      (options.managedBy == null && canonicalArtist?.managedBy === "aurral")) {
+    const manager = normalizeLibraryManager(options.managedBy);
+    if (manager === "aurral" ||
+      (manager == null && canonicalArtistFallback(artistId)?.managedBy === "aurral")) {
       return canonicalAlbumsForArtist(artistId);
     }
     const lidarr = await getLidarrClient();
@@ -3022,7 +3028,7 @@ export class LibraryManager {
     } catch (error) {
       if (isLidarrNotFoundError(error)) return [];
       logger.error('library', `[LibraryManager] Failed to fetch albums from Lidarr: ${error.message}`);
-      return canonicalAlbumsForArtist(artistId);
+      return manager ? [] : canonicalAlbumsForArtist(artistId);
     }
   }
 

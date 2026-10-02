@@ -297,7 +297,10 @@ export function useArtistDetailsStream(
         const artistId = fullArtist.id || lookup.artist.id;
         if (!artistId) return;
 
-        const albums = await getLibraryAlbums(artistId, { bypassCache }).catch((err) => {
+        const albums = await getLibraryAlbums(artistId, {
+          bypassCache,
+          managedBy: fullArtist.managedBy || lookup.artist.managedBy || null,
+        }).catch((err) => {
           console.error("Failed to fetch library albums:", err);
           return [];
         });

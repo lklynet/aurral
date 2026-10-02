@@ -12,15 +12,31 @@ export const resolveAlbumManager = (album) =>
   normalizeLibraryManager(album?.managedBy) ||
   (Array.isArray(album?.sources) && album.sources.includes("lidarr") ? "lidarr" : null);
 
-export const canRemoveLibraryAlbum = (album, manager) => {
-  if (!manager || resolveAlbumManager(album) !== manager) return false;
-  return manager === "aurral" || Boolean(album.mbid || album.releaseGroupMbid || album.providerId);
+export const canRemoveLibraryAlbum = (album, { lidarrConnected = false } = {}) => {
+  const manager = resolveAlbumManager(album);
+  if (manager === "aurral") return true;
+  return manager === "lidarr" && lidarrConnected &&
+    Boolean(album.mbid || album.releaseGroupMbid || album.providerId);
+};
+
+export const getDestinationName = (manager) =>
+  normalizeLibraryManager(manager) === "lidarr" ? "Lidarr" : "your library";
+
+export const getRemovalTarget = (manager, activeManager) => {
+  if (normalizeLibraryManager(manager) === "lidarr") return "Lidarr";
+  return activeManager === "lidarr" ? "Aurral" : "library";
+};
+
+export const describeRemovalTarget = (manager, activeManager) => {
+  const target = getRemovalTarget(manager, activeManager);
+  return target === "library" ? "your library" : target;
 };
 
 export const getManagerName = (manager) =>
   MANAGER_NAMES[normalizeLibraryManager(manager)] || MANAGER_NAMES.aurral;
 
-export const getAddToManagerLabel = (manager) => `Add to ${getManagerName(manager)}`;
+export const getAddToManagerLabel = (manager) =>
+  normalizeLibraryManager(manager) === "lidarr" ? "Add to Lidarr" : "Add to library";
 
 export const getManagedByLabel = (manager) => {
   const normalized = normalizeLibraryManager(manager);

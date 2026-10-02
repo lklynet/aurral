@@ -28,7 +28,7 @@ import {
   countReleaseTracks,
   describeAlbumRequestResult,
 } from "../../utils/albumAddAction";
-import { buildAlbumRequestPayload, getManagerName } from "../../utils/libraryDestination";
+import { buildAlbumRequestPayload, getDestinationName } from "../../utils/libraryDestination";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
@@ -516,7 +516,7 @@ function ReleasePage() {
         showInfo(`${release.title || "Album"}: ${conflict.message}`);
         return;
       }
-      showError(`Failed to add album to ${getManagerName(managedBy)}: ${
+      showError(`Failed to add album to ${getDestinationName(managedBy)}: ${
         err.response?.data?.message || err.response?.data?.error || err.message
       }`);
     } finally {

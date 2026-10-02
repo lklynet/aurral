@@ -1,5 +1,5 @@
 import { getMonitorOptionLabel, summarizeAurralMonitoring } from "./aurralMonitoring.js";
-import { getManagerName } from "./libraryDestination.js";
+import { getDestinationName } from "./libraryDestination.js";
 
 const MANAGER_OPTIONS = {
   aurral: ["none", "all", "future", "missing", "latest", "first"],
@@ -8,7 +8,7 @@ const MANAGER_OPTIONS = {
 
 export const getManagerOptionLabel = (option, manager = null) => {
   if (option !== "none") return getMonitorOptionLabel(option);
-  return manager === "aurral" ? "Unmonitored" : "None";
+  return manager === "aurral" ? "Not monitored" : "None";
 };
 
 export const buildManagerMonitoringItems = ({ manager, current = "none", adding = false, onSelect }) =>
@@ -27,30 +27,22 @@ export const describeArtistMonitoring = (state) => {
   return option ? getManagerOptionLabel(option, state?.manager) : "Custom";
 };
 
-export const getArtistAddMenuLabel = (manager) =>
-  manager === "aurral" ? "Monitor with Aurral" : "Add to Lidarr";
-
-export const buildArtistAddMenuItems = ({ manager, onAdd }) =>
-  buildManagerMonitoringItems({
-    manager,
-    adding: true,
-    onSelect: (option) => onAdd(manager, option),
-  });
-
 export const describeArtistMonitoringChange = ({ name, manager, option, response }) => {
-  if (option === "none") return `${getManagerName(manager)} no longer monitors ${name}`;
-  const change = `${getManagerName(manager)} monitors ${name}: ${getMonitorOptionLabel(option)}`;
+  if (manager === "lidarr") {
+    return option === "none"
+      ? `Lidarr no longer monitors new albums for ${name}`
+      : `Lidarr monitors ${name}: ${getMonitorOptionLabel(option)}`;
+  }
+  if (option === "none") return `Stopped monitoring ${name}`;
+  const change = `Monitoring ${name}: ${getMonitorOptionLabel(option)}`;
   const plan = response?.monitoring;
   if (!plan || (!plan.queued && !plan.skipped?.length)) return change;
   return `${change}. ${summarizeAurralMonitoring(plan).message}`;
 };
 
-export const describeArtistAdd = ({ name, manager, monitorOption, response }) => {
-  const added = `Added ${name} to ${getManagerName(manager)}`;
-  if (!monitorOption || monitorOption === "none") {
-    return manager === "lidarr" && monitorOption === "none" ? `${added} without monitoring` : added;
-  }
-  const plan = response?.artist?.monitoring;
-  const summary = plan && (plan.queued || plan.skipped?.length) ? `. ${summarizeAurralMonitoring(plan).message}` : "";
-  return `${added}: ${getMonitorOptionLabel(monitorOption)}${summary}`;
+export const describeArtistAdd = ({ name, manager, monitorOption }) => {
+  const added = `Added ${name} to ${getDestinationName(manager)}`;
+  if (!monitorOption) return added;
+  if (monitorOption === "none") return `${added} without monitoring`;
+  return `${added}: ${getMonitorOptionLabel(monitorOption)}`;
 };

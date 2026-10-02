@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  buildArtistAddMenuItems,
   buildManagerMonitoringItems,
   describeArtistAdd,
   describeArtistMonitoringChange,
@@ -20,7 +19,7 @@ test("each manager's button lists only that manager's choices, with the current 
   });
   const lidarr = buildManagerMonitoringItems({ manager: "lidarr", current: null, onSelect: () => {} });
 
-  assert.deepEqual(labels(aurral), ["Unmonitored", "All albums", "Future albums", "Missing albums", "Latest album", "First album"]);
+  assert.deepEqual(labels(aurral), ["Not monitored", "All albums", "Future albums", "Missing albums", "Latest album", "First album"]);
   assert.deepEqual(aurral.filter((item) => item.selected).map((item) => item.id), ["aurral:future"]);
   assert.equal(aurral.every((item) => item.radio), true);
   assert.deepEqual(labels(lidarr), [
@@ -47,7 +46,7 @@ test("adding offers Lidarr without monitoring but never a do-nothing Aurral choi
 });
 
 test("the button reads the active manager's state", () => {
-  assert.equal(describeArtistMonitoring({ manager: "aurral", added: false, monitorOption: "none" }), "Unmonitored");
+  assert.equal(describeArtistMonitoring({ manager: "aurral", added: false, monitorOption: "none" }), "Not monitored");
   assert.equal(describeArtistMonitoring({ manager: "aurral", added: true, monitorOption: "latest" }), "Latest album");
   assert.equal(describeArtistMonitoring({ manager: "lidarr", added: false, monitorOption: "none" }), "Add to Lidarr");
   assert.equal(describeArtistMonitoring({ manager: "lidarr", added: true, monitorOption: "existing" }), "Existing albums");
@@ -55,23 +54,9 @@ test("the button reads the active manager's state", () => {
   assert.equal(describeArtistMonitoring({ manager: "lidarr", added: true, monitorOption: null }), "Custom");
 });
 
-test("card add menus list the active manager's choices", () => {
-  const added = [];
-  const lidarr = buildArtistAddMenuItems({ manager: "lidarr", onAdd: (manager, option) => added.push([manager, option]) });
-  const aurral = buildArtistAddMenuItems({ manager: "aurral", onAdd: (manager, option) => added.push([manager, option]) });
-
-  assert.equal(lidarr[0].label, "Add without monitoring");
-  assert.equal(aurral.some((item) => item.id === "aurral:none"), false);
-  aurral[0].onSelect();
-  assert.deepEqual(added, [["aurral", "all"]]);
-});
-
-test("results name the manager, the albums, and anything Aurral queued", () => {
+test("results name Lidarr but not Aurral, which is the library itself", () => {
   const name = "Boards of Canada";
-  assert.equal(
-    describeArtistMonitoringChange({ name, manager: "aurral", option: "none" }),
-    "Aurral no longer monitors Boards of Canada",
-  );
+  assert.equal(describeArtistMonitoringChange({ name, manager: "aurral", option: "none" }), "Stopped monitoring Boards of Canada");
   assert.equal(
     describeArtistMonitoringChange({
       name,
@@ -79,7 +64,7 @@ test("results name the manager, the albums, and anything Aurral queued", () => {
       option: "all",
       response: { monitoring: { mode: "all", releaseGroupIds: ["a", "b"], skipped: [], queued: true } },
     }),
-    "Aurral monitors Boards of Canada: All albums. Queued 2 albums for download",
+    "Monitoring Boards of Canada: All albums. Queued 2 albums for download",
   );
   assert.equal(
     describeArtistAdd({ name, manager: "lidarr", monitorOption: "none" }),

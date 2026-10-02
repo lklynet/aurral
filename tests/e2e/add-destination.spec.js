@@ -13,7 +13,7 @@ async function tabTo(page, locator) {
     await page.keyboard.press("Tab");
     if (await locator.evaluate((element) => element === document.activeElement)) return;
   }
-  throw new Error("Keyboard focus never reached the Lidarr monitoring menu");
+  throw new Error("Keyboard focus never reached the library menu");
 }
 
 test("a connected user adds an artist to Lidarr, then changes its monitoring from the keyboard", async ({ page }) => {
@@ -28,10 +28,10 @@ test("a connected user adds an artist to Lidarr, then changes its monitoring fro
     await page.goto(`/artist/${lidarrArtist.mbid}`);
     await expect(page.getByRole("heading", { name: lidarrArtist.name, level: 1 })).toBeVisible({ timeout: 30_000 });
     const actionBar = page.locator(".artist-action-bar");
-    await expect(actionBar.getByRole("button", { name: /^Aurral monitoring/ })).toHaveCount(0);
+    await expect(actionBar.getByRole("button", { name: /^Monitoring: / })).toHaveCount(0);
     await actionBar.getByRole("button", { name: "Add to Lidarr", exact: true }).click();
     await page.getByRole("menuitem", { name: "Add without monitoring", exact: true }).click();
-    const menuTrigger = actionBar.getByRole("button", { name: "Lidarr monitoring: None", exact: true });
+    const menuTrigger = actionBar.getByRole("button", { name: "In library. Lidarr monitoring: None", exact: true });
     await expect(menuTrigger).toBeVisible({ timeout: 60_000 });
     await expect.poll(async () => (await lookupArtist(page, lidarrArtist.mbid))?.exists, { timeout: 30_000 }).toBe(true);
     const monitoring = await apiRequest(page, `/api/library/artists/${lidarrArtist.mbid}/monitoring`);
@@ -41,20 +41,20 @@ test("a connected user adds an artist to Lidarr, then changes its monitoring fro
     await page.locator("body").focus();
     await tabTo(page, menuTrigger);
     await page.keyboard.press("Enter");
-    const menu = page.getByRole("menu", { name: "Lidarr monitoring" });
+    const menu = page.getByRole("menu", { name: "Library" });
     await expect(menuTrigger).toHaveAttribute("aria-expanded", "true");
-    await expect(menu.getByRole("menuitemradio", { name: "None", exact: true })).toBeFocused();
-    await expect(menu.getByRole("menuitemradio")).toHaveCount(7);
+    await expect(menu.getByRole("menuitem", { name: "Remove from Lidarr", exact: true })).toBeVisible();
 
     await page.keyboard.press("Escape");
     await expect(menu).toHaveCount(0);
     await expect(menuTrigger).toBeFocused();
 
-    await page.keyboard.press("Enter");
-    for (let step = 0; step < 3; step += 1) await page.keyboard.press("ArrowDown");
-    await expect(menu.getByRole("menuitemradio", { name: "Future albums", exact: true })).toBeFocused();
-    await page.keyboard.press("Enter");
-    await expect(actionBar.getByRole("button", { name: "Lidarr monitoring: Future albums" })).toBeVisible({ timeout: 60_000 });
+    await menuTrigger.click();
+    await menu.getByRole("menuitem", { name: "Monitor: None", exact: true }).click();
+    await expect(page.getByRole("menuitemradio")).toHaveCount(7);
+    await page.getByRole("menuitemradio", { name: "Future albums", exact: true }).click();
+    await expect(actionBar.getByRole("button", { name: "In library. Lidarr monitoring: Future albums" }))
+      .toBeVisible({ timeout: 60_000 });
   } finally {
     if ((await lookupArtist(page, lidarrArtist.mbid))?.exists) {
       const response = await apiRequest(

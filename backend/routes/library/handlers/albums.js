@@ -29,7 +29,11 @@ export function registerAlbums(router) {
         return res.json(albums);
       }
 
-      const albums = await libraryManager.getAlbums(artistId);
+      const { managedBy = null } = req.query;
+      if (managedBy !== null && managedBy !== "aurral" && managedBy !== "lidarr") {
+        return res.status(400).json({ error: "managedBy must be 'aurral' or 'lidarr'" });
+      }
+      const albums = await libraryManager.getAlbums(artistId, null, { managedBy });
       const formatted = albums.map((album) => ({
         ...album,
         foreignAlbumId: album.foreignAlbumId || album.mbid,

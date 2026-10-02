@@ -76,10 +76,8 @@ export const ArtistCard = memo(
   ({
     artist,
     isInLibrary,
-    canAddArtist,
     onNavigate,
     onOpenInLibrary,
-    onAddToLibrary,
     onFeedback,
     feedbackUsed = {},
   }) => {
@@ -155,8 +153,6 @@ export const ArtistCard = memo(
             <ArtistContextMenu
               artist={artist}
               isInLibrary={isInLibrary}
-              canAddArtist={canAddArtist}
-              onAddToLibrary={onAddToLibrary}
               onOpenInLibrary={onOpenInLibrary}
               onFeedback={onFeedback}
               feedbackUsed={feedbackUsed}
@@ -179,13 +175,11 @@ export const ArtistCard = memo(
       getRecommendationReason(prevProps.artist) === getRecommendationReason(nextProps.artist) &&
       prevProps.status === nextProps.status &&
       prevProps.isInLibrary === nextProps.isInLibrary &&
-      prevProps.canAddArtist === nextProps.canAddArtist &&
       prevProps.feedbackUsed?.more_like_this === nextProps.feedbackUsed?.more_like_this &&
       prevProps.feedbackUsed?.less_like_this === nextProps.feedbackUsed?.less_like_this &&
       prevProps.feedbackUsed?.block_artist === nextProps.feedbackUsed?.block_artist &&
       prevProps.onNavigate === nextProps.onNavigate &&
       prevProps.onOpenInLibrary === nextProps.onOpenInLibrary &&
-      prevProps.onAddToLibrary === nextProps.onAddToLibrary &&
       prevProps.onFeedback === nextProps.onFeedback
     );
   },

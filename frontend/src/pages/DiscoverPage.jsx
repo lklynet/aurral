@@ -76,12 +76,10 @@ function DiscoverPage() {
     setNearbyLocationMode,
     appliedNearbyZip,
     setAppliedNearbyZip,
-    canAddArtist,
     canAddAlbum,
     getLibraryArtistImage,
     getRecentReleaseKey,
     libraryDestination,
-    handleAddArtistToLibrary,
     handleRecentReleaseAlbumAction,
     handleDiscoveryFeedback,
   } = useDiscoverData();
@@ -439,10 +437,8 @@ function DiscoverPage() {
                 <ArtistCard
                   artist={artist}
                   isInLibrary={!!libraryLookup[getArtistId(artist)]}
-                  canAddArtist={canAddArtist}
                   onNavigate={navigate}
                   onOpenInLibrary={handleOpenArtistInLibrary}
-                  onAddToLibrary={handleAddArtistToLibrary}
                   onFeedback={handleDiscoveryFeedback}
                   feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
                 />
@@ -472,7 +468,6 @@ function DiscoverPage() {
                   <ArtistCard
                     status="available"
                     isInLibrary={true}
-                    canAddArtist={false}
                     onNavigate={navigate}
                     onOpenInLibrary={handleOpenArtistInLibrary}
                     artist={{
@@ -579,10 +574,8 @@ function DiscoverPage() {
                   <ArtistCard
                     artist={artist}
                     isInLibrary={!!libraryLookup[getArtistId(artist)]}
-                    canAddArtist={canAddArtist}
                     onNavigate={navigate}
                     onOpenInLibrary={handleOpenArtistInLibrary}
-                    onAddToLibrary={handleAddArtistToLibrary}
                     onFeedback={handleDiscoveryFeedback}
                     feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
                   />
@@ -782,10 +775,8 @@ function DiscoverPage() {
                     metaText: "",
                   }}
                   isInLibrary={!!libraryLookup[getArtistId(artist)]}
-                  canAddArtist={canAddArtist}
                   onNavigate={navigate}
                   onOpenInLibrary={handleOpenArtistInLibrary}
-                  onAddToLibrary={handleAddArtistToLibrary}
                   onFeedback={handleDiscoveryFeedback}
                   feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
                 />
@@ -822,10 +813,8 @@ function DiscoverPage() {
                     <ArtistCard
                       artist={artist}
                       isInLibrary={!!libraryLookup[getArtistId(artist)]}
-                      canAddArtist={canAddArtist}
                       onNavigate={navigate}
                       onOpenInLibrary={handleOpenArtistInLibrary}
-                      onAddToLibrary={handleAddArtistToLibrary}
                       onFeedback={handleDiscoveryFeedback}
                       feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
                     />

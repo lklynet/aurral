@@ -1,4 +1,4 @@
-import { getAddToManagerLabel, getManagerName } from "./libraryDestination.js";
+import { getAddToManagerLabel, getDestinationName } from "./libraryDestination.js";
 
 const ACTIVE_ALBUM_STATUSES = new Set([
   "adding",
@@ -80,7 +80,7 @@ export const countReleaseTracks = (libraryInfo, releaseTrackCount) => {
 };
 
 export const describeAlbumRequestResult = (result, title, managedBy = result?.managedBy) => {
-  const manager = getManagerName(managedBy);
+  const manager = getDestinationName(managedBy);
   const added = `Added ${title} to ${manager}`;
   if (result?.status === "blocked" || result?.albumStatus?.status === "blocked") {
     return { kind: "info", message: `${added}, but nothing is downloading. Open the album to see why.` };
