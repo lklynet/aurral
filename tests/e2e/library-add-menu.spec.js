@@ -114,7 +114,7 @@ test("disconnected artists offer Aurral monitoring alone even with a stale Lidar
   expect(writes).toEqual([]);
   await page.getByRole("menuitemradio", { name: "All albums", exact: true }).click();
   await expect.poll(() => writes.length).toBe(1);
-  expect(writes[0].body).toMatchObject({ manager: "aurral", monitorOption: "all" });
+  expect(writes[0]).toMatchObject({ path: "/library/artists", body: { managedBy: "aurral", monitorOption: "all" } });
 });
 
 test("customization is available with Aurral default and cancel writes nothing", async ({ page }) => {
@@ -210,6 +210,21 @@ for (const surface of ["discover", "search", "similar"]) {
     await expect(page).toHaveURL(initialUrl);
   });
 }
+
+test("search result artists offer each manager's monitoring choices", async ({ page }) => {
+  const writes = await fixture(page, { defaultOwner: "lidarr" });
+  const top = { ...artist, type: "artist" };
+  const second = { ...artist, id: "second-menu-artist", name: "Second Menu Artist", type: "artist" };
+  await page.route("**/api/search/unified**", (route) =>
+    route.fulfill({ json: { top, catalog: { artists: [top, second], albums: [], tracks: [] } } }));
+  await page.goto("/search?q=Menu");
+  await page.getByRole("button", { name: "Add to…", exact: true }).first().click();
+  await expect(page.getByRole("menuitem", { name: "Add to Lidarr", exact: true })).toBeVisible();
+  expect(writes).toEqual([]);
+  await chooseAurralFromCard(page, "Latest album");
+  await expect.poll(() => writes.length).toBe(1);
+  expect(writes[0].body).toMatchObject({ managedBy: "aurral", monitorOption: "latest" });
+});
 
 test("disconnected Discover names Aurral and omits Lidarr", async ({ page }) => {
   const writes = await fixture(page, { configured: false });
@@ -392,5 +407,5 @@ test("returning to an artist refreshes configuration despite connected bootstrap
   await aurralButton(page).click();
   await page.getByRole("menuitemradio", { name: "All albums", exact: true }).click();
   await expect.poll(() => writes.length).toBe(1);
-  expect(writes[0].body).toMatchObject({ manager: "aurral", monitorOption: "all" });
+  expect(writes[0]).toMatchObject({ path: "/library/artists", body: { managedBy: "aurral", monitorOption: "all" } });
 });

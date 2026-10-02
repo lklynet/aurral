@@ -54,12 +54,12 @@ Monitoring decides what a manager does by itself. It works at three levels: arti
 
 ### Artists
 
-An artist's monitoring decides which manager downloads its albums by itself, and which albums. An artist page has a button for each manager, marked with its logo:
+An artist's monitoring decides which manager downloads its albums by itself, and which albums. A Discover artist page has a button for each manager, marked with its logo. On a Library artist page, the same choices are in the artist's menu:
 
 - The **Aurral** button shows Aurral's monitoring. Every artist starts **Unmonitored**, so you never add an artist to Aurral first. Choose an option to start monitoring.
 - The **Lidarr** button reads **Add to Lidarr** until the artist is in Lidarr. After that it shows Lidarr's monitoring, including **Existing albums**.
 
-One manager monitors an artist at a time. While one manager monitors the artist, the other button is disabled. Hover over it to see why. To switch, set Aurral to **Unmonitored** or Lidarr to **None**. Albums keep their manager either way. When Lidarr takes over, it leaves the albums that Aurral manages unmonitored.
+One manager monitors an artist at a time. While one manager monitors the artist, the other is disabled, and its button or menu says why. To switch, set Aurral to **Unmonitored** or Lidarr to **None**. Albums keep their manager either way. When Lidarr takes over, it leaves the albums that Aurral manages unmonitored.
 
 Aurral looks only for official albums and EPs. It skips singles, live albums, compilations, and other releases with a secondary type. Aurral's options are:
 
@@ -78,6 +78,8 @@ On Discover, Search, and similar-artist cards, the artist menu offers **Monitor 
 Downloading something monitors it. When you download an album, Aurral monitors the album and every track on it. When you download one track, Aurral monitors that track only. A monitored track gets everything Aurral does by itself: Aurral downloads it, searches again when it is missing, and upgrades its file below your quality cutoff. An unmonitored track stays as it is.
 
 A track can be monitored on its own. A single that a synced playlist downloaded puts its album in your Library. The album is unmonitored, and the playlist's track is monitored. Files that Aurral did not download, such as music you copied into the download folder, start unmonitored.
+
+Until you download or monitor that album yourself, you can still give it to Lidarr. The album page offers **Download with Lidarr** next to **Download with Aurral**. If you choose Lidarr, Lidarr manages the album and Aurral stops monitoring the single. When Lidarr has the track, playlists use Lidarr's file and Aurral deletes its own copy, unless a playlist on a media server still uses it.
 
 - To get the rest of an album, open its Library page and select the download button next to **Add to favorites**. Aurral looks up the full track list and downloads what is missing. For a Lidarr album, Lidarr searches for the album.
 - To get one missing track, select the download button on its row. Lidarr works with whole albums, so Lidarr albums have no track download buttons.

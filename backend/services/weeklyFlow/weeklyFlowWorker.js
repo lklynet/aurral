@@ -12,6 +12,7 @@ import { safeLogDiagnostic } from "../logger.js";
 import {
   normalizeExistingFileMode,
   repairOrphanedPlaylistTrackPaths,
+  moveHandedOverTracksToLidarr,
   repairReusableTrackLinks,
   reuseTrackForPlaylist,
 } from "./weeklyFlowFileReuse.js";
@@ -617,6 +618,7 @@ export class WeeklyFlowWorker {
     if (Number.isFinite(result?.nextCursor)) {
       this.reuseRepairCursor = result.nextCursor;
     }
+    await moveHandedOverTracksToLidarr({ existingFileMode, weeklyFlowRoot: this.weeklyFlowRoot });
     return result;
   }
 

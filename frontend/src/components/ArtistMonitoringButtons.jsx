@@ -38,7 +38,12 @@ const blockedReason = (manager, state, { canAct, failed }) => {
   return null;
 };
 
-export function ArtistMonitoringButtons({
+export const ManagerLogo = {
+  aurral: ({ className }) => <img className={className} src={LOGOS.aurral} alt="" />,
+  lidarr: ({ className }) => <img className={className} src={LOGOS.lidarr} alt="" />,
+};
+
+export function useArtistMonitoring({
   mbid,
   artistName = "",
   canChange = false,
@@ -63,18 +68,21 @@ export function ArtistMonitoringButtons({
     ? [destination.primary, destination.alternative].filter(Boolean)
     : ["aurral"];
   const name = artistName || "this artist";
+  const isAdding = (manager) => manager === "lidarr" && !state?.lidarr?.inLidarr;
+
+  const addsArtist = (manager) => (manager === "aurral" ? !state?.aurral?.known : isAdding(manager));
 
   const choose = async (manager, option) => {
-    const adding = manager === "lidarr" && !state?.lidarr?.inLidarr;
+    const adding = addsArtist(manager);
     const current = manager === "aurral" ? state?.aurral?.mode : state?.lidarr?.monitorOption;
-    if (!adding && option === current) return;
+    if (option === current && (!adding || manager === "aurral")) return;
     setPending(manager);
     try {
       if (adding) {
         const response = await addArtistToLibrary({
           foreignArtistId: mbid,
           artistName: name,
-          managedBy: "lidarr",
+          managedBy: manager,
           monitorOption: option,
         });
         showSuccess(describeArtistAdd({ name, manager, monitorOption: option, response }));
@@ -91,16 +99,71 @@ export function ArtistMonitoringButtons({
     }
   };
 
+  const reasonFor = (manager) => {
+    const canAct = addsArtist(manager) ? canAdd : canChange;
+    return blockedReason(manager, state, { canAct, failed: monitoringQuery.isError });
+  };
+
+  const labelFor = (manager) => (isAdding(manager) ? "Add to Lidarr" : describeManagerMonitoring(manager, state));
+
+  const itemsFor = (manager) => {
+    const adding = isAdding(manager);
+    const current = manager === "aurral" ? state?.aurral?.mode : state?.lidarr?.monitorOption;
+    return [
+      ...buildManagerMonitoringItems({
+        manager,
+        current,
+        adding,
+        onSelect: (option) => choose(manager, option),
+      }),
+      ...(adding && onCustomizeLidarr
+        ? [{
+            id: "customize-lidarr",
+            label: "Customize Lidarr add…",
+            icon: SlidersHorizontal,
+            separatorBefore: true,
+            closeBeforeSelect: true,
+            onSelect: onCustomizeLidarr,
+          }]
+        : []),
+      ...(!adding && canRemove && onRemove && (manager === "lidarr" || state?.aurral?.inLibrary)
+        ? [{
+            id: "remove",
+            label: `Remove from ${getManagerName(manager)}`,
+            icon: Trash2,
+            danger: true,
+            separatorBefore: true,
+            closeBeforeSelect: true,
+            onSelect: () => onRemove(manager),
+          }]
+        : []),
+    ];
+  };
+
+  return {
+    destination,
+    ready: destination.ready && !destination.error,
+    managers,
+    pending,
+    isAdding,
+    labelFor,
+    reasonFor,
+    itemsFor,
+  };
+}
+
+export function ArtistMonitoringButtons(props) {
+  const monitoring = useArtistMonitoring(props);
+
   const renderButton = (manager) => {
-    const adding = manager === "lidarr" && !state?.lidarr?.inLidarr;
-    const canAct = adding ? canAdd : canChange && (manager === "lidarr" || state?.aurral?.inLibrary || canAdd);
-    const reason = blockedReason(manager, state, { canAct, failed: monitoringQuery.isError });
-    const label = adding ? "Add to Lidarr" : describeManagerMonitoring(manager, state);
+    const adding = monitoring.isAdding(manager);
+    const reason = monitoring.reasonFor(manager);
+    const label = monitoring.labelFor(manager);
     const accessibleName = adding ? "Add to Lidarr" : `${getManagerName(manager)} monitoring: ${label}`;
     const content = (
       <>
         <span className="btn-add-action__icon">
-          {pending === manager ? (
+          {monitoring.pending === manager ? (
             <DotLoader size="sm" label={null} />
           ) : (
             <img className="artist-monitoring-button__logo" src={LOGOS[manager]} alt="" />
@@ -123,36 +186,6 @@ export function ArtistMonitoringButtons({
       );
     }
 
-    const current = manager === "aurral" ? state.aurral.mode : state.lidarr.monitorOption;
-    const items = [
-      ...buildManagerMonitoringItems({
-        manager,
-        current,
-        adding,
-        onSelect: (option) => choose(manager, option),
-      }),
-      ...(adding && onCustomizeLidarr
-        ? [{
-            id: "customize-lidarr",
-            label: "Customize Lidarr add…",
-            icon: SlidersHorizontal,
-            separatorBefore: true,
-            closeBeforeSelect: true,
-            onSelect: onCustomizeLidarr,
-          }]
-        : []),
-      ...(!adding && canRemove && onRemove && (manager === "lidarr" || state.aurral.inLibrary)
-        ? [{
-            id: "remove",
-            label: `Remove from ${getManagerName(manager)}`,
-            icon: Trash2,
-            danger: true,
-            separatorBefore: true,
-            closeBeforeSelect: true,
-            onSelect: () => onRemove(manager),
-          }]
-        : []),
-    ];
     return (
       <LibraryItemMenu
         key={manager}
@@ -161,17 +194,17 @@ export function ArtistMonitoringButtons({
         triggerLabel={accessibleName}
         triggerClassName="btn btn-add-action btn-add-action--labeled btn-add-action--menu"
         triggerIcon={content}
-        disabled={pending !== null}
+        disabled={monitoring.pending !== null}
         contextMenu={false}
         align="start"
-        items={items}
+        items={monitoring.itemsFor(manager)}
       />
     );
   };
 
-  if (!destination.ready || destination.error) {
-    return <AddActionButton destination={destination} showLabel />;
+  if (!monitoring.ready) {
+    return <AddActionButton destination={monitoring.destination} showLabel />;
   }
 
-  return <div className="artist-monitoring-buttons">{managers.map(renderButton)}</div>;
+  return <div className="artist-monitoring-buttons">{monitoring.managers.map(renderButton)}</div>;
 }

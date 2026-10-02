@@ -299,6 +299,9 @@ export function registerArtists(router) {
         if (!UUID_REGEX.test(mbid)) {
           return res.status(400).json({ error: "Invalid MBID format" });
         }
+        if (manager !== null && manager !== "aurral" && manager !== "lidarr") {
+          return res.status(400).json({ error: "manager must be 'aurral' or 'lidarr'" });
+        }
 
         const result = await libraryManager.deleteArtist(mbid, deleteFiles === "true", { manager });
         if (!result?.success) {

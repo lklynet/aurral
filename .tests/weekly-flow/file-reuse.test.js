@@ -18,6 +18,8 @@ const [
   reuseModule,
   playlistConfigModule,
   playlistManagerModule,
+  libraryStore,
+  managementStore,
 ] = await setupIsolatedBackend(
   "weekly-flow-file-reuse",
   "backend/config/db-sqlite.js",
@@ -26,12 +28,15 @@ const [
   "backend/services/weeklyFlow/weeklyFlowFileReuse.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
+  "backend/services/libraryMediaStore.js",
+  "backend/services/libraryManagementStore.js",
 );
 
 const { downloadTracker } = trackerModule;
 const { flowPlaylistConfig } = playlistConfigModule;
 const { playlistManager } = playlistManagerModule;
 const {
+  moveHandedOverTracksToLidarr,
   pathsShareDevice,
   reuseTrackForPlaylist,
   repairJobsUnderRemovedPlaylistDir,
@@ -546,4 +551,92 @@ test("removePlaylistFileIfUnshared preserves external files during shared cleanu
 
   assert.equal(result.action, "skipped");
   await fs.access(externalPath);
+});
+
+async function seedHandoverAlbum({ handedOver = true } = {}) {
+  const artistMbid = "f1111111-1111-4111-8111-111111111111";
+  const albumMbid = "f2222222-2222-4222-8222-222222222222";
+  const trackMbid = "f3333333-3333-4333-8333-333333333333";
+  const aurralPath = path.join(weeklyFlowRoot, "Handover Artist", "Handover Album", "01 Single.flac");
+  const lidarrPath = path.join(isolatedState.dataDir, "lidarr", "Handover Artist", "Handover Album", "01 Single.flac");
+  for (const [filePath, content] of [[aurralPath, "aurral"], [lidarrPath, "lidarr"]]) {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, content);
+  }
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: `mbid:${artistMbid}`,
+    mbid: artistMbid,
+    name: "Handover Artist",
+  });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: `release-group:${albumMbid}`,
+    mbid: albumMbid,
+    releaseGroupMbid: albumMbid,
+    artistId: artist.id,
+    title: "Handover Album",
+    metadata: handedOver ? { aurralHandoverAt: Date.now() } : {},
+  });
+  managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "lidarr" });
+  const track = libraryStore.upsertLibraryTrack({
+    identityKey: `recording:${trackMbid}`,
+    mbid: trackMbid,
+    title: "Single",
+    artistName: "Handover Artist",
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  for (const [source, filePath] of [["aurral", aurralPath], ["lidarr", lidarrPath]]) {
+    libraryStore.upsertLibraryMediaFile({ trackId: track.id, albumId: album.id, source, path: filePath });
+  }
+  const jobId = downloadTracker.addJob(
+    {
+      artistName: "Handover Artist",
+      trackName: "Single",
+      albumName: "Handover Album",
+      artistMbid,
+      albumMbid,
+      trackMbid,
+    },
+    "synced-playlist",
+  );
+  downloadTracker.setDone(jobId, aurralPath, "Handover Album");
+  return { jobId, aurralPath, lidarrPath };
+}
+
+const fileExists = (filePath) => fs.access(filePath).then(() => true, () => false);
+
+test("a playlist track of an album handed to Lidarr moves onto Lidarr's file and the Aurral copy goes", async (t) => {
+  t.mock.method(playlistManager, "refreshPlaylist", async () => null);
+  const { jobId, aurralPath, lidarrPath } = await seedHandoverAlbum();
+
+  const result = await moveHandedOverTracksToLidarr({
+    weeklyFlowRoot,
+    existingFileMode: "reuse",
+    deletionGuard: { canDelete: async () => true },
+  });
+
+  assert.deepEqual(result, { moved: 1, deleted: 1 });
+  assert.equal(path.resolve(downloadTracker.getJob(jobId).finalPath), path.resolve(lidarrPath));
+  assert.equal(await fileExists(aurralPath), false);
+  assert.equal(await fs.readFile(lidarrPath, "utf8"), "lidarr");
+});
+
+test("Aurral copies stay when the album was not handed over or playback still uses them", async (t) => {
+  t.mock.method(playlistManager, "refreshPlaylist", async () => null);
+  const notHandedOver = await seedHandoverAlbum({ handedOver: false });
+
+  await moveHandedOverTracksToLidarr({ weeklyFlowRoot, existingFileMode: "reuse" });
+  assert.equal(downloadTracker.getJob(notHandedOver.jobId).finalPath, notHandedOver.aurralPath);
+
+  await resetDatabase(db);
+  downloadTracker.clearAll();
+  const inUse = await seedHandoverAlbum();
+  const result = await moveHandedOverTracksToLidarr({
+    weeklyFlowRoot,
+    existingFileMode: "reuse",
+    deletionGuard: { canDelete: async () => false },
+  });
+
+  assert.deepEqual(result, { moved: 1, deleted: 0 });
+  assert.equal(path.resolve(downloadTracker.getJob(inUse.jobId).finalPath), path.resolve(inUse.lidarrPath));
+  assert.equal(await fileExists(inUse.aurralPath), true);
 });

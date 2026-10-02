@@ -93,6 +93,9 @@ export const getMonitoringMenuAction = ({ monitored, hasMissing }) => {
   return hasMissing ? null : "monitor";
 };
 
+export const isProvisionalAurralAlbum = (album) =>
+  getAlbumMonitoredState(album) === false && !album.monitorMode;
+
 export const canDownloadAurralAlbum = (album, { hasMissingTracks }) =>
   getAlbumMonitoredState(album) === false &&
   hasMissingTracks &&

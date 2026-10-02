@@ -13,6 +13,7 @@ import {
   getCanonicalArtistMbids,
   getCanonicalArtistProjection,
 } from "../../../services/libraryQueryService.js";
+import { isProvisionalAurralAlbum } from "../../../services/aurralMonitoring.js";
 
 const ARTIST_LOOKUP_BATCH_MAX = 100;
 
@@ -40,7 +41,7 @@ const canonicalAlbumResult = (album, ownedTrackMbids = []) => ({
         ? "available"
         : "partial",
   monitored: album.monitored,
-  managedBy: album.managedBy || null,
+  managedBy: isProvisionalAurralAlbum(album) ? null : album.managedBy || null,
   percentOfTracks: Number(album.statistics?.percentOfTracks || 0),
   sizeOnDisk: Number(album.statistics?.sizeOnDisk || 0),
   trackCount: Number(album.statistics?.trackCount || 0),

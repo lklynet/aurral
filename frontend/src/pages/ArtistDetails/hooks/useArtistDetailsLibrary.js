@@ -319,19 +319,24 @@ export function useArtistDetailsLibrary({
     const manager = deleteManager;
     try {
       await deleteArtistMutation.mutateAsync({ mbid, deleteFiles, manager });
-      showSuccess(
-        `Removed ${artist?.name || "artist"} from ${manager ? getManagerName(manager) : "your library"}${
-          deleteFiles ? " and deleted its files" : ""
-        }`,
-      );
-      setShowDeleteModal(false);
-      await reloadLibraryState();
     } catch (err) {
       showError(
         `Failed to remove artist: ${
           err.response?.data?.message || err.response?.data?.error || err.message
         }`,
       );
+      return;
+    }
+    showSuccess(
+      `Removed ${artist?.name || "artist"} from ${manager ? getManagerName(manager) : "your library"}${
+        deleteFiles ? " and deleted its files" : ""
+      }`,
+    );
+    setShowDeleteModal(false);
+    try {
+      await reloadLibraryState();
+    } catch {
+      showError("The artist was removed, but the page could not refresh. Reload the page.");
     }
   };
 

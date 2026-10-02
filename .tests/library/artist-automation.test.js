@@ -3,7 +3,16 @@ import assert from "node:assert/strict";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps }, libraryStore, managementStore, { lidarrClient }, { libraryManager }] =
+const [
+  isolatedState,
+  { db },
+  { dbOps },
+  libraryStore,
+  managementStore,
+  { lidarrClient },
+  { libraryManager },
+  { registerArtists },
+] =
   await setupIsolatedBackend(
     "artist-automation",
     "backend/config/db-sqlite.js",
@@ -12,7 +21,30 @@ const [isolatedState, { db }, { dbOps }, libraryStore, managementStore, { lidarr
     "backend/services/libraryManagementStore.js",
     "backend/services/lidarrClient.js",
     "backend/services/libraryManager.js",
+    "backend/routes/library/handlers/artists.js",
   );
+
+const routes = new Map();
+const route = (method) => (routePath, ...handlers) => routes.set(`${method} ${routePath}`, handlers.at(-1));
+registerArtists({ get: route("GET"), post: route("POST"), put: route("PUT"), delete: route("DELETE") });
+
+async function callRoute(key, { params = {}, query = {}, body = {} } = {}) {
+  const response = { statusCode: 200, body: null };
+  await routes.get(key)(
+    { params, query, body, user: { role: "admin" } },
+    {
+      status(code) {
+        response.statusCode = code;
+        return this;
+      },
+      json(value) {
+        response.body = value;
+        return this;
+      },
+    },
+  );
+  return response;
+}
 
 const artistMbid = "c1111111-1111-4111-8111-111111111111";
 const aurralAlbumMbid = "c2222222-2222-4222-8222-222222222201";
@@ -196,7 +228,7 @@ test("the monitoring state reports both managers and which one is active", async
   const lidarrActive = await libraryManager.getArtistMonitoring(artistMbid);
 
   assert.deepEqual(aurralActive, {
-    aurral: { inLibrary: true, mode: "future" },
+    aurral: { known: true, inLibrary: true, mode: "future" },
     lidarr: { available: true, inLidarr: true, monitorOption: "none", error: null },
     active: "aurral",
   });
@@ -234,4 +266,27 @@ test("None on one manager leaves the other manager and the artist's owner alone"
   assert.deepEqual(lidarr.calls, [["monitor", "none"]]);
   assert.equal(untouched.error, undefined);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE mbid = ?").get(neverAurral).n, 0);
+});
+
+test("Lidarr keeps monitoring when Aurral cannot start monitoring the artist", async () => {
+  const artist = seedArtist("lidarr", "all");
+  lidarr.artist = { id: 41, artistName: "Automation Artist", foreignArtistId: artistMbid, monitorNewItems: "all" };
+
+  const result = await libraryManager.setArtistAutomation(artistMbid, { manager: "aurral", monitorOption: "all", user: admin });
+
+  assert.equal(result.statusCode, 503);
+  assert.deepEqual(lidarr.calls, []);
+  assert.deepEqual(artistManagement(artist.id), ["lidarr", "all"]);
+});
+
+test("removing an artist with an unknown manager is refused and touches nothing", async () => {
+  seedArtist("aurral", "none");
+  lidarr.artist = { id: 41, artistName: "Automation Artist", foreignArtistId: artistMbid, monitorNewItems: "none" };
+
+  for (const manager of ["aurral ", ["lidarr"], "both"]) {
+    const response = await callRoute("DELETE /artists/:mbid", { params: { mbid: artistMbid }, query: { manager } });
+    assert.equal(response.statusCode, 400, JSON.stringify(manager));
+  }
+  assert.deepEqual(lidarr.calls, []);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE mbid = ?").get(artistMbid).n, 1);
 });

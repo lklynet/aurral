@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { db } from "../../config/db-sqlite.js";
 import { downloadTracker } from "./weeklyFlowDownloadTracker.js";
 import {
   flowPlaylistConfig,
@@ -916,6 +917,72 @@ export async function repairReusableTrackLinks(options = {}) {
     nextCursor,
     total: sortedJobs.length,
   };
+}
+
+const handedOverAurralPathsStmt = db.prepare(`
+  SELECT media.path
+  FROM library_media_files AS media
+  JOIN library_albums AS album ON album.id = media.album_id
+  JOIN library_management AS management
+    ON management.entity_kind = 'album' AND management.entity_id = album.id
+  WHERE media.source = 'aurral'
+    AND media.available = 1
+    AND management.managed_by = 'lidarr'
+    AND json_valid(album.metadata_json)
+    AND json_extract(album.metadata_json, '$.aurralHandoverAt') IS NOT NULL
+`).pluck();
+
+export async function moveHandedOverTracksToLidarr(options = {}) {
+  if (normalizeExistingFileMode(options.existingFileMode) === "download") return { moved: 0, deleted: 0 };
+  const weeklyFlowRoot = path.resolve(options.weeklyFlowRoot || resolveWeeklyFlowRoot());
+  const handedOver = new Set(handedOverAurralPathsStmt.all().map((filePath) => path.resolve(filePath)));
+  if (handedOver.size === 0) return { moved: 0, deleted: 0 };
+
+  const jobsByPath = new Map();
+  for (const job of downloadTracker.getAll()) {
+    if (job?.status !== "done" || typeof job.finalPath !== "string") continue;
+    const current = path.resolve(remapLegacyWeeklyFlowPath(job.finalPath, weeklyFlowRoot));
+    if (handedOver.has(current)) jobsByPath.set(current, [...(jobsByPath.get(current) || []), job]);
+  }
+
+  const movedPaths = [];
+  const changedPlaylistTypes = new Set();
+  let moved = 0;
+  for (const [oldPath, jobs] of jobsByPath) {
+    const source = await findLidarrSource(jobs[0], { targetPlaylistType: "library" });
+    if (!source || !(await fileExists(source.sourcePath))) continue;
+    for (const job of jobs) {
+      downloadTracker.setDone(
+        job.id,
+        path.resolve(source.sourcePath),
+        source.albumName || job.albumName || null,
+        source.externalPath || null,
+      );
+      if (job.playlistType) changedPlaylistTypes.add(String(job.playlistType));
+    }
+    moved += jobs.length;
+    movedPaths.push(oldPath);
+  }
+  if (movedPaths.length === 0) return { moved: 0, deleted: 0 };
+
+  const { playlistManager } = await import("./weeklyFlowPlaylistManager.js");
+  for (const playlistType of changedPlaylistTypes) {
+    await playlistManager.refreshPlaylist(playlistType).catch((error) => {
+      console.warn(`[WeeklyFlowReuse] Could not refresh playlist ${safeLogDiagnostic(playlistType)}:`,
+        safeLogDiagnostic(error));
+    });
+  }
+  const deletionGuard = options.deletionGuard || createPlaybackDeletionGuard({ playlistRoot: weeklyFlowRoot });
+  let deleted = 0;
+  for (const oldPath of movedPaths) {
+    if (!(await deletionGuard.canDelete(oldPath).catch(() => false))) continue;
+    await fs.rm(oldPath, { force: true });
+    forgetPlaybackRetainedFile(oldPath);
+    deleted += 1;
+  }
+  scheduleLibraryScanJob({ includeLidarr: false, changedPaths: movedPaths });
+  console.log(`[WeeklyFlowReuse] Moved ${moved} tracks onto Lidarr files and removed ${deleted} Aurral copies`);
+  return { moved, deleted };
 }
 
 async function refreshPlaylistAfterReuse(
