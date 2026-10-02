@@ -113,3 +113,18 @@ test("an album you chose for Aurral stays Aurral's and Lidarr is not asked to ad
   assert.equal(managementStore.getManagedBy("album", album.id), "aurral");
   assert.equal(lidarrAdds, 0);
 });
+
+test("a Lidarr album in the Library is removed from Lidarr by its MusicBrainz ID", async () => {
+  const deleted = [];
+  lidarrClient.getAlbumByMbid = async (mbid) => (mbid === albumMbid ? lidarrAlbum : null);
+  lidarrClient.deleteAlbum = async (id, deleteFiles) => {
+    deleted.push([id, deleteFiles]);
+  };
+
+  const removed = await libraryManager.deleteLidarrAlbumByMbid(albumMbid, true);
+  const unknown = await libraryManager.deleteLidarrAlbumByMbid("e9999999-9999-4999-8999-999999999999", true);
+
+  assert.equal(removed.success, true);
+  assert.equal(unknown.statusCode, 404);
+  assert.deepEqual(deleted, [[lidarrAlbum.id, true]]);
+});

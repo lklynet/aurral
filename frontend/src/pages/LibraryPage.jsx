@@ -58,6 +58,7 @@ import {
   deleteAlbumFromLibrary,
   deleteArtistFromLibrary,
   deleteAurralAlbumFromLibrary,
+  deleteLidarrAlbumFromLibrary,
   deleteTrackFromLibrary,
   fetchCanonicalLibraryPage,
   getActiveLibraryRefresh,
@@ -98,7 +99,7 @@ import {
   shouldPollAlbumStatuses,
 } from "../utils/aurralAlbumStatus.js";
 import { describeAlbumBadges, trackSourceLabel } from "../utils/librarySourceBadges.js";
-import { getManagerName, resolveAlbumManager } from "../utils/libraryDestination.js";
+import { canRemoveLibraryAlbum, getManagerName, resolveAlbumManager } from "../utils/libraryDestination.js";
 import { describeAlbumRequestResult } from "../utils/albumAddAction.js";
 import {
   canDownloadAurralAlbum,
@@ -965,10 +966,12 @@ function LibraryPage() {
       if (!isPreviewLibrary) {
         if (removal.kind === "artist") {
           await deleteArtistFromLibrary(entity.mbid, deleteFiles, removal.manager);
-        } else if (removal.kind === "album" && entity.managedBy === "aurral") {
+        } else if (removal.kind === "album" && resolveAlbumManager(entity) === "aurral") {
           await deleteAurralAlbumFromLibrary(entity.canonicalId || entity.id, deleteFiles);
+        } else if (removal.kind === "album" && /^\d+$/.test(String(entity.providerId ?? ""))) {
+          await deleteAlbumFromLibrary(entity.providerId, deleteFiles);
         } else if (removal.kind === "album") {
-          await deleteAlbumFromLibrary(entity.providerId || entity.id, deleteFiles);
+          await deleteLidarrAlbumFromLibrary(entity.mbid || entity.releaseGroupMbid, deleteFiles);
         } else {
           await deleteTrackFromLibrary(entity.id);
         }
@@ -1320,8 +1323,6 @@ function LibraryPage() {
     artistName: libraryArtist?.name,
     canChange: canChangeMonitoring,
     canAdd: canEditArtistMbid,
-    canRemove: canDeleteArtist,
-    onRemove: (manager) => openLibraryRemoval("artist", libraryArtist, manager),
     onChanged: refreshLibraryArtistMonitoring,
   });
   const libraryArtistMonitoringItems =
@@ -1340,6 +1341,22 @@ function LibraryPage() {
               : libraryArtistMonitoring.itemsFor(manager),
           };
         })
+      : [];
+  const libraryArtistRemovalItems =
+    canDeleteArtist && libraryArtist?.mbid && !isPreviewLibrary && libraryArtistMonitoring.state
+      ? [
+          libraryArtistMonitoring.state.aurral.inLibrary && "aurral",
+          libraryArtistMonitoring.state.lidarr.inLidarr && "lidarr",
+        ]
+          .filter(Boolean)
+          .map((manager, index) => ({
+            id: `remove-${manager}`,
+            label: `Remove from ${getManagerName(manager)}`,
+            icon: Trash2,
+            danger: true,
+            separatorBefore: index === 0,
+            onSelect: () => openLibraryRemoval("artist", libraryArtist, manager),
+          }))
       : [];
   const hasMissingAlbumTracks = Boolean(
     libraryAlbum && getAlbumTracks(libraryAlbum).some((track) => !firstAvailableFile(track)),
@@ -2270,7 +2287,7 @@ function LibraryPage() {
                     },
                   ]
                 : []),
-              ...(canDeleteAlbum && (album.providerId || album.managedBy === "aurral")
+              ...(canDeleteAlbum && canRemoveLibraryAlbum(album)
                 ? [
                     {
                       id: "delete",
@@ -2613,7 +2630,7 @@ function LibraryPage() {
                     onSelect: () => toggleFavorite("album", libraryAlbum),
                   },
                   ...(albumMonitoringMenuItem ? [albumMonitoringMenuItem] : []),
-                  ...(canDeleteAlbum && (libraryAlbum.providerId || libraryAlbum.managedBy === "aurral")
+                  ...(canDeleteAlbum && canRemoveLibraryAlbum(libraryAlbum)
                     ? [
                         {
                           id: "delete",
@@ -2747,6 +2764,7 @@ function LibraryPage() {
                     onSelect: () => toggleFavorite("artist", libraryArtist),
                   },
                   ...libraryArtistMonitoringItems,
+                  ...libraryArtistRemovalItems,
                 ]}
               />
             </div>
@@ -2797,7 +2815,7 @@ function LibraryPage() {
       <DeleteAlbumModal
         show={libraryRemoval?.kind === "album"}
         title={libraryRemoval?.entity?.title || libraryRemoval?.entity?.albumName}
-        managedBy={libraryRemoval?.entity?.managedBy}
+        managedBy={resolveAlbumManager(libraryRemoval?.entity)}
         deleteFiles={deleteFiles}
         onDeleteFilesChange={setDeleteFiles}
         onCancel={() => setLibraryRemoval(null)}

@@ -367,6 +367,26 @@ export function registerAlbums(router) {
   );
 
   router.delete(
+    "/albums/lidarr/:mbid",
+    requireAuth,
+    requirePermission("deleteAlbum"),
+    async (req, res) => {
+      try {
+        const result = await libraryManager.deleteLidarrAlbumByMbid(
+          req.params.mbid,
+          req.query?.deleteFiles === "true",
+        );
+        if (!result?.success) {
+          return res.status(result?.statusCode || 503).json({ error: result?.error || "Failed to delete album" });
+        }
+        res.json({ success: true, message: "Album deleted successfully" });
+      } catch (error) {
+        res.status(500).json({ error: "Failed to delete album", message: error.message });
+      }
+    },
+  );
+
+  router.delete(
     "/albums/:id",
     requireAuth,
     requirePermission("deleteAlbum"),

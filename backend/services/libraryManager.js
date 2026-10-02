@@ -3219,6 +3219,16 @@ export class LibraryManager {
     return { error: "Album not found in Lidarr" };
   }
 
+  async deleteLidarrAlbumByMbid(albumMbid, deleteFiles = false) {
+    const lidarr = await getLidarrClient();
+    if (!lidarr || !lidarr.isConfigured()) {
+      return { success: false, error: "Lidarr is not configured", statusCode: 503 };
+    }
+    const album = await lidarr.getAlbumByMbid(albumMbid, { forceRefresh: true });
+    if (!album?.id) return { success: false, error: "Lidarr does not have this album", statusCode: 404 };
+    return this.deleteAlbum(album.id, deleteFiles);
+  }
+
   async deleteAlbum(id, deleteFiles = false) {
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) {

@@ -263,6 +263,11 @@ export const deleteArtistFromLibrary = (mbid, deleteFiles = false, manager = nul
 export const getArtistMonitoring = (mbid, { signal } = {}) =>
   getData(`/library/artists/${encodeURIComponent(mbid)}/monitoring`, { signal });
 
+export const deleteLidarrAlbumFromLibrary = (mbid, deleteFiles = false) =>
+  deleteData(`/library/albums/lidarr/${encodeURIComponent(mbid)}`, {
+    params: { deleteFiles },
+  });
+
 export const deleteAlbumFromLibrary = (id, deleteFiles = false) =>
   deleteData(`/library/albums/${id}`, {
     params: { deleteFiles },

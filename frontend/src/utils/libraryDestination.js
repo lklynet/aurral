@@ -14,6 +14,12 @@ export const resolveAlbumManager = (album) =>
   normalizeLibraryManager(album?.managedBy) ||
   (Array.isArray(album?.sources) && album.sources.includes("lidarr") ? "lidarr" : null);
 
+export const canRemoveLibraryAlbum = (album) => {
+  const manager = resolveAlbumManager(album);
+  if (manager === "aurral") return true;
+  return manager === "lidarr" && Boolean(album.mbid || album.releaseGroupMbid || album.providerId);
+};
+
 export const getManagerName = (manager) =>
   MANAGER_NAMES[normalizeLibraryManager(manager)] || MANAGER_NAMES.aurral;
 

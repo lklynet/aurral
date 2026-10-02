@@ -141,6 +141,7 @@ export function useArtistMonitoring({
   };
 
   return {
+    state,
     destination,
     ready: destination.ready && !destination.error,
     managers,
