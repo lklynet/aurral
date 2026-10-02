@@ -59,7 +59,7 @@ export function CollectionHeader({ cover, kicker, title, subtitle, meta, status,
       {corner ? <div className="collection-header__corner">{corner}</div> : null}
       <div className="native-library-detail__cover">{cover}</div>
       <div className="native-library-detail__body">
-        <p className="native-library-kicker">{kicker}</p>
+        {kicker ? <p className="native-library-kicker">{kicker}</p> : null}
         <h1 className="collection-header__title">{title}</h1>
         {typeof subtitle === "string" ? (
           <p className="collection-header__description">{subtitle}</p>

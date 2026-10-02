@@ -185,7 +185,6 @@ export default function EditorialPlaylistDetailPage() {
             </div>
           )
         }
-        kicker={playlist.curator ? `Deezer · ${playlist.curator}` : "Deezer playlist"}
         title={playlist.name}
         subtitle={playlist.description || null}
         meta={formatTrackTotal(tracks.length)}
