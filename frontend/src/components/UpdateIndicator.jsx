@@ -51,12 +51,12 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
   const isNightly = releaseChannel === "nightly";
   const checkIntervalMs = isNightly ? NIGHTLY_CHECK_INTERVAL_MS : CHECK_INTERVAL_MS;
   const cacheKey = useMemo(
-    () => `aurral:updateCache:v2:${repo}:${releaseChannel}`,
-    [releaseChannel, repo],
+    () => `aurral:updateCache:${isNightly ? "v2:" : ""}${repo}:${releaseChannel}`,
+    [isNightly, releaseChannel, repo],
   );
   const checkMetaKey = useMemo(
-    () => `aurral:updateCheckMeta:v2:${repo}:${releaseChannel}`,
-    [releaseChannel, repo],
+    () => `aurral:updateCheckMeta:${isNightly ? "v2:" : ""}${repo}:${releaseChannel}`,
+    [isNightly, releaseChannel, repo],
   );
 
   useEffect(() => {
