@@ -315,23 +315,6 @@ export class WeeklyFlowWorker {
     return normalized;
   }
 
-  _getPlaylistTargetCount(playlistType) {
-    const key = String(playlistType || "").trim();
-    const flow = flowPlaylistConfig.getFlow(key);
-    const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(key);
-    const achievedPrimary = Number(this.playlistRunDiagnostics.get(key)?.achieved?.primary);
-    if (Number.isFinite(achievedPrimary) && achievedPrimary > 0) {
-      return Math.max(1, Math.floor(achievedPrimary));
-    }
-    const jobCount = downloadTracker.getByPlaylistType(key).length;
-    if (jobCount > 0) {
-      return jobCount;
-    }
-    const raw = Number(flow?.size || sharedPlaylist?.trackCount || 0);
-    if (!Number.isFinite(raw) || raw <= 0) return null;
-    return Math.max(1, Math.floor(raw));
-  }
-
   _getPlaylistFailureState(playlistType) {
     const key = String(playlistType || "").trim();
     if (!key) {
@@ -497,13 +480,6 @@ export class WeeklyFlowWorker {
     this.stop();
   }
 
-  _hasReachedPlaylistTarget(playlistType) {
-    const target = this._getPlaylistTargetCount(playlistType);
-    if (!target) return false;
-    const stats = downloadTracker.getPlaylistTypeStats(playlistType);
-    return Number(stats?.done || 0) >= target;
-  }
-
   _trackKeyFromJob(job) {
     const artist = String(job?.artistName || "")
       .trim()
@@ -536,19 +512,6 @@ export class WeeklyFlowWorker {
     return String(track?.artistName || "")
       .trim()
       .toLowerCase();
-  }
-
-  _dropOverflowPendingJobs(playlistType) {
-    if (!this._hasReachedPlaylistTarget(playlistType)) return 0;
-    const jobs = downloadTracker.getByPlaylistType(playlistType);
-    let removed = 0;
-    for (const job of jobs) {
-      if (job.status === "done") continue;
-      if (downloadTracker.removeJob(job.id)) {
-        removed += 1;
-      }
-    }
-    return removed;
   }
 
   markIncompleteRetryDequeued(playlistType, jobId = null) {
@@ -587,11 +550,6 @@ export class WeeklyFlowWorker {
     }
 
     const stats = downloadTracker.getPlaylistTypeStats(playlistType);
-    const target = this._getPlaylistTargetCount(playlistType);
-    if (!target || stats.done >= target) {
-      this.clearIncompleteRetry(playlistType);
-      return 0;
-    }
     if (stats.pending > 0 || stats.downloading > 0) {
       if (this.running) {
         this.wake();
@@ -692,10 +650,6 @@ export class WeeklyFlowWorker {
           break;
         }
         this.lastDequeuedPlaylistType = job.playlistType;
-        if (this._hasReachedPlaylistTarget(job.playlistType)) {
-          downloadTracker.removeJob(job.id);
-          continue;
-        }
         if (this._isPlaylistBlocked(job.playlistType)) {
           downloadTracker.deferPendingToBack(job.id, "Playlist mutation in progress", {
             keepRetryTier: true,
@@ -828,7 +782,6 @@ export class WeeklyFlowWorker {
           allowLidarr: !job.requestGroupId,
         });
         if (reuse.reused) {
-          this._dropOverflowPendingJobs(job.playlistType);
           this._recordCompletedTrack(Number(process.hrtime.bigint() - perfStartHr) / 1e6, 0);
           phaseStart = process.hrtime.bigint();
           this._assertJobCanContinue(job, runGeneration);

@@ -22,7 +22,7 @@ import { parseFile } from "music-metadata";
 import { buildTrackRequest } from "./trackIdentity.js";
 import { getFileName, getFileBaseName, claimedTitle, parseFilenameArtistTitle } from "./candidateNormalizer.js";
 import { getCoreTitle, stripPromoDescriptors } from "./semanticPolicy.js";
-import { assignReleaseFiles, parseListingTitle, verifyDownloadedRecording } from "./nativeMatcher.js";
+import { assignReleaseFiles, MATCH_POLICY, parseListingTitle, verifyDownloadedRecording } from "./nativeMatcher.js";
 import { getNormalizedText, scoreTextMatch } from "../providers/brainzmashRanking.js";
 import { validateParsedQuality } from "../qualityProfileService.js";
 import { logger } from "../logger.js";
@@ -35,6 +35,7 @@ export const POST_DOWNLOAD_DECISIONS = {
 };
 
 const MANUAL_RELEASE_FILE_TITLE_THRESHOLD = 70;
+const STRICT_DURATION_GAP_MS = 1000;
 
 function readTagText(value) {
   return String(value || "").trim() || null;
@@ -128,6 +129,32 @@ export function buildActualFileCandidate(parsed, filePath, source, preDownloadCa
     },
     raw: preDownloadCandidate?.raw || {},
   };
+}
+
+function joinPhrases(phrases) {
+  return phrases.length > 1
+    ? `${phrases.slice(0, -1).join(", ")} and ${phrases.at(-1)}`
+    : phrases[0];
+}
+
+function describeReviewReason({ verification, artists, actualDurationMs, requestedDurationMs, maxDurationGapMs }) {
+  const issues = [];
+  const gap = verification.durationGapMs;
+  if (gap == null) {
+    issues.push("has no comparable length");
+  } else if (gap > maxDurationGapMs) {
+    const seconds = (Math.ceil(gap / 100) / 10).toFixed(1);
+    issues.push(`is ${seconds}s ${actualDurationMs > requestedDurationMs ? "longer" : "shorter"} than the requested track`);
+  }
+  if (!verification.evidence.includes("title")) {
+    issues.push("has a title that only partly matches the requested track");
+  }
+  if (!verification.evidence.includes("artist")) {
+    issues.push(artists.length
+      ? "has an artist tag that only partly matches the requested artist"
+      : "has no artist tag");
+  }
+  return `downloaded file ${joinPhrases(issues)}`;
 }
 
 export async function validateDownloadedTrackFile({
@@ -237,9 +264,15 @@ export async function validateDownloadedTrackFile({
     && verification.contradictions[0] === "duration"
     && verification.evidence.includes("title")
     && verification.evidence.includes("artist");
-  const strictDurationUncertain = strict && verification.durationGapMs != null
-    && verification.durationGapMs > 1000 && !verification.evidence.includes("recording-mbid");
-  const decision = verification.decision === "matched" && !strictDurationUncertain
+  const tagsConfirmIdentity = Boolean(readTagText(parsed?.common?.title))
+    && verification.evidence.includes("title")
+    && verification.evidence.includes("artist");
+  const maxDurationGapMs = strict && !tagsConfirmIdentity
+    ? STRICT_DURATION_GAP_MS
+    : MATCH_POLICY.selectedDurationGapMs;
+  const durationUncertain = verification.durationGapMs != null
+    && verification.durationGapMs > maxDurationGapMs && !verification.evidence.includes("recording-mbid");
+  const decision = verification.decision === "matched" && !durationUncertain
     ? POST_DOWNLOAD_DECISIONS.VERIFIED
     : durationOnlyConflict
       ? POST_DOWNLOAD_DECISIONS.AMBIGUOUS
@@ -251,9 +284,13 @@ export async function validateDownloadedTrackFile({
       ? `downloaded file contradicts the requested recording: ${contradictions.join(", ")}`
       : "downloaded file has no original identity tags"
     : decision === POST_DOWNLOAD_DECISIONS.AMBIGUOUS
-      ? durationOnlyConflict
-        ? "downloaded file duration mismatch requires review"
-        : "downloaded file has insufficient recording evidence"
+      ? describeReviewReason({
+        verification,
+        artists: actual.artists,
+        actualDurationMs,
+        requestedDurationMs: trackRequest.durationMs,
+        maxDurationGapMs,
+      })
       : null;
   logger.debug("matcher", "post-download validation", {
     source, stage: "post-download", decision,

@@ -9,6 +9,7 @@ import {
   recordTrackJobQueued,
 } from "../aurralHistoryService.js";
 import {
+  buildCoreTrackIdentity,
   buildImportTrackIdentity,
   buildSharedTrackIdentity,
   dedupeSharedTracks,
@@ -618,7 +619,7 @@ async function updateSharedPlaylistLocked({
   let tracksQueued = 0;
   let tracksReused = 0;
   if (!hasTracksUpdate) {
-    await withPlaylistMutation(safePlaylistId, async () => {
+    await withPlaylistMutationLock(safePlaylistId, async () => {
       const lockedPlaylist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
       const lockedImportSource = lockedPlaylist?.importSource || currentPlaylist.importSource;
       const importSourceToStore =
@@ -642,51 +643,33 @@ async function updateSharedPlaylistLocked({
         deleteUnsharedFiles ||
         (mergeImportSource && lockedImportSource?.keepRemovedTracks === false);
       const existingJobs = downloadTracker.getByPlaylistType(safePlaylistId).filter((job) => !job.upgradeForJobId);
-      const reusableJobsByIdentity = new Map();
-      const reusableJobsByImportIdentity = new Map();
-      for (const job of existingJobs) {
-        const identity = buildSharedTrackIdentity(job);
-        const current = reusableJobsByIdentity.get(identity) || [];
-        current.push(job);
-        reusableJobsByIdentity.set(identity, current);
-        if (mergeImportSource) {
-          const importIdentity = buildImportTrackIdentity(job);
-          const importJobs = reusableJobsByImportIdentity.get(importIdentity) || [];
-          importJobs.push(job);
-          reusableJobsByImportIdentity.set(importIdentity, importJobs);
-        }
-      }
-      for (const [identity, jobsForIdentity] of reusableJobsByIdentity.entries()) {
-        reusableJobsByIdentity.set(identity, sortJobsForTrackReuse(jobsForIdentity));
-      }
-      for (const [identity, jobsForIdentity] of reusableJobsByImportIdentity.entries()) {
-        reusableJobsByImportIdentity.set(identity, sortJobsForTrackReuse(jobsForIdentity));
-      }
-
       const matchedJobIds = new Set();
-      const tracksNeedingWork = [];
-      const tracksWithoutExactJob = [];
-      const takeReusableJob = (jobs) => {
+      const groupJobsBy = (buildKey) => {
+        const groups = new Map();
+        for (const job of existingJobs) {
+          const key = buildKey(job);
+          if (key) groups.set(key, [...(groups.get(key) || []), job]);
+        }
+        for (const [key, jobs] of groups) groups.set(key, sortJobsForTrackReuse(jobs));
+        return groups;
+      };
+      const takeReusableJob = (jobs = []) => {
         const index = jobs.findIndex((job) => !matchedJobIds.has(job.id));
         if (index < 0) return null;
         const [job] = jobs.splice(index, 1);
         return job;
       };
-      for (const track of normalizedTracks) {
-        const identity = buildSharedTrackIdentity(track);
-        const reusableJobs = reusableJobsByIdentity.get(identity) || [];
-        const matchedJob = takeReusableJob(reusableJobs);
-        if (matchedJob) {
-          matchedJobIds.add(matchedJob.id);
-        } else {
-          tracksWithoutExactJob.push(track);
-        }
-      }
-      for (const track of tracksWithoutExactJob) {
-        const reusableJobs = reusableJobsByImportIdentity.get(buildImportTrackIdentity(track)) || [];
-        const matchedJob = takeReusableJob(reusableJobs);
-        if (matchedJob) matchedJobIds.add(matchedJob.id);
-        else tracksNeedingWork.push(track);
+      const matchKeys = mergeImportSource
+        ? [buildSharedTrackIdentity, buildImportTrackIdentity, buildCoreTrackIdentity]
+        : [buildSharedTrackIdentity];
+      let tracksNeedingWork = normalizedTracks;
+      for (const buildKey of matchKeys) {
+        const jobsByKey = groupJobsBy(buildKey);
+        tracksNeedingWork = tracksNeedingWork.filter((track) => {
+          const matchedJob = takeReusableJob(jobsByKey.get(buildKey(track)));
+          if (matchedJob) matchedJobIds.add(matchedJob.id);
+          return !matchedJob;
+        });
       }
 
       const removedJobs = existingJobs.filter((job) => !matchedJobIds.has(job.id));
