@@ -266,7 +266,12 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
 
   useEffect(() => {
     if (!open) return;
-    menuRef.current?.querySelector("button:not(:disabled)")?.focus({ preventScroll: true });
+    const panel = menuRef.current;
+    if (!panel) return;
+    const firstItem = [...panel.querySelectorAll("button:not(:disabled)")].find(
+      (button) => !button.closest(".artist-menu-submenu"),
+    );
+    (firstItem || panel).focus({ preventScroll: true });
   }, [open]);
 
   const updatePosition = useCallback(() => {
@@ -419,6 +424,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
               className={`native-library-item-menu__panel${submenuSide === "left" ? " is-submenu-left" : ""}`}
               role="menu"
               aria-label={menuLabel}
+              tabIndex={-1}
               style={{ left: position.left, top: position.top }}
               onClick={(event) => event.stopPropagation()}
               onKeyDown={handleMenuKeyDown}

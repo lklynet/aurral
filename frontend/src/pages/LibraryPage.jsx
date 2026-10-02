@@ -2566,10 +2566,7 @@ function LibraryPage() {
                   menuLabel="Download with"
                   triggerLabel="Download album"
                   triggerIcon={
-                    <>
-                      {albumDownloadPending ? <DotLoader size="sm" label={null} /> : <Download aria-hidden="true" />}
-                      <MoreVertical aria-hidden="true" />
-                    </>
+                    albumDownloadPending ? <DotLoader size="sm" label={null} /> : <Download aria-hidden="true" />
                   }
                   disabled={albumDownloadPending}
                   contextMenu={false}
