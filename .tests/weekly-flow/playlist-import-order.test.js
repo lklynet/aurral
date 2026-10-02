@@ -956,6 +956,59 @@ test("replacing a shared playlist removes Spotify tracks and honors file retenti
   }
 });
 
+test("renaming or changing sync settings leaves queued downloads alone", async () => {
+  const tracks = ["Done", "Queued", "Held", "Failed"].map((trackName) => ({
+    artistName: "A",
+    trackName,
+    albumName: "Album",
+  }));
+  const playlist = flowPlaylistConfig.createSharedPlaylist({
+    name: "Imported",
+    tracks,
+    importSource: {
+      provider: "deezer-playlist",
+      externalId: "123",
+      syncEnabled: true,
+      syncIntervalHours: 24,
+      keepRemovedTracks: true,
+    },
+  });
+  const [doneId, queuedId, heldId, failedId] = tracks.map((track) =>
+    downloadTracker.addJob(track, playlist.id),
+  );
+  downloadTracker.setDone(doneId, path.join(weeklyFlowRoot, "done.flac"), "Album");
+  downloadTracker.setBlocked(heldId, "Held for review");
+  downloadTracker.setFailed(failedId, "No source");
+
+  await processWeeklyFlowOperation({
+    kind: "shared-playlist-update",
+    playlistId: playlist.id,
+    name: "Renamed",
+    tracks: playlist.tracks,
+    hasNameUpdate: true,
+    hasTracksUpdate: false,
+    hasImportSourceUpdate: true,
+    importSource: { ...playlist.importSource, syncIntervalHours: 72, keepRemovedTracks: false },
+  });
+
+  const updated = flowPlaylistConfig.getSharedPlaylist(playlist.id);
+  assert.equal(updated.name, "Renamed");
+  assert.equal(updated.importSource.syncIntervalHours, 72);
+  assert.equal(updated.importSource.keepRemovedTracks, false);
+  assert.equal(updated.tracks.length, 4);
+  assert.deepEqual(
+    Object.fromEntries(
+      downloadTracker.getByPlaylistType(playlist.id).map((job) => [job.id, job.status]),
+    ),
+    {
+      [doneId]: "done",
+      [queuedId]: "pending",
+      [heldId]: "blocked",
+      [failedId]: "failed",
+    },
+  );
+});
+
 test("imported playlist sync preserves enriched jobs while replacing removed tracks", async () => {
   const originalStart = weeklyFlowWorker.start;
   weeklyFlowWorker.start = async () => false;
@@ -969,10 +1022,11 @@ test("imported playlist sync preserves enriched jobs while replacing removed tra
       albumMbid: "22222222-2222-2222-2222-222222222222",
     };
     const removed = { artistName: "Artist", trackName: "Removed", albumName: "Album" };
+    const retitled = { artistName: "Artist", trackName: "Retitled", albumName: "Album" };
     const playlist = flowPlaylistConfig.createSharedPlaylist({
       name: "Imported Job Retention",
       ownerUserId: 7,
-      tracks: [pending, completed, removed],
+      tracks: [pending, completed, removed, retitled],
       importSource: {
         provider: "spotify-playlist",
         externalId: "imported-id",
@@ -987,6 +1041,9 @@ test("imported playlist sync preserves enriched jobs while replacing removed tra
     await fs.writeFile(completedPath, "audio");
     downloadTracker.setDone(completedJobId, completedPath, completed.albumName);
     const removedJobId = downloadTracker.addJob(removed, playlist.id);
+    const retitledJobId = downloadTracker.addJob(retitled, playlist.id);
+    downloadTracker.updateMetadata(retitledJobId, { albumName: "Album (Deluxe Edition)" });
+    downloadTracker.setDone(retitledJobId, completedPath, "Album (Deluxe Edition)");
 
     const result = await updateSharedPlaylist({
       playlistId: playlist.id,
@@ -994,12 +1051,14 @@ test("imported playlist sync preserves enriched jobs while replacing removed tra
         { artistName: "Artist", trackName: "Pending", albumName: "Album" },
         { artistName: "Artist", trackName: "Completed", albumName: "Album" },
         { artistName: "Artist", trackName: "New", albumName: "Album" },
+        { artistName: "Artist", trackName: "Retitled", albumName: "Album" },
       ],
       hasTracksUpdate: true,
       mergeImportSource: true,
     });
 
     assert.equal(result.tracksQueued, 1);
+    assert.equal(downloadTracker.getJob(retitledJobId)?.status, "done");
     assert.ok(downloadTracker.getJob(pendingJobId));
     assert.equal(downloadTracker.getJob(completedJobId)?.status, "done");
     await fs.access(completedPath);
