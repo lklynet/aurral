@@ -1,11 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Eye, EyeOff, MoreVertical, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
-import lidarrLogo from "../../images/logos/lidarr-color.svg";
+import { Eye, MoreVertical, Plus, SlidersHorizontal } from "lucide-react";
 import AddActionButton from "./AddActionButton";
 import { DotLoader } from "./DotLoader";
 import { LibraryItemMenu } from "./LibraryItemMenu";
-import SearchLibraryCheck from "./SearchLibraryCheck";
 import Tooltip from "./Tooltip";
 import { useToast } from "../contexts/ToastContext";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
@@ -13,22 +11,18 @@ import { queryClient, queryKeys } from "../queryClient.js";
 import { getArtistMonitoring, updateLibraryArtist } from "../utils/api/endpoints/library.js";
 import { describeAurralMonitoringError } from "../utils/aurralMonitoring.js";
 import {
-  buildManagerMonitoringItems,
-  describeArtistAdd,
+  buildArtistMonitoringItems,
   describeArtistMonitoring,
   describeArtistMonitoringChange,
+  getArtistMonitorOption,
+  isArtistMonitored,
 } from "../utils/artistMonitoring.js";
-import { getRemovalTarget } from "../utils/libraryDestination.js";
-
-export const LidarrLogo = ({ className }) => <img className={className} src={lidarrLogo} alt="" />;
 
 export function useArtistMonitoring({
   mbid,
   artistName = "",
   canChange = false,
   canAdd = false,
-  canRemove = false,
-  onRemove = null,
   onChanged = null,
 }) {
   const destination = useLibraryDestination();
@@ -42,19 +36,15 @@ export function useArtistMonitoring({
   });
   const state = monitoringQuery.data || null;
   const manager = state?.manager || destination.primary;
-  const adding = manager === "lidarr" && state?.added === false;
+  const current = getArtistMonitorOption(state);
   const name = artistName || "this artist";
 
   const choose = async (option) => {
-    if (!adding && option === state?.monitorOption) return;
+    if (option === current) return;
     setPending(true);
     try {
       const response = await updateLibraryArtist(mbid, { monitorOption: option, artistName: name });
-      showSuccess(
-        adding
-          ? describeArtistAdd({ name, manager, monitorOption: option })
-          : describeArtistMonitoringChange({ name, manager, option, response }),
-      );
+      showSuccess(describeArtistMonitoringChange({ name, option, response }));
       await queryClient.invalidateQueries({ queryKey: queryKeys.libraryArtist(mbid) });
       await onChanged?.();
     } catch (error) {
@@ -66,30 +56,12 @@ export function useArtistMonitoring({
 
   const reason = (() => {
     if (monitoringQuery.isError) return "Could not check monitoring. Reload the page to try again.";
-    if (!state) return manager === "lidarr" ? "Checking Lidarr" : "Checking monitoring";
+    if (!state) return "Checking monitoring";
     if (state.error) return state.error;
     return null;
   })();
 
   const canMonitor = state ? (state.added ? canChange : canAdd) : false;
-  const monitoringItems = canMonitor
-    ? buildManagerMonitoringItems({ manager, current: state.monitorOption, adding, onSelect: choose })
-    : [];
-  const removals = canRemove && onRemove && state
-    ? [
-        manager === "lidarr" && state.added && "lidarr",
-        (manager === "aurral" ? state.added : state.inAurral) && "aurral",
-      ].filter(Boolean)
-    : [];
-  const removalItems = removals.map((target, index) => ({
-    id: `remove-${target}`,
-    label: `Remove from ${getRemovalTarget(target, manager)}`,
-    icon: Trash2,
-    danger: true,
-    separatorBefore: index === 0,
-    closeBeforeSelect: true,
-    onSelect: () => onRemove(target),
-  }));
 
   return {
     state,
@@ -97,11 +69,12 @@ export function useArtistMonitoring({
     manager,
     ready: destination.ready && !destination.error,
     pending,
-    adding,
-    label: describeArtistMonitoring(state ?? { manager, added: true, monitorOption: "none" }),
+    monitored: isArtistMonitored(state),
+    label: describeArtistMonitoring(state),
     reason,
-    monitoringItems,
-    removalItems,
+    monitoringItems: canMonitor
+      ? buildArtistMonitoringItems({ manager, current, onSelect: choose })
+      : [],
   };
 }
 
@@ -115,89 +88,60 @@ const ButtonContent = ({ icon, label, pending }) => (
 
 export function ArtistMonitoringButtons({ onCustomizeLidarr = null, ...props }) {
   const monitoring = useArtistMonitoring(props);
-  const { manager, adding, reason, label, monitoringItems, removalItems, pending } = monitoring;
+  const { manager, monitored, reason, monitoringItems, pending, state } = monitoring;
 
   if (!monitoring.ready) {
     return <AddActionButton destination={monitoring.destination} showLabel />;
   }
 
-  const view = manager === "aurral"
-    ? {
-        icon: monitoring.state?.monitorOption && monitoring.state.monitorOption !== "none"
-          ? <Eye aria-hidden="true" />
-          : <EyeOff aria-hidden="true" />,
-        label,
-        name: `Monitoring: ${label}`,
-        menuLabel: "Monitoring",
-        items: [...monitoringItems, ...removalItems],
-      }
-    : adding
-      ? {
-          icon: <Plus aria-hidden="true" />,
-          label: "Add to Lidarr",
-          name: "Add to Lidarr",
-          menuLabel: "Add to Lidarr",
-          items: [...monitoringItems, ...removalItems],
-        }
-      : {
-          icon: <SearchLibraryCheck action aria-hidden="true" aria-label={undefined} />,
-          label: "In library",
-          name: `In library. Lidarr monitoring: ${label}`,
-          menuLabel: "Library",
-          items: [
-            ...(monitoringItems.length
-              ? [{ id: "monitor", label: `Monitor: ${label}`, icon: LidarrLogo, submenuItems: monitoringItems }]
-              : []),
-            ...removalItems,
-          ],
-        };
+  const icon = monitored ? <Eye aria-hidden="true" /> : <Plus aria-hidden="true" />;
+  const label = monitored ? monitoring.label : "Monitor";
+  const name = monitored ? `Monitoring: ${monitoring.label}` : "Monitor";
 
   if (reason) {
     return (
       <Tooltip content={reason}>
-        <span className="artist-monitoring-button__blocked" tabIndex={0} aria-label={`${view.name}. ${reason}`}>
+        <span className="artist-monitoring-button__blocked" tabIndex={0} aria-label={`${name}. ${reason}`}>
           <span className="btn btn-add-action btn-add-action--labeled is-disabled" aria-hidden="true">
-            <ButtonContent icon={view.icon} label={view.label} pending={false} />
+            <ButtonContent icon={icon} label={label} pending={false} />
           </span>
         </span>
       </Tooltip>
     );
   }
 
-  if (!view.items.length) {
-    if (adding) return null;
+  if (!monitoringItems.length) {
+    if (!monitored) return null;
     return (
-      <span className="btn btn-add-action btn-add-action--labeled" role="img" aria-label={view.name}>
-        <span className="btn-add-action__icon">{view.icon}</span>
-        <span className="btn-add-action__label">{view.label}</span>
+      <span className="btn btn-add-action btn-add-action--labeled" role="img" aria-label={name}>
+        <span className="btn-add-action__icon">{icon}</span>
+        <span className="btn-add-action__label">{label}</span>
       </span>
     );
   }
 
-  const menu = (
+  const customizeItems = manager === "lidarr" && state?.added === false && onCustomizeLidarr
+    ? [{
+        id: "customize",
+        label: "Customize add…",
+        icon: SlidersHorizontal,
+        separatorBefore: true,
+        closeBeforeSelect: true,
+        onSelect: onCustomizeLidarr,
+      }]
+    : [];
+
+  return (
     <LibraryItemMenu
-      label={view.name}
-      menuLabel={view.menuLabel}
-      triggerLabel={view.name}
+      label={name}
+      menuLabel="Monitoring"
+      triggerLabel={name}
       triggerClassName="btn btn-add-action btn-add-action--labeled btn-add-action--menu"
-      triggerIcon={<ButtonContent icon={view.icon} label={view.label} pending={pending} />}
+      triggerIcon={<ButtonContent icon={icon} label={label} pending={pending} />}
       disabled={pending}
       contextMenu={false}
       align="start"
-      items={view.items}
+      items={[...monitoringItems, ...customizeItems]}
     />
-  );
-
-  if (!(adding && onCustomizeLidarr && monitoringItems.length)) return menu;
-  return (
-    <div className="btn-add-action-group">
-      {menu}
-      <AddActionButton
-        icon={SlidersHorizontal}
-        label="Customize Lidarr add"
-        onClick={onCustomizeLidarr}
-        disabled={pending}
-      />
-    </div>
   );
 }

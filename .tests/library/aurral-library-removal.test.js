@@ -397,7 +397,7 @@ test("a failed artist removal stops monitoring and finishes on retry", async () 
   }
 });
 
-test("removing a Lidarr artist goes through Lidarr and leaves its Aurral albums", async (t) => {
+test("deleting a Lidarr artist also deletes its Aurral albums and their files", async (t) => {
   const { artist, album, tracks } = await createAurralAlbum();
   managementStore.setLibraryManagement({ entityKind: "artist", entityId: artist.id, managedBy: "lidarr" });
   const deleted = [];
@@ -415,9 +415,8 @@ test("removing a Lidarr artist goes through Lidarr and leaves its Aurral albums"
 
   assert.equal(response.statusCode, 200);
   assert.deepEqual(deleted, [{ id: 41, deleteFiles: true }]);
-  assert.notEqual(albumRow(album.id), undefined);
-  assert.equal(managementStore.getLibraryManagementEntry("album", album.id)?.managedBy, "aurral");
-  assert.equal(await exists(tracks[0].filePath), true);
+  assert.equal(managementStore.getLibraryManagementEntry("album", album.id), null);
+  assert.equal(await exists(tracks[0].filePath), false);
 });
 
 test("album removal keeps downloads that belong to Lidarr or to another album", async () => {

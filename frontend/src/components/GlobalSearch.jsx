@@ -37,7 +37,6 @@ import {
 import { describeAlbumRequestResult, getAlbumAddAction, shouldTriggerAlbumSearch } from "../utils/albumAddAction";
 import {
   buildAlbumRequestPayload,
-  getDestinationName,
 } from "../utils/libraryDestination";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { useDebouncedTask } from "../hooks/useDebouncedTask";
@@ -437,7 +436,7 @@ function GlobalSearch({ settingsMode = false }) {
           showInfo(`${album.title}: ${conflict.message}`);
           return;
         }
-        showError(`Failed to add album to ${getDestinationName(managedBy)}: ${
+        showError(`Could not download the album: ${
           err.response?.data?.message || err.response?.data?.error || err.message
         }`);
       } finally {

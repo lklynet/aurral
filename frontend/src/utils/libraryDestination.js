@@ -19,19 +19,6 @@ export const canRemoveLibraryAlbum = (album, { lidarrConnected = false } = {}) =
     Boolean(album.mbid || album.releaseGroupMbid || album.providerId);
 };
 
-export const getDestinationName = (manager) =>
-  normalizeLibraryManager(manager) === "lidarr" ? "Lidarr" : "your library";
-
-export const getRemovalTarget = (manager, activeManager) => {
-  if (normalizeLibraryManager(manager) === "lidarr") return "Lidarr";
-  return activeManager === "lidarr" ? "Aurral" : "library";
-};
-
-export const describeRemovalTarget = (manager, activeManager) => {
-  const target = getRemovalTarget(manager, activeManager);
-  return target === "library" ? "your library" : target;
-};
-
 export const getManagerName = (manager) =>
   MANAGER_NAMES[normalizeLibraryManager(manager)] || MANAGER_NAMES.aurral;
 

@@ -46,7 +46,6 @@ import { ArtistDetailsAppearsOn } from "./components/ArtistDetailsAppearsOn";
 import { ArtistDetailsPreviewTracks } from "./components/ArtistDetailsPreviewTracks";
 import { ArtistDetailsAbout } from "./components/ArtistDetailsAbout";
 import { ArtistDetailsSimilar } from "./components/ArtistDetailsSimilar";
-import { DeleteArtistModal } from "./components/DeleteArtistModal";
 import { DeleteAlbumModal } from "./components/DeleteAlbumModal";
 import { AddArtistCustomizeModal } from "./components/AddArtistCustomizeModal";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
@@ -125,7 +124,6 @@ function ArtistDetailsPage() {
   const [tasteActionPending, setTasteActionPending] = useState(null);
   const canAddAlbum = hasPermission("addAlbum");
   const canChangeMonitoring = hasPermission("changeMonitoring");
-  const canDeleteArtist = hasPermission("deleteArtist");
   const canDeleteAlbum = hasPermission("deleteAlbum");
   const {
     artist,
@@ -512,7 +510,6 @@ function ArtistDetailsPage() {
         }
         loadingLibrary={loadingLibrary}
         canChangeMonitoring={canChangeMonitoring}
-        canDeleteArtist={canDeleteArtist}
         canAddArtist={canAddArtist}
         canRefreshArtist={canChangeMonitoring}
         buildingQueue={buildingQueue}
@@ -664,19 +661,6 @@ function ArtistDetailsPage() {
           artistFeedbackLookup={artistFeedbackLookup}
         />
       )}
-
-      <DeleteArtistModal
-        show={library.showDeleteModal}
-        artistName={artist?.name}
-        libraryArtistName={libraryArtist?.artistName}
-        managedBy={library.deleteManager || libraryArtist?.managedBy}
-        activeManager={libraryDestination.primary}
-        deleteFiles={library.deleteFiles}
-        onDeleteFilesChange={library.setDeleteFiles}
-        onCancel={library.handleDeleteCancel}
-        onConfirm={library.handleDeleteConfirm}
-        deleting={library.deletingArtist}
-      />
 
       <DeleteAlbumModal
         show={!!library.showDeleteAlbumModal}

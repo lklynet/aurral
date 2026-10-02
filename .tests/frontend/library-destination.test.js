@@ -5,7 +5,6 @@ import {
   buildAlbumRequestPayload,
   buildArtistAddPayload,
   canRemoveLibraryAlbum,
-  getRemovalTarget,
   getAddToManagerLabel,
   getLibraryOwnerConflict,
   getMonitorOptionsForManager,
@@ -27,12 +26,6 @@ test("Aurral albums can always be removed, Lidarr albums only while Lidarr is co
   assert.equal(canRemoveLibraryAlbum(lidarrAlbum, { lidarrConnected: false }), false);
   assert.equal(canRemoveLibraryAlbum({ sources: ["lidarr"] }, { lidarrConnected: true }), false);
   assert.equal(canRemoveLibraryAlbum({ sources: ["flow"] }, { lidarrConnected: true }), false);
-});
-
-test("removal names Aurral only when Lidarr is connected", () => {
-  assert.equal(getRemovalTarget("lidarr", "lidarr"), "Lidarr");
-  assert.equal(getRemovalTarget("aurral", "lidarr"), "Aurral");
-  assert.equal(getRemovalTarget("aurral", "aurral"), "library");
 });
 
 test("add labels name each manager", () => {

@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronRight, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Plus, Trash2 } from "lucide-react";
 import AddActionButton from "../../../components/AddActionButton";
 import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
@@ -411,7 +411,18 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
   return (
     <div className="artist-relative" ref={menuRef}>
       {showTrigger ? (
-        isKebab || triggerVariant === "compact" ? (
+        isKebab ? (
+          <AddActionButton
+            ref={buttonRef}
+            label={onAddToLibrary ? "Add to library or playlist" : triggerLabel}
+            icon={Plus}
+            isLoading={saving || librarySaving}
+            disabled={disabled}
+            onClick={handleOpen}
+            aria-haspopup="menu"
+            aria-expanded={open}
+          />
+        ) : triggerVariant === "compact" ? (
           <TooltipButton
             ref={buttonRef}
             type="button"
@@ -425,8 +436,6 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
           >
             {saving ? (
               <DotLoader size="xs" label={null} />
-            ) : isKebab ? (
-              <MoreHorizontal className="artist-icon-xs" />
             ) : (
               <TriggerIcon className="artist-icon-xs" />
             )}
@@ -457,6 +466,22 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
         >
           {isKebab ? (
             <>
+              {onAddToLibrary ? (
+                <button
+                  type="button"
+                  className="artist-menu-item"
+                  onClick={async () => {
+                    await onAddToLibrary?.(track);
+                    closeMenu();
+                  }}
+                  disabled={saving || librarySaving || disabled}
+                >
+                  <span className="artist-menu-item__main">
+                    <Plus className="artist-icon-sm" />
+                    Add to library
+                  </span>
+                </button>
+              ) : null}
               {onSelect ? (
                 <TrackPlaylistSubmenu
                   label="Add to playlist"
@@ -474,22 +499,6 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
                   isOpen={openSubmenu}
                   onToggle={() => setOpenSubmenu((current) => !current)}
                 />
-              ) : null}
-              {onAddToLibrary ? (
-                <button
-                  type="button"
-                  className="artist-menu-item"
-                  onClick={async () => {
-                    await onAddToLibrary?.(track);
-                    closeMenu();
-                  }}
-                  disabled={saving || librarySaving || disabled}
-                >
-                  <span className="artist-menu-item__main">
-                    <Plus className="artist-icon-sm" />
-                    Add to library
-                  </span>
-                </button>
               ) : null}
             </>
           ) : (

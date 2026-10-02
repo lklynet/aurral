@@ -45,7 +45,7 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
     await page.goto(`/artist/${artist.mbid}`);
     await expect(page.getByRole("heading", { name: artist.name, level: 1 })).toBeVisible({ timeout: 30_000 });
     const actionBar = page.locator(".artist-action-bar");
-    await actionBar.getByRole("button", { name: /^Monitoring: / }).click();
+    await actionBar.getByRole("button", { name: /^(Monitor|Monitoring: .*)$/ }).click();
     await expect(page.getByRole("menuitemradio", { name: "Not monitored", exact: true })).toHaveAttribute("aria-checked", "true");
     await expect(page.getByRole("menuitemradio")).toHaveText([
       "Not monitored",
@@ -72,12 +72,13 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
 
     await page.goto(`/library/album/${albumId}`);
     const albumOptions = page.getByRole("button", { name: `${albums.body[0].title} options`, exact: true });
-    const managerMark = page.getByRole("img", { name: /^Managed by Aurral/ });
+    const unmonitoredMark = page.locator(".native-library-detail__manager");
     const chooseMonitoring = async (label) => {
       await albumOptions.click();
       await page.getByRole("menuitem", { name: label, exact: true }).click();
     };
-    await expect(managerMark).toHaveAccessibleName("Managed by Aurral", { timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: albums.body[0].title })).toBeVisible({ timeout: 30_000 });
+    await expect(unmonitoredMark).toHaveCount(0);
     await expect(page.getByRole("status").filter({ hasText: /Queued|Downloading/ }).first()).toBeVisible({
       timeout: 30_000,
     });
@@ -91,7 +92,7 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
     await expect(albumOptions).toBeFocused();
-    await expect(managerMark).toHaveAccessibleName("Managed by Aurral");
+    await expect(unmonitoredMark).toHaveCount(0);
     expect(albumMonitoringWrites).toHaveLength(0);
     expect((await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status).toMatch(
       ACTIVE_STATUS,
@@ -102,7 +103,7 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
     await expect(page.getByRole("status").filter({ hasText: /Cancelled \d+ downloads?/ })).toBeVisible({
       timeout: 30_000,
     });
-    await expect(managerMark).toHaveAccessibleName("Managed by Aurral · Not monitored");
+    await expect(unmonitoredMark).toHaveAccessibleName("Not monitored");
     expect(albumMonitoringWrites).toHaveLength(1);
     await expect
       .poll(async () => (await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status, {
@@ -116,7 +117,7 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
     await page.keyboard.press("Escape");
 
     await page.getByRole("button", { name: `Download ${albums.body[0].title}`, exact: true }).click();
-    await expect(managerMark).toHaveAccessibleName("Managed by Aurral");
+    await expect(unmonitoredMark).toHaveCount(0);
     expect(albumMonitoringWrites).toHaveLength(1);
     await expect(page.getByRole("status").filter({ hasText: /Queued|Downloading/ }).first()).toBeVisible({
       timeout: 30_000,

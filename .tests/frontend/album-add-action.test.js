@@ -19,14 +19,12 @@ test("shouldTriggerAlbumSearch follows monitored state", () => {
   assert.equal(shouldTriggerAlbumSearch({ status: "inLibrary", monitored: false }), false);
 });
 
-test("album actions always go to the active manager, whoever holds the album now", () => {
+test("every album action is a Download album button for the active manager", () => {
   const lidarr = { primary: "lidarr", ready: true };
-  assert.deepEqual(getAlbumAddAction({ status: "unmonitored", inLibrary: true, managedBy: "aurral" }, lidarr), {
-    label: "Add to Lidarr",
-    destination: lidarr,
-  });
-  assert.equal(getAlbumAddAction({ status: "monitored", managedBy: "aurral" }, lidarr).label, "Search Album");
-  assert.equal(getAlbumAddAction({ inLibrary: true, monitored: false }, { primary: "aurral" }).label, "Add to library");
+  const action = getAlbumAddAction({ status: "monitored", managedBy: "aurral" }, lidarr);
+  assert.equal(action.label, "Download album");
+  assert.equal(action.destination, lidarr);
+  assert.equal(getAlbumAddAction({ inLibrary: true, monitored: false }, { primary: "aurral" }).label, "Download album");
 });
 
 test("isAlbumCompleteInLibrary only treats on-disk albums as complete", () => {
@@ -35,20 +33,15 @@ test("isAlbumCompleteInLibrary only treats on-disk albums as complete", () => {
   assert.equal(isAlbumCompleteInLibrary({ sizeOnDisk: 1 }), true);
 });
 
-test("describeAlbumRequestResult does not claim a blocked album is downloading", () => {
-  const queued = describeAlbumRequestResult({ status: "queued", jobIds: ["a"] }, "Dummy", "aurral");
-  assert.equal(queued.kind, "success");
-  assert.match(queued.message, /your library/);
-  assert.match(queued.message, /queued/i);
-  assert.doesNotMatch(queued.message, /downloading/i);
-  const blocked = describeAlbumRequestResult({ status: "blocked", albumStatus: { recovery: { code: "download_source_missing" } } }, "Dummy", "lidarr");
+test("album request results describe what happens without naming a manager", () => {
+  const queued = describeAlbumRequestResult({ status: "queued", jobIds: ["a"] }, "Dummy");
+  assert.deepEqual(queued, { kind: "success", message: "Downloading Dummy" });
+  const blocked = describeAlbumRequestResult({ status: "blocked" }, "Dummy");
   assert.equal(blocked.kind, "info");
-  assert.match(blocked.message, /Lidarr/);
   assert.match(blocked.message, /nothing is downloading/);
   assert.equal(describeAlbumRequestResult({ albumStatus: { status: "blocked" } }, "Dummy").kind, "info");
-  const available = describeAlbumRequestResult({ status: "available" }, "Dummy", "aurral");
-  assert.match(available.message, /your library/);
-  assert.doesNotMatch(available.message, /queued|downloading/i);
+  assert.equal(describeAlbumRequestResult({ triggeredSearch: true }, "Dummy").message, "Searching for Dummy");
+  for (const message of [queued.message, blocked.message]) assert.doesNotMatch(message, /Aurral|Lidarr/);
 });
 
 test("an unmonitored Aurral album counts the release's tracks, so a downloaded single isn't complete", () => {

@@ -23,7 +23,6 @@ export function ArtistDetailsActionBar({
   libraryLink = null,
   loadingLibrary,
   canChangeMonitoring,
-  canDeleteArtist,
   canAddArtist,
   canRefreshArtist,
   buildingQueue = false,
@@ -53,8 +52,6 @@ export function ArtistDetailsActionBar({
         artistName={artistName}
         canChange={canChangeMonitoring}
         canAdd={canAddArtist}
-        canRemove={canDeleteArtist}
-        onRemove={library.handleDeleteClick}
         onCustomizeLidarr={library.handleOpenAddCustomizeModal}
         onChanged={library.reloadLibraryState}
       />

@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { Pause, Play, Plus } from "lucide-react";
+import { MoreVertical, Plus } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import { TrackList } from "../../../components/TrackList";
@@ -107,13 +107,6 @@ export function ArtistDetailsReleaseTrackList({
     const canPlay = Boolean(track.preview_url);
     const membershipTrack = resolveMembershipTrack ? resolveMembershipTrack(track, release) : track;
     const items = [
-      {
-        id: "play",
-        label: isCurrent && isPlaying ? "Pause preview" : "Play preview",
-        icon: isCurrent && isPlaying ? Pause : Play,
-        disabled: !canPlay,
-        onSelect: () => handlePlay(track, index),
-      },
       ...(onAddTrackToLibrary && !isOwned
         ? [
             {
@@ -135,14 +128,22 @@ export function ArtistDetailsReleaseTrackList({
       playing: isCurrent && (isPlaying || isLoading),
       onPlay: canPlay ? () => handlePlay(track, index) : null,
       badge: isOwned ? <SearchLibraryCheck size="discover" /> : null,
-      menu: {
+      menu: items.length || onAddTrackToPlaylist ? {
         items,
-        additionalItemsAfter: items[items.length - 1].id,
+        triggerLabel: `Add ${title}`,
+        triggerClassName: "btn btn-add-action btn-add-action--menu",
+        triggerIcon: (
+          <>
+            <span className="btn-add-action__icon"><Plus aria-hidden="true" /></span>
+            <MoreVertical className="btn-add-action__more" aria-hidden="true" />
+          </>
+        ),
+        ...(items.length ? { additionalItemsAfter: items[items.length - 1].id } : {}),
         onMenuOpen: onLoadPlaylists,
         renderAdditionalItems: onAddTrackToPlaylist
           ? ({ closeMenu }) => (
               <>
-                <div className="native-library-item-menu__separator" />
+                {items.length ? <div className="native-library-item-menu__separator" /> : null}
                 <TrackPlaylistSubmenu
                   label="Add to playlist"
                   icon={Plus}
@@ -159,7 +160,7 @@ export function ArtistDetailsReleaseTrackList({
               </>
             )
           : undefined,
-      },
+      } : undefined,
     };
   });
 

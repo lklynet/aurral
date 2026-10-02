@@ -21,8 +21,7 @@ export function DeleteAlbumModal({
     closeDisabled: Boolean(removing),
     initialFocusRef: cancelRef,
   });
-  const isAurral = managedBy === "aurral";
-  const unmonitors = !isAurral && keepFilesAction === "unmonitor" && !deleteFiles;
+  const unmonitors = managedBy !== "aurral" && keepFilesAction === "unmonitor" && !deleteFiles;
 
   if (!show) return null;
   return (
@@ -36,21 +35,17 @@ export function DeleteAlbumModal({
         tabIndex={-1}
       >
         <h3 id={titleId} className="artist-modal__title">
-          {isAurral ? "Remove album from library" : "Delete Album from Library"}
+          Delete album
         </h3>
         <p className="artist-modal__copy">
           {unmonitors ? (
             <>
-              <strong>{title}</strong> stays in Lidarr and stops being monitored. Delete its files
-              to remove it.
-            </>
-          ) : isAurral ? (
-            <>
-              <strong>{title}</strong> will leave your Aurral library.
+              <strong>{title}</strong> stays in your library and stops being monitored. Delete its
+              files to remove it.
             </>
           ) : (
             <>
-              Are you sure you want to delete <strong>{title}</strong> from library?
+              Delete <strong>{title}</strong> from your library?
             </>
           )}
         </p>
@@ -64,23 +59,10 @@ export function DeleteAlbumModal({
               className="artist-checkbox"
             />
             <div>
-              {managedBy === "aurral" ? (
-                <>
-                  <span className="artist-card-title">Delete album files</span>
-                  <p className="artist-modal__subcopy">
-                    Permanently deletes the files Aurral downloaded for this album. Files managed
-                    by Lidarr stay on disk. This cannot be undone.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <span className="artist-card-title">Delete album folder and files</span>
-                  <p className="artist-modal__subcopy">
-                    This will permanently delete the album&apos;s folder and all music files from
-                    your disk. This action cannot be undone.
-                  </p>
-                </>
-              )}
+              <span className="artist-card-title">Delete album files</span>
+              <p className="artist-modal__subcopy">
+                Permanently deletes the album&apos;s music files from disk. This cannot be undone.
+              </p>
             </div>
           </label>
         </div>
@@ -98,14 +80,12 @@ export function DeleteAlbumModal({
             {removing ? (
               <>
                 <DotLoader size="sm" label={null} />
-                {unmonitors ? "Unmonitoring..." : isAurral ? "Removing..." : "Deleting..."}
+                {unmonitors ? "Unmonitoring..." : "Deleting..."}
               </>
             ) : unmonitors ? (
               "Unmonitor album"
-            ) : isAurral ? (
-              "Remove album"
             ) : (
-              "Delete Album"
+              "Delete album"
             )}
           </button>
         </div>

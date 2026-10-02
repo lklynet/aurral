@@ -3,7 +3,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   getLibraryAlbums,
   updateLibraryAlbum,
-  deleteArtistFromLibrary,
   deleteAlbumFromLibrary,
   deleteAurralAlbumFromLibrary,
   getLibraryArtist,
@@ -18,8 +17,6 @@ import {
 import {
   buildAlbumRequestPayload,
   buildArtistAddPayload,
-  describeRemovalTarget,
-  getDestinationName,
 } from "../../../utils/libraryDestination.js";
 import { describeArtistAdd } from "../../../utils/artistMonitoring.js";
 import { describeAlbumRequestResult } from "../../../utils/albumAddAction.js";
@@ -84,9 +81,6 @@ export function useArtistDetailsLibrary({
   const [albumDropdownOpen, setAlbumDropdownOpen] = useState(null);
   const [showDeleteAlbumModal, setShowDeleteAlbumModal] = useState(null);
   const [deleteAlbumFiles, setDeleteAlbumFilesState] = useState(() => readDeleteFilesPreference());
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteManager, setDeleteManager] = useState(null);
-  const [deleteFiles, setDeleteFilesState] = useState(() => readDeleteFilesPreference());
   const [refreshingArtist, setRefreshingArtist] = useState(false);
   const [reSearchingAlbum, setReSearchingAlbum] = useState(null);
   const [reSearchingMissingAlbums, setReSearchingMissingAlbums] = useState(false);
@@ -192,10 +186,6 @@ export function useArtistDetailsLibrary({
   });
   const { refetch: refetchLibraryAlbums } = libraryAlbumsQuery;
   const refreshArtistMutation = useMutation({ mutationFn: refreshLibraryArtist });
-  const deleteArtistMutation = useMutation({
-    mutationFn: ({ mbid, deleteFiles, manager }) => deleteArtistFromLibrary(mbid, deleteFiles, manager),
-    onSuccess: (_result, { mbid }) => invalidateLibraryQueries(mbid),
-  });
   const addArtistMutation = useMutation({
     mutationFn: addArtistToLibrary,
     onSuccess: () => invalidateLibraryQueries(),
@@ -263,7 +253,6 @@ export function useArtistDetailsLibrary({
 
   const updateDeleteFilesPreference = (value) => {
     writeDeleteFilesPreference(value);
-    setDeleteFilesState(value);
     setDeleteAlbumFilesState(value);
   };
 
@@ -292,15 +281,6 @@ export function useArtistDetailsLibrary({
     }
   };
 
-  const handleDeleteClick = (manager = null) => {
-    setDeleteManager(manager);
-    setShowDeleteModal(true);
-  };
-
-  const handleDeleteCancel = () => {
-    setShowDeleteModal(false);
-  };
-
   const reloadLibraryState = async () => {
     const mbid = artist?.id || libraryArtist?.mbid;
     if (!mbid) return;
@@ -312,33 +292,6 @@ export function useArtistDetailsLibrary({
       setExistsInLibrary(false);
       setLibraryArtist(null);
       setLibraryAlbums([]);
-    }
-  };
-
-  const handleDeleteConfirm = async () => {
-    const mbid = libraryArtist?.mbid || artist?.id;
-    if (!mbid) return;
-    const manager = deleteManager;
-    try {
-      await deleteArtistMutation.mutateAsync({ mbid, deleteFiles, manager });
-    } catch (err) {
-      showError(
-        `Failed to remove artist: ${
-          err.response?.data?.message || err.response?.data?.error || err.message
-        }`,
-      );
-      return;
-    }
-    showSuccess(
-      `Removed ${artist?.name || "artist"} from ${describeRemovalTarget(manager, libraryDestination.primary)}${
-        deleteFiles ? " and deleted its files" : ""
-      }`,
-    );
-    setShowDeleteModal(false);
-    try {
-      await reloadLibraryState();
-    } catch {
-      showError("The artist was removed, but the page could not refresh. Reload the page.");
     }
   };
 
@@ -479,7 +432,7 @@ export function useArtistDetailsLibrary({
         showInfo(`${artist.name}: ${conflict.message}`);
         return false;
       }
-      const message = `Failed to add artist to ${getDestinationName(managedBy)}: ${
+      const message = `Could not add the artist: ${
           err.response?.data?.message || err.response?.data?.error || err.message
         }`;
       if (showAddCustomizeModal) setCustomizeAddError(message);
@@ -568,7 +521,7 @@ export function useArtistDetailsLibrary({
         return;
       }
       showError(
-        `Failed to add album to ${getDestinationName(managedBy)}: ${
+        `Could not download the album: ${
           err.response?.data?.message || err.response?.data?.error || err.message
         }`,
       );
@@ -877,12 +830,7 @@ export function useArtistDetailsLibrary({
     showDeleteAlbumModal,
     deleteAlbumFiles,
     setDeleteAlbumFiles: updateDeleteFilesPreference,
-    showDeleteModal,
-    deleteManager,
     reloadLibraryState,
-    deleteFiles,
-    setDeleteFiles: updateDeleteFilesPreference,
-    deletingArtist: deleteArtistMutation.isPending,
     addingToLibrary: addArtistMutation.isPending,
     showAddCustomizeModal,
     customizeAddError,
@@ -902,9 +850,6 @@ export function useArtistDetailsLibrary({
     reSearchingMissingAlbums,
     downloadStatuses,
     handleRefreshArtist,
-    handleDeleteClick,
-    handleDeleteCancel,
-    handleDeleteConfirm,
     handleOpenAddCustomizeModal,
     handleCustomizeAddToLibrary,
     handleRequestAlbum,

@@ -9,7 +9,6 @@ import {
 } from "../utils/api/endpoints/library.js";
 import {
   buildAlbumRequestPayload,
-  getDestinationName,
 } from "../utils/libraryDestination";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { getDiscovery } from "../utils/api/endpoints/discovery.js";
@@ -384,7 +383,7 @@ export function useDiscoverData() {
           showInfo(`${album.albumName || "Album"}: ${conflict.message}`);
           return;
         }
-        showError(`Failed to add album to ${getDestinationName(managedBy)}: ${
+        showError(`Could not download the album: ${
           err.response?.data?.message || err.response?.data?.error || err.message
         }`);
       } finally {

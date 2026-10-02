@@ -200,12 +200,28 @@ test("unmonitoring a track without an MBID leaves a same-titled track's download
   assert.equal(albumJobs(albumMbid).filter((job) => job.status === "cancelled").length, 0);
 });
 
-test("a Lidarr-managed track is refused without calling Lidarr", async () => {
-  const { tracks } = await createAlbum({ managedBy: "lidarr", tracks: ["available"] });
+test("a track in a Lidarr album is unmonitored by Aurral without calling Lidarr", async () => {
+  const { tracks, jobIds } = await createAlbum({ managedBy: "lidarr", tracks: ["pending"] });
+  const otherArtistJob = downloadTracker.addJob(
+    { artistName: "Another Artist", trackName: tracks[0].title },
+    "library",
+  );
 
   const result = await libraryManager.setAurralTrackMonitoring(tracks[0].id, { monitored: false });
 
-  assert.equal(result.statusCode, 409);
+  assert.equal(result.error, undefined);
+  assert.equal(trackMonitored(tracks[0].id), 0);
+  assert.equal(downloadTracker.getJob(jobIds[0]).status, "cancelled");
+  assert.equal(downloadTracker.getJob(otherArtistJob).status, "pending");
+  assert.deepEqual(lidarrCalls, []);
+});
+
+test("downloading a missing track in a Lidarr album leaves the download to the track route", async () => {
+  const { tracks } = await createAlbum({ managedBy: "lidarr", tracks: ["missing"] });
+
+  const result = await libraryManager.monitorAurralTrack({ canonicalTrackId: tracks[0].id });
+
+  assert.equal(result, null);
   assert.equal(trackMonitored(tracks[0].id), 1);
   assert.deepEqual(lidarrCalls, []);
 });

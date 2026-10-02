@@ -590,12 +590,6 @@ textarea {
   color: var(--aurral-text-muted);
 }
 
-.btn-add-action-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-}
-
 .artist-monitoring-button__logo {
   width: 1rem;
   height: 1rem;

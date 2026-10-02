@@ -160,6 +160,17 @@ export async function cancelAurralAlbumJobs(albumMbid) {
   );
 }
 
+export async function cancelLibraryTrackJobs(track) {
+  return cancelActiveAurralJobs(
+    downloadTracker.getAll().filter((job) =>
+      job.playlistType === "library" &&
+      ACTIVE_JOB_STATUSES.has(job.status) &&
+      jobMatchesTrack(job, track) &&
+      (Boolean(job.trackMbid) || normalizeKey(job.artistName) === normalizeKey(track.artistName))),
+    null,
+  );
+}
+
 export async function cancelAurralTrackJobs(albumMbid, track) {
   return cancelActiveAurralJobs(
     findAurralAlbumJobs(albumMbid).filter((job) =>

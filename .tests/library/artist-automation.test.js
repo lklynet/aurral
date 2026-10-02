@@ -77,7 +77,14 @@ test.before(() => {
   });
   lidarrClient.addArtist = async (mbid, artistName, options) => {
     lidarr.calls.push(["add", options.monitorOption]);
-    lidarr.artist = { id: 41, artistName, foreignArtistId: mbid, monitored: true, monitorNewItems: "none" };
+    const followsNewAlbums = options.monitorOption === "all" || options.monitorOption === "future";
+    lidarr.artist = {
+      id: 41,
+      artistName,
+      foreignArtistId: mbid,
+      monitored: options.monitorOption !== "none",
+      monitorNewItems: followsNewAlbums ? "all" : "none",
+    };
     return lidarr.artist;
   };
   lidarrClient.updateArtistMonitoring = async (_id, option) => {
@@ -163,7 +170,7 @@ test("with Lidarr connected, monitoring an artist adds it to Lidarr and Lidarr t
   const result = await libraryManager.setArtistMonitoring(artistMbid, { monitorOption: "all", user: admin });
 
   assert.equal(result.error, undefined);
-  assert.deepEqual(lidarr.calls, [["add", "none"], ["monitor", "all"]]);
+  assert.deepEqual(lidarr.calls, [["add", "all"]]);
   assert.deepEqual(management("artist", artist.id), ["lidarr", "all"]);
   assert.deepEqual(lidarr.albums.map((entry) => entry.monitored), [true, true]);
   assert.equal(management("album", album.id)[0], "lidarr");
@@ -321,21 +328,43 @@ test("the monitoring state reports only the manager in charge", async () => {
   assert.deepEqual(aurral, { manager: "aurral", added: true, monitorOption: "future", inAurral: true, error: null });
 });
 
-test("with Lidarr connected, an artist can be removed from Lidarr and from Aurral separately", async () => {
+test("deleting an artist removes it from Lidarr and Aurral together", async () => {
   const artist = seedArtist("aurral", "none");
   const { album } = seedAurralAlbum(artist.id);
   lidarr.artist = lidarrArtist();
 
-  const fromLidarr = await callRoute("DELETE /artists/:mbid", { params: { mbid: artistMbid } });
-  const albumAfterLidarr = db.prepare("SELECT COUNT(*) AS n FROM library_albums WHERE id = ?").get(album.id).n;
-  lidarr.artist = lidarrArtist();
-  const fromAurral = await callRoute("DELETE /artists/:mbid", { params: { mbid: artistMbid }, query: { manager: "aurral" } });
+  const response = await callRoute("DELETE /artists/:mbid", { params: { mbid: artistMbid } });
 
-  assert.equal(fromLidarr.statusCode, 200);
-  assert.equal(albumAfterLidarr, 1);
-  assert.equal(fromAurral.statusCode, 200);
+  assert.equal(response.statusCode, 200);
   assert.deepEqual(lidarr.calls, [["delete", 41]]);
   assert.equal(management("album", album.id)[0], undefined);
+});
+
+test("naming a manager removes only that side", async () => {
+  const artist = seedArtist("aurral", "none");
+  const { album } = seedAurralAlbum(artist.id);
+  lidarr.artist = lidarrArtist();
+
+  const fromLidarr = await callRoute("DELETE /artists/:mbid", { params: { mbid: artistMbid }, query: { manager: "lidarr" } });
+
+  assert.equal(fromLidarr.statusCode, 200);
+  assert.equal(management("album", album.id)[0], "aurral");
+});
+
+test("deleting an artist touches nothing when Lidarr cannot be reached", async () => {
+  const artist = seedArtist("aurral", "none");
+  const { album } = seedAurralAlbum(artist.id);
+  const getArtistByMbid = lidarrClient.getArtistByMbid;
+  lidarrClient.getArtistByMbid = async () => {
+    throw new Error("connect ECONNREFUSED");
+  };
+  try {
+    const response = await callRoute("DELETE /artists/:mbid", { params: { mbid: artistMbid } });
+    assert.equal(response.statusCode, 503);
+  } finally {
+    lidarrClient.getArtistByMbid = getArtistByMbid;
+  }
+  assert.equal(management("album", album.id)[0], "aurral");
 });
 
 test("removing from Lidarr while it is not connected is refused", async () => {

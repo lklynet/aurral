@@ -1,4 +1,4 @@
-import { getAddToManagerLabel, getDestinationName } from "./libraryDestination.js";
+import { Download } from "lucide-react";
 
 const ACTIVE_ALBUM_STATUSES = new Set([
   "adding",
@@ -41,8 +41,9 @@ export const shouldTriggerAlbumSearch = ({
   return Boolean(inLibrary && monitored);
 };
 
-export const buildAlbumAddAction = (search, destination = {}) => ({
-  label: search ? "Search Album" : getAddToManagerLabel(destination.primary),
+export const buildAlbumAddAction = (_search, destination = {}) => ({
+  label: "Download album",
+  icon: Download,
   destination,
 });
 
@@ -79,17 +80,15 @@ export const countReleaseTracks = (libraryInfo, releaseTrackCount) => {
   };
 };
 
-export const describeAlbumRequestResult = (result, title, managedBy = result?.managedBy) => {
-  const manager = getDestinationName(managedBy);
-  const added = `Added ${title} to ${manager}`;
+export const describeAlbumRequestResult = (result, title) => {
   if (result?.status === "blocked" || result?.albumStatus?.status === "blocked") {
-    return { kind: "info", message: `${added}, but nothing is downloading. Open the album to see why.` };
+    return { kind: "info", message: `${title} is in your library, but nothing is downloading. Open the album to see why.` };
   }
   if (result?.queued || result?.status === "queued") {
-    return { kind: "success", message: `${added}. Downloads queued.` };
+    return { kind: "success", message: `Downloading ${title}` };
   }
   if (result?.triggeredSearch || result?.status === "searching") {
-    return { kind: "success", message: `Searching for ${title} in ${manager}` };
+    return { kind: "success", message: `Searching for ${title}` };
   }
-  return { kind: "success", message: added };
+  return { kind: "success", message: `Added ${title} to your library` };
 };
