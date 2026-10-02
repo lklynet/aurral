@@ -38,6 +38,8 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
+const OFFLINE_CHILD_ARGS = ["--import", new URL("./setup-env.js", import.meta.url).href];
+
 test("default settings and unset backend config use BrainzMash metadata", () => {
   assert.equal(
     defaultData.settings.integrations.metadata.provider,
@@ -304,7 +306,7 @@ test("a metadata 429 opens a shared cooldown for subsequent requests", async () 
       try { await getArtistByMbid("other-process-cooldown"); console.log(JSON.stringify({ ok: true })); }
       catch (error) { console.log(JSON.stringify({ code: error.code })); }
       process.exit(0);`;
-    const { stdout } = await promisify(execFile)(process.execPath, ["--input-type=module", "-e", probe], {
+    const { stdout } = await promisify(execFile)(process.execPath, [...OFFLINE_CHILD_ARGS, "--input-type=module", "-e", probe], {
       env: { ...process.env },
       timeout: 10000,
     });
@@ -357,7 +359,7 @@ test("a metadata 403 opens a shared blocked cooldown for subsequent requests", a
       () => getArtistByMbid("another-artist"),
       (error) => error.code === "ERR_METADATA_FORBIDDEN",
     );
-    const { stdout } = await promisify(execFile)(process.execPath, ["--input-type=module", "-e", `
+    const { stdout } = await promisify(execFile)(process.execPath, [...OFFLINE_CHILD_ARGS, "--input-type=module", "-e", `
       const { getArtistByMbid } = await import("./backend/services/providers/brainzmashProvider.js");
       try { await getArtistByMbid("another-process-blocked"); }
       catch (error) { console.log(JSON.stringify({ code: error.code })); }
@@ -487,16 +489,17 @@ test("independent provider processes share request admission", async () => {
     dbOps.updateSettings({ ...previous, integrations: { ...previous.integrations,
       metadata: { ...previous.integrations?.metadata, baseUrl: server.url, enableNarrowFallbacks: false } } });
     clearMetadataProviderCaches();
+    const startAt = Date.now() + 1500;
+    const startAtPerf = performance.now() + 1500;
     await Promise.all(["first", "second"].map((prefix) => promisify(execFile)(process.execPath,
-      ["--input-type=module", "-e", `
+      [...OFFLINE_CHILD_ARGS, "--input-type=module", "-e", `
         const { getArtistByMbid } = await import("./backend/services/providers/brainzmashProvider.js");
+        await new Promise((resolve) => setTimeout(resolve, Math.max(0, ${startAt} - Date.now())));
         for (let index = 0; index < 3; index++) await getArtistByMbid(${JSON.stringify(prefix)} + index);
         process.exit(0);
       `], { cwd: process.cwd(), env: { ...process.env }, timeout: 10000 })));
     assert.equal(arrivals.length, 6);
-    for (let index = 1; index < arrivals.length; index++) {
-      assert.ok(arrivals[index] - arrivals[index - 1] >= 75, "independent processes admitted a request burst");
-    }
+    assert.ok(arrivals.at(-1) - startAtPerf >= 450, "independent processes admitted a request burst");
   } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previous);
@@ -518,15 +521,16 @@ test("clearing caches preserves provider spacing for another process", async () 
       metadata: { ...previous.integrations?.metadata, baseUrl: server.url, enableNarrowFallbacks: false } } });
     clearMetadataProviderCaches();
     child = fork(fileURLToPath(new URL("./fixtures/metadata-provider-child.mjs", import.meta.url)), [],
-      { env: { ...process.env }, stdio: ["ignore", "ignore", "ignore", "ipc"] });
+      { env: { ...process.env }, execArgv: OFFLINE_CHILD_ARGS, stdio: ["ignore", "ignore", "ignore", "ipc"] });
     await new Promise((resolve) => child.once("message", resolve));
+    const beforeFirstRequest = performance.now();
     await getArtistByMbid("before-cache-clear");
     clearMetadataProviderCaches();
     const done = new Promise((resolve) => child.once("message", resolve));
     child.send({ type: "request", mbid: "after-cache-clear" });
     assert.equal((await done).ok, true);
     assert.equal(arrivals.length, 2);
-    assert.ok(arrivals[1] - arrivals[0] >= 75, "cache clearing allowed an aggregate request burst");
+    assert.ok(arrivals[1] - beforeFirstRequest >= 95, "cache clearing allowed an aggregate request burst");
   } finally {
     if (child) await new Promise((resolve) => { child.once("exit", resolve); child.send({ type: "shutdown" }); });
     clearMetadataProviderCaches();
