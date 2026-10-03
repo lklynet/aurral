@@ -95,7 +95,7 @@ export function SettingsDiscoverTab({
                 <Link to="/settings/connect" className="arr-link">
                   Connect
                 </Link>{" "}
-                  for personalized recommendations, tags, and weekly flows.
+                  for personalized recommendations, tags, and flows.
               </p>
             </div>
             <button

@@ -74,7 +74,7 @@ export async function approveBlockedJob(jobId) {
     if (recorded) await refreshCompletedPipelinePlaylist(job);
     await classifyQualityJob(downloadTracker.getJob(job.id));
   } catch (error) {
-    logger.warn("weekly-flow", "Approved track was imported but playlist follow-up failed", {
+    logger.warn("downloads", "Approved track was imported but playlist follow-up failed", {
       jobId: job.id,
       playlistId,
       reason: error?.message || String(error),

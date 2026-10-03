@@ -86,7 +86,7 @@ export function registerFlows(router) {
       });
     } catch (error) {
       res.status(500).json({
-        error: "Failed to start weekly flow",
+        error: "Failed to start flow",
         message: error.message,
       });
     }

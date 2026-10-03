@@ -1,6 +1,6 @@
 // Canonical Aurral track request model.
 //
-// Wraps the resolved weekly-flow track context (artistName/trackName/albumName/
+// Wraps the resolved track search context (artistName/trackName/albumName/
 // durationMs/MBIDs/aliases) without renaming established fields, and attaches
 // the semantic variant profile extracted from the requested title.
 

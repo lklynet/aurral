@@ -352,7 +352,7 @@ const broadcastPlaylistStatus = async () => {
     websocketService.broadcastPerClient("weekly-flow", buildPayload("weekly-flow"));
     websocketService.broadcastPerClient("playlists", buildPayload("playlists"));
   } catch (error) {
-    logger.warn("system", "Failed to broadcast weekly flow status:", { message: error.message });
+    logger.warn("system", "Failed to broadcast playlist status:", { message: error.message });
   } finally {
     playlistStatusBroadcastInFlight = false;
   }

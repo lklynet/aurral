@@ -436,7 +436,7 @@ export function registerJobs(router) {
       const count = await clearAllDownloadJobs(downloadTracker);
       return res.json({ success: true, cleared: count });
     } catch (error) {
-      logger.error("weekly-flow", "Could not safely clear download jobs", {
+      logger.error("downloads", "Could not safely clear download jobs", {
         reason: error?.message || String(error),
       });
       return res.status(500).json({

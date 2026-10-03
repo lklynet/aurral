@@ -20,7 +20,7 @@ const {
   deliverQueuedNotification,
   notifyRequestMade,
   notifyRequestAvailable,
-  notifyWeeklyFlowDone,
+  notifyFlowDone,
 } = notifications;
 
 async function withCaptureServer(handler) {
@@ -356,7 +356,7 @@ test("failed notification delivery is logged without an unhandled rejection", as
   }
 });
 
-test("notifyWeeklyFlowDone uses display name and track library path placeholders", async () => {
+test("notifyFlowDone uses display name and track library path placeholders", async () => {
   await withCaptureServer(async ({ baseUrl, waitFor }) => {
     const settings = dbOps.getSettings();
     dbOps.updateSettings({
@@ -382,7 +382,7 @@ test("notifyWeeklyFlowDone uses display name and track library path placeholders
 
     const playlistId = "c0c01bc3-72ca-4110-8ab6-681f132a6e63";
   const flowPath = `/data/downloads/aurral/_flows/${playlistId}`;
-    await notifyWeeklyFlowDone(
+    await notifyFlowDone(
       playlistId,
       { completed: 3, failed: 1 },
       flowPath,
@@ -393,7 +393,7 @@ test("notifyWeeklyFlowDone uses display name and track library path placeholders
     const gotify = requests.find((entry) => entry.url.startsWith("/message"));
     const webhook = requests.find((entry) => entry.url === "/hook");
     assert.ok(gotify);
-    assert.match(gotify.body.message, /Weekly flow "Late Night"/);
+    assert.match(gotify.body.message, /Flow "Late Night"/);
     assert.doesNotMatch(gotify.body.message, /c0c01bc3-72ca-4110-8ab6-681f132a6e63/);
     assert.deepEqual(webhook.body, {
       name: "Late Night",

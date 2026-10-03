@@ -257,7 +257,7 @@ export async function notifyDiscoveryUpdated() {
   await Promise.all(tasks);
 }
 
-export async function notifyWeeklyFlowDone(playlistType, stats = {}, flowPath = "", flowName = "") {
+export async function notifyFlowDone(playlistType, stats = {}, flowPath = "", flowName = "") {
   const settings = dbOps.getSettings();
   const gotify = settings.integrations?.gotify || {};
   const completed = stats.completed ?? 0;
@@ -267,8 +267,8 @@ export async function notifyWeeklyFlowDone(playlistType, stats = {}, flowPath = 
   if (gotify.notifyWeeklyFlowDone) {
     tasks.push(
       queueGotify(
-        "Aurral – Weekly Flow",
-        `Weekly flow "${displayName}" finished processing.${completed > 0 || failed > 0 ? ` Completed: ${completed}, Failed: ${failed}` : ""}`,
+        "Aurral – Flow",
+        `Flow "${displayName}" finished processing.${completed > 0 || failed > 0 ? ` Completed: ${completed}, Failed: ${failed}` : ""}`,
         5,
       ),
     );

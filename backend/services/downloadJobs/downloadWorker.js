@@ -897,8 +897,8 @@ export class DownloadWorker {
             const flowPath = flowPlaylistConfig.getFlow(playlistType)
               ? path.join(playlistManager.downloadRoot, AURRAL_FLOWS_DIR, playlistType)
               : playlistManager.downloadRoot;
-            const { notifyWeeklyFlowDone } = await import("../notificationService.js");
-            notifyWeeklyFlowDone(
+            const { notifyFlowDone } = await import("../notificationService.js");
+            notifyFlowDone(
               playlistType,
               { completed, failed },
               flowPath,

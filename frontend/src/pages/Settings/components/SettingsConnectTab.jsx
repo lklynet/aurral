@@ -495,10 +495,10 @@ export function SettingsConnectTab({
               }
             />
           </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Weekly flow finished">
+          <SettingsArrFormGroup label="Flow finished">
             <PillToggle
               checked={webhookEvents.notifyWeeklyFlowDone || false}
-              aria-label="Weekly flow finished"
+              aria-label="Flow finished"
               onChange={(e) =>
                 updateWebhookEvents({
                   notifyWeeklyFlowDone: e.target.checked,
@@ -631,7 +631,7 @@ export function SettingsConnectTab({
                 onChange={(e) => updateGotify({ notifyDiscoveryUpdated: e.target.checked })}
               />
               <SettingsModalToggle
-                label="Weekly flow finished"
+                label="Flow finished"
                 checked={gotify.notifyWeeklyFlowDone || false}
                 onChange={(e) => updateGotify({ notifyWeeklyFlowDone: e.target.checked })}
               />

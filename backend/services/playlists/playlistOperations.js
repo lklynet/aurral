@@ -986,7 +986,7 @@ export async function processPlaylistOperation(payload = {}) {
         case "shared-playlist-delete":
           return deleteStaticPlaylist(payload);
         default:
-          throw new Error(`Unknown weekly flow operation: ${kind || "unknown"}`);
+          throw new Error(`Unknown playlist operation: ${kind || "unknown"}`);
       }
     },
     {

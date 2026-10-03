@@ -69,7 +69,7 @@ const SETTINGS_SEARCH_METADATA = {
     sections: ["Scheduled", "Workers", "Queue"],
     services: {
       "Background tasks": "jobs workers",
-      "Weekly Flow": "playlist flow",
+      "Playlist Operations": "playlist flow worker",
     },
     fields: {
       Scheduled: "next run interval schedule",
@@ -208,7 +208,7 @@ const SETTINGS_SEARCH_METADATA = {
       Headers: "webhook HTTP header key value",
       Body: "webhook payload JSON",
       "Discover updated": "notification event webhook Gotify",
-      "Weekly flow finished": "notification event webhook Gotify",
+      "Flow finished": "notification event webhook Gotify",
       "Request made": "notification event webhook Gotify",
       "Request available": "notification event webhook Gotify",
       "Enable inbox": "inbox on off",

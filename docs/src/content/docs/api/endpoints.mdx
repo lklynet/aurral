@@ -58,9 +58,10 @@ credential.
 | WebSocket | `/ws` | Status, download, discovery, flow, and playlist updates |
 
 The WebSocket accepts `subscribe`, `unsubscribe`, and `ping` JSON messages.
-Subscriptions use the `status`, `downloads`, `discovery`, `library`,
-`weekly-flow`, and `playlists` channels. The `library` channel sends a
-`library_scan_completed` message after Aurral refreshes its canonical library.
+Subscriptions use the `status`, `downloads`, `discovery`, `library`, and
+`playlists` channels. `weekly-flow` is an older name for `playlists`. The
+`library` channel sends a `library_scan_completed` message after Aurral
+refreshes the Library.
 
 For local password authentication, connect with the session token as
 `/ws?token=SESSION_TOKEN`. Aurral also accepts reverse-proxy identity and LAN
@@ -96,7 +97,7 @@ WebSocket connections.
 | `POST` | `/api/library/albums/aurral/:canonicalId/cancel` | Cancel queued and active downloads for an Aurral-managed album |
 | `DELETE` | `/api/library/albums/aurral/:canonicalId?deleteFiles=true\|false` | Remove an Aurral-managed album |
 | `GET` | `/api/library/tracks` | List album tracks |
-| `DELETE` | `/api/library/tracks/:id` | Delete a library track file and prune canonical records when no media remains |
+| `DELETE` | `/api/library/tracks/:id` | Delete a library track file and prune Library records when no media remains |
 | `PUT` | `/api/library/tracks/aurral/:canonicalId` | Monitor or stop monitoring a track with `{ "monitored": true \| false }`. In a Lidarr album, this controls only Aurral's own download and upgrades of the track |
 | `POST` | `/api/library/refresh` | Queue a library scan. `mode` is `quick`, the default, or `full` to read every file again |
 | `GET` | `/api/library/refresh` | Read the ID and status of the scheduled library scan |
@@ -106,7 +107,7 @@ WebSocket connections.
 | `POST` | `/api/library/favorites` | Add or remove a library favorite. Requires a user session |
 | `GET` | `/api/library/playback-queue` | Build one page of a playback queue. Optional `page`, and `pageSize` from 1 to 100 |
 | `GET` | `/api/library/stream/:songId` | Stream a library song |
-| `GET` | `/api/library/canonical-stream/:albumId/:trackId` | Stream a canonical library track |
+| `GET` | `/api/library/canonical-stream/:albumId/:trackId` | Stream a Library track |
 | `GET` | `/api/library/file-stream/:albumId/:trackId` | Stream an album track file |
 | `GET` | `/api/library/rootfolder` | List Lidarr root-folder paths |
 | `GET` | `/api/library/lookup/:mbid` | Check whether an artist is in the library |
@@ -127,7 +128,7 @@ them otherwise. The artist and album add routes accept an optional `managedBy`
 value. A value other than the active manager returns `409` with
 `library_manager_unavailable`.
 
-Aurral album routes take the canonical album ID, not a Lidarr album ID. They
+Aurral album routes take the Library album ID, `canonicalId`, not a Lidarr album ID. They
 return `409` with the current manager when Lidarr manages the album. An album
 status is one of `complete`, `downloading`, `queued`, `blocked`, `cancelled`,
 `failed`, `partial`, or `missing`. It includes per-track `counts` and, when
@@ -259,16 +260,16 @@ no feed could be refreshed.
 
 ## Playlists and flows
 
-The canonical prefix is `/api/playlists`. The legacy `/api/weekly-flow`
-prefix redirects to it with status `308`.
+The prefix is `/api/playlists`. The older `/api/weekly-flow` prefix
+redirects to it with status `308`.
 
 The routes call a static playlist a shared playlist.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/playlists/status` | Flow worker and playlist status |
+| `GET` | `/api/playlists/status` | Download worker, flow, and static playlist status |
 | `GET` | `/api/playlists/jobs` | List Library and accessible flow and playlist jobs |
-| `GET` | `/api/playlists/jobs/:flowId` | List jobs for a flow or static playlist |
+| `GET` | `/api/playlists/jobs/:playlistId` | List jobs for a flow or static playlist |
 | `POST` | `/api/playlists/research-missing` | Re-search every missing track in Wanted |
 | `GET` | `/api/playlists/jobs/:jobId/manual-search/sources` | List the download clients available for a manual search |
 | `POST` | `/api/playlists/jobs/:jobId/manual-search` | Search one download client for a track. Send `sourceId`, and `mode` set to `missing` or `replacement` |
@@ -288,21 +289,21 @@ The routes call a static playlist a shared playlist.
 | `POST` | `/api/playlists/artwork/:playlistId/generate` | Generate playlist artwork |
 | `GET` | `/api/playlists/stream/:jobId` | Stream a playlist track |
 | `GET` | `/api/playlists/staging-stream/:jobId` | Stream a staged track |
-| `POST` | `/api/playlists/shared-playlists` | Create a shared playlist |
-| `POST` | `/api/playlists/shared-playlists/import` | Import a shared playlist |
-| `PUT` | `/api/playlists/shared-playlists/:playlistId` | Update a shared playlist |
-| `PUT` | `/api/playlists/shared-playlists/:playlistId/record-history` | Enable or disable listening history for a shared playlist |
-| `PUT` | `/api/playlists/shared-playlists/:playlistId/track-availability` | Show or hide track availability for a shared playlist, with `{ "enabled": true \| false }` |
-| `DELETE` | `/api/playlists/shared-playlists/:playlistId` | Delete a shared playlist |
-| `POST` | `/api/playlists/shared-playlists/:playlistId/tracks` | Add a shared-playlist track |
-| `DELETE` | `/api/playlists/shared-playlists/:playlistId/tracks/:jobId` | Delete a shared-playlist track |
-| `POST` | `/api/playlists/shared-playlists/:playlistId/tracks/:jobId/research` | Research a shared-playlist track |
+| `POST` | `/api/playlists/shared-playlists` | Create a static playlist |
+| `POST` | `/api/playlists/shared-playlists/import` | Import a static playlist |
+| `PUT` | `/api/playlists/shared-playlists/:playlistId` | Update a static playlist |
+| `PUT` | `/api/playlists/shared-playlists/:playlistId/record-history` | Enable or disable listening history for a static playlist |
+| `PUT` | `/api/playlists/shared-playlists/:playlistId/track-availability` | Show or hide track availability for a static playlist, with `{ "enabled": true \| false }` |
+| `DELETE` | `/api/playlists/shared-playlists/:playlistId` | Delete a static playlist |
+| `POST` | `/api/playlists/shared-playlists/:playlistId/tracks` | Add a static playlist track |
+| `DELETE` | `/api/playlists/shared-playlists/:playlistId/tracks/:jobId` | Delete a static playlist track |
+| `POST` | `/api/playlists/shared-playlists/:playlistId/tracks/:jobId/research` | Research a static playlist track |
 | `POST` | `/api/playlists/quality-upgrades/:playlistId/:jobId` | Search for a track upgrade |
 | `POST` | `/api/playlists/quality-upgrades` | Search for upgrades for every cutoff-unmet track in Wanted |
-| `POST` | `/api/playlists/shared-playlists/:playlistId/sync` | Sync a shared playlist |
+| `POST` | `/api/playlists/shared-playlists/:playlistId/sync` | Sync a static playlist |
 | `PUT` | `/api/playlists/playlists/:playlistId/retry-cycle` | Pause or resume retries for a static playlist |
-| `POST` | `/api/playlists/jobs/:jobId/approve` | Approve a flow job |
-| `POST` | `/api/playlists/jobs/:jobId/deny` | Deny a flow job |
+| `POST` | `/api/playlists/jobs/:jobId/approve` | Approve a download held for review |
+| `POST` | `/api/playlists/jobs/:jobId/deny` | Deny a download held for review |
 | `DELETE` | `/api/playlists/jobs/completed` | Delete completed jobs |
 | `DELETE` | `/api/playlists/jobs/all` | Delete all jobs |
 | `GET` | `/api/playlists/worker/settings` | Get worker settings |
