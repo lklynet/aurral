@@ -91,7 +91,7 @@ router.post("/refresh", requireAuth, async (req, res) => {
     const refresh = await enqueueInboxRefreshForUser(userId, {
       reason: "manual",
       zipCode: String(req.body?.zip || req.query.zip || "").trim(),
-      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+      ipAddress: req.ip || "",
     });
     lastManualRefresh.set(userId, now);
     const result = getInboxForUser(userId, { limit: 50 });

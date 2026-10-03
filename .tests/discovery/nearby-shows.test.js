@@ -3,7 +3,27 @@ import assert from "node:assert/strict";
 import axios from "../../lib/axiosFetch.js";
 
 import { buildShowsResponseCacheKey } from "../../backend/routes/discovery/handlers/shows.js";
-import { getNearbyShows, groupShowsByEvent } from "../../backend/services/nearbyShowsService.js";
+import { getNearbyShows } from "../../backend/services/nearbyShowsService.js";
+
+const withTicketmasterKey = (t) => {
+  const original = process.env.TICKETMASTER_API_KEY;
+  process.env.TICKETMASTER_API_KEY = "test-ticketmaster-key";
+  t.after(() => {
+    if (original === undefined) delete process.env.TICKETMASTER_API_KEY;
+    else process.env.TICKETMASTER_API_KEY = original;
+  });
+};
+
+const ticketmasterEvent = (id, date, performers) => ({
+  id,
+  name: `${performers.join(" + ")} live`,
+  url: `https://www.ticketmaster.com/event/${id}`,
+  dates: { start: { localDate: date } },
+  _embedded: {
+    venues: [{ name: "Venue", city: { name: "Austin" } }],
+    attractions: performers.map((name) => ({ name })),
+  },
+});
 
 test("includes all artist inputs in the shows response cache key", () => {
   const base = {
@@ -47,21 +67,81 @@ test("includes all artist inputs in the shows response cache key", () => {
   );
 });
 
-test("groups artists matched to the same Ticketmaster event", () => {
-  const grouped = groupShowsByEvent([
-    { id: "event-1", artistName: "Artist A", eventName: "Shared bill" },
-    { id: "event-1", artistName: "Artist B", eventName: "Shared bill" },
-    { id: "event-1", artistName: "Artist A", eventName: "Shared bill" },
-    { id: "event-2", artistName: "Artist C", eventName: "Solo show" },
-  ]);
+test("matches event performers to library and Discover artists by name", async (t) => {
+  withTicketmasterKey(t);
+  t.mock.method(axios, "get", async (url) => {
+    if (url.includes("zippopotam")) {
+      return {
+        data: {
+          places: [{ "place name": "Austin", latitude: "30.1", longitude: "-97.1" }],
+        },
+      };
+    }
+    if (url.includes("ticketmaster.com")) {
+      return {
+        data: {
+          _embedded: {
+            events: [
+              ticketmasterEvent("shared-bill", "2026-11-03", ["Library Band", "Recommended Act"]),
+              ticketmasterEvent("accented", "2026-11-02", ["Bjork"]),
+              ticketmasterEvent("punctuation", "2026-11-01", ["AC/DC"]),
+              ticketmasterEvent("longer-name", "2026-11-04", ["Genesis Owusu"]),
+              ticketmasterEvent("tribute", "2026-11-05", ["The Beatles Tribute"]),
+              ticketmasterEvent("trending", "2026-11-06", ["The Trending Artist"]),
+            ],
+          },
+        },
+      };
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  });
+
+  const result = await getNearbyShows({
+    zipCode: "78702",
+    libraryArtists: [
+      { name: "Library Band" },
+      { name: "ACDC" },
+      { name: "Björk" },
+      { name: "Genesis" },
+      { name: "The Beatles" },
+    ],
+    recommendedArtists: [{ artistName: "Recommended Act" }],
+    trendingArtists: [{ name: "Trending Artist" }],
+  });
 
   assert.deepEqual(
-    grouped.map(({ id, artistName, artistNames }) => ({ id, artistName, artistNames })),
+    result.shows.map(({ id, artistNames, sourceTypes }) => ({ id, artistNames, sourceTypes })),
     [
-      { id: "event-1", artistName: "Artist A", artistNames: ["Artist A", "Artist B"] },
-      { id: "event-2", artistName: "Artist C", artistNames: ["Artist C"] },
+      { id: "punctuation", artistNames: ["ACDC"], sourceTypes: ["library"] },
+      { id: "accented", artistNames: ["Björk"], sourceTypes: ["library"] },
+      {
+        id: "shared-bill",
+        artistNames: ["Library Band", "Recommended Act"],
+        sourceTypes: ["library", "recommended"],
+      },
+      { id: "trending", artistNames: ["Trending Artist"], sourceTypes: ["trending"] },
     ],
   );
+});
+
+test("looks up the server location for private, invalid, or spoofed client addresses", async (t) => {
+  const lookups = [];
+  t.mock.method(axios, "get", async (url) => {
+    lookups.push(url);
+    return { data: { city: "Somewhere", latitude: 40.2, longitude: -74.2 } };
+  });
+
+  await getNearbyShows({
+    req: { headers: { "x-forwarded-for": "203.0.113.9" }, ip: "192.168.1.20" },
+  });
+  await getNearbyShows({ req: { ip: "10.0.0.5" } });
+  await getNearbyShows({ req: { ip: "../../json" } });
+  await getNearbyShows({ req: { ip: "::ffff:198.51.100.7" } });
+
+  assert.deepEqual(lookups, [
+    "https://ipapi.co/json/",
+    "https://ipapi.co/198.51.100.7/json/",
+  ]);
 });
 
 test("marks an unresolved postal code instead of returning a normal empty location", async (t) => {
@@ -73,10 +153,7 @@ test("marks an unresolved postal code instead of returning a normal empty locati
   const result = await getNearbyShows({ zipCode: "M5V" });
 
   assert.equal(result.location.resolved, false);
-  assert.equal(result.total, 0);
   assert.deepEqual(result.shows, []);
-  assert.deepEqual(result.libraryShows, []);
-  assert.deepEqual(result.recommendedShows, []);
 });
 
 test("uses an explicit country when resolving an ambiguous postal code", async (t) => {
