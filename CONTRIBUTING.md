@@ -66,15 +66,15 @@ Before opening the pull request, run the checks that apply to your change and de
 
 ## Run browser smoke tests
 
-Start the candidate application before running the browser suite. Set `AURRAL_BASE_URL` to its URL, and set `AUTH_USER` and `AUTH_PASSWORD` to disposable test credentials.
+Start the candidate application before running the browser suite. Set `AURRAL_BASE_URL` to its URL, and set `AURRAL_TEST_USERNAME` and `AURRAL_TEST_PASSWORD` to a disposable test account.
 
 ```sh
-AURRAL_BASE_URL=http://127.0.0.1:3017 AUTH_USER=... AUTH_PASSWORD=... npm run test:e2e
+AURRAL_BASE_URL=http://127.0.0.1:3017 AURRAL_TEST_USERNAME=... AURRAL_TEST_PASSWORD=... npm run test:e2e
 ```
 
 The command installs Chromium before running Playwright. Non-loopback URLs must use HTTPS.
 
-Playwright also reads `backend/.env` when it exists, so `AUTH_USER`, `AUTH_PASSWORD`, and `AURRAL_BASE_URL` can live there instead. Without `AURRAL_BASE_URL`, the suite targets `npm run dev` on `AURRAL_DEV_WEB_PORT`, or port 3017 when that is unset. `npm run dev` reads `AURRAL_DEV_API_PORT` and `AURRAL_DEV_WEB_PORT` from `backend/.env` and defaults to 3001 and 3009.
+Playwright also reads `backend/.env` when it exists, so `AURRAL_TEST_USERNAME`, `AURRAL_TEST_PASSWORD`, and `AURRAL_BASE_URL` can live there instead. Without `AURRAL_BASE_URL`, the suite targets `npm run dev` on `AURRAL_DEV_WEB_PORT`, or port 3017 when that is unset. `npm run dev` reads `AURRAL_DEV_API_PORT` and `AURRAL_DEV_WEB_PORT` from `backend/.env` and defaults to 3001 and 3009.
 
 `activity-album-grabs.spec.js` starts its own server from the built frontend, so run `npm run build` first.
 

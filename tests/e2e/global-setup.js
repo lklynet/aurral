@@ -8,8 +8,8 @@ export const AUTH_STATE_PATH = fileURLToPath(new URL("../../playwright/.auth/use
 
 export default async function globalSetup(config) {
   const baseURL = config.projects[0].use.baseURL;
-  const username = String(process.env.AUTH_USER || "").trim();
-  const password = String(process.env.AUTH_PASSWORD || "");
+  const username = String(process.env.AURRAL_TEST_USERNAME || "").trim();
+  const password = String(process.env.AURRAL_TEST_PASSWORD || "");
   let origins = [];
   if (username && password) {
     const url = new URL(baseURL);

@@ -2,14 +2,14 @@ import { isIP } from "node:net";
 import { expect, test } from "@playwright/test";
 
 export const credentials = {
-  username: String(process.env.AUTH_USER || "").trim(),
-  password: String(process.env.AUTH_PASSWORD || ""),
+  username: String(process.env.AURRAL_TEST_USERNAME || "").trim(),
+  password: String(process.env.AURRAL_TEST_PASSWORD || ""),
 };
 
 export function requireCredentials() {
   test.beforeAll(() => {
     if (!credentials.username || !credentials.password) {
-      throw new Error("AUTH_USER and AUTH_PASSWORD are required for the full browser suite");
+      throw new Error("AURRAL_TEST_USERNAME and AURRAL_TEST_PASSWORD are required for the full browser suite");
     }
   });
 }
