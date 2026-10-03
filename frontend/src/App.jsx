@@ -116,15 +116,11 @@ function AppContent() {
   const { status: discoveryStatus, isConnected: appSocketConnected } = useDiscoveryStatus({
     enabled: isAuthenticated,
   });
-  const previousDiscoveryStatusRef = useRef(null);
 
   useEffect(() => {
-    const previous = previousDiscoveryStatusRef.current;
-    previousDiscoveryStatusRef.current = discoveryStatus;
     if (!discoveryStatus || discoveryStatus.isUpdating) return;
     if (localStorage.getItem(DISCOVERY_MANUAL_REFRESH_KEY) !== "1") return;
     localStorage.removeItem(DISCOVERY_MANUAL_REFRESH_KEY);
-    if (!previous?.isUpdating) return;
     if (discoveryStatus.error) {
       showError(`Discovery refresh failed: ${discoveryStatus.error}`);
     } else {

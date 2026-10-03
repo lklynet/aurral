@@ -116,3 +116,29 @@ test("scan completion schedules a full rescan requested while the scan was activ
     if (nextJobId) queue.cancel(nextJobId);
   }
 });
+
+test("an exited personal discovery process stops reporting that user's refresh as running", async (t) => {
+  const { getDiscoveryUserRefreshQueue } = await import("../../backend/services/honkerDb.js");
+  const persistence = await import("../../backend/services/discovery/persistence.js");
+  const { getDiscoveryStatus } = await import("../../backend/services/discovery/userDiscovery.js");
+  const originalLastfmApiKey = process.env.LASTFM_API_KEY;
+  process.env.LASTFM_API_KEY = "test-key";
+  t.after(() => {
+    if (originalLastfmApiKey === undefined) delete process.env.LASTFM_API_KEY;
+    else process.env.LASTFM_API_KEY = originalLastfmApiKey;
+  });
+  const queue = getDiscoveryUserRefreshQueue();
+  const pid = 900000003;
+  const jobId = queue.enqueue({ userId: 41, requestedAt: Date.now() });
+  t.after(() => queue.cancel(jobId));
+  assert.equal(queue.claimOne(`aurral-${pid}`)?.id, jobId);
+  persistence.markDiscoveryRefreshStarted("user:41");
+  assert.equal(getDiscoveryStatus(41).isUpdating, true);
+
+  await recoverExitedWorkerJobs("discovery-user-refresh", pid, { warn() {} }, "Worker crashed");
+
+  const status = getDiscoveryStatus(41);
+  assert.equal(status.isUpdating, false);
+  assert.equal(status.error, "Worker crashed");
+  assert.equal(queue.getJob(jobId)?.state, "pending");
+});

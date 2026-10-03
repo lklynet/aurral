@@ -130,10 +130,14 @@ export const markDiscoveryRefreshFinished = (namespace = null, { error = null } 
     refreshError: error || null,
   });
 
-export const markInterruptedDiscoveryRefresh = (error) => {
-  const { metadata } = dbOps.getDiscoveryRefreshSource();
-  if (!getDiscoveryRefreshState(metadata).running) return false;
-  markDiscoveryRefreshFinished(null, { error });
+export const markInterruptedDiscoveryRefresh = (
+  error,
+  { namespace = null, clearPending = false } = {},
+) => {
+  const state = getDiscoveryRefreshState(dbOps.getDiscoveryRefreshSource(namespace).metadata);
+  if (!state.running && !(clearPending && state.pending)) return false;
+  if (!state.running) markDiscoveryRefreshStarted(namespace);
+  markDiscoveryRefreshFinished(namespace, { error });
   return true;
 };
 

@@ -48,6 +48,7 @@ import {
   getDiscoveryRefreshState,
   markDiscoveryRefreshFinished,
   markDiscoveryRefreshRequested,
+  markInterruptedDiscoveryRefresh,
   markDiscoveryRefreshStarted,
   recordDiscoveryUpdateProgress,
   saveDiscoveryRefreshProgress,
@@ -79,6 +80,18 @@ const enqueueUserRefreshJob = (userId, { reason, delaySeconds }) => {
     progressMessage: "Waiting to build your recommendations",
   });
   return operationId;
+};
+
+export const markInterruptedUserDiscoveryRefresh = (userId, error) => {
+  const namespace = getUserDiscoveryNamespace(userId);
+  if (!markInterruptedDiscoveryRefresh(error, { namespace })) return false;
+  emitUserDiscoveryUpdate(userId, {
+    isUpdating: false,
+    phase: "error",
+    progressMessage: "Discovery refresh failed",
+    error,
+  });
+  return true;
 };
 
 export const requestUserDiscoveryRefresh = (
@@ -312,11 +325,15 @@ export const updateDiscoveryCache = async (options = {}) => {
       logger.error('discovery', `Failed to fetch global trending artists: ${error.message}`);
     }
 
-    const queuedUserRefreshes = enqueueAllUserDiscoveryRefreshes("global_refresh_completed");
-    logger.info(
-      'discovery',
-      `Queued ${queuedUserRefreshes} personal recommendation refresh${queuedUserRefreshes === 1 ? "" : "es"}.`,
-    );
+    try {
+      const queuedUserRefreshes = enqueueAllUserDiscoveryRefreshes("global_refresh_completed");
+      logger.info(
+        'discovery',
+        `Queued ${queuedUserRefreshes} personal recommendation refresh${queuedUserRefreshes === 1 ? "" : "es"}.`,
+      );
+    } catch (error) {
+      logger.warn('discovery', "Failed to queue personal recommendation refreshes:", error.message);
+    }
 
     publishGlobalDiscovery({
       provider: DISCOVERY_PROVIDER_LASTFM,

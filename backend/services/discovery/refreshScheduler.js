@@ -53,7 +53,11 @@ export function recoverDeadDiscoveryRefresh() {
       queue.cancel(row.id);
     } catch {}
   }
-  if (deadJobs.length) markInterruptedDiscoveryRefresh("Discovery refresh was interrupted");
+  if (deadJobs.length) {
+    markInterruptedDiscoveryRefresh("Discovery refresh was interrupted", {
+      clearPending: !hasQueuedDiscoveryRefresh(),
+    });
+  }
   for (const row of deadLocks) {
     const tx = honker.transaction();
     try {

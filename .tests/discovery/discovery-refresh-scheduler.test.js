@@ -304,6 +304,18 @@ test("recoverDeadDiscoveryRefresh clears jobs and locks owned by dead local work
   assert.equal(honkerDbModule.isHonkerLockHeld("discovery-global-refresh"), false);
 });
 
+test("recoverDeadDiscoveryRefresh clears a refresh that died before it started", () => {
+  const workerId = "aurral-99999998";
+  const jobId = honkerDbModule.getDiscoveryRefreshQueue().enqueue({ reason: "manual" });
+  persistence.markDiscoveryRefreshRequested();
+  assert.equal(honkerDbModule.getDiscoveryRefreshQueue().claimOne(workerId)?.id, jobId);
+  assert.equal(getDiscoveryStatus(null).updatePhase, "queued");
+
+  assert.equal(recoverDeadDiscoveryRefresh(), true);
+  assert.equal(getDiscoveryStatus(null).isUpdating, false);
+  assert.ok(getDiscoveryStatus(null).error);
+});
+
 test("enqueueDiscoveryRefresh deduplicates when refresh queue lock is held", () => {
   const first = enqueueDiscoveryRefresh({ reason: "manual" });
   assert.equal(first.enqueued, true);
