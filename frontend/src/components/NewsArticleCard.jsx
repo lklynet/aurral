@@ -11,17 +11,20 @@ const formatNewsDate = (value) => {
     : "Recent";
 };
 
-export function NewsArticleCard({ article, compact = false, onDisablePublisher }) {
+export function NewsArticleCard({ article, compact = false, onDisableFeed }) {
   const [imageFailed, setImageFailed] = useState(false);
   const [fallbackImage, setFallbackImage] = useState("");
   const [fallbackFailed, setFallbackFailed] = useState(false);
 
+  const artists = Array.isArray(article?.artists) ? article.artists : [];
+  const { artistMbid: fallbackMbid, artistName: fallbackName } =
+    artists.find((artist) => artist.artistMbid) || {};
   const shouldLoadFallback = (!article?.imageUrl || imageFailed) && !fallbackFailed;
 
   useEffect(() => {
-    if (!shouldLoadFallback || !article?.artistMbid) return undefined;
+    if (!shouldLoadFallback || !fallbackMbid) return undefined;
     let cancelled = false;
-    getArtistCover(article.artistMbid, article.artistName)
+    getArtistCover(fallbackMbid, fallbackName)
       .then((data) => {
         if (cancelled) return;
         const image = data?.images?.find((entry) => entry.front)?.image || data?.images?.[0]?.image;
@@ -31,18 +34,18 @@ export function NewsArticleCard({ article, compact = false, onDisablePublisher }
     return () => {
       cancelled = true;
     };
-  }, [article?.artistMbid, article?.artistName, shouldLoadFallback]);
+  }, [fallbackMbid, fallbackName, shouldLoadFallback]);
 
   if (!article?.url || !article?.title) return null;
 
   const imageUrl =
     article.imageUrl && !imageFailed ? article.imageUrl : fallbackFailed ? "" : fallbackImage;
   const publisher = String(article.source || "").trim();
-  const isHighlighted = Boolean(article.artistName);
+  const artistNames = artists.map((artist) => artist.artistName).join(", ");
 
   return (
     <article className="discover-news-card-shell">
-      <div className={`discover-news-card${compact ? " discover-news-card--compact" : ""}${isHighlighted ? " discover-news-card--highlighted" : ""}`}>
+      <div className={`discover-news-card${compact ? " discover-news-card--compact" : ""}${artistNames ? " discover-news-card--highlighted" : ""}`}>
         <a
           className="discover-news-card__link"
           href={article.url}
@@ -68,7 +71,7 @@ export function NewsArticleCard({ article, compact = false, onDisablePublisher }
             )}
           </div>
           <div className="discover-news-card__content">
-            {article.artistName ? <span className="discover-news-card__artist">{article.artistName}</span> : null}
+            {artistNames ? <span className="discover-news-card__artist">{artistNames}</span> : null}
             <h3 className="discover-news-card__title">{article.title}</h3>
             {!compact && article.description ? (
               <p className="discover-news-card__description">{article.description}</p>
@@ -76,11 +79,11 @@ export function NewsArticleCard({ article, compact = false, onDisablePublisher }
           </div>
         </a>
         <div className="discover-news-card__footer">
-          {publisher && onDisablePublisher ? (
+          {publisher && article.sourceUrl && onDisableFeed ? (
             <TooltipButton
               label={`Disable ${publisher} RSS feed`}
               className="discover-news-card__block"
-              onClick={() => void Promise.resolve(onDisablePublisher(publisher, article.sourceUrl)).catch(() => {})}
+              onClick={() => void Promise.resolve(onDisableFeed(article.sourceUrl)).catch(() => {})}
             >
               <Ban aria-hidden="true" />
             </TooltipButton>

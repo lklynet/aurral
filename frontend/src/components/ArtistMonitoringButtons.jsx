@@ -7,6 +7,7 @@ import { LibraryItemMenu } from "./LibraryItemMenu";
 import Tooltip from "./Tooltip";
 import { useToast } from "../contexts/ToastContext";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
+import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { queryClient, queryKeys } from "../queryClient.js";
 import { getArtistMonitoring, updateLibraryArtist } from "../utils/api/endpoints/library.js";
 import { describeAurralMonitoringError } from "../utils/aurralMonitoring.js";
@@ -26,6 +27,7 @@ export function useArtistMonitoring({
   onChanged = null,
 }) {
   const destination = useLibraryDestination();
+  const { isArtistDownloading } = useActiveDownloads();
   const { showSuccess, showError } = useToast();
   const [pending, setPending] = useState(false);
   const monitoringQuery = useQuery({
@@ -69,6 +71,7 @@ export function useArtistMonitoring({
     manager,
     ready: destination.ready && !destination.error,
     pending,
+    downloading: isArtistDownloading(mbid),
     monitored: isArtistMonitored(state),
     label: describeArtistMonitoring(state),
     reason,
@@ -88,7 +91,7 @@ const ButtonContent = ({ icon, label, pending }) => (
 
 export function ArtistMonitoringButtons({ onCustomizeLidarr = null, ...props }) {
   const monitoring = useArtistMonitoring(props);
-  const { manager, monitored, reason, monitoringItems, pending, state } = monitoring;
+  const { manager, monitored, reason, monitoringItems, pending, downloading, state } = monitoring;
 
   if (!monitoring.ready) {
     return <AddActionButton destination={monitoring.destination} showLabel />;
@@ -96,7 +99,8 @@ export function ArtistMonitoringButtons({ onCustomizeLidarr = null, ...props }) 
 
   const icon = monitored ? <Eye aria-hidden="true" /> : <Plus aria-hidden="true" />;
   const label = monitored ? monitoring.label : "Monitor";
-  const name = monitored ? `Monitoring: ${monitoring.label}` : "Monitor";
+  const monitorName = monitored ? `Monitoring: ${monitoring.label}` : "Monitor";
+  const name = downloading ? `${monitorName}. Downloading` : monitorName;
 
   if (reason) {
     return (
@@ -114,7 +118,9 @@ export function ArtistMonitoringButtons({ onCustomizeLidarr = null, ...props }) 
     if (!monitored) return null;
     return (
       <span className="btn btn-add-action btn-add-action--labeled" role="img" aria-label={name}>
-        <span className="btn-add-action__icon">{icon}</span>
+        <span className="btn-add-action__icon">
+          {downloading ? <DotLoader size="sm" label={null} /> : icon}
+        </span>
         <span className="btn-add-action__label">{label}</span>
       </span>
     );
@@ -137,7 +143,7 @@ export function ArtistMonitoringButtons({ onCustomizeLidarr = null, ...props }) 
       menuLabel="Monitoring"
       triggerLabel={name}
       triggerClassName="btn btn-add-action btn-add-action--labeled btn-add-action--menu"
-      triggerIcon={<ButtonContent icon={icon} label={label} pending={pending} />}
+      triggerIcon={<ButtonContent icon={icon} label={label} pending={pending || downloading} />}
       disabled={pending}
       contextMenu={false}
       align="start"

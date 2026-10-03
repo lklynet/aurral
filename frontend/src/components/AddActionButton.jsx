@@ -20,6 +20,8 @@ const AddActionButton = forwardRef(function AddActionButton(
     ownerConflict = null,
     icon: Icon = Plus,
     isLoading = false,
+    busy = false,
+    loadingLabel = null,
     disabled = false,
     showLabel = false,
     className = "",
@@ -81,7 +83,7 @@ const AddActionButton = forwardRef(function AddActionButton(
   }
 
   if (items) {
-    const menuLabel = label ?? getAddToManagerLabel(primary);
+    const menuLabel = ((isLoading || busy) && loadingLabel) || (label ?? getAddToManagerLabel(primary));
     return (
       <div onKeyDown={keepActivationKeysLocal}>
         <LibraryItemMenu
@@ -92,7 +94,7 @@ const AddActionButton = forwardRef(function AddActionButton(
           triggerIcon={
             <>
               <span className="btn-add-action__icon">
-                {isLoading ? <DotLoader size="sm" label={null} /> : <Icon aria-hidden="true" />}
+                {isLoading || busy ? <DotLoader size="sm" label={null} /> : <Icon aria-hidden="true" />}
               </span>
               {visibleLabel}
               <MoreVertical className="btn-add-action__more" aria-hidden="true" />
@@ -113,7 +115,7 @@ const AddActionButton = forwardRef(function AddActionButton(
       ref={ref}
       label={destination && !destination.ready
         ? "Checking library destinations"
-        : buttonProps.title ?? label ?? getAddToManagerLabel(primary)}
+        : ((isLoading || busy) && loadingLabel) || (buttonProps.title ?? label ?? getAddToManagerLabel(primary))}
       type={type}
       className={opensMenu ? `${classes} btn-add-action--menu` : classes}
       disabled={isDisabled}
@@ -124,7 +126,7 @@ const AddActionButton = forwardRef(function AddActionButton(
       }}
     >
       {children ?? <span className="btn-add-action__icon">
-        {isLoading || (destination && !destination.ready) ? (
+        {isLoading || busy || (destination && !destination.ready) ? (
           <DotLoader size="sm" label={null} />
         ) : (
           <Icon aria-hidden="true" />

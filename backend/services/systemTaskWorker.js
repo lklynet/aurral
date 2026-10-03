@@ -124,8 +124,8 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       return;
     }
     case "news-refresh": {
-      const { refreshLibraryNews } = await import("./newsService.js");
-      await refreshLibraryNews();
+      const { refreshNewsFeeds } = await import("./newsService.js");
+      await refreshNewsFeeds();
       return;
     }
     case "playlist-startup-migration": {

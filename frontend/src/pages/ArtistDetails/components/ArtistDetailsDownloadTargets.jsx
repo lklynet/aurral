@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Music, Star } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import AddActionButton from "../../../components/AddActionButton";
+import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { getReleaseGroupTracks } from "../../../utils/api/endpoints/artists.js";
 import { buildAurralPick, getReleaseGroupCoverUrl, getReleaseMetric } from "../utils";
 import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
@@ -67,6 +68,7 @@ export function ArtistDetailsDownloadTargets({
     [releaseGroups, getAlbumStatus],
   );
   const [showAllTracks, setShowAllTracks] = useState(false);
+  const { isAlbumDownloading } = useActiveDownloads();
   const releaseGroup = missingReleasePick?.releaseGroup;
   const trackContext = useMemo(
     () => ({
@@ -230,8 +232,15 @@ export function ArtistDetailsDownloadTargets({
                         missingReleasePick.title,
                         managedBy,
                       )}
-                    isLoading={requestingAlbum === missingReleasePick.releaseGroupId}
-                    disabled={requestingAlbum === missingReleasePick.releaseGroupId}
+                    isLoading={
+                      requestingAlbum === missingReleasePick.releaseGroupId ||
+                      isAlbumDownloading(missingReleasePick.releaseGroupId)
+                    }
+                    loadingLabel="Downloading"
+                    disabled={
+                      requestingAlbum === missingReleasePick.releaseGroupId ||
+                      isAlbumDownloading(missingReleasePick.releaseGroupId)
+                    }
                   />
                 </div>
               )}

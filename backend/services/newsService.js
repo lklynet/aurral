@@ -1,304 +1,262 @@
+import { db } from "../config/db-sqlite.js";
 import { buildImageProxyUrl } from "./imageProxyService.js";
 import { dbOps } from "../db/helpers/index.js";
-import { iterateCanonicalArtistProjection } from "./libraryQueryService.js";
+import { getCanonicalArtistKeyProjection } from "./libraryQueryService.js";
 import { getNewsSettings } from "./apiClients/config.js";
 import { fetchArticleImage, fetchRssFeed } from "./rssNews.js";
 import { mapWithConcurrency } from "./discovery/helpers.js";
 import { getUserDiscovery } from "./discovery/userDiscovery.js";
 import createCache from "./apiClients/simpleCache.js";
 
-const NEWS_PREFERENCES_KEY = (userId) => `user:${Number.parseInt(userId, 10)}:newsPreferences`;
-const NEWS_STATE_KEY = "news:rssState";
-// RSS feeds are local and quota-free; keep the cache short enough for new stories to appear promptly.
-const REFRESH_TTL_MS = 5 * 60 * 1000;
+const REFRESH_STATE_KEY = "news:refreshState";
 const ARTICLE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const MAX_ARTICLES = 1000;
-const MAX_BLOCKED_PUBLISHERS = 100;
+const MAX_ARTICLES = 5000;
+const MAX_IMAGE_LOOKUPS = 40;
 
-let refreshPromise = null;
-const newsResponseCache = createCache(5 * 60, 100);
+const articleMatchCache = createCache(5 * 60, 100);
+
+const upsertArticle = db.prepare(`
+  INSERT INTO news_articles (
+    id, source_url, source, url, title, description, categories, image_url, image_checked, published_at
+  ) VALUES (
+    @id, @sourceUrl, @source, @url, @title, @description, @categories, @imageUrl, @imageChecked, @publishedAt
+  )
+  ON CONFLICT(id) DO UPDATE SET
+    source = excluded.source,
+    url = excluded.url,
+    title = excluded.title,
+    description = excluded.description,
+    categories = excluded.categories,
+    image_url = COALESCE(excluded.image_url, news_articles.image_url)
+`);
+const deleteStaleArticles = db.prepare(`
+  DELETE FROM news_articles
+  WHERE published_at < ? OR source_url NOT IN (SELECT value FROM json_each(?))
+`);
+const trimArticles = db.prepare(`
+  DELETE FROM news_articles WHERE id IN (
+    SELECT id FROM news_articles ORDER BY published_at DESC, id LIMIT -1 OFFSET ?
+  )
+`);
+const selectArticlesMissingImages = db.prepare(`
+  SELECT id, url FROM news_articles
+  WHERE image_url IS NULL AND image_checked = 0
+  ORDER BY published_at DESC
+  LIMIT ?
+`);
+const setArticleImage = db.prepare(
+  "UPDATE news_articles SET image_url = ?, image_checked = 1 WHERE id = ?",
+);
+const selectArticleTerms = db.prepare("SELECT id, title, categories FROM news_articles");
+const selectActiveArticleIds = db.prepare(`
+  SELECT id FROM news_articles
+  WHERE source_url IN (SELECT value FROM json_each(?))
+  ORDER BY published_at DESC, id
+`);
+const selectArticlesByIds = db.prepare(`
+  SELECT * FROM news_articles
+  WHERE id IN (SELECT value FROM json_each(?))
+  ORDER BY published_at DESC, id
+`);
 
 export function invalidateNewsResponseCache() {
-  newsResponseCache.flushAll();
+  articleMatchCache.flushAll();
 }
-
-const normalizeBlockedPublishers = (publishers) => {
-  const seen = new Set();
-  return (Array.isArray(publishers) ? publishers : [])
-    .map((publisher) => String(publisher || "").trim())
-    .filter((publisher) => {
-      const key = publisher.toLowerCase();
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, MAX_BLOCKED_PUBLISHERS);
-};
-
-const isPublisherBlocked = (source, blockedPublishers) => {
-  const value = String(source || "").trim().toLowerCase();
-  return value && blockedPublishers.some((publisher) => publisher.toLowerCase() === value);
-};
-
-const getStoredState = () => {
-  const stored = dbOps.getJSONSetting(NEWS_STATE_KEY);
-  return {
-    checkedAt: Number(stored?.checkedAt || 0),
-    articles: Array.isArray(stored?.articles) ? stored.articles : [],
-    failedFeeds: Array.isArray(stored?.failedFeeds) ? stored.failedFeeds : [],
-  };
-};
-
-const saveState = (state) => {
-  dbOps.setJSONSetting(NEWS_STATE_KEY, {
-    checkedAt: state.checkedAt || 0,
-    articles: state.articles.slice(0, MAX_ARTICLES),
-    failedFeeds: state.failedFeeds.slice(0, 50),
-  });
-};
-
-const normalizeText = (value) => String(value || "")
-  .toLowerCase()
-  .replace(/&/g, " and ")
-  .replace(/[^a-z0-9]+/g, " ")
-  .trim();
-
-const containsArtistName = (article, artistName) => {
-  const name = normalizeText(artistName);
-  if (name.length < 3) return false;
-  const title = normalizeText(article.title);
-  return title.includes(name);
-};
-
-const publishedTime = (value) => {
-  const time = new Date(value || 0).getTime();
-  return Number.isFinite(time) ? time : 0;
-};
-
-const normalizeArtists = (artists) => [...new Map(
-  (Array.isArray(artists) ? artists : [])
-    .map((artist) => ({
-      artistMbid: String(artist?.foreignArtistId || artist?.mbid || "").trim() || null,
-      artistName: String(artist?.artistName || artist?.name || "").trim(),
-      newsType: artist?.newsType === "recommended" ? "recommended" : "library",
-    }))
-    .filter((artist) => artist.artistName)
-    .map((artist) => [artist.artistMbid || `name:${artist.artistName.toLowerCase()}`, artist]),
-).values()];
 
 const getEnabledFeeds = (settings) => settings.enabled
   ? settings.feeds.filter((feed) => feed.enabled && (feed.group === "custom" || settings.groups[feed.group] !== false))
   : [];
 
-async function enrichArticleImages(articles, state) {
-  const missing = articles.filter((article) => !article.imageUrl && article.url);
-  if (missing.length === 0) return articles;
-  const discovered = await mapWithConcurrency(missing, 3, async (article) => ({
-    id: article.id,
-    imageUrl: await fetchArticleImage(article.url),
-  }));
-  const images = new Map(discovered.filter((entry) => entry.imageUrl).map((entry) => [entry.id, entry.imageUrl]));
-  if (images.size === 0) return articles;
-  state.articles = state.articles.map((article) => (
-    images.has(article.id) ? { ...article, imageUrl: images.get(article.id) } : article
-  ));
-  saveState(state);
-  return articles.map((article) => (
-    images.has(article.id) ? { ...article, imageUrl: images.get(article.id) } : article
-  ));
+const normalizeName = (value) => String(value || "")
+  .normalize("NFKD")
+  .replace(/\p{M}+/gu, "")
+  .toLowerCase()
+  .replace(/&/g, " and ")
+  .replace(/[^\p{L}\p{N}]+/gu, " ")
+  .trim();
+
+const isSingleWordName = (name) => !name.includes(" ");
+
+const parseCategories = (value) => {
+  try {
+    const categories = JSON.parse(value || "[]");
+    return Array.isArray(categories) ? categories : [];
+  } catch {
+    return [];
+  }
+};
+
+async function getNewsArtists(userId) {
+  const recommendedArtists = userId
+    ? ((await getUserDiscovery(userId, 50, 0))?.body?.recommendations || [])
+    : [];
+  const artists = [
+    ...getCanonicalArtistKeyProjection().map((artist) => ({
+      artistMbid: artist.mbid || null,
+      artistName: String(artist.artistName || "").trim(),
+      newsType: "library",
+    })),
+    ...recommendedArtists.map((artist) => ({
+      artistMbid: String(artist?.mbid || artist?.id || "").trim() || null,
+      artistName: String(artist?.name || artist?.artistName || "").trim(),
+      newsType: "recommended",
+    })),
+  ];
+  const byIdentity = new Map();
+  for (const artist of artists) {
+    const identity = artist.artistMbid || `name:${artist.artistName.toLowerCase()}`;
+    if (artist.artistName && !byIdentity.has(identity)) byIdentity.set(identity, artist);
+  }
+  return [...byIdentity.values()];
 }
 
-async function refreshRssFeeds() {
+const buildArtistIndex = (artists) => {
+  const names = new Map();
+  let maxWords = 0;
+  for (const artist of artists) {
+    const name = normalizeName(artist.artistName);
+    if (name.length < 2) continue;
+    maxWords = Math.max(maxWords, name.split(" ").length);
+    names.set(name, [...(names.get(name) || []), artist]);
+  }
+  return { names, maxWords };
+};
+
+// Feeds that tag stories use categories to name the artists covered. For those
+// stories, a one-word name in the title is too ambiguous to count on its own.
+const findArticleArtists = ({ title, categories }, { names, maxWords }) => {
+  const matched = new Set(
+    categories.map(normalizeName).filter((category) => names.has(category)),
+  );
+  const requireCategory = categories.length > 0;
+  const words = normalizeName(title).split(" ");
+  for (let start = 0; start < words.length; start += 1) {
+    let phrase = "";
+    for (let end = start; end < Math.min(words.length, start + maxWords); end += 1) {
+      phrase = phrase ? `${phrase} ${words[end]}` : words[end];
+      if (names.has(phrase) && !(requireCategory && isSingleWordName(phrase))) matched.add(phrase);
+    }
+  }
+  const matchedNames = [...matched];
+  return matchedNames
+    .filter((name) => !matchedNames.some((other) => other !== name && ` ${other} `.includes(` ${name} `)))
+    .flatMap((name) => names.get(name))
+    .sort((left, right) => (left.newsType === "recommended") - (right.newsType === "recommended"));
+};
+
+async function getArticleMatches(userId) {
+  const cacheKey = String(userId || "");
+  const cached = articleMatchCache.get(cacheKey);
+  if (cached) return cached;
+  const artistIndex = buildArtistIndex(await getNewsArtists(userId));
+  const matches = new Map();
+  for (const row of selectArticleTerms.all()) {
+    const artists = findArticleArtists(
+      { title: row.title, categories: parseCategories(row.categories) },
+      artistIndex,
+    );
+    if (artists.length > 0) matches.set(row.id, artists);
+  }
+  articleMatchCache.set(cacheKey, matches);
+  return matches;
+}
+
+const toArticle = (row, artists) => ({
+  id: row.id,
+  title: row.title,
+  description: row.description || "",
+  url: row.url,
+  source: row.source,
+  sourceUrl: row.source_url,
+  publishedAt: new Date(row.published_at).toISOString(),
+  imageUrl: buildImageProxyUrl(row.image_url),
+  artists,
+});
+
+export async function getNewsForUser({
+  userId,
+  mode = "matched",
+  limit = 60,
+  offset = 0,
+} = {}) {
+  const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 60)));
+  const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
+  const feedUrls = getEnabledFeeds(getNewsSettings()).map((feed) => feed.url);
+  const matches = await getArticleMatches(userId);
+  const ids = selectActiveArticleIds.all(JSON.stringify(feedUrls)).map((row) => row.id);
+  const candidates = mode === "top" ? ids : ids.filter((id) => matches.has(id));
+  const pageIds = candidates.slice(safeOffset, safeOffset + safeLimit);
+  const state = dbOps.getJSONSetting(REFRESH_STATE_KEY) || {};
+  return {
+    articles: selectArticlesByIds
+      .all(JSON.stringify(pageIds))
+      .map((row) => toArticle(row, matches.get(row.id) || [])),
+    hasMore: safeOffset + safeLimit < candidates.length,
+    refresh: {
+      checkedAt: state.checkedAt || null,
+      failedFeeds: Array.isArray(state.failedFeeds) ? state.failedFeeds : [],
+      warning: state.allFailed ? "RSS feeds could not be refreshed. Showing cached stories." : null,
+    },
+  };
+}
+
+async function lookupMissingImages() {
+  const articles = selectArticlesMissingImages.all(MAX_IMAGE_LOOKUPS);
+  const images = await mapWithConcurrency(articles, 3, async ({ id, url }) => ({
+    id,
+    imageUrl: await fetchArticleImage(url),
+  }));
+  db.transaction(() => {
+    for (const { id, imageUrl } of images) setArticleImage.run(imageUrl, id);
+  })();
+}
+
+export async function refreshNewsFeeds() {
   const settings = getNewsSettings();
   const feeds = getEnabledFeeds(settings);
-  const state = getStoredState();
-  const now = Date.now();
-  if (state.checkedAt && now - state.checkedAt < REFRESH_TTL_MS) {
-    return { state, attemptedCount: 0, warning: null };
-  }
-  if (feeds.length === 0) {
-    state.checkedAt = now;
-    state.failedFeeds = [];
-    state.articles = [];
-    saveState(state);
-    return { state, attemptedCount: 0, warning: null };
-  }
-
   const results = await mapWithConcurrency(feeds, 3, async (feed) => {
     try {
       return { feed, articles: await fetchRssFeed(feed) };
     } catch {
-      return { feed, articles: [], failed: true };
+      return { feed, articles: null };
     }
   });
-  const failedUrls = new Set(results.filter((result) => result.failed).map(({ feed }) => feed.url));
-  const cachedArticles = state.articles.filter((article) => (
-    failedUrls.has(article.sourceUrl)
-    && (!article.publishedAt || now - publishedTime(article.publishedAt) <= ARTICLE_TTL_MS)
-  ));
-  const freshArticles = results.flatMap((result) => result.articles);
-  const byId = new Map([...cachedArticles, ...freshArticles].map((article) => [article.id, article]));
-  const failedFeeds = results.filter((result) => result.failed).map(({ feed }) => feed.name);
-  state.articles = [...byId.values()]
-    .filter((article) => !article.publishedAt || now - publishedTime(article.publishedAt) <= ARTICLE_TTL_MS)
-    .sort((left, right) => publishedTime(right.publishedAt) - publishedTime(left.publishedAt))
-    .slice(0, MAX_ARTICLES);
-  state.checkedAt = now;
-  state.failedFeeds = failedFeeds;
-  saveState(state);
-  return {
-    state,
-    attemptedCount: feeds.length,
-    warning: failedFeeds.length === feeds.length ? "RSS feeds could not be refreshed. Showing cached stories." : null,
-  };
+  const now = Date.now();
+  const oldestPublishedAt = now - ARTICLE_TTL_MS;
+  const failedFeeds = results.filter((result) => !result.articles).map(({ feed }) => feed.name);
+  db.transaction(() => {
+    for (const article of results.flatMap((result) => result.articles || [])) {
+      const publishedAt = Math.min(new Date(article.publishedAt || now).getTime() || now, now);
+      if (publishedAt < oldestPublishedAt) continue;
+      upsertArticle.run({
+        ...article,
+        categories: JSON.stringify(article.categories),
+        imageChecked: article.imageUrl ? 1 : 0,
+        publishedAt,
+      });
+    }
+    deleteStaleArticles.run(oldestPublishedAt, JSON.stringify(settings.feeds.map((feed) => feed.url)));
+    trimArticles.run(MAX_ARTICLES);
+    dbOps.setJSONSetting(REFRESH_STATE_KEY, {
+      checkedAt: now,
+      failedFeeds,
+      allFailed: feeds.length > 0 && failedFeeds.length === feeds.length,
+    });
+  })();
+  await lookupMissingImages();
+  invalidateNewsResponseCache();
 }
 
-const refreshFeeds = () => {
-  if (!refreshPromise) {
-    refreshPromise = refreshRssFeeds().finally(() => {
-      refreshPromise = null;
-    });
-  }
-  return refreshPromise;
-};
-
-export const matchNewsArticles = (articles, artists, blockedPublishers = []) => {
-  const seen = new Set();
-  return (Array.isArray(articles) ? articles : [])
-    .flatMap((article) => artists
-      .filter((artist) => containsArtistName(article, artist.artistName))
-      .map((artist) => ({
-        ...article,
-        artistMbid: artist.artistMbid,
-        artistName: artist.artistName,
-        newsType: artist.newsType,
-        imageUrl: buildImageProxyUrl(article.imageUrl),
-      })))
-    .filter((article) => {
-      const key = `${article.id}:${article.artistMbid || article.artistName}`;
-      if (seen.has(key) || isPublisherBlocked(article.source, blockedPublishers)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((left, right) => publishedTime(right.publishedAt) - publishedTime(left.publishedAt));
-};
-
-export const getNewsPreferences = (userId) => {
-  const stored = dbOps.getJSONSetting(NEWS_PREFERENCES_KEY(userId));
-  return { blockedPublishers: normalizeBlockedPublishers(stored?.blockedPublishers) };
-};
-
-export const updateNewsPreferences = (userId, preferences = {}) => {
-  const next = { blockedPublishers: normalizeBlockedPublishers(preferences.blockedPublishers) };
-  dbOps.setJSONSetting(NEWS_PREFERENCES_KEY(userId), next);
-  newsResponseCache.flushAll();
-  return next;
-};
-
-export const disableNewsFeed = (sourceUrl, sourceName) => {
-  const settings = dbOps.getSettings();
+export const disableNewsFeed = (sourceUrl) => {
   const news = getNewsSettings();
   const url = String(sourceUrl || "").trim();
-  const name = String(sourceName || "").trim().toLowerCase();
-  const feeds = news.feeds.map((feed) => (
-    (url && feed.url === url) || (!url && name && feed.name.toLowerCase() === name)
-      ? { ...feed, enabled: false }
-      : feed
-  ));
-  if (!feeds.some((feed, index) => feed.enabled !== news.feeds[index]?.enabled)) {
-    return news;
-  }
-  const nextNews = { ...news, feeds };
+  if (!news.feeds.some((feed) => feed.url === url && feed.enabled)) return news;
+  const nextNews = {
+    ...news,
+    feeds: news.feeds.map((feed) => (feed.url === url ? { ...feed, enabled: false } : feed)),
+  };
   dbOps.updateSettings({
-    integrations: { ...(settings.integrations || {}), news: nextNews },
+    integrations: { ...(dbOps.getSettings().integrations || {}), news: nextNews },
   });
-  newsResponseCache.flushAll();
   return nextNews;
-};
-
-export async function getNewsForUser({
-  limit = 60,
-  offset = 0,
-  userId,
-  mode = "matched",
-  refresh = false,
-} = {}) {
-  const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 60)));
-  const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
-  const responseCacheKey = JSON.stringify([userId || null, mode, safeLimit, safeOffset]);
-  if (!refresh) {
-    const cached = newsResponseCache.get(responseCacheKey);
-    if (cached) return cached;
-  }
-  const settings = getNewsSettings();
-  const libraryArtists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
-  const recommendedArtists = userId
-    ? ((await getUserDiscovery(userId, 50, 0))?.body?.recommendations || [])
-    : [];
-  const artists = normalizeArtists([
-    ...libraryArtists.map((artist) => ({ ...artist, newsType: "library" })),
-    ...recommendedArtists.map((artist) => ({ ...artist, newsType: "recommended" })),
-  ]);
-  const preferences = getNewsPreferences(userId);
-  const refreshResult = refresh
-    ? await refreshFeeds()
-    : { state: getStoredState(), warning: null };
-  const activeFeedUrls = new Set(getEnabledFeeds(settings).map((feed) => feed.url));
-  const activeArticles = refreshResult.state.articles.filter((article) => activeFeedUrls.has(article.sourceUrl));
-  const matchedArticles = matchNewsArticles(
-    activeArticles,
-    artists,
-    preferences.blockedPublishers,
-  );
-  const matchedById = new Map(matchedArticles.map((article) => [article.id, article]));
-  // Normalize pagination before enriching or slicing the current page.
-  let articles = mode === "top"
-    ? activeArticles
-      .filter((article) => !isPublisherBlocked(article.source, preferences.blockedPublishers))
-      .map((article) => ({
-        ...article,
-        ...(matchedById.get(article.id) || {}),
-        imageUrl: buildImageProxyUrl(article.imageUrl),
-      }))
-    : matchedArticles;
-  if (mode === "top") {
-    const page = articles.slice(safeOffset, safeOffset + safeLimit);
-    const enrichedPage = refresh
-      ? await enrichArticleImages(page, refreshResult.state)
-      : page;
-    const enrichedById = new Map(enrichedPage.map((article) => [article.id, article]));
-    articles = articles.map((article) => enrichedById.get(article.id) || article);
-  }
-  const result = {
-    configured: settings.enabled && getEnabledFeeds(settings).length > 0,
-    artistCount: artists.length,
-    feedCount: getEnabledFeeds(settings).length,
-    articles: articles.slice(safeOffset, safeOffset + safeLimit),
-    hasMore: safeOffset + safeLimit < articles.length,
-    blockedPublishers: preferences.blockedPublishers,
-    refresh: {
-      checkedAt: refreshResult.state.checkedAt || null,
-      failedFeeds: refreshResult.state.failedFeeds,
-      warning: refreshResult.warning || null,
-    },
-  };
-  if (!refresh) newsResponseCache.set(responseCacheKey, result);
-  return result;
-}
-
-export const getLibraryNews = getNewsForUser;
-
-export async function refreshLibraryNews() {
-  newsResponseCache.flushAll();
-  return getNewsForUser({ refresh: true });
-}
-
-export const getNewsFeedState = () => {
-  const settings = getNewsSettings();
-  return {
-    enabled: settings.enabled,
-    groups: settings.groups,
-    feeds: settings.feeds,
-    lastCheckedAt: getStoredState().checkedAt || null,
-  };
 };

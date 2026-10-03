@@ -5,6 +5,8 @@ import axios from "../../lib/axiosFetch.js";
 import { assertPublicUrl } from "../../lib/publicUrl.js";
 
 const MAX_ITEMS_PER_FEED = 100;
+const MAX_CATEGORIES = 20;
+const MAX_DESCRIPTION_LENGTH = 500;
 
 const htmlToText = (value) => String(value || "")
   .replace(/<[^>]+>/g, " ")
@@ -43,10 +45,15 @@ const resolveUrl = (value, base) => {
   }
 };
 
-export const normalizeRssArticle = (article, feed) => ({
+const getItemCategories = (item) => [
+  ...new Set(item.categories.map((category) => htmlToText(category.label || category.term))),
+].filter(Boolean).slice(0, MAX_CATEGORIES);
+
+const normalizeRssArticle = (article, feed) => ({
   id: createHash("sha1").update(`${feed.url}\n${article.url}`).digest("hex"),
   title: article.title,
   description: article.description,
+  categories: article.categories,
   url: resolveUrl(article.url, feed.url),
   source: feed.name,
   sourceUrl: feed.url,
@@ -56,12 +63,13 @@ export const normalizeRssArticle = (article, feed) => ({
 
 export const parseRssFeed = (xml, feed) => {
   const parsed = parseFeed(xml);
-  const source = { ...feed, name: parsed.title || feed.name || new URL(feed.url).hostname };
+  const source = { ...feed, name: feed.name || parsed.title || new URL(feed.url).hostname };
   return parsed.items
     .slice(0, MAX_ITEMS_PER_FEED)
     .map((item) => ({
       title: htmlToText(item.title),
-      description: htmlToText(item.description || item.content),
+      description: htmlToText(item.description || item.content).slice(0, MAX_DESCRIPTION_LENGTH),
+      categories: getItemCategories(item),
       url: decode(item.url || ""),
       publishedAt: (item.published || item.updated)?.toISOString() || null,
       imageUrl: getItemImage(item) || null,

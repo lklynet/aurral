@@ -17,12 +17,11 @@ import {
 
 const values = (options) => options.map((option) => option.value);
 
-test("Aurral artists get six monitor options and never existing", () => {
+test("Aurral artists never get existing or missing, which Aurral treats as all", () => {
   assert.deepEqual(values(getMonitorOptionsForManager(MONITOR_OPTIONS, "aurral")), [
     "none",
     "all",
     "future",
-    "missing",
     "latest",
     "first",
   ]);
@@ -286,8 +285,8 @@ test("current monitor option comes from the stored artist value", () => {
     "latest",
   );
   assert.equal(
-    resolveCurrentMonitorOption({ monitored: true, addOptions: { monitor: "missing" } }, "aurral"),
-    "missing",
+    resolveCurrentMonitorOption({ monitored: true, addOptions: { monitor: "first" } }, "aurral"),
+    "first",
   );
   assert.equal(
     resolveCurrentMonitorOption({ monitored: true, monitorNewItems: "future" }, "lidarr"),

@@ -56,8 +56,8 @@ function DiscoverPage() {
     loading: newsLoading,
     error: newsError,
     refresh: newsRefresh,
-    disablePublisher: disableNewsPublisher,
-  } = useLibraryNews({ enabled: newsConfigured, limit: 60, mode: "top", userId: authUser?.id });
+    disableFeed: disableNewsFeed,
+  } = useLibraryNews({ enabled: newsConfigured, limit: 12, mode: "top", userId: authUser?.id });
 
   const {
     data,
@@ -538,12 +538,12 @@ function DiscoverPage() {
               <DotLoader size="sm" label={null} /> Checking recent stories…
             </div>
           ) : newsArticles.length > 0 ? (
-            newsArticles.slice(0, 12).map((article) => (
-              <div key={article.url} className="artist-discover-shelf-card artist-discover-shelf-card--news">
+            newsArticles.map((article) => (
+              <div key={article.id} className="artist-discover-shelf-card artist-discover-shelf-card--news">
                 <NewsArticleCard
                   article={article}
                   compact
-                  onDisablePublisher={disableNewsPublisher}
+                  onDisableFeed={authUser?.role === "admin" ? disableNewsFeed : undefined}
                 />
               </div>
             ))
@@ -731,7 +731,7 @@ function DiscoverPage() {
             <>
               {nearbyShows.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((show) => (
                 <div
-                  key={`${show.id}-${show.artistName}-${show.sourceType || "show"}`}
+                  key={show.id}
                   className="artist-discover-show-rail-card"
                 >
                   <ShowCard show={show} />

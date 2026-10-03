@@ -33,7 +33,6 @@ export const DEFAULT_NEWS_GROUPS = [
   { id: "country", name: "Country & Americana" },
   { id: "jazz", name: "Jazz" },
   { id: "classical", name: "Classical & Contemporary Classical" },
-  { id: "specialty", name: "Genre Specialty" },
   { id: "regional", name: "Regional Music Scenes" },
   { id: "concerts", name: "Concerts, Festivals & Live Music" },
 ];
@@ -62,13 +61,10 @@ export const DEFAULT_NEWS_FEEDS = [
   { name: "Popjustice", url: "https://popjustice.com/feed/", group: "pop", builtIn: true },
   { name: "EQ Music", url: "https://eqmusicblog.com/feed/", group: "pop", builtIn: true },
   { name: "This Must Be Pop", url: "https://www.thismustbepop.com/feed/", group: "pop", builtIn: true },
-  { name: "Mixmag", url: "https://mixmag.net/feed", group: "electronic", builtIn: true },
   { name: "Dancing Astronaut", url: "https://dancingastronaut.com/feed/", group: "electronic", builtIn: true },
   { name: "EDM Sauce", url: "https://www.edmsauce.com/feed/", group: "electronic", builtIn: true },
-  { name: "Your EDM", url: "https://www.youredm.com/feed/", group: "electronic", builtIn: true },
   { name: "Metal Injection", url: "https://metalinjection.net/feed", group: "metal", builtIn: true },
   { name: "MetalSucks", url: "https://www.metalsucks.net/feed/", group: "metal", builtIn: true },
-  { name: "Metal Underground", url: "https://www.metalunderground.com/news/rss/", group: "metal", builtIn: true },
   { name: "Saving Country Music", url: "https://www.savingcountrymusic.com/feed/", group: "country", builtIn: true },
   { name: "The Boot", url: "https://theboot.com/feed/", group: "country", builtIn: true },
   { name: "No Depression", url: "https://nodepression.com/feed/", group: "country", builtIn: true },
@@ -77,8 +73,6 @@ export const DEFAULT_NEWS_FEEDS = [
   { name: "All About Jazz", url: "https://www.allaboutjazz.com/rss", group: "jazz", builtIn: true },
   { name: "Slipped Disc", url: "https://slippedisc.com/feed/", group: "classical", builtIn: true },
   { name: "I Care if You Listen", url: "https://icareifyoulisten.com/feed/", group: "classical", builtIn: true },
-  { name: "Classical Music", url: "https://www.classical-music.com/feed/", group: "classical", builtIn: true },
-  { name: "Reggaeville", url: "https://www.reggaeville.com/feeds/news.xml", group: "specialty", builtIn: true },
   { name: "The AU Review", url: "https://www.theaureview.com/feed/", group: "regional", builtIn: true },
   { name: "Grimy Goods", url: "https://www.grimygoods.com/feed/", group: "regional", builtIn: true },
   { name: "Jambase", url: "https://www.jambase.com/feed", group: "concerts", builtIn: true },
@@ -88,17 +82,25 @@ export const DEFAULT_NEWS_FEEDS = [
   enabled: true,
 }));
 
-export const normalizeNewsFeeds = (feeds) => {
+const RETIRED_NEWS_FEED_URLS = new Set([
+  "https://mixmag.net/feed",
+  "https://www.youredm.com/feed/",
+  "https://www.metalunderground.com/news/rss/",
+  "https://www.classical-music.com/feed/",
+  "https://www.reggaeville.com/feeds/news.xml",
+]);
+
+export const normalizeNewsFeeds = (storedFeeds) => {
   const builtInsByUrl = new Map(DEFAULT_NEWS_FEEDS.map((feed) => [feed.url, feed]));
-  const storedByUrl = new Map(
-    (Array.isArray(feeds) ? feeds : []).map((feed) => [String(feed?.url || "").trim(), feed]),
-  );
+  const feeds = (Array.isArray(storedFeeds) ? storedFeeds : [])
+    .filter((feed) => !RETIRED_NEWS_FEED_URLS.has(String(feed?.url || "").trim()));
+  const storedByUrl = new Map(feeds.map((feed) => [String(feed?.url || "").trim(), feed]));
   const source = [
     ...DEFAULT_NEWS_FEEDS.map((feed) => {
       const stored = storedByUrl.get(feed.url);
       return stored ? { ...feed, enabled: stored.enabled !== false } : feed;
     }),
-    ...(Array.isArray(feeds) ? feeds : []).filter((feed) => !builtInsByUrl.has(String(feed?.url || "").trim())),
+    ...feeds.filter((feed) => !builtInsByUrl.has(String(feed?.url || "").trim())),
   ];
   const seen = new Set();
   return source

@@ -11,6 +11,7 @@ import {
   queryKeys,
 } from "../../../queryClient.js";
 import { getLibraryOwnerConflict } from "../../libraryDestination.js";
+import { addActiveDownload } from "../../activeDownloads.js";
 
 const buildStreamUrl = (path) => buildAuthenticatedApiUrl(path);
 const SLOW_LIBRARY_REQUEST_TIMEOUT_MS = 90000;
@@ -244,8 +245,28 @@ export const lookupAlbumsInLibraryBatch = (mbids, { signal, bypassCache = false 
   });
 };
 
+export const getActiveDownloads = ({ signal } = {}) =>
+  getData("/library/downloads/active", { signal });
+
+export const refreshActiveDownloads = () =>
+  queryClient.invalidateQueries({ queryKey: queryKeys.activeDownloads });
+
+const markDownloadStarted = (started) => {
+  queryClient.setQueryData(queryKeys.activeDownloads, (current) =>
+    addActiveDownload(current, started));
+  void refreshActiveDownloads();
+};
+
+const refreshActiveDownloadsAfter = async (request) => {
+  try {
+    return await request;
+  } finally {
+    void refreshActiveDownloads();
+  }
+};
+
 export const addArtistToLibrary = async (artistData) => {
-  const result = await postData("/library/artists", artistData);
+  const result = await refreshActiveDownloadsAfter(postData("/library/artists", artistData));
   const mbid =
     result?.artist?.mbid ||
     result?.artist?.foreignArtistId ||
@@ -314,10 +335,17 @@ export const addLibraryAlbum = async (
     timeout: SLOW_LIBRARY_REQUEST_TIMEOUT_MS,
   });
 
-export const requestAlbumFromSearch = (payload) =>
-  postData("/library/albums/request", payload, {
+export const requestAlbumFromSearch = async (payload) => {
+  const result = await postData("/library/albums/request", payload, {
     timeout: SLOW_LIBRARY_REQUEST_TIMEOUT_MS,
   });
+  if (result?.status === "available") {
+    void refreshActiveDownloads();
+  } else {
+    markDownloadStarted({ albumMbid: payload?.albumMbid, artistMbid: payload?.artistMbid });
+  }
+  return result;
+};
 
 export const getLibraryTracks = async (
   albumId,
@@ -353,28 +381,41 @@ export const updateLibraryAlbum = (id, data) =>
   putData(`/library/albums/${id}`, data);
 
 export const updateLibraryArtist = (mbid, data) =>
-  putData(`/library/artists/${mbid}`, data);
+  refreshActiveDownloadsAfter(putData(`/library/artists/${mbid}`, data));
 
 export const downloadAlbum = (artistId, albumId, options = {}) =>
-  postData("/library/downloads/album", {
+  refreshActiveDownloadsAfter(postData("/library/downloads/album", {
     artistId,
     albumId,
     artistMbid: options.artistMbid,
     artistName: options.artistName,
-  });
+  }));
 
-export const downloadTrackToLibrary = (track) =>
-  postData("/library/downloads/track", track);
+export const downloadTrackToLibrary = async (track) => {
+  const result = await postData("/library/downloads/track", track);
+  if (result?.queued) {
+    markDownloadStarted({
+      track: {
+        mbid: track?.trackMbid || null,
+        artistName: track?.artistName,
+        trackName: track?.trackName,
+      },
+    });
+  } else {
+    void refreshActiveDownloads();
+  }
+  return result;
+};
 
 export const reSearchLibraryTrack = (trackId, { albumId } = {}) =>
-  postData(`/library/downloads/tracks/${encodeURIComponent(trackId)}/research`, {
+  refreshActiveDownloadsAfter(postData(`/library/downloads/tracks/${encodeURIComponent(trackId)}/research`, {
     albumId,
-  });
+  }));
 
 export const triggerAlbumSearch = (albumId) =>
-  postData("/library/downloads/album/search", {
+  refreshActiveDownloadsAfter(postData("/library/downloads/album/search", {
     albumId,
-  });
+  }));
 
 export const getDownloadStatus = async (albumIds, { signal, bypassCache = false } = {}) => {
   const ids = [...new Set((Array.isArray(albumIds) ? albumIds : [albumIds]).filter(Boolean))].sort();
@@ -396,13 +437,13 @@ export const getAurralAlbumStatus = (canonicalId, { signal } = {}) =>
   getData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}/status`, { signal });
 
 export const cancelAurralAlbum = (canonicalId) =>
-  postData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}/cancel`);
+  refreshActiveDownloadsAfter(postData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}/cancel`));
 
 export const setAurralAlbumMonitoring = (canonicalId, monitored) =>
-  putData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}`, { monitored });
+  refreshActiveDownloadsAfter(putData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}`, { monitored }));
 
 export const setAurralTrackMonitoring = (canonicalId, monitored) =>
-  putData(`/library/tracks/aurral/${encodeURIComponent(canonicalId)}`, { monitored });
+  refreshActiveDownloadsAfter(putData(`/library/tracks/aurral/${encodeURIComponent(canonicalId)}`, { monitored }));
 
 export const refreshLibraryArtist = (mbid) =>
   postData(`/library/artists/${mbid}/refresh`);

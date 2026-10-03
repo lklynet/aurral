@@ -11,12 +11,12 @@ import {
 
 const labels = (items) => items.map((item) => item.label);
 
-test("both managers offer the same choices, and only Lidarr adds Existing albums", () => {
+test("only Lidarr offers Existing albums and Missing albums", () => {
   const selected = [];
   const aurral = buildArtistMonitoringItems({ manager: "aurral", current: "future", onSelect: (option) => selected.push(option) });
   const lidarr = buildArtistMonitoringItems({ manager: "lidarr", current: "none", onSelect: () => {} });
 
-  assert.deepEqual(labels(aurral), ["Not monitored", "All albums", "Future albums", "Missing albums", "Latest album", "First album"]);
+  assert.deepEqual(labels(aurral), ["Not monitored", "All albums", "Future albums", "Latest album", "First album"]);
   assert.deepEqual(labels(lidarr), ["Not monitored", "Existing albums", "All albums", "Future albums", "Missing albums", "Latest album", "First album"]);
   assert.deepEqual(aurral.filter((item) => item.selected).map((item) => item.label), ["Future albums"]);
   assert.deepEqual(lidarr.filter((item) => item.selected).map((item) => item.label), ["Not monitored"]);

@@ -219,6 +219,65 @@ test("provider failure preserves rows and marks the inbox stale", async () => {
   }
 });
 
+test("refresh adds nearby shows for library artists only", async () => {
+  const originalAxiosGet = axios.default.get;
+  const originalTicketmasterKey = process.env.TICKETMASTER_API_KEY;
+  process.env.TICKETMASTER_API_KEY = "test-ticketmaster-key";
+  const event = (id, performer) => ({
+    id,
+    name: `${performer} live`,
+    url: `https://www.ticketmaster.com/event/${id}`,
+    dates: { start: { localDate: "2026-11-01" } },
+    _embedded: {
+      venues: [{ name: "Hall", city: { name: "New York" } }],
+      attractions: [{ name: performer }],
+    },
+  });
+  axios.default.get = (url, options) => {
+    if (String(url).includes("zippopotam.us")) {
+      return Promise.resolve({
+        data: {
+          places: [{ "place name": "New York", latitude: "40.73", longitude: "-73.99" }],
+        },
+      });
+    }
+    if (String(url).includes("ticketmaster.com")) {
+      return Promise.resolve({
+        data: {
+          _embedded: {
+            events: [
+              event("library-show", "Inbox Refresh Artist"),
+              event("other-show", "Someone Else"),
+            ],
+          },
+        },
+      });
+    }
+    return originalAxiosGet(url, options);
+  };
+
+  try {
+    await refreshInboxForUser(userId, {
+      force: true,
+      ipAddress: "127.0.0.1",
+      zipCode: "10003",
+    });
+    const shows = dbOps.getInboxItems(userId, { kinds: ["show"] });
+    assert.deepEqual(
+      shows.map(({ sourceKey, title, subtitle }) => ({ sourceKey, title, subtitle })),
+      [{
+        sourceKey: "library-show",
+        title: "Inbox Refresh Artist live",
+        subtitle: "Inbox Refresh Artist · 2026-11-01 · Hall · New York",
+      }],
+    );
+  } finally {
+    axios.default.get = originalAxiosGet;
+    if (originalTicketmasterKey === undefined) delete process.env.TICKETMASTER_API_KEY;
+    else process.env.TICKETMASTER_API_KEY = originalTicketmasterKey;
+  }
+});
+
 test("failed refreshes are explicit and a worker retry can complete", async () => {
   const previous = dbOps.upsertInboxItem({
     userId,

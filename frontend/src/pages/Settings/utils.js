@@ -120,7 +120,6 @@ export const normalizeSettings = (savedSettings) => {
           country: news.groups?.country !== false,
           jazz: news.groups?.jazz !== false,
           classical: news.groups?.classical !== false,
-          specialty: news.groups?.specialty !== false,
           regional: news.groups?.regional !== false,
           concerts: news.groups?.concerts !== false,
         },

@@ -14,7 +14,8 @@ import {
   Pencil,
   UserRound,
 } from "lucide-react";
-import { DotLoader } from "../../../components/DotLoader";
+import { DotLoader, DownloadingIcon } from "../../../components/DotLoader";
+import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import TooltipButton from "../../../components/TooltipButton";
 import { getFlowTrackDisplayNumber, sortFlowTracks } from "../../../utils/flowTrackSort";
 import { Link } from "react-router";
@@ -136,6 +137,8 @@ function FlowTrackKebabMenu({
   );
   const canNavigateArtist = Boolean(onNavigateArtist && (track?.artistMbid || track?.resolvesLinks));
   const canAddToLibrary = shouldShowAddToLibrary(track, onAddToLibrary);
+  const { isTrackDownloading } = useActiveDownloads();
+  const downloading = canAddToLibrary && isTrackDownloading(track);
   const actionItems = [
     onPlay
       ? {
@@ -157,9 +160,9 @@ function FlowTrackKebabMenu({
     canAddToLibrary
       ? {
           id: "add-library",
-          label: "Add to library",
-          icon: Plus,
-          disabled: isAddingToLibrary,
+          label: downloading ? "Downloading…" : "Add to library",
+          icon: downloading ? DownloadingIcon : Plus,
+          disabled: isAddingToLibrary || downloading,
           onSelect: () => onAddToLibrary(track),
         }
       : null,

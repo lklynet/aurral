@@ -140,8 +140,8 @@ a `message`. Album add and request responses include the same status as
 `{ "monitorOption": "…", "artistName": "…" }`. With Lidarr, the route adds the
 artist to Lidarr when needed, which requires the `addArtist` permission, and
 hands Lidarr any album it starts monitoring that Aurral has tracks from.
-Aurral accepts `none`, `all`, `missing`, `latest`, `first`, and `future`.
-Lidarr also accepts `existing`. The monitoring read returns
+Aurral accepts `none`, `all`, `latest`, `first`, and `future`.
+Lidarr also accepts `existing` and `missing`. The monitoring read returns
 `{ manager, added, monitorOption, inAurral, error }`, where `inAurral` says
 whether Aurral holds part of the artist, and `monitorOption` is `null`
 when the artist's Lidarr monitoring was changed in Lidarr itself.
@@ -239,15 +239,13 @@ Aurral read them in the last 10 seconds.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/news` | Read recent news for the current user's library |
-| `GET` | `/api/news/preferences` | Read the current user's blocked publishers |
-| `PATCH` | `/api/news/preferences` | Replace the current user's blocked publishers |
-| `POST` | `/api/news/feeds/disable` | Disable a news feed |
+| `POST` | `/api/news/feeds/disable` | Disable a news feed for everyone (admin only) |
 
-`/api/news` accepts an optional `limit` query parameter. News preferences are
-user-scoped. The `blockedPublishers` request field is an array of publisher
-names. The response includes `refresh.checkedArtistCount`,
-`refresh.queuedArtistCount`, `refresh.callsRemaining`, and an optional
-`refresh.warning` so clients can explain partial coverage and provider limits.
+`/api/news` accepts optional `mode`, `limit`, and `offset` query parameters.
+`mode=matched` (the default) returns only stories that mention a library or
+recommended artist. `mode=top` returns every recent story. Each article lists
+the matched artists in `artists`. The response includes `refresh.warning` when
+no feed could be refreshed.
 
 ## Inbox
 

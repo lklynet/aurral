@@ -337,3 +337,26 @@ test("preserves saved Lidarr roots for equivalent normalized connection values",
   assert.deepEqual(dbOps.getSettings().integrations.lidarr.rootFolderPaths, ["/old/music"]);
   assert.equal(dbOps.getSettings().integrations.lidarr.rootFolderPath, "/old/music");
 });
+
+test("queues a news refresh only when news settings change", async () => {
+  const { findActiveHonkerJob, getMaintenanceTaskQueue } = await import(
+    "../../backend/services/honkerDb.js"
+  );
+  const queuedNewsRefresh = () =>
+    findActiveHonkerJob("system-task-maintenance", (payload) => payload?.kind === "news-refresh");
+  const clearNewsRefresh = () => {
+    for (let job = queuedNewsRefresh(); job; job = queuedNewsRefresh()) {
+      getMaintenanceTaskQueue().cancel(job.id);
+    }
+  };
+  const { getSettings, postSettings } = captureSettingsRoutes();
+  const news = (await getSettings()).body.integrations.news;
+  clearNewsRefresh();
+
+  await postSettings({ integrations: { news } });
+  assert.equal(queuedNewsRefresh(), null);
+
+  await postSettings({ integrations: { news: { ...news, groups: { ...news.groups, jazz: false } } } });
+  assert.ok(queuedNewsRefresh());
+  clearNewsRefresh();
+});
