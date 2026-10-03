@@ -96,8 +96,8 @@ test("buildAlbumRequestPayload sends the chosen manager", () => {
   );
 });
 
-test("getMonitorOptionsForManager never offers existing to Aurral", () => {
-  const options = [{ value: "none" }, { value: "existing" }, { value: "all" }];
+test("getMonitorOptionsForManager never offers existing or missing to Aurral", () => {
+  const options = [{ value: "none" }, { value: "existing" }, { value: "all" }, { value: "missing" }];
   assert.deepEqual(
     getMonitorOptionsForManager(options, "aurral").map((option) => option.value),
     ["none", "all"],
