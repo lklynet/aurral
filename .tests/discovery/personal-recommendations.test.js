@@ -16,6 +16,7 @@ const [
   playEvents,
   { sampleLibraryArtistsForDiscovery },
   { default: discoveryRouter },
+  { default: searchRouter },
   { WeeklyFlowPlaylistSource },
 ] = await setupIsolatedBackend(
   "personal-recommendations",
@@ -26,6 +27,7 @@ const [
   "backend/services/playEventService.js",
   "backend/services/libraryQueryService.js",
   "backend/routes/discovery/index.js",
+  "backend/routes/search.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistSource.js",
 );
 
@@ -37,6 +39,11 @@ const FROM_LIKED = { name: "From Liked", mbid: mbid(11) };
 const FROM_PLAYED = { name: "From Played", mbid: mbid(12) };
 const FROM_LIBRARY = { name: "From Library", mbid: mbid(13) };
 const FROM_DISLIKED = { name: "From Disliked", mbid: mbid(14) };
+const SHOEGAZE_TOP_ARTISTS = [
+  { name: "Shoegaze Leader", mbid: mbid(21) },
+  FROM_PLAYED,
+  { name: "Shoegaze Third", mbid: mbid(22) },
+];
 
 const similarBySeed = new Map([
   [LIKED.mbid, [FROM_LIKED, BLOCKED, LIBRARY]],
@@ -55,6 +62,14 @@ const lastfmResponse = (url) => {
   const seed = params.get("mbid") || params.get("artist");
   if (params.get("method") === "artist.getTopTags") {
     return { toptags: { tag: ["female vocalists", "shoegaze", "seen live", "dream-pop", "indie"].map((name) => ({ name, count: 100 })) } };
+  }
+  if (params.get("method") === "tag.getTopArtists") {
+    return {
+      topartists: {
+        artist: SHOEGAZE_TOP_ARTISTS.map((artist) => ({ ...artist, image: [] })),
+        "@attr": { total: String(SHOEGAZE_TOP_ARTISTS.length) },
+      },
+    };
   }
   if (params.get("method") === "artist.getSimilar") {
     return {
@@ -157,20 +172,20 @@ test("new feedback softens and hides served picks before the next refresh", asyn
   discovery.removeDiscoveryFeedback(alice.id, lessLike.id);
 });
 
-const requestDiscoveryApi = async (userId, path, init = {}) => {
+const requestApi = async (userId, mountPath, router, path, init = {}) => {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
     req.user = { id: userId, role: "user" };
     next();
   });
-  app.use("/api/discover", discoveryRouter);
+  app.use(mountPath, router);
   const server = await new Promise((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
   try {
     const response = await originalFetch(
-      `http://127.0.0.1:${server.address().port}/api/discover${path}`,
+      `http://127.0.0.1:${server.address().port}${mountPath}${path}`,
       { ...init, headers: { "content-type": "application/json" } },
     );
     return { status: response.status, body: await response.json() };
@@ -178,6 +193,9 @@ const requestDiscoveryApi = async (userId, path, init = {}) => {
     await new Promise((resolve) => server.close(resolve));
   }
 };
+
+const requestDiscoveryApi = (userId, path, init) =>
+  requestApi(userId, "/api/discover", discoveryRouter, path, init);
 
 test("tag search and flow plans read the user's own pool", async () => {
   const tagged = await requestDiscoveryApi(alice.id, "/by-tag?tag=shoegaze");
@@ -192,6 +210,21 @@ test("tag search and flow plans read the user's own pool", async () => {
   };
   await source.buildFlowRunPlan({ ownerUserId: alice.id, discoverPresetId: "release-radar", size: 2 });
   assert.ok(basedOn.some((artist) => artist.name === LIKED.name));
+});
+
+test("tag search lists the tag's artists in Last.fm order without the user's recommendations", async () => {
+  const { status, body } = await requestApi(
+    alice.id,
+    "/api/search",
+    searchRouter,
+    "?scope=tag&q=%23shoegaze",
+  );
+  assert.equal(status, 200);
+  assert.deepEqual(
+    body.items.map((artist) => artist.name),
+    SHOEGAZE_TOP_ARTISTS.map((artist) => artist.name),
+  );
+  assert.equal(body.hasMore, false);
 });
 
 test("discover API shows a match percent that follows the user's ranking, not on trending", async () => {

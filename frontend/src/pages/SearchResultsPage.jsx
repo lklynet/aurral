@@ -55,9 +55,10 @@ import {
   ARTIST_IMAGE_HYDRATION_CONCURRENCY,
   ALBUM_COVER_HYDRATION_CONCURRENCY,
 } from "./searchPageUtils";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { artistMatchesGenre } from "./discoverUtils";
 import {
   ArrowDown,
   ArrowUp,
@@ -178,6 +179,9 @@ function SearchResultsPage() {
     if (type === "artist") return "artist";
     return "unified";
   }, [type, trimmedQuery]);
+  const recommendedTag =
+    normalizedType === "recommended" ? (searchParams.get("tag") || "").trim() : "";
+  const pagedRecommendations = normalizedType === "recommended" && !recommendedTag;
   const [recommendedSortPageType, setRecommendedSortPageType] = useState(normalizedType);
   if (recommendedSortPageType !== normalizedType) {
     const defaultSort = getDefaultRecommendedSort(normalizedType);
@@ -190,7 +194,9 @@ function SearchResultsPage() {
   const isAlbumSearch = normalizedType === "album";
   const isUnifiedSearch = normalizedType === "unified" && !!trimmedQuery;
   const pageTitle = useMemo(() => {
-    if (normalizedType === "recommended") return "Recommended";
+    if (normalizedType === "recommended") {
+      return recommendedTag ? `Because You Like ${recommendedTag}` : "Recommended";
+    }
     if (normalizedType === "trending") return "Global Trending";
     if (isTagSearch && trimmedQuery) {
       return trimmedQuery.startsWith("#") ? trimmedQuery : `#${trimmedQuery.replace(/^#/, "")}`;
@@ -198,7 +204,7 @@ function SearchResultsPage() {
     if (isAlbumSearch) return trimmedQuery || "Album Results";
     if (isUnifiedSearch) return trimmedQuery || "Search Results";
     return trimmedQuery || "Search Results";
-  }, [normalizedType, isTagSearch, trimmedQuery, isAlbumSearch, isUnifiedSearch]);
+  }, [normalizedType, recommendedTag, isTagSearch, trimmedQuery, isAlbumSearch, isUnifiedSearch]);
   useDocumentTitle(pageTitle);
   const albumSort = searchParams.get("sort") || DEFAULT_ALBUM_SORT;
   const showTagBanner = isTagSearch && lastfmConfigured === false && !dismissedTagBanner;
@@ -266,10 +272,7 @@ function SearchResultsPage() {
 
   const searchQueryKey = useMemo(() => {
     if (normalizedType === "recommended" || normalizedType === "trending") {
-      return queryKeys.searchDiscovery(
-        0,
-        normalizedType === "recommended" ? PAGE_SIZE : undefined,
-      );
+      return queryKeys.searchDiscovery(0, pagedRecommendations ? PAGE_SIZE : undefined);
     }
     if (isUnifiedSearch) {
       return queryKeys.searchUnified(trimmedQuery, "full", 20);
@@ -281,7 +284,15 @@ function SearchResultsPage() {
       releaseTypes: isAlbumSearch ? allReleaseTypes : [],
       sort: isAlbumSearch ? albumSort : undefined,
     });
-  }, [albumSort, isAlbumSearch, isTagSearch, isUnifiedSearch, normalizedType, trimmedQuery]);
+  }, [
+    albumSort,
+    isAlbumSearch,
+    isTagSearch,
+    isUnifiedSearch,
+    normalizedType,
+    pagedRecommendations,
+    trimmedQuery,
+  ]);
   const searchQuery = useInfiniteQuery({
     queryKey: searchQueryKey,
     enabled: Boolean(
@@ -292,7 +303,7 @@ function SearchResultsPage() {
       if (normalizedType === "recommended" || normalizedType === "trending") {
         return getDiscovery({
           offset: pageParam,
-          limit: normalizedType === "recommended" ? PAGE_SIZE : undefined,
+          limit: pagedRecommendations ? PAGE_SIZE : undefined,
           signal,
         });
       }
@@ -337,14 +348,17 @@ function SearchResultsPage() {
   const rawUnifiedResults = isUnifiedSearch ? searchPages[0] || null : null;
   const rawResults = useMemo(() => {
     if (normalizedType === "recommended") {
-      return searchPages.flatMap((page) => page?.recommendations || []);
+      const recommendations = searchPages.flatMap((page) => page?.recommendations || []);
+      return recommendedTag
+        ? recommendations.filter((artist) => artistMatchesGenre(artist, recommendedTag))
+        : recommendations;
     }
     if (normalizedType === "trending") {
       return searchPages[0]?.globalTop || [];
     }
     const items = searchPages.flatMap((page) => page?.items || []);
     return isAlbumSearch ? dedupeAlbums(items) : dedupeArtists(items);
-  }, [isAlbumSearch, normalizedType, searchPages]);
+  }, [isAlbumSearch, normalizedType, recommendedTag, searchPages]);
   const withAlbumLibraryState = useCallback(
     (album) => {
       const match = album?.id ? albumLibraryLookup[album.id] : null;
@@ -402,9 +416,9 @@ function SearchResultsPage() {
     ? (unifiedResults?.catalog?.artists?.length || 0) +
       (unifiedResults?.catalog?.albums?.length || 0) +
       (unifiedResults?.catalog?.tracks?.length || 0)
-    : normalizedType === "recommended"
+    : pagedRecommendations
       ? Number(searchPages[searchPages.length - 1]?.recommendationCount || results.length)
-      : normalizedType === "trending"
+      : normalizedType === "recommended" || normalizedType === "trending"
         ? results.length
         : Number(searchPages[searchPages.length - 1]?.count ?? results.length);
   const hasMore = normalizedType === "trending"
@@ -1178,8 +1192,16 @@ function SearchResultsPage() {
     const filtered = normalizedSearch
       ? results.filter((artist) => getRecommendedArtistName(artist).toLowerCase().includes(normalizedSearch))
       : results;
+    if (isTagSearch) return filtered;
     return sortRecommendedArtists(filtered, recommendedSortKey, recommendedSortDirection);
-  }, [normalizedType, recommendedSearchTerm, recommendedSortDirection, recommendedSortKey, results]);
+  }, [
+    isTagSearch,
+    normalizedType,
+    recommendedSearchTerm,
+    recommendedSortDirection,
+    recommendedSortKey,
+    results,
+  ]);
 
   const displayedResults =
     ["recommended", "trending", "tag"].includes(normalizedType)
@@ -1290,16 +1312,16 @@ function SearchResultsPage() {
           <h1 className="search-page__title">{pageTitle}</h1>
         </div>
 
-        {(pageSubtitle || (isTagSearch && lastfmConfigured !== false)) && (
+        {pageSubtitle && (
           <div className="search-page__subtitle-row">
-            {pageSubtitle && <p className="search-page__subtitle">{pageSubtitle}</p>}
-            {isTagSearch && lastfmConfigured !== false && (
-              <span className="search-page__tag-legend">
-                <span className="search-page__tag-legend-ring" aria-hidden="true">
-                  <span className="search-page__tag-legend-ring-core" />
-                </span>
-                <span>recommended</span>
-              </span>
+            <p className="search-page__subtitle">{pageSubtitle}</p>
+            {recommendedTag && (
+              <Link
+                to={`/search?q=${encodeURIComponent(`#${recommendedTag}`)}&type=tag`}
+                className="search-page__subtitle-link"
+              >
+                Search #{recommendedTag}
+              </Link>
             )}
           </div>
         )}
@@ -1339,53 +1361,57 @@ function SearchResultsPage() {
         {["recommended", "trending", "tag"].includes(normalizedType) && (
           <div ref={recommendedToolbarRef} className="library-page__toolbar global-search">
             <div className="global-search__box">
-              <div className="global-search__scope-wrap">
-                <button
-                  type="button"
-                  onClick={() => setRecommendedSortMenuOpen((open) => !open)}
-                  className={`global-search__scope-button library-page__sort-button${recommendedSortMenuOpen ? " is-open" : ""}`}
-                  aria-haspopup="listbox"
-                  aria-expanded={recommendedSortMenuOpen}
-                  aria-controls="recommended-sort-menu"
-                  aria-label="Sort results"
-                >
-                  <span className="library-page__sort-label">{selectedRecommendedSort.label}</span>
-                  <RecommendedSortDirectionIcon className="artist-icon-xs library-page__sort-direction" />
-                  <ChevronDown
-                    className={`artist-icon-sm${recommendedSortMenuOpen ? " artist-chevron--open" : ""}`}
-                  />
-                </button>
+              {!isTagSearch && (
+                <>
+                  <div className="global-search__scope-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setRecommendedSortMenuOpen((open) => !open)}
+                      className={`global-search__scope-button library-page__sort-button${recommendedSortMenuOpen ? " is-open" : ""}`}
+                      aria-haspopup="listbox"
+                      aria-expanded={recommendedSortMenuOpen}
+                      aria-controls="recommended-sort-menu"
+                      aria-label="Sort results"
+                    >
+                      <span className="library-page__sort-label">{selectedRecommendedSort.label}</span>
+                      <RecommendedSortDirectionIcon className="artist-icon-xs library-page__sort-direction" />
+                      <ChevronDown
+                        className={`artist-icon-sm${recommendedSortMenuOpen ? " artist-chevron--open" : ""}`}
+                      />
+                    </button>
 
-                {recommendedSortMenuOpen && (
-                  <div
-                    id="recommended-sort-menu"
-                    className="artist-options-menu library-page__sort-menu"
-                    role="listbox"
-                    aria-label="Result sort options"
-                  >
-                    {recommendedSortOptions.map((option) => {
-                      const active = recommendedSortKey === option.value;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => handleRecommendedSortOptionClick(option)}
-                          className={`artist-menu-item${active ? " is-active" : ""}`}
-                          role="option"
-                          aria-selected={active}
-                        >
-                          <span>{option.label}</span>
-                          <span>
-                            {active && <RecommendedSortDirectionIcon className="artist-icon-xs" />}
-                          </span>
-                        </button>
-                      );
-                    })}
+                    {recommendedSortMenuOpen && (
+                      <div
+                        id="recommended-sort-menu"
+                        className="artist-options-menu library-page__sort-menu"
+                        role="listbox"
+                        aria-label="Result sort options"
+                      >
+                        {recommendedSortOptions.map((option) => {
+                          const active = recommendedSortKey === option.value;
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() => handleRecommendedSortOptionClick(option)}
+                              className={`artist-menu-item${active ? " is-active" : ""}`}
+                              role="option"
+                              aria-selected={active}
+                            >
+                              <span>{option.label}</span>
+                              <span>
+                                {active && <RecommendedSortDirectionIcon className="artist-icon-xs" />}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
 
-              <div className="global-search__divider" />
+                  <div className="global-search__divider" />
+                </>
+              )}
 
               <div className="global-search__input-wrap">
                 <Search className="global-search__icon" />

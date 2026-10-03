@@ -41,7 +41,6 @@ export const buildArtistFeedbackPayload = (
       sourceContext ||
       artist?.sourceType ||
       artist?.discoveryTier ||
-      artist?.tagResultSource ||
       null,
     tagContext,
     seedContext,

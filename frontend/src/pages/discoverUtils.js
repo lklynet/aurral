@@ -73,6 +73,13 @@ export const shuffleWithSeed = (items, seed) => {
   return shuffled;
 };
 
+export const artistMatchesGenre = (artist, genre) => {
+  const normalizedGenre = String(genre || "").toLowerCase();
+  return (artist?.matchedTags || artist?.tags || []).some((tag) =>
+    String(tag).toLowerCase().includes(normalizedGenre),
+  );
+};
+
 const getDiscoverLayoutStorageKey = (userId) =>
   userId ? `${DISCOVER_LAYOUT_KEY}:${userId}` : DISCOVER_LAYOUT_KEY;
 
