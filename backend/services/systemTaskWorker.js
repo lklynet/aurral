@@ -11,6 +11,11 @@ import { cleanExpiredSessions } from "../config/session-helpers.js";
 import { dbOps } from "../db/helpers/index.js";
 import { resolveDownloadRoot } from "./downloadPaths.js";
 
+async function refreshUpgradeReadiness() {
+  const { checkUpgradeReadiness } = await import("./upgradeReadiness.js");
+  checkUpgradeReadiness();
+}
+
 export async function processSystemTask(payload = {}, job = null, context = {}) {
   const kind = String(payload?.kind || "").trim();
   switch (kind) {
@@ -203,11 +208,17 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
           completedAt: Date.now(),
         });
       }
+      await refreshUpgradeReadiness();
       return;
     }
     case "stored-data-migration": {
       const { migrateStoredData } = await import("./storedDataMigration.js");
       migrateStoredData();
+      await refreshUpgradeReadiness();
+      return;
+    }
+    case "upgrade-readiness-check": {
+      await refreshUpgradeReadiness();
       return;
     }
     case "identity-marker-migration": {
@@ -218,6 +229,7 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
           `[Library] Moved the identity marker to the grouping tag in ${result.moved} file(s); ${result.failed} file(s) failed`,
         );
       }
+      await refreshUpgradeReadiness();
       return;
     }
     case "lidarr-retry": {

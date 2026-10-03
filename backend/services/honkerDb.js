@@ -572,6 +572,7 @@ export function enqueueHonkerStartupTasks() {
     enqueueIfAbsent({ kind: "identity-marker-migration" }, { delaySeconds: 30, priority: -5 });
   }
   enqueueIfAbsent({ kind: "weekly-flow-startup-check" }, { delaySeconds: 5, priority: 5 });
+  enqueueIfAbsent({ kind: "upgrade-readiness-check" }, { delaySeconds: 60, priority: -10 });
   enqueueIfAbsent({ kind: "discovery-bootstrap" }, { delaySeconds: 15, priority: 5 });
   enqueueIfAbsent({ kind: "library-index-bootstrap" }, { delaySeconds: 8, priority: 0 });
   enqueueIfAbsent({ kind: "release-metadata-refresh" }, { delaySeconds: 12, priority: -5 });

@@ -137,6 +137,10 @@ export const SYSTEM_TASK_LABELS = {
     label: "Track Identity Tag Update",
     description: "Moves Aurral's track identity marker from the comment tag to the grouping tag in downloaded files.",
   },
+  "upgrade-readiness-check": {
+    label: "Aurral 3.0 Readiness Check",
+    description: "Checks whether this install has finished the updates Aurral 3.0 needs.",
+  },
   "playlist-startup-migration": {
     label: "Playlist Startup Migration",
     description: "Migrates legacy playlist files and reconciles playlist folders.",

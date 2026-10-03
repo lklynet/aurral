@@ -741,6 +741,15 @@ export async function migrateAurralDownloadFolder(options = {}) {
     if (fileSet.has(sourcePath)) continue;
     const retainedIndexedSource = item?.status === "retained"
       && item.reason === PLAYBACK_RETENTION_REASON && item.destination;
+    if (item?.status === "retained" && !retainedIndexedSource) {
+      state.items[sourcePath] = {
+        ...item,
+        status: "removed",
+        reason: "no longer in the Downloads Folder",
+        updatedAt: Date.now(),
+      };
+      continue;
+    }
     if (item?.status !== "referenced" && !retainedIndexedSource) continue;
     // A later retention retry can finish removing an already-indexed source.
     // Only finish that migration if its destination is still available.

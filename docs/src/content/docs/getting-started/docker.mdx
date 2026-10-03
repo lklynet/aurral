@@ -69,6 +69,16 @@ Nightly and preview images support `linux/amd64` only. On ARM, use `latest` or a
 
 The [Release Readiness issues](https://github.com/lklynet/aurral/issues?q=is%3Aissue+label%3Arelease-readiness+sort%3Aupdated-desc) track the current nightly. The pinned issue lists the nightly candidate and the changes it includes.
 
+## Prepare for Aurral 3.0
+
+Aurral 3.0 removes support for data and settings from older versions. Before you update to 3.0, open **Settings > System > Aurral 3.0** and check that it shows **Ready for Aurral 3.0**.
+
+- Each item under **Blocks the update** names what Aurral still needs to finish. Most items finish on their own in the background after Aurral starts. Select **Check again** to run the remaining tasks.
+- **Files to review** lists older files in the Downloads Folder that Aurral could not move safely, with the reason for each. Move or delete each file yourself, then select **Check again**.
+- **Still in use** lists settings and requests that 3.0 no longer accepts, such as the `WEEKLY_FLOW_FOLDER` variable or a data folder at `/app/backend/data`. They do not block the update, but change them first, or Aurral 3.0 will not start.
+
+If you skip from an older 2.x version straight to 3.0, Aurral 3.0 will stop without changing anything. Run the `2` image tag once, wait for the check to pass, then change to `latest`.
+
 ## Test a pull request preview
 
 The pull request conversation on GitHub gives the `pr-<number>` tag and the test steps.

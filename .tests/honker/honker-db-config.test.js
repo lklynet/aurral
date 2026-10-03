@@ -113,6 +113,7 @@ test("startup only queues due bootstrap work and a pending migration", () => {
     "stored-data-migration",
     "identity-marker-migration",
     "weekly-flow-startup-check",
+    "upgrade-readiness-check",
     "discovery-bootstrap",
     "library-index-bootstrap",
     "release-metadata-refresh",
@@ -133,6 +134,7 @@ test("startup only queues due bootstrap work and a pending migration", () => {
   honkerDb.enqueueHonkerStartupTasks();
   assert.deepEqual(queuedKinds(), [
     "weekly-flow-startup-check",
+    "upgrade-readiness-check",
     "discovery-bootstrap",
     "library-index-bootstrap",
     "release-metadata-refresh",

@@ -347,6 +347,14 @@ test("retains partial and ambiguous files instead of guessing", async () => {
   assert.equal(state.items[ambiguous].reason, "ambiguous media identity");
   await assert.doesNotReject(() => fs.access(partial));
   await assert.doesNotReject(() => fs.access(ambiguous));
+
+  await fs.rm(partial);
+  await fs.rm(ambiguous);
+  const rerun = await migrateAurralDownloadFolder({ root });
+  assert.equal(rerun.status, "complete");
+  const resolved = dbOps.getJSONSetting("aurralDownloadFolderMigration");
+  assert.equal(resolved.status, "complete");
+  assert.equal(resolved.items[partial].status, "removed");
 });
 
 test("blocks migration when DL_FOLDER overlaps the Lidarr root", async () => {
