@@ -12,7 +12,7 @@ const [
   { db },
   { dbOps, userOps },
   discovery,
-  { getUserDiscovery },
+  { getDiscoveryStatus, getUserDiscovery },
   playEvents,
   { sampleLibraryArtistsForDiscovery },
   { default: discoveryRouter },
@@ -146,7 +146,7 @@ test("personal refresh seeds from liked artists, local plays and the library, ne
     assert.equal(artist.tags.includes("female vocalists"), false);
     assert.equal(artist.tags.includes("seen live"), false);
   }
-  assert.equal(body.isUpdating, false);
+  assert.equal(getDiscoveryStatus(alice.id).isUpdating, false);
 });
 
 test("new feedback softens and hides served picks before the next refresh", async () => {
@@ -188,7 +188,11 @@ const requestApi = async (userId, mountPath, router, path, init = {}) => {
       `http://127.0.0.1:${server.address().port}${mountPath}${path}`,
       { ...init, headers: { "content-type": "application/json" } },
     );
-    return { status: response.status, body: await response.json() };
+    return {
+      status: response.status,
+      cacheControl: response.headers.get("cache-control") || "",
+      body: await response.json(),
+    };
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -263,8 +267,8 @@ test("feedback through the API waits for the next scheduled rebuild", async () =
 test("each user gets their own pool and a missing pool queues one refresh", async () => {
   const { body } = await getUserDiscovery(bob.id, 0);
   assert.equal(body.recommendations.some((artist) => artist.name === FROM_LIKED.name), false);
-  assert.equal(body.isUpdating, true);
-  assert.equal(body.updatePhase, "personalizing");
+  assert.equal(getDiscoveryStatus(bob.id).isUpdating, true);
+  assert.equal(getDiscoveryStatus(bob.id).updatePhase, "queued");
 
   assert.deepEqual(
     discovery.requestUserDiscoveryRefresh(bob.id),
@@ -274,6 +278,32 @@ test("each user gets their own pool and a missing pool queues one refresh", asyn
     "SELECT payload FROM _honker_live WHERE queue = 'discovery-user-refresh'",
   ).all().map((row) => JSON.parse(row.payload));
   assert.deepEqual(queued.map((payload) => payload.userId), [bob.id]);
+});
+
+test("a global refresh keeps each user updating until their own recommendations are rebuilt", async () => {
+  const before = getDiscoveryStatus(alice.id);
+  assert.equal(before.isUpdating, false);
+
+  await discovery.updateDiscoveryCache();
+
+  const afterGlobal = await requestDiscoveryApi(alice.id, "/status");
+  assert.equal(afterGlobal.body.isUpdating, true);
+  assert.equal(afterGlobal.body.updatePhase, "queued");
+  assert.equal(afterGlobal.body.lastUpdated, before.lastUpdated);
+
+  assert.equal((await discovery.updateUserDiscoveryCache(alice.id)).refreshed, true);
+
+  const done = await requestDiscoveryApi(alice.id, "/status");
+  assert.equal(done.body.isUpdating, false);
+  assert.equal(done.body.error, null);
+  assert.ok(Date.parse(done.body.lastUpdated) > Date.parse(before.lastUpdated));
+  assert.equal(getDiscoveryStatus(bob.id).isUpdating, true);
+});
+
+test("the discover payload is never served from the browser cache", async () => {
+  const { status, cacheControl } = await requestDiscoveryApi(alice.id, "");
+  assert.equal(status, 200);
+  assert.doesNotMatch(cacheControl, /max-age=[1-9]/);
 });
 
 test("library seeds sample recent additions and the whole library, not the alphabetical head", () => {

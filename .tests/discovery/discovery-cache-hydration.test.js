@@ -40,7 +40,6 @@ test("getDiscoveryCache preserves lastUpdated after an empty completed refresh",
   assert.deepEqual(cache.recommendations, []);
   assert.deepEqual(cache.globalTop, []);
   assert.deepEqual(cache.topGenres, []);
-  assert.equal(cache.isUpdating, false);
 });
 
 test("getDiscoveryCache persists recommendation enrichment metadata", async () => {

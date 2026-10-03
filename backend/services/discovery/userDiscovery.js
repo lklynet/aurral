@@ -11,12 +11,8 @@ import {
   getBlockedArtistKeys,
   getDiscoveryFeedback,
 } from "./feedback.js";
-import { getDiscoveryCache, getDiscoveryUpdateStatus } from "./persistence.js";
-import {
-  getUserDiscoveryNamespace,
-  getUserRefreshState,
-  requestUserDiscoveryRefresh,
-} from "./provider.js";
+import { getDiscoveryCache, getDiscoveryRefreshState } from "./persistence.js";
+import { getUserDiscoveryNamespace, requestUserDiscoveryRefresh } from "./provider.js";
 import { serveRecommendations, withArtistRouteId } from "./recommendationPipeline.js";
 import { getLibraryArtistKeys, matchesArtistKeys } from "./artistKeys.js";
 
@@ -42,18 +38,70 @@ const getServedRecommendations = ({ userId, source, feedback, discoveryMode, lib
   return recommendations;
 };
 
-const ensureUserRefresh = (userId, userCache, refreshState) => {
-  if (refreshState.pending || refreshState.running) return refreshState;
+const ensureUserRefresh = (userId, userCache) => {
+  const refreshState = getDiscoveryRefreshState(userCache.metadata);
+  if (refreshState.pending || refreshState.running) return;
   const lastUpdatedMs = Date.parse(userCache.lastUpdated || "") || 0;
   const staleMs = getDiscoveryAutoRefreshHours() * 60 * 60 * 1000;
   const finishedAt = Number(userCache.metadata?.refreshFinishedAt) || 0;
   const needsRefresh = !lastUpdatedMs || Date.now() - lastUpdatedMs > staleMs;
-  if (!needsRefresh || Date.now() - finishedAt < FAILED_REFRESH_BACKOFF_MS) return refreshState;
-  const result = requestUserDiscoveryRefresh(userId, {
+  if (!needsRefresh || Date.now() - finishedAt < FAILED_REFRESH_BACKOFF_MS) return;
+  requestUserDiscoveryRefresh(userId, {
     reason: lastUpdatedMs ? "stale" : "missing",
   });
-  return { ...refreshState, pending: refreshState.pending || result.enqueued };
 };
+
+const describeActiveRefresh = (global, user) => {
+  if (global.running) {
+    return {
+      updatePhase: global.phase || "starting",
+      updateProgress: global.progress,
+      updateProgressMessage: global.message || "Refreshing discovery",
+    };
+  }
+  if (global.pending) {
+    return {
+      updatePhase: "queued",
+      updateProgress: null,
+      updateProgressMessage: "Discovery refresh queued",
+    };
+  }
+  if (user.running) {
+    return {
+      updatePhase: user.phase || "personalizing",
+      updateProgress: user.progress,
+      updateProgressMessage: user.message || "Building your recommendations",
+    };
+  }
+  if (user.pending) {
+    return {
+      updatePhase: "queued",
+      updateProgress: null,
+      updateProgressMessage: "Waiting to build your recommendations",
+    };
+  }
+  return null;
+};
+
+export function getDiscoveryStatus(userId) {
+  const globalSource = dbOps.getDiscoveryRefreshSource();
+  const userSource =
+    getLastfmApiKey() && userId != null
+      ? dbOps.getDiscoveryRefreshSource(getUserDiscoveryNamespace(userId))
+      : null;
+  const global = getDiscoveryRefreshState(globalSource.metadata);
+  const user = getDiscoveryRefreshState(userSource?.metadata);
+  const active = describeActiveRefresh(global, user);
+  const latestFinished = user.finishedAt > global.finishedAt ? user : global;
+  return {
+    isUpdating: Boolean(active),
+    updatePhase: active?.updatePhase || null,
+    updateProgress: active?.updateProgress ?? null,
+    updateProgressMessage: active?.updateProgressMessage || null,
+    lastUpdated: userSource?.lastUpdated || globalSource.lastUpdated || null,
+    error: active ? null : latestFinished.error,
+  };
+}
 
 export function getUserDiscovery(userId, limit = 50, offset = 0) {
   const hasLastfmKey = !!getLastfmApiKey();
@@ -61,9 +109,7 @@ export function getUserDiscovery(userId, limit = 50, offset = 0) {
   const namespace = hasLastfmKey && userId != null ? getUserDiscoveryNamespace(userId) : null;
   const userCache = namespace ? dbOps.getDiscoveryCache(namespace) : null;
   const hasUserPool = Boolean(userCache?.lastUpdated);
-  const refreshState = userCache
-    ? ensureUserRefresh(userId, userCache, getUserRefreshState(userCache.metadata))
-    : { running: false, pending: false };
+  if (userCache) ensureUserRefresh(userId, userCache);
   const source = hasUserPool
     ? { namespace, ...userCache }
     : { namespace: "global", ...globalCache };
@@ -91,27 +137,10 @@ export function getUserDiscovery(userId, limit = 50, offset = 0) {
       artists: filterBlockedArtistsForUser(feedbackUserId, section?.artists || [], blockedKeys),
     }));
 
-  const userRefreshing = refreshState.running || (!hasUserPool && refreshState.pending);
-  const isUpdating = Boolean(globalCache.isUpdating) || userRefreshing;
-  const updateStatus = globalCache.isUpdating
-    ? getDiscoveryUpdateStatus()
-    : {
-        updatePhase: "personalizing",
-        updateProgress: null,
-        updateProgressMessage: "Building your personal recommendations",
-      };
-  const lastUpdatedMs = Date.parse(source.lastUpdated || "");
-  const staleMs = getDiscoveryAutoRefreshHours() * 60 * 60 * 1000;
   const limitClamped = Math.max(limit, 1);
   const offsetClamped = Math.max(offset, 0);
 
   return {
-    cacheStrategy:
-      recommendations.length > 0 || globalTop.length > 0
-        ? "fresh"
-        : isUpdating
-          ? "updating"
-          : "empty",
     body: {
       recommendations: limit
         ? recommendations.slice(offsetClamped, offsetClamped + limitClamped)
@@ -123,15 +152,12 @@ export function getUserDiscovery(userId, limit = 50, offset = 0) {
       topGenres: source.topGenres || [],
       fallbackGenres,
       lastUpdated: source.lastUpdated || null,
-      isUpdating,
       recommendationQuality: source.recommendationQuality || null,
       isEnriching: source.isEnriching === true,
       discoveryRunId: source.discoveryRunId || null,
       enrichmentStartedAt: source.enrichmentStartedAt || null,
       enrichmentCompletedAt: source.enrichmentCompletedAt || null,
       enrichmentProgressMessage: source.enrichmentProgressMessage || null,
-      ...(isUpdating ? updateStatus : {}),
-      stale: Number.isFinite(lastUpdatedMs) && lastUpdatedMs > 0 && Date.now() - lastUpdatedMs > staleMs,
       configured: true,
       provider: hasLastfmKey
         ? DISCOVERY_PROVIDER_LASTFM

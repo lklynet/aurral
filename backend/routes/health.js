@@ -21,10 +21,8 @@ import { getOidcBootstrapInfo } from "../services/oidcAuth.js";
 import { isGoogleLoginEnabled } from "../services/googleAuth.js";
 import { isPlexLoginEnabled } from "./users/plexLinkHandlers.js";
 import { lidarrClient } from "../services/lidarrClient.js";
-import {
-  getDiscoveryCache,
-  getDiscoveryUpdateStatus,
-} from "../services/discovery/index.js";
+import { getDiscoveryCache } from "../services/discovery/index.js";
+import { getDiscoveryStatus } from "../services/discovery/userDiscovery.js";
 import { getCachedArtistCount } from "../services/libraryManager.js";
 import { logger } from "../services/logger.js";
 import { resolvePlaylistRoot } from "../services/playlistPaths.js";
@@ -355,7 +353,6 @@ router.get("/", noCache, async (req, res) => {
         artistCount: typeof artistCount === "number" ? artistCount : 0,
         lastScan: null,
       };
-      const discoveryUpdateStatus = getDiscoveryUpdateStatus();
       const artworkLinkCount = dbOps.countImages();
       const nativeImageCacheSizeBytes = await getImageProxyCacheSizeBytes();
       payload.discovery = {
@@ -363,9 +360,7 @@ router.get("/", noCache, async (req, res) => {
           ? DISCOVERY_PROVIDER_LASTFM
           : DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
         capabilities: getDiscoveryCapabilities(!!getLastfmApiKey()),
-        lastUpdated: discoveryCache?.lastUpdated || null,
-        isUpdating: !!discoveryCache?.isUpdating,
-        ...discoveryUpdateStatus,
+        ...getDiscoveryStatus(currentUser.id),
         recommendationsCount: discoveryCache?.recommendations?.length || 0,
         globalTopCount: discoveryCache?.globalTop?.length || 0,
         artworkLinkCount,

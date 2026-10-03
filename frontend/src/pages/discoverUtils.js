@@ -230,11 +230,6 @@ export const normalizeDiscoveryData = (value) => {
         ? value.capabilities
         : null,
     lastUpdated: value.lastUpdated || null,
-    isUpdating: !!value.isUpdating,
-    updatePhase: value.updatePhase || null,
-    updateProgress:
-      typeof value.updateProgress === "number" ? value.updateProgress : null,
-    updateProgressMessage: value.updateProgressMessage || null,
     recommendationQuality:
       value.recommendationQuality === "initial" ||
       value.recommendationQuality === "enriching" ||
@@ -246,7 +241,6 @@ export const normalizeDiscoveryData = (value) => {
     enrichmentStartedAt: value.enrichmentStartedAt || null,
     enrichmentCompletedAt: value.enrichmentCompletedAt || null,
     enrichmentProgressMessage: value.enrichmentProgressMessage || null,
-    stale: !!value.stale,
     discoveryMode:
       value.discoveryMode === "safer" || value.discoveryMode === "deeper"
         ? value.discoveryMode
@@ -255,44 +249,8 @@ export const normalizeDiscoveryData = (value) => {
   };
 };
 
-export const stripDiscoveryStatusForStorage = (value) => {
-  const normalized = normalizeDiscoveryData(value);
-  if (!normalized) return null;
-  return {
-    ...normalized,
-    isUpdating: false,
-    updatePhase: null,
-    updateProgress: null,
-    updateProgressMessage: null,
-    isEnriching: false,
-    enrichmentProgressMessage: null,
-    stale: false,
-  };
-};
-
-export const mergeDiscoveryHttp = (
-  prev,
-  http,
-  { allowClearStatus = true } = {},
-) => {
-  const next = normalizeDiscoveryData(http);
-  if (!next) return prev || null;
-  if (allowClearStatus || !prev) return next;
-  if (prev.isUpdating && !next.isUpdating) {
-    next.isUpdating = true;
-    next.updatePhase = prev.updatePhase;
-    next.updateProgress = prev.updateProgress;
-    next.updateProgressMessage = prev.updateProgressMessage;
-  }
-  if (prev.isEnriching && !next.isEnriching) {
-    next.isEnriching = true;
-    next.enrichmentProgressMessage = prev.enrichmentProgressMessage;
-  }
-  return next;
-};
-
 export const readStoredDiscoveryData = (userId) => {
-  const fromStorage = stripDiscoveryStatusForStorage;
+  const fromStorage = normalizeDiscoveryData;
   try {
     const primaryKey = getDiscoveryCacheStorageKey(userId);
     const primary = fromStorage(
@@ -309,7 +267,7 @@ export const readStoredDiscoveryData = (userId) => {
 };
 
 export const writeStoredDiscoveryData = (value, userId) => {
-  const normalized = stripDiscoveryStatusForStorage(value);
+  const normalized = normalizeDiscoveryData(value);
   if (!normalized) return;
   try {
     localStorage.setItem(

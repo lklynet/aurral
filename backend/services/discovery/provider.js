@@ -45,8 +45,13 @@ import {
 import { getDiscoveryFeedback } from "./feedback.js";
 import {
   discoveryCache,
+  getDiscoveryRefreshState,
+  markDiscoveryRefreshFinished,
+  markDiscoveryRefreshRequested,
+  markInterruptedDiscoveryRefresh,
+  markDiscoveryRefreshStarted,
   recordDiscoveryUpdateProgress,
-  clearDiscoveryUpdateProgress,
+  saveDiscoveryRefreshProgress,
   isGlobalDiscoveryRefreshInProgress,
 } from "./persistence.js";
 import { getLibraryArtistKeys } from "./artistKeys.js";
@@ -54,35 +59,39 @@ import { buildTagProfile, collectSeedTags } from "./tasteProfile.js";
 import { buildRecommendationsFromSeeds } from "./recommendations.js";
 import { getTopPlayedArtists } from "../playEventService.js";
 
-const USER_REFRESH_TRACKING_WINDOW_MS = 2 * 60 * 60 * 1000;
 const USER_REFRESH_STAGGER_SECONDS = 15;
 const GLOBAL_REFRESH_RETRY_SECONDS = 60;
 
 export const getUserDiscoveryNamespace = (userId) => `user:${userId}`;
-
-export const getUserRefreshState = (metadata = {}, now = Date.now()) => {
-  const requestedAt = Number(metadata?.refreshRequestedAt) || 0;
-  const startedAt = Number(metadata?.refreshStartedAt) || 0;
-  const finishedAt = Number(metadata?.refreshFinishedAt) || 0;
-  return {
-    running: startedAt > finishedAt && now - startedAt < USER_REFRESH_TRACKING_WINDOW_MS,
-    pending: requestedAt > startedAt && now - requestedAt < USER_REFRESH_TRACKING_WINDOW_MS,
-  };
-};
 
 const emitUserDiscoveryUpdate = (userId, data) =>
   websocketService.emitDiscoveryUpdate({ configured: true, ...data }, { userId });
 
 const enqueueUserRefreshJob = (userId, { reason, delaySeconds }) => {
   const requestedAt = Date.now();
-  dbOps.updateDiscoveryCache(
-    { metadata: { refreshRequestedAt: requestedAt } },
-    getUserDiscoveryNamespace(userId),
-  );
-  return enqueueDiscoveryUserRefreshJob(
+  markDiscoveryRefreshRequested(getUserDiscoveryNamespace(userId), requestedAt);
+  const operationId = enqueueDiscoveryUserRefreshJob(
     { userId, requestedAt, reason },
     { delaySeconds, priority: -10 },
   );
+  emitUserDiscoveryUpdate(userId, {
+    isUpdating: true,
+    phase: "queued",
+    progressMessage: "Waiting to build your recommendations",
+  });
+  return operationId;
+};
+
+export const markInterruptedUserDiscoveryRefresh = (userId, error) => {
+  const namespace = getUserDiscoveryNamespace(userId);
+  if (!markInterruptedDiscoveryRefresh(error, { namespace })) return false;
+  emitUserDiscoveryUpdate(userId, {
+    isUpdating: false,
+    phase: "error",
+    progressMessage: "Discovery refresh failed",
+    error,
+  });
+  return true;
 };
 
 export const requestUserDiscoveryRefresh = (
@@ -93,7 +102,7 @@ export const requestUserDiscoveryRefresh = (
     return { enqueued: false, reason: "not_configured" };
   }
   const { metadata } = dbOps.getDiscoveryCache(getUserDiscoveryNamespace(userId));
-  if (getUserRefreshState(metadata).pending) {
+  if (getDiscoveryRefreshState(metadata).pending) {
     return { enqueued: false, reason: "queued" };
   }
   const operationId = enqueueUserRefreshJob(userId, { reason, delaySeconds });
@@ -239,9 +248,9 @@ const recordHistory = (method, ...args) =>
     .catch((err) => { logger.warn('discovery', err); });
 
 const publishGlobalDiscovery = (discoveryData) => {
-  Object.assign(discoveryCache, discoveryData, { isUpdating: false });
+  Object.assign(discoveryCache, discoveryData);
   dbOps.updateDiscoveryCache(discoveryData);
-  clearDiscoveryUpdateProgress();
+  markDiscoveryRefreshFinished();
   websocketService.emitDiscoveryUpdate({
     isUpdating: false,
     configured: true,
@@ -268,7 +277,7 @@ export const updateDiscoveryCache = async (options = {}) => {
       },
     );
   }
-  discoveryCache.isUpdating = true;
+  markDiscoveryRefreshStarted();
   logger.info('discovery', "Starting background update of discovery data...");
   recordDiscoveryUpdateProgress("starting", "Preparing discovery refresh", 5);
   recordHistory("recordDiscoveryRefreshStarted");
@@ -316,6 +325,16 @@ export const updateDiscoveryCache = async (options = {}) => {
       logger.error('discovery', `Failed to fetch global trending artists: ${error.message}`);
     }
 
+    try {
+      const queuedUserRefreshes = enqueueAllUserDiscoveryRefreshes("global_refresh_completed");
+      logger.info(
+        'discovery',
+        `Queued ${queuedUserRefreshes} personal recommendation refresh${queuedUserRefreshes === 1 ? "" : "es"}.`,
+      );
+    } catch (error) {
+      logger.warn('discovery', "Failed to queue personal recommendation refreshes:", error.message);
+    }
+
     publishGlobalDiscovery({
       provider: DISCOVERY_PROVIDER_LASTFM,
       capabilities: getDiscoveryCapabilities(true),
@@ -335,12 +354,6 @@ export const updateDiscoveryCache = async (options = {}) => {
       enrichmentProgressMessage: null,
     });
 
-    const queuedUserRefreshes = enqueueAllUserDiscoveryRefreshes("global_refresh_completed");
-    logger.info(
-      'discovery',
-      `Queued ${queuedUserRefreshes} personal recommendation refresh${queuedUserRefreshes === 1 ? "" : "es"}.`,
-    );
-
     const { notifyDiscoveryUpdated } = await import("../notificationService.js");
     notifyDiscoveryUpdated().catch((err) =>
       logger.warn('discovery', "[Discovery] Notification failed:", err.message),
@@ -359,6 +372,7 @@ export const updateDiscoveryCache = async (options = {}) => {
   } catch (error) {
     logger.error('discovery', "Failed to update discovery cache:", error.message);
     logger.error('discovery', "Stack trace:", error.stack);
+    markDiscoveryRefreshFinished(null, { error: error.message });
     websocketService.emitDiscoveryUpdate({
       isUpdating: false,
       configured: true,
@@ -368,9 +382,6 @@ export const updateDiscoveryCache = async (options = {}) => {
       error: error.message,
     });
     recordHistory("recordDiscoveryRefreshFailed", error.message);
-  } finally {
-    discoveryCache.isUpdating = false;
-    clearDiscoveryUpdateProgress();
   }
 };
 
@@ -414,7 +425,17 @@ const buildUserRecommendations = async ({ userId, user, existing, startedAt }) =
   const lastfmHealth = { success: 0, failure: 0 };
   const feedback = getDiscoveryFeedback(userId);
   const progress = (phase, progressMessage, value) =>
-    emitUserDiscoveryUpdate(userId, { isUpdating: true, phase, progress: value, progressMessage });
+    emitUserDiscoveryUpdate(userId, {
+      isUpdating: true,
+      phase,
+      progress: saveDiscoveryRefreshProgress(
+        getUserDiscoveryNamespace(userId),
+        phase,
+        progressMessage,
+        value,
+      ),
+      progressMessage,
+    });
 
   progress("collecting_seeds", "Collecting your seed artists", 10);
   const seeds = await collectUserSeeds(user, feedback, lastfmHealth);
@@ -498,7 +519,7 @@ export const updateUserDiscoveryCache = async (userId, options = {}) => {
   }
 
   const startedAt = Date.now();
-  dbOps.updateDiscoveryCache({ metadata: { refreshStartedAt: startedAt } }, namespace);
+  markDiscoveryRefreshStarted(namespace, startedAt);
   logger.info('discovery', `[Discovery] Building personal recommendations for user ${userId}...`);
 
   try {
@@ -520,10 +541,11 @@ export const updateUserDiscoveryCache = async (userId, options = {}) => {
         topGenres,
         recommendationQuality: DISCOVERY_QUALITY_ENRICHED,
         discoveryRunId: createDiscoveryRunId(),
-        metadata: { refreshFinishedAt: Date.now(), lastRunStartedAt: startedAt },
+        metadata: { lastRunStartedAt: startedAt },
       },
       namespace,
     );
+    markDiscoveryRefreshFinished(namespace);
     logger.info(
       'discovery',
       `[Discovery] User ${userId} refresh complete: ${recommendations.length} recommendations from ${seeds.length} seeds.`,
@@ -540,7 +562,7 @@ export const updateUserDiscoveryCache = async (userId, options = {}) => {
       'discovery',
       `[Discovery] Failed to build recommendations for user ${userId}: ${error.message}`,
     );
-    dbOps.updateDiscoveryCache({ metadata: { refreshFinishedAt: Date.now() } }, namespace);
+    markDiscoveryRefreshFinished(namespace, { error: error.message });
     emitUserDiscoveryUpdate(userId, {
       isUpdating: false,
       phase: "error",

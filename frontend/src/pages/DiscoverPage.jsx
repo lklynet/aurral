@@ -84,6 +84,7 @@ function DiscoverPage() {
     libraryDestination,
     handleRecentReleaseAlbumAction,
     handleDiscoveryFeedback,
+    discoveryStatus,
   } = useDiscoverData();
 
   const {
@@ -171,7 +172,10 @@ function DiscoverPage() {
       (data.globalTop && data.globalTop.length > 0) ||
       (data.topGenres && data.topGenres.length > 0) ||
       (data.fallbackGenres && data.fallbackGenres.length > 0));
-  const isActuallyUpdating = data?.isUpdating && !hasData;
+  const isUpdating = Boolean(discoveryStatus?.isUpdating);
+  const updateProgressMessage = discoveryStatus?.updateProgressMessage || null;
+  const lastUpdated = discoveryStatus?.lastUpdated || data?.lastUpdated || null;
+  const isActuallyUpdating = isUpdating && !hasData;
 
   const {
     recommendations = [],
@@ -180,9 +184,6 @@ function DiscoverPage() {
     basedOn = [],
     provider = "lastfm",
     capabilities,
-    lastUpdated,
-    isUpdating,
-    updateProgressMessage,
     configured = true,
   } = data || {};
   const { data: editorialShelf } = useEditorialShelf();
@@ -912,6 +913,7 @@ function DiscoverPage() {
                   isUpdating={isUpdating}
                   lastUpdated={lastUpdated}
                   updateProgressMessage={updateProgressMessage}
+                  error={discoveryStatus?.error}
                 />
               </div>
               {heroBasedOn.length > 0 && (
