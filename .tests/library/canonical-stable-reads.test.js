@@ -184,17 +184,15 @@ test("configured Lidarr read failures fall back to the canonical index", async (
   });
 
   try {
-    const [byMbid, byId, recent, albums, byAlbumId, tracks] = await Promise.all([
+    const [byMbid, byId, albums, byAlbumId, tracks] = await Promise.all([
       libraryManager.getArtist(artist.mbid),
       libraryManager.getArtistById(9941),
-      libraryManager.getRecentArtists(10),
       libraryManager.getAlbums(9941),
       libraryManager.getAlbumById(9942),
       libraryManager.getTracks(9942),
     ]);
     assert.equal(byMbid?.canonicalId, String(artist.id));
     assert.equal(byId?.canonicalId, String(artist.id));
-    assert.ok(recent.some((entry) => entry.id === String(artist.id)));
     assert.equal(albums[0]?.canonicalId, String(album.id));
     assert.equal(byAlbumId?.canonicalId, String(album.id));
     assert.equal(tracks[0]?.canonicalId, String(track.id));

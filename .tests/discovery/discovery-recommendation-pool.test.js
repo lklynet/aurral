@@ -16,7 +16,7 @@ const [
   "backend/services/discovery/index.js",
 );
 
-const { mergeRetainedRecommendationPool, filterRecommendationsForServe } =
+const { mergeRetainedRecommendationPool, serveRecommendations } =
   recommendationPipeline;
 const {
   getDiscoveryRecommendationsPerRefresh,
@@ -157,25 +157,26 @@ test("rotation drops lowest retained artists when fresh batch arrives", () => {
   assert.equal(rotated.some((item) => item.name === "weak-0"), true);
 });
 
-test("filterRecommendationsForServe keeps less-like artists and hides only exact blocks", () => {
+test("serveRecommendations ranks less-like artists lower and hides only exact blocks", () => {
   const storedPool = artists.makeBatch(5, 180, "stored");
   const hidden = storedPool[2];
-  const lessLike = filterRecommendationsForServe(storedPool, [
-    {
-      artistId: hidden.id,
-      action: "less_like_this",
-    },
-  ]);
+  const unchanged = serveRecommendations(storedPool);
+  const lessLike = serveRecommendations(storedPool, {
+    feedback: [{ artistId: hidden.id, action: "less_like_this" }],
+  });
 
-  assert.equal(lessLike.length, 5);
-  assert.deepEqual(lessLike.map((item) => item.name), storedPool.map((item) => item.name));
+  assert.deepEqual(
+    lessLike.map((item) => item.name).sort(),
+    storedPool.map((item) => item.name).sort(),
+  );
+  assert.ok(
+    lessLike.findIndex((item) => item.id === hidden.id) >
+      unchanged.findIndex((item) => item.id === hidden.id),
+  );
 
-  const filtered = filterRecommendationsForServe(storedPool, [
-    {
-      artistId: hidden.id,
-      action: "block_artist",
-    },
-  ]);
+  const filtered = serveRecommendations(storedPool, {
+    feedback: [{ artistId: hidden.id, action: "block_artist" }],
+  });
 
   assert.equal(filtered.length, 4);
   assert.deepEqual(

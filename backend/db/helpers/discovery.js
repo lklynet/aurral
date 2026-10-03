@@ -182,16 +182,21 @@ export default function register(dbOps) {
           now,
         );
       }
-      if (cacheNamespace) {
+      if (cacheNamespace && discovery.recommendations) {
         upsertDiscoveryCacheStmt.run(`${prefix}lastUpdated`, now, now);
       }
     });
     updateFn();
   };
 
+  dbOps.invalidateDiscoveryCache = function (cacheNamespace) {
+    discoveryUserCache.delete(cacheNamespace);
+  };
+
   dbOps.deleteDiscoveryCacheByPrefix = function (prefix) {
-    const namespace = String(prefix || "").replace(/%$/, "").replace(/:$/, "");
-    discoveryUserCache.delete(namespace);
+    for (const namespace of discoveryUserCache.keys()) {
+      if (`${namespace}:`.startsWith(prefix)) discoveryUserCache.delete(namespace);
+    }
     return db.prepare("DELETE FROM discovery_cache WHERE key LIKE ?").run(
       `${prefix}%`
     );

@@ -283,6 +283,7 @@ const discoveryUserRefresh = registerQueue({
   maxAttempts: 4,
   workerModule: "./discoveryUserRefreshWorker.js",
   workerStartFn: "startDiscoveryUserRefreshWorker",
+  skipInTest: true,
 });
 export const getDiscoveryUserRefreshQueue = discoveryUserRefresh.getQueue;
 export const enqueueDiscoveryUserRefreshJob = discoveryUserRefresh.enqueueJob;

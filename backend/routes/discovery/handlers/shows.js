@@ -1,19 +1,11 @@
 import { createHash } from "node:crypto";
 import { requireAuth } from "../../../middleware/requirePermission.js";
 import { db } from "../../../config/db-sqlite.js";
-import { dbOps, userOps } from "../../../db/helpers/index.js";
-import { getTicketmasterApiKey, getLastfmApiKey } from "../../../services/apiClients/index.js";
+import { dbOps } from "../../../db/helpers/index.js";
+import { getTicketmasterApiKey } from "../../../services/apiClients/index.js";
 import { iterateCanonicalArtistProjection } from "../../../services/libraryQueryService.js";
-import {
-  getDiscoveryCache,
-  getDiscoveryFeedback,
-  getLocalDiscoveryPreferences,
-  serveCachedRecommendations,
-} from "../../../services/discovery/index.js";
-import {
-  getListenHistoryCacheNamespace,
-  getListenHistoryProfile,
-} from "../../../services/listeningHistory.js";
+import { getLocalDiscoveryPreferences } from "../../../services/discovery/index.js";
+import { getUserDiscovery } from "../../../services/discovery/userDiscovery.js";
 import { getNearbyShows } from "../../../services/nearbyShowsService.js";
 
 const libraryArtistNamesStmt = db.prepare(
@@ -70,23 +62,12 @@ export function registerShows(router) {
       const radiusMiles = Number.isFinite(configuredRadius)
         ? Math.max(5, Math.min(250, Math.floor(configuredRadius)))
         : undefined;
-      const reqUser = userOps.getUserById(req.user.id);
-      const userCacheNamespace = getLastfmApiKey()
-        ? getListenHistoryCacheNamespace(getListenHistoryProfile(reqUser || {}))
-        : null;
-      const discoveryCache = getDiscoveryCache(userCacheNamespace);
-      const feedback = getDiscoveryFeedback(req.user?.id || "global");
+      const { body: discovery } = await getUserDiscovery(req.user.id, 24);
       const recommendedArtists = localDiscoveryPreferences.includeRecommendations
-        ? serveCachedRecommendations({
-            recommendations: discoveryCache.recommendations || [],
-            feedback,
-          }).slice(0, 24)
+        ? discovery.recommendations
         : [];
       const trendingArtists = localDiscoveryPreferences.includeTrending
-        ? serveCachedRecommendations({
-            recommendations: discoveryCache.globalTop || [],
-            feedback,
-          }).slice(0, 18)
+        ? discovery.globalTop.slice(0, 18)
         : [];
       const libraryArtistNames = libraryArtistNamesStmt.all();
       const nearbyShows = await getNearbyShows({

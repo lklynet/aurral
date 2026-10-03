@@ -25,7 +25,6 @@ export {
 export {
   resetDiscoveryModuleCache,
   getDiscoveryCache,
-  getUserDiscoveryCacheStaleness,
   recordDiscoveryUpdateProgress,
   clearDiscoveryUpdateProgress,
   getDiscoveryUpdateStatus,
@@ -33,10 +32,9 @@ export {
 } from "./persistence.js";
 
 export {
+  getUserDiscoveryNamespace,
   rerankCachedRecommendations,
-  serveCachedRecommendations,
   requestUserDiscoveryRefresh,
   updateDiscoveryCache,
   updateUserDiscoveryCache,
 } from "./provider.js";
-

@@ -5,7 +5,7 @@ import {
   addRecommendationCandidate,
   buildDiscoverySeedList,
   finalizeRecommendationAccumulator,
-  filterRecommendationsForServe,
+  serveRecommendations,
   mergeRetainedRecommendationPool,
   mergeResolvedRecommendations,
   rerankRecommendations,
@@ -136,7 +136,7 @@ test("mergeResolvedRecommendations does not expose provider IDs as artist routes
   assert.equal(recommendation.id, null);
   assert.equal(recommendation.navigateTo, null);
 
-  const [cachedRecommendation] = filterRecommendationsForServe([
+  const [cachedRecommendation] = serveRecommendations([
     { id: 2278254, navigateTo: 2278254, name: "Cached Discovery Artist" },
   ]);
   assert.equal(cachedRecommendation.id, null);

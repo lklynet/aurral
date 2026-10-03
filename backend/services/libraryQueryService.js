@@ -365,6 +365,37 @@ export function getCanonicalArtistKeyProjection() {
   return rows.map(canonicalArtistKeyProjection);
 }
 
+export function getLibraryArtistsSignature() {
+  const row = db.prepare(
+    `SELECT COUNT(*) AS count, COALESCE(MAX(id), 0) AS maxId, COALESCE(MAX(updated_at), 0) AS updatedAt
+     FROM library_artists`,
+  ).get();
+  return `${row.count}:${row.maxId}:${row.updatedAt}`;
+}
+
+export function sampleLibraryArtistsForDiscovery({ recentLimit = 12, randomLimit = 28 } = {}) {
+  const recent = db.prepare(
+    "SELECT id, mbid, name FROM library_artists ORDER BY created_at DESC, id DESC LIMIT ?",
+  ).all(Math.max(0, recentLimit));
+  const recentIds = new Set(recent.map((row) => row.id));
+  const random = db.prepare(
+    "SELECT id, mbid, name FROM library_artists ORDER BY RANDOM() LIMIT ?",
+  )
+    .all(Math.max(0, randomLimit) + recentIds.size)
+    .filter((row) => !recentIds.has(row.id))
+    .slice(0, Math.max(0, randomLimit));
+  const toSeed = (profileBucket) => (row) => ({
+    mbid: row.mbid || null,
+    artistName: row.name,
+    source: "library",
+    profileBucket,
+  });
+  return {
+    recent: recent.map(toSeed("recent_additions")),
+    random: random.map(toSeed("library_sample")),
+  };
+}
+
 function buildCanonicalArtistProjectionQuery({
   page = 1,
   pageSize = 100,

@@ -152,16 +152,16 @@ test("discoveryNeedsRefresh does not retry missing genres when the library has n
   );
 });
 
-test("discoveryNeedsRefresh retries missing genres when the library has seed artists", () => {
+test("discoveryNeedsRefresh leaves genres to personal refreshes when the library has seed artists", () => {
   seedLibraryArtist();
   assert.equal(
     discoveryNeedsRefresh({
-      recommendations: [{ id: "rec-1" }],
+      recommendations: [],
       globalTop: [{ id: "trend-1" }],
       topGenres: [],
       lastUpdated: new Date().toISOString(),
     }),
-    true,
+    false,
   );
 });
 

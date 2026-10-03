@@ -34,6 +34,7 @@ import {
   getFallbackGenreSectionId,
   getFallbackGenreFromSectionId,
   DISCOVER_PREVIEW_ITEM_LIMIT,
+  shuffleWithSeed,
   normalizeDiscoverLayout,
   readStoredDiscoverLayout,
   writeStoredDiscoverLayout,
@@ -126,12 +127,8 @@ function DiscoverPage() {
         .filter(Boolean),
     );
 
-    const genres = [...data.topGenres];
-    for (let i = genres.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [genres[i], genres[j]] = [genres[j], genres[i]];
-    }
-    const candidatePool = [...(data.recommendations || [])].slice(8);
+    const genres = shuffleWithSeed(data.topGenres, data.discoveryRunId || data.lastUpdated);
+    const candidatePool = (data.recommendations || []).slice(DISCOVER_PREVIEW_ITEM_LIMIT);
 
     for (const genre of genres) {
       if (sections.length >= 12) break;

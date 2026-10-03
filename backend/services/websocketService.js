@@ -157,11 +157,12 @@ class WebSocketService {
     }
   }
 
-  broadcast(channel, data) {
+  broadcast(channel, data, { userId = null } = {}) {
     if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected && process.send) {
-      process.send({ type: 'websocket-broadcast', channel, data });
+      process.send({ type: 'websocket-broadcast', channel, data, userId });
       return 0;
     }
+    const targetUserId = userId == null ? null : Number(userId);
     const message = JSON.stringify({
       channel,
       timestamp: Date.now(),
@@ -170,6 +171,7 @@ class WebSocketService {
 
     let sent = 0;
     for (const client of this.clients) {
+      if (targetUserId != null && Number(client.user?.id) !== targetUserId) continue;
       if (client.subscriptions.has(channel) || client.subscriptions.has('*')) {
         if (client.ws.readyState === 1) {
           client.ws.send(message);
@@ -237,11 +239,11 @@ class WebSocketService {
     return disconnected;
   }
 
-  emitDiscoveryUpdate(data) {
+  emitDiscoveryUpdate(data, { userId = null } = {}) {
     this.broadcast('discovery', {
       type: 'discovery_update',
       ...data,
-    });
+    }, { userId });
   }
 
   getStats() {

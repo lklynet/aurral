@@ -1,5 +1,6 @@
 import { dbOps } from "../../db/helpers/index.js";
 import { normalizeTextList } from "./helpers.js";
+import { buildArtistMatchKeySet, matchesArtistKeys } from "./artistKeys.js";
 
 const getDiscoveryFeedbackKey = (userId = "global") =>
   `discoveryFeedback:${String(userId || "global").trim()}`;
@@ -35,50 +36,20 @@ const normalizeFeedbackList = (value) =>
 export const getDiscoveryFeedback = (userId = "global") =>
   normalizeFeedbackList(dbOps.getJSONSetting(getDiscoveryFeedbackKey(userId)));
 
-const normalizeArtistKey = (value) =>
-  String(value || "")
-    .trim()
-    .toLowerCase();
+export const getBlockedArtistKeys = (userId = "global", feedback = getDiscoveryFeedback(userId)) =>
+  buildArtistMatchKeySet(
+    feedback
+      .filter((entry) => entry.action === "block_artist")
+      .map((entry) => ({ id: entry.artistId, name: entry.artistName })),
+  );
 
-export const getBlockedArtistKeys = (userId = "global", feedback = getDiscoveryFeedback(userId)) => {
-  const keys = new Set();
-  for (const entry of feedback) {
-    if (entry.action !== "block_artist") continue;
-    const artistId = normalizeArtistKey(entry.artistId);
-    const artistName = normalizeArtistKey(entry.artistName);
-    if (artistId) keys.add(artistId);
-    if (artistName) keys.add(artistName);
-  }
-  return keys;
-};
-
-export const isArtistBlockedForUser = (userId = "global", artist = {}) => {
-  const blockedKeys = getBlockedArtistKeys(userId);
-  if (blockedKeys.size === 0) return false;
-  return artistMatchesBlockedKeys(artist, blockedKeys);
-};
-
-const artistMatchesBlockedKeys = (artist, blockedKeys) => {
-  const aliases = Array.isArray(artist?.artistAliases) ? artist.artistAliases : [];
-  const artistKeys = [
-    artist?.id,
-    artist?.mbid,
-    artist?.foreignArtistId,
-    artist?.artistMbid,
-    artist?.name,
-    artist?.artistName,
-    ...aliases,
-  ]
-    .map(normalizeArtistKey)
-    .filter(Boolean);
-  return artistKeys.some((key) => blockedKeys.has(key));
-};
+export const isArtistBlockedForUser = (userId = "global", artist = {}) =>
+  matchesArtistKeys(artist, getBlockedArtistKeys(userId));
 
 export const filterBlockedArtistsForUser = (userId = "global", artists = [], blockedKeys = getBlockedArtistKeys(userId)) => {
-  if (blockedKeys.size === 0) return Array.isArray(artists) ? artists : [];
-  return (Array.isArray(artists) ? artists : []).filter(
-    (artist) => !artistMatchesBlockedKeys(artist, blockedKeys),
-  );
+  const list = Array.isArray(artists) ? artists : [];
+  if (blockedKeys.size === 0) return list;
+  return list.filter((artist) => !matchesArtistKeys(artist, blockedKeys));
 };
 
 export const addDiscoveryFeedback = (userId = "global", entry = {}) => {

@@ -7,6 +7,7 @@ import {
   musicbrainzResolveArtistMbidByName,
 } from "./apiClients/index.js";
 import { getArtistGenres } from "./providers/brainzmashProvider.js";
+import { matchesArtistKeys } from "./discovery/artistKeys.js";
 
 export const DISCOVERY_PROVIDER_LASTFM = "lastfm";
 export const DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK = "listenbrainz-fallback";
@@ -230,18 +231,6 @@ const getListenbrainzArtistMbid = (artist) => {
     : null;
   return normalizeMbid(fromArray);
 };
-
-const artistKeys = (artist) =>
-  [
-    normalizeKey(artist?.id),
-    normalizeKey(artist?.mbid),
-    normalizeKey(artist?.foreignArtistId),
-    normalizeKey(artist?.name),
-    normalizeKey(artist?.artistName),
-  ].filter(Boolean);
-
-const isExistingArtist = (artist, existingArtistKeys) =>
-  artistKeys(artist).some((key) => existingArtistKeys?.has(key));
 
 const normalizeCuratedArtist = async (entry, genre) => {
   const name = String(
@@ -484,7 +473,7 @@ const buildFallbackGenrePoolsFromArtists = ({
   for (const artist of artists) {
     const section = classifyArtistToFallbackGenre(artist);
     if (!section?.name) continue;
-    if (isExistingArtist(artist, existingArtistKeys)) continue;
+    if (matchesArtistKeys(artist, existingArtistKeys)) continue;
     buckets[section.name].push({
       ...artist,
       source: artist.source || "listenbrainz",
@@ -542,7 +531,7 @@ const buildGenreSection = async (
     await Promise.all(genre.artists.map((artist) => normalizeCuratedArtist(artist, genre)))
   )
     .filter(Boolean)
-    .filter((artist) => !isExistingArtist(artist, existingArtistKeys));
+    .filter((artist) => !matchesArtistKeys(artist, existingArtistKeys));
   if (artists.length === 0) return null;
   return {
     name: genre.name,
@@ -690,7 +679,7 @@ export const buildListenbrainzFallbackDiscovery = async ({
     };
     const key = normalizeKey(mbid);
     if (seen.has(key)) continue;
-    if (isExistingArtist(entry, existingArtistKeys)) continue;
+    if (matchesArtistKeys(entry, existingArtistKeys)) continue;
     seen.add(key);
     globalTop.push(entry);
     if (globalTop.length >= 32) break;

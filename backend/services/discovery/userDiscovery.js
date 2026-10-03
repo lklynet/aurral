@@ -1,157 +1,142 @@
-import {
-  getDiscoveryCache,
-  getDiscoveryUpdateStatus,
-  getDiscoveryMode,
-  getDiscoveryFeedback,
-  getBlockedArtistKeys,
-  filterBlockedArtistsForUser,
-  serveCachedRecommendations,
-} from "./index.js";
+import { dbOps } from "../../db/helpers/index.js";
 import { getLastfmApiKey } from "../apiClients/index.js";
-import { getCanonicalArtistKeyProjection } from "../libraryQueryService.js";
-import { userOps } from "../../db/helpers/index.js";
 import {
   DISCOVERY_PROVIDER_LASTFM,
   DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
   getDiscoveryCapabilities,
 } from "../listenbrainzDiscoveryFallback.js";
+import { getDiscoveryAutoRefreshHours, getDiscoveryMode } from "./helpers.js";
 import {
-  getListenHistoryCacheNamespace,
-  getListenHistoryProfile,
-  hasListenHistoryProfile,
-} from "../listeningHistory.js";
+  filterBlockedArtistsForUser,
+  getBlockedArtistKeys,
+  getDiscoveryFeedback,
+} from "./feedback.js";
+import { getDiscoveryCache, getDiscoveryUpdateStatus } from "./persistence.js";
 import {
-  buildArtistKeySet,
-  isLibraryArtist,
-  getDiscoveryStaleMs,
-} from "../../routes/discovery/handlers/utils.js";
-import { getTopPlayedArtists } from "../playEventService.js";
+  getUserDiscoveryNamespace,
+  getUserRefreshState,
+  requestUserDiscoveryRefresh,
+} from "./provider.js";
+import { serveRecommendations, withArtistRouteId } from "./recommendationPipeline.js";
+import { getLibraryArtistKeys, matchesArtistKeys } from "./artistKeys.js";
+
+const FAILED_REFRESH_BACKOFF_MS = 15 * 60 * 1000;
+const servedRecommendationsByUser = new Map();
+
+const getServedRecommendations = ({ userId, source, feedback, discoveryMode, library, isVisible }) => {
+  const key = [
+    source.namespace,
+    source.lastUpdated,
+    source.discoveryRunId,
+    discoveryMode,
+    library.signature,
+    feedback.map((entry) => `${entry.id}:${entry.action}`).join(","),
+  ].join("|");
+  const cached = servedRecommendationsByUser.get(userId);
+  if (cached?.key === key) return cached.recommendations;
+  const recommendations = serveRecommendations(
+    (source.recommendations || []).filter(isVisible),
+    { feedback, discoveryMode },
+  );
+  servedRecommendationsByUser.set(userId, { key, recommendations });
+  return recommendations;
+};
+
+const ensureUserRefresh = (userId, userCache, refreshState) => {
+  if (refreshState.pending || refreshState.running) return refreshState;
+  const lastUpdatedMs = Date.parse(userCache.lastUpdated || "") || 0;
+  const staleMs = getDiscoveryAutoRefreshHours() * 60 * 60 * 1000;
+  const finishedAt = Number(userCache.metadata?.refreshFinishedAt) || 0;
+  const needsRefresh = !lastUpdatedMs || Date.now() - lastUpdatedMs > staleMs;
+  if (!needsRefresh || Date.now() - finishedAt < FAILED_REFRESH_BACKOFF_MS) return refreshState;
+  const result = requestUserDiscoveryRefresh(userId, {
+    reason: lastUpdatedMs ? "stale" : "missing",
+  });
+  return { ...refreshState, pending: refreshState.pending || result.enqueued };
+};
 
 export async function getUserDiscovery(userId, limit = 50, offset = 0) {
   const hasLastfmKey = !!getLastfmApiKey();
-  const libraryArtists = getCanonicalArtistKeyProjection();
+  const globalCache = getDiscoveryCache();
+  const namespace = hasLastfmKey && userId != null ? getUserDiscoveryNamespace(userId) : null;
+  const userCache = namespace ? dbOps.getDiscoveryCache(namespace) : null;
+  const hasUserPool = Boolean(userCache?.lastUpdated);
+  const refreshState = userCache
+    ? ensureUserRefresh(userId, userCache, getUserRefreshState(userCache.metadata))
+    : { running: false, pending: false };
+  const source = hasUserPool
+    ? { namespace, ...userCache }
+    : { namespace: "global", ...globalCache };
 
-  const reqUser = userOps.getUserById(userId);
-  const externalListenHistoryProfile = getListenHistoryProfile(reqUser || {});
-  const localHistoryArtists = getTopPlayedArtists(userId, { limit: 50 });
-  const localOnlyProfile = externalListenHistoryProfile.listenHistoryProvider === "local";
-  const hasExternalListenHistory =
-    !localOnlyProfile && hasListenHistoryProfile(externalListenHistoryProfile);
-  const hasLocalListenHistory = localOnlyProfile || localHistoryArtists.length > 0;
-  const listenHistoryProfile = hasExternalListenHistory
-    ? externalListenHistoryProfile
-    : hasLocalListenHistory
-      ? { listenHistoryProvider: "lastfm", listenHistoryUsername: `__aurral_local_${userId}` }
-      : externalListenHistoryProfile;
-  const userCacheNamespace =
-    getListenHistoryCacheNamespace(listenHistoryProfile);
-  const effectiveCacheNamespace = hasLastfmKey ? userCacheNamespace : null;
-
-  const discoveryCache = getDiscoveryCache(effectiveCacheNamespace);
-  const isUpdating = discoveryCache.isUpdating || false;
-
-  let {
-    recommendations,
-    globalTop,
-    basedOn,
-    topTags,
-    topGenres,
-    fallbackGenres = [],
-    lastUpdated,
-    recommendationQuality,
-    isEnriching,
-    discoveryRunId,
-    enrichmentStartedAt,
-    enrichmentCompletedAt,
-    enrichmentProgressMessage,
-    provider,
-    capabilities,
-  } = discoveryCache;
-  provider = hasLastfmKey
-    ? DISCOVERY_PROVIDER_LASTFM
-    : provider || DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK;
-  capabilities = capabilities || getDiscoveryCapabilities(hasLastfmKey);
-  const feedback = getDiscoveryFeedback(userId || "global");
-  const blockedKeys = getBlockedArtistKeys(userId || "global", feedback);
+  const feedbackUserId = userId ?? "global";
+  const feedback = getDiscoveryFeedback(feedbackUserId);
+  const blockedKeys = getBlockedArtistKeys(feedbackUserId, feedback);
+  const library = getLibraryArtistKeys();
   const discoveryMode = getDiscoveryMode();
+  const isVisible = (artist) =>
+    !matchesArtistKeys(artist, library.keys) && !matchesArtistKeys(artist, blockedKeys);
 
-  const existingArtistKeys = buildArtistKeySet(libraryArtists);
-
-  recommendations = recommendations.filter(
-    (artist) => !isLibraryArtist(artist, existingArtistKeys),
-  );
-  globalTop = globalTop.filter(
-    (artist) => !isLibraryArtist(artist, existingArtistKeys),
-  );
-
-  recommendations = serveCachedRecommendations({
-    recommendations,
+  const recommendations = getServedRecommendations({
+    userId: feedbackUserId,
+    source,
     feedback,
+    discoveryMode,
+    library,
+    isVisible,
   });
-  globalTop = serveCachedRecommendations({
-    recommendations: globalTop,
-    feedback,
-  });
-  const localBasedOn = localHistoryArtists.map((artist) => ({
-    name: artist.artistName,
-    id: artist.mbid,
-    source: "local",
-    profileBucket: null,
-  }));
-  const seenBasedOn = new Set((basedOn || []).map((artist) => `${artist.id || ""}:${artist.name || ""}`));
-  basedOn = [...(basedOn || []), ...localBasedOn.filter((artist) => {
-    const key = `${artist.id || ""}:${artist.name || ""}`;
-    if (seenBasedOn.has(key)) return false;
-    seenBasedOn.add(key);
-    return true;
-  })];
-  fallbackGenres = (Array.isArray(fallbackGenres) ? fallbackGenres : []).map((section) => ({
-    ...section,
-    artists: filterBlockedArtistsForUser(userId || "global", section?.artists || [], blockedKeys),
-  }));
+  const globalTop = (globalCache.globalTop || []).filter(isVisible).map(withArtistRouteId);
+  const fallbackGenres = (Array.isArray(globalCache.fallbackGenres) ? globalCache.fallbackGenres : [])
+    .map((section) => ({
+      ...section,
+      artists: filterBlockedArtistsForUser(feedbackUserId, section?.artists || [], blockedKeys),
+    }));
 
-  const parsedLastUpdated = lastUpdated ? new Date(lastUpdated).getTime() : 0;
-  const staleMs = await getDiscoveryStaleMs();
-  const isStale =
-    Number.isFinite(parsedLastUpdated) &&
-    parsedLastUpdated > 0 &&
-    Date.now() - parsedLastUpdated > staleMs;
-
-  const cacheStrategy =
-    recommendations.length > 0 || globalTop.length > 0
-      ? "fresh"
-      : isUpdating
-        ? "updating"
-        : "empty";
-
+  const userRefreshing = refreshState.running || (!hasUserPool && refreshState.pending);
+  const isUpdating = Boolean(globalCache.isUpdating) || userRefreshing;
+  const updateStatus = globalCache.isUpdating
+    ? getDiscoveryUpdateStatus()
+    : {
+        updatePhase: "personalizing",
+        updateProgress: null,
+        updateProgressMessage: "Building your personal recommendations",
+      };
+  const lastUpdatedMs = Date.parse(source.lastUpdated || "");
+  const staleMs = getDiscoveryAutoRefreshHours() * 60 * 60 * 1000;
   const limitClamped = Math.max(limit, 1);
   const offsetClamped = Math.max(offset, 0);
 
   return {
-    cacheStrategy,
+    cacheStrategy:
+      recommendations.length > 0 || globalTop.length > 0
+        ? "fresh"
+        : isUpdating
+          ? "updating"
+          : "empty",
     body: {
       recommendations: limit
         ? recommendations.slice(offsetClamped, offsetClamped + limitClamped)
         : recommendations,
       recommendationCount: recommendations.length,
       globalTop,
-      basedOn,
-      topTags,
-      topGenres,
+      basedOn: source.basedOn || [],
+      topTags: source.topTags || [],
+      topGenres: source.topGenres || [],
       fallbackGenres,
-      lastUpdated,
+      lastUpdated: source.lastUpdated || null,
       isUpdating,
-      recommendationQuality,
-      isEnriching,
-      discoveryRunId,
-      enrichmentStartedAt,
-      enrichmentCompletedAt,
-      enrichmentProgressMessage,
-      ...(isUpdating ? getDiscoveryUpdateStatus() : {}),
-      stale: isStale,
+      recommendationQuality: source.recommendationQuality || null,
+      isEnriching: source.isEnriching === true,
+      discoveryRunId: source.discoveryRunId || null,
+      enrichmentStartedAt: source.enrichmentStartedAt || null,
+      enrichmentCompletedAt: source.enrichmentCompletedAt || null,
+      enrichmentProgressMessage: source.enrichmentProgressMessage || null,
+      ...(isUpdating ? updateStatus : {}),
+      stale: Number.isFinite(lastUpdatedMs) && lastUpdatedMs > 0 && Date.now() - lastUpdatedMs > staleMs,
       configured: true,
-      provider,
-      capabilities,
+      provider: hasLastfmKey
+        ? DISCOVERY_PROVIDER_LASTFM
+        : globalCache.provider || DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
+      capabilities: globalCache.capabilities || getDiscoveryCapabilities(hasLastfmKey),
       discoveryMode,
     },
   };

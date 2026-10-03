@@ -1,4 +1,5 @@
 import { getDiscoveryCache } from "./discovery/index.js";
+import { getUserDiscovery } from "./discovery/userDiscovery.js";
 import { getLastfmApiKey, lastfmRequest } from "./apiClients/index.js";
 import { buildImageProxyUrl } from "./imageProxyService.js";
 import { selectBestArtistImage } from "./imageService.js";
@@ -300,7 +301,7 @@ async function fetchMergedLastfmTagArtists(tag, limitInt, offsetInt, recommended
   };
 }
 
-export async function searchTags(query, limit = 24, offset = 0) {
+export async function searchTags(query, limit = 24, offset = 0, userId = null) {
   const tag = String(query || "")
     .trim()
     .replace(/^#/, "");
@@ -318,9 +319,10 @@ export async function searchTags(query, limit = 24, offset = 0) {
   }
 
   const discoveryCache = getDiscoveryCache();
+  const { body: discovery } = await getUserDiscovery(userId, 0);
   const tagLower = getNormalizedText(tag);
   const recommendedMatches = dedupeTagArtists(
-    (discoveryCache.recommendations || [])
+    discovery.recommendations
       .filter((artist) => matchesTagSearch(artist, tagLower))
       .map((artist) =>
         normalizeTagArtistItem(

@@ -4,9 +4,7 @@ import {
   DISCOVERY_PROVIDER_LASTFM,
   getDiscoveryCapabilities,
 } from "../listenbrainzDiscoveryFallback.js";
-import {
-  getListenHistoryCacheNamespace,
-} from "../listeningHistory.js";
+import { isHonkerLockHeld } from "../honkerDb.js";
 
 export const EMPTY_CACHE = {
   recommendations: [],
@@ -82,81 +80,7 @@ export function reloadDiscoveryPersistedCache() {
   });
 }
 
-export const getDiscoveryCache = (listenHistoryProfile = null) => {
-  const cacheNamespace =
-    typeof listenHistoryProfile === "string"
-      ? String(listenHistoryProfile).trim() || null
-      : getListenHistoryCacheNamespace(listenHistoryProfile);
-  if (cacheNamespace) {
-    const userDbData = dbOps.getDiscoveryCache(cacheNamespace);
-    const hasUserRecommendations = userDbData.recommendations?.length > 0;
-    const hasUserBasedOn = userDbData.basedOn?.length > 0;
-    if (hasUserRecommendations || hasUserBasedOn) {
-      const globalDbData = dbOps.getDiscoveryCache();
-      const recommendations = hasUserRecommendations
-        ? userDbData.recommendations
-        : globalDbData.recommendations || [];
-      return {
-        recommendations,
-        globalTop: discoveryCache.globalTop.length
-          ? discoveryCache.globalTop
-          : globalDbData.globalTop || [],
-        basedOn: userDbData.basedOn || [],
-        topTags:
-          userDbData.topTags?.length > 0
-            ? userDbData.topTags
-            : discoveryCache.topTags || [],
-        topGenres:
-          userDbData.topGenres?.length > 0
-            ? userDbData.topGenres
-            : discoveryCache.topGenres || [],
-        fallbackGenres: discoveryCache.fallbackGenres || [],
-        fallbackGenrePools: discoveryCache.fallbackGenrePools || {},
-        provider: discoveryCache.provider || DISCOVERY_PROVIDER_LASTFM,
-        capabilities:
-          discoveryCache.capabilities ||
-          getDiscoveryCapabilities(
-            (discoveryCache.provider || DISCOVERY_PROVIDER_LASTFM) ===
-              DISCOVERY_PROVIDER_LASTFM,
-          ),
-        lastUpdated:
-          userDbData.lastUpdated || discoveryCache.lastUpdated || null,
-        metadata: userDbData.metadata || discoveryCache.metadata || {},
-        recommendationQuality:
-          userDbData.recommendationQuality ||
-          discoveryCache.recommendationQuality ||
-          null,
-        isEnriching:
-          userDbData.isEnriching === true ||
-          (!userDbData.recommendationQuality &&
-            discoveryCache.isEnriching === true),
-        discoveryRunId:
-          userDbData.discoveryRunId || discoveryCache.discoveryRunId || null,
-        enrichmentStartedAt:
-          userDbData.enrichmentStartedAt ||
-          discoveryCache.enrichmentStartedAt ||
-          null,
-        enrichmentCompletedAt:
-          userDbData.enrichmentCompletedAt ||
-          discoveryCache.enrichmentCompletedAt ||
-          null,
-        enrichmentProgressMessage:
-          userDbData.enrichmentProgressMessage ||
-          discoveryCache.enrichmentProgressMessage ||
-          null,
-        isUpdating: discoveryCache.isUpdating,
-        updatePhase: discoveryCache.updatePhase || null,
-        updateProgress:
-          typeof discoveryCache.updateProgress === "number"
-            ? discoveryCache.updateProgress
-            : null,
-        updateProgressMessage: discoveryCache.updateProgressMessage || null,
-      };
-    }
-  }
-
-  return discoveryCache;
-};
+export const getDiscoveryCache = () => discoveryCache;
 
 export function synchronizeDiscoveryCacheFromWorker(update = {}) {
   if (!update || typeof update !== "object") return;
@@ -182,12 +106,6 @@ export function synchronizeDiscoveryCacheFromWorker(update = {}) {
     discoveryCache.updateProgressMessage = update.progressMessage;
   }
 }
-
-export const getUserDiscoveryCacheStaleness = (cacheNamespace) => {
-  const data = dbOps.getDiscoveryCache(cacheNamespace);
-  if (!data.lastUpdated) return Infinity;
-  return Date.now() - new Date(data.lastUpdated).getTime();
-};
 
 export const recordDiscoveryUpdateProgress = (
   phase,

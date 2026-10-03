@@ -92,14 +92,12 @@ import {
 const LIDARR_RETRY_MS = 60000;
 const LIDARR_MONITOR_OPTIONS = new Set(["none", "existing", "all", "future", "missing", "latest", "first"]);
 const ARTIST_LIST_CACHE_TTL_MS = 15 * 60 * 1000;
-const FULL_LIST_FALLBACK_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const TRACKS_CACHE_TTL_MS = 120000;
 const TRACKS_CACHE_MAX = 300;
 
 let lidarrClient = null;
 let _cachedArtists = [];
 let _lastLidarrFailureAt = 0;
-let _lastFullArtistFetchAt = 0;
 let _artistsCachedAt = 0;
 let _artistsInflight = null;
 const _tracksCache = new Map();
@@ -379,22 +377,6 @@ function canonicalTracksForAlbum(reference) {
   return library.tracks
     .filter((track) => track.albums.some((entry) => entry.albumId === album.id))
     .map((track) => mapCanonicalTrack(track, album));
-}
-
-function canonicalRecentArtists(limit) {
-  const normalizedLimit = Math.max(0, Number(limit) || 0);
-  return normalizedLimit === 0
-    ? []
-    : getCanonicalArtistProjection({ pageSize: normalizedLimit });
-}
-
-function cachedOrCanonicalRecentArtists(limit) {
-  const normalizedLimit = Math.max(0, Number(limit) || 0);
-  if (normalizedLimit === 0) return [];
-  if (Array.isArray(_cachedArtists) && _cachedArtists.length > 0) {
-    return _cachedArtists.slice(0, normalizedLimit);
-  }
-  return canonicalRecentArtists(normalizedLimit);
 }
 
 function isLidarrNotFoundError(error) {
@@ -1409,69 +1391,6 @@ export class LibraryManager {
     return _artistsInflight;
   }
 
-  async getRecentArtists(limit = 25, poolSize = 100) {
-    try {
-      const lidarr = await getLidarrClient();
-      if (!lidarr || !lidarr.isConfigured()) {
-        return canonicalRecentArtists(limit);
-      }
-      if (_lastLidarrFailureAt && Date.now() - _lastLidarrFailureAt < LIDARR_RETRY_MS) {
-        return cachedOrCanonicalRecentArtists(limit);
-      }
-      const normalizedLimit = Math.max(0, limit);
-      const normalizedPool = Math.max(normalizedLimit, poolSize);
-      const pageSize = Math.max(normalizedPool * 2, normalizedPool);
-      const history = await lidarr.getHistory(1, pageSize, "date", "descending");
-      const records = Array.isArray(history) ? history : history?.records || [];
-      const artistIds = [];
-      const seen = new Set();
-      for (const record of records) {
-        const id = record?.artistId ?? record?.artist?.id;
-        if (id === undefined || id === null) continue;
-        const key = String(id);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        artistIds.push(key);
-        if (artistIds.length >= normalizedPool) break;
-      }
-      if (artistIds.length === 0) {
-        if (
-          (!Array.isArray(_cachedArtists) || _cachedArtists.length === 0) &&
-          Date.now() - _lastFullArtistFetchAt > FULL_LIST_FALLBACK_COOLDOWN_MS
-        ) {
-          try {
-            const lidarrArtists = await lidarr.request("/artist");
-            if (Array.isArray(lidarrArtists)) {
-              await this.backfillLidarrArtistMappings(lidarrArtists);
-              _cachedArtists = lidarrArtists.map((a) => this.mapLidarrArtist(a));
-              _lastFullArtistFetchAt = Date.now();
-            }
-          } catch {}
-        }
-        return cachedOrCanonicalRecentArtists(normalizedLimit);
-      }
-      const picked = artistIds.sort(() => 0.5 - Math.random()).slice(0, normalizedLimit);
-      const artists = await Promise.all(picked.map((id) => lidarr.getArtist(id).catch(() => null)));
-      await this.backfillLidarrArtistMappings(artists.filter(Boolean));
-      const mapped = artists.filter(Boolean).map((artist) => this.mapLidarrArtist(artist));
-      if (mapped.length >= normalizedLimit) return mapped;
-      if (Array.isArray(_cachedArtists) && _cachedArtists.length > 0) {
-        const existing = new Set(
-          mapped.map((artist) => artist.mbid || artist.foreignArtistId || artist.id),
-        );
-        const fallback = _cachedArtists.filter(
-          (artist) => !existing.has(artist.mbid || artist.foreignArtistId || artist.id),
-        );
-        const extra = fallback
-          .sort(() => 0.5 - Math.random())
-          .slice(0, Math.max(0, normalizedLimit - mapped.length));
-        return [...mapped, ...extra];
-      }
-      return mapped.length > 0 ? mapped : canonicalRecentArtists(normalizedLimit);
-    } catch (_) {
-      return cachedOrCanonicalRecentArtists(limit);
-    }
-  }
 
   mapLidarrArtist(lidarrArtist) {
     const artistPath = lidarrArtist.path ?? null;

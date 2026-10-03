@@ -60,6 +60,7 @@ export function registerAdmin(router) {
       enrichmentProgressMessage: null,
       lastUpdated: null,
     });
+    dbOps.deleteDiscoveryCacheByPrefix("user:");
     const discoveryCache = getDiscoveryCache();
     Object.assign(discoveryCache, {
       recommendations: [],

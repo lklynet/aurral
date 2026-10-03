@@ -34,9 +34,6 @@ const updateSubsonicPasswordStmt = db.prepare(
 );
 const setProtectedStmt = db.prepare("UPDATE users SET is_protected = ? WHERE id = ?");
 const deleteUserStmt = db.prepare("DELETE FROM users WHERE id = ?");
-const getAllListeningHistoryUsersStmt = db.prepare(
-  "SELECT id, username, lastfm_username, listen_history_provider, listen_history_username, listen_history_url FROM users WHERE (listen_history_username IS NOT NULL AND TRIM(listen_history_username) != '') OR (listen_history_url IS NOT NULL AND TRIM(listen_history_url) != '')"
-);
 
 const DEFAULT_PERMISSIONS = {
   accessFlow: false,
@@ -359,12 +356,5 @@ export const userOps = {
     } catch (e) {
       return false;
     }
-  },
-  getAllListeningHistoryUsers() {
-    return getAllListeningHistoryUsersStmt.all().map((r) => ({
-      id: r.id,
-      username: r.username,
-      ...getListenHistoryProfile(r),
-    }));
   },
 };

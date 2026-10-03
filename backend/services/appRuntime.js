@@ -185,7 +185,14 @@ registerHonkerShutdownHandler(() => {
 export async function forwardWorkerBroadcast(message) {
   if (message?.type !== "websocket-broadcast" || typeof message.channel !== "string") return;
   const { websocketService } = await import("./websocketService.js");
-  if (message.channel === "discovery") {
+  const userId = message.userId ?? null;
+  if (message.channel === "discovery" && userId != null) {
+    const [{ dbOps }, { getUserDiscoveryNamespace }] = await Promise.all([
+      import("../db/helpers/index.js"),
+      import("./discovery/provider.js"),
+    ]);
+    dbOps.invalidateDiscoveryCache(getUserDiscoveryNamespace(userId));
+  } else if (message.channel === "discovery") {
     try {
       const { synchronizeDiscoveryCacheFromWorker } = await import("./discovery/persistence.js");
       synchronizeDiscoveryCacheFromWorker(message.data);
@@ -199,7 +206,7 @@ export async function forwardWorkerBroadcast(message) {
     const { clearSearchContextCache } = await import("./unifiedSearchService.js");
     clearSearchContextCache();
   }
-  websocketService.broadcast(message.channel, message.data);
+  websocketService.broadcast(message.channel, message.data, { userId });
 }
 
 export function wakeQueuedBackgroundWork(group = supervisedGroup) {

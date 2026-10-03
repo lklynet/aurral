@@ -12,9 +12,11 @@ import { requirePasswordStrength } from "../middleware/auth.js";
 import { deleteSessionsByUserId } from "../config/session-helpers.js";
 import { websocketService } from "../services/websocketService.js";
 import {
-  getListenHistoryCacheNamespace,
+  getUserDiscoveryNamespace,
+  requestUserDiscoveryRefresh,
+} from "../services/discovery/index.js";
+import {
   getListenHistoryProfile,
-  hasListenHistoryProfile,
   listenHistoryProfilesEqual,
   normalizeListenHistoryProvider,
   normalizeListenHistoryUrl,
@@ -161,21 +163,9 @@ const normalizeDiscoverLayout = (value) => {
   return normalized;
 };
 
-const clearOrphanedDiscoveryCache = (userId, existingProfile, nextProfile) => {
-  if (
-    !hasListenHistoryProfile(existingProfile) ||
-    listenHistoryProfilesEqual(existingProfile, nextProfile)
-  ) {
-    return;
-  }
-  const existingNamespace = getListenHistoryCacheNamespace(existingProfile);
-  if (!existingNamespace) return;
-  const otherUsers = userOps
-    .getAllListeningHistoryUsers()
-    .filter((user) => user.id !== userId && listenHistoryProfilesEqual(user, existingProfile));
-  if (otherUsers.length === 0) {
-    dbOps.deleteDiscoveryCacheByPrefix(`${existingNamespace}:`);
-  }
+const refreshDiscoveryForListenHistoryChange = (userId, existingProfile, nextProfile) => {
+  if (listenHistoryProfilesEqual(existingProfile, nextProfile)) return;
+  requestUserDiscoveryRefresh(userId, { reason: "listening_history" });
 };
 
 router.get("/", requireAuth, requireAdmin, async (req, res) => {
@@ -258,7 +248,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
       ...existing,
       ...(listenHistoryUpdates || {}),
     });
-    clearOrphanedDiscoveryCache(id, existingProfile, requestedProfile);
+    refreshDiscoveryForListenHistoryChange(id, existingProfile, requestedProfile);
     if (isSelf && !isAdmin) {
       if (
         permissions !== undefined ||
@@ -609,6 +599,7 @@ router.delete("/:id", requireAuth, requireAdmin, (req, res) => {
     }
     deleteSessionsByUserId(id);
     userOps.deleteUser(id);
+    dbOps.deleteDiscoveryCacheByPrefix(`${getUserDiscoveryNamespace(id)}:`);
     reconcileLocalBypassAfterUserMutation();
     res.json({ success: true });
   } catch (e) {

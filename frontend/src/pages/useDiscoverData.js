@@ -221,75 +221,18 @@ export function useDiscoverData() {
         return;
       }
 
-      if (msg.phase === "completed" || Array.isArray(msg.recommendations)) {
+      if (msg.phase === "completed") {
         lastDiscoveryWsMessageAtRef.current = Date.now();
-        if (Array.isArray(msg.recommendations)) {
-          setData((prev) => {
-            const normalized = normalizeDiscoveryData({
-              recommendations: msg.recommendations || [],
-              globalTop: msg.globalTop || [],
-              basedOn: msg.basedOn || [],
-              topTags: msg.topTags || [],
-              topGenres: msg.topGenres || [],
-              fallbackGenres: msg.fallbackGenres || [],
-              provider: msg.provider || "lastfm",
-              capabilities: msg.capabilities || null,
-              lastUpdated: msg.lastUpdated || null,
-              isUpdating: false,
-              updatePhase: null,
-              updateProgress: null,
-              updateProgressMessage: null,
-              recommendationQuality:
-                msg.recommendationQuality || prev?.recommendationQuality || null,
-              isEnriching:
-                typeof msg.isEnriching === "boolean"
-                  ? msg.isEnriching
-                  : prev?.isEnriching === true,
-              discoveryRunId: msg.discoveryRunId || prev?.discoveryRunId || null,
-              enrichmentStartedAt:
-                msg.enrichmentStartedAt || prev?.enrichmentStartedAt || null,
-              enrichmentCompletedAt:
-                msg.enrichmentCompletedAt || prev?.enrichmentCompletedAt || null,
-              enrichmentProgressMessage:
-                msg.enrichmentProgressMessage ??
-                prev?.enrichmentProgressMessage ??
-                null,
-              stale: false,
-              discoveryMode:
-                msg.discoveryMode === "safer" || msg.discoveryMode === "deeper"
-                  ? msg.discoveryMode
-                  : "balanced",
-              configured: true,
-            });
-            return normalized;
-          });
-        } else {
-          setData((prev) =>
-            normalizeDiscoveryData({
-              ...(prev || {}),
-              isUpdating: false,
-              updatePhase: null,
-              updateProgress: null,
-              updateProgressMessage: null,
-              recommendationQuality:
-                msg.recommendationQuality || prev?.recommendationQuality || null,
-              isEnriching:
-                typeof msg.isEnriching === "boolean"
-                  ? msg.isEnriching
-                  : prev?.isEnriching === true,
-              discoveryRunId: msg.discoveryRunId || prev?.discoveryRunId || null,
-              enrichmentStartedAt:
-                msg.enrichmentStartedAt || prev?.enrichmentStartedAt || null,
-              enrichmentCompletedAt:
-                msg.enrichmentCompletedAt || prev?.enrichmentCompletedAt || null,
-              enrichmentProgressMessage:
-                msg.enrichmentProgressMessage ??
-                prev?.enrichmentProgressMessage ??
-                null,
-              stale: false,
-            }),
-          );
-        }
+        setData((prev) =>
+          normalizeDiscoveryData({
+            ...(prev || {}),
+            isUpdating: false,
+            updatePhase: null,
+            updateProgress: null,
+            updateProgressMessage: null,
+            stale: false,
+          }),
+        );
         fetchAndApplyDiscovery(true);
       }
     },

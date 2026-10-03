@@ -55,6 +55,24 @@ export const DISCOVER_NEARBY_ZIP_KEY = "discoverNearbyZip";
 export const DISCOVER_NEARBY_COUNTRY_KEY = "discoverNearbyCountry";
 export const DISCOVER_PREVIEW_ITEM_LIMIT = 12;
 
+export const shuffleWithSeed = (items, seed) => {
+  let state = 2166136261;
+  for (const char of String(seed || "")) {
+    state = Math.imul(state ^ char.charCodeAt(0), 16777619);
+  }
+  const random = () => {
+    state = Math.imul(state ^ (state >>> 15), 2246822507);
+    state = Math.imul(state ^ (state >>> 13), 3266489909);
+    return ((state ^= state >>> 16) >>> 0) / 4294967296;
+  };
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled;
+};
+
 const getDiscoverLayoutStorageKey = (userId) =>
   userId ? `${DISCOVER_LAYOUT_KEY}:${userId}` : DISCOVER_LAYOUT_KEY;
 

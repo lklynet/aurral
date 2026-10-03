@@ -20,7 +20,6 @@ const bcryptModule = await import("bcrypt");
 const bcrypt = bcryptModule.default;
 const {
   getListenHistoryProfile,
-  getListenHistoryCacheNamespace,
   hasListenHistoryProfile,
   resolveListenHistorySettings,
 } = listeningHistoryModule;
@@ -55,32 +54,6 @@ test("normalizes legacy and explicit listening history profiles", () => {
       listenHistoryUrl: null,
       lastfmUsername: null,
     },
-  );
-});
-
-test("builds provider-specific discovery cache namespaces", () => {
-  assert.equal(
-    getListenHistoryCacheNamespace({
-      listenHistoryProvider: "lastfm",
-      listenHistoryUsername: "alice",
-    }),
-    "lfm:alice",
-  );
-
-  assert.equal(
-    getListenHistoryCacheNamespace({
-      listenHistoryProvider: "listenbrainz",
-      listenHistoryUsername: "alice",
-    }),
-    "lb:alice",
-  );
-
-  assert.equal(
-    getListenHistoryCacheNamespace({
-      listenHistoryProvider: "koito",
-      listenHistoryUrl: "https://koito.example.com",
-    }),
-    "koito:https://koito.example.com",
   );
 });
 
@@ -186,13 +159,6 @@ test("koito profile uses instance url instead of username", () => {
       listenHistoryUrl: "https://koito.example.com",
     }),
     true,
-  );
-  assert.equal(
-    getListenHistoryCacheNamespace({
-      listenHistoryProvider: "koito",
-      listenHistoryUrl: "https://koito.example.com",
-    }),
-    "koito:https://koito.example.com",
   );
 });
 

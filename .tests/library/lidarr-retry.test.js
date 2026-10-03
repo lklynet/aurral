@@ -53,7 +53,6 @@ test("unavailable Lidarr keeps one retry job and continues its retry chain", asy
   await libraryManager.syncLidarrArtists();
   for (let index = 0; index < 5; index += 1) {
     await libraryManager.syncLidarrArtists();
-    await libraryManager.getRecentArtists();
   }
   await settleRetryEnqueues();
 

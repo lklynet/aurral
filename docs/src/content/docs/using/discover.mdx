@@ -11,16 +11,21 @@ Aurral recommends artists that fit your taste but are not in your Library yet. I
 
 ## What shapes recommendations
 
-- The artists in your Library
-- Your listening history in Aurral, and from Last.fm, ListenBrainz, or Koito
-- Last.fm tags and similar artists
-- Global trending artists
-- Recent releases
-- Your feedback on recommendations
+Each user gets their own recommendations. Aurral picks a set of seed artists for you and asks Last.fm for artists similar to them. The seeds come from:
 
-**More like this** and **Less like this** change how much weight Aurral gives to related artists. They do not exclude an artist.
+- Artists you marked **More like this**
+- Your listening history in Aurral, and from Last.fm, ListenBrainz, or Koito
+- A sample of your Library. Recently added artists are always in the sample, and the rest changes on every refresh.
+
+Aurral then ranks the results by how similar they are, how well their Last.fm tags match your seeds, and how many of your seeds point to them. Trending artists come from Last.fm and are the same for everyone.
+
+**More like this** makes the artist a seed and moves artists like it up your list. **Less like this** moves the artist and related picks down, and stops Aurral from using the artist as a seed. Neither one hides an artist.
 
 **Block artist** excludes an artist for you only. Aurral removes that artist from your recommendations, playlist previews, and future downloads. To manage the list, open **Blocklist** in the sidebar.
+
+Feedback reorders your list right away. About a minute later, Aurral rebuilds your recommendations in the background so new seeds can bring in new artists. Aurral also rebuilds everyone's recommendations on the schedule set in **Settings > Discover**. A new user sees **Building your personal recommendations** until their first set is ready.
+
+Personal recommendations need a Last.fm API key. Without one, everyone shares the ListenBrainz trending and genre sections.
 
 ## Discovery modes
 
@@ -68,9 +73,7 @@ Earlier versions built their own playlists, such as Discover Weekly and Release 
 
 ## Per-user listening history
 
-Each user chooses a listening-history provider in **Profile > Listening history**. Choose **Local only**, enter a Last.fm or ListenBrainz username, or enter a Koito URL. Aurral always uses the plays recorded in Aurral, and adds history from the selected provider.
-
-This lets each user on a shared server get their own recommendations.
+Each user chooses a listening-history provider in **Profile > Listening history**. Choose **Local only**, enter a Last.fm or ListenBrainz username, or enter a Koito URL. Aurral always uses the plays recorded in Aurral, and adds history from the selected provider. When you change the provider, Aurral rebuilds your recommendations.
 
 ## Shows
 

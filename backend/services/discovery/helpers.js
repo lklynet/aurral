@@ -1,4 +1,3 @@
-
 import { randomUUID } from "crypto";
 import pMap from "p-map";
 import { dbOps } from "../../db/helpers/index.js";
@@ -125,21 +124,9 @@ const shrinkByFailureRatio = (base, failureRatio, shrink05, shrink03) => {
   return base;
 };
 
-export const getDiscoveryTagSeedLimit = (count, failureRatio) => {
+export const getDiscoveryRecommendationSeedLimit = (failureRatio) => {
   const target = getDiscoveryRecommendationsPerRefresh();
-  const sampleBase = Math.min(
-    count,
-    Math.max(25, Math.min(45, Math.ceil(target / 5))),
-  );
-  return shrinkByFailureRatio(sampleBase, failureRatio, 12, 24);
-};
-
-export const getDiscoveryRecommendationSeedLimit = (count, failureRatio) => {
-  const target = getDiscoveryRecommendationsPerRefresh();
-  const sampleBase = Math.min(
-    count,
-    Math.max(32, Math.min(56, Math.ceil(target / 4))),
-  );
+  const sampleBase = Math.max(32, Math.min(56, Math.ceil(target / 4)));
   return shrinkByFailureRatio(sampleBase, failureRatio, 16, 32);
 };
 
@@ -207,12 +194,18 @@ const getDiscoveryCandidateLimit = () =>
 
 export const createDiscoveryRunId = () => randomUUID();
 
-export const selectDiscoverySeedSample = (seeds, failureRatio) => {
-  const sampleSize = getDiscoveryTagSeedLimit(seeds.length, failureRatio);
-  return [...seeds].slice(0, sampleSize);
-};
-
 export const getDiscoveryNetworkConcurrency = () => DISCOVERY_NETWORK_CONCURRENCY;
+
+export const interleaveLists = (...lists) => {
+  const result = [];
+  const longest = Math.max(0, ...lists.map((list) => list.length));
+  for (let index = 0; index < longest; index += 1) {
+    for (const list of lists) {
+      if (index < list.length) result.push(list[index]);
+    }
+  }
+  return result;
+};
 export { getDiscoveryCandidateLimit };
 
 export const mapWithConcurrency = async (

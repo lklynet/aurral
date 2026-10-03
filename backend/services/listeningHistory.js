@@ -3,12 +3,6 @@ import { stripTrailingSlashes } from "./textUtils.js";
 export const LISTEN_HISTORY_PROVIDERS = ["local", "lastfm", "listenbrainz", "koito"];
 export const DEFAULT_LISTEN_HISTORY_PROVIDER = "lastfm";
 
-const CACHE_PREFIX_BY_PROVIDER = {
-  lastfm: "lfm",
-  listenbrainz: "lb",
-  koito: "koito",
-};
-
 export function normalizeListenHistoryProvider(value) {
   const normalized = String(value || "")
     .trim()
@@ -83,18 +77,6 @@ export function listenHistoryProfilesEqual(a, b) {
     left.listenHistoryUsername === right.listenHistoryUsername &&
     left.listenHistoryUrl === right.listenHistoryUrl
   );
-}
-
-export function getListenHistoryCacheNamespace(profile) {
-  const normalized = getListenHistoryProfile(profile);
-  if (normalized.listenHistoryProvider === "local") return null;
-  if (normalized.listenHistoryProvider === "koito") {
-    if (!normalized.listenHistoryUrl) return null;
-    return `${CACHE_PREFIX_BY_PROVIDER.koito}:${normalized.listenHistoryUrl}`;
-  }
-  if (!normalized.listenHistoryUsername) return null;
-  const prefix = CACHE_PREFIX_BY_PROVIDER[normalized.listenHistoryProvider];
-  return prefix ? `${prefix}:${normalized.listenHistoryUsername}` : null;
 }
 
 export function resolveListenHistorySettings(user = {}) {
