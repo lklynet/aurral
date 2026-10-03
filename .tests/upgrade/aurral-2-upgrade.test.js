@@ -99,6 +99,32 @@ test("settings that only older releases read are removed", () => {
   }
 });
 
+test("accounts keep their sign-in identities without the adoption columns", () => {
+  const { db } = upgrade("stamped");
+  try {
+    const columns = db.prepare("PRAGMA table_info(users)").all().map(({ name }) => name);
+    assert.equal(columns.includes("needs_identity_migration"), false);
+    assert.equal(columns.includes("allow_identity_adoption"), false);
+    assert.deepEqual(db.prepare("SELECT username FROM users ORDER BY username").pluck().all(), ["admin", "olduser", "ssouser"]);
+    assert.equal(
+      db.prepare("SELECT users.username FROM user_identities JOIN users ON users.id = user_identities.user_id").pluck().get(),
+      "ssouser",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("the stored single password is removed", () => {
+  const { db } = upgrade("upgraded-from-1");
+  try {
+    const general = JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'integrations'").pluck().get()).general;
+    assert.deepEqual(general, {});
+  } finally {
+    db.close();
+  }
+});
+
 test("covers cached from the old cover host are cleared", () => {
   const { db } = upgrade("stamped");
   try {

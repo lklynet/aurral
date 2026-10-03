@@ -232,8 +232,6 @@ function SettingsPage() {
             setEditPermissions={users.setEditPermissions}
             editStatus={users.editStatus}
             setEditStatus={users.setEditStatus}
-            editAllowAdoption={users.editAllowAdoption}
-            setEditAllowAdoption={users.setEditAllowAdoption}
             savingEdit={users.savingEdit}
             setSavingEdit={users.setSavingEdit}
             changePwCurrent={users.changePwCurrent}

@@ -41,7 +41,6 @@ const SENSITIVE_PATHS = [
   ["navidrome", "password"],
   ["plex", "token"],
   ["jellyfin", "apiKey"],
-  ["general", "authPassword"],
   ["lidarr", "apiKey"],
   ["slskd", "apiKey"],
   ["prowlarr", "apiKey"],

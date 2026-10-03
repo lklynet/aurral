@@ -38,9 +38,7 @@ export function createSchema(db) {
       status TEXT NOT NULL DEFAULT 'active',
       is_protected INTEGER NOT NULL DEFAULT 0,
       role_source TEXT NOT NULL DEFAULT 'local',
-      has_local_password INTEGER NOT NULL DEFAULT 0,
-      needs_identity_migration INTEGER NOT NULL DEFAULT 0,
-      allow_identity_adoption INTEGER NOT NULL DEFAULT 0
+      has_local_password INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS sessions (

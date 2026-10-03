@@ -179,11 +179,7 @@ export const normalizeSettings = (savedSettings) => {
         enableNarrowFallbacks: true,
         ...metadata,
       },
-      general: {
-        authUser: "",
-        authPassword: "",
-        ...(savedSettings.integrations?.general || {}),
-      },
+      general: savedSettings.integrations?.general || {},
       gotify: {
         url: "",
         token: "",

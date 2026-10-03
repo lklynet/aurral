@@ -254,33 +254,6 @@ function resolveOidcSessionUser(config, claims) {
 
   const role = resolveOidcRole(baseUsername, claims);
 
-  const legacyMatch = userOps.getUserByUsername(baseUsername);
-  if (
-    legacyMatch &&
-    legacyMatch.allowIdentityAdoption &&
-    legacyMatch.needsIdentityMigration &&
-    legacyMatch.status === "active" &&
-    !legacyMatch.isProtected &&
-    userIdentityOps.countForUser(legacyMatch.id) === 0
-  ) {
-    const adoptUser = db.transaction(() => {
-      userOps.updateUser(legacyMatch.id, {
-        role,
-        roleSource: "oidc",
-        needsIdentityMigration: false,
-        allowIdentityAdoption: false,
-      });
-      userIdentityOps.link(legacyMatch.id, {
-        providerType: "oidc",
-        providerKey: config.issuer,
-        subject,
-        displayName: toDisplayName(claims),
-      });
-      return userOps.getUserById(legacyMatch.id);
-    });
-    return toResolvedUser(adoptUser());
-  }
-
   const uniqueUsername = generateUniqueUsername(baseUsername);
   const provisionUser = db.transaction(() => {
     const created = createSystemProvisionedUser(uniqueUsername, role);
@@ -374,15 +347,12 @@ function linkOidcIdentity(config, claims, linkUserId) {
     });
   }
   if (!existing) {
-    db.transaction(() => {
-      userIdentityOps.link(linkUser.id, {
-        providerType: "oidc",
-        providerKey: config.issuer,
-        subject,
-        displayName: toDisplayName(claims),
-      });
-      userOps.updateUser(linkUser.id, { needsIdentityMigration: false, allowIdentityAdoption: false });
-    })();
+    userIdentityOps.link(linkUser.id, {
+      providerType: "oidc",
+      providerKey: config.issuer,
+      subject,
+      displayName: toDisplayName(claims),
+    });
   }
   return toResolvedUser(userOps.getUserById(linkUser.id));
 }

@@ -104,6 +104,10 @@ function removeRetiredIntegrations(db) {
     delete integrations.navidrome.pathMappings;
   }
   if (integrations.lastfm) delete integrations.lastfm.discoverFlowArtworkStyle;
+  if (integrations.general) {
+    delete integrations.general.authUser;
+    delete integrations.general.authPassword;
+  }
   db.prepare("UPDATE settings SET value = ? WHERE key = 'integrations'").run(JSON.stringify(integrations));
 }
 
@@ -111,6 +115,10 @@ export function upgradeFromAurral2(db) {
   const removeSettings = db.prepare("DELETE FROM settings WHERE key GLOB ?");
   for (const pattern of RETIRED_SETTING_PATTERNS) removeSettings.run(pattern);
   removeRetiredIntegrations(db);
+  db.exec(`
+    ALTER TABLE users DROP COLUMN needs_identity_migration;
+    ALTER TABLE users DROP COLUMN allow_identity_adoption;
+  `);
   db.exec(`
     DELETE FROM images_cache
     WHERE image_url LIKE 'http://archive.org/%'

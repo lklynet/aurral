@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { dbOps, userOps } from "../db/helpers/index.js";
+import { userOps } from "../db/helpers/index.js";
 import { hashPassword } from "../middleware/passwordHash.js";
 
 function parseArgs(argv) {
@@ -83,24 +83,8 @@ function generatePassword(length) {
   return out.slice(0, safeLength);
 }
 
-function resolveConfiguredAdminUsername(settings) {
-  return (
-    settings.integrations?.general?.authUser || process.env.AUTH_USER || "admin"
-  );
-}
-
-function upsertGeneralAuth(settings, username, password) {
-  return {
-    ...settings,
-    integrations: {
-      ...(settings.integrations || {}),
-      general: {
-        ...(settings.integrations?.general || {}),
-        authUser: username,
-        authPassword: password,
-      },
-    },
-  };
+function resolveRecoveryUsername() {
+  return userOps.getAllUsers().find((user) => user.isProtected)?.username || "admin";
 }
 
 function main() {
@@ -110,9 +94,8 @@ function main() {
     process.exit(0);
   }
 
-  const currentSettings = dbOps.getSettings();
   const username =
-    String(args.username || resolveConfiguredAdminUsername(currentSettings))
+    String(args.username || resolveRecoveryUsername())
       .trim()
       .toLowerCase() || "admin";
 
@@ -143,8 +126,6 @@ function main() {
     console.error("Failed to update admin password.");
     process.exit(1);
   }
-
-  dbOps.updateSettings(upsertGeneralAuth(currentSettings, username, password));
 
   console.log("Admin password reset successful.");
   console.log(`Username: ${username}`);

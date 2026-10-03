@@ -133,19 +133,13 @@ test("admin can update and test Navidrome after onboarding", async () => {
     method: "POST",
     body: JSON.stringify({
       integrations: {
-        navidrome: {
-          ...credentials,
-          m3uPathMode: "remote",
-          pathMappings: [{ local: "/aurral", remote: "/music" }],
-        },
+        navidrome: credentials,
       },
     }),
   });
   assert.equal(saved.response.status, 200, JSON.stringify(saved.payload));
   assert.equal(saved.payload.integrations.navidrome.url, navidromeUrl);
   assert.equal(saved.payload.integrations.navidrome.username, "local-user");
-  assert.equal(Object.hasOwn(saved.payload.integrations.navidrome, "m3uPathMode"), false);
-  assert.equal(Object.hasOwn(saved.payload.integrations.navidrome, "pathMappings"), false);
   const libraryRequest = await waitForLibraryRequest(requestStartIndex);
   await waitForLibraryVerification(requestStartIndex);
   assert.deepEqual(libraryRequest?.body, {

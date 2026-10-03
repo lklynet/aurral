@@ -73,11 +73,10 @@ async function assertValid(method, params = {}) {
 test.before(async () => {
   resetDatabase(db);
   dbOps.updateSettings({
-    integrations: { general: { authUser: "alice", authPassword: "password123" } },
     security: { localNetworkBypass: { enabled: false } },
     onboardingComplete: true,
   });
-  const alice = userOps.createUser("alice", hashPassword("password123"), "admin");
+  const alice = userOps.createUser("alice", hashPassword("password123"), "admin", null, true, false, "password123");
 
   fixtureRoot = await mkdtemp(path.join(isolatedState.baseDir, "media-"));
   const fixturePath = path.join(fixtureRoot, "Schema Artist", "Schema Album", "01 Schema Song.flac");

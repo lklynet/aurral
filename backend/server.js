@@ -397,6 +397,12 @@ process.once("SIGINT", () => {
 
 httpServer.listen(PORT, async () => {
   logger.info("system", `Server running on port ${PORT}`);
+  if (process.env.AUTH_USER || process.env.AUTH_PASSWORD) {
+    logger.warn(
+      "system",
+      "AUTH_USER and AUTH_PASSWORD are set, but Aurral ignores them. Sign in with an Aurral account and remove both variables.",
+    );
+  }
   bootstrapHonkerSchedules();
   initializeAppRuntime({ logger });
 });
