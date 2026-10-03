@@ -11,7 +11,7 @@ const [state, { db }, { dbOps, userOps }, config, { downloadTracker }, { playlis
   "backend/services/playlists/flowPlaylistConfig.js", "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/playlists/playlistManager.js", "backend/services/playlists/playlistOperations.js",
   "backend/services/playlists/bulkOperationStore.js", "backend/services/honkerDb.js",
-  "backend/routes/playlists/handlers/sharedPlaylists.js",
+  "backend/routes/playlists/handlers/staticPlaylists.js",
 );
 test.beforeEach(() => {
   resetDatabase(db);
@@ -26,7 +26,7 @@ test.after(() => cleanupIsolatedState(state));
 function fixture(t, count = 3) {
   const user = userOps.createUser("bulk-user", "unused");
   const tracks = Array.from({ length: count }, (_, index) => ({ artistName: "Artist", trackName: `Track ${index}`, albumName: "Album" }));
-  const source = config.flowPlaylistConfig.createSharedPlaylist({ name: "Source", ownerUserId: user.id, tracks });
+  const source = config.flowPlaylistConfig.createStaticPlaylist({ name: "Source", ownerUserId: user.id, tracks });
   const jobs = tracks.map((track) => downloadTracker.getJob(downloadTracker.addJob(track, source.id)));
   const selections = jobs.map((job, index) => ({ jobId: job.id, membershipId: source.tracks[index].membershipId,
     jobPlaylistId: source.id, jobGeneration: job.playlistGeneration, jobCreatedAt: job.createdAt }));
@@ -48,7 +48,7 @@ test("a batch removes all selected memberships with one refresh and one scan", a
   const result = await execute({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "remove", selections: f.selections });
   assert.equal(result.outcomes.length, 100);
   assert.ok(result.outcomes.every((outcome) => outcome.status === "removed"));
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylist(f.source.id).tracks.length, 0);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(f.source.id).tracks.length, 0);
   assert.equal(downloadTracker.getByPlaylistId(f.source.id).length, 0);
   assert.deepEqual(f.refreshes, [f.source.id]);
   assert.equal(f.scans(), 1);
@@ -59,42 +59,42 @@ test("a move preserves active backing jobs and never duplicates its destination 
   const result = await execute({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "move", selections: f.selections,
     target: { playlistId: "preallocated-target", name: "Destination", create: true } });
   assert.ok(result.outcomes.every((outcome) => outcome.status === "moved"));
-  const target = config.flowPlaylistConfig.getSharedPlaylist("preallocated-target");
+  const target = config.flowPlaylistConfig.getStaticPlaylist("preallocated-target");
   assert.equal(target.tracks.length, 3);
   assert.ok(f.jobs.every((job) => downloadTracker.getJob(job.id)?.playlistType === target.id));
   await operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId: result.operationId });
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylists().length, 2);
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylist(target.id).tracks.length, 3);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylists().length, 2);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(target.id).tracks.length, 3);
   assert.deepEqual(new Set(f.refreshes), new Set([f.source.id, target.id]));
   assert.equal(f.scans(), 1);
 });
 
 test("a removed and readded membership cannot be removed by a stale batch selection", async (t) => {
   const f = fixture(t, 1);
-  config.flowPlaylistConfig.updateSharedPlaylist(f.source.id, { tracks: [] });
-  config.flowPlaylistConfig.appendSharedPlaylistTracks(f.source.id, [{ ...f.source.tracks[0], canonicalJobId: f.jobs[0].id }]);
+  config.flowPlaylistConfig.updateStaticPlaylist(f.source.id, { tracks: [] });
+  config.flowPlaylistConfig.appendStaticPlaylistTracks(f.source.id, [{ ...f.source.tracks[0], canonicalJobId: f.jobs[0].id }]);
   const result = await execute({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "remove", selections: f.selections });
   assert.equal(result.outcomes[0].status, "failed");
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylist(f.source.id).tracks.length, 1);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(f.source.id).tracks.length, 1);
   assert.ok(downloadTracker.getJob(f.jobs[0].id));
   assert.equal(f.scans(), 0);
 });
 
 test("failed destination persistence keeps source membership and owner", async (t) => {
   const f = fixture(t, 1);
-  const target = config.flowPlaylistConfig.createSharedPlaylist({ name: "Destination", ownerUserId: f.user.id });
+  const target = config.flowPlaylistConfig.createStaticPlaylist({ name: "Destination", ownerUserId: f.user.id });
   const { operationId } = store.enqueueBulkOperation({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "move", selections: f.selections, target: { playlistId: target.id } });
   db.exec("CREATE TRIGGER reject_membership BEFORE INSERT ON settings WHEN NEW.key = 'sharedPlaylists' BEGIN SELECT RAISE(ABORT, 'fixture persistence failure'); END");
   try {
     await assert.rejects(operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId }), /fixture persistence failure/);
-    assert.equal(config.flowPlaylistConfig.getSharedPlaylist(f.source.id).tracks.length, 1);
-    assert.equal(config.flowPlaylistConfig.getSharedPlaylist(target.id).tracks.length, 0);
+    assert.equal(config.flowPlaylistConfig.getStaticPlaylist(f.source.id).tracks.length, 1);
+    assert.equal(config.flowPlaylistConfig.getStaticPlaylist(target.id).tracks.length, 0);
     assert.equal(downloadTracker.getJob(f.jobs[0].id).playlistType, f.source.id);
   } finally { db.exec("DROP TRIGGER reject_membership"); }
 });
 
 const handlers = new Map();
-routes.registerSharedPlaylists(Object.fromEntries(["get", "post", "put", "delete"].map((method) => [method, (path, ...callbacks) => handlers.set(`${method}:${path}`, callbacks.at(-1))])));
+routes.registerStaticPlaylists(Object.fromEntries(["get", "post", "put", "delete"].map((method) => [method, (path, ...callbacks) => handlers.set(`${method}:${path}`, callbacks.at(-1))])));
 function response() {
   return { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
 }
@@ -131,7 +131,7 @@ test("synchronization failure preserves applied outcomes and retries only unfini
   const { operationId } = store.enqueueBulkOperation({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "remove", selections: f.selections });
   await assert.rejects(operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId }), /fixture service unavailable/);
   assert.equal(store.getBulkOperation(operationId).outcomes.length, 2);
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylist(f.source.id).tracks.length, 0);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(f.source.id).tracks.length, 0);
   await operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId });
   assert.equal(store.getBulkOperation(operationId).state, "completed");
   assert.equal(store.getBulkOperation(operationId).outcomes.length, 2);
@@ -150,14 +150,14 @@ test("failed source commit leaves completed source media intact", async (t) => {
     await assert.rejects(operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId }), /fixture source failure/);
     assert.equal(await fs.readFile(file, "utf8"), "disposable audio");
     assert.equal(downloadTracker.getJob(f.jobs[0].id).finalPath, file);
-    assert.equal(config.flowPlaylistConfig.getSharedPlaylist(f.source.id).tracks.length, 1);
+    assert.equal(config.flowPlaylistConfig.getStaticPlaylist(f.source.id).tracks.length, 1);
     assert.equal(store.getBulkOperation(operationId).outcomes.length, 0);
   } finally { db.exec("DROP TRIGGER reject_source_commit"); }
 });
 
 test("a restarted process resumes a destination already saved before source detachment", async (t) => {
   const f = fixture(t, 2);
-  const target = config.flowPlaylistConfig.createSharedPlaylist({ id: "restart-target", name: "Restart destination", ownerUserId: f.user.id,
+  const target = config.flowPlaylistConfig.createStaticPlaylist({ id: "restart-target", name: "Restart destination", ownerUserId: f.user.id,
     tracks: f.jobs.map((job) => ({ ...job, canonicalJobId: job.id })) });
   const { operationId } = store.enqueueBulkOperation({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "move", selections: f.selections,
     target: { playlistId: target.id, name: target.name, create: true } });
@@ -171,9 +171,9 @@ test("a restarted process resumes a destination already saved before source deta
   config.invalidateFlowPlaylistConfigCache();
   downloadTracker.reconcileCommittedJobs();
   assert.equal(store.getBulkOperation(operationId).state, "completed");
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylists().length, 2);
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylist(target.id).tracks.length, 2);
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylist(f.source.id).tracks.length, 0);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylists().length, 2);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(target.id).tracks.length, 2);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(f.source.id).tracks.length, 0);
   assert.ok(f.jobs.every((job) => downloadTracker.getJob(job.id).playlistType === target.id));
 });
 
@@ -186,7 +186,7 @@ test("partial provider failure preserves the failed membership and completes the
   honker.getPipelineQueue().enqueue({ jobId: f.jobs[0].id, playlistId: f.source.id, playlistGeneration: 0, phase: "poll", source: "deemix", queueUuid: "refused-provider-work" });
   const result = await execute({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "remove", selections: f.selections });
   assert.deepEqual(result.outcomes.map((outcome) => outcome.status), ["failed", "removed"]);
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylist(f.source.id).tracks.length, 1);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(f.source.id).tracks.length, 1);
   assert.equal(downloadTracker.getJob(f.jobs[0].id).status, "failed");
   assert.ok(!downloadTracker.getJob(f.jobs[1].id));
   assert.equal(f.scans(), 1);
@@ -207,7 +207,7 @@ test("bulk leader removal hands its album download to an unselected held peer", 
   const payload = honker.listHonkerJobs("slskd-pipeline")[0].payload;
   assert.equal(payload.jobId, f.jobs[1].id);
   assert.equal(payload.queueUuid, "album-work-needed-by-peer");
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylist(f.source.id).tracks.length, 1);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(f.source.id).tracks.length, 1);
 });
 
 test("a failed source commit after provider cleanup leaves a recoverable active job", async (t) => {
@@ -217,7 +217,7 @@ test("a failed source commit after provider cleanup leaves a recoverable active 
   db.exec("CREATE TRIGGER reject_pending_commit BEFORE INSERT ON settings WHEN NEW.key = 'sharedPlaylists' BEGIN SELECT RAISE(ABORT, 'fixture pending failure'); END");
   try {
     await assert.rejects(operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId }), /fixture pending failure/);
-    assert.equal(config.flowPlaylistConfig.getSharedPlaylist(f.source.id).tracks.length, 1);
+    assert.equal(config.flowPlaylistConfig.getStaticPlaylist(f.source.id).tracks.length, 1);
     assert.equal(downloadTracker.getJob(f.jobs[0].id).status, "failed");
     assert.equal(isDownloadJobCancelled(f.jobs[0].id), false);
     assert.equal(store.getBulkOperation(operationId).outcomes.length, 0);
@@ -243,7 +243,7 @@ test("failed provider cleanup leaves a retained quality upgrade recoverable", as
     phase: "poll", source: "deemix", queueUuid: "refused-upgrade-work" });
   const result = await execute({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "remove", selections: f.selections });
   assert.equal(result.outcomes[0].status, "failed");
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylist(f.source.id).tracks.length, 1);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(f.source.id).tracks.length, 1);
   assert.equal(downloadTracker.getJob(f.jobs[0].id).status, "done");
   assert.equal(await fs.readFile(file, "utf8"), "original audio");
   assert.equal(downloadTracker.getJob(upgradeId).status, "failed");
@@ -255,13 +255,13 @@ test("failed provider cleanup leaves a retained quality upgrade recoverable", as
 
 test("duplicate supplied membership IDs cannot detach an unselected track", async (t) => {
   const f = fixture(t, 2);
-  config.flowPlaylistConfig.deleteSharedPlaylist(f.source.id);
-  const source = config.flowPlaylistConfig.createSharedPlaylist({ id: f.source.id, name: "Source", ownerUserId: f.user.id,
+  config.flowPlaylistConfig.deleteStaticPlaylist(f.source.id);
+  const source = config.flowPlaylistConfig.createStaticPlaylist({ id: f.source.id, name: "Source", ownerUserId: f.user.id,
     tracks: f.source.tracks.map((track) => ({ ...track, membershipId: "duplicated-membership" })) });
   const selection = { ...f.selections[0], membershipId: source.tracks[0].membershipId };
   await execute({ ownerUserId: f.user.id, sourcePlaylistId: source.id, action: "remove", selections: [selection] });
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylist(source.id).tracks.length, 1);
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylist(source.id).tracks[0].trackName, f.jobs[1].trackName);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id).tracks.length, 1);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id).tracks[0].trackName, f.jobs[1].trackName);
   assert.ok(downloadTracker.getJob(f.jobs[1].id));
 });
 
@@ -276,7 +276,7 @@ test("a bulk move finalizes retained media under the configured playlist root", 
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "retained custom-root audio");
   downloadTracker.setDone(f.jobs[0].id, file);
-  const target = config.flowPlaylistConfig.createSharedPlaylist({ name: "Custom target", ownerUserId: f.user.id });
+  const target = config.flowPlaylistConfig.createStaticPlaylist({ name: "Custom target", ownerUserId: f.user.id });
   const result = await execute({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "move", target: { playlistId: target.id }, selections: f.selections });
   assert.equal(result.state, "completed");
   assert.equal(await fs.readFile(downloadTracker.getJob(f.jobs[0].id).finalPath, "utf8"), "retained custom-root audio");
@@ -286,14 +286,14 @@ test("a bulk move finalizes retained media under the configured playlist root", 
 
 test("a conflicting destination membership keeps the source job while other tracks move", async (t) => {
   const f = fixture(t, 2);
-  const target = config.flowPlaylistConfig.createSharedPlaylist({ name: "Existing target", ownerUserId: f.user.id, tracks: [f.source.tracks[0]] });
+  const target = config.flowPlaylistConfig.createStaticPlaylist({ name: "Existing target", ownerUserId: f.user.id, tracks: [f.source.tracks[0]] });
   const result = await execute({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "move", target: { playlistId: target.id }, selections: f.selections });
   assert.deepEqual(result.outcomes.map((outcome) => outcome.status), ["failed", "moved"]);
-  const source = config.flowPlaylistConfig.getSharedPlaylist(f.source.id);
+  const source = config.flowPlaylistConfig.getStaticPlaylist(f.source.id);
   assert.equal(source.tracks.length, 1);
   assert.equal(downloadTracker.getJob(f.jobs[0].id).playlistType, source.id);
   assert.equal(downloadTracker.getJob(f.jobs[1].id).playlistType, target.id);
-  const destination = config.flowPlaylistConfig.getSharedPlaylist(target.id);
+  const destination = config.flowPlaylistConfig.getStaticPlaylist(target.id);
   assert.equal(destination.tracks.length, 2);
   assert.equal(destination.tracks[0].canonicalJobId, undefined);
   assert.equal(destination.tracks[1].canonicalJobId, f.jobs[1].id);
@@ -301,20 +301,20 @@ test("a conflicting destination membership keeps the source job while other trac
 
 test("a new-target move with only stale selections creates no empty playlist", async (t) => {
   const f = fixture(t, 1);
-  config.flowPlaylistConfig.updateSharedPlaylist(f.source.id, { tracks: [] });
-  config.flowPlaylistConfig.appendSharedPlaylistTracks(f.source.id, f.source.tracks);
+  config.flowPlaylistConfig.updateStaticPlaylist(f.source.id, { tracks: [] });
+  config.flowPlaylistConfig.appendStaticPlaylistTracks(f.source.id, f.source.tracks);
   const targetId = "unused-stale-target";
   const result = await execute({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "move",
     target: { playlistId: targetId, name: "Should not exist", create: true }, selections: f.selections });
   assert.equal(result.outcomes[0].status, "failed");
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylist(targetId), null);
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylist(f.source.id).tracks.length, 1);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(targetId), null);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(f.source.id).tracks.length, 1);
   assert.ok(downloadTracker.getJob(f.jobs[0].id));
-  const currentSelection = { ...f.selections[0], membershipId: config.flowPlaylistConfig.getSharedPlaylist(f.source.id).tracks[0].membershipId };
+  const currentSelection = { ...f.selections[0], membershipId: config.flowPlaylistConfig.getStaticPlaylist(f.source.id).tracks[0].membershipId };
   downloadTracker.removeJob(f.jobs[0].id);
   const missing = await execute({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "move",
     target: { playlistId: targetId, name: "Should not exist", create: true }, selections: [currentSelection] });
   assert.equal(missing.outcomes[0].status, "alreadyAbsent");
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylist(targetId), null);
-  assert.equal(config.flowPlaylistConfig.getSharedPlaylist(f.source.id).tracks.length, 1);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(targetId), null);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(f.source.id).tracks.length, 1);
 });

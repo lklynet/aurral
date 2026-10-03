@@ -3,8 +3,8 @@ import {
   invalidateFlowPlaylistConfigCache,
 } from "../playlists/flowPlaylistConfig.js";
 import { fetchImportedPlaylistTracks } from "./importPlaylist.js";
-import { updateSharedPlaylist } from "../playlists/playlistOperations.js";
-import { buildSharedTrackIdentity } from "../playlists/flowPlaylistConfig.js";
+import { updateStaticPlaylist } from "../playlists/playlistOperations.js";
+import { buildPlaylistTrackIdentity } from "../playlists/flowPlaylistConfig.js";
 import { logger, safeLogDiagnostic } from "../logger.js";
 import { dbOps } from "../../db/helpers/index.js";
 import { isDownloadOwnerProcess, requestDownloadOwner } from "../downloadJobs/downloadOwnerClient.js";
@@ -20,11 +20,11 @@ export function isImportSourceDue(importSource, now = Date.now()) {
   return !lastSyncAt || now - lastSyncAt >= intervalMs;
 }
 
-export async function syncSharedPlaylistImport(options = {}) {
-  if (isDownloadOwnerProcess()) return syncSharedPlaylistImportHere(options);
+export async function syncStaticPlaylistImport(options = {}) {
+  if (isDownloadOwnerProcess()) return syncStaticPlaylistImportHere(options);
   const { playlistId, user, force = false } = options;
   try {
-    const response = await requestDownloadOwner("syncSharedPlaylistImport", [{
+    const response = await requestDownloadOwner("syncStaticPlaylistImport", [{
       playlistId,
       user: { id: user?.id, role: user?.role },
       force,
@@ -43,19 +43,19 @@ export async function syncSharedPlaylistImport(options = {}) {
   }
 }
 
-async function syncSharedPlaylistImportHere({
+async function syncStaticPlaylistImportHere({
   playlistId,
   user,
   force = false,
 } = {}) {
-  const playlist = flowPlaylistConfig.getSharedPlaylist(playlistId);
+  const playlist = flowPlaylistConfig.getStaticPlaylist(playlistId);
   if (!playlist?.importSource) {
     return { skipped: true, reason: "no-import-source" };
   }
   if (!force && !isImportSourceDue(playlist.importSource)) {
     return { skipped: true, reason: "not-due" };
   }
-  if (!flowPlaylistConfig.canUserAccessSharedPlaylist(user, playlist)) {
+  if (!flowPlaylistConfig.canUserAccessStaticPlaylist(user, playlist)) {
     const error = new Error("Playlist not found");
     error.statusCode = 404;
     throw error;
@@ -76,7 +76,7 @@ async function syncSharedPlaylistImportHere({
       lastSyncError: null,
       lastSyncTrackCount: tracks.length,
     };
-    const result = await updateSharedPlaylist({
+    const result = await updateStaticPlaylist({
       playlistId: playlist.id,
       tracks,
       hasTracksUpdate: true,
@@ -85,13 +85,13 @@ async function syncSharedPlaylistImportHere({
       mergeImportSource: true,
     });
     const previousIdentities = new Set(
-      (playlist.tracks || []).map(buildSharedTrackIdentity),
+      (playlist.tracks || []).map(buildPlaylistTrackIdentity),
     );
     const currentIdentities = new Set(
-      (result?.playlist?.tracks || []).map(buildSharedTrackIdentity),
+      (result?.playlist?.tracks || []).map(buildPlaylistTrackIdentity),
     );
     const acceptedNotStored = tracks.filter(
-      (track) => !currentIdentities.has(buildSharedTrackIdentity(track)),
+      (track) => !currentIdentities.has(buildPlaylistTrackIdentity(track)),
     );
     const tracksAdded = [...currentIdentities].filter((id) => !previousIdentities.has(id)).length;
     const tracksRemoved = [...previousIdentities].filter((id) => !currentIdentities.has(id)).length;
@@ -154,8 +154,8 @@ async function syncSharedPlaylistImportHere({
       playlistId: playlist.id,
       reason: safeLogDiagnostic(error),
     });
-    const latestPlaylist = flowPlaylistConfig.getSharedPlaylist(playlist.id);
-    flowPlaylistConfig.updateSharedPlaylist(playlist.id, {
+    const latestPlaylist = flowPlaylistConfig.getStaticPlaylist(playlist.id);
+    flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
       importSource: {
         ...(latestPlaylist?.importSource || playlist.importSource),
         lastSyncError: String(error?.message || "Playlist sync failed"),
@@ -166,7 +166,7 @@ async function syncSharedPlaylistImportHere({
 }
 
 export async function runDueImportSourceSyncs() {
-  const playlists = flowPlaylistConfig.getSharedPlaylists();
+  const playlists = flowPlaylistConfig.getStaticPlaylists();
   const results = [];
   for (const playlist of playlists) {
     if (!playlist?.importSource?.syncEnabled) continue;
@@ -174,7 +174,7 @@ export async function runDueImportSourceSyncs() {
     const ownerUserId = playlist.ownerUserId;
     if (ownerUserId == null) continue;
     try {
-      const result = await syncSharedPlaylistImport({
+      const result = await syncStaticPlaylistImport({
         playlistId: playlist.id,
         user: { id: ownerUserId },
       });

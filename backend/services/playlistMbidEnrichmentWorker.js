@@ -1,6 +1,6 @@
 import createHonkerWorker from "./honkerWorkerFactory.js";
 import { getPlaylistMbidEnrichmentQueue } from "./honkerDb.js";import {
-  enrichSharedPlaylistMbids,
+  enrichStaticPlaylistMbids,
   schedulePlaylistMbidEnrichmentForMissingPlaylists,
 } from "./playlistMbidEnrichmentService.js";
 
@@ -8,7 +8,7 @@ async function processPlaylistMbidEnrichment(payload = {}) {
   const kind = String(payload?.kind || payload?.type || "").trim();
   switch (kind) {
     case "playlist-mbid-enrichment": {
-      return enrichSharedPlaylistMbids(payload.playlistId, {
+      return enrichStaticPlaylistMbids(payload.playlistId, {
         reconcileArtistMbids: payload?.reconcileArtistMbids === true,
       });
     }

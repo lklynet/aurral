@@ -19,7 +19,7 @@ import {
   getAllFlowJobs,
   reSearchFlowTrack,
   reSearchAllMissingTracks,
-  reSearchSharedPlaylistTrack,
+  reSearchStaticPlaylistTrack,
   searchTrackUpgrade,
   searchAllUpgrades,
 } from "../../utils/api/endpoints/playlists.js";
@@ -276,7 +276,7 @@ export default function ActivityMissingPage() {
       if (isMissing) {
         const playlist = playlistInfo.get(String(job.playlistType));
         const reSearch = playlist?.kind === "playlist"
-          ? reSearchSharedPlaylistTrack
+          ? reSearchStaticPlaylistTrack
           : reSearchFlowTrack;
         await reSearch(job.playlistType, job.id);
         queryClient.setQueryData(jobsQueryKey, (current) =>

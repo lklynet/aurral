@@ -12,7 +12,7 @@ import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConf
 
 const canAccessJob = (user, job) =>
   canAccessPlaylistType(user, job.playlistType) ||
-  flowPlaylistConfig.getSharedPlaylistsForUser(user).some((playlist) =>
+  flowPlaylistConfig.getStaticPlaylistsForUser(user).some((playlist) =>
     playlist.tracks?.some(
       (track) => String(track?.canonicalJobId || "") === String(job.id || ""),
     ),

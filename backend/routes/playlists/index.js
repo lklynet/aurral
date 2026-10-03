@@ -4,7 +4,7 @@ import { registerStream } from "./handlers/stream.js";
 import { registerArtworkServe } from "./handlers/artworkServe.js";
 import { registerArtworkManagement } from "./handlers/artworkManagement.js";
 import { registerFlows } from "./handlers/flows.js";
-import { registerSharedPlaylists } from "./handlers/sharedPlaylists.js";
+import { registerStaticPlaylists } from "./handlers/staticPlaylists.js";
 import { registerSpotifyImport } from "./handlers/spotifyImport.js";
 import { registerListenBrainzImport } from "./handlers/listenbrainzImport.js";
 import { registerLastfmImport } from "./handlers/lastfmImport.js";
@@ -21,7 +21,7 @@ router.use(requirePermission("accessFlow"));
 
 registerArtworkManagement(router);
 registerFlows(router);
-registerSharedPlaylists(router);
+registerStaticPlaylists(router);
 registerSpotifyImport(router);
 registerListenBrainzImport(router);
 registerLastfmImport(router);

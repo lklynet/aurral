@@ -87,9 +87,9 @@ test("the Navidrome adapter prefixes an owned flow name when enabled", () => {
   ]);
 });
 
-test("the Navidrome adapter prefixes an owned shared playlist name when enabled", () => {
+test("the Navidrome adapter prefixes an owned static playlist name when enabled", () => {
   const jody = userOps.createUser("jody", "hash", "user");
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "80s Anthems" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "80s Anthems" });
   const manager = makeManager({ prefixOwnerUsername: true });
   const names = manager.navidromeDestination.getPlaylistNames({
     entityId: playlist.id,
@@ -102,12 +102,12 @@ test("the Navidrome adapter prefixes an owned shared playlist name when enabled"
     "[AS] 80s Anthems",
     "Aurral Shared 80s Anthems",
   ]);
-  flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+  flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
 });
 
 test("the Navidrome adapter keeps owned flow names bare when the toggle is off", () => {
   const jody = userOps.createUser("jody", "hash", "user");
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "80s Anthems" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "80s Anthems" });
   const manager = makeManager({ prefixOwnerUsername: false });
 
   const flow = manager.navidromeDestination.getPlaylistNames({
@@ -132,7 +132,7 @@ test("the Navidrome adapter keeps owned flow names bare when the toggle is off",
     "Aurral Shared 80s Anthems",
     "jody - 80s Anthems",
   ]);
-  flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+  flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
 });
 
 test("switching off the prefix deletes a leftover prefixed playlist with no pointer mapping", async () => {

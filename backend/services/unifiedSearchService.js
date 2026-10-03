@@ -499,7 +499,7 @@ async function searchCatalog(query, limit, signal) {
 
 function getVisiblePlaylistsForUser(user) {
   try {
-    return user ? flowPlaylistConfig.getSharedPlaylistsForUser(user) : [];
+    return user ? flowPlaylistConfig.getStaticPlaylistsForUser(user) : [];
   } catch (error) {
     console.warn("[UnifiedSearch] Failed to read playlists:", error.message);
     return [];

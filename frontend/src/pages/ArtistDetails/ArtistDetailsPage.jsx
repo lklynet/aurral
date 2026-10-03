@@ -13,16 +13,16 @@ import {
   lookupArtistInLibrary,
 } from "../../utils/api/endpoints/library.js";
 import {
-  addSharedPlaylistTracks,
-  createSharedPlaylist,
+  addStaticPlaylistTracks,
+  createStaticPlaylist,
 } from "../../utils/api/endpoints/playlists.js";
 import {
-  buildSharedPlaylistTrackPayload,
+  buildStaticPlaylistTrackPayload,
   getCoverImage,
   reserveUniquePlaylistName,
 } from "./utils";
 import { useArtistTasteFeedback } from "../../hooks/useArtistTasteFeedback";
-import { useSharedPlaylists } from "../../hooks/useSharedPlaylists";
+import { useStaticPlaylists } from "../../hooks/useStaticPlaylists";
 
 import { useParams, useLocation } from "react-router";
 import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
@@ -78,13 +78,13 @@ function ArtistDetailsPage() {
     deezerArtistId: "",
   });
   const {
-    sharedPlaylists,
-    setSharedPlaylists,
+    staticPlaylists,
+    setStaticPlaylists,
     playlistsLoading: playlistModalLoading,
     playlistsError: playlistModalError,
     setPlaylistsError: setPlaylistModalError,
-    loadSharedPlaylists,
-  } = useSharedPlaylists();
+    loadStaticPlaylists,
+  } = useStaticPlaylists();
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
   const [libraryTrackSavingKeys, setLibraryTrackSavingKeys] = useState(() => new Set());
   const [visibleReleaseGroupCoverIds, setVisibleReleaseGroupCoverIds] = useState([]);
@@ -326,13 +326,13 @@ function ArtistDetailsPage() {
 
   const getDefaultTrackPlaylistName = (track) =>
     reserveUniquePlaylistName(
-      sharedPlaylists,
+      staticPlaylists,
       `${artist?.name || artistNameFromNav || track?.artistName || "Artist"} Picks`,
     );
 
   const buildReleaseTrackPayload = (track, releaseGroup) => {
     const year = String(releaseGroup?.["first-release-date"] || "").slice(0, 4);
-    return buildSharedPlaylistTrackPayload({
+    return buildStaticPlaylistTrackPayload({
       artistName: artist?.name || artistNameFromNav || "",
       trackName: track?.trackName || track?.title || "",
       albumName: releaseGroup?.title || "",
@@ -346,7 +346,7 @@ function ArtistDetailsPage() {
   };
 
   const buildPreviewTrackPayload = (track) =>
-    buildSharedPlaylistTrackPayload({
+    buildStaticPlaylistTrackPayload({
       artistName: artist?.name || artistNameFromNav || "",
       trackName: track?.title || track?.trackName || "",
       albumName: track?.album || "",
@@ -369,24 +369,24 @@ function ArtistDetailsPage() {
       if (target?.mode === "new") {
         const name =
           String(target?.name || "").trim() ||
-          reserveUniquePlaylistName(sharedPlaylists, `${trackPayload.artistName} Picks`);
-        const response = await createSharedPlaylist({
+          reserveUniquePlaylistName(staticPlaylists, `${trackPayload.artistName} Picks`);
+        const response = await createStaticPlaylist({
           name,
           tracks: [trackPayload],
         });
         showSuccess(`Track saved to ${response?.playlist?.name || name}`);
       } else {
-        const targetPlaylist = sharedPlaylists.find(
+        const targetPlaylist = staticPlaylists.find(
           (playlist) => playlist.id === target?.playlistId,
         );
-        await addSharedPlaylistTracks(target.playlistId, {
+        await addStaticPlaylistTracks(target.playlistId, {
           tracks: [trackPayload],
         });
         showSuccess(`Track added to ${targetPlaylist?.name || "playlist"}`);
       }
-      const nextPlaylists = await loadSharedPlaylists();
+      const nextPlaylists = await loadStaticPlaylists();
       if (nextPlaylists) {
-        setSharedPlaylists(nextPlaylists);
+        setStaticPlaylists(nextPlaylists);
       }
     } catch (err) {
       const message =
@@ -533,12 +533,12 @@ function ArtistDetailsPage() {
         onAddTrackToLibrary={handleTrackAddToLibrary}
         libraryTrackSavingKeys={libraryTrackSavingKeys}
         resolveMembershipTrack={buildPreviewTrackPayload}
-        playlists={sharedPlaylists}
+        playlists={staticPlaylists}
         playlistsLoading={playlistModalLoading}
         playlistSavingKey={playlistMenuSavingKey}
         playlistError={playlistModalError}
         getDefaultPlaylistName={getDefaultTrackPlaylistName}
-        onLoadPlaylists={loadSharedPlaylists}
+        onLoadPlaylists={loadStaticPlaylists}
       />
 
       <ArtistDetailsDownloadTargets
@@ -558,12 +558,12 @@ function ArtistDetailsPage() {
         onAddTrackToLibrary={handleTrackAddToLibrary}
         libraryTrackSavingKeys={libraryTrackSavingKeys}
         resolveMembershipTrack={buildReleaseTrackPayload}
-        playlists={sharedPlaylists}
+        playlists={staticPlaylists}
         playlistsLoading={playlistModalLoading}
         playlistSavingKey={playlistMenuSavingKey}
         playlistError={playlistModalError}
         getDefaultPlaylistName={getDefaultTrackPlaylistName}
-        onLoadPlaylists={loadSharedPlaylists}
+        onLoadPlaylists={loadStaticPlaylists}
       />
 
       {existsInLibrary && libraryAlbums && libraryAlbums.length > 0 && (

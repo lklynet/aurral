@@ -8,9 +8,9 @@ import { CreatePlaylistModal } from "../../components/PlaylistModals";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
-import { createSharedPlaylist } from "../../utils/api/endpoints/playlists.js";
+import { createStaticPlaylist } from "../../utils/api/endpoints/playlists.js";
 import { PlaylistArtworkThumb } from "./flowComponents/PlaylistArtworkThumb.jsx";
-import { getSharedPlaylistTrackCount } from "./flowStats";
+import { getStaticPlaylistTrackCount } from "./flowStats";
 import { normalizeNameKey, reserveUniqueFlowName } from "./flowPageUtils";
 import {
   formatTrackTotal,
@@ -45,7 +45,7 @@ export default function PlaylistsPage() {
   const location = useLocation();
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
-  const { status, loading, error, fetchStatus, getPlaylistStats, sharedPlaylists } =
+  const { status, loading, error, fetchStatus, getPlaylistStats, staticPlaylists } =
     useFlowStatus();
   const { artworkUrlFor } = usePlaylistArtwork();
   const [importOpen, setImportOpen] = useState(false);
@@ -68,7 +68,7 @@ export default function PlaylistsPage() {
     setCreating(true);
     setCreateError("");
     try {
-      const response = await createSharedPlaylist({ name });
+      const response = await createStaticPlaylist({ name });
       showSuccess(`Created ${name}`);
       setCreateOpen(false);
       await fetchStatus();
@@ -89,7 +89,7 @@ export default function PlaylistsPage() {
   };
 
   const describePlaylist = (playlist) => {
-    const parts = [formatTrackTotal(getSharedPlaylistTrackCount(playlist, getPlaylistStats(playlist.id)))];
+    const parts = [formatTrackTotal(getStaticPlaylistTrackCount(playlist, getPlaylistStats(playlist.id)))];
     if (playlist.ownerUsername && (user?.role === "admin" || playlist.ownerUsername !== user?.username)) {
       parts.unshift(playlist.ownerUsername);
     }
@@ -116,7 +116,7 @@ export default function PlaylistsPage() {
         </div>
       );
     }
-    if (sharedPlaylists.length === 0) {
+    if (staticPlaylists.length === 0) {
       return (
         <div className="native-library-state">
           <strong>No playlists yet</strong>
@@ -140,7 +140,7 @@ export default function PlaylistsPage() {
     }
     return (
       <div className="native-library-grid" role="list" aria-label="Playlists">
-        {sharedPlaylists.map((playlist) => (
+        {staticPlaylists.map((playlist) => (
           <article className="native-library-card" role="listitem" key={playlist.id}>
             <div className="native-library-card__cover-wrap">
               <Link
@@ -200,7 +200,7 @@ export default function PlaylistsPage() {
       <CreatePlaylistModal
         open={createOpen}
         defaultName={reserveUniqueFlowName(
-          new Set(sharedPlaylists.map((playlist) => normalizeNameKey(playlist?.name)).filter(Boolean)),
+          new Set(staticPlaylists.map((playlist) => normalizeNameKey(playlist?.name)).filter(Boolean)),
           "Playlist",
         )}
         saving={creating}
@@ -220,7 +220,7 @@ export default function PlaylistsPage() {
             onImported={fetchStatus}
             showError={showError}
             showSuccess={showSuccess}
-            existingPlaylistNames={sharedPlaylists.map((playlist) => playlist?.name)}
+            existingPlaylistNames={staticPlaylists.map((playlist) => playlist?.name)}
           />
         </Suspense>
       ) : null}

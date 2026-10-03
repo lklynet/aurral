@@ -37,7 +37,7 @@ function normalizeTrackForSharedIdentity(track) {
   };
 }
 
-function buildSharedTrackIdentity(track) {
+function buildPlaylistTrackIdentity(track) {
   const normalized = normalizeTrackForSharedIdentity(track);
   if (!normalized) return "";
   return [
@@ -66,7 +66,7 @@ function coreIdentityFromStoredIdentity(identity) {
 function trackMatchesStoredIdentity(storedIdentity, track) {
   const normalized = normalizeTrackForSharedIdentity(track);
   if (!normalized) return false;
-  const targetFull = buildSharedTrackIdentity(track);
+  const targetFull = buildPlaylistTrackIdentity(track);
   if (targetFull && storedIdentity === targetFull) return true;
   const targetCore = buildCoreTrackIdentity(track);
   if (!targetCore) return false;

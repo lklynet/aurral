@@ -171,7 +171,7 @@ export const dbOps = {
       getSettingStmt.get("releaseTypes")?.value
     );
     const flows = readStoredSettingJson("flows", ["weeklyFlows"]);
-    const sharedPlaylists = readStoredSettingJson("sharedPlaylists", [
+    const staticPlaylists = readStoredSettingJson("sharedPlaylists", [
       "sharedFlowPlaylists",
     ]);
     const subsonic = readStoredSettingJson("subsonic") || {};
@@ -220,7 +220,7 @@ export const dbOps = {
       pathMappings,
       releaseTypes: releaseTypes || [],
       flows: flows || null,
-      sharedPlaylists: sharedPlaylists || null,
+      sharedPlaylists: staticPlaylists || null,
       subsonic: {
         favoriteAutoKeep: subsonic.favoriteAutoKeep !== false,
       },

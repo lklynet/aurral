@@ -40,7 +40,7 @@ const { processPlaylistOperation } = operationsModule;
 const { playlistOperationQueue } = operationQueueModule;
 const { downloadWorker } = workerModule;
 const { downloadTracker } = trackerModule;
-const { syncSharedPlaylistImport } = importSyncModule;
+const { syncStaticPlaylistImport } = importSyncModule;
 const {
   addEditorialPlaylistToLibrary,
   getEditorialPlaylist,
@@ -133,7 +133,7 @@ test("adding a Deezer playlist creates one synced library playlist with its trac
   assert.equal(payloads.length, 1);
   await processPlaylistOperation(payloads[0]);
 
-  const playlist = flowPlaylistConfig.getSharedPlaylist(added.playlistId);
+  const playlist = flowPlaylistConfig.getStaticPlaylist(added.playlistId);
   assert.equal(playlist.name, "Rock Essentials");
   assert.equal(playlist.ownerUserId, 7);
   assert.equal(playlist.description, "The rock songs everyone should know.");
@@ -184,12 +184,12 @@ test("a Deezer playlist whose name is taken gets a distinct library name", async
   t.mock.method(downloadWorker, "start", async () => false);
   stubDeezer(t, rockEssentials([deezerTrack("Paranoid", "Black Sabbath")]));
   const payloads = captureEnqueues(t);
-  flowPlaylistConfig.createSharedPlaylist({ name: "rock essentials", ownerUserId: 7 });
+  flowPlaylistConfig.createStaticPlaylist({ name: "rock essentials", ownerUserId: 7 });
 
   const added = await addEditorialPlaylistToLibrary(OWNER, "1306931615");
   await processPlaylistOperation(payloads[0]);
 
-  assert.equal(flowPlaylistConfig.getSharedPlaylist(added.playlistId)?.name, "Rock Essentials (Deezer)");
+  assert.equal(flowPlaylistConfig.getStaticPlaylist(added.playlistId)?.name, "Rock Essentials (Deezer)");
 });
 
 test("adding fails without creating anything when Deezer is unavailable", async (t) => {
@@ -199,13 +199,13 @@ test("adding fails without creating anything when Deezer is unavailable", async 
   await assert.rejects(addEditorialPlaylistToLibrary(OWNER, "1306931615"), { statusCode: 502 });
   await assert.rejects(addEditorialPlaylistToLibrary(OWNER, "../admin"), { statusCode: 400 });
   assert.equal(payloads.length, 0);
-  assert.deepEqual(flowPlaylistConfig.getSharedPlaylistsOwnedByUser(7), []);
+  assert.deepEqual(flowPlaylistConfig.getStaticPlaylistsOwnedByUser(7), []);
 });
 
 test("syncing a Deezer library playlist follows the editor's changes", async (t) => {
   t.mock.method(downloadWorker, "start", async () => false);
   stubDeezer(t, rockEssentials([deezerTrack("Thunderstruck", "AC/DC")]));
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Rock Essentials",
     ownerUserId: 7,
     tracks: [{ artistName: "AC/DC", trackName: "Back In Black" }],
@@ -218,11 +218,11 @@ test("syncing a Deezer library playlist follows the editor's changes", async (t)
     },
   });
 
-  const result = await syncSharedPlaylistImport({ playlistId: playlist.id, user: OWNER, force: true });
+  const result = await syncStaticPlaylistImport({ playlistId: playlist.id, user: OWNER, force: true });
 
   assert.equal(result.trackCount, 1);
   assert.deepEqual(
-    flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks.map((track) => track.trackName),
+    flowPlaylistConfig.getStaticPlaylist(playlist.id).tracks.map((track) => track.trackName),
     ["Thunderstruck"],
   );
 });

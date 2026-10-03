@@ -18,17 +18,17 @@ export const DEFAULT_SIZE = 30;
 const DEFAULT_SCHEDULE_TIME = "00:00";
 const DAY_MS = 24 * 60 * 60 * 1000;
 let cachedFlows = null;
-let cachedSharedPlaylists = null;
+let cachedStaticPlaylists = null;
 let flowsCachedAt = 0;
-let sharedPlaylistsCachedAt = 0;
+let staticPlaylistsCachedAt = 0;
 const childCacheExpired = (cachedAt) =>
   !!process.env.AURRAL_BACKGROUND_WORKER_GROUP && Date.now() - cachedAt >= 2000;
 
 export function invalidateFlowPlaylistConfigCache() {
   cachedFlows = null;
-  cachedSharedPlaylists = null;
+  cachedStaticPlaylists = null;
   flowsCachedAt = 0;
-  sharedPlaylistsCachedAt = 0;
+  staticPlaylistsCachedAt = 0;
 }
 
 const clampSize = (value) => {
@@ -293,7 +293,7 @@ const normalizeFlow = (flow) => {
   };
 };
 
-export const normalizeSharedTrack = (track) => {
+export const normalizePlaylistTrack = (track) => {
   if (!track || typeof track !== "object" || Array.isArray(track)) return null;
   const artistName = String(
     track.artistName ?? track.artist ?? track.artist_name ?? track["Artist Name(s)"] ?? "",
@@ -335,7 +335,7 @@ export const normalizeSharedTrack = (track) => {
   };
 };
 
-export const buildSharedTrackIdentity = (track) =>
+export const buildPlaylistTrackIdentity = (track) =>
   [
     String(track?.artistName || "").trim().toLowerCase(),
     String(track?.trackName || "").trim().toLowerCase(),
@@ -359,7 +359,7 @@ export const buildCoreTrackIdentity = (track) => {
 };
 
 export const tracksShareMembership = (left, right) => {
-  if (buildSharedTrackIdentity(left) === buildSharedTrackIdentity(right)) {
+  if (buildPlaylistTrackIdentity(left) === buildPlaylistTrackIdentity(right)) {
     return true;
   }
   const leftCore = buildCoreTrackIdentity(left);
@@ -375,7 +375,7 @@ export const sortJobsByCreatedAt = (jobs) =>
     return String(left?.id || "").localeCompare(String(right?.id || ""));
   });
 
-export const orderJobsBySharedPlaylistTracks = (jobs, tracks) => {
+export const orderJobsByPlaylistTracks = (jobs, tracks) => {
   const list = Array.isArray(jobs) ? [...jobs] : [];
   const configTracks = Array.isArray(tracks) ? tracks : [];
   if (!configTracks.length) {
@@ -384,9 +384,9 @@ export const orderJobsBySharedPlaylistTracks = (jobs, tracks) => {
   const unmatchedJobs = sortJobsByCreatedAt(list);
   const orderedJobs = [];
   for (const track of configTracks) {
-    const identity = buildSharedTrackIdentity(track);
+    const identity = buildPlaylistTrackIdentity(track);
     let index = unmatchedJobs.findIndex(
-      (job) => buildSharedTrackIdentity(job) === identity,
+      (job) => buildPlaylistTrackIdentity(job) === identity,
     );
     if (index < 0) {
       index = unmatchedJobs.findIndex((job) => tracksShareMembership(job, track));
@@ -397,13 +397,13 @@ export const orderJobsBySharedPlaylistTracks = (jobs, tracks) => {
   return orderedJobs;
 };
 
-export const dedupeSharedTracks = (tracks) => {
+export const dedupePlaylistTracks = (tracks) => {
   const seen = new Set();
   const uniqueTracks = [];
   for (const track of Array.isArray(tracks) ? tracks : []) {
-    const normalizedTrack = normalizeSharedTrack(track);
+    const normalizedTrack = normalizePlaylistTrack(track);
     if (!normalizedTrack) continue;
-    const identity = buildSharedTrackIdentity(normalizedTrack);
+    const identity = buildPlaylistTrackIdentity(normalizedTrack);
     if (seen.has(identity)) continue;
     seen.add(identity);
     uniqueTracks.push(normalizedTrack);
@@ -411,11 +411,11 @@ export const dedupeSharedTracks = (tracks) => {
   return uniqueTracks;
 };
 
-export const rebuildSharedPlaylistTracksFromJobs = (configTracks, jobs) => {
+export const rebuildStaticPlaylistTracksFromJobs = (configTracks, jobs) => {
   const jobList = Array.isArray(jobs) ? jobs : [];
   const unmatchedJobIds = new Set(jobList.map((job) => job.id));
   const remainingTracks = [];
-  for (const track of dedupeSharedTracks(configTracks)) {
+  for (const track of dedupePlaylistTracks(configTracks)) {
     const match = jobList.find(
       (job) => unmatchedJobIds.has(job.id) && tracksShareMembership(job, track),
     );
@@ -426,7 +426,7 @@ export const rebuildSharedPlaylistTracksFromJobs = (configTracks, jobs) => {
   for (const job of sortJobsByCreatedAt(jobList)) {
     if (!unmatchedJobIds.has(job.id)) continue;
     unmatchedJobIds.delete(job.id);
-    const track = normalizeSharedTrack({
+    const track = normalizePlaylistTrack({
       artistName: job?.artistName,
       trackName: job?.trackName,
       albumName: job?.albumName || null,
@@ -443,15 +443,15 @@ export const rebuildSharedPlaylistTracksFromJobs = (configTracks, jobs) => {
   return remainingTracks;
 };
 
-export const filterMissingSharedTracks = (existingTracks, incomingTracks) => {
+export const filterMissingPlaylistTracks = (existingTracks, incomingTracks) => {
   const seen = new Set(
-    dedupeSharedTracks(existingTracks).map((track) => buildSharedTrackIdentity(track)),
+    dedupePlaylistTracks(existingTracks).map((track) => buildPlaylistTrackIdentity(track)),
   );
   const missingTracks = [];
   for (const track of Array.isArray(incomingTracks) ? incomingTracks : []) {
-    const normalizedTrack = normalizeSharedTrack(track);
+    const normalizedTrack = normalizePlaylistTrack(track);
     if (!normalizedTrack) continue;
-    const identity = buildSharedTrackIdentity(normalizedTrack);
+    const identity = buildPlaylistTrackIdentity(normalizedTrack);
     if (seen.has(identity)) continue;
     seen.add(identity);
     missingTracks.push(normalizedTrack);
@@ -490,10 +490,10 @@ export function normalizeImportSource(value) {
   };
 }
 
-const normalizeSharedPlaylist = (playlist) => {
+const normalizeStaticPlaylist = (playlist) => {
   const name = String(playlist?.name || "").trim();
   const membershipIds = new Set();
-  const tracks = dedupeSharedTracks(playlist?.tracks).map((track) => {
+  const tracks = dedupePlaylistTracks(playlist?.tracks).map((track) => {
     const membershipId = track.membershipId && !membershipIds.has(track.membershipId) ? track.membershipId : randomUUID();
     membershipIds.add(membershipId);
     return { ...track, membershipId };
@@ -501,7 +501,7 @@ const normalizeSharedPlaylist = (playlist) => {
   const importSource = normalizeImportSource(playlist?.importSource);
   return {
     id: playlist?.id || randomUUID(),
-    name: name || "Shared Playlist",
+    name: name || "Playlist",
     ownerUserId: normalizeOwnerUserId(playlist?.ownerUserId),
     sourceName: String(playlist?.sourceName || "").trim() || null,
     sourceFlowId: String(playlist?.sourceFlowId || "").trim() || null,
@@ -582,15 +582,15 @@ const setFlows = (flows) => {
   });
 };
 
-const getStoredSharedPlaylists = () => {
-  if (cachedSharedPlaylists && !childCacheExpired(sharedPlaylistsCachedAt)) {
-    return cachedSharedPlaylists;
+const getStoredStaticPlaylists = () => {
+  if (cachedStaticPlaylists && !childCacheExpired(staticPlaylistsCachedAt)) {
+    return cachedStaticPlaylists;
   }
-  sharedPlaylistsCachedAt = Date.now();
+  staticPlaylistsCachedAt = Date.now();
   const settings = dbOps.getSettings();
   const stored = settings.sharedPlaylists;
   if (Array.isArray(stored)) {
-    const next = stored.map(normalizeSharedPlaylist);
+    const next = stored.map(normalizeStaticPlaylist);
     const needsSave =
       next.length !== stored.length ||
       next.some((playlist, index) => JSON.stringify(playlist) !== JSON.stringify(stored[index]));
@@ -600,20 +600,20 @@ const getStoredSharedPlaylists = () => {
         sharedPlaylists: next,
       });
     }
-    cachedSharedPlaylists = next;
-    return cachedSharedPlaylists;
+    cachedStaticPlaylists = next;
+    return cachedStaticPlaylists;
   }
   dbOps.updateSettings({
     ...settings,
     sharedPlaylists: [],
   });
-  cachedSharedPlaylists = [];
-  return cachedSharedPlaylists;
+  cachedStaticPlaylists = [];
+  return cachedStaticPlaylists;
 };
 
-const setSharedPlaylists = (playlists) => {
-  cachedSharedPlaylists = playlists;
-  sharedPlaylistsCachedAt = Date.now();
+const setStaticPlaylists = (playlists) => {
+  cachedStaticPlaylists = playlists;
+  staticPlaylistsCachedAt = Date.now();
   const current = dbOps.getSettings();
   try {
     dbOps.updateSettings({ ...current, sharedPlaylists: playlists });
@@ -635,9 +635,9 @@ const createNameConflictError = (name) => {
   return error;
 };
 
-const createSharedPlaylistNameConflictError = (name) => {
-  const error = new Error(`Shared playlist "${name}" already exists`);
-  error.code = "SHARED_PLAYLIST_NAME_CONFLICT";
+const createStaticPlaylistNameConflictError = (name) => {
+  const error = new Error(`Playlist "${name}" already exists`);
+  error.code = "STATIC_PLAYLIST_NAME_CONFLICT";
   return error;
 };
 
@@ -668,7 +668,7 @@ const assertUniqueFlowName = (flows, sameOwnerPlaylists, nextName, exceptFlowId 
   }
 };
 
-const assertUniqueSharedPlaylistName = (playlists, sameOwnerFlows, nextName, exceptPlaylistId = null) => {
+const assertUniqueStaticPlaylistName = (playlists, sameOwnerFlows, nextName, exceptPlaylistId = null) => {
   const key = normalizeNameKey(nextName);
   if (!key) return;
   const playlistConflict = playlists.some((playlist) => {
@@ -678,7 +678,7 @@ const assertUniqueSharedPlaylistName = (playlists, sameOwnerFlows, nextName, exc
   });
   const flowConflict = sameOwnerFlows.some((flow) => flow && normalizeNameKey(flow.name) === key);
   if (playlistConflict || flowConflict) {
-    throw createSharedPlaylistNameConflictError(String(nextName || "").trim());
+    throw createStaticPlaylistNameConflictError(String(nextName || "").trim());
   }
 };
 
@@ -687,7 +687,7 @@ export const flowPlaylistConfig = {
     return canUserAccessOwnerScopedEntity(user, flow?.ownerUserId ?? null);
   },
 
-  canUserAccessSharedPlaylist(user, playlist) {
+  canUserAccessStaticPlaylist(user, playlist) {
     return canUserAccessOwnerScopedEntity(user, playlist?.ownerUserId ?? null);
   },
 
@@ -754,7 +754,7 @@ export const flowPlaylistConfig = {
     const normalizedOwnerUserId = normalizeOwnerUserId(ownerUserId);
     assertUniqueFlowName(
       entitiesRelevantForNameCheck(flows, { ownerUserId: normalizedOwnerUserId }),
-      entitiesRelevantForNameCheck(getStoredSharedPlaylists(), {
+      entitiesRelevantForNameCheck(getStoredStaticPlaylists(), {
         ownerUserId: normalizedOwnerUserId,
       }),
       name,
@@ -794,7 +794,7 @@ export const flowPlaylistConfig = {
     const nextName = updates?.name ?? current.name;
     assertUniqueFlowName(
       entitiesRelevantForNameCheck(flows, { ownerUserId: current.ownerUserId }),
-      entitiesRelevantForNameCheck(getStoredSharedPlaylists(), {
+      entitiesRelevantForNameCheck(getStoredStaticPlaylists(), {
         ownerUserId: current.ownerUserId,
       }),
       nextName,
@@ -906,30 +906,30 @@ export const flowPlaylistConfig = {
     );
   },
 
-  getSharedPlaylists() {
-    return getStoredSharedPlaylists();
+  getStaticPlaylists() {
+    return getStoredStaticPlaylists();
   },
 
-  getSharedPlaylistsForUser(user) {
-    return getStoredSharedPlaylists().filter((playlist) =>
-      this.canUserAccessSharedPlaylist(user, playlist),
+  getStaticPlaylistsForUser(user) {
+    return getStoredStaticPlaylists().filter((playlist) =>
+      this.canUserAccessStaticPlaylist(user, playlist),
     );
   },
 
-  getSharedPlaylistsOwnedByUser(userId) {
-    return getStoredSharedPlaylists().filter((playlist) => isOwnedByUser(playlist, userId));
+  getStaticPlaylistsOwnedByUser(userId) {
+    return getStoredStaticPlaylists().filter((playlist) => isOwnedByUser(playlist, userId));
   },
 
-  getSharedPlaylist(playlistId) {
-    return getStoredSharedPlaylists().find((playlist) => playlist.id === playlistId) || null;
+  getStaticPlaylist(playlistId) {
+    return getStoredStaticPlaylists().find((playlist) => playlist.id === playlistId) || null;
   },
 
-  getSharedPlaylistForUser(user, playlistId) {
-    const playlist = this.getSharedPlaylist(playlistId);
-    return this.canUserAccessSharedPlaylist(user, playlist) ? playlist : null;
+  getStaticPlaylistForUser(user, playlistId) {
+    const playlist = this.getStaticPlaylist(playlistId);
+    return this.canUserAccessStaticPlaylist(user, playlist) ? playlist : null;
   },
 
-  createSharedPlaylist({
+  createStaticPlaylist({
     id = null,
     name,
     sourceName,
@@ -942,16 +942,16 @@ export const flowPlaylistConfig = {
     description = null,
     recordHistory = true,
   }) {
-    const playlists = getStoredSharedPlaylists();
+    const playlists = getStoredStaticPlaylists();
     const normalizedOwnerUserId = normalizeOwnerUserId(ownerUserId);
-    assertUniqueSharedPlaylistName(
+    assertUniqueStaticPlaylistName(
       entitiesRelevantForNameCheck(playlists, { ownerUserId: normalizedOwnerUserId }),
       entitiesRelevantForNameCheck(getStoredFlows(), {
         ownerUserId: normalizedOwnerUserId,
       }),
       name,
     );
-    const playlist = normalizeSharedPlaylist({
+    const playlist = normalizeStaticPlaylist({
       id: String(id || "").trim() || randomUUID(),
       name,
       ownerUserId: normalizedOwnerUserId,
@@ -967,40 +967,40 @@ export const flowPlaylistConfig = {
       createdAt: Date.now(),
     });
     playlists.push(playlist);
-    setSharedPlaylists(playlists);
+    setStaticPlaylists(playlists);
     return playlist;
   },
 
-  appendSharedPlaylistTracks(playlistId, tracks) {
-    const playlists = getStoredSharedPlaylists();
+  appendStaticPlaylistTracks(playlistId, tracks) {
+    const playlists = getStoredStaticPlaylists();
     const index = playlists.findIndex((playlist) => playlist.id === playlistId);
     if (index === -1) return null;
     const current = playlists[index];
-    const appendedTracks = filterMissingSharedTracks(current.tracks, tracks).map((track) => ({ ...track, membershipId: randomUUID() }));
-    const next = normalizeSharedPlaylist({
+    const appendedTracks = filterMissingPlaylistTracks(current.tracks, tracks).map((track) => ({ ...track, membershipId: randomUUID() }));
+    const next = normalizeStaticPlaylist({
       ...current,
       tracks: [...current.tracks, ...appendedTracks],
       importedAt: current.importedAt,
       createdAt: current.createdAt,
     });
     playlists[index] = next;
-    setSharedPlaylists(playlists);
+    setStaticPlaylists(playlists);
     return next;
   },
 
-  updateSharedPlaylist(playlistId, updates) {
-    const playlists = getStoredSharedPlaylists();
+  updateStaticPlaylist(playlistId, updates) {
+    const playlists = getStoredStaticPlaylists();
     const index = playlists.findIndex((playlist) => playlist.id === playlistId);
     if (index === -1) return null;
     const current = playlists[index];
     const nextName = updates?.name ?? current.name;
-    assertUniqueSharedPlaylistName(
+    assertUniqueStaticPlaylistName(
       entitiesRelevantForNameCheck(playlists, { ownerUserId: current.ownerUserId }),
       entitiesRelevantForNameCheck(getStoredFlows(), { ownerUserId: current.ownerUserId }),
       nextName,
       playlistId,
     );
-    const next = normalizeSharedPlaylist({
+    const next = normalizeStaticPlaylist({
       ...current,
       name: nextName,
       sourceName: updates?.sourceName ?? current.sourceName,
@@ -1015,7 +1015,7 @@ export const flowPlaylistConfig = {
         updates?.importSource !== undefined
           ? normalizeImportSource(updates.importSource)
           : current.importSource,
-      tracks: Array.isArray(updates?.tracks) ? dedupeSharedTracks(updates.tracks).map((track) => {
+      tracks: Array.isArray(updates?.tracks) ? dedupePlaylistTracks(updates.tracks).map((track) => {
         const previous = current.tracks.find((entry) => entry.canonicalJobId === track.canonicalJobId && tracksShareMembership(entry, track));
         return { ...track, membershipId: previous?.membershipId || randomUUID() };
       }) : current.tracks,
@@ -1023,16 +1023,16 @@ export const flowPlaylistConfig = {
       createdAt: current.createdAt,
     });
     playlists[index] = next;
-    setSharedPlaylists(playlists);
+    setStaticPlaylists(playlists);
     import("../unifiedSearchService.js").then(({ clearSearchContextCache }) => clearSearchContextCache()).catch(() => {});
     return next;
   },
 
-  deleteSharedPlaylist(playlistId) {
-    const playlists = getStoredSharedPlaylists();
+  deleteStaticPlaylist(playlistId) {
+    const playlists = getStoredStaticPlaylists();
     const next = playlists.filter((playlist) => playlist.id !== playlistId);
     if (next.length === playlists.length) return false;
-    setSharedPlaylists(next);
+    setStaticPlaylists(next);
     return true;
   },
 };

@@ -681,7 +681,7 @@ export function SettingsPlaybackSection({
           }
         >
           <SettingsModalIntro>
-            Connect Jellyfin to publish Aurral flow and shared playlists into its music library.
+            Connect Jellyfin to publish Aurral flows and playlists into its music library.
           </SettingsModalIntro>
           <SettingsModalSection title="Connection">
             <SettingsAdapterFields

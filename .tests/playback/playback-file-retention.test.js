@@ -277,7 +277,7 @@ for (const mode of ["completed-flow", "shared-direct", "shared-batch", "shared-b
       const isFlow = mode === "completed-flow";
       const playlist = isFlow
         ? flowPlaylistConfig.createFlow({ name: `${mode}-${usage}`, enabled: true })
-        : flowPlaylistConfig.createSharedPlaylist({ name: `${mode}-${usage}` });
+        : flowPlaylistConfig.createStaticPlaylist({ name: `${mode}-${usage}` });
       const source = await makeFile(`aurral-weekly-flow/${playlist.id}/Artist/Album/Saved.flac`);
       const destinationPath = isFlow
         ? path.join(root, "_flows", playlist.id, "Artist/Album/Saved.flac")

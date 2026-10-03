@@ -43,7 +43,7 @@ test.after(async () => {
 });
 
 test("flow completion sends display name and track library path", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Late Night",
     tracks: [{ artistName: "Artist", trackName: "Track" }],
   });

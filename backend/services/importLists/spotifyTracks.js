@@ -1,4 +1,4 @@
-import { buildSharedTrackIdentity, dedupeSharedTracks } from "../playlists/flowPlaylistConfig.js";
+import { buildPlaylistTrackIdentity, dedupePlaylistTracks } from "../playlists/flowPlaylistConfig.js";
 
 export function parseSpotifyPlaylistItems(items = []) {
   const stats = {
@@ -41,11 +41,11 @@ export function parseSpotifyPlaylistItems(items = []) {
     });
     positions.push(position);
   }
-  const tracks = dedupeSharedTracks(raw);
+  const tracks = dedupePlaylistTracks(raw);
   stats.duplicate = Math.max(0, raw.length - tracks.length);
   const seen = new Set();
   for (const [index, track] of raw.entries()) {
-    const identity = buildSharedTrackIdentity(track);
+    const identity = buildPlaylistTrackIdentity(track);
     if (seen.has(identity)) {
       excluded.push({
         position: positions[index],

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  addSharedPlaylistTracks,
-  createSharedPlaylist,
+  addStaticPlaylistTracks,
+  createStaticPlaylist,
 } from "../../utils/api/endpoints/playlists.js";
 import {
   getDownloadStatus,
@@ -16,7 +16,7 @@ import {
   getReleaseGroupDetails,
   getReleaseGroupTracks,
 } from "../../utils/api/endpoints/artists.js";
-import { useSharedPlaylists } from "../../hooks/useSharedPlaylists";
+import { useStaticPlaylists } from "../../hooks/useStaticPlaylists";
 import { useWebSocketChannel } from "../../hooks/useWebSocket";
 
 import { Link, useLocation, useParams } from "react-router";
@@ -41,7 +41,7 @@ import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../../c
 import { withImageCacheBust } from "../../utils/normalizeMediaUrl.js";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import {
-  buildSharedPlaylistTrackPayload,
+  buildStaticPlaylistTrackPayload,
   buildLastfmAlbumUrl,
   formatAlbumDuration,
   formatReleaseDate,
@@ -143,13 +143,13 @@ function ReleasePage() {
   const [coverLoadFailed, setCoverLoadFailed] = useState(false);
   const [requestingAlbum, setRequestingAlbum] = useState(false);
   const {
-    sharedPlaylists,
-    setSharedPlaylists,
+    staticPlaylists,
+    setStaticPlaylists,
     playlistsLoading: playlistModalLoading,
     playlistsError: playlistModalError,
     setPlaylistsError: setPlaylistModalError,
-    loadSharedPlaylists,
-  } = useSharedPlaylists();
+    loadStaticPlaylists,
+  } = useStaticPlaylists();
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
   const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
   const downloadTrackMutation = useMutation({ mutationFn: downloadTrackToLibrary });
@@ -347,16 +347,16 @@ function ReleasePage() {
   const getDefaultTrackPlaylistName = useCallback(
     (track) =>
       reserveUniquePlaylistName(
-        sharedPlaylists,
+        staticPlaylists,
         `${artistName || track?.artistName || "Artist"} Picks`,
       ),
-    [artistName, sharedPlaylists],
+    [artistName, staticPlaylists],
   );
 
   const buildReleaseTrackPayload = useCallback(
     (track) => {
       const year = String(release["first-release-date"] || "").slice(0, 4);
-      return buildSharedPlaylistTrackPayload({
+      return buildStaticPlaylistTrackPayload({
         artistName: artistName || "",
         trackName: track?.trackName || track?.title || "",
         albumName: release.title || "",
@@ -383,24 +383,24 @@ function ReleasePage() {
         if (target?.mode === "new") {
           const name =
             String(target?.name || "").trim() ||
-            reserveUniquePlaylistName(sharedPlaylists, `${trackPayload.artistName} Picks`);
-          const response = await createSharedPlaylist({
+            reserveUniquePlaylistName(staticPlaylists, `${trackPayload.artistName} Picks`);
+          const response = await createStaticPlaylist({
             name,
             tracks: [trackPayload],
           });
           showSuccess(`Track saved to ${response?.playlist?.name || name}`);
         } else {
-          const targetPlaylist = sharedPlaylists.find(
+          const targetPlaylist = staticPlaylists.find(
             (playlist) => playlist.id === target?.playlistId,
           );
-          await addSharedPlaylistTracks(target.playlistId, {
+          await addStaticPlaylistTracks(target.playlistId, {
             tracks: [trackPayload],
           });
           showSuccess(`Track added to ${targetPlaylist?.name || "playlist"}`);
         }
-        const nextPlaylists = await loadSharedPlaylists();
+        const nextPlaylists = await loadStaticPlaylists();
         if (nextPlaylists) {
-          setSharedPlaylists(nextPlaylists);
+          setStaticPlaylists(nextPlaylists);
         }
       } catch (err) {
         const message =
@@ -414,7 +414,7 @@ function ReleasePage() {
         setPlaylistMenuSavingKey("");
       }
     },
-    [loadSharedPlaylists, setPlaylistModalError, setSharedPlaylists, sharedPlaylists, showError, showSuccess],
+    [loadStaticPlaylists, setPlaylistModalError, setStaticPlaylists, staticPlaylists, showError, showSuccess],
   );
 
   const handleReleaseTrackAdd = useCallback(
@@ -634,12 +634,12 @@ function ReleasePage() {
         albumDownloading={albumDownloading}
         ownedTrackMbids={libraryInfo?.ownedTrackMbids}
         resolveMembershipTrack={buildReleaseTrackPayload}
-        playlists={sharedPlaylists}
+        playlists={staticPlaylists}
         playlistsLoading={playlistModalLoading}
         playlistSavingKey={playlistMenuSavingKey}
         playlistError={playlistModalError}
         getDefaultPlaylistName={getDefaultTrackPlaylistName}
-        onLoadPlaylists={loadSharedPlaylists}
+        onLoadPlaylists={loadStaticPlaylists}
         highlightTrackId={focusTrackMbid}
       />
     </CollectionPage>

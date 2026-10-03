@@ -540,8 +540,8 @@ export class DownloadWorker {
       return 0;
     }
     const flow = flowPlaylistConfig.getFlow(playlistType);
-    const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(playlistType);
-    if (!flow && !sharedPlaylist) {
+    const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(playlistType);
+    if (!flow && !staticPlaylist) {
       this.clearIncompleteRetry(playlistType);
       return 0;
     }
@@ -934,7 +934,7 @@ export class DownloadWorker {
   pruneOrphanedJobState() {
     const activePlaylistIds = new Set([
       ...flowPlaylistConfig.getFlows().map((flow) => flow.id),
-      ...flowPlaylistConfig.getSharedPlaylists().map((playlist) => playlist.id),
+      ...flowPlaylistConfig.getStaticPlaylists().map((playlist) => playlist.id),
     ]);
     for (const jobId of [...this.activeJobs.keys()]) {
       if (downloadTracker.getJob(jobId)) continue;

@@ -4,7 +4,7 @@ import { getFlowStatus } from "../utils/api/endpoints/playlists.js";
 import { useToast } from "../contexts/ToastContext";
 import { queryClient, queryKeys } from "../queryClient.js";
 
-export function useSharedPlaylists() {
+export function useStaticPlaylists() {
   const { showError } = useToast();
   const [playlistsError, setPlaylistsError] = useState("");
   const query = useQuery({
@@ -12,18 +12,18 @@ export function useSharedPlaylists() {
     queryFn: ({ signal }) => getFlowStatus({ signal, bypassCache: true }),
     staleTime: 4_000,
   });
-  const sharedPlaylists = Array.isArray(query.data?.sharedPlaylists)
+  const staticPlaylists = Array.isArray(query.data?.sharedPlaylists)
     ? query.data.sharedPlaylists
     : [];
   const { refetch } = query;
-  const setSharedPlaylists = useCallback((next) => {
+  const setStaticPlaylists = useCallback((next) => {
     queryClient.setQueryData(queryKeys.playlistStatus, (current) => ({
       ...(current || {}),
       sharedPlaylists: typeof next === "function" ? next(current?.sharedPlaylists || []) : next,
     }));
   }, []);
 
-  const loadSharedPlaylists = useCallback(async () => {
+  const loadStaticPlaylists = useCallback(async () => {
     setPlaylistsError("");
     try {
       const { data } = await refetch({ throwOnError: true });
@@ -42,11 +42,11 @@ export function useSharedPlaylists() {
   }, [refetch, showError]);
 
   return {
-    sharedPlaylists,
-    setSharedPlaylists,
+    staticPlaylists,
+    setStaticPlaylists,
     playlistsLoading: query.isLoading,
     playlistsError: playlistsError || query.error?.response?.data?.message || query.error?.message || "",
     setPlaylistsError,
-    loadSharedPlaylists,
+    loadStaticPlaylists,
   };
 }

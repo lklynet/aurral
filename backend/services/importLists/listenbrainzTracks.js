@@ -1,4 +1,4 @@
-import { dedupeSharedTracks } from "../playlists/flowPlaylistConfig.js";
+import { dedupePlaylistTracks } from "../playlists/flowPlaylistConfig.js";
 
 const PLAYLIST_TRACK_EXTENSION = "https://musicbrainz.org/doc/jspf#track";
 const TRACK_URI_PREFIX = "https://musicbrainz.org/recording/";
@@ -39,7 +39,7 @@ export function parseListenBrainzPlaylist(payload) {
     });
   }
 
-  const normalized = dedupeSharedTracks(raw);
+  const normalized = dedupePlaylistTracks(raw);
   stats.duplicate = Math.max(0, raw.length - normalized.length);
   return { tracks: normalized, stats };
 }

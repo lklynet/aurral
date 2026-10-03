@@ -1,4 +1,4 @@
-import { dedupeSharedTracks } from "../playlists/flowPlaylistConfig.js";
+import { dedupePlaylistTracks } from "../playlists/flowPlaylistConfig.js";
 
 const getArtistName = (track) =>
   String(track?.artists?.[0]?.name || track?.artists?.[0]?._name || track?.artist?.name || track?.artist?._name || "").trim();
@@ -32,7 +32,7 @@ export function parseLastfmStation(payload) {
     });
   }
 
-  const normalized = dedupeSharedTracks(raw);
+  const normalized = dedupePlaylistTracks(raw);
   stats.duplicate = Math.max(0, raw.length - normalized.length);
   return { tracks: normalized, stats };
 }

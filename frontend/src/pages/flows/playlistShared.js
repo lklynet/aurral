@@ -8,7 +8,7 @@ import {
 } from "../../utils/api/endpoints/playlists.js";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import {
-  buildSharedTracklistPayload,
+  buildStaticTracklistPayload,
   downloadFlowShareBundle,
   formatNextRun,
   slugifyFilePart,
@@ -147,7 +147,7 @@ export function exportPlaylistTracklist(entry, jobs, { sourceFlowId = null } = {
   }
   downloadFlowShareBundle(
     `aurral-tracklist-${slugifyFilePart(entry.name)}.json`,
-    buildSharedTracklistPayload({
+    buildStaticTracklistPayload({
       name: entry.name,
       sourceName: entry.name,
       sourceFlowId,

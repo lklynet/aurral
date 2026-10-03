@@ -477,7 +477,7 @@ async function handleSubsonicRequest(req, res) {
         playlist: getFlowPlaylist(`shared:${encodeURIComponent(playlist.id)}`, user),
       });
     } catch (error) {
-      if (error?.code === "SHARED_PLAYLIST_NAME_CONFLICT") {
+      if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
         return sendError(res, format, 50, error.message);
       }
       return sendError(res, format, 0, "Failed to update playlist");
@@ -536,7 +536,7 @@ async function handleSubsonicRequest(req, res) {
         ? sendResponse(res, format)
         : sendError(res, format, 70, "Requested data was not found");
     } catch (error) {
-      if (error?.code === "SHARED_PLAYLIST_NAME_CONFLICT") {
+      if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
         return sendError(res, format, 50, error.message);
       }
       return sendError(res, format, 0, "Failed to update playlist");

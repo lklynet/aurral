@@ -48,7 +48,7 @@ test.after(async () => {
 test.afterEach(() => mock.restoreAll());
 
 test("migrates permanent tracks, isolates active flows, and removes unkept flow files", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Saved" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Saved" });
   const flow = flowPlaylistConfig.createFlow({ name: "Nightly", enabled: true });
   const permanentSource = path.join(
     root,
@@ -121,7 +121,7 @@ test("migrates permanent tracks, isolates active flows, and removes unkept flow 
 });
 
 test("retains a permanent source when tracker updates are not persisted", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Unpersisted Permanent" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Unpersisted Permanent" });
   const source = path.join(
     root,
     "aurral-weekly-flow",
@@ -154,7 +154,7 @@ test("retains a permanent source when tracker updates are not persisted", async 
 });
 
 test("repairs stale tracker paths from a completed migration", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Repair Complete" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Repair Complete" });
   const source = path.join(
     root,
     "aurral-weekly-flow",
@@ -192,7 +192,7 @@ test("repairs stale tracker paths from a completed migration", async () => {
 });
 
 test("indexes permanent migrations in one library scan", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Batch indexing" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Batch indexing" });
   const jobs = [];
   for (const trackName of ["Track One", "Track Two"]) {
     const source = path.join(
@@ -226,7 +226,7 @@ test("indexes permanent migrations in one library scan", async () => {
 });
 
 test("retains a failed item and completes it safely on retry", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Retry" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Retry" });
   const source = path.join(
     root,
     "aurral-weekly-flow",
@@ -270,7 +270,7 @@ test("retains a failed item and completes it safely on retry", async () => {
 });
 
 test("retains a same-size canonical destination with different content", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Collision" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Collision" });
   const source = path.join(
     root,
     "aurral-weekly-flow",
@@ -305,7 +305,7 @@ test("retains a same-size canonical destination with different content", async (
 });
 
 test("retains partial and ambiguous files instead of guessing", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Review" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Review" });
   const partial = path.join(
     root,
     "aurral-weekly-flow",
@@ -350,7 +350,7 @@ test("retains partial and ambiguous files instead of guessing", async () => {
 });
 
 test("blocks migration when DL_FOLDER overlaps the Lidarr root", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Protected" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Protected" });
   const source = path.join(
     root,
     "aurral-weekly-flow",

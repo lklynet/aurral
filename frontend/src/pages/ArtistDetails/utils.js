@@ -80,7 +80,7 @@ export const reserveUniquePlaylistName = (playlists, baseName = "Playlist") => {
 const normalizeTrackDurationMs = (value) =>
   value != null && Number.isFinite(Number(value)) ? Number(value) : null;
 
-export const buildSharedPlaylistTrackPayload = ({
+export const buildStaticPlaylistTrackPayload = ({
   artistName = "",
   trackName = "",
   albumName = "",

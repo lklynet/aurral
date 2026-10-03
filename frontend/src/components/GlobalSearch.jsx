@@ -4,8 +4,8 @@ import {
   settleLibraryOwnerConflict,
 } from "../utils/api/endpoints/library.js";
 import {
-  addSharedPlaylistTracks,
-  createSharedPlaylist,
+  addStaticPlaylistTracks,
+  createStaticPlaylist,
 } from "../utils/api/endpoints/playlists.js";
 import { getTagSuggestions } from "../utils/api/endpoints/discovery.js";
 import { searchLibrary, searchUnified } from "../utils/api/endpoints/search.js";
@@ -41,7 +41,7 @@ import {
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { useDebouncedTask } from "../hooks/useDebouncedTask";
-import { useSharedPlaylists } from "../hooks/useSharedPlaylists";
+import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
 import { useNavigate, useLocation } from "react-router";
 import { Clock, Search } from "lucide-react";
 import { DotLoader } from "./DotLoader";
@@ -76,13 +76,13 @@ function GlobalSearch({ settingsMode = false }) {
   const libraryDestination = useLibraryDestination();
   const { isAlbumDownloading } = useActiveDownloads();
   const {
-    sharedPlaylists,
-    setSharedPlaylists,
+    staticPlaylists,
+    setStaticPlaylists,
     playlistsLoading: playlistModalLoading,
     playlistsError: playlistModalError,
     setPlaylistsError: setPlaylistModalError,
-    loadSharedPlaylists,
-  } = useSharedPlaylists();
+    loadStaticPlaylists,
+  } = useStaticPlaylists();
   const canAddAlbum = hasPermission("addAlbum");
   const [pendingAlbumIds, setPendingAlbumIds] = useState({});
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
@@ -462,24 +462,24 @@ function GlobalSearch({ settingsMode = false }) {
       try {
         if (target?.mode === "new") {
           const name = String(target?.name || "").trim() || "Playlist";
-          const response = await createSharedPlaylist({
+          const response = await createStaticPlaylist({
             name,
             tracks: [payload],
           });
           showSuccess(`Track saved to ${response?.playlist?.name || name}`);
         } else {
-          const targetPlaylist = sharedPlaylists.find(
+          const targetPlaylist = staticPlaylists.find(
             (playlist) => playlist.id === target?.playlistId,
           );
-          await addSharedPlaylistTracks(target.playlistId, {
+          await addStaticPlaylistTracks(target.playlistId, {
             tracks: [payload],
           });
           showSuccess(`Track added to ${targetPlaylist?.name || "playlist"}`);
         }
 
-        const nextPlaylists = await loadSharedPlaylists();
+        const nextPlaylists = await loadStaticPlaylists();
         if (nextPlaylists) {
-          setSharedPlaylists(nextPlaylists);
+          setStaticPlaylists(nextPlaylists);
         }
       } catch (err) {
         const message =
@@ -493,7 +493,7 @@ function GlobalSearch({ settingsMode = false }) {
         setPlaylistMenuSavingKey("");
       }
     },
-    [loadSharedPlaylists, setPlaylistModalError, setSharedPlaylists, sharedPlaylists, showError, showSuccess],
+    [loadStaticPlaylists, setPlaylistModalError, setStaticPlaylists, staticPlaylists, showError, showSuccess],
   );
 
   const renderSuggestionAction = useCallback(
@@ -524,13 +524,13 @@ function GlobalSearch({ settingsMode = false }) {
           <TrackPlaylistMenu
             track={item}
             triggerLabel="Add to playlist"
-            playlists={sharedPlaylists}
+            playlists={staticPlaylists}
             loading={playlistModalLoading}
             saving={playlistMenuSavingKey === savingKey}
             error={playlistModalError}
             defaultNewPlaylistName={`${item.artistName || "Artist"} Picks`}
             menuVariant="search-suggestion"
-            onLoadPlaylists={loadSharedPlaylists}
+            onLoadPlaylists={loadStaticPlaylists}
             onSelect={(target) => handleSearchTrackAdd(item, target)}
           />
         );
@@ -544,12 +544,12 @@ function GlobalSearch({ settingsMode = false }) {
       isAlbumDownloading,
       libraryDestination,
       handleSearchTrackAdd,
-      loadSharedPlaylists,
+      loadStaticPlaylists,
       pendingAlbumIds,
       playlistMenuSavingKey,
       playlistModalError,
       playlistModalLoading,
-      sharedPlaylists,
+      staticPlaylists,
     ],
   );
 

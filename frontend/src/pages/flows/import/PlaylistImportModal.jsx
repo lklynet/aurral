@@ -10,7 +10,7 @@ import {
   getLastfmPlaylists,
   getSpotifyImportStatus,
   getSpotifyPlaylists,
-  importSharedPlaylist,
+  importStaticPlaylist,
   importListenBrainzPlaylist,
   importLastfmPlaylist,
   importSpotifyPlaylist,
@@ -682,7 +682,7 @@ export function PlaylistImportModal({
       const baseName = desiredName || String(payload?.name || "").trim();
       const finalName = reserveUniqueFlowName(reservedNames, baseName);
       try {
-        await importSharedPlaylist({
+        await importStaticPlaylist({
           name: finalName,
           sourceName: payload?.sourceName || null,
           sourceFlowId: payload?.sourceFlowId || null,

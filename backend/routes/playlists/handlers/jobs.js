@@ -4,7 +4,7 @@ import { startSlskdOrchestratorWorker } from "../../../services/slskdOrchestrato
 import { playlistManager } from "../../../services/playlists/playlistManager.js";
 import {
   flowPlaylistConfig,
-  orderJobsBySharedPlaylistTracks,
+  orderJobsByPlaylistTracks,
 } from "../../../services/playlists/flowPlaylistConfig.js";
 import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.js";
 import { getPlaylistStatusSnapshot } from "../../../services/playlists/playlistStatusSnapshot.js";
@@ -17,8 +17,8 @@ import {
   canAccessJobType,
   canAccessPlaylistType,
   filterJobsForUser,
-  pauseSharedPlaylistRetryCycle,
-  getAccessibleSharedPlaylist,
+  pauseStaticPlaylistRetryCycle,
+  getAccessibleStaticPlaylist,
 } from "./utils.js";
 import {
   approveBlockedJob,
@@ -50,7 +50,7 @@ import {
 const getAccessiblePlaylistIds = (user) => [
   ...new Set([
     ...flowPlaylistConfig.getFlowsForUser(user),
-    ...flowPlaylistConfig.getSharedPlaylistsForUser(user),
+    ...flowPlaylistConfig.getStaticPlaylistsForUser(user),
   ].map((playlist) => playlist.id)),
 ];
 
@@ -68,8 +68,8 @@ function canAccessJobThroughPlaylist(user, job, playlistId) {
   if (!safePlaylistId) return filterJobsForUser(user, [job]).length > 0;
   if (!canAccessJobType(user, safePlaylistId)) return false;
   if (job.playlistType === safePlaylistId || job.playlistId === safePlaylistId) return true;
-  const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
-  return sharedPlaylist?.tracks?.some(
+  const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
+  return staticPlaylist?.tracks?.some(
     (track) => String(track?.canonicalJobId || "") === String(job.id || ""),
   ) === true;
 }
@@ -123,15 +123,15 @@ export function registerJobs(router) {
       rawLimit && Number.isFinite(parsedLimit) && parsedLimit > 0
         ? Math.floor(parsedLimit)
         : null;
-    const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(flowId);
-    const sharedTracks = sharedPlaylist?.tracks;
+    const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(flowId);
+    const staticPlaylistTracks = staticPlaylist?.tracks;
     let jobs = downloadTracker.getByPlaylistType(
       flowId,
-      sharedTracks?.length ? null : limit,
+      staticPlaylistTracks?.length ? null : limit,
     );
-    if (sharedTracks?.length) {
+    if (staticPlaylistTracks?.length) {
       const referencedJobIds = new Set(
-        sharedTracks.map((track) => String(track?.canonicalJobId || "")).filter(Boolean),
+        staticPlaylistTracks.map((track) => String(track?.canonicalJobId || "")).filter(Boolean),
       );
       const referencedJobs = [...referencedJobIds]
         .map((jobId) => downloadTracker.getJob(jobId))
@@ -139,7 +139,7 @@ export function registerJobs(router) {
       jobs = [...referencedJobs, ...jobs].filter(
         (job, index, values) => values.findIndex((candidate) => candidate.id === job.id) === index,
       );
-      jobs = orderJobsBySharedPlaylistTracks(jobs, sharedTracks);
+      jobs = orderJobsByPlaylistTracks(jobs, staticPlaylistTracks);
       if (limit != null) jobs = jobs.slice(0, limit);
       jobs = jobs.map((job) =>
         referencedJobIds.has(job.id) && job.playlistType !== flowId
@@ -321,14 +321,14 @@ export function registerJobs(router) {
           error: "paused must be a boolean",
         });
       }
-      const shared = getAccessibleSharedPlaylist(req.user, playlistId);
+      const shared = getAccessibleStaticPlaylist(req.user, playlistId);
       if (!shared) {
         return res.status(404).json({
           error: "Static playlist not found",
         });
       }
       if (paused) {
-        await pauseSharedPlaylistRetryCycle(playlistId);
+        await pauseStaticPlaylistRetryCycle(playlistId);
       } else {
         await downloadWorker.setRetryCyclePaused(playlistId, false);
         await downloadWorker.retryIncompletePlaylist(playlistId);

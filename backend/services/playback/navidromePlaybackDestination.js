@@ -131,7 +131,7 @@ export class NavidromePlaybackDestination {
     const owner = ownerUserId == null ? null : userOps.getUserById(ownerUserId);
     const prefixed = owner?.username ? `${owner.username} - ${name}` : name;
     const current = this._prefixOwnerUsername ? prefixed : name;
-    const shared = Boolean(flowPlaylistConfig.getSharedPlaylist(entityId));
+    const shared = Boolean(flowPlaylistConfig.getStaticPlaylist(entityId));
     const legacy = shared
       ? [name, `[AS] ${name}`, `Aurral Shared ${name}`, prefixed]
       : [name, `[A] ${name}`, `Aurral ${name}`, prefixed];
@@ -150,7 +150,7 @@ export class NavidromePlaybackDestination {
   }
 
   _getEntity(entityId) {
-    return flowPlaylistConfig.getFlow(entityId) || flowPlaylistConfig.getSharedPlaylist(entityId);
+    return flowPlaylistConfig.getFlow(entityId) || flowPlaylistConfig.getStaticPlaylist(entityId);
   }
 
   _getNamesForIdentity(identity) {
@@ -173,7 +173,7 @@ export class NavidromePlaybackDestination {
     const expected = this._sanitize(name);
     const entities = [
       ...flowPlaylistConfig.getFlows(),
-      ...flowPlaylistConfig.getSharedPlaylists(),
+      ...flowPlaylistConfig.getStaticPlaylists(),
     ];
     return entities.some((entity) => {
       if (entity.id === entityId) return false;
@@ -327,7 +327,7 @@ export class NavidromePlaybackDestination {
         displayName: flow.name,
       }));
     }
-    for (const playlist of flowPlaylistConfig.getSharedPlaylists()) addPlaylist(playlist);
+    for (const playlist of flowPlaylistConfig.getStaticPlaylists()) addPlaylist(playlist);
     return expected;
   }
 

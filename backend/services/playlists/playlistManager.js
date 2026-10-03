@@ -124,9 +124,9 @@ export class PlaylistManager {
       if (!flow.enabled) return null;
       return this._publishPlaylist(flow, "Flow");
     }
-    const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(playlistType);
-    if (!sharedPlaylist) return null;
-    return this._publishPlaylist(sharedPlaylist, "Playlist");
+    const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(playlistType);
+    if (!staticPlaylist) return null;
+    return this._publishPlaylist(staticPlaylist, "Playlist");
   }
 
   scheduleScanLibrary(force = false) {
@@ -185,7 +185,7 @@ export class PlaylistManager {
 
   async _syncNavidromeArtwork(playlistId, clear = false) {
     const entity = flowPlaylistConfig.getFlow(playlistId)
-      || flowPlaylistConfig.getSharedPlaylist(playlistId);
+      || flowPlaylistConfig.getStaticPlaylist(playlistId);
     if (!entity) return;
     const operation = clear ? "clearPlaylistArtwork" : "syncPlaylistArtwork";
     if (typeof this.navidromeDestination[operation] !== "function") return;
@@ -223,7 +223,7 @@ export class PlaylistManager {
 
   async _ensurePlaylistsInternal() {
     const flows = flowPlaylistConfig.getFlows();
-    const sharedPlaylists = flowPlaylistConfig.getSharedPlaylists();
+    const staticPlaylists = flowPlaylistConfig.getStaticPlaylists();
     const libraryResults = await this.destinationRegistry.run("ensureLibrary");
     const libraryFailures = libraryResults.filter((result) => !result.ok);
     if (libraryFailures.length) {
@@ -258,7 +258,7 @@ export class PlaylistManager {
         }
       }
     }
-    for (const playlist of sharedPlaylists) {
+    for (const playlist of staticPlaylists) {
       await this._publishPlaylist(playlist, "Playlist");
     }
   }
@@ -266,7 +266,7 @@ export class PlaylistManager {
   async _activePlaybackSnapshots() {
     const entities = [
       ...flowPlaylistConfig.getFlows().filter((flow) => flow.enabled),
-      ...flowPlaylistConfig.getSharedPlaylists(),
+      ...flowPlaylistConfig.getStaticPlaylists(),
     ];
     const snapshots = [];
     for (const entity of entities) snapshots.push(await this._createPlaybackSnapshot(entity));
@@ -368,7 +368,7 @@ export class PlaylistManager {
   getPlaylistName(playlistType) {
     const entity =
       flowPlaylistConfig.getFlow(playlistType)
-      || flowPlaylistConfig.getSharedPlaylist(playlistType);
+      || flowPlaylistConfig.getStaticPlaylist(playlistType);
     if (!entity) return playlistType;
     return this.navidromeDestination.getPlaylistName({
       entityId: entity.id,
@@ -385,7 +385,7 @@ export class PlaylistManager {
   getArtworkContextForPlaylistId(playlistId) {
     const flow = flowPlaylistConfig.getFlow(playlistId);
     if (flow) return { kind: "Flow", title: flow.name };
-    const playlist = flowPlaylistConfig.getSharedPlaylist(playlistId);
+    const playlist = flowPlaylistConfig.getStaticPlaylist(playlistId);
     if (playlist) return { kind: "Playlist", title: playlist.name };
     return null;
   }

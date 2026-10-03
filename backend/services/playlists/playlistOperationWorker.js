@@ -6,7 +6,7 @@ import { logger } from "../logger.js";
 import { getBulkOperation, saveBulkOperation } from "./bulkOperationStore.js";
 
 const PERMANENT_ERROR_CODES = new Set([
-  "SHARED_PLAYLIST_NAME_CONFLICT",
+  "STATIC_PLAYLIST_NAME_CONFLICT",
   "FLOW_NAME_CONFLICT",
   "NO_DOWNLOAD_SOURCE",
 ]);

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   flowPlaylistConfig,
-  orderJobsBySharedPlaylistTracks,
+  orderJobsByPlaylistTracks,
 } from "../playlists/flowPlaylistConfig.js";
 import { downloadTracker } from "../downloadJobs/downloadTracker.js";
 import {
@@ -20,7 +20,7 @@ async function isFile(filePath) {
 
 export async function collectPlaybackPlaylistTracks(entityId, options = {}) {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
-  const playlist = flowPlaylistConfig.getSharedPlaylist(entityId);
+  const playlist = flowPlaylistConfig.getStaticPlaylist(entityId);
   const referencedJobs = (playlist?.tracks || [])
     .map((track) => (track?.canonicalJobId ? downloadTracker.getJob(track.canonicalJobId) : null))
     .filter(Boolean);
@@ -32,7 +32,7 @@ export async function collectPlaybackPlaylistTracks(entityId, options = {}) {
       values.findIndex((candidate) => candidate.id === job.id) === index,
     )
     .filter((job) => job?.status === "done" && typeof job?.finalPath === "string");
-  const orderedJobs = orderJobsBySharedPlaylistTracks(
+  const orderedJobs = orderJobsByPlaylistTracks(
     jobs,
     playlist?.tracks,
   );

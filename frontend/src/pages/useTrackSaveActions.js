@@ -1,39 +1,39 @@
 import { useCallback, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
-import { useSharedPlaylists } from "../hooks/useSharedPlaylists";
+import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
 import { downloadTrackToLibrary } from "../utils/api/endpoints/library.js";
 import {
-  addSharedPlaylistTracks,
-  createSharedPlaylist,
+  addStaticPlaylistTracks,
+  createStaticPlaylist,
 } from "../utils/api/endpoints/playlists.js";
 import { reserveUniquePlaylistName } from "./ArtistDetails/utils";
-import { normalizeSharedTrackEntry } from "./flows/flowPageUtils";
+import { normalizePlaylistTrackEntry } from "./flows/flowPageUtils";
 import { getApiErrorMessage } from "./onboardingUtils";
 
 export function useTrackSaveActions() {
   const { hasPermission } = useAuth();
   const { showSuccess, showError } = useToast();
   const {
-    sharedPlaylists,
-    setSharedPlaylists,
+    staticPlaylists,
+    setStaticPlaylists,
     playlistsLoading,
     playlistsError,
     setPlaylistsError,
-    loadSharedPlaylists,
-  } = useSharedPlaylists();
+    loadStaticPlaylists,
+  } = useStaticPlaylists();
   const [playlistSavingKey, setPlaylistSavingKey] = useState("");
   const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
   const getDefaultPlaylistName = useCallback(
-    (track) => reserveUniquePlaylistName(sharedPlaylists, `${track?.artistName || "Artist"} Picks`),
-    [sharedPlaylists],
+    (track) => reserveUniquePlaylistName(staticPlaylists, `${track?.artistName || "Artist"} Picks`),
+    [staticPlaylists],
   );
 
   const saveToPlaylist = useCallback(
     async (tracks, target) => {
-      const payloads = tracks.map(normalizeSharedTrackEntry).filter(Boolean);
+      const payloads = tracks.map(normalizePlaylistTrackEntry).filter(Boolean);
       if (payloads.length === 0) {
         showError("No valid tracks to add");
         return;
@@ -44,19 +44,19 @@ export function useTrackSaveActions() {
         if (target?.mode === "new") {
           const requested =
             String(target?.name || "").trim() || getDefaultPlaylistName(payloads[0]);
-          const response = await createSharedPlaylist({ name: requested, tracks: payloads });
+          const response = await createStaticPlaylist({ name: requested, tracks: payloads });
           name = response?.playlist?.name || requested;
         } else {
-          await addSharedPlaylistTracks(target.playlistId, { tracks: payloads });
-          name = sharedPlaylists.find((entry) => entry.id === target.playlistId)?.name || "playlist";
+          await addStaticPlaylistTracks(target.playlistId, { tracks: payloads });
+          name = staticPlaylists.find((entry) => entry.id === target.playlistId)?.name || "playlist";
         }
         showSuccess(
           payloads.length === 1
             ? `Added ${payloads[0].trackName} to ${name}`
             : `Added ${payloads.length} tracks to ${name}`,
         );
-        const nextPlaylists = await loadSharedPlaylists();
-        if (nextPlaylists) setSharedPlaylists(nextPlaylists);
+        const nextPlaylists = await loadStaticPlaylists();
+        if (nextPlaylists) setStaticPlaylists(nextPlaylists);
       } catch (error) {
         const message = getApiErrorMessage(error, "Couldn't add to the playlist. Nothing was added.");
         setPlaylistsError(message);
@@ -65,10 +65,10 @@ export function useTrackSaveActions() {
     },
     [
       getDefaultPlaylistName,
-      loadSharedPlaylists,
+      loadStaticPlaylists,
       setPlaylistsError,
-      setSharedPlaylists,
-      sharedPlaylists,
+      setStaticPlaylists,
+      staticPlaylists,
       showError,
       showSuccess,
     ],
@@ -101,7 +101,7 @@ export function useTrackSaveActions() {
   const handleAddTrackToLibrary = useCallback(
     async (track) => {
       if (libraryTrackSavingKey) return;
-      const payload = normalizeSharedTrackEntry(track);
+      const payload = normalizePlaylistTrackEntry(track);
       if (!payload) {
         showError("Track details are incomplete");
         return;
@@ -125,7 +125,7 @@ export function useTrackSaveActions() {
 
   const handleBulkAddToLibrary = useCallback(
     async (tracks) => {
-      const payloads = tracks.map(normalizeSharedTrackEntry).filter(Boolean);
+      const payloads = tracks.map(normalizePlaylistTrackEntry).filter(Boolean);
       if (payloads.length === 0) return;
       setBulkActionLoading(true);
       let queued = 0;
@@ -158,12 +158,12 @@ export function useTrackSaveActions() {
   const canUsePlaylists = hasPermission("accessFlow");
   const canAddToLibrary = hasPermission("addAlbum");
   return {
-    playlists: sharedPlaylists,
+    playlists: staticPlaylists,
     playlistsLoading,
     playlistMenuError: playlistsError,
     playlistSavingKey,
     getDefaultPlaylistName,
-    onLoadPlaylists: loadSharedPlaylists,
+    onLoadPlaylists: loadStaticPlaylists,
     onAddTrackToPlaylist: canUsePlaylists ? handleAddTrackToPlaylist : undefined,
     allowBulkEdit: canUsePlaylists || canAddToLibrary,
     onBulkAddToPlaylist: canUsePlaylists ? handleBulkAddToPlaylist : undefined,

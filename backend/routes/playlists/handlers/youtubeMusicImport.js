@@ -79,7 +79,7 @@ export function registerYoutubeMusicImport(router) {
         queued: result?.queued === true,
       });
     } catch (error) {
-      if (error?.code === "SHARED_PLAYLIST_NAME_CONFLICT") {
+      if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
         logger.debug("playlist-import", "YouTube Music playlist import name already exists", {
           playlistName: String(req.body?.name || "").trim() || null,
         });

@@ -95,7 +95,7 @@ test("new Subsonic playlists accept jobs added after creation", async () => {
 
 test("playlist deletion keeps a job available until an in-flight commit releases its lock", async () => {
   const playlistId = "subsonic-delete-commit-race";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Subsonic Delete Race",
     ownerUserId: user.id,
@@ -152,7 +152,7 @@ test("playlist deletion keeps a job available until an in-flight commit releases
 
 test("Subsonic edits clean an in-flight legacy file before removing its job", async () => {
   const playlistId = "subsonic-edit-commit-race";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Subsonic Edit Race",
     ownerUserId: user.id,
@@ -201,7 +201,7 @@ test("Subsonic edits clean an in-flight legacy file before removing its job", as
 
 test("Subsonic edits remove a file shared only by jobs from the edited playlist", async () => {
   const playlistId = "subsonic-edit-duplicate-file";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Duplicate File",
     ownerUserId: user.id,
@@ -231,7 +231,7 @@ test("renaming a Subsonic playlist keeps its canonical song and file", async () 
     playlistId,
   );
   downloadTracker.setDone(jobId, finalPath, "Retained Album");
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Before Rename",
     ownerUserId: user.id,
@@ -255,7 +255,7 @@ test("Subsonic deletion preserves a file used by another playlist", async () => 
     [removedPlaylistId, "Removed playlist"],
     [survivingPlaylistId, "Surviving playlist"],
   ]) {
-    flowPlaylistConfig.createSharedPlaylist({ id, name, ownerUserId: user.id, tracks: [] });
+    flowPlaylistConfig.createStaticPlaylist({ id, name, ownerUserId: user.id, tracks: [] });
   }
   const finalPath = path.join(playlistManager.downloadRoot, "Shared Artist", "Shared Album", "Shared Song.flac");
   await fs.mkdir(path.dirname(finalPath), { recursive: true });
@@ -280,7 +280,7 @@ test("Subsonic deletion preserves a file used by another playlist", async () => 
 
 test("Subsonic deletion retains jobs and provider work when cancellation fails", async () => {
   const playlistId = "subsonic-delete-provider-failure";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Subsonic Provider Failure",
     ownerUserId: user.id,
@@ -323,7 +323,7 @@ test("Subsonic deletion retains jobs and provider work when cancellation fails",
     await assert.rejects(deletion, /Could not cancel download provider work/);
 
     assert.ok(downloadTracker.getJob(jobId));
-    assert.ok(flowPlaylistConfig.getSharedPlaylist(playlistId));
+    assert.ok(flowPlaylistConfig.getStaticPlaylist(playlistId));
     assert.equal(
       listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length,
       1,
@@ -336,7 +336,7 @@ test("Subsonic deletion retains jobs and provider work when cancellation fails",
 
 test("failed Subsonic edit keeps the old playlist and allows later jobs", async () => {
   const playlistId = "subsonic-edit-provider-failure";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Before Failed Edit",
     ownerUserId: user.id,
@@ -382,7 +382,7 @@ test("failed Subsonic edit keeps the old playlist and allows later jobs", async 
       }),
       /Could not cancel download provider work/,
     );
-    assert.equal(flowPlaylistConfig.getSharedPlaylist(playlistId)?.name, "Before Failed Edit");
+    assert.equal(flowPlaylistConfig.getStaticPlaylist(playlistId)?.name, "Before Failed Edit");
     assert.ok(downloadTracker.getJob(jobId));
     assert.equal(listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length, 1);
     assert.equal(downloadTracker.getNextPending()?.id, jobId);
@@ -410,7 +410,7 @@ test("failed Subsonic edit keeps the old playlist and allows later jobs", async 
 
 test("Subsonic edits wait behind other playlist mutations", async () => {
   const playlistId = "subsonic-edit-global-order";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Before Ordered Edit",
     ownerUserId: user.id,
@@ -436,18 +436,18 @@ test("Subsonic edits wait behind other playlist mutations", async () => {
       new Promise((resolve) => setTimeout(() => resolve("waiting"), 100)),
     ]);
     assert.equal(state, "waiting");
-    assert.equal(flowPlaylistConfig.getSharedPlaylist(playlistId)?.name, "Before Ordered Edit");
+    assert.equal(flowPlaylistConfig.getStaticPlaylist(playlistId)?.name, "Before Ordered Edit");
   } finally {
     releaseLock();
     await currentMutation;
     await update;
   }
-  assert.equal(flowPlaylistConfig.getSharedPlaylist(playlistId)?.name, "After Ordered Edit");
+  assert.equal(flowPlaylistConfig.getStaticPlaylist(playlistId)?.name, "After Ordered Edit");
 });
 
 test("a rejected Subsonic edit does not leave later jobs cancelled", async (t) => {
   const playlistId = "subsonic-rejected-edit";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Before Rejected Edit",
     ownerUserId: user.id,
@@ -457,7 +457,7 @@ test("a rejected Subsonic edit does not leave later jobs cancelled", async (t) =
     { artistName: "Old Artist", trackName: "Old Song" },
     playlistId,
   );
-  t.mock.method(flowPlaylistConfig, "updateSharedPlaylist", () => null);
+  t.mock.method(flowPlaylistConfig, "updateStaticPlaylist", () => null);
 
   assert.equal(
     await subsonic.updateSubsonicPlaylist(user, { playlistId, name: "Rejected name" }),
@@ -472,7 +472,7 @@ test("a rejected Subsonic edit does not leave later jobs cancelled", async (t) =
 
 test("a failed Subsonic edit does not revive a previously cancelled job", async (t) => {
   const playlistId = "subsonic-edit-existing-cancellation";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Existing Cancellation",
     ownerUserId: user.id,
@@ -480,7 +480,7 @@ test("a failed Subsonic edit does not revive a previously cancelled job", async 
   });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Old Song" }, playlistId);
   cancelDownloadJob(jobId);
-  t.mock.method(flowPlaylistConfig, "updateSharedPlaylist", () => null);
+  t.mock.method(flowPlaylistConfig, "updateStaticPlaylist", () => null);
 
   assert.equal(await subsonic.updateSubsonicPlaylist(user, { playlistId, name: "Rejected" }), null);
   assert.equal(isDownloadJobCancelled(jobId), true);
@@ -488,7 +488,7 @@ test("a failed Subsonic edit does not revive a previously cancelled job", async 
 
 test("a successful Subsonic edit does not reactivate a playlist awaiting deletion", async () => {
   const playlistId = "subsonic-edit-queued-delete";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Queued for Deletion",
     ownerUserId: user.id,

@@ -12,7 +12,7 @@ const deferred = () => Promise.withResolvers();
 
 test("playlist mutation waits for the active provider stage before changing ownership", async () => {
   dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Owner" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Owner" });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, playlist.id);
   const started = deferred();
   const release = deferred();
@@ -61,7 +61,7 @@ test("an escaped async context cannot reuse a released lease", async () => {
 
 test("a provider stage that needs another playlist lock fails instead of running again", { timeout: 2000 }, async () => {
   dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Stage owner" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Stage owner" });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Stage track" }, playlist.id);
   let runs = 0;
   await assert.rejects(processOrchestratorJob({ jobId, playlistId: playlist.id, playlistGeneration: 0 }, {

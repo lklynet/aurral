@@ -2,7 +2,7 @@ import { createContext, createElement, useContext, useEffect, useRef, useState }
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "../../contexts/ToastContext";
 import { queryClient, queryKeys } from "../../queryClient.js";
-import { getSharedPlaylistOperation, moveSharedPlaylistTracks, removeSharedPlaylistTracks } from "../../utils/api/endpoints/playlists.js";
+import { getStaticPlaylistOperation, moveStaticPlaylistTracks, removeStaticPlaylistTracks } from "../../utils/api/endpoints/playlists.js";
 
 import { usePlaylistStatusQuery } from "./usePlaylistStatusQuery";
 
@@ -21,7 +21,7 @@ export function PlaylistBulkActionsProvider({ children }) {
   }, []);
   const result = useQuery({
     queryKey: ["playlists", "bulk-operation", operation?.sourceId, operation?.id],
-    queryFn: ({ signal }) => getSharedPlaylistOperation(operation.sourceId, operation.id, { signal, bypassCache: true }),
+    queryFn: ({ signal }) => getStaticPlaylistOperation(operation.sourceId, operation.id, { signal, bypassCache: true }),
     enabled: Boolean(operation),
     staleTime: 0,
     refetchInterval: (query) => {
@@ -68,7 +68,7 @@ export function PlaylistBulkActionsProvider({ children }) {
       const destination = target?.mode === "new"
         ? { name: String(target.name || "").trim() || "Playlist" }
         : target ? { playlistId: target.playlistId } : null;
-      const response = destination ? await moveSharedPlaylistTracks(source.id, jobIds, destination) : await removeSharedPlaylistTracks(source.id, jobIds);
+      const response = destination ? await moveStaticPlaylistTracks(source.id, jobIds, destination) : await removeStaticPlaylistTracks(source.id, jobIds);
       if (!mounted.current) return;
       if (response.rejected?.length) showError(`${response.rejected.length} selected track${response.rejected.length === 1 ? "" : "s"} could not be queued. ${response.rejected[0].message}`);
       if (response.queued) {

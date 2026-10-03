@@ -3,7 +3,7 @@ import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.js";
 
 export function isPlaylistOwnerActive(playlistType) {
   const key = String(playlistType || "").trim();
-  const entity = flowPlaylistConfig.getFlow(key) || flowPlaylistConfig.getSharedPlaylist(key);
+  const entity = flowPlaylistConfig.getFlow(key) || flowPlaylistConfig.getStaticPlaylist(key);
   if (!entity || entity.ownerUserId == null) return true;
   return userOps.getUserById(Number(entity.ownerUserId))?.status === "active";
 }

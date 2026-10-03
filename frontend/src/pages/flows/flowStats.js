@@ -18,7 +18,7 @@ export const getFlowDisplayTrackCount = (flow, stats, trackListLength = 0) => {
   return Math.max(flowNumber(flow?.size), flowNumber(trackListLength), flowNumber(stats?.total));
 };
 
-export const getSharedPlaylistTrackCount = (playlist, stats, trackListLength = 0) => {
+export const getStaticPlaylistTrackCount = (playlist, stats, trackListLength = 0) => {
   return Math.max(
     flowNumber(playlist?.trackCount),
     flowNumber(trackListLength),

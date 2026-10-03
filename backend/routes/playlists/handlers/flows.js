@@ -2,7 +2,7 @@ import fsp from "fs/promises";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.js";
 import { playlistManager } from "../../../services/playlists/playlistManager.js";
 import {
-  buildSharedTrackIdentity,
+  buildPlaylistTrackIdentity,
   flowPlaylistConfig,
   isRetiredFlow,
 } from "../../../services/playlists/flowPlaylistConfig.js";
@@ -387,7 +387,7 @@ export function registerFlows(router) {
 
       const uniqueCompletedJobsByIdentity = new Map();
       for (const job of completedJobs) {
-        const identity = buildSharedTrackIdentity(job);
+        const identity = buildPlaylistTrackIdentity(job);
         if (uniqueCompletedJobsByIdentity.has(identity)) continue;
         uniqueCompletedJobsByIdentity.set(identity, job);
       }
@@ -404,7 +404,7 @@ export function registerFlows(router) {
         artistAliases: job.artistAliases || [],
         reason: job.reason || null,
       }));
-      playlist = flowPlaylistConfig.createSharedPlaylist({
+      playlist = flowPlaylistConfig.createStaticPlaylist({
         name: requestedName || `${flow.name} Static`,
         sourceName: flow.name,
         sourceFlowId: flowId,
@@ -460,13 +460,13 @@ export function registerFlows(router) {
       if (playlist?.id) {
         try {
           await playlistManager.weeklyReset([playlist.id]);
-          flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+          flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
           await playlistManager.ensureSmartPlaylists();
         } catch {}
       }
-      if (error?.code === "SHARED_PLAYLIST_NAME_CONFLICT") {
+      if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
         return res.status(400).json({
-          error: "Shared playlist name already exists",
+          error: "Playlist name already exists",
           message: error.message,
         });
       }

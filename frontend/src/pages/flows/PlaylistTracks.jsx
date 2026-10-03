@@ -3,11 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import {
-  addSharedPlaylistTracks,
-  createSharedPlaylist,
-  deleteSharedPlaylistTrack,
+  addStaticPlaylistTracks,
+  createStaticPlaylist,
+  deleteStaticPlaylistTrack,
   reSearchFlowTrack,
-  reSearchSharedPlaylistTrack,
+  reSearchStaticPlaylistTrack,
   searchTrackUpgrade,
 } from "../../utils/api/endpoints/playlists.js";
 import { getReleaseGroupCoversBatch } from "../../utils/api/endpoints/artists.js";
@@ -32,7 +32,7 @@ import LibraryInfoModal from "../LibraryInfoModal.jsx";
 import { getTrackSearchAction } from "./trackAvailability.js";
 import {
   normalizeNameKey,
-  normalizeSharedTrackEntry,
+  normalizePlaylistTrackEntry,
   reserveUniqueFlowName,
 } from "./flowPageUtils";
 
@@ -48,7 +48,7 @@ export function PlaylistTracks({
   loading,
   error,
   refresh,
-  sharedPlaylists,
+  staticPlaylists,
   fetchStatus,
   activityHint = null,
   emptyMessage,
@@ -119,7 +119,7 @@ export function PlaylistTracks({
 
   const getNextPlaylistName = (baseName) =>
     reserveUniqueFlowName(
-      new Set(sharedPlaylists.map((playlist) => normalizeNameKey(playlist?.name)).filter(Boolean)),
+      new Set(staticPlaylists.map((playlist) => normalizeNameKey(playlist?.name)).filter(Boolean)),
       baseName,
     );
 
@@ -129,7 +129,7 @@ export function PlaylistTracks({
   };
 
   const saveTrackToPlaylist = async (track, target, { moveFromPlaylistId = null } = {}) => {
-    const payload = normalizeSharedTrackEntry(track);
+    const payload = normalizePlaylistTrackEntry(track);
     if (!payload) {
       showError("Track details are incomplete");
       return;
@@ -141,16 +141,16 @@ export function PlaylistTracks({
       if (target?.mode === "new") {
         const name =
           String(target?.name || "").trim() || getNextPlaylistName(`${payload.artistName} Picks`);
-        const response = await createSharedPlaylist({ name, tracks: [payload] });
+        const response = await createStaticPlaylist({ name, tracks: [payload] });
         targetName = response?.playlist?.name || name;
       } else {
-        await addSharedPlaylistTracks(target.playlistId, { tracks: [payload] });
+        await addStaticPlaylistTracks(target.playlistId, { tracks: [payload] });
         targetName =
-          sharedPlaylists.find((playlist) => playlist.id === target?.playlistId)?.name ||
+          staticPlaylists.find((playlist) => playlist.id === target?.playlistId)?.name ||
           "playlist";
       }
       if (moveFromPlaylistId && track?.id) {
-        await deleteSharedPlaylistTrack(moveFromPlaylistId, track.id);
+        await deleteStaticPlaylistTrack(moveFromPlaylistId, track.id);
         showSuccess(`Track moved to ${targetName}`);
       } else {
         showSuccess(`Track added to ${targetName}`);
@@ -166,7 +166,7 @@ export function PlaylistTracks({
   };
 
   const copyTracks = async (selected, target) => {
-    const payloads = selected.map((track) => normalizeSharedTrackEntry(track)).filter(Boolean);
+    const payloads = selected.map((track) => normalizePlaylistTrackEntry(track)).filter(Boolean);
     if (payloads.length === 0) {
       showError("No valid tracks to add");
       return;
@@ -176,12 +176,12 @@ export function PlaylistTracks({
       let targetName;
       if (target?.mode === "new") {
         const name = String(target?.name || "").trim() || getNextPlaylistName("Playlist");
-        const response = await createSharedPlaylist({ name, tracks: payloads });
+        const response = await createStaticPlaylist({ name, tracks: payloads });
         targetName = response?.playlist?.name || name;
       } else {
-        await addSharedPlaylistTracks(target.playlistId, { tracks: payloads });
+        await addStaticPlaylistTracks(target.playlistId, { tracks: payloads });
         targetName =
-          sharedPlaylists.find((playlist) => playlist.id === target?.playlistId)?.name ||
+          staticPlaylists.find((playlist) => playlist.id === target?.playlistId)?.name ||
           "playlist";
       }
       showSuccess(`Added ${trackCountLabel(payloads.length)} to ${targetName}`);
@@ -203,7 +203,7 @@ export function PlaylistTracks({
     if (!jobId || deletingTrackId === jobId) return;
     setDeletingTrackId(jobId);
     try {
-      const result = await deleteSharedPlaylistTrack(entry.id, jobId);
+      const result = await deleteStaticPlaylistTrack(entry.id, jobId);
       showSuccess(
         result?.queued
           ? `Removal queued for ${track.trackName || "track"}`
@@ -241,7 +241,7 @@ export function PlaylistTracks({
             : `Searching for an upgrade to ${track.trackName}`,
         );
       } else {
-        await (isFlow ? reSearchFlowTrack : reSearchSharedPlaylistTrack)(entry.id, jobId);
+        await (isFlow ? reSearchFlowTrack : reSearchStaticPlaylistTrack)(entry.id, jobId);
         showSuccess(`Re-searching ${track.trackName}`);
       }
       await refreshAll();
@@ -410,7 +410,7 @@ export function PlaylistTracks({
         onBulkMoveToPlaylist={
           isFlow ? undefined : (selected, target) => moveTracks(selected, target)
         }
-        playlists={sharedPlaylists}
+        playlists={staticPlaylists}
         playlistSavingKey={playlistMenuSavingKey}
         playlistMenuError={playlistMenuError}
         excludedPlaylistIds={isFlow ? [] : [entry.id]}

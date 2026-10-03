@@ -107,7 +107,7 @@ export const convertFlowToStaticPlaylist = (flowId, payload = {}) =>
     payload,
   );
 
-export const createSharedPlaylist = (payload) =>
+export const createStaticPlaylist = (payload) =>
   postData("/playlists/shared-playlists", payload);
 
 export const setFlowEnabled = (flowId, enabled) =>
@@ -115,13 +115,13 @@ export const setFlowEnabled = (flowId, enabled) =>
     enabled,
   });
 
-export const importSharedPlaylist = (payload) =>
+export const importStaticPlaylist = (payload) =>
   postData(
     "/playlists/shared-playlists/import",
     payload,
   );
 
-export const updateSharedPlaylist = (playlistId, payload) =>
+export const updateStaticPlaylist = (playlistId, payload) =>
   putData(
     `/playlists/shared-playlists/${playlistId}`,
     payload,
@@ -133,23 +133,23 @@ export const setPlaylistTrackAvailability = (playlistId, enabled) =>
 export const setPlaylistRecordHistory = (playlistId, enabled) =>
   putData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/record-history`, { enabled });
 
-export const addSharedPlaylistTracks = (playlistId, payload) =>
+export const addStaticPlaylistTracks = (playlistId, payload) =>
   postData(
     `/playlists/shared-playlists/${playlistId}/tracks`,
     payload,
   );
 
-export const deleteSharedPlaylist = (playlistId) =>
+export const deleteStaticPlaylist = (playlistId) =>
   deleteData(
     `/playlists/shared-playlists/${playlistId}`,
   );
 
-export const deleteSharedPlaylistTrack = (playlistId, jobId) =>
+export const deleteStaticPlaylistTrack = (playlistId, jobId) =>
   deleteData(
     `/playlists/shared-playlists/${playlistId}/tracks/${jobId}`,
   );
 
-export const reSearchSharedPlaylistTrack = (playlistId, jobId) =>
+export const reSearchStaticPlaylistTrack = (playlistId, jobId) =>
   postData(
     `/playlists/shared-playlists/${playlistId}/tracks/${jobId}/research`,
   );
@@ -227,7 +227,7 @@ export const previewYoutubeMusicPlaylist = (url) =>
 export const importYoutubeMusicPlaylist = (payload) =>
   postData("/playlists/import/youtube-music", payload, { timeout: 5 * 60 * 1000 });
 
-export const syncSharedPlaylistImport = (playlistId) =>
+export const syncStaticPlaylistImport = (playlistId) =>
   postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/sync`, undefined, {
     timeout: 5 * 60 * 1000,
   });
@@ -235,11 +235,11 @@ export const syncSharedPlaylistImport = (playlistId) =>
 export const getFlowLidarrImportListUrl = (flowId) =>
   getData(`/playlists/flows/${encodeURIComponent(flowId)}/lidarr-import-list`);
 
-export const removeSharedPlaylistTracks = (playlistId, jobIds) =>
+export const removeStaticPlaylistTracks = (playlistId, jobIds) =>
   postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/track-removals`, { jobIds });
 
-export const moveSharedPlaylistTracks = (playlistId, jobIds, target) =>
+export const moveStaticPlaylistTracks = (playlistId, jobIds, target) =>
   postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/track-moves`, { jobIds, target });
 
-export const getSharedPlaylistOperation = (playlistId, operationId, options) =>
+export const getStaticPlaylistOperation = (playlistId, operationId, options) =>
   getData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/operations/${encodeURIComponent(operationId)}`, options);

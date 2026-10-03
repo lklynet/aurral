@@ -132,14 +132,14 @@ function isFlowPlaylistType(playlistType) {
 }
 
 /**
- * Checks whether a playlist type corresponds to a canonical or shared playlist.
+ * Checks whether a playlist type corresponds to the library or a static playlist.
  *
  * @param {string} playlistType - Target playlist identifier.
  * @returns {boolean} True if the playlist type is canonical or shared.
  */
 function isCanonicalPlaylistType(playlistType) {
   const key = String(playlistType || "").trim();
-  return key === "library" || Boolean(flowPlaylistConfig.getSharedPlaylist(key));
+  return key === "library" || Boolean(flowPlaylistConfig.getStaticPlaylist(key));
 }
 
 /**
@@ -187,7 +187,7 @@ async function findLocalExistingSource(track, options = {}) {
       path.resolve(root, AURRAL_FLOWS_DIR, targetPlaylistType, artistDir, albumDir),
     );
   } else if (canonical) {
-    // Library and shared playlists store at: <root>/Artist/Album/
+    // Library and static playlists store at: <root>/Artist/Album/
     candidateDirs.push(path.resolve(root, artistDir, albumDir));
   } else {
     // Regular playlists: the download pipeline writes to <root>/Artist/Album/
@@ -401,11 +401,11 @@ export async function removePlaylistFileIfUnshared(finalPath, playlistId, option
 
   const playlistRoots = isFlowPlaylistType(safePlaylistId)
     ? [path.resolve(downloadRoot, AURRAL_FLOWS_DIR, safePlaylistId)]
-    : flowPlaylistConfig.getSharedPlaylist(safePlaylistId)
+    : flowPlaylistConfig.getStaticPlaylist(safePlaylistId)
       ? [path.resolve(downloadRoot)]
       : [path.resolve(downloadRoot, PLAYLIST_FILES_DIR, safePlaylistId)];
   if (
-    flowPlaylistConfig.getSharedPlaylist(safePlaylistId) &&
+    flowPlaylistConfig.getStaticPlaylist(safePlaylistId) &&
     options.deleteIfUnshared !== true
   ) {
     return { action: "skipped" };
@@ -790,7 +790,7 @@ export async function repairOrphanedPlaylistTrackPaths(options = {}) {
   const { flowPlaylistConfig } = await import("../playlists/flowPlaylistConfig.js");
   const activeIds = new Set([
     ...flowPlaylistConfig.getFlows().map((flow) => String(flow.id)),
-    ...flowPlaylistConfig.getSharedPlaylists().map((playlist) => String(playlist.id)),
+    ...flowPlaylistConfig.getStaticPlaylists().map((playlist) => String(playlist.id)),
   ]);
 
   const removedIds = new Set();

@@ -408,7 +408,7 @@ export const buildReleaseRadarFlowFromForm = (flow, draft) =>
     sizeError: "Max tracks must be a positive number",
   });
 
-export const normalizeSharedTrackEntry = (track) => {
+export const normalizePlaylistTrackEntry = (track) => {
   if (!track || typeof track !== "object" || Array.isArray(track)) return null;
   const artistName = String(
     track.artistName ?? track.artist ?? track.artist_name ?? track["Artist Name(s)"] ?? "",
@@ -438,11 +438,11 @@ export const normalizeSharedTrackEntry = (track) => {
   };
 };
 
-export const buildSharedTracklistPayload = ({ name, sourceName, sourceFlowId, tracks }) => ({
+export const buildStaticTracklistPayload = ({ name, sourceName, sourceFlowId, tracks }) => ({
   type: FLOW_SHARE_FILE_TYPE,
   version: FLOW_SHARE_FILE_VERSION,
   exportedAt: new Date().toISOString(),
-  name: String(name || "").trim() || "Shared Playlist",
+  name: String(name || "").trim() || "Playlist",
   sourceName: String(sourceName || "").trim() || null,
   sourceFlowId: String(sourceFlowId || "").trim() || null,
   trackCount: Array.isArray(tracks) ? tracks.length : 0,
@@ -485,7 +485,7 @@ export const parseFlowImportFile = (content) => {
 
   const toPlaylistPayload = (entry, index) => {
     if (Array.isArray(entry)) {
-      const tracks = entry.map(normalizeSharedTrackEntry).filter(Boolean);
+      const tracks = entry.map(normalizePlaylistTrackEntry).filter(Boolean);
       if (tracks.length === 0) {
         throw new Error(`Tracklist ${index + 1}: no valid tracks found`);
       }
@@ -508,7 +508,7 @@ export const parseFlowImportFile = (content) => {
     if (!rawTracks?.length) {
       throw new Error(`Tracklist ${index + 1}: no tracks found`);
     }
-    const tracks = rawTracks.map(normalizeSharedTrackEntry).filter(Boolean);
+    const tracks = rawTracks.map(normalizePlaylistTrackEntry).filter(Boolean);
     if (tracks.length === 0) {
       throw new Error(`Tracklist ${index + 1}: no valid tracks found`);
     }

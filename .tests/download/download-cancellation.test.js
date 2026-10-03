@@ -214,7 +214,7 @@ test("pending selection excludes durably cancelled jobs", () => {
 
 test("deletion marks queued work cancelled before the background operation starts", () => {
   const playlistId = "immediate-delete";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Immediate Delete",
     tracks: [],
@@ -236,9 +236,9 @@ test("deletion marks queued work cancelled before the background operation start
   assert.equal(listHonkerJobs("slskd-pipeline").some((row) => row.id === queueJobId), true);
 });
 
-test("shared playlist deletion cancels its pipeline before clearing the tracker", async (t) => {
+test("static playlist deletion cancels its pipeline before clearing the tracker", async (t) => {
   const playlistId = "deleted-playlist";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Deleted Playlist",
     tracks: [],
@@ -281,7 +281,7 @@ test("shared playlist deletion cancels its pipeline before clearing the tracker"
     playlistId,
   });
 
-  assert.equal(flowPlaylistConfig.getSharedPlaylist(playlistId), null);
+  assert.equal(flowPlaylistConfig.getStaticPlaylist(playlistId), null);
   assert.equal(downloadTracker.getJob(jobId), null);
   assert.equal(downloadTracker.getJob(upgradeJobId), null);
   assert.equal(isPipelinePayloadActive({
@@ -293,9 +293,9 @@ test("shared playlist deletion cancels its pipeline before clearing the tracker"
   assert.equal(listHonkerJobs("slskd-pipeline").some((row) => row.id === upgradeQueueJobId), false);
 });
 
-test("shared playlist track replacement cancels dependent quality upgrades", async (t) => {
+test("static playlist track replacement cancels dependent quality upgrades", async (t) => {
   const playlistId = "replaced-playlist";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Replaced Playlist",
     tracks: [],
@@ -325,7 +325,7 @@ test("shared playlist track replacement cancels dependent quality upgrades", asy
   t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
   t.mock.method(playlistManager, "scheduleScanLibrary", async () => {});
 
-  await operationsModule.updateSharedPlaylist({
+  await operationsModule.updateStaticPlaylist({
     playlistId,
     tracks: [],
     hasTracksUpdate: true,
@@ -360,7 +360,7 @@ test("playlist deletion cancels durably recorded slskd searches", async (t) => {
       slskd: { enabled: true, url: mock.url, apiKey: "test-key" },
     },
   });
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Provider Work Playlist",
     tracks: [],
@@ -440,7 +440,7 @@ test("failed provider cancellation keeps durable slskd work for a later retry", 
       slskd: { enabled: true, url: mock.url, apiKey: "test-key" },
     },
   });
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Provider Work Retry Playlist",
     tracks: [],
@@ -474,7 +474,7 @@ test("failed provider cancellation keeps durable slskd work for a later retry", 
   }
 });
 
-test("failed shared-playlist replacement preserves membership and leaves a recoverable job", async () => {
+test("failed static playlist replacement preserves membership and leaves a recoverable job", async () => {
   const playlistId = "shared-playlist-edit-provider-retry";
   const track = { artistName: "Retry Artist", trackName: "Retry Song" };
   const originalSettings = dbOps.getSettings();
@@ -491,7 +491,7 @@ test("failed shared-playlist replacement preserves membership and leaves a recov
       slskd: { enabled: true, url: mock.url, apiKey: "test-key" },
     },
   });
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Provider Failure Edit",
     tracks: [track],
@@ -507,7 +507,7 @@ test("failed shared-playlist replacement preserves membership and leaves a recov
 
   try {
     await assert.rejects(
-      operationsModule.updateSharedPlaylist({
+      operationsModule.updateStaticPlaylist({
         playlistId,
         tracks: [],
         hasTracksUpdate: true,
@@ -516,7 +516,7 @@ test("failed shared-playlist replacement preserves membership and leaves a recov
       /Could not cancel download provider work/,
     );
 
-    assert.equal(flowPlaylistConfig.getSharedPlaylist(playlistId)?.tracks.length, 1);
+    assert.equal(flowPlaylistConfig.getStaticPlaylist(playlistId)?.tracks.length, 1);
     assert.equal(downloadTracker.getJob(jobId)?.status, "failed");
     assert.equal(isDownloadJobCancelled(jobId), false);
     downloadTracker.setPending(jobId);
@@ -531,7 +531,7 @@ test("failed shared-playlist replacement preserves membership and leaves a recov
   }
 });
 
-test("failed shared-playlist deletion preserves membership and leaves a recoverable job", async () => {
+test("failed static playlist deletion preserves membership and leaves a recoverable job", async () => {
   const playlistId = "shared-playlist-delete-provider-retry";
   const originalSettings = dbOps.getSettings();
   const mock = await createMockHttpServer((request, response) => {
@@ -547,7 +547,7 @@ test("failed shared-playlist deletion preserves membership and leaves a recovera
       slskd: { enabled: true, url: mock.url, apiKey: "test-key" },
     },
   });
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Provider Failure Delete",
     tracks: [],
@@ -571,7 +571,7 @@ test("failed shared-playlist deletion preserves membership and leaves a recovera
       /Could not cancel download provider work/,
     );
 
-    assert.ok(flowPlaylistConfig.getSharedPlaylist(playlistId));
+    assert.ok(flowPlaylistConfig.getStaticPlaylist(playlistId));
     assert.equal(isDownloadJobCancelled(jobId), false);
     assert.equal(
       isPipelinePayloadActive({ jobId, playlistId, playlistGeneration: generation }),
@@ -673,7 +673,7 @@ test("playlist cancellation keeps provider work retryable when providers are unc
     ...originalSettings,
     integrations: {},
   });
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Unconfigured Provider Playlist",
     tracks: [],

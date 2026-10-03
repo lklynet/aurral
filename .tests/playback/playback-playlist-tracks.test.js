@@ -35,8 +35,8 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("preserves shared playlist track order", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+test("preserves static playlist track order", async () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Ordered",
     tracks: [
       { artistName: "A", trackName: "Second", albumName: "Album" },
@@ -59,7 +59,7 @@ test("preserves shared playlist track order", async () => {
 });
 
 test("keeps completed tracks after metadata correction", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Corrected album",
     tracks: [{ artistName: "Artist", trackName: "Track", albumName: "Imported album" }],
   });
@@ -78,7 +78,7 @@ test("keeps completed tracks after metadata correction", async () => {
 });
 
 test("normalizes empty migrated names", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Migrated",
     tracks: [{ artistName: "Artist", trackName: "Track" }],
   });

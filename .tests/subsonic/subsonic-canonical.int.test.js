@@ -11,7 +11,7 @@ import {
   startServerProcess,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidarrLibrary }, { flowPlaylistConfig }, { downloadTracker }, { downloadWorker }, { updateSharedPlaylist }, { resolveArtworkUrl, createSubsonicPlaylist, star }, { warmImageProxy }, { playlistManager }] =
+const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidarrLibrary }, { flowPlaylistConfig }, { downloadTracker }, { downloadWorker }, { updateStaticPlaylist }, { resolveArtworkUrl, createSubsonicPlaylist, star }, { warmImageProxy }, { playlistManager }] =
   await setupIsolatedBackend(
     "subsonic-canonical",
     "backend/config/db-sqlite.js",
@@ -31,7 +31,7 @@ let aurral;
 let authToken;
 let fixtureRoot;
 let fixturePath;
-let sharedPlaylist;
+let staticPlaylist;
 let syncedFavoritePlaylist;
 let syncedFavoriteSourcePath;
 let syncedFavoriteSourceJobId;
@@ -159,7 +159,7 @@ test.before(async () => {
     durationMs: 1000,
   }, flow.id);
   downloadTracker.setDone(jobId, fixturePath);
-  sharedPlaylist = flowPlaylistConfig.createSharedPlaylist({
+  staticPlaylist = flowPlaylistConfig.createStaticPlaylist({
     name: "Canonical Shared",
     ownerUserId: alice.id,
     tracks: [{
@@ -175,9 +175,9 @@ test.before(async () => {
     albumMbid: "shared-album-mbid",
     trackName: "Flow Song",
     durationMs: 1000,
-  }, sharedPlaylist.id);
+  }, staticPlaylist.id);
   downloadTracker.setDone(sharedJobId, fixturePath);
-  canonicalFavoritePlaylist = flowPlaylistConfig.createSharedPlaylist({
+  canonicalFavoritePlaylist = flowPlaylistConfig.createStaticPlaylist({
     name: "Canonical Favorite Playlist",
     ownerUserId: alice.id,
     tracks: [{
@@ -203,7 +203,7 @@ test.before(async () => {
     trackName: "Synced Favorite Song",
     durationMs: 1000,
   };
-  syncedFavoritePlaylist = flowPlaylistConfig.createSharedPlaylist({
+  syncedFavoritePlaylist = flowPlaylistConfig.createStaticPlaylist({
     name: "Synced Favorite Playlist",
     ownerUserId: alice.id,
     tracks: [syncedFavoriteTrack],
@@ -244,7 +244,7 @@ test.before(async () => {
     "flow-artwork",
   );
   await writeFile(
-    path.join(playlistManager.libraryRoot, `${playlistManager.getPlaylistName(sharedPlaylist.id)}.webp`),
+    path.join(playlistManager.libraryRoot, `${playlistManager.getPlaylistName(staticPlaylist.id)}.webp`),
     "shared-artwork",
   );
   aurral = await startServerProcess();
@@ -261,7 +261,7 @@ test.after(async () => {
   await aurral?.stop();
   if (syncedFavoritePlaylist) {
     downloadTracker.clearByPlaylistType(syncedFavoritePlaylist.id);
-    flowPlaylistConfig.deleteSharedPlaylist(syncedFavoritePlaylist.id);
+    flowPlaylistConfig.deleteStaticPlaylist(syncedFavoritePlaylist.id);
   }
   await rm(syncedFavoriteSourcePath, { force: true }).catch(() => {});
   await rm(fixtureRoot, { recursive: true, force: true });
@@ -528,7 +528,7 @@ test("exposes owned static playlists and keeps their entries playable", async ()
     albumName: "Pending Album",
     trackName: "Pending Song",
     durationMs: 1000,
-  }, sharedPlaylist.id);
+  }, staticPlaylist.id);
   try {
     const refreshed = responseJson(await request("getPlaylist", { id: shared.id })).playlist;
     assert.equal(refreshed.entry.some((entry) => entry.title === "Pending Song"), false);
@@ -563,7 +563,7 @@ test("returns canonical song ids for playlist entries that exist in the library"
 test("does not expose another user's static playlist", async () => {
   userOps.createUser("bob", hashPassword("bob-password"), "user");
   const result = responseJson(await request("getPlaylist", {
-    id: `shared:${encodeURIComponent(sharedPlaylist.id)}`,
+    id: `shared:${encodeURIComponent(staticPlaylist.id)}`,
     u: "bob",
     p: "bob-password",
   }));
@@ -663,15 +663,15 @@ test("creates durable Subsonic playlists around one promoted library job", async
 test("failed Subsonic playlist creation rolls back its playlist and jobs", async () => {
   const canonicalSong = responseJson(await request("search3", { query: "Canonical Song" })).searchResult3.song[0];
   const user = userOps.getUserByUsername("alice");
-  const originalUpdate = flowPlaylistConfig.updateSharedPlaylist;
-  flowPlaylistConfig.updateSharedPlaylist = () => null;
+  const originalUpdate = flowPlaylistConfig.updateStaticPlaylist;
+  flowPlaylistConfig.updateStaticPlaylist = () => null;
   try {
     assert.equal(
       await createSubsonicPlaylist(user, { name: "Failed Subsonic Playlist", songIds: [canonicalSong.id] }),
       null,
     );
     assert.equal(
-      flowPlaylistConfig.getSharedPlaylistsForUser(user).some(
+      flowPlaylistConfig.getStaticPlaylistsForUser(user).some(
         (playlist) => playlist.name === "Failed Subsonic Playlist",
       ),
       false,
@@ -683,7 +683,7 @@ test("failed Subsonic playlist creation rolls back its playlist and jobs", async
       undefined,
     );
   } finally {
-    flowPlaylistConfig.updateSharedPlaylist = originalUpdate;
+    flowPlaylistConfig.updateStaticPlaylist = originalUpdate;
   }
 });
 
@@ -775,7 +775,7 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
     assert.equal(libraryJob.status, "done");
     libraryJobId = libraryJob.id;
 
-    await updateSharedPlaylist({
+    await updateStaticPlaylist({
       playlistId: playlist.id,
       tracks: [],
       hasTracksUpdate: true,
@@ -798,7 +798,7 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
     downloadTracker.clearByPlaylistType(playlist.id);
     if (libraryJobId) downloadTracker.removeJob(libraryJobId);
     await rm(path.join(downloadRoot, track.artistName), { recursive: true, force: true });
-    flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+    flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
   }
 });
 

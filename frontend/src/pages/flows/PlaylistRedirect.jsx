@@ -6,7 +6,7 @@ import { useFlowStatus } from "./useFlowStatus";
 export default function PlaylistRedirect() {
   const [searchParams] = useSearchParams();
   const selectedId = String(searchParams.get("selected") || "").trim();
-  const { status, loading, flows, sharedPlaylists } = useFlowStatus();
+  const { status, loading, flows, staticPlaylists } = useFlowStatus();
 
   if (!selectedId) return <Navigate to="/library/playlists" replace />;
   if (loading && !status) {
@@ -20,7 +20,7 @@ export default function PlaylistRedirect() {
   if (flows.some((flow) => flow.id === selectedId)) {
     return <Navigate to={flowPath(selectedId)} replace />;
   }
-  if (sharedPlaylists.some((playlist) => playlist.id === selectedId)) {
+  if (staticPlaylists.some((playlist) => playlist.id === selectedId)) {
     return <Navigate to={playlistPath(selectedId)} replace />;
   }
   return <Navigate to="/library/playlists" replace />;

@@ -16,7 +16,7 @@ test("relocation retries a copied file after path persistence fails and preserve
   dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
   const root = path.join(state.baseDir, "media");
   downloadWorker.downloadRoot = root;
-  const source = flowPlaylistConfig.createSharedPlaylist({ id: "source", name: "Source", tracks: [{ artistName: "Artist", trackName: "Track", albumName: "Album" }] });
+  const source = flowPlaylistConfig.createStaticPlaylist({ id: "source", name: "Source", tracks: [{ artistName: "Artist", trackName: "Track", albumName: "Album" }] });
   const oldPath = path.join(root, "aurral-weekly-flow", "source", "Artist", "Album", "Track.flac");
   await fs.mkdir(path.dirname(oldPath), { recursive: true });
   await fs.writeFile(oldPath, "disposable audio");
@@ -24,10 +24,10 @@ test("relocation retries a copied file after path persistence fails and preserve
   const second = downloadTracker.addJob({ artistName: "Artist", trackName: "Track", albumName: "Album" }, "other");
   downloadTracker.setDone(first, oldPath);
   downloadTracker.setDone(second, oldPath);
-  flowPlaylistConfig.createSharedPlaylist({ id: "target", name: "Target", tracks: [{ artistName: "Artist", trackName: "Track", albumName: "Album", canonicalJobId: first }] });
-  const selection = removal.captureSharedPlaylistSelection(source, first);
-  const remove = () => removal.withSharedPlaylistRemovalMutation({ playlistId: source.id, jobIds: [first] }, () =>
-    removal.removeSharedPlaylistSelectionsLocked({ playlistId: source.id, selections: [selection] }));
+  flowPlaylistConfig.createStaticPlaylist({ id: "target", name: "Target", tracks: [{ artistName: "Artist", trackName: "Track", albumName: "Album", canonicalJobId: first }] });
+  const selection = removal.captureStaticPlaylistSelection(source, first);
+  const remove = () => removal.withStaticPlaylistRemovalMutation({ playlistId: source.id, jobIds: [first] }, () =>
+    removal.removeStaticPlaylistSelectionsLocked({ playlistId: source.id, selections: [selection] }));
   db.exec("CREATE TRIGGER reject_relocation BEFORE UPDATE OF final_path ON playlist_download_jobs BEGIN SELECT RAISE(ABORT, 'fixture path failure'); END");
   try {
     await assert.rejects(remove(), /fixture path failure/);

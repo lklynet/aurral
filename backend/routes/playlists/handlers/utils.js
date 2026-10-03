@@ -144,7 +144,7 @@ export const restoreFlowMutationToken = (mutation) =>
     previousToken: mutation?.previousToken,
   });
 
-export const pauseSharedPlaylistRetryCycle = async (playlistId) => {
+export const pauseStaticPlaylistRetryCycle = async (playlistId) => {
   await downloadWorker.setRetryCyclePaused(playlistId, true);
   let cancelledJobs = 0;
   await withPlaylistMutation(playlistId, async () => {
@@ -164,8 +164,8 @@ export const pauseSharedPlaylistRetryCycle = async (playlistId) => {
 export const getAccessibleFlow = (user, flowId) =>
   flowPlaylistConfig.getFlowForUser(user, flowId);
 
-export const getAccessibleSharedPlaylist = (user, playlistId) =>
-  flowPlaylistConfig.getSharedPlaylistForUser(user, playlistId);
+export const getAccessibleStaticPlaylist = (user, playlistId) =>
+  flowPlaylistConfig.getStaticPlaylistForUser(user, playlistId);
 
 export const canAccessPlaylistType = (user, playlistType) => {
   const key = String(playlistType || "").trim();
@@ -174,9 +174,9 @@ export const canAccessPlaylistType = (user, playlistType) => {
   if (flow) {
     return flowPlaylistConfig.canUserAccessFlow(user, flow);
   }
-  const sharedPlaylist = flowPlaylistConfig.getSharedPlaylist(key);
-  if (sharedPlaylist) {
-    return flowPlaylistConfig.canUserAccessSharedPlaylist(user, sharedPlaylist);
+  const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(key);
+  if (staticPlaylist) {
+    return flowPlaylistConfig.canUserAccessStaticPlaylist(user, staticPlaylist);
   }
   return false;
 };

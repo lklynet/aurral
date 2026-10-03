@@ -109,7 +109,7 @@ function FlowDetail({ flow }) {
   const location = useLocation();
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
-  const { status, fetchStatus, getPlaylistStats, countdownNow, sharedPlaylists } = useFlowStatus();
+  const { status, fetchStatus, getPlaylistStats, countdownNow, staticPlaylists } = useFlowStatus();
   const { artworkUrlFor } = usePlaylistArtwork();
   const { tracks, loading, error, refresh } = usePlaylistTracks(flow.id);
   const [tab, setTab] = useState(location.state?.tab === "recipe" ? "recipe" : "tracks");
@@ -226,7 +226,7 @@ function FlowDetail({ flow }) {
   const handleConvertToStatic = async () => {
     try {
       const reservedNames = new Set(
-        sharedPlaylists.map((playlist) => normalizeNameKey(playlist?.name)).filter(Boolean),
+        staticPlaylists.map((playlist) => normalizeNameKey(playlist?.name)).filter(Boolean),
       );
       const response = await convertFlowToStaticPlaylist(flow.id, {
         name: reserveUniqueFlowName(reservedNames, `${flow.name} Static`),
@@ -451,7 +451,7 @@ function FlowDetail({ flow }) {
               loading={loading}
               error={error}
               refresh={refresh}
-              sharedPlaylists={sharedPlaylists}
+              staticPlaylists={staticPlaylists}
               fetchStatus={fetchStatus}
               activityHint={activity}
               emptyMessage={

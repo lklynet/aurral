@@ -16,7 +16,7 @@ const [
   { playlistManager },
   { getPlaylistMbidEnrichmentQueue },
   {
-    enrichSharedPlaylistMbids,
+    enrichStaticPlaylistMbids,
     schedulePlaylistMbidEnrichmentForMissingPlaylists,
   },
 ] = await setupIsolatedBackend(
@@ -45,8 +45,8 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("enrichSharedPlaylistMbids fills missing playlist and job MBIDs", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+test("enrichStaticPlaylistMbids fills missing playlist and job MBIDs", async () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Imported",
     tracks: [
       {
@@ -63,7 +63,7 @@ test("enrichSharedPlaylistMbids fills missing playlist and job MBIDs", async () 
     playlist.id,
   );
 
-  const result = await enrichSharedPlaylistMbids(playlist.id, {
+  const result = await enrichStaticPlaylistMbids(playlist.id, {
     resolveTrackContext: (track) => ({
       ...track,
       albumName: "The Shape of Punk to Come",
@@ -80,7 +80,7 @@ test("enrichSharedPlaylistMbids fills missing playlist and job MBIDs", async () 
   });
 
   const storedTrack =
-    flowPlaylistConfig.getSharedPlaylist(playlist.id)?.tracks?.[0];
+    flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks?.[0];
   const storedJob = downloadTracker.getJob(jobId);
 
   assert.equal(result.changed, true);
@@ -97,8 +97,8 @@ test("enrichSharedPlaylistMbids fills missing playlist and job MBIDs", async () 
   assert.equal(storedJob.albumTrackCount, 12);
 });
 
-test("enrichSharedPlaylistMbids rescans the library after updating a downloaded job", async (t) => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+test("enrichStaticPlaylistMbids rescans the library after updating a downloaded job", async (t) => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Downloaded",
     tracks: [{ artistName: "Refused", trackName: "New Noise" }],
   });
@@ -113,7 +113,7 @@ test("enrichSharedPlaylistMbids rescans the library after updating a downloaded 
     () => 1,
   );
 
-  await enrichSharedPlaylistMbids(playlist.id, {
+  await enrichStaticPlaylistMbids(playlist.id, {
     resolveTrackContext: (track) => ({
       ...track,
       artistMbid: "artist-refused",
@@ -125,35 +125,35 @@ test("enrichSharedPlaylistMbids rescans the library after updating a downloaded 
   assert.equal(scheduleScanLibrary.mock.callCount(), 1);
 });
 
-test("enrichSharedPlaylistMbids returns missing when playlistId is empty", async () => {
-  const result = await enrichSharedPlaylistMbids("");
+test("enrichStaticPlaylistMbids returns missing when playlistId is empty", async () => {
+  const result = await enrichStaticPlaylistMbids("");
   assert.equal(result.missing, true);
   assert.equal(result.changed, false);
 });
 
-test("enrichSharedPlaylistMbids returns missing when playlist not found", async () => {
-  const result = await enrichSharedPlaylistMbids("nonexistent-id");
+test("enrichStaticPlaylistMbids returns missing when playlist not found", async () => {
+  const result = await enrichStaticPlaylistMbids("nonexistent-id");
   assert.equal(result.missing, true);
   assert.equal(result.changed, false);
 });
 
-test("enrichSharedPlaylistMbids handles resolveTrackContext throwing by falling back to original track", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+test("enrichStaticPlaylistMbids handles resolveTrackContext throwing by falling back to original track", async () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Fragile",
     tracks: [{ artistName: "Unknown", trackName: "Ghost" }],
   });
 
-  const result = await enrichSharedPlaylistMbids(playlist.id, {
+  const result = await enrichStaticPlaylistMbids(playlist.id, {
     resolveTrackContext: () => { throw new Error("resolve failed"); },
   });
 
   assert.equal(result.changed, false);
-  const storedTrack = flowPlaylistConfig.getSharedPlaylist(playlist.id)?.tracks?.[0];
+  const storedTrack = flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks?.[0];
   assert.ok(!storedTrack.artistMbid);
 });
 
-test("enrichSharedPlaylistMbids leaves already-enriched tracks unchanged", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+test("enrichStaticPlaylistMbids leaves already-enriched tracks unchanged", async () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Enriched",
     tracks: [{
       artistName: "Radiohead",
@@ -163,7 +163,7 @@ test("enrichSharedPlaylistMbids leaves already-enriched tracks unchanged", async
     }],
   });
 
-  const result = await enrichSharedPlaylistMbids(playlist.id, {
+  const result = await enrichStaticPlaylistMbids(playlist.id, {
     resolveTrackContext: (track) => ({
       ...track,
       albumName: "Pablo Honey",
@@ -175,8 +175,8 @@ test("enrichSharedPlaylistMbids leaves already-enriched tracks unchanged", async
   assert.equal(result.playlistTracksUpdated, 1);
 });
 
-test("enrichSharedPlaylistMbids does not re-resolve complete tracks", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+test("enrichStaticPlaylistMbids does not re-resolve complete tracks", async () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Complete",
     tracks: [{
       artistName: "Radiohead",
@@ -188,7 +188,7 @@ test("enrichSharedPlaylistMbids does not re-resolve complete tracks", async () =
   });
   let resolverCalls = 0;
 
-  const result = await enrichSharedPlaylistMbids(playlist.id, {
+  const result = await enrichStaticPlaylistMbids(playlist.id, {
     resolveTrackContext: (track) => {
       resolverCalls += 1;
       return track;
@@ -199,8 +199,8 @@ test("enrichSharedPlaylistMbids does not re-resolve complete tracks", async () =
   assert.equal(result.changed, false);
 });
 
-test("enrichSharedPlaylistMbids can reconcile complete tracks once when explicitly requested", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+test("enrichStaticPlaylistMbids can reconcile complete tracks once when explicitly requested", async () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Needs artist repair",
     tracks: [{
       artistName: "Radiohead",
@@ -211,7 +211,7 @@ test("enrichSharedPlaylistMbids can reconcile complete tracks once when explicit
     }],
   });
 
-  const result = await enrichSharedPlaylistMbids(playlist.id, {
+  const result = await enrichStaticPlaylistMbids(playlist.id, {
     reconcileArtistMbids: true,
     resolveTrackContext: (track) => ({
       ...track,
@@ -221,13 +221,13 @@ test("enrichSharedPlaylistMbids can reconcile complete tracks once when explicit
 
   assert.equal(result.changed, true);
   assert.equal(
-    flowPlaylistConfig.getSharedPlaylist(playlist.id)?.tracks?.[0]?.artistMbid,
+    flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks?.[0]?.artistMbid,
     "radiohead-mbid",
   );
 });
 
 test("startup artist reconciliation is scheduled only once", () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "One-time artist repair",
     tracks: [{
       artistName: "Radiohead",

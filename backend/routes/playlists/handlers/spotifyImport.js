@@ -9,9 +9,9 @@ import {
   enqueueImportedPlaylist,
   fetchImportedPlaylistTracks,
 } from "../../../services/importLists/importPlaylist.js";
-import { syncSharedPlaylistImport } from "../../../services/importLists/importListSync.js";
+import { syncStaticPlaylistImport } from "../../../services/importLists/importListSync.js";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.js";
-import { getAccessibleSharedPlaylist } from "./utils.js";
+import { getAccessibleStaticPlaylist } from "./utils.js";
 
 const parseExpiresAt = (value) => {
   const expiresIn = Number(value);
@@ -42,7 +42,7 @@ function sendSpotifyError(res, error, fallback) {
 export function registerSpotifyImport(router) {
   router.get("/import/spotify/status", (req, res) => {
     const status = spotifyConnectionStore.getPublicStatus(req.user.id);
-    const hasSyncedPlaylists = flowPlaylistConfig.getSharedPlaylists().some((playlist) =>
+    const hasSyncedPlaylists = flowPlaylistConfig.getStaticPlaylists().some((playlist) =>
       Number(playlist?.ownerUserId) === Number(req.user.id) &&
       playlist?.importSource?.provider === "spotify-playlist" &&
       playlist.importSource.syncEnabled);
@@ -192,7 +192,7 @@ export function registerSpotifyImport(router) {
         queued: result?.queued === true,
       });
     } catch (error) {
-      if (error?.code === "SHARED_PLAYLIST_NAME_CONFLICT") {
+      if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
         logger.debug("playlist-import", "Spotify playlist import name already exists", {
           playlistName: String(req.body?.name || "").trim() || null,
         });
@@ -213,11 +213,11 @@ export function registerSpotifyImport(router) {
 
   router.post("/shared-playlists/:playlistId/sync", async (req, res) => {
     try {
-      const playlist = getAccessibleSharedPlaylist(req.user, req.params.playlistId);
+      const playlist = getAccessibleStaticPlaylist(req.user, req.params.playlistId);
       if (!playlist) {
         return res.status(404).json({ error: "Playlist not found" });
       }
-      const result = await syncSharedPlaylistImport({
+      const result = await syncStaticPlaylistImport({
         playlistId: playlist.id,
         user: req.user,
         force: true,

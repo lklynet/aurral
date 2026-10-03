@@ -63,8 +63,8 @@ test("a flow whose discoverPresetId doesn't match any known preset falls back to
   assert.equal(flow.description, null);
 });
 
-test("shared playlists get the same fallback treatment as flows", () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+test("static playlists get the same fallback treatment as flows", () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Heavy Rotation",
     sourceName: "Heavy Rotation",
     discoverPresetId: "discover-weekly",
@@ -72,8 +72,8 @@ test("shared playlists get the same fallback treatment as flows", () => {
   assert.equal(playlist.description, getDiscoverPlaylistPreset("discover-weekly").description);
 });
 
-test("an explicit shared playlist description is kept as-is", () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+test("an explicit static playlist description is kept as-is", () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "My Import",
     sourceName: "My Import",
     description: "Imported from Spotify",

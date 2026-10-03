@@ -343,7 +343,7 @@ test("configures Plex with the canonical root and explicit flow location", async
 
 test("keeps Navidrome and Plex failures isolated when both destinations are configured", async (t) => {
   t.mock.method(console, "warn", () => {});
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Isolation" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Isolation" });
   const manager = new PlaylistManager(downloadRoot);
   const calls = [];
   manager.navidromeDestination.isConfigured = () => true;
@@ -372,7 +372,7 @@ test("keeps Navidrome and Plex failures isolated when both destinations are conf
 
 test("does not publish playlists when a configured library cannot be verified", async (t) => {
   t.mock.method(console, "warn", () => {});
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Blocked setup" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Blocked setup" });
   const manager = new PlaylistManager(downloadRoot);
   const published = [];
   manager.navidromeDestination.isConfigured = () => true;

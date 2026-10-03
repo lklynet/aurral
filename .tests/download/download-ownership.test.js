@@ -18,8 +18,8 @@ test.beforeEach(() => {
 test.after(() => cleanupIsolatedState(state));
 
 test("ownership transfer preserves a provider attempt and rejects it after explicit retry", () => {
-  const source = flowPlaylistConfig.createSharedPlaylist({ name: "Source" });
-  const target = flowPlaylistConfig.createSharedPlaylist({ name: "Target" });
+  const source = flowPlaylistConfig.createStaticPlaylist({ name: "Source" });
+  const target = flowPlaylistConfig.createStaticPlaylist({ name: "Target" });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, source.id);
   const job = downloadTracker.getJob(jobId);
   const attempt = cancellation.beginDownloadAttempt(jobId);
@@ -42,8 +42,8 @@ test("ownership transfer preserves a provider attempt and rejects it after expli
 });
 
 test("rolled-back transfer leaves the continuing process and queued payload unchanged", () => {
-  const source = flowPlaylistConfig.createSharedPlaylist({ name: "Rollback source" });
-  const target = flowPlaylistConfig.createSharedPlaylist({ name: "Rollback target" });
+  const source = flowPlaylistConfig.createStaticPlaylist({ name: "Rollback source" });
+  const target = flowPlaylistConfig.createStaticPlaylist({ name: "Rollback target" });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, source.id);
   const payload = { jobId, playlistId: source.id, playlistGeneration: 0, phase: "poll" };
   const queueId = honker.getPipelineQueue().enqueue(payload);
@@ -58,7 +58,7 @@ test("rolled-back transfer leaves the continuing process and queued payload unch
 });
 
 test("album leadership moves to a held peer without cancelling shared provider work", () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Album" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Album" });
   const leader = downloadTracker.addJob({ artistName: "Artist", trackName: "First", albumMbid: "album" }, playlist.id);
   const peer = downloadTracker.addJob({ artistName: "Artist", trackName: "Second", albumMbid: "album" }, playlist.id);
   db.prepare("UPDATE playlist_download_jobs SET request_group_id = ? WHERE id IN (?, ?)").run("album-request", leader, peer);
@@ -81,8 +81,8 @@ test("album leadership moves to a held peer without cancelling shared provider w
 });
 
 test("tokenless manual commits reject ownership captured before a transfer", async () => {
-  const source = flowPlaylistConfig.createSharedPlaylist({ name: "Approval source" });
-  const target = flowPlaylistConfig.createSharedPlaylist({ name: "Approval target" });
+  const source = flowPlaylistConfig.createStaticPlaylist({ name: "Approval source" });
+  const target = flowPlaylistConfig.createStaticPlaylist({ name: "Approval target" });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Review" }, source.id);
   const payload = { jobId, playlistId: source.id, playlistGeneration: 0 };
   db.transaction(() => ownership.transferDownloadOwnershipInTransaction(jobId, target.id))();
@@ -106,8 +106,8 @@ test("completed and removed jobs release their active attempt records", () => {
 });
 
 test("recording a transfer prunes transfer history for settled downloads only", () => {
-  const source = flowPlaylistConfig.createSharedPlaylist({ name: "History source" });
-  const target = flowPlaylistConfig.createSharedPlaylist({ name: "History target" });
+  const source = flowPlaylistConfig.createStaticPlaylist({ name: "History source" });
+  const target = flowPlaylistConfig.createStaticPlaylist({ name: "History target" });
   const add = (trackName) => downloadTracker.addJob({ artistName: "Artist", trackName }, source.id);
   const [doneId, failedId, removedId, activeId, nextId] = ["Done", "Failed", "Removed", "Active", "Next"].map(add);
   const move = (jobId) => {

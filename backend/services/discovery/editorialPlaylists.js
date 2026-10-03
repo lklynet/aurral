@@ -21,7 +21,7 @@ const pendingAdds = new Map();
 
 const findLibraryPlaylist = (userId, deezerPlaylistId) =>
   flowPlaylistConfig
-    .getSharedPlaylistsOwnedByUser(userId)
+    .getStaticPlaylistsOwnedByUser(userId)
     .find(
       (playlist) =>
         playlist.importSource?.provider === PROVIDER &&
@@ -31,7 +31,7 @@ const findLibraryPlaylist = (userId, deezerPlaylistId) =>
 const pickAvailableName = (userId, name) => {
   const taken = new Set(
     [
-      ...flowPlaylistConfig.getSharedPlaylistsOwnedByUser(userId),
+      ...flowPlaylistConfig.getStaticPlaylistsOwnedByUser(userId),
       ...flowPlaylistConfig.getFlowsOwnedByUser(userId),
     ].map((entry) => String(entry?.name || "").trim().toLowerCase()),
   );

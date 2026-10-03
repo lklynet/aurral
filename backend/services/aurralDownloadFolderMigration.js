@@ -464,12 +464,12 @@ function resolveOwnership(sourcePath, rootPath, jobs, knownIds) {
     .map((job) => jobPlaylistId(job))
     .filter(Boolean);
   const playlistIds = [...new Set([...candidates, pathPlaylistId].filter(Boolean))];
-  const sharedId = playlistIds.find((id) => flowPlaylistConfig.getSharedPlaylist(id)) || null;
+  const sharedId = playlistIds.find((id) => flowPlaylistConfig.getStaticPlaylist(id)) || null;
   const flowId = playlistIds.find((id) => flowPlaylistConfig.getFlow(id)) || null;
   const playlistId = sharedId || flowId || pathPlaylistId;
   return {
     playlistId,
-    sharedPlaylist: playlistId ? flowPlaylistConfig.getSharedPlaylist(playlistId) : null,
+    staticPlaylist: playlistId ? flowPlaylistConfig.getStaticPlaylist(playlistId) : null,
     flow: !sharedId && flowId ? flowPlaylistConfig.getFlow(flowId) : null,
   };
 }
@@ -506,7 +506,7 @@ export async function migrateAurralDownloadFolder(options = {}) {
   const knownIds = new Set([
     ...jobs.map(jobPlaylistId).filter(Boolean),
     ...flowPlaylistConfig.getFlows().map((flow) => String(flow.id)),
-    ...flowPlaylistConfig.getSharedPlaylists().map((playlist) => String(playlist.id)),
+    ...flowPlaylistConfig.getStaticPlaylists().map((playlist) => String(playlist.id)),
   ]);
   const files = await collectLegacyFiles(rootPath, knownIds);
   const fileSet = new Set(files);
@@ -564,13 +564,13 @@ export async function migrateAurralDownloadFolder(options = {}) {
       continue;
     }
 
-    const { playlistId, flow, sharedPlaylist } = resolveOwnership(
+    const { playlistId, flow, staticPlaylist } = resolveOwnership(
       sourcePath,
       rootPath,
       jobsForSource,
       knownIds,
     );
-    if (!playlistId || (!flow && !sharedPlaylist)) {
+    if (!playlistId || (!flow && !staticPlaylist)) {
       retainItem(state, sourcePath, "ambiguous playlist ownership", logger);
       result.retained += 1;
       continue;

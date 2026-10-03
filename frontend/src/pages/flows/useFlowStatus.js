@@ -26,7 +26,7 @@ export function useFlowStatus() {
     [getPlaylistStats],
   );
 
-  const sharedPlaylists = useMemo(() => status?.sharedPlaylists || [], [status?.sharedPlaylists]);
+  const staticPlaylists = useMemo(() => status?.sharedPlaylists || [], [status?.sharedPlaylists]);
   const flows = useMemo(() => status?.flows || [], [status?.flows]);
 
   return {
@@ -37,7 +37,7 @@ export function useFlowStatus() {
     countdownNow,
     getPlaylistStats,
     getPlaylistState,
-    sharedPlaylists,
+    staticPlaylists,
     flows,
   };
 }

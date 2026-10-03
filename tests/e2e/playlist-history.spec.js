@@ -3,7 +3,7 @@ import { apiRequest, openApp, requireCredentials } from "./helpers.js";
 
 requireCredentials();
 
-test("shared playlist opens from Playlists and its scrobble setting persists", async ({ page }) => {
+test("static playlist opens from Playlists and its scrobble setting persists", async ({ page }) => {
   await openApp(page);
 
   const playlistName = `E2E history ${Date.now()}`;

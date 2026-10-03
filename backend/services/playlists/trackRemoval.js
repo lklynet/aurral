@@ -12,11 +12,11 @@ import { removePlaylistFileIfUnshared } from "../downloadJobs/fileReuse.js";
 import { downloadWorker } from "../downloadJobs/downloadWorker.js";
 
 export function getSharedDownloadReferences(jobId, excludedPlaylistId) {
-  return flowPlaylistConfig.getSharedPlaylists().filter((playlist) => playlist.id !== excludedPlaylistId &&
+  return flowPlaylistConfig.getStaticPlaylists().filter((playlist) => playlist.id !== excludedPlaylistId &&
     playlist.tracks.some((track) => track.canonicalJobId === jobId));
 }
 
-export function captureSharedPlaylistSelection(playlist, jobId) {
+export function captureStaticPlaylistSelection(playlist, jobId) {
   const job = downloadTracker.getJob(jobId);
   if (!job || job.upgradeForJobId) return null;
   const track = playlist.tracks.find((entry) => entry.canonicalJobId === jobId ||
@@ -52,7 +52,7 @@ export function getPlaylistRemovalLockIds(playlistId, jobs, extraIds = []) {
   return [...new Set(owners.filter(Boolean))];
 }
 
-export async function withSharedPlaylistRemovalMutation({ playlistId, jobIds, extraPlaylistIds = [] }, operation) {
+export async function withStaticPlaylistRemovalMutation({ playlistId, jobIds, extraPlaylistIds = [] }, operation) {
   while (true) {
     const readJobs = () => jobIds.map((id) => downloadTracker.getJob(id)).filter(Boolean);
     const lockIds = getPlaylistRemovalLockIds(playlistId, readJobs(), extraPlaylistIds);
@@ -64,7 +64,7 @@ export async function withSharedPlaylistRemovalMutation({ playlistId, jobIds, ex
   }
 }
 
-export function isSharedPlaylistSelectionCurrent(selection, playlist, job) {
+export function isStaticPlaylistSelectionCurrent(selection, playlist, job) {
   if (selection.membershipId) {
     const track = playlist.tracks.find((entry) => entry.membershipId === selection.membershipId);
     return Boolean(track && (!job || track.canonicalJobId === job.id ||
@@ -83,17 +83,17 @@ function replacementPeer(job, removingIds) {
     .sort((a, b) => String(a.id).localeCompare(String(b.id)))[0] || null;
 }
 
-export async function removeSharedPlaylistSelectionsLocked({ playlistId, selections, deleteFiles = false, requireAll = false, onCommitted }) {
-  const playlist = flowPlaylistConfig.getSharedPlaylist(playlistId);
+export async function removeStaticPlaylistSelectionsLocked({ playlistId, selections, deleteFiles = false, requireAll = false, onCommitted }) {
+  const playlist = flowPlaylistConfig.getStaticPlaylist(playlistId);
   if (!playlist) throw new Error("Source playlist no longer exists");
-  const removingIds = new Set(selections.filter((selection) => isSharedPlaylistSelectionCurrent(selection, playlist, downloadTracker.getJob(selection.jobId))).map((selection) => selection.jobId));
+  const removingIds = new Set(selections.filter((selection) => isStaticPlaylistSelectionCurrent(selection, playlist, downloadTracker.getJob(selection.jobId))).map((selection) => selection.jobId));
   const plans = [];
   const preparedFiles = new Map();
   const affectedPlaylistIds = new Set();
   const outcomes = [];
   for (const selection of selections) {
     const job = downloadTracker.getJob(selection.jobId);
-    if (!isSharedPlaylistSelectionCurrent(selection, playlist, job)) {
+    if (!isStaticPlaylistSelectionCurrent(selection, playlist, job)) {
       outcomes.push({ jobId: selection.jobId, status: job ? "failed" : "alreadyAbsent",
         ...(job ? { message: "The selected membership changed. Select the track again." } : {}) });
       continue;
@@ -180,7 +180,7 @@ export async function removeSharedPlaylistSelectionsLocked({ playlistId, selecti
       }
       if (plans.length) {
         const detached = new Set(plans.map((plan) => plan.selection.membershipId).filter(Boolean));
-        const updated = flowPlaylistConfig.updateSharedPlaylist(playlistId, { tracks: playlist.tracks.filter((track) => !detached.has(track.membershipId)) });
+        const updated = flowPlaylistConfig.updateStaticPlaylist(playlistId, { tracks: playlist.tracks.filter((track) => !detached.has(track.membershipId)) });
         if (!updated) throw new Error("Could not persist source membership changes");
       }
       onCommitted?.(outcomes, [...affectedPlaylistIds]);

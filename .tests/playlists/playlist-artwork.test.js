@@ -71,7 +71,7 @@ test("writes WebP artwork for flows and playlists without M3U files", async () =
   });
   flowPlaylistConfig.setEnabled(flow.id, true);
 
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Road Trip",
     tracks: [{ artistName: "A", trackName: "One" }],
   });
@@ -120,7 +120,7 @@ test("serves temporary artwork and replaces it when the photo source recovers", 
     if (!sourceAvailable) throw new Error("Request failed with status code 503");
     return { data: source };
   });
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Offline Photos",
     tracks: [{ artistName: "A", trackName: "One" }],
   });
@@ -149,7 +149,7 @@ test("replaces the old generated JPEG fallback with photo artwork", async (t) =>
     .jpeg()
     .toBuffer();
   t.mock.method(axios, "get", async () => ({ data: source }));
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Legacy Fallback",
     tracks: [{ artistName: "A", trackName: "One" }],
   });
@@ -174,7 +174,7 @@ test("replaces the old generated JPEG fallback with photo artwork", async (t) =>
 });
 
 test("does not replace uploaded artwork in photo mode", async (t) => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Custom Cover",
     tracks: [{ artistName: "A", trackName: "One" }],
   });
@@ -302,7 +302,7 @@ test("generates fallback artwork when the photo source is down", async (t) => {
   t.mock.method(axios, "get", async () => {
     throw new Error("Request failed with status code 503");
   });
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Offline Generate" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Offline Generate" });
   const manager = makeManager();
 
   const outputPath = await manager.generateArtwork(playlist.id);
@@ -312,7 +312,7 @@ test("generates fallback artwork when the photo source is down", async (t) => {
 });
 
 test("syncs artwork changes to the existing Navidrome playlist", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Artwork API" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Artwork API" });
   const manager = makeManager();
   await manager.ensurePlaylists();
   manager.__artworkUploads.length = 0;

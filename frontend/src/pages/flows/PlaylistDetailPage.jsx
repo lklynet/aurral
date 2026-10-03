@@ -10,16 +10,16 @@ import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import {
-  deleteSharedPlaylist,
+  deleteStaticPlaylist,
   setPlaylistRecordHistory,
   setPlaylistTrackAvailability,
-  syncSharedPlaylistImport,
-  updateSharedPlaylist,
+  syncStaticPlaylistImport,
+  updateStaticPlaylist,
 } from "../../utils/api/endpoints/playlists.js";
 import { getApiErrorMessage } from "../onboardingUtils.jsx";
 import { ConfirmModal } from "./flowComponents/ConfirmModal.jsx";
 import { PlaylistArtworkThumb } from "./flowComponents/PlaylistArtworkThumb.jsx";
-import { getSharedPlaylistTrackCount } from "./flowStats";
+import { getStaticPlaylistTrackCount } from "./flowStats";
 import { PlaylistEditModal } from "./PlaylistEditModal.jsx";
 import { PlaylistTracks } from "./PlaylistTracks.jsx";
 import { useFlowTrackPlayback } from "./flowComponents/flowTrackComponents.jsx";
@@ -53,9 +53,9 @@ function updateCachedPlaylist(playlistId, changes) {
 export default function PlaylistDetailPage() {
   const { playlistId } = useParams();
   const location = useLocation();
-  const { status, loading, error, fetchStatus, getPlaylistStats, sharedPlaylists } =
+  const { status, loading, error, fetchStatus, getPlaylistStats, staticPlaylists } =
     useFlowStatus();
-  const playlist = sharedPlaylists.find((entry) => entry.id === playlistId) || null;
+  const playlist = staticPlaylists.find((entry) => entry.id === playlistId) || null;
   useDocumentTitle(playlist?.name || "Playlist");
 
   if (!playlist) {
@@ -95,13 +95,13 @@ export default function PlaylistDetailPage() {
       key={playlist.id}
       playlist={playlist}
       stats={getPlaylistStats(playlist.id)}
-      sharedPlaylists={sharedPlaylists}
+      staticPlaylists={staticPlaylists}
       fetchStatus={fetchStatus}
     />
   );
 }
 
-function PlaylistDetail({ playlist, stats, sharedPlaylists, fetchStatus }) {
+function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
@@ -127,7 +127,7 @@ function PlaylistDetail({ playlist, stats, sharedPlaylists, fetchStatus }) {
   const importSource = playlist.importSource || null;
   const isSyncable = SYNCABLE_IMPORT_PROVIDERS.has(importSource?.provider);
   const providerLabel = isSyncable ? getImportedProviderLabel(importSource.provider) : "";
-  const totalTracks = getSharedPlaylistTrackCount(playlist, stats, tracks.length);
+  const totalTracks = getStaticPlaylistTrackCount(playlist, stats, tracks.length);
   const trackLabel =
     showTrackAvailability && !loading && !error
       ? `${countAvailableTracks(tracks)}/${totalTracks} available`
@@ -147,7 +147,7 @@ function PlaylistDetail({ playlist, stats, sharedPlaylists, fetchStatus }) {
     setRenaming(true);
     setRenameError("");
     try {
-      await updateSharedPlaylist(playlist.id, { name: String(name ?? "").trim() });
+      await updateStaticPlaylist(playlist.id, { name: String(name ?? "").trim() });
       showSuccess("Playlist renamed");
       await fetchStatus();
       setEditOpen(false);
@@ -163,7 +163,7 @@ function PlaylistDetail({ playlist, stats, sharedPlaylists, fetchStatus }) {
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      const result = await deleteSharedPlaylist(playlist.id);
+      const result = await deleteStaticPlaylist(playlist.id);
       showSuccess(result?.queued ? `Removal of ${playlist.name} queued` : `Deleted ${playlist.name}`);
       await fetchStatus();
       navigate("/library/playlists", { replace: true });
@@ -178,7 +178,7 @@ function PlaylistDetail({ playlist, stats, sharedPlaylists, fetchStatus }) {
     if (syncing) return;
     setSyncing(true);
     try {
-      const result = await syncSharedPlaylistImport(playlist.id);
+      const result = await syncStaticPlaylistImport(playlist.id);
       if (result?.skipped) {
         showSuccess("Playlist is already up to date");
       } else {
@@ -219,7 +219,7 @@ function PlaylistDetail({ playlist, stats, sharedPlaylists, fetchStatus }) {
   const updateSyncInterval = (hours) =>
     saveSetting(
       async () => {
-        await updateSharedPlaylist(playlist.id, {
+        await updateStaticPlaylist(playlist.id, {
           importSource: { syncIntervalHours: hours, syncEnabled: hours > 0 },
         });
         await fetchStatus();
@@ -231,7 +231,7 @@ function PlaylistDetail({ playlist, stats, sharedPlaylists, fetchStatus }) {
   const updateKeepRemoved = (keepRemovedTracks) =>
     saveSetting(
       async () => {
-        await updateSharedPlaylist(playlist.id, { importSource: { keepRemovedTracks } });
+        await updateStaticPlaylist(playlist.id, { importSource: { keepRemovedTracks } });
         await fetchStatus();
       },
       keepRemovedTracks
@@ -376,7 +376,7 @@ function PlaylistDetail({ playlist, stats, sharedPlaylists, fetchStatus }) {
         loading={loading}
         error={error}
         refresh={refresh}
-        sharedPlaylists={sharedPlaylists}
+        staticPlaylists={staticPlaylists}
         fetchStatus={fetchStatus}
         emptyMessage="No tracks in this playlist yet."
         showTrackAvailability={showTrackAvailability}

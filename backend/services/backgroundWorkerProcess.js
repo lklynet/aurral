@@ -28,7 +28,7 @@ const DOWNLOAD_OWNER_COMMANDS = new Set([
   "waitForPlaylistIdle", "waitForIdle", "clearIncompleteRetry",
   "clearPlaylistRunState", "pruneOrphanedJobState", "scheduleReuseLinkRepair",
   "runQualityUpgradeChecks", "queueQualityUpgradeForJob", "clearPendingByPlaylist",
-  "wakeOrStart", "syncSharedPlaylistImport",
+  "wakeOrStart", "syncStaticPlaylistImport",
   "enqueueManualMissingSelection", "enqueueManualReplacementSelection",
   "approveBlockedJob", "denyBlockedJob",
 ]);
@@ -75,10 +75,10 @@ async function handleDownloadOwnerCommand(message) {
         import("./downloadJobs/downloadTracker.js"),
       ]);
       result = await queueQualityUpgrade(downloadTracker.getJob(args[0]));
-    } else if (method === "syncSharedPlaylistImport") {
-      const { syncSharedPlaylistImport } = await import("./importLists/importListSync.js");
+    } else if (method === "syncStaticPlaylistImport") {
+      const { syncStaticPlaylistImport } = await import("./importLists/importListSync.js");
       try {
-        result = { ok: true, result: await syncSharedPlaylistImport(args[0]) };
+        result = { ok: true, result: await syncStaticPlaylistImport(args[0]) };
       } catch (error) {
         result = {
           ok: false,

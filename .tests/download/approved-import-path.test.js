@@ -101,7 +101,7 @@ test.beforeEach(async () => {
 
 test("playlist jobs annotate tracks that are already in the canonical library", async () => {
   const playlistId = "library-ownership-annotation";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Library ownership",
     tracks: [
@@ -159,7 +159,7 @@ test("playlist jobs annotate tracks that are already in the canonical library", 
 
 test("playlist job file paths are only returned to admins", async (t) => {
   const playlistId = "job-file-paths";
-  flowPlaylistConfig.createSharedPlaylist({ id: playlistId, name: "File paths", tracks: [] });
+  flowPlaylistConfig.createStaticPlaylist({ id: playlistId, name: "File paths", tracks: [] });
   const [jobId] = downloadTracker.addJobs(
     [{ artistName: "Path Artist", trackName: "Path Track" }],
     playlistId,
@@ -200,7 +200,7 @@ test.after(async () => {
 
 test("approving a reviewed download commits it inside the managed playlist library", async () => {
   const playlistId = "40ae99ad-92b0-48c6-93e7-7b39e76703ea";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Reviewed",
     tracks: [{ artistName: "Artist", trackName: "Track", albumName: "Album" }],
@@ -232,7 +232,7 @@ test("approving a reviewed download commits it inside the managed playlist libra
 
 test("approving a reviewed download releases the playlist lock before publishing the playlist", async (t) => {
   const playlistId = "reviewed-slow-publish";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Reviewed slow publish",
     tracks: [{ artistName: "Artist", trackName: "Slow Track", albumName: "Album" }],
@@ -283,7 +283,7 @@ test("approving a reviewed download releases the playlist lock before publishing
 
 test("a track committed while an approved review is publishing still reaches the playlist", async (t) => {
   const playlistId = "reviewed-concurrent-commit";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Reviewed concurrent commit",
     tracks: [
@@ -354,7 +354,7 @@ test("a track committed while an approved review is publishing still reaches the
 
 test("approval cannot commit an orphaned job into a recreated playlist", async () => {
   const playlistId = "reviewed-stale-generation";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Reviewed stale generation",
     tracks: [],
@@ -575,7 +575,7 @@ test("approving a reviewed upgrade replaces the source playlist file", async (t)
 
 test("reports when an upgrade search is already queued for a track", async () => {
   const playlistId = "c79c1598-699a-4ab3-b8cd-4e570f001f18";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Upgrades",
     tracks: [{ artistName: "Artist", trackName: "Track", albumName: "Album" }],
@@ -619,7 +619,7 @@ test("reports when an upgrade search is already queued for a track", async () =>
 
 test("records queued upgrade history if the pipeline removes the live job immediately", async () => {
   const playlistId = "e6be4cd3-10b0-4744-baa1-7e960a41ca54";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Fast failure",
     tracks: [{ artistName: "Artist", trackName: "Fast failure track", albumName: "Album" }],
@@ -668,13 +668,13 @@ test("records queued upgrade history if the pipeline removes the live job immedi
 test("search all stays within the requesting user's playlist access", async () => {
   const ownedPlaylistId = "c0de1f39-226f-4ab8-8f37-09d8adf47b5a";
   const otherPlaylistId = "a2b9ae35-7fb7-474e-a0d4-8ac4bdb8d9e6";
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: ownedPlaylistId,
     name: "Owned wanted",
     ownerUserId: 7,
     tracks: [{ artistName: "Artist", trackName: "Missing", albumName: "Album" }],
   });
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     id: otherPlaylistId,
     name: "Other wanted",
     ownerUserId: 8,

@@ -12,7 +12,7 @@ const [
   { dbOps },
   { flowPlaylistConfig },
   { registerFlows },
-  { registerSharedPlaylists },
+  { registerStaticPlaylists },
   { playlistOperationQueue },
   { downloadTracker },
   { playlistManager },
@@ -24,7 +24,7 @@ const [
   "backend/db/helpers/index.js",
   "backend/services/playlists/flowPlaylistConfig.js",
   "backend/routes/playlists/handlers/flows.js",
-  "backend/routes/playlists/handlers/sharedPlaylists.js",
+  "backend/routes/playlists/handlers/staticPlaylists.js",
   "backend/services/playlists/playlistOperationQueue.js",
   "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/playlists/playlistManager.js",
@@ -51,12 +51,12 @@ registerFlows({
   delete(path, ...handlers) { flowHandlers.set(path, handlers.at(-1)); },
 });
 
-const sharedPlaylistHandlers = new Map();
-registerSharedPlaylists({
+const staticPlaylistHandlers = new Map();
+registerStaticPlaylists({
   get() {},
   post() {},
-  put(path, ...handlers) { sharedPlaylistHandlers.set(path, handlers.at(-1)); },
-  delete(path, ...handlers) { sharedPlaylistHandlers.set(path, handlers.at(-1)); },
+  put(path, ...handlers) { staticPlaylistHandlers.set(path, handlers.at(-1)); },
+  delete(path, ...handlers) { staticPlaylistHandlers.set(path, handlers.at(-1)); },
 });
 
 const createResponse = () => ({
@@ -252,7 +252,7 @@ test("flow settings updates wait for in-progress playlist mutations", async (t) 
 
 test("a failed shared-track delete enqueue clears only its new job-cancellation marker", async (t) => {
   const user = { id: 1, role: "user" };
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Track queue rollback",
     ownerUserId: user.id,
     tracks: [],
@@ -264,7 +264,7 @@ test("a failed shared-track delete enqueue clears only its new job-cancellation 
   });
   const response = createResponse();
 
-  await sharedPlaylistHandlers.get("/shared-playlists/:playlistId/tracks/:jobId")({
+  await staticPlaylistHandlers.get("/shared-playlists/:playlistId/tracks/:jobId")({
     params: { playlistId: playlist.id, jobId },
     user,
   }, response);
@@ -275,9 +275,9 @@ test("a failed shared-track delete enqueue clears only its new job-cancellation 
   assert.equal(isPipelinePayloadActive({ jobId, playlistId: playlist.id, playlistGeneration: generation }), true);
 });
 
-test("a failed shared-playlist delete does not reactivate previously cancelled work", async (t) => {
+test("a failed static playlist delete does not reactivate previously cancelled work", async (t) => {
   const user = { id: 1, role: "user" };
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Already cancelled playlist",
     ownerUserId: user.id,
     tracks: [],
@@ -289,20 +289,20 @@ test("a failed shared-playlist delete does not reactivate previously cancelled w
   });
   const response = createResponse();
 
-  await sharedPlaylistHandlers.get("/shared-playlists/:playlistId")({
+  await staticPlaylistHandlers.get("/shared-playlists/:playlistId")({
     params: { playlistId: playlist.id },
     user,
   }, response);
 
   assert.equal(response.statusCode, 500);
-  assert.ok(flowPlaylistConfig.getSharedPlaylist(playlist.id));
+  assert.ok(flowPlaylistConfig.getStaticPlaylist(playlist.id));
   assert.equal(isDownloadJobCancelled(jobId), false);
   assert.equal(isPipelinePayloadActive({ jobId, playlistId: playlist.id, playlistGeneration: 0 }), false);
 });
 
 test("a failed track-delete enqueue preserves an existing job-cancellation marker", async (t) => {
   const user = { id: 1, role: "user" };
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Already cancelled track",
     ownerUserId: user.id,
     tracks: [],
@@ -314,7 +314,7 @@ test("a failed track-delete enqueue preserves an existing job-cancellation marke
   });
   const response = createResponse();
 
-  await sharedPlaylistHandlers.get("/shared-playlists/:playlistId/tracks/:jobId")({
+  await staticPlaylistHandlers.get("/shared-playlists/:playlistId/tracks/:jobId")({
     params: { playlistId: playlist.id, jobId },
     user,
   }, response);

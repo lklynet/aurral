@@ -1,6 +1,6 @@
 import {
-  buildSharedTrackIdentity,
-  dedupeSharedTracks,
+  buildPlaylistTrackIdentity,
+  dedupePlaylistTracks,
 } from "../playlists/flowPlaylistConfig.js";
 
 const DEEZER_API_URL = "https://api.deezer.com";
@@ -120,7 +120,7 @@ const normalizeTracks = (rows) => {
   }
   const seen = new Set();
   for (const [index, track] of raw.entries()) {
-    const identity = buildSharedTrackIdentity(track);
+    const identity = buildPlaylistTrackIdentity(track);
     if (seen.has(identity)) {
       stats.duplicate += 1;
       excluded.push({
@@ -134,14 +134,14 @@ const normalizeTracks = (rows) => {
   }
   const deezerFields = new Map();
   for (const { preview_url, artworkUrl, deezerAlbumId, ...track } of raw) {
-    const identity = buildSharedTrackIdentity(track);
+    const identity = buildPlaylistTrackIdentity(track);
     if (!deezerFields.has(identity)) {
       deezerFields.set(identity, { preview_url, artworkUrl, deezerAlbumId });
     }
   }
-  const tracks = dedupeSharedTracks(raw).map((track) => ({
+  const tracks = dedupePlaylistTracks(raw).map((track) => ({
     ...track,
-    ...deezerFields.get(buildSharedTrackIdentity(track)),
+    ...deezerFields.get(buildPlaylistTrackIdentity(track)),
   }));
   excluded.sort((left, right) => left.position - right.position);
   return { tracks, stats, excluded };

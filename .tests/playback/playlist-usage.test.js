@@ -22,7 +22,7 @@ test("Jellyfin checks private playlists for every user and paginates their track
   assert.ok(reads.every(([endpoint]) => !endpoint.includes("/flow/")));
 });
 
-test("Jellyfin reads shared playlists for each user because library visibility can differ", async () => {
+test("Jellyfin reads static playlists for each user because library visibility can differ", async () => {
   const client = new JellyfinClient("http://jellyfin.local", "key", "admin");
   let contents = 0;
   client.request = async (_method, endpoint) => {

@@ -35,7 +35,7 @@ test.after(async () => {
 
 test("serves playlist artwork from a hidden data directory", async () => {
   const owner = userOps.createUser("listener", hashPassword("listener-password"), "user", { accessFlow: true });
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Sunday Morning", ownerUserId: owner.id });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Sunday Morning", ownerUserId: owner.id });
   await playlistManager.generateArtwork(playlist.id);
   const artwork = await playlistManager.resolveArtworkFile(playlist.id);
   assert.ok(artwork.safePath.split(path.sep).some((segment) => segment.startsWith(".")));

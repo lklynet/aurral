@@ -2,8 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { Innertube } from "youtubei.js";
 import createRateLimiter from "../apiClients/rateLimiter.js";
 import {
-  buildSharedTrackIdentity,
-  dedupeSharedTracks,
+  buildPlaylistTrackIdentity,
+  dedupePlaylistTracks,
 } from "../playlists/flowPlaylistConfig.js";
 
 const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{10,150}$/;
@@ -161,10 +161,10 @@ const normalizeRows = (rows) => {
     });
     positions.push(position);
   }
-  const tracks = dedupeSharedTracks(raw);
+  const tracks = dedupePlaylistTracks(raw);
   const seen = new Set();
   for (const [index, track] of raw.entries()) {
-    const identity = buildSharedTrackIdentity(track);
+    const identity = buildPlaylistTrackIdentity(track);
     if (seen.has(identity)) {
       stats.duplicate += 1;
       excluded.push({

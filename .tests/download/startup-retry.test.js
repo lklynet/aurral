@@ -39,7 +39,7 @@ test.after(async () => {
 });
 
 test("startup leaves failed tracks terminal", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Incomplete",
     tracks: [{ artistName: "Missing", trackName: "Leave Failed" }],
   });
@@ -65,7 +65,7 @@ test("startup leaves failed tracks terminal", async () => {
 });
 
 test("startup resumes pending work", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Pending work",
     tracks: [{ artistName: "Pending", trackName: "Resume Me" }],
   });

@@ -49,19 +49,19 @@ test.after(async () => {
 
 test("removing and readding a canonical membership renews its incarnation", () => {
   const track = { artistName: "Artist", trackName: "Track", canonicalJobId: "canonical-job" };
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Membership", tracks: [track] });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Membership", tracks: [track] });
   const first = playlist.tracks[0].membershipId;
   assert.ok(first);
-  const renamed = flowPlaylistConfig.updateSharedPlaylist(playlist.id, { name: "Renamed" });
+  const renamed = flowPlaylistConfig.updateStaticPlaylist(playlist.id, { name: "Renamed" });
   assert.equal(renamed.tracks[0].membershipId, first);
-  flowPlaylistConfig.updateSharedPlaylist(playlist.id, { tracks: [] });
-  const readded = flowPlaylistConfig.appendSharedPlaylistTracks(playlist.id, [{ ...track, membershipId: first }]);
+  flowPlaylistConfig.updateStaticPlaylist(playlist.id, { tracks: [] });
+  const readded = flowPlaylistConfig.appendStaticPlaylistTracks(playlist.id, [{ ...track, membershipId: first }]);
   assert.notEqual(readded.tracks[0].membershipId, first);
 });
 
 
 test("playlist changes wait for another process's write instead of failing as locked", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Busy Database", tracks: [] });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Busy Database", tracks: [] });
   const writer = new Worker(`
     const { parentPort, workerData } = require("node:worker_threads");
     const Database = require("better-sqlite3");
@@ -76,13 +76,13 @@ test("playlist changes wait for another process's write instead of failing as lo
   const exited = once(writer, "exit");
   await once(writer, "message");
 
-  flowPlaylistConfig.appendSharedPlaylistTracks(playlist.id, [{ artistName: "Artist", trackName: "Track" }]);
+  flowPlaylistConfig.appendStaticPlaylistTracks(playlist.id, [{ artistName: "Artist", trackName: "Track" }]);
   await exited;
 
   invalidateFlowPlaylistConfigCache();
   dbOps.invalidateSettingsCache();
   assert.deepEqual(
-    flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks.map((track) => track.trackName),
+    flowPlaylistConfig.getStaticPlaylist(playlist.id).tracks.map((track) => track.trackName),
     ["Track"],
   );
   assert.equal(db.prepare("SELECT value FROM settings WHERE key = 'otherProcess'").get()?.value, "1");
@@ -116,7 +116,7 @@ test("creates flows with normalized scheduling and enforces unique names", () =>
 
 test("normalizes invalid playlist owners to null", () => {
   const flow = flowPlaylistConfig.createFlow({ name: "Unowned Flow", ownerUserId: 0 });
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Unowned Playlist",
     ownerUserId: "0",
   });
@@ -129,7 +129,7 @@ test("normalizes invalid playlist owners to null", () => {
     ownerUserId: Number.MAX_SAFE_INTEGER + 1,
   });
   const unowned = flowPlaylistConfig.createFlow({ name: "Invalid Owner Conflict" });
-  const unownedPlaylist = flowPlaylistConfig.createSharedPlaylist({
+  const unownedPlaylist = flowPlaylistConfig.createStaticPlaylist({
     name: "Invalid Playlist Owner Conflict",
   });
   const owned = flowPlaylistConfig.createFlow({ name: "Owned Flow", ownerUserId: 7 });
@@ -149,7 +149,7 @@ test("normalizes invalid playlist owners to null", () => {
   );
   assert.throws(
     () =>
-      flowPlaylistConfig.createSharedPlaylist({
+      flowPlaylistConfig.createStaticPlaylist({
         name: "Invalid Playlist Owner Conflict",
         ownerUserId: "not-a-user",
       }),
@@ -157,11 +157,11 @@ test("normalizes invalid playlist owners to null", () => {
   );
 
   flowPlaylistConfig.deleteFlow(flow.id);
-  flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+  flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
   flowPlaylistConfig.deleteFlow(fractional.id);
   flowPlaylistConfig.deleteFlow(unsafe.id);
   flowPlaylistConfig.deleteFlow(unowned.id);
-  flowPlaylistConfig.deleteSharedPlaylist(unownedPlaylist.id);
+  flowPlaylistConfig.deleteStaticPlaylist(unownedPlaylist.id);
   flowPlaylistConfig.deleteFlow(owned.id);
 });
 
@@ -343,21 +343,21 @@ test("partial year updates do not silently swap the untouched bound", () => {
   assert.equal(earlyTo?.yearTo, 1970);
 });
 
-test("rejects flow and shared playlist names that collide across types", () => {
+test("rejects flow and static playlist names that collide across types", () => {
   const flow = flowPlaylistConfig.createFlow({ name: "Rock" });
   assert.throws(
-    () => flowPlaylistConfig.createSharedPlaylist({ name: "rock" }),
+    () => flowPlaylistConfig.createStaticPlaylist({ name: "rock" }),
     /already exists/,
   );
 
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Jazz" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Jazz" });
   assert.throws(
     () => flowPlaylistConfig.createFlow({ name: "Jazz" }),
     /already exists/,
   );
 
   flowPlaylistConfig.deleteFlow(flow.id);
-  flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+  flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
 });
 
 test("records flow last run time", () => {
@@ -374,8 +374,8 @@ test("records flow last run time", () => {
   assert.equal(stored?.lastRunAt, lastRunAt);
 });
 
-test("stores full shared playlists but exposes trackless summaries for hot paths", () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+test("stores full static playlists but exposes trackless summaries for hot paths", () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Road Trip",
     sourceName: "Discover Weekly",
     sourceFlowId: "flow-123",
@@ -392,8 +392,8 @@ test("stores full shared playlists but exposes trackless summaries for hot paths
     ],
   });
 
-  const stored = flowPlaylistConfig.getSharedPlaylist(playlist.id);
-  const summaries = flowPlaylistConfig.getSharedPlaylists().map(
+  const stored = flowPlaylistConfig.getStaticPlaylist(playlist.id);
+  const summaries = flowPlaylistConfig.getStaticPlaylists().map(
     ({ id, name, ownerUserId, sourceName, sourceFlowId, importedAt, createdAt, trackCount }) => ({
       id,
       name,
@@ -414,13 +414,13 @@ test("stores full shared playlists but exposes trackless summaries for hot paths
 });
 
 test("supports empty manual playlists", () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Empty Queue",
   });
 
-  const stored = flowPlaylistConfig.getSharedPlaylist(playlist.id);
+  const stored = flowPlaylistConfig.getStaticPlaylist(playlist.id);
   const summary = flowPlaylistConfig
-    .getSharedPlaylists()
+    .getStaticPlaylists()
     .map(
       ({ id, name, ownerUserId, sourceName, sourceFlowId, importedAt, createdAt, trackCount }) => ({
         id,
@@ -439,8 +439,8 @@ test("supports empty manual playlists", () => {
   assert.equal(summary?.trackCount, 0);
 });
 
-test("updates shared playlists and keeps summaries in sync", () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+test("updates static playlists and keeps summaries in sync", () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Gym Mix",
     tracks: [
       { artistName: "A", trackName: "One" },
@@ -448,12 +448,12 @@ test("updates shared playlists and keeps summaries in sync", () => {
     ],
   });
 
-  const updated = flowPlaylistConfig.updateSharedPlaylist(playlist.id, {
+  const updated = flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
     name: "Gym Mix Updated",
     tracks: [{ artistName: "C", trackName: "Three" }],
   });
   const summary = flowPlaylistConfig
-    .getSharedPlaylists()
+    .getStaticPlaylists()
     .map(
       ({ id, name, ownerUserId, sourceName, sourceFlowId, importedAt, createdAt, trackCount }) => ({
         id,
@@ -527,8 +527,8 @@ test("rejects unsupported playlist import providers", () => {
   );
 });
 
-test("preserves rich track metadata when shared playlists are updated", () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+test("preserves rich track metadata when static playlists are updated", () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Metadata Mix",
     tracks: [
       {
@@ -545,7 +545,7 @@ test("preserves rich track metadata when shared playlists are updated", () => {
     ],
   });
 
-  const updated = flowPlaylistConfig.updateSharedPlaylist(playlist.id, {
+  const updated = flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
     tracks: [
       {
         artistName: "Artist B",

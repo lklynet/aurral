@@ -31,7 +31,7 @@ const ACTIVITY_HIDDEN_KINDS = new Set([
 const resolvePlaylistName = (playlistId) => {
   const id = String(playlistId || "").trim();
   if (!id) return "Playlist";
-  const shared = flowPlaylistConfig.getSharedPlaylist(id);
+  const shared = flowPlaylistConfig.getStaticPlaylist(id);
   if (shared?.name) return shared.name;
   const flow = flowPlaylistConfig.getFlow(id);
   if (flow?.name) return flow.name;
@@ -517,8 +517,8 @@ const canViewPlaylistActivity = (user, playlistId, ownerUserId = undefined) => {
   if (!id || id === "library") return true;
   const flow = flowPlaylistConfig.getFlow(id);
   if (flow) return flowPlaylistConfig.canUserAccessFlow(user, flow);
-  const playlist = flowPlaylistConfig.getSharedPlaylist(id);
-  return playlist ? flowPlaylistConfig.canUserAccessSharedPlaylist(user, playlist) : false;
+  const playlist = flowPlaylistConfig.getStaticPlaylist(id);
+  return playlist ? flowPlaylistConfig.canUserAccessStaticPlaylist(user, playlist) : false;
 };
 
 const loadPendingPlaylistImportHistory = async (user) => {
@@ -559,7 +559,7 @@ const loadPendingPlaylistImportHistory = async (user) => {
           subtitle: `${sourceName} · ${countLabel} waiting for download`,
           status: state,
           statusLabel: state === "processing" ? "Preparing" : "Queued",
-          href: flowPlaylistConfig.getSharedPlaylist(playlistId)
+          href: flowPlaylistConfig.getStaticPlaylist(playlistId)
             ? buildPlaylistHref(playlistId)
             : null,
           metadata: {

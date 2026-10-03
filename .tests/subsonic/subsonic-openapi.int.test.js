@@ -119,7 +119,7 @@ test.before(async () => {
     },
   });
 
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Schema Playlist",
     ownerUserId: alice.id,
     tracks: [{ artistName: "Schema Artist", albumName: "Schema Album", trackName: "Schema Song", durationMs: 10_000 }],

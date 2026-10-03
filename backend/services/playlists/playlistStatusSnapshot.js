@@ -1,6 +1,6 @@
 import { downloadTracker } from "../downloadJobs/downloadTracker.js";
 import { downloadWorker } from "../downloadJobs/downloadWorker.js";
-import { buildSharedTrackIdentity, flowPlaylistConfig, invalidateFlowPlaylistConfigCache } from "./flowPlaylistConfig.js";
+import { buildPlaylistTrackIdentity, flowPlaylistConfig, invalidateFlowPlaylistConfigCache } from "./flowPlaylistConfig.js";
 import { playlistOperationQueue } from "./playlistOperationQueue.js";
 import { getPlaylistOperationWorkerStatus } from "./playlistOperationWorker.js";
 import { getDownloadClient } from "../download/downloadClientSettings.js";
@@ -99,7 +99,7 @@ function collectPlaylistTrackIdentities(playlist, jobs) {
   const seen = new Set();
   const identities = [];
   const addIdentity = (track) => {
-    const identity = buildSharedTrackIdentity(track);
+    const identity = buildPlaylistTrackIdentity(track);
     if (!identity || seen.has(identity)) return;
     seen.add(identity);
     identities.push(identity);
@@ -128,15 +128,15 @@ function collectPlaylistTrackEntries(jobs) {
     )
     .map((job) => ({
       id: job.id,
-      identity: buildSharedTrackIdentity(job),
+      identity: buildPlaylistTrackIdentity(job),
     }));
 }
 
-function buildOwnerMap(flows, sharedPlaylists) {
+function buildOwnerMap(flows, staticPlaylists) {
   const ownerIds = new Set();
   for (const item of [
     ...(Array.isArray(flows) ? flows : []),
-    ...(Array.isArray(sharedPlaylists) ? sharedPlaylists : []),
+    ...(Array.isArray(staticPlaylists) ? staticPlaylists : []),
   ]) {
     const ownerUserId = Number(item?.ownerUserId);
     if (Number.isFinite(ownerUserId)) {
@@ -159,16 +159,16 @@ export function getPlaylistStatusSnapshot({
   refreshMembershipCache();
   const workerStatus = downloadWorker.getStatus();
   const flows = user ? flowPlaylistConfig.getFlowsForUser(user) : flowPlaylistConfig.getFlows();
-  const rawSharedPlaylists = user
-    ? flowPlaylistConfig.getSharedPlaylistsForUser(user)
-    : flowPlaylistConfig.getSharedPlaylists();
+  const rawStaticPlaylists = user
+    ? flowPlaylistConfig.getStaticPlaylistsForUser(user)
+    : flowPlaylistConfig.getStaticPlaylists();
   const flowIds = flows.map((flow) => flow.id);
-  const sharedPlaylistIds = rawSharedPlaylists.map((playlist) => playlist.id);
+  const staticPlaylistIds = rawStaticPlaylists.map((playlist) => playlist.id);
   const scopedStats = downloadTracker.getStatsByPlaylistType([
     ...flowIds,
-    ...sharedPlaylistIds,
+    ...staticPlaylistIds,
   ]);
-  const sharedPlaylists = rawSharedPlaylists.map((playlist) => {
+  const staticPlaylists = rawStaticPlaylists.map((playlist) => {
     const playlistStats = scopedStats?.[playlist.id];
     const jobTotal =
       Number(playlistStats?.pending || 0) +
@@ -200,17 +200,17 @@ export function getPlaylistStatusSnapshot({
         : null,
     };
   });
-  const ownerMap = buildOwnerMap(flows, sharedPlaylists);
+  const ownerMap = buildOwnerMap(flows, staticPlaylists);
   const flowsWithOwners = flows.map((flow) => ({
     ...flow,
     ownerUsername: ownerMap.get(Number(flow?.ownerUserId)) || null,
   }));
-  const sharedPlaylistsWithOwners = sharedPlaylists.map((playlist) => ({
+  const staticPlaylistsWithOwners = staticPlaylists.map((playlist) => ({
     ...playlist,
     ownerUsername: ownerMap.get(Number(playlist?.ownerUserId)) || null,
   }));
   const stats = aggregateStats(scopedStats, flowIds);
-  const sharedStats = aggregateStats(scopedStats, sharedPlaylistIds);
+  const sharedStats = aggregateStats(scopedStats, staticPlaylistIds);
   const nextRunMessage = formatNextRunMessage(flowsWithOwners);
   const operationQueue = playlistOperationQueue.getStatus();
   const operationWorker = workerStatus?.operationWorker || getPlaylistOperationWorkerStatus();
@@ -248,17 +248,17 @@ export function getPlaylistStatusSnapshot({
   for (const flowId of flowIds) {
     flowStats[flowId] = scopedStats[flowId] || aggregateStats({}, []);
   }
-  const sharedPlaylistStats = {};
-  for (const playlistId of sharedPlaylistIds) {
-    sharedPlaylistStats[playlistId] = scopedStats[playlistId] || aggregateStats({}, []);
+  const staticPlaylistStats = {};
+  for (const playlistId of staticPlaylistIds) {
+    staticPlaylistStats[playlistId] = scopedStats[playlistId] || aggregateStats({}, []);
   }
   const retryCyclePausedByPlaylist = downloadWorker.getRetryCyclePausedMap([
     ...flowIds,
-    ...sharedPlaylistIds,
+    ...staticPlaylistIds,
   ]);
   const retryCycleScheduledByPlaylist = downloadWorker.getIncompleteRetryMap([
     ...flowIds,
-    ...sharedPlaylistIds,
+    ...staticPlaylistIds,
   ]);
   return {
     worker: {
@@ -269,9 +269,9 @@ export function getPlaylistStatusSnapshot({
     stats,
     flowStats,
     sharedStats,
-    sharedPlaylistStats,
+    sharedPlaylistStats: staticPlaylistStats,
     flows: flowsWithOwners,
-    sharedPlaylists: sharedPlaylistsWithOwners,
+    sharedPlaylists: staticPlaylistsWithOwners,
     capabilities: getFlowCapabilities(),
     retryCyclePausedByPlaylist,
     retryCycleScheduledByPlaylist,

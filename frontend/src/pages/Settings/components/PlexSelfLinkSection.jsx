@@ -136,7 +136,7 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
       <div className="settings-page__section-intro">
         <h3 className="settings-page__section-title">Plex account</h3>
         <p className="settings-page__section-note">
-          Link your Plex account so flows and shared playlists use your login.
+          Link your Plex account so flows and playlists use your login.
         </p>
       </div>
 
@@ -191,17 +191,17 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
               status.globalAccount?.configured ? (
                 status.globalAccount.plexUsername ? (
                   <>
-                    Your flow and shared playlists sync through Aurral&apos;s global Plex
+                    Your flows and playlists sync through Aurral&apos;s global Plex
                     connection: <strong>{status.globalAccount.plexUsername}</strong>.
                   </>
                 ) : (
-                  "Your flow and shared playlists sync through Aurral’s global Plex connection."
+                  "Your flows and playlists sync through Aurral’s global Plex connection."
                 )
               ) : (
-                "Plex is not configured yet. Your flow and shared playlists won’t sync to Plex until it’s configured as a playback source."
+                "Plex is not configured yet. Your flows and playlists won’t sync to Plex until it’s configured as a playback source."
               )
             ) : (
-              "Not linked. Your flow and shared playlists won’t sync to Plex until you connect your own account below."
+              "Not linked. Your flows and playlists won’t sync to Plex until you connect your own account below."
             )}
           </p>
           <button

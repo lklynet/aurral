@@ -531,7 +531,7 @@ test("removePlaylistFileIfUnshared relocates when another playlist still referen
 });
 
 test("removePlaylistFileIfUnshared preserves external files during shared cleanup", async () => {
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "External" });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "External" });
   const track = {
     artistName: "Aphex Twin",
     trackName: "External Xtal",

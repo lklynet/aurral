@@ -32,7 +32,7 @@ function writeFromAnotherProcess(sql, parameters) {
 
 test("production snapshots refresh persisted membership and access changes without IPC", () => {
   dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
-  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Original", ownerUserId: 1 });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Original", ownerUserId: 1 });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Original track" }, playlist.id);
   const previousMode = process.env.NODE_ENV;
   process.env.NODE_ENV = "development";

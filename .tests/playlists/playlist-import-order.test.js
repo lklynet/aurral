@@ -52,14 +52,14 @@ const { downloadTracker } = trackerModule;
 const {
   flowPlaylistConfig,
   invalidateFlowPlaylistConfigCache,
-  orderJobsBySharedPlaylistTracks,
-  rebuildSharedPlaylistTracksFromJobs,
+  orderJobsByPlaylistTracks,
+  rebuildStaticPlaylistTracksFromJobs,
 } = playlistConfigModule;
 const {
-  appendSharedPlaylistTracks,
+  appendStaticPlaylistTracks,
   markLatestPlaylistOperationToken,
   processPlaylistOperation,
-  updateSharedPlaylist,
+  updateStaticPlaylist,
 } = operationsModule;
 const { downloadWorker } = workerModule;
 const { flowTrackSource } = flowTrackSourceModule;
@@ -68,7 +68,7 @@ const { spotifyClient } = spotifyClientModule;
 const { listenbrainzPlaylistClient } = listenbrainzPlaylistsModule;
 const { lastfmStationClient } = lastfmStationsModule;
 const { youtubeMusicPlaylistClient } = youtubeMusicPlaylistsModule;
-const { syncSharedPlaylistImport } = importSyncModule;
+const { syncStaticPlaylistImport } = importSyncModule;
 const { enqueueImportedPlaylist } = importPlaylistModule;
 const { playlistOperationQueue } = operationQueueModule;
 const { logger } = loggerModule;
@@ -94,13 +94,13 @@ test("import sync delegates to the flow owner without blocking the web event loo
   process.env.NODE_ENV = "production";
   delete process.env.AURRAL_TEST_SERVER;
   try {
-    const sync = syncSharedPlaylistImport({
+    const sync = syncStaticPlaylistImport({
       playlistId: "playlist-id",
       user: { id: 7, role: "admin", token: "not-for-worker" },
       force: true,
     });
     await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(request.method, "syncSharedPlaylistImport");
+    assert.equal(request.method, "syncStaticPlaylistImport");
     assert.deepEqual(request.args, [{
       playlistId: "playlist-id", user: { id: 7, role: "admin" }, force: true,
     }]);
@@ -120,7 +120,7 @@ test("import sync delegates to the flow owner without blocking the web event loo
       getStatus: () => null,
     });
     await assert.rejects(
-      syncSharedPlaylistImport({ playlistId: "playlist-id", user: { id: 7 }, force: true }),
+      syncStaticPlaylistImport({ playlistId: "playlist-id", user: { id: 7 }, force: true }),
       (error) => error.code === "SPOTIFY_AUTH_REQUIRED" && error.statusCode === 401,
     );
   } finally {
@@ -278,7 +278,7 @@ test("background import logs completion only after the playlist exists", async (
     assert.equal(started.arguments[2].operationId, completed.operationId);
     assert.equal(completed.provider, "spotify-playlist");
     assert.equal(completed.playlistName, "Completed Import");
-    assert.ok(flowPlaylistConfig.getSharedPlaylist(completed.playlistId));
+    assert.ok(flowPlaylistConfig.getStaticPlaylist(completed.playlistId));
     assert.ok(completed.operationId);
     assert.equal(completed.trackCount, 0);
   } finally {
@@ -291,7 +291,7 @@ test("background import logs a permanent failure with its reason", async (t) => 
   const { stopPlaylistOperationWorker } = await importFromRepo(
     "backend/services/playlists/playlistOperationWorker.js",
   );
-  flowPlaylistConfig.createSharedPlaylist({
+  flowPlaylistConfig.createStaticPlaylist({
     name: "Duplicate Import",
     ownerUserId: 7,
     tracks: [],
@@ -479,7 +479,7 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("orderJobsBySharedPlaylistTracks follows config order over createdAt", () => {
+test("orderJobsByPlaylistTracks follows config order over createdAt", () => {
   const tracks = [
     { artistName: "A", trackName: "One", albumName: "Album" },
     { artistName: "B", trackName: "Two", albumName: "Album" },
@@ -490,14 +490,14 @@ test("orderJobsBySharedPlaylistTracks follows config order over createdAt", () =
     { id: 3, createdAt: 30, ...tracks[2] },
     { id: 1, createdAt: 10, ...tracks[0] },
   ];
-  const ordered = orderJobsBySharedPlaylistTracks(jobs, tracks);
+  const ordered = orderJobsByPlaylistTracks(jobs, tracks);
   assert.deepEqual(
     ordered.map((job) => job.id),
     [1, 2, 3],
   );
 });
 
-test("rebuildSharedPlaylistTracksFromJobs keeps remaining config order", () => {
+test("rebuildStaticPlaylistTracksFromJobs keeps remaining config order", () => {
   const tracks = [
     { artistName: "A", trackName: "One", albumName: "Album" },
     { artistName: "B", trackName: "Two", albumName: "Album" },
@@ -509,7 +509,7 @@ test("rebuildSharedPlaylistTracksFromJobs keeps remaining config order", () => {
     { id: 11, createdAt: 10, ...tracks[0] },
     { id: 12, createdAt: 30, ...tracks[2] },
   ];
-  const remaining = rebuildSharedPlaylistTracksFromJobs(tracks, jobs);
+  const remaining = rebuildStaticPlaylistTracksFromJobs(tracks, jobs);
   assert.deepEqual(
     remaining.map((track) => track.trackName),
     ["One", "Three", "Four"],
@@ -543,12 +543,12 @@ test("mixed reuse seeding keeps import job order", async () => {
     await writeReusableTrack(reusableA);
     await writeReusableTrack(reusableC);
 
-    const playlist = flowPlaylistConfig.createSharedPlaylist({
+    const playlist = flowPlaylistConfig.createStaticPlaylist({
       name: "Import Order",
       tracks: [],
     });
     const imported = [reusableA, missingB, reusableC, missingD];
-    const result = await appendSharedPlaylistTracks({
+    const result = await appendStaticPlaylistTracks({
       playlistId: playlist.id,
       tracks: imported,
     });
@@ -556,9 +556,9 @@ test("mixed reuse seeding keeps import job order", async () => {
     assert.equal(result.tracksReused, 2);
     assert.equal(result.tracksQueued, 2);
 
-    const jobs = orderJobsBySharedPlaylistTracks(
+    const jobs = orderJobsByPlaylistTracks(
       downloadTracker.getByPlaylistType(playlist.id),
-      flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks,
+      flowPlaylistConfig.getStaticPlaylist(playlist.id).tracks,
     );
     assert.deepEqual(
       jobs.map((job) => `${job.artistName}:${job.trackName}:${job.status}`),
@@ -847,18 +847,18 @@ test("deleting a track keeps remaining import order in config", async () => {
     await writeReusableTrack(tracks[0]);
     await writeReusableTrack(tracks[2]);
 
-    const playlist = flowPlaylistConfig.createSharedPlaylist({
+    const playlist = flowPlaylistConfig.createStaticPlaylist({
       name: "Delete Order",
       tracks: [],
     });
-    await appendSharedPlaylistTracks({
+    await appendStaticPlaylistTracks({
       playlistId: playlist.id,
       tracks,
     });
 
-    const jobsBefore = orderJobsBySharedPlaylistTracks(
+    const jobsBefore = orderJobsByPlaylistTracks(
       downloadTracker.getByPlaylistType(playlist.id),
-      flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks,
+      flowPlaylistConfig.getStaticPlaylist(playlist.id).tracks,
     );
     const removedJobId = jobsBefore[1].id;
 
@@ -869,13 +869,13 @@ test("deleting a track keeps remaining import order in config", async () => {
     });
     assert.equal(deleted.success, true);
 
-    const updated = flowPlaylistConfig.getSharedPlaylist(playlist.id);
+    const updated = flowPlaylistConfig.getStaticPlaylist(playlist.id);
     assert.deepEqual(
       updated.tracks.map((track) => track.trackName),
       ["One", "Three", "Four"],
     );
 
-    const jobsAfter = orderJobsBySharedPlaylistTracks(
+    const jobsAfter = orderJobsByPlaylistTracks(
       downloadTracker.getByPlaylistType(playlist.id),
       updated.tracks,
     );
@@ -889,7 +889,7 @@ test("deleting a track keeps remaining import order in config", async () => {
   }
 });
 
-test("replacing a shared playlist removes Spotify tracks and honors file retention", async () => {
+test("replacing a static playlist removes Spotify tracks and honors file retention", async () => {
   const originalStart = downloadWorker.start;
   downloadWorker.start = async () => false;
   try {
@@ -898,7 +898,7 @@ test("replacing a shared playlist removes Spotify tracks and honors file retenti
       trackName: "Removed",
       albumName: "Album",
     };
-    const keepPlaylist = flowPlaylistConfig.createSharedPlaylist({
+    const keepPlaylist = flowPlaylistConfig.createStaticPlaylist({
       name: "Keep Removed",
       tracks: [track],
       importSource: {
@@ -914,17 +914,17 @@ test("replacing a shared playlist removes Spotify tracks and honors file retenti
     const keepJobId = downloadTracker.addJob(track, keepPlaylist.id);
     downloadTracker.setDone(keepJobId, keepPath, track.albumName);
 
-    await updateSharedPlaylist({
+    await updateStaticPlaylist({
       playlistId: keepPlaylist.id,
       tracks: [],
       hasTracksUpdate: true,
       hasImportSourceUpdate: true,
       importSource: keepPlaylist.importSource,
     });
-    assert.deepEqual(flowPlaylistConfig.getSharedPlaylist(keepPlaylist.id).tracks, []);
+    assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(keepPlaylist.id).tracks, []);
     await fs.access(keepPath);
 
-    const deletePlaylist = flowPlaylistConfig.createSharedPlaylist({
+    const deletePlaylist = flowPlaylistConfig.createStaticPlaylist({
       name: "Delete Removed",
       tracks: [track],
       importSource: {
@@ -940,7 +940,7 @@ test("replacing a shared playlist removes Spotify tracks and honors file retenti
     const deleteJobId = downloadTracker.addJob(track, deletePlaylist.id);
     downloadTracker.setDone(deleteJobId, deletePath, track.albumName);
 
-    await updateSharedPlaylist({
+    await updateStaticPlaylist({
       playlistId: deletePlaylist.id,
       tracks: [],
       hasTracksUpdate: true,
@@ -948,7 +948,7 @@ test("replacing a shared playlist removes Spotify tracks and honors file retenti
       importSource: deletePlaylist.importSource,
       deleteUnsharedFiles: true,
     });
-    assert.deepEqual(flowPlaylistConfig.getSharedPlaylist(deletePlaylist.id).tracks, []);
+    assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(deletePlaylist.id).tracks, []);
     await assert.rejects(fs.access(deletePath));
   } finally {
     downloadWorker.start = originalStart;
@@ -962,7 +962,7 @@ test("renaming or changing sync settings leaves queued downloads alone", async (
     trackName,
     albumName: "Album",
   }));
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Imported",
     tracks,
     importSource: {
@@ -991,7 +991,7 @@ test("renaming or changing sync settings leaves queued downloads alone", async (
     importSource: { ...playlist.importSource, syncIntervalHours: 72, keepRemovedTracks: false },
   });
 
-  const updated = flowPlaylistConfig.getSharedPlaylist(playlist.id);
+  const updated = flowPlaylistConfig.getStaticPlaylist(playlist.id);
   assert.equal(updated.name, "Renamed");
   assert.equal(updated.importSource.syncIntervalHours, 72);
   assert.equal(updated.importSource.keepRemovedTracks, false);
@@ -1023,7 +1023,7 @@ test("imported playlist sync preserves enriched jobs while replacing removed tra
     };
     const removed = { artistName: "Artist", trackName: "Removed", albumName: "Album" };
     const retitled = { artistName: "Artist", trackName: "Retitled", albumName: "Album" };
-    const playlist = flowPlaylistConfig.createSharedPlaylist({
+    const playlist = flowPlaylistConfig.createStaticPlaylist({
       name: "Imported Job Retention",
       ownerUserId: 7,
       tracks: [pending, completed, removed, retitled],
@@ -1045,7 +1045,7 @@ test("imported playlist sync preserves enriched jobs while replacing removed tra
     downloadTracker.updateMetadata(retitledJobId, { albumName: "Album (Deluxe Edition)" });
     downloadTracker.setDone(retitledJobId, completedPath, "Album (Deluxe Edition)");
 
-    const result = await updateSharedPlaylist({
+    const result = await updateStaticPlaylist({
       playlistId: playlist.id,
       tracks: [
         { artistName: "Artist", trackName: "Pending", albumName: "Album" },
@@ -1077,7 +1077,7 @@ test("ListenBrainz sync uses the shared import update path", async (t) => {
   const info = t.mock.method(logger, "info", () => {});
   downloadWorker.start = async () => false;
   try {
-    const playlist = flowPlaylistConfig.createSharedPlaylist({
+    const playlist = flowPlaylistConfig.createStaticPlaylist({
       name: "ListenBrainz Mix",
       ownerUserId: 7,
       tracks: [{ artistName: "Old Artist", trackName: "Old Song" }],
@@ -1093,13 +1093,13 @@ test("ListenBrainz sync uses the shared import update path", async (t) => {
       stats: { incomplete: 0, duplicate: 0 },
     });
 
-    await syncSharedPlaylistImport({
+    await syncStaticPlaylistImport({
       playlistId: playlist.id,
       user: { id: 7 },
       force: true,
     });
 
-    const syncedTracks = flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks;
+    const syncedTracks = flowPlaylistConfig.getStaticPlaylist(playlist.id).tracks;
     assert.ok(syncedTracks[0].membershipId);
     assert.notEqual(syncedTracks[0].membershipId, playlist.tracks[0].membershipId);
     assert.deepEqual(syncedTracks.map(({ membershipId: _membershipId, ...track }) => track), [
@@ -1141,7 +1141,7 @@ test("YouTube Music sync uses the shared import path without logging its externa
   }));
   downloadWorker.start = async () => false;
   try {
-    const playlist = flowPlaylistConfig.createSharedPlaylist({
+    const playlist = flowPlaylistConfig.createStaticPlaylist({
       name: "YouTube Mix",
       ownerUserId: 7,
       tracks: [{ artistName: "Old Artist", trackName: "Old Song" }],
@@ -1154,7 +1154,7 @@ test("YouTube Music sync uses the shared import path without logging its externa
       },
     });
 
-    const result = await syncSharedPlaylistImport({
+    const result = await syncStaticPlaylistImport({
       playlistId: playlist.id,
       user: { id: 7 },
       force: true,
@@ -1166,7 +1166,7 @@ test("YouTube Music sync uses the shared import path without logging its externa
       { forceRefresh: true },
     ]);
     assert.equal(result.trackCount, 1);
-    assert.equal(flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks[0].trackName, "New Song");
+    assert.equal(flowPlaylistConfig.getStaticPlaylist(playlist.id).tracks[0].trackName, "New Song");
     assert.equal(JSON.stringify(info.mock.calls).includes("PLsecretUnlisted_123"), false);
   } finally {
     downloadWorker.start = originalStart;
@@ -1182,7 +1182,7 @@ test("Spotify sync logs replacement tracks and excluded entries separately from 
   try {
     const keep = { artistName: "Artist", trackName: "Keep", albumName: "Album" };
     const removed = { artistName: "Artist", trackName: "Removed", albumName: "Album" };
-    const playlist = flowPlaylistConfig.createSharedPlaylist({
+    const playlist = flowPlaylistConfig.createStaticPlaylist({
       name: "Spotify Replacement",
       ownerUserId: 7,
       tracks: [keep, removed],
@@ -1199,7 +1199,7 @@ test("Spotify sync logs replacement tracks and excluded entries separately from 
       { track: null },
     ];
 
-    const result = await syncSharedPlaylistImport({
+    const result = await syncStaticPlaylistImport({
       playlistId: playlist.id,
       user: { id: 7 },
       force: true,
@@ -1207,7 +1207,7 @@ test("Spotify sync logs replacement tracks and excluded entries separately from 
 
     assert.equal(result.trackCount, 2);
     assert.equal(result.tracksQueued, 2);
-    assert.equal(flowPlaylistConfig.getSharedPlaylist(playlist.id).trackCount, 2);
+    assert.equal(flowPlaylistConfig.getStaticPlaylist(playlist.id).trackCount, 2);
     const completed = info.mock.calls.find((call) =>
       call.arguments[1] === "Playlist import sync completed");
     assert.equal(completed?.arguments[2]?.previousTrackCount, 2);
@@ -1235,7 +1235,7 @@ test("Spotify sync identifies source tracks dropped before playlist storage", as
   downloadWorker.start = async () => false;
   try {
     addDiscoveryFeedback("7", { artistName: "Blocked Artist", action: "block_artist" });
-    const playlist = flowPlaylistConfig.createSharedPlaylist({
+    const playlist = flowPlaylistConfig.createStaticPlaylist({
       name: "Filtered Spotify Import",
       ownerUserId: 7,
       tracks: [],
@@ -1251,7 +1251,7 @@ test("Spotify sync identifies source tracks dropped before playlist storage", as
       { track: { name: "Included", artists: [{ name: "Allowed Artist" }] } },
     ];
 
-    const result = await syncSharedPlaylistImport({
+    const result = await syncStaticPlaylistImport({
       playlistId: playlist.id,
       user: { id: 7 },
       force: true,
@@ -1276,7 +1276,7 @@ test("failed import sync logs the reason and preserves it on the playlist", asyn
     listenbrainzPlaylistClient.getGeneratedPlaylistTracks;
   const errors = t.mock.method(logger, "error", () => {});
   try {
-    const playlist = flowPlaylistConfig.createSharedPlaylist({
+    const playlist = flowPlaylistConfig.createStaticPlaylist({
       name: "Unavailable Mix",
       ownerUserId: 7,
       tracks: [{ artistName: "Old Artist", trackName: "Old Song" }],
@@ -1292,7 +1292,7 @@ test("failed import sync logs the reason and preserves it on the playlist", asyn
     };
 
     await assert.rejects(
-      syncSharedPlaylistImport({ playlistId: playlist.id, user: { id: 7 }, force: true }),
+      syncStaticPlaylistImport({ playlistId: playlist.id, user: { id: 7 }, force: true }),
       /ListenBrainz request timed out/,
     );
 
@@ -1301,7 +1301,7 @@ test("failed import sync logs the reason and preserves it on the playlist", asyn
     assert.equal(failed?.arguments[2]?.playlistId, playlist.id);
     assert.equal(failed?.arguments[2]?.reason, "ListenBrainz request timed out");
     assert.equal(
-      flowPlaylistConfig.getSharedPlaylist(playlist.id).importSource.lastSyncError,
+      flowPlaylistConfig.getStaticPlaylist(playlist.id).importSource.lastSyncError,
       "ListenBrainz request timed out",
     );
   } finally {
@@ -1314,7 +1314,7 @@ test("Last.fm station sync refreshes the saved station and username", async () =
   const originalGetStationTracks = lastfmStationClient.getStationTracks;
   downloadWorker.start = async () => false;
   try {
-    const playlist = flowPlaylistConfig.createSharedPlaylist({
+    const playlist = flowPlaylistConfig.createStaticPlaylist({
       name: "Last.fm Mix",
       ownerUserId: 7,
       tracks: [{ artistName: "Old Artist", trackName: "Old Song" }],
@@ -1335,7 +1335,7 @@ test("Last.fm station sync refreshes the saved station and username", async () =
       };
     };
 
-    await syncSharedPlaylistImport({
+    await syncStaticPlaylistImport({
       playlistId: playlist.id,
       user: { id: 7 },
       force: true,
@@ -1347,14 +1347,14 @@ test("Last.fm station sync refreshes the saved station and username", async () =
       username: "station-user",
     });
     assert.deepEqual(
-      flowPlaylistConfig.getSharedPlaylist(playlist.id).tracks.map(({ artistName, trackName }) => ({
+      flowPlaylistConfig.getStaticPlaylist(playlist.id).tracks.map(({ artistName, trackName }) => ({
         artistName,
         trackName,
       })),
       [{ artistName: "New Artist", trackName: "New Song" }],
     );
     assert.equal(
-      flowPlaylistConfig.getSharedPlaylist(playlist.id).importSource.externalUsername,
+      flowPlaylistConfig.getStaticPlaylist(playlist.id).importSource.externalUsername,
       "station-user",
     );
   } finally {
@@ -1374,7 +1374,7 @@ test("Spotify sync keeps a retention change made while Spotify is pending", asyn
       trackName: "Removed",
       albumName: "Album",
     };
-    const playlist = flowPlaylistConfig.createSharedPlaylist({
+    const playlist = flowPlaylistConfig.createStaticPlaylist({
       name: "Pending Retention",
       ownerUserId: 7,
       tracks: [track],
@@ -1396,14 +1396,14 @@ test("Spotify sync keeps a retention change made while Spotify is pending", asyn
       new Promise((resolve) => {
         resolveSpotifyTracks = resolve;
       });
-    const syncPromise = syncSharedPlaylistImport({
+    const syncPromise = syncStaticPlaylistImport({
       playlistId: playlist.id,
       user: { id: 7 },
       force: true,
     });
     await new Promise((resolve) => setImmediate(resolve));
 
-    flowPlaylistConfig.updateSharedPlaylist(playlist.id, {
+    flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
       importSource: {
         ...playlist.importSource,
         keepRemovedTracks: false,
@@ -1412,7 +1412,7 @@ test("Spotify sync keeps a retention change made while Spotify is pending", asyn
     resolveSpotifyTracks([]);
     await syncPromise;
 
-    const updated = flowPlaylistConfig.getSharedPlaylist(playlist.id);
+    const updated = flowPlaylistConfig.getStaticPlaylist(playlist.id);
     assert.equal(updated.importSource.keepRemovedTracks, false);
     assert.equal(updated.tracks.length, 0);
     await assert.rejects(fs.access(finalPath));
@@ -1442,7 +1442,7 @@ test("Spotify cleanup serializes retention updates with file removal", async () 
       trackName: "Cleanup",
       albumName: "Album",
     };
-    const playlist = flowPlaylistConfig.createSharedPlaylist({
+    const playlist = flowPlaylistConfig.createStaticPlaylist({
       name: "Serialized Retention",
       ownerUserId: 7,
       tracks: [track],
@@ -1466,7 +1466,7 @@ test("Spotify cleanup serializes retention updates with file removal", async () 
       await removalBlocked;
       return originalRm(...args);
     };
-    const syncPromise = syncSharedPlaylistImport({
+    const syncPromise = syncStaticPlaylistImport({
       playlistId: playlist.id,
       user: { id: 7 },
       force: true,
@@ -1474,7 +1474,7 @@ test("Spotify cleanup serializes retention updates with file removal", async () 
     await removalStarted;
 
     let retentionUpdated = false;
-    const retentionPromise = updateSharedPlaylist({
+    const retentionPromise = updateStaticPlaylist({
       playlistId: playlist.id,
       hasImportSourceUpdate: true,
       importSource: {
@@ -1491,7 +1491,7 @@ test("Spotify cleanup serializes retention updates with file removal", async () 
     await syncPromise;
     await retentionPromise;
     assert.equal(
-      flowPlaylistConfig.getSharedPlaylist(playlist.id).importSource.keepRemovedTracks,
+      flowPlaylistConfig.getStaticPlaylist(playlist.id).importSource.keepRemovedTracks,
       true,
     );
     await assert.rejects(fs.access(finalPath));
@@ -1519,7 +1519,7 @@ test("Spotify status asks the owner to reconnect only when synced imports lost t
     handlers.get("/import/spotify/status")({ user: { id: userId } }, response);
     return response.body;
   };
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Synced Spotify Mix",
     ownerUserId: 41,
     tracks: [],
@@ -1541,6 +1541,6 @@ test("Spotify status asks the owner to reconnect only when synced imports lost t
     );
   } finally {
     spotifyConnectionStore.clearConnection(41);
-    flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+    flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
   }
 });

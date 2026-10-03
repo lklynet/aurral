@@ -46,7 +46,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { useSharedPlaylists } from "../hooks/useSharedPlaylists";
+import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
 import {
@@ -75,9 +75,9 @@ import {
   updateLibraryFavorites,
 } from "../utils/api/endpoints/library.js";
 import {
-  addSharedPlaylistTracks,
-  createSharedPlaylist,
-  deleteSharedPlaylistTrack,
+  addStaticPlaylistTracks,
+  createStaticPlaylist,
+  deleteStaticPlaylistTrack,
 } from "../utils/api/endpoints/playlists.js";
 import { buildAuthenticatedApiUrl } from "../utils/api/core.js";
 import { mergeAlbumMetadataTracks } from "../utils/libraryTrackHydration.js";
@@ -121,7 +121,7 @@ import { DeleteTrackModal } from "./ArtistDetails/components/DeleteTrackModal";
 import LibraryInfoModal from "./LibraryInfoModal";
 import ArtistMbidModal from "./ArtistMbidModal";
 import {
-  buildSharedPlaylistTrackPayload,
+  buildStaticPlaylistTrackPayload,
   reserveUniquePlaylistName,
 } from "./ArtistDetails/utils";
 import { useResponsiveReleaseLimit } from "./ArtistDetails/hooks/useResponsiveReleaseLimit";
@@ -335,13 +335,13 @@ function LibraryPage() {
   const { bootstrap, hasPermission, user } = useAuth();
   const { showError, showSuccess } = useToast();
   const {
-    sharedPlaylists,
-    setSharedPlaylists,
+    staticPlaylists,
+    setStaticPlaylists,
     playlistsLoading,
     playlistsError,
     setPlaylistsError,
-    loadSharedPlaylists,
-  } = useSharedPlaylists();
+    loadStaticPlaylists,
+  } = useStaticPlaylists();
   const { playQueue, currentTrack, isPlaying, isLoading, togglePlayPause, matchesSource } =
     useAudioQueue();
   const [query, setQuery] = useState("");
@@ -779,17 +779,17 @@ function LibraryPage() {
   const getDefaultTrackPlaylistName = useCallback(
     (track) =>
       reserveUniquePlaylistName(
-        sharedPlaylists,
+        staticPlaylists,
         `${getArtistForAlbum(getAlbumForTrack(track))?.name || track?.artistName || "Artist"} Picks`,
       ),
-    [getAlbumForTrack, getArtistForAlbum, sharedPlaylists],
+    [getAlbumForTrack, getArtistForAlbum, staticPlaylists],
   );
 
   const addLibraryTrackToPlaylist = useCallback(
     async (track, target) => {
       const album = getAlbumForTrack(track);
       const artist = getArtistForAlbum(album);
-      const payload = buildSharedPlaylistTrackPayload({
+      const payload = buildStaticPlaylistTrackPayload({
         artistName: artist?.name || track?.artistName || "",
         trackName: track?.title || "",
         albumName: album?.title || "",
@@ -811,17 +811,17 @@ function LibraryPage() {
           const name =
             String(target?.name || "").trim() ||
             getDefaultTrackPlaylistName(track);
-          await createSharedPlaylist({ name, tracks: [payload] });
+          await createStaticPlaylist({ name, tracks: [payload] });
           showSuccess(`Track saved to ${name}`);
         } else {
-          const playlist = sharedPlaylists.find(
+          const playlist = staticPlaylists.find(
             (candidate) => candidate.id === target?.playlistId,
           );
-          await addSharedPlaylistTracks(target?.playlistId, { tracks: [payload] });
+          await addStaticPlaylistTracks(target?.playlistId, { tracks: [payload] });
           showSuccess(`Track added to ${playlist?.name || "playlist"}`);
         }
-        const nextPlaylists = await loadSharedPlaylists();
-        if (nextPlaylists) setSharedPlaylists(nextPlaylists);
+        const nextPlaylists = await loadStaticPlaylists();
+        if (nextPlaylists) setStaticPlaylists(nextPlaylists);
       } catch (requestError) {
         const message =
           requestError.response?.data?.message ||
@@ -838,10 +838,10 @@ function LibraryPage() {
       getAlbumForTrack,
       getArtistForAlbum,
       getDefaultTrackPlaylistName,
-      loadSharedPlaylists,
+      loadStaticPlaylists,
       setPlaylistsError,
-      setSharedPlaylists,
-      sharedPlaylists,
+      setStaticPlaylists,
+      staticPlaylists,
       showError,
       showSuccess,
     ],
@@ -854,14 +854,14 @@ function LibraryPage() {
       setPlaylistSavingKey(key);
       setPlaylistsError("");
       try {
-        const result = await deleteSharedPlaylistTrack(target.playlistId, target.jobId);
+        const result = await deleteStaticPlaylistTrack(target.playlistId, target.jobId);
         showSuccess(
           result?.queued
             ? `Removal queued for ${track?.title || "track"}`
             : `Removed ${track?.title || "track"} from playlist`,
         );
-        const nextPlaylists = await loadSharedPlaylists();
-        if (nextPlaylists) setSharedPlaylists(nextPlaylists);
+        const nextPlaylists = await loadStaticPlaylists();
+        if (nextPlaylists) setStaticPlaylists(nextPlaylists);
       } catch (requestError) {
         const message =
           requestError.response?.data?.message ||
@@ -874,7 +874,7 @@ function LibraryPage() {
         setPlaylistSavingKey("");
       }
     },
-    [loadSharedPlaylists, setPlaylistsError, setSharedPlaylists, showError, showSuccess],
+    [loadStaticPlaylists, setPlaylistsError, setStaticPlaylists, showError, showSuccess],
   );
 
   const canDeleteArtist = hasPermission("deleteArtist");
@@ -2028,14 +2028,14 @@ function LibraryPage() {
           menu: {
             items: trackMenuItems,
             additionalItemsAfter: "play",
-            onMenuOpen: loadSharedPlaylists,
+            onMenuOpen: loadStaticPlaylists,
             renderAdditionalItems: ({ closeMenu }) => (
               <>
                 <div className="native-library-item-menu__separator" />
                 <TrackPlaylistSubmenu
                   label="Add to playlist"
                   track={track}
-                  playlists={sharedPlaylists}
+                  playlists={staticPlaylists}
                   loading={playlistsLoading}
                   saving={playlistSavingKey === String(track.id)}
                   error={playlistsError}
@@ -2046,7 +2046,7 @@ function LibraryPage() {
                 />
                 <TrackPlaylistRemoveSubmenu
                   track={track}
-                  playlists={sharedPlaylists}
+                  playlists={staticPlaylists}
                   saving={playlistSavingKey === String(track.id)}
                   error={playlistsError}
                   onSelect={(target) => removeLibraryTrackFromPlaylist(track, target)}

@@ -23,8 +23,8 @@ import { buildImageProxyUrl, warmPublicImageUrl } from "./imageProxyService.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import {
   flowPlaylistConfig,
-  normalizeSharedTrack,
-  orderJobsBySharedPlaylistTracks,
+  normalizePlaylistTrack,
+  orderJobsByPlaylistTracks,
   tracksShareMembership,
 } from "./playlists/flowPlaylistConfig.js";
 import { playlistManager } from "./playlists/playlistManager.js";
@@ -297,7 +297,7 @@ function playlistFromId(user, value) {
   const parsed = parseId(value);
   if (!parsed || !["flow", "shared"].includes(parsed.kind)) return null;
   if (parsed.kind === "flow") return flowPlaylistConfig.getFlowForUser(user, parsed.key);
-  return flowPlaylistConfig.getSharedPlaylistForUser(user, parsed.key);
+  return flowPlaylistConfig.getStaticPlaylistForUser(user, parsed.key);
 }
 
 function toPlaylistSong(
@@ -355,7 +355,7 @@ function playlistJobs(playlist) {
   const uniqueJobs = jobs.filter(
     (job, index, values) => values.findIndex((candidate) => candidate.id === job.id) === index,
   );
-  return orderJobsBySharedPlaylistTracks(uniqueJobs, playlist.tracks);
+  return orderJobsByPlaylistTracks(uniqueJobs, playlist.tracks);
 }
 
 function playlistOwnsJob(playlist, job) {
@@ -621,7 +621,7 @@ const touchStars = (userId) => {
 
 const isSameTrack = (left, right) => tracksShareMembership(left, right);
 
-const trackFromJob = (job) => normalizeSharedTrack({
+const trackFromJob = (job) => normalizePlaylistTrack({
   artistName: job?.artistName,
   trackName: job?.trackName,
   albumName: job?.albumName,
@@ -638,7 +638,7 @@ const trackFromJob = (job) => normalizeSharedTrack({
 
 const trackFromCanonical = (library, track) => {
   const album = findAlbumForTrack(library, track);
-  return normalizeSharedTrack({
+  return normalizePlaylistTrack({
     artistName: track?.artistName,
     trackName: track?.title,
     albumName: album?.title,
@@ -708,7 +708,7 @@ const findReusableLibrarySource = (track) =>
 // looked up in one canonical query (by recording MBID and by title), then matched in memory with
 // the same rule the playlist code uses, so a 1000-entry playlist costs a couple of statements.
 export function resolveCanonicalTracks(descriptors) {
-  const items = (Array.isArray(descriptors) ? descriptors : []).map((entry) => normalizeSharedTrack(entry));
+  const items = (Array.isArray(descriptors) ? descriptors : []).map((entry) => normalizePlaylistTrack(entry));
   const present = items.filter(Boolean);
   if (!present.length) return items.map(() => null);
   const library = indexFocusedLibrary(getCanonicalLibraryForTrackMatches({
@@ -834,7 +834,7 @@ const refreshSubsonicPlaylist = (playlistId) => {
   playlistManager.scheduleScanLibrary();
 };
 
-const normalizeSharedPlaylistId = (value) => {
+const normalizeStaticPlaylistId = (value) => {
   const parsed = parseId(value);
   return parsed?.kind === "shared" ? parsed.key : String(value || "").trim();
 };
@@ -842,7 +842,7 @@ const normalizeSharedPlaylistId = (value) => {
 const canonicalizePlaylistTracks = (tracks, createdJobIds = null) => {
   const normalized = [];
   for (const track of Array.isArray(tracks) ? tracks : []) {
-    const candidate = normalizeSharedTrack(track);
+    const candidate = normalizePlaylistTrack(track);
     if (!candidate) continue;
     const existingJob = candidate.canonicalJobId
       ? downloadTracker.getJob(candidate.canonicalJobId)
@@ -857,7 +857,7 @@ const canonicalizePlaylistTracks = (tracks, createdJobIds = null) => {
 };
 
 const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {}) => {
-  if (!playlist || !flowPlaylistConfig.canUserAccessSharedPlaylist(user, playlist)) return null;
+  if (!playlist || !flowPlaylistConfig.canUserAccessStaticPlaylist(user, playlist)) return null;
   const createdJobIds = [];
   const canonicalTracks = canonicalizePlaylistTracks(tracks, createdJobIds);
   if (!canonicalTracks) {
@@ -883,7 +883,7 @@ const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {
   try {
     await cancelLegacyPlaylistJobs(jobsToRemove);
     updated = await withHonkerLock(`playlist-mutation:${playlist.id}`, async () => {
-      const replacement = flowPlaylistConfig.updateSharedPlaylist(playlist.id, {
+      const replacement = flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
         ...updates,
         tracks: canonicalTracks,
       });
@@ -943,7 +943,7 @@ export async function createSubsonicPlaylist(user, { name, songIds = [] } = {}) 
   if (!safeName) return null;
   const resolved = songIds.map((id) => resolveSubsonicTrack(user, id));
   if (resolved.some((entry) => !entry)) return null;
-  const playlist = flowPlaylistConfig.createSharedPlaylist({
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
     id: randomUUID(),
     name: safeName,
     ownerUserId: user.id,
@@ -955,10 +955,10 @@ export async function createSubsonicPlaylist(user, { name, songIds = [] } = {}) 
       playlist,
       resolved.map((entry) => entry.track),
     );
-    if (!updated) flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+    if (!updated) flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
     return updated;
   } catch (error) {
-    flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
+    flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
     throw error;
   }
 }
@@ -968,9 +968,9 @@ export async function updateSubsonicPlaylist(
   { playlistId, name, comment, songIdsToAdd = [], songIndexesToRemove = [] } = {},
 ) {
   return withHonkerLock("weekly-flow-operation", async () => {
-    const playlist = flowPlaylistConfig.getSharedPlaylistForUser(
+    const playlist = flowPlaylistConfig.getStaticPlaylistForUser(
       user,
-      normalizeSharedPlaylistId(playlistId),
+      normalizeStaticPlaylistId(playlistId),
     );
     if (!playlist || !hasPermission(user, "accessFlow")) return null;
     const resolvedAdds = songIdsToAdd.map((id) => resolveSubsonicTrack(user, id));
@@ -989,9 +989,9 @@ export async function updateSubsonicPlaylist(
 }
 
 export async function deleteSubsonicPlaylist(user, playlistId) {
-  const playlist = flowPlaylistConfig.getSharedPlaylistForUser(
+  const playlist = flowPlaylistConfig.getStaticPlaylistForUser(
     user,
-    normalizeSharedPlaylistId(playlistId),
+    normalizeStaticPlaylistId(playlistId),
   );
   if (!playlist || !hasPermission(user, "accessFlow")) return false;
   return processPlaylistOperation({
@@ -1183,7 +1183,7 @@ export function getFlowPlaylists(user) {
     if (flow.description) playlist.comment = flow.description;
     return playlist;
   });
-  const sharedPlaylists = flowPlaylistConfig.getSharedPlaylistsForUser(user).map((playlist) => {
+  const staticPlaylists = flowPlaylistConfig.getStaticPlaylistsForUser(user).map((playlist) => {
     const jobs = flowJobs(playlist, { includePending: true });
     const value = {
       id: idFor("shared", playlist.id),
@@ -1199,7 +1199,7 @@ export function getFlowPlaylists(user) {
     if (playlist.description) value.comment = playlist.description;
     return value;
   });
-  return [...flows, ...sharedPlaylists];
+  return [...flows, ...staticPlaylists];
 }
 
 export function getFlowPlaylist(value, user) {
