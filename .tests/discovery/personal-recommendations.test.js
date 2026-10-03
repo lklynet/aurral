@@ -190,6 +190,23 @@ test("tag search and flow plans read the user's own pool", async () => {
   assert.ok(basedOn.some((artist) => artist.name === LIKED.name));
 });
 
+test("discover API shows a match percent that follows the user's ranking, not on trending", async () => {
+  discovery.getDiscoveryCache().globalTop = [{ id: mbid(90), navigateTo: mbid(90), name: "Trending Artist" }];
+  try {
+    const { status, body } = await requestDiscoveryApi(alice.id, "");
+    assert.equal(status, 200);
+    const percents = body.recommendations.map((artist) => artist.matchPercent);
+    assert.ok(percents.length >= 2);
+    assert.equal(percents[0], 99);
+    assert.equal(percents.at(-1), 55);
+    assert.deepEqual([...percents].sort((left, right) => right - left), percents);
+    assert.equal(body.globalTop[0].name, "Trending Artist");
+    assert.equal(body.globalTop[0].matchPercent, null);
+  } finally {
+    discovery.getDiscoveryCache().globalTop = [];
+  }
+});
+
 test("feedback through the API waits for the next scheduled rebuild", async () => {
   const response = await requestDiscoveryApi(alice.id, "/feedback", {
     method: "POST",

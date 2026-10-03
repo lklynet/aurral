@@ -11,6 +11,7 @@ import { getReleaseNavigationTarget } from "../utils/searchNavigation";
 import { getAlbumAddAction } from "../utils/albumAddAction";
 import { formatDate } from "../utils/dateTime.js";
 import Tooltip from "../components/Tooltip";
+import RecommendationMeta from "../components/RecommendationMeta";
 const parseCalendarDate = (value) => {
   if (!value) return null;
   const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -135,13 +136,11 @@ export const ArtistCard = memo(
               </Tooltip>
               {isInLibrary && <SearchLibraryCheck size="discover" />}
             </div>
-            {artistMetaText ? (
-              <Tooltip content={artistMetaText || undefined}>
-                <p className="artist-card-meta--discover" >
-                  {artistMetaText}
-                </p>
-              </Tooltip>
-            ) : null}
+            <RecommendationMeta
+              artist={artist}
+              text={artistMetaText}
+              className="artist-card-meta--discover"
+            />
             {artist.subtitle && (
               <Tooltip content={artist.subtitle}>
                 <p className="artist-card-meta--discover" >
@@ -174,6 +173,7 @@ export const ArtistCard = memo(
       prevProps.artist.canonicalId === nextProps.artist.canonicalId &&
       prevProps.artist.subtitle === nextProps.artist.subtitle &&
       getRecommendationReason(prevProps.artist) === getRecommendationReason(nextProps.artist) &&
+      prevProps.artist.matchPercent === nextProps.artist.matchPercent &&
       prevProps.status === nextProps.status &&
       prevProps.isInLibrary === nextProps.isInLibrary &&
       prevProps.feedbackUsed?.more_like_this === nextProps.feedbackUsed?.more_like_this &&

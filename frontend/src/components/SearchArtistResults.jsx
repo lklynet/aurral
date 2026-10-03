@@ -4,6 +4,7 @@ import { ArtistContextMenu } from "./ArtistContextMenu";
 import { getArtistFeedbackFlags } from "../utils/discoveryFeedback";
 import { getArtistRecordId } from "../utils/artistTaste";
 import Tooltip from "./Tooltip";
+import RecommendationMeta from "./RecommendationMeta";
 
 function TagRecommendedArtistCover({ artist, artistId, artistImages, isInLibrary, className = "" }) {
   const coverSrc = artistImages[artistId] || artist.image || artist.imageUrl || "";
@@ -176,13 +177,11 @@ function SearchArtistResults({
                     {artist.name}
                   </h2>
                 </Tooltip>
-                {artistMetaText ? (
-                  <Tooltip content={artistMetaText}>
-                    <p className="artist-release-card__meta artist-truncate" >
-                      {artistMetaText}
-                    </p>
-                  </Tooltip>
-                ) : null}
+                <RecommendationMeta
+                  artist={artist}
+                  text={artistMetaText}
+                  className="artist-release-card__meta artist-truncate"
+                />
                 {disambiguationLine ? (
                   <Tooltip content={disambiguationLine}>
                     <p className="artist-release-card__meta artist-truncate" >
@@ -225,13 +224,11 @@ function SearchArtistResults({
                   </Tooltip>
                   {libraryLookup[artistId] && <SearchLibraryCheck />}
                 </div>
-                {artistMetaText ? (
-                  <Tooltip content={artistMetaText}>
-                    <p className="artist-card-meta--discover" >
-                      {artistMetaText}
-                    </p>
-                  </Tooltip>
-                ) : null}
+                <RecommendationMeta
+                  artist={artist}
+                  text={artistMetaText}
+                  className="artist-card-meta--discover"
+                />
                 {variant !== "round" && disambiguationLine ? (
                   <Tooltip content={disambiguationLine}>
                     <p className="artist-card-meta--discover" >

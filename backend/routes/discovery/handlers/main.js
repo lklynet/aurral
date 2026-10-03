@@ -22,6 +22,7 @@ const toDiscoveryArtist = (artist) => ({
   discoveryTier: artist.discoveryTier || null,
   score: artist.score ?? null,
   scoreTotal: artist.scoreTotal ?? null,
+  matchPercent: artist.matchPercent ?? null,
   popularityLabel: artist.popularityLabel || null,
   popularityRank: artist.popularityRank || null,
   listeners: artist.listeners || 0,

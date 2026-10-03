@@ -743,9 +743,26 @@ export const withArtistRouteId = (recommendation) => {
     : { ...recommendation, id: mbid, navigateTo: mbid };
 };
 
-export const serveRecommendations = (recommendations = [], { feedback = [], discoveryMode } = {}) =>
-  rerankRecommendations(recommendations, recommendations.length, { feedback, discoveryMode })
-    .map(withArtistRouteId);
+const TOP_MATCH_PERCENT = 99;
+const LOWEST_MATCH_PERCENT = 55;
+
+const matchPercentForRank = (index, count) =>
+  count <= 1
+    ? TOP_MATCH_PERCENT
+    : Math.round(
+        TOP_MATCH_PERCENT - ((TOP_MATCH_PERCENT - LOWEST_MATCH_PERCENT) * index) / (count - 1),
+      );
+
+export const serveRecommendations = (recommendations = [], { feedback = [], discoveryMode } = {}) => {
+  const ranked = rerankRecommendations(recommendations, recommendations.length, {
+    feedback,
+    discoveryMode,
+  });
+  return ranked.map((recommendation, index) => ({
+    ...withArtistRouteId(recommendation),
+    matchPercent: matchPercentForRank(index, ranked.length),
+  }));
+};
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
