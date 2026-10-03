@@ -264,8 +264,8 @@ export async function withPipelineCommitLock(payload, operation) {
   if (!playlistId) {
     return { cancelled: false, result: await operation() };
   }
-  const { withPlaylistMutationLock } = await import("./mutationGuards.js");
-  return withPlaylistMutationLock(
+  const { withDownloadImportLock } = await import("./mutationGuards.js");
+  return withDownloadImportLock(
     playlistId,
     async () => {
       if (!isPipelinePayloadActive(payload)) {

@@ -35,6 +35,7 @@ import { selectCanonicalFile } from "./canonicalFileSelector.js";
 import { logger } from "./logger.js";
 import { withHonkerLock } from "./honkerDb.js";
 import { removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.js";
+import { withPlaylistMutationLock } from "./downloadJobs/mutationGuards.js";
 import {
   isDownloadJobCancelled,
   restoreDownloadJobCancellations,
@@ -882,7 +883,7 @@ const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {
   let updated;
   try {
     await cancelLegacyPlaylistJobs(jobsToRemove);
-    updated = await withHonkerLock(`playlist-mutation:${playlist.id}`, async () => {
+    updated = await withPlaylistMutationLock(playlist.id, async () => {
       const replacement = flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
         ...updates,
         tracks: libraryTracks,
@@ -918,10 +919,6 @@ const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {
         downloadTracker.removeJob(current.id);
       }
       return replacement;
-    }, {
-      ttlSeconds: 180,
-      waitTimeoutMs: 15 * 60 * 1000,
-      retryDelayMs: 250,
     });
   } catch (error) {
     for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);

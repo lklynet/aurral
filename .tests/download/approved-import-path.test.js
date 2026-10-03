@@ -25,6 +25,9 @@ const [
   { processPlaylistOperation },
   libraryStore,
   downloadUtils,
+  { hasApprovalFollowUps },
+  { processOrchestratorJob },
+  { withPlaylistMutationLock },
 ] = await setupIsolatedBackend(
   "approved-import-path",
   "backend/config/db-sqlite.js",
@@ -39,6 +42,9 @@ const [
   "backend/services/playlists/playlistOperations.js",
   "backend/services/libraryMediaStore.js",
   "backend/services/downloadUtils.js",
+  "backend/services/downloadJobs/blockedJobReview.js",
+  "backend/services/slskdOrchestratorWorker.js",
+  "backend/services/downloadJobs/mutationGuards.js",
 );
 
 const {
@@ -86,6 +92,12 @@ playlistManager.navidromeDestination.client = {
   async deletePlaylist() {},
   async scanLibrary() {},
 };
+
+async function waitForApprovalFollowUps() {
+  while (hasApprovalFollowUps()) await new Promise((resolve) => setTimeout(resolve, 5));
+}
+
+test.afterEach(waitForApprovalFollowUps);
 
 test.beforeEach(async () => {
   await resetDatabase(db);
@@ -227,10 +239,11 @@ test("approving a reviewed download commits it inside the managed playlist libra
   assert.equal(payload.path, expectedPath);
   assert.equal(downloadTracker.getJob(jobId)?.finalPath, expectedPath);
   assert.equal(await fs.readFile(expectedPath, "utf8"), "reviewed audio");
+  await waitForApprovalFollowUps();
   await assert.rejects(fs.access(path.join(playlistManager.libraryRoot, "Reviewed.m3u")));
 });
 
-test("approving a reviewed download releases the playlist lock before publishing the playlist", async (t) => {
+test("approving a reviewed download responds before publishing, and the publish holds off playlist changes but not imports", async (t) => {
   const playlistId = "reviewed-slow-publish";
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
@@ -261,6 +274,8 @@ test("approving a reviewed download releases the playlist lock before publishing
   });
 
   const approve = fetch(`${baseUrl}/jobs/${jobId}/approve`, { method: "POST" });
+  let changed = false;
+  let playlistChange;
   try {
     await publishEntered;
     assert.equal(downloadTracker.getJob(jobId)?.status, "done");
@@ -273,12 +288,65 @@ test("approving a reviewed download releases the playlist lock before publishing
       new Promise((resolve) => setTimeout(() => resolve("blocked"), 1000)),
     ]);
     assert.equal(state, "committed");
+    const response = await Promise.race([
+      approve,
+      new Promise((resolve) => setTimeout(() => resolve(null), 1000)),
+    ]);
+    assert.equal(response?.status, 200);
+    assert.equal((await response.json()).success, true);
+    playlistChange = withPlaylistMutationLock(playlistId, () => {
+      changed = true;
+    });
+    await new Promise(setImmediate);
+    assert.equal(changed, false);
   } finally {
     releasePublish();
   }
+  await playlistChange;
+  assert.equal(changed, true);
+});
 
-  const response = await approve;
-  assert.equal(response.status, 200, JSON.stringify(await response.json()));
+test("approving a library track does not wait for another library track's download step", async () => {
+  const sourcePath = path.join(isolatedState.baseDir, "review", "Library review.flac");
+  await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+  await fs.writeFile(sourcePath, "reviewed audio");
+  const searchingJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Still searching", albumName: "Album" },
+    "library",
+  );
+  const reviewedJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Library review", albumName: "Album" },
+    "library",
+  );
+  downloadTracker.setBlocked(reviewedJobId, "blocked-duration-mismatch", sourcePath);
+  const stepStarted = Promise.withResolvers();
+  const releaseStep = Promise.withResolvers();
+  const step = processOrchestratorJob({
+    jobId: searchingJobId,
+    playlistId: "library",
+    playlistGeneration: downloadTracker.getJob(searchingJobId).playlistGeneration,
+  }, {
+    async processPipelinePayload() {
+      stepStarted.resolve();
+      await releaseStep.promise;
+      return null;
+    },
+    async continuePipeline() {},
+  });
+
+  try {
+    await stepStarted.promise;
+    const response = await Promise.race([
+      fetch(`${baseUrl}/jobs/${reviewedJobId}/approve`, { method: "POST" }),
+      new Promise((resolve) => setTimeout(() => resolve(null), 1000)),
+    ]);
+    assert.equal(response?.status, 200);
+    assert.equal(downloadTracker.getJob(reviewedJobId)?.status, "done");
+    assert.equal(await fs.readFile(downloadTracker.getJob(reviewedJobId).finalPath, "utf8"), "reviewed audio");
+  } finally {
+    releaseStep.resolve();
+    await step;
+  }
 });
 
 test("a track committed while an approved review is publishing still reaches the playlist", async (t) => {

@@ -18,11 +18,31 @@ import {
   refreshCompletedPipelinePlaylist,
 } from "../pipelineHelpers.js";
 import { classifyQualityJob } from "../qualityProfileService.js";
+import { withDownloadStepLock } from "./mutationGuards.js";
 import { logger } from "../logger.js";
+
+const approvalFollowUps = new Set();
+
+export const hasApprovalFollowUps = () => approvalFollowUps.size > 0;
 
 const getBlockedJob = (jobId) => {
   const job = downloadTracker.getJob(jobId);
   return job?.status === "blocked" ? job : null;
+};
+
+const logFollowUpFailure = (job, playlistId, error) => {
+  logger.warn("downloads", "Approved track was imported but playlist follow-up failed", {
+    jobId: job.id,
+    playlistId,
+    reason: error?.message || String(error),
+  });
+};
+
+const publishApprovedImport = (job, playlistId) => {
+  const followUp = withDownloadStepLock(playlistId, () => refreshCompletedPipelinePlaylist(job))
+    .catch((error) => logFollowUpFailure(job, playlistId, error))
+    .finally(() => approvalFollowUps.delete(followUp));
+  approvalFollowUps.add(followUp);
 };
 
 export async function approveBlockedJob(jobId) {
@@ -71,15 +91,11 @@ export async function approveBlockedJob(jobId) {
   if (!committed.result) return { status: 404, error: "Blocked job not found" };
   const { committedPath, recorded } = committed.result;
   try {
-    if (recorded) await refreshCompletedPipelinePlaylist(job);
     await classifyQualityJob(downloadTracker.getJob(job.id));
   } catch (error) {
-    logger.warn("downloads", "Approved track was imported but playlist follow-up failed", {
-      jobId: job.id,
-      playlistId,
-      reason: error?.message || String(error),
-    });
+    logFollowUpFailure(job, playlistId, error);
   }
+  if (recorded) publishApprovedImport(job, playlistId);
   return { status: 200, path: committedPath };
 }
 

@@ -6,7 +6,7 @@ import { logger } from "../logger.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { resolveTransferredDownloadPayload } from "./downloadOwnership.js";
 
-const mutationLeases = new AsyncLocalStorage();
+const downloadLeases = new AsyncLocalStorage();
 
 const normalizePlaylistTypes = (playlistTypes) => [
   ...new Set(
@@ -16,20 +16,51 @@ const normalizePlaylistTypes = (playlistTypes) => [
   ),
 ];
 
-async function withPlaylistLocks(playlistTypes, operation) {
-  const sortedTypes = [...playlistTypes].sort();
+async function withOwnerLocks(lockKind, ownerIds, operation) {
+  const sortedIds = [...ownerIds].sort();
   const runAtIndex = async (index) => {
-    if (index >= sortedTypes.length) {
+    if (index >= sortedIds.length) {
       return operation();
     }
-    const playlistType = sortedTypes[index];
-    return withHonkerLock(`playlist-mutation:${playlistType}`, () => runAtIndex(index + 1), {
+    return withHonkerLock(`${lockKind}:${sortedIds[index]}`, () => runAtIndex(index + 1), {
       ttlSeconds: 180,
       waitTimeoutMs: 15 * 60 * 1000,
       retryDelayMs: 250,
     });
   };
   return runAtIndex(0);
+}
+
+function runWithLease(lease, operation) {
+  return downloadLeases.run(lease, async () => {
+    try {
+      return await operation();
+    } finally {
+      lease.active = false;
+    }
+  });
+}
+
+async function withDownloadLocks(ownerIds, { steps = false, imports = false }, operation) {
+  const owners = normalizePlaylistTypes(ownerIds);
+  const current = downloadLeases.getStore();
+  if (current?.active) {
+    if (!owners.every((owner) => current.owners.has(owner))) {
+      const error = new Error("The download owner changed while holding download locks");
+      error.code = "DOWNLOAD_LOCK_SET_CHANGED";
+      throw error;
+    }
+    if (steps && !current.steps) {
+      throw new Error("Download step locks must be taken before download import locks");
+    }
+    if (!imports || current.imports) return operation();
+    const lease = { active: true, owners: current.owners, steps: current.steps, imports: true };
+    return withOwnerLocks("download-import", current.owners, () => runWithLease(lease, operation));
+  }
+  const lease = { active: true, owners: new Set(owners), steps, imports };
+  const locked = () => runWithLease(lease, operation);
+  const lockImports = imports ? () => withOwnerLocks("download-import", owners, locked) : locked;
+  return steps ? withOwnerLocks("download-step", owners, lockImports) : lockImports();
 }
 
 export async function beginPlaylistMutation(playlistTypes, { clearPending = true } = {}) {
@@ -95,25 +126,16 @@ export async function withPlaylistMutation(playlistTypes, operation, options = {
   });
 }
 
-export async function withPlaylistMutationLock(playlistTypes, operation) {
-  const types = normalizePlaylistTypes(playlistTypes);
-  const current = mutationLeases.getStore();
-  if (current?.active) {
-    if (types.every((type) => current.types.has(type))) return operation();
-    const error = new Error("The download owner changed while holding playlist locks");
-    error.code = "DOWNLOAD_LOCK_SET_CHANGED";
-    throw error;
-  }
-  return withPlaylistLocks(types, async () => {
-    const lease = { active: true, types: new Set(types) };
-    return mutationLeases.run(lease, async () => {
-      try {
-        return await operation();
-      } finally {
-        lease.active = false;
-      }
-    });
-  });
+export function withPlaylistMutationLock(playlistTypes, operation) {
+  return withDownloadLocks(playlistTypes, { steps: true, imports: true }, operation);
+}
+
+export function withDownloadImportLock(ownerIds, operation) {
+  return withDownloadLocks(ownerIds, { imports: true }, operation);
+}
+
+export function withDownloadStepLock(ownerIds, operation) {
+  return withDownloadLocks(ownerIds, { steps: true }, operation);
 }
 
 function payloadOwners(payload) {
@@ -128,7 +150,7 @@ function payloadOwners(payload) {
 export async function withDownloadPayloadMutation(payload, operation) {
   while (true) {
     const owners = payloadOwners(resolveTransferredDownloadPayload(payload));
-    const result = await withPlaylistMutationLock(owners, async () => {
+    const result = await withDownloadStepLock(owners, async () => {
       const current = resolveTransferredDownloadPayload(payload);
       if (!payloadOwners(current).every((owner) => owners.includes(owner))) return { retryLocks: true };
       return { value: await operation(current) };

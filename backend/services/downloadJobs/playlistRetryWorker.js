@@ -1,6 +1,7 @@
 import createHonkerWorker from "../honkerWorkerFactory.js";
-import { getPlaylistRetryQueue, withHonkerLock } from "../honkerDb.js";
+import { getPlaylistRetryQueue } from "../honkerDb.js";
 import { downloadWorker } from "./downloadWorker.js";
+import { withPlaylistMutationLock } from "./mutationGuards.js";
 
 const {
   start: startPlaylistRetryWorker,
@@ -23,13 +24,9 @@ const {
     return true;
   },
   processJob: (payload) =>
-    withHonkerLock(
-      `playlist-mutation:${payload.playlistType}`,
+    withPlaylistMutationLock(
+      payload.playlistType,
       () => downloadWorker.retryIncompletePlaylist(payload.playlistType),
-      {
-        ttlSeconds: 180,
-        waitTimeoutMs: 5 * 60 * 1000,
-      },
     ),
   onJobError(_error, job) {
     const playlistType = String(job.payload?.playlistType || "").trim();

@@ -17,6 +17,9 @@ const downloadWorker = group === "downloads"
 const playlistOperationStatus = group === "downloads"
   ? (await import("./playlists/playlistOperationWorker.js")).getPlaylistOperationWorkerStatus
   : null;
+const hasApprovalFollowUps = group === "downloads"
+  ? (await import("./downloadJobs/blockedJobReview.js")).hasApprovalFollowUps
+  : () => false;
 
 let stopping = false;
 let ownerCommandsInFlight = 0;
@@ -120,7 +123,7 @@ function isIdle() {
   const idleStopMs = getWorkerIdleStopMs();
   if (stopping || !idleStopMs) return false;
   if (ownerCommandsInFlight > 0 || Date.now() - lastOwnerCommandAt < idleStopMs) return false;
-  if (downloadWorker?.hasWork()) return false;
+  if (downloadWorker?.hasWork() || hasApprovalFollowUps()) return false;
   try {
     if (group === "scheduler") return !isHonkerScheduleDue();
     return !hasQueuedBackgroundWork(group);

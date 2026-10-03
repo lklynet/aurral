@@ -53,8 +53,7 @@ function ActivityPage() {
   const [localError, setLocalError] = useState(null);
   const [visibleCount, setVisibleCount] = useState(ACTIVITY_PAGE_SIZE);
   const [reSearchingAlbumIds, setReSearchingAlbumIds] = useState({});
-  const [approvingJobId, setApprovingJobId] = useState(null);
-  const [denyingJobId, setDenyingJobId] = useState(null);
+  const [reviewingJobs, setReviewingJobs] = useState({});
   const [jobErrors, setJobErrors] = useState({});
   const [filterValue, setFilterValue] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -217,6 +216,22 @@ function ActivityPage() {
       return updater(next);
     });
   }, [activityQueryKey]);
+  const settleReviewedJob = useCallback(async (jobId, changes) => {
+    await queryClient.cancelQueries({ queryKey: activityQueryKey });
+    updateRequests((prev) =>
+      prev.map((r) =>
+        r.jobId === jobId
+          ? {
+              ...r,
+              ...changes,
+              inQueue: false,
+              title: `${changes.statusLabel} ${r.title?.replace(/^Review needed for /, "") || "track"}`,
+            }
+          : r,
+      ),
+    );
+    void queryClient.invalidateQueries({ queryKey: activityQueryKey });
+  }, [activityQueryKey, updateRequests]);
   const reSearchMutation = useMutation({
     mutationFn: ({ albumId }) => triggerAlbumSearch(albumId),
   });
@@ -270,61 +285,25 @@ function ActivityPage() {
     }
   };
 
-  const handleApproveBlockedJob = async (jobId) => {
-    if (!jobId || approvingJobId === jobId) return;
-    setApprovingJobId(jobId);
+  const reviewBlockedJob = async (jobId, action) => {
+    if (!jobId || reviewingJobs[jobId]) return;
+    setReviewingJobs((prev) => ({ ...prev, [jobId]: action }));
     try {
-      await approveMutation.mutateAsync(jobId);
-      updateRequests((prev) =>
-        prev.map((r) =>
-          r.jobId === jobId
-            ? {
-                ...r,
-                status: "completed",
-                statusLabel: "Downloaded",
-                inQueue: false,
-                title: `Downloaded ${r.title?.replace(/^Review needed for /, "") || "track"}`,
-              }
-            : r,
-        ),
-      );
-      setApprovingJobId(null);
-      setJobErrors((prev) => {
-        const { [jobId]: _, ...rest } = prev;
-        return rest;
-      });
+      if (action === "approve") {
+        await approveMutation.mutateAsync(jobId);
+        await settleReviewedJob(jobId, { status: "completed", statusLabel: "Downloaded" });
+      } else {
+        await denyMutation.mutateAsync(jobId);
+        await settleReviewedJob(jobId, { status: "failed", statusLabel: "Denied" });
+      }
+      setJobErrors(({ [jobId]: _, ...rest }) => rest);
     } catch {
-      setJobErrors((prev) => ({ ...prev, [jobId]: "Failed to approve" }));
-      setApprovingJobId(null);
-    }
-  };
-
-  const handleDenyBlockedJob = async (jobId) => {
-    if (!jobId || denyingJobId === jobId) return;
-    setDenyingJobId(jobId);
-    try {
-      await denyMutation.mutateAsync(jobId);
-      updateRequests((prev) =>
-        prev.map((r) =>
-          r.jobId === jobId
-            ? {
-                ...r,
-                status: "failed",
-                statusLabel: "Denied",
-                inQueue: false,
-                title: `Denied ${r.title?.replace(/^Review needed for /, "") || "track"}`,
-              }
-            : r,
-        ),
-      );
-      setDenyingJobId(null);
-      setJobErrors((prev) => {
-        const { [jobId]: _, ...rest } = prev;
-        return rest;
-      });
-    } catch {
-      setJobErrors((prev) => ({ ...prev, [jobId]: "Failed to deny" }));
-      setDenyingJobId(null);
+      setJobErrors((prev) => ({
+        ...prev,
+        [jobId]: action === "approve" ? "Failed to approve" : "Failed to deny",
+      }));
+    } finally {
+      setReviewingJobs(({ [jobId]: _, ...rest }) => rest);
     }
   };
 
@@ -482,15 +461,14 @@ function ActivityPage() {
                   key={entry.key}
                   request={entry.request}
                   reSearchingAlbumIds={reSearchingAlbumIds}
-                  approvingJobId={approvingJobId}
-                  denyingJobId={denyingJobId}
+                  reviewingJobs={reviewingJobs}
                   jobErrors={jobErrors}
                   currentTrack={currentTrack}
                   isPlaying={isPlaying}
                   onNavigate={handleRowNavigate}
                   onReSearch={handleReSearchAlbum}
-                  onApprove={handleApproveBlockedJob}
-                  onDeny={handleDenyBlockedJob}
+                  onApprove={(jobId) => reviewBlockedJob(jobId, "approve")}
+                  onDeny={(jobId) => reviewBlockedJob(jobId, "deny")}
                   onPreview={handleReviewPreview}
                   onInfo={setInfoRequest}
                   filterValue={filterValue}
