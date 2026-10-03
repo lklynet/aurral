@@ -75,13 +75,23 @@ import Tooltip from "../components/Tooltip";
 
 const RECOMMENDED_SORT_OPTIONS = [
   { value: "name", label: "Name" },
-  { value: "relevance", label: "Relevance" },
+  { value: "match", label: "Match" },
   { value: "popularity", label: "Popularity" },
 ];
+const getRecommendedSortOptions = (pageType) =>
+  pageType === "recommended"
+    ? RECOMMENDED_SORT_OPTIONS
+    : RECOMMENDED_SORT_OPTIONS.filter((option) => option.value !== "match");
+const getDefaultRecommendedSort = (pageType) =>
+  pageType === "recommended"
+    ? { key: "match", direction: "desc" }
+    : { key: "name", direction: "asc" };
 const EMPTY_SEARCH_PAGES = [];
 const LIBRARY_RESULT_LIMIT = 6;
 
 const getRecommendedArtistName = (artist) => String(artist?.name || "").trim();
+
+const getRecommendedMatch = (artist) => Number(artist?.matchPercent ?? 0) || 0;
 
 const getRecommendedScore = (artist) =>
   Number(artist?.scoreTotal ?? artist?.score ?? artist?.scoreSimilarity ?? 0) || 0;
@@ -97,8 +107,10 @@ const sortRecommendedArtists = (artists, sortKey, sortDirection) =>
     let difference;
     if (sortKey === "name") {
       difference = getRecommendedArtistName(left).localeCompare(getRecommendedArtistName(right));
-    } else if (sortKey === "relevance") {
-      difference = getRecommendedScore(left) - getRecommendedScore(right);
+    } else if (sortKey === "match") {
+      difference =
+        getRecommendedMatch(left) - getRecommendedMatch(right) ||
+        getRecommendedScore(left) - getRecommendedScore(right);
     } else {
       difference = getRecommendedPopularity(left) - getRecommendedPopularity(right);
     }
@@ -125,8 +137,12 @@ function SearchResultsPage() {
   const [albumViewMode, setAlbumViewMode] = useState(() => readReleaseListViewMode());
   const [albumReleaseTab, setAlbumReleaseTab] = useState("all");
   const [recommendedSearchTerm, setRecommendedSearchTerm] = useState("");
-  const [recommendedSortKey, setRecommendedSortKey] = useState("name");
-  const [recommendedSortDirection, setRecommendedSortDirection] = useState("asc");
+  const [recommendedSortKey, setRecommendedSortKey] = useState(
+    () => getDefaultRecommendedSort(type).key,
+  );
+  const [recommendedSortDirection, setRecommendedSortDirection] = useState(
+    () => getDefaultRecommendedSort(type).direction,
+  );
   const [recommendedSortMenuOpen, setRecommendedSortMenuOpen] = useState(false);
   const [recommendedViewMode, setRecommendedViewMode] = useState(
     () => localStorage.getItem("libraryViewMode") || "grid",
@@ -162,6 +178,14 @@ function SearchResultsPage() {
     if (type === "artist") return "artist";
     return "unified";
   }, [type, trimmedQuery]);
+  const [recommendedSortPageType, setRecommendedSortPageType] = useState(normalizedType);
+  if (recommendedSortPageType !== normalizedType) {
+    const defaultSort = getDefaultRecommendedSort(normalizedType);
+    setRecommendedSortPageType(normalizedType);
+    setRecommendedSortKey(defaultSort.key);
+    setRecommendedSortDirection(defaultSort.direction);
+  }
+  const recommendedSortOptions = getRecommendedSortOptions(normalizedType);
   const isTagSearch = normalizedType === "tag";
   const isAlbumSearch = normalizedType === "album";
   const isUnifiedSearch = normalizedType === "unified" && !!trimmedQuery;
@@ -1255,8 +1279,8 @@ function SearchResultsPage() {
                 ? `${displayedResults.length} results`
                 : null;
   const selectedRecommendedSort =
-    RECOMMENDED_SORT_OPTIONS.find((option) => option.value === recommendedSortKey) ||
-    RECOMMENDED_SORT_OPTIONS[0];
+    recommendedSortOptions.find((option) => option.value === recommendedSortKey) ||
+    recommendedSortOptions[0];
   const RecommendedSortDirectionIcon = recommendedSortDirection === "asc" ? ArrowUp : ArrowDown;
 
   return (
@@ -1339,7 +1363,7 @@ function SearchResultsPage() {
                     role="listbox"
                     aria-label="Result sort options"
                   >
-                    {RECOMMENDED_SORT_OPTIONS.map((option) => {
+                    {recommendedSortOptions.map((option) => {
                       const active = recommendedSortKey === option.value;
                       return (
                         <button
