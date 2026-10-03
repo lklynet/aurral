@@ -111,7 +111,15 @@ const externalResponse = (url, options) => {
     return { data: [{ id: 999, name: "Queen Tribute Band", picture_big: "https://cdn.deezer.test/wrong.jpg" }] };
   }
   if (options?.params?.method === "artist.getTopTags") {
-    return { toptags: { tag: [{ name: "classic rock", count: 100 }] } };
+    return {
+      toptags: {
+        tag: [
+          { name: "seen live", count: 100 },
+          { name: "classic rock", count: 90 },
+          { name: "female vocalists", count: 80 },
+        ],
+      },
+    };
   }
   return {};
 };
@@ -140,7 +148,7 @@ test("artist identity comes from BrainzMash names, aliases, and linked provider 
   assert.deepEqual(requests, []);
 });
 
-test("artist genres come from BrainzMash and Last.fm only fills artists without genres", async (t) => {
+test("artist genres come from BrainzMash and Last.fm only fills artists without genres with real genres", async (t) => {
   process.env.LASTFM_API_KEY = "test-key";
   t.after(() => delete process.env.LASTFM_API_KEY);
   const requests = recordExternalRequests(t);

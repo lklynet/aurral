@@ -54,7 +54,7 @@ const lastfmResponse = (url) => {
   const params = new URL(url).searchParams;
   const seed = params.get("mbid") || params.get("artist");
   if (params.get("method") === "artist.getTopTags") {
-    return { toptags: { tag: ["shoegaze", "dream pop", "indie"].map((name) => ({ name, count: 100 })) } };
+    return { toptags: { tag: ["female vocalists", "shoegaze", "seen live", "dream-pop", "indie"].map((name) => ({ name, count: 100 })) } };
   }
   if (params.get("method") === "artist.getSimilar") {
     return {
@@ -126,7 +126,11 @@ test("personal refresh seeds from liked artists, local plays and the library, ne
     body.recommendations.map((artist) => artist.name).sort(),
     [FROM_LIBRARY.name, FROM_LIKED.name, FROM_PLAYED.name].sort(),
   );
-  assert.ok(body.topGenres.includes("shoegaze"));
+  assert.deepEqual([...body.topGenres].sort(), ["dream pop", "indie", "shoegaze"]);
+  for (const artist of body.recommendations) {
+    assert.equal(artist.tags.includes("female vocalists"), false);
+    assert.equal(artist.tags.includes("seen live"), false);
+  }
   assert.equal(body.isUpdating, false);
 });
 

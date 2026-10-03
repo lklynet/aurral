@@ -6,6 +6,7 @@ import {
   mapWithConcurrency,
 } from "./helpers.js";
 import { lastfmRequest } from "../apiClients/index.js";
+import { isKnownGenre } from "../musicGenres.js";
 import { logger } from "../logger.js";
 import { applyHydratedCandidateTags } from "./recommendationPipeline.js";
 
@@ -25,12 +26,12 @@ export const fetchArtistTopTags = async (artist, lastfmHealth) => {
   if (!tags) return [];
 
   return (Array.isArray(tags) ? tags : [tags])
-    .slice(0, TAGS_PER_ARTIST)
     .map((tag) => ({
       name: String(tag?.name || "").trim().replace(/-/g, " "),
       count: parseInt(tag?.count || 0, 10) || 1,
     }))
-    .filter((tag) => tag.name);
+    .filter((tag) => tag.name && isKnownGenre(tag.name))
+    .slice(0, TAGS_PER_ARTIST);
 };
 
 export const collectSeedTags = async (seeds, lastfmHealth) => {

@@ -1,4 +1,5 @@
 import { getLastfmApiKey, lastfmRequest } from "../../../services/apiClients/index.js";
+import { isKnownGenre } from "../../../services/musicGenres.js";
 
 const DEFAULT_LASTFM_IMAGE_HASH = "2a96cbd8b46e442fc41c2b86b821562f";
 
@@ -31,7 +32,7 @@ export async function getLastfmTags(mbid, artistName = "") {
       name: String(tag?.name || "").trim(),
       count: Number(tag?.count || 0),
     }))
-    .filter((tag) => tag.name);
+    .filter((tag) => tag.name && isKnownGenre(tag.name));
 }
 
 export async function getArtistTagPayload(mbid, artistName = "", metadataArtist = null) {
