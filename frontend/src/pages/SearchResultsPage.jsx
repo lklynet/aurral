@@ -405,7 +405,7 @@ function SearchResultsPage() {
         : [],
     [libraryResults],
   );
-  const fullList = normalizedType === "trending" ? rawResults : null;
+  const fullList = normalizedType === "trending" || recommendedTag ? rawResults : null;
   const loading = searchQuery.isLoading;
   const loadingMore = searchQuery.isFetchingNextPage;
   const { fetchNextPage } = searchQuery;
@@ -421,9 +421,41 @@ function SearchResultsPage() {
       : normalizedType === "recommended" || normalizedType === "trending"
         ? results.length
         : Number(searchPages[searchPages.length - 1]?.count ?? results.length);
-  const hasMore = normalizedType === "trending"
-    ? visibleCount < (fullList?.length || 0)
+  const hasMore = fullList
+    ? visibleCount < fullList.length
     : searchQuery.hasNextPage === true;
+
+  const albumResultsForTab = useMemo(() => {
+    if (!isAlbumSearch) return results;
+    return results.filter((album) => matchesAlbumReleaseTab(album, albumReleaseTab));
+  }, [albumReleaseTab, isAlbumSearch, results]);
+
+  const discoveryArtists = useMemo(() => {
+    if (!["recommended", "trending", "tag"].includes(normalizedType)) return [];
+    const normalizedSearch = recommendedSearchTerm.trim().toLowerCase();
+    const filtered = normalizedSearch
+      ? results.filter((artist) => getRecommendedArtistName(artist).toLowerCase().includes(normalizedSearch))
+      : results;
+    if (isTagSearch) return filtered;
+    return sortRecommendedArtists(filtered, recommendedSortKey, recommendedSortDirection);
+  }, [
+    isTagSearch,
+    normalizedType,
+    recommendedSearchTerm,
+    recommendedSortDirection,
+    recommendedSortKey,
+    results,
+  ]);
+
+  const displayedResults = useMemo(
+    () =>
+      ["recommended", "trending", "tag"].includes(normalizedType)
+        ? discoveryArtists.slice(0, fullList ? visibleCount : undefined)
+        : isAlbumSearch
+          ? albumResultsForTab
+          : results,
+    [albumResultsForTab, discoveryArtists, fullList, isAlbumSearch, normalizedType, results, visibleCount],
+  );
 
   useEffect(() => {
     setLibraryLookup({});
@@ -431,7 +463,7 @@ function SearchResultsPage() {
     setPendingAlbumIds({});
     setAlbumCovers({});
     setVisibleCount(PAGE_SIZE);
-  }, [searchQueryKey]);
+  }, [recommendedTag, searchQueryKey]);
 
   useEffect(() => {
     const artists = isUnifiedSearch
@@ -485,7 +517,7 @@ function SearchResultsPage() {
           ),
           ...buildSearchArtistResults(unifiedResults, {}),
         ]
-      : results;
+      : displayedResults;
 
     if (!artists.length) {
       return undefined;
@@ -545,7 +577,7 @@ function SearchResultsPage() {
     return () => {
       cancelled = true;
     };
-  }, [artistImages, isAlbumSearch, isUnifiedSearch, libraryResults, results, unifiedResults]);
+  }, [artistImages, displayedResults, isAlbumSearch, isUnifiedSearch, libraryResults, unifiedResults]);
 
   useEffect(() => {
     if (isAlbumSearch || isUnifiedSearch) return undefined;
@@ -869,10 +901,8 @@ function SearchResultsPage() {
   const loadMore = useCallback(async () => {
     if (loading || loadingMore || !hasMore) return;
 
-    if (normalizedType === "trending") {
-      setVisibleCount((count) =>
-        Math.min(count + PAGE_SIZE, fullList?.length ?? count + PAGE_SIZE),
-      );
+    if (fullList) {
+      setVisibleCount((count) => Math.min(count + PAGE_SIZE, fullList.length));
       return;
     }
 
@@ -886,7 +916,6 @@ function SearchResultsPage() {
     hasMore,
     loading,
     loadingMore,
-    normalizedType,
     fetchNextPage,
   ]);
 
@@ -1180,35 +1209,6 @@ function SearchResultsPage() {
       isEmpty,
     };
   }, [activeFilter, isUnifiedSearch, searchLibraryFlags, unifiedResults]);
-
-  const albumResultsForTab = useMemo(() => {
-    if (!isAlbumSearch) return results;
-    return results.filter((album) => matchesAlbumReleaseTab(album, albumReleaseTab));
-  }, [albumReleaseTab, isAlbumSearch, results]);
-
-  const discoveryArtists = useMemo(() => {
-    if (!["recommended", "trending", "tag"].includes(normalizedType)) return [];
-    const normalizedSearch = recommendedSearchTerm.trim().toLowerCase();
-    const filtered = normalizedSearch
-      ? results.filter((artist) => getRecommendedArtistName(artist).toLowerCase().includes(normalizedSearch))
-      : results;
-    if (isTagSearch) return filtered;
-    return sortRecommendedArtists(filtered, recommendedSortKey, recommendedSortDirection);
-  }, [
-    isTagSearch,
-    normalizedType,
-    recommendedSearchTerm,
-    recommendedSortDirection,
-    recommendedSortKey,
-    results,
-  ]);
-
-  const displayedResults =
-    ["recommended", "trending", "tag"].includes(normalizedType)
-      ? discoveryArtists.slice(0, normalizedType === "trending" ? visibleCount : undefined)
-        : isAlbumSearch
-          ? albumResultsForTab
-          : results;
 
   const showContent =
     !loading && (query || normalizedType === "recommended" || normalizedType === "trending");
