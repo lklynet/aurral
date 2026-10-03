@@ -1,6 +1,5 @@
 import { lastfmRequest, getLastfmApiKey } from "../apiClients/index.js";
 import { getUserDiscovery } from "../discovery/userDiscovery.js";
-import { normalizeWeightMap } from "../playlists/flowPlaylistConfig.js";
 import { getBlockedArtistKeys } from "../discovery/feedback.js";
 import { mapWithConcurrency } from "../discovery/helpers.js";
 import { getYear } from "../providers/brainzmashRanking.js";
@@ -252,7 +251,7 @@ export class FlowTrackSource {
       }
       return out;
     }
-    return Object.keys(normalizeWeightMap(value));
+    return [];
   }
 
   _normalizeFocusStrength(value) {
@@ -607,45 +606,6 @@ export class FlowTrackSource {
       }
     }
     return picked;
-  }
-
-  async getTagGroupTracks(tagsMap, limit, options = {}) {
-    const tags = Object.keys(normalizeWeightMap(tagsMap));
-    if (tags.length === 0 || limit <= 0) return [];
-    if (tags.length === 1) {
-      return this.getTagTracks(tags[0], limit, options);
-    }
-    const requestedArtists = Math.max(limit * 6, 100);
-    const groups = await Promise.all(
-      tags.map(async (tag) => ({
-        tag,
-        artists: await this._getTagArtists(tag, requestedArtists).catch(() => []),
-      })),
-    );
-    return this._getTieredGroupTracks(groups, limit, {
-      deepDive: options?.deepDive === true,
-      reason: options?.reason || `From genres: ${tags.join(", ")}`,
-      excludeArtistKeys: options?.excludeArtistKeys,
-    }).catch(() => []);
-  }
-
-  async getRelatedArtistGroupTracks(relatedArtistsMap, limit, options = {}) {
-    const artists = Object.keys(normalizeWeightMap(relatedArtistsMap));
-    if (artists.length === 0 || limit <= 0) return [];
-    if (artists.length === 1) {
-      return this.getRelatedArtistTracks(artists[0], limit, options);
-    }
-    const groups = await Promise.all(
-      artists.map(async (artist) => ({
-        artist,
-        artists: await this._getSimilarArtists(artist, 75).catch(() => []),
-      })),
-    );
-    return this._getTieredGroupTracks(groups, limit, {
-      deepDive: options?.deepDive === true,
-      reason: options?.reason || `Similar to ${artists.join(", ")}`,
-      excludeArtistKeys: options?.excludeArtistKeys,
-    }).catch(() => []);
   }
 
   _buildWeightedSourceCounts(total, sources) {

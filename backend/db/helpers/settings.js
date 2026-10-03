@@ -24,14 +24,8 @@ const deleteSettingStmt = db.prepare("DELETE FROM settings WHERE key = ?");
 
 const PLAYLIST_WORKER_RETRY_CYCLE_MINUTES = 360;
 
-function readStoredSettingJson(primaryKey, legacyKeys = []) {
-  const primary = dbHelpers.parseJSON(getSettingStmt.get(primaryKey)?.value);
-  if (primary != null) return primary;
-  for (const legacyKey of legacyKeys) {
-    const legacy = dbHelpers.parseJSON(getSettingStmt.get(legacyKey)?.value);
-    if (legacy != null) return legacy;
-  }
-  return null;
+function readStoredSettingJson(key) {
+  return dbHelpers.parseJSON(getSettingStmt.get(key)?.value);
 }
 
 function normalizePlaylistArtworkSettings(raw) {
@@ -170,13 +164,11 @@ export const dbOps = {
     const releaseTypes = dbHelpers.parseJSON(
       getSettingStmt.get("releaseTypes")?.value
     );
-    const flows = readStoredSettingJson("flows", ["weeklyFlows"]);
-    const staticPlaylists = readStoredSettingJson("sharedPlaylists", [
-      "sharedFlowPlaylists",
-    ]);
+    const flows = readStoredSettingJson("flows");
+    const staticPlaylists = readStoredSettingJson("sharedPlaylists");
     const subsonic = readStoredSettingJson("subsonic") || {};
     const playlistWorker = normalizePlaylistWorkerSettings(
-      readStoredSettingJson("playlistWorker", ["weeklyFlowWorker"]),
+      readStoredSettingJson("playlistWorker"),
     );
     const playlistArtwork = normalizePlaylistArtworkSettings(
       readStoredSettingJson("playlistArtwork"),
@@ -241,10 +233,6 @@ export const dbOps = {
           : { artists: [], tags: [] },
       onboardingComplete: !!onboardingComplete,
     };
-    if (result.integrations?.navidrome) {
-      delete result.integrations.navidrome.m3uPathMode;
-      delete result.integrations.navidrome.pathMappings;
-    }
     settingsCache = result;
     settingsCacheTime = Date.now();
     return result;
@@ -255,29 +243,10 @@ export const dbOps = {
     const updateFn = db.transaction(() => {
       if (settings.integrations) {
         const encKey = getOrCreateEncryptionKey();
-        const existingIntegrations =
-          decryptIntegrations(
-            dbHelpers.parseJSON(getSettingStmt.get("integrations")?.value),
-            encKey,
-          ) || {};
-        const nextIntegrations = { ...settings.integrations };
-        if (
-          existingIntegrations.soulseek &&
-          nextIntegrations.soulseek === undefined
-        ) {
-          nextIntegrations.soulseek = existingIntegrations.soulseek;
-        }
-        if (nextIntegrations.navidrome) {
-          nextIntegrations.navidrome = {
-            ...nextIntegrations.navidrome,
-          };
-          delete nextIntegrations.navidrome.m3uPathMode;
-          delete nextIntegrations.navidrome.pathMappings;
-        }
         upsertSettingStmt.run(
           "integrations",
           dbHelpers.stringifyJSON(
-            encryptIntegrations(nextIntegrations, encKey)
+            encryptIntegrations({ ...settings.integrations }, encKey)
           )
         );
       }

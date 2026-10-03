@@ -80,6 +80,25 @@ test("playlist artwork moves out of the Aurral 2 folder", () => {
   assert.equal(existsSync(path.join(downloadRoot, "aurral-weekly-flow")), false);
 });
 
+test("settings that only older releases read are removed", () => {
+  const { db } = upgrade("upgraded-from-1");
+  try {
+    const integrations = JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'integrations'").pluck().get());
+    assert.equal(integrations.soulseek, undefined);
+    assert.equal(integrations.musicbrainz, undefined);
+    assert.equal(integrations.coverArtArchive, undefined);
+    assert.ok(integrations.metadata);
+    const keys = db.prepare("SELECT key FROM settings").pluck().all();
+    for (const key of ["weeklyFlows", "weeklyFlowWorker", "storedDataMigration", "aurral3Readiness"]) {
+      assert.equal(keys.includes(key), false, key);
+    }
+    assert.ok(keys.includes("flows"));
+    assert.ok(keys.includes("playlistWorker"));
+  } finally {
+    db.close();
+  }
+});
+
 test("covers cached from the old cover host are cleared", () => {
   const { db } = upgrade("stamped");
   try {

@@ -60,19 +60,11 @@ export function registerGeneral(router) {
   router.get("/", noCache, (req, res) => {
     try {
       const settings = dbOps.getSettings();
-      const legacyMusicbrainz = settings?.integrations?.musicbrainz || {};
-      if (settings?.integrations?.coverArtArchive) {
-        delete settings.integrations.coverArtArchive;
-      }
-      if (settings?.integrations?.musicbrainz) {
-        delete settings.integrations.musicbrainz;
-      }
       settings.integrations.news = getNewsSettings();
       if (!settings?.integrations?.metadata) {
         settings.integrations.metadata = {
           provider: "brainzmash",
-          baseUrl: String(legacyMusicbrainz.customUrl || "").trim().replace(/\/ws\/2\/?$/, "") ||
-              DEFAULT_METADATA_BASE_URL,
+          baseUrl: DEFAULT_METADATA_BASE_URL,
           userAgentSuffix: "",
           enableNarrowFallbacks: true,
         };
@@ -183,9 +175,6 @@ export function registerGeneral(router) {
           ...integrations.lidarr,
           enabled: integrations.lidarr.enabled === true,
         };
-      }
-      if (integrations?.coverArtArchive) {
-        delete integrations.coverArtArchive;
       }
       if (integrations?.prowlarr) {
         const nextProwlarr = {
@@ -446,9 +435,6 @@ export function registerGeneral(router) {
           : mergedIntegrations.webhooks;
       }
 
-      if (mergedIntegrations?.coverArtArchive) {
-        delete mergedIntegrations.coverArtArchive;
-      }
       const normalizedSubsonic =
         subsonic && typeof subsonic === "object" && !Array.isArray(subsonic)
           ? subsonic
@@ -544,13 +530,6 @@ export function registerGeneral(router) {
             ? { ...currentSettings.missingTrackSearch, ...missingTrackSearch }
             : currentSettings.missingTrackSearch,
       };
-
-      if (updatedSettings?.integrations?.coverArtArchive) {
-        delete updatedSettings.integrations.coverArtArchive;
-      }
-      if (updatedSettings?.integrations?.musicbrainz) {
-        delete updatedSettings.integrations.musicbrainz;
-      }
 
       if (didLidarrConnectionChange(currentSettings, updatedSettings)) {
         updatedSettings.integrations = {

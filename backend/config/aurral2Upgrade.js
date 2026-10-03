@@ -14,6 +14,10 @@ const RETIRED_SETTING_PATTERNS = [
   "aurralDownloadFolderMigration",
   "deprecatedUsage",
   "playlistMediaRelocation:*",
+  "weeklyFlows",
+  "weeklyFlowWorker",
+  "weeklyFlowPlaylists",
+  "sharedFlowPlaylists",
 ];
 const AURRAL_2_PLAYLIST_FILES_DIR = "aurral-weekly-flow";
 const KEPT_PLAYLIST_FILE_EXTENSIONS = new Set([".webp", ".jpg", ".no-artwork"]);
@@ -89,9 +93,24 @@ export function moveAurral2Files(db, { dataDir, env = process.env, log = () => {
   }
 }
 
+function removeRetiredIntegrations(db) {
+  const integrations = JSON.parse(readSetting(db, "integrations") || "null");
+  if (!integrations || typeof integrations !== "object") return;
+  delete integrations.soulseek;
+  delete integrations.coverArtArchive;
+  delete integrations.musicbrainz;
+  if (integrations.navidrome) {
+    delete integrations.navidrome.m3uPathMode;
+    delete integrations.navidrome.pathMappings;
+  }
+  if (integrations.lastfm) delete integrations.lastfm.discoverFlowArtworkStyle;
+  db.prepare("UPDATE settings SET value = ? WHERE key = 'integrations'").run(JSON.stringify(integrations));
+}
+
 export function upgradeFromAurral2(db) {
   const removeSettings = db.prepare("DELETE FROM settings WHERE key GLOB ?");
   for (const pattern of RETIRED_SETTING_PATTERNS) removeSettings.run(pattern);
+  removeRetiredIntegrations(db);
   db.exec(`
     DELETE FROM images_cache
     WHERE image_url LIKE 'http://archive.org/%'
