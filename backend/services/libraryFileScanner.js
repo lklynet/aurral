@@ -18,7 +18,7 @@ import {
   getLibraryManagementEntry,
   setLibraryManagement,
 } from "./libraryManagementStore.js";
-import { parseAurralIdentityComment } from "./downloadUtils.js";
+import { parseAurralIdentityComment, readCommentIdentity } from "./downloadUtils.js";
 
 const AUDIO_EXTENSIONS = new Set([
   ".aac",
@@ -61,28 +61,11 @@ const normalizeMbid = (value) => text(first(value)) || null;
 
 const normalizeMetadata = (metadata) => metadata?.common || {};
 
-const parseNativeAurralIdentityComment = (metadata) => {
-  for (const tags of Object.values(metadata?.native || {})) {
-    if (!Array.isArray(tags)) continue;
-
-    for (const tag of tags) {
-      const id = String(tag?.id || "").toLowerCase();
-      if (id !== "txxx:comment" && id !== "comm") continue;
-
-      const embedded = parseAurralIdentityComment(tag?.value);
-      if (embedded) return embedded;
-    }
-  }
-
-  return null;
-};
-
 const readEmbeddedAurralIdentity = (metadata) => {
   const common = normalizeMetadata(metadata);
   return Object.assign(
     {},
-    parseNativeAurralIdentityComment(metadata) || {},
-    parseAurralIdentityComment(common.comment) || {},
+    readCommentIdentity(metadata) || {},
     parseAurralIdentityComment(common.grouping) || {},
   );
 };

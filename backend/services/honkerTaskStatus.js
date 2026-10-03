@@ -133,6 +133,10 @@ export const SYSTEM_TASK_LABELS = {
     label: "Stored Settings Update",
     description: "Stores older settings, flows, and sign-in data in their current form.",
   },
+  "identity-marker-migration": {
+    label: "Track Identity Tag Update",
+    description: "Moves Aurral's track identity marker from the comment tag to the grouping tag in downloaded files.",
+  },
   "playlist-startup-migration": {
     label: "Playlist Startup Migration",
     description: "Migrates legacy playlist files and reconciles playlist folders.",

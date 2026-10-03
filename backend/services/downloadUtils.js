@@ -64,6 +64,16 @@ export function parseAurralIdentityComment(value) {
   return null;
 }
 
+export function readCommentIdentity(metadata) {
+  const nativeComments = Object.values(metadata?.native || {})
+    .flatMap((tags) => (Array.isArray(tags) ? tags : []))
+    .filter((tag) => ["txxx:comment", "comm"].includes(String(tag?.id || "").toLowerCase()))
+    .map((tag) => tag.value);
+  const native = parseAurralIdentityComment(nativeComments);
+  const common = parseAurralIdentityComment(metadata?.common?.comment);
+  return native || common ? { ...(native || {}), ...(common || {}) } : null;
+}
+
 export function buildResolvedJobTrack(job, payloadTrack = {}) {
   const track = payloadTrack && typeof payloadTrack === "object" ? payloadTrack : {};
   return {
@@ -171,28 +181,13 @@ export async function commitDownloadedFile(
   return resolvedTarget;
 }
 
-export async function writeAudioMetadata(filePath, metadata = {}) {
+async function rewriteAudioTags(filePath, tags) {
   const sourcePath = path.resolve(filePath);
   const ext = path.extname(sourcePath) || ".m4a";
   const taggedPath = path.join(
     path.dirname(sourcePath),
     `.${path.basename(sourcePath, ext)}.${process.pid}-${Date.now()}.tagged${ext}`,
   );
-  const tags = [
-    ["title", metadata.trackName],
-    ["artist", metadata.artistName],
-    ["album_artist", metadata.artistName],
-    ["album", metadata.albumName],
-    ["musicbrainz_artistid", metadata.artistMbid],
-    ["musicbrainz_albumartistid", metadata.artistMbid],
-    ["musicbrainz_albumid", metadata.albumMbid],
-    ["musicbrainz_releasegroupid", metadata.albumMbid],
-    ["musicbrainz_recordingid", metadata.trackMbid],
-    ["musicbrainz_trackid", metadata.trackMbid],
-    ["grouping", buildAurralIdentityComment(metadata)],
-    ["date", metadata.releaseYear],
-    ["track", normalizePositiveInteger(metadata.trackNumber)],
-  ].filter(([, value]) => value != null && String(value).trim());
   const args = [
     "-hide_banner",
     "-loglevel",
@@ -207,7 +202,7 @@ export async function writeAudioMetadata(filePath, metadata = {}) {
     "copy",
   ];
   for (const [key, value] of tags) {
-    args.push("-metadata", `${key}=${String(value).trim()}`);
+    args.push("-metadata", `${key}=${value}`);
   }
   args.push(taggedPath);
   try {
@@ -219,6 +214,34 @@ export async function writeAudioMetadata(filePath, metadata = {}) {
     const detail = String(error?.stderr || error?.message || error).trim().slice(-500);
     throw new Error(`Failed to write audio metadata: ${detail}`);
   }
+}
+
+export async function writeAudioMetadata(filePath, metadata = {}) {
+  const tags = [
+    ["title", metadata.trackName],
+    ["artist", metadata.artistName],
+    ["album_artist", metadata.artistName],
+    ["album", metadata.albumName],
+    ["musicbrainz_artistid", metadata.artistMbid],
+    ["musicbrainz_albumartistid", metadata.artistMbid],
+    ["musicbrainz_albumid", metadata.albumMbid],
+    ["musicbrainz_releasegroupid", metadata.albumMbid],
+    ["musicbrainz_recordingid", metadata.trackMbid],
+    ["musicbrainz_trackid", metadata.trackMbid],
+    ["grouping", buildAurralIdentityComment(metadata)],
+    ["date", metadata.releaseYear],
+    ["track", normalizePositiveInteger(metadata.trackNumber)],
+  ]
+    .filter(([, value]) => value != null && String(value).trim())
+    .map(([key, value]) => [key, String(value).trim()]);
+  return rewriteAudioTags(filePath, tags);
+}
+
+export async function moveIdentityMarkerToGrouping(filePath, identity) {
+  return rewriteAudioTags(filePath, [
+    ["grouping", buildAurralIdentityComment(identity)],
+    ["comment", ""],
+  ]);
 }
 
 export async function repairYtdlpMetadata(jobs = []) {
