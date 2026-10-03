@@ -33,6 +33,7 @@ import requestsRouter from "./routes/requests.js";
 import healthRouter from "./routes/health.js";
 import filesystemRouter from "./routes/filesystem.js";
 import updatesRouter from "./routes/updates.js";
+import { noteDeprecatedUsage, warnAboutConfigDeprecations } from "./services/deprecatedUsage.js";
 import playlistsRouter from "./routes/playlists/index.js";
 import { bootstrapHonkerSchedules } from "./services/honkerDb.js";
 import { initializeAppRuntime } from "./services/appRuntime.js";
@@ -190,7 +191,8 @@ app.use("/api/filesystem", filesystemRouter);
 app.use("/api/feeds", lidarrFeedRouter);
 app.use("/api/playlists", playlistsRouter);
 app.use("/api/weekly-flow", (req, res) => {
-  const parsed = new URL(req.originalUrl, "http://localhost");
+  noteDeprecatedUsage("weekly-flow-api");
+  const parsed = new URL(req.url, "http://localhost");
   res.redirect(308, `/api/playlists${parsed.pathname}${parsed.search}`);
 });
 app.use("/api/auth", authRouter);
@@ -397,6 +399,7 @@ process.once("SIGINT", () => {
 
 httpServer.listen(PORT, async () => {
   logger.info("system", `Server running on port ${PORT}`);
+  warnAboutConfigDeprecations();
   bootstrapHonkerSchedules();
   initializeAppRuntime({ logger });
 });
