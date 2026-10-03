@@ -1,14 +1,5 @@
 import { db } from "../config/db-sqlite.js";
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS metadata_provider_budget (
-    base_url TEXT PRIMARY KEY,
-    next_request_at INTEGER NOT NULL DEFAULT 0,
-    forbidden_until INTEGER NOT NULL DEFAULT 0,
-    rate_limited_until INTEGER NOT NULL DEFAULT 0
-  );
-`);
-
 const readBudget = db.prepare("SELECT * FROM metadata_provider_budget WHERE base_url = ?");
 const reserve = db.prepare(`
   INSERT INTO metadata_provider_budget(base_url, next_request_at) VALUES (?, ?)

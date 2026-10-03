@@ -129,22 +129,6 @@ export const SYSTEM_TASK_LABELS = {
     label: "Inbox Refresh",
     description: "Refreshes release, show, news, and discovery updates.",
   },
-  "stored-data-migration": {
-    label: "Stored Settings Update",
-    description: "Stores older settings, flows, and sign-in data in their current form.",
-  },
-  "identity-marker-migration": {
-    label: "Track Identity Tag Update",
-    description: "Moves Aurral's track identity marker from the comment tag to the grouping tag in downloaded files.",
-  },
-  "upgrade-readiness-check": {
-    label: "Aurral 3.0 Readiness Check",
-    description: "Checks whether this install has finished the updates Aurral 3.0 needs.",
-  },
-  "playlist-startup-migration": {
-    label: "Playlist Startup Migration",
-    description: "Migrates legacy playlist files and reconciles playlist folders.",
-  },
   "lidarr-retry": {
     label: "Lidarr Retry",
     description: "Retries Lidarr library access after a temporary connection problem.",
@@ -205,7 +189,7 @@ const PAYLOAD_DETAIL_KEY = {
       : desc,
 };
 
-let schemaEnsured = false;
+let statementsPrepared = false;
 let insertRunStatement = null;
 let updateRunStatement = null;
 let pruneRunsStatement = null;
@@ -213,31 +197,8 @@ let pruneDeadJobsStatement = null;
 let cleanupTimer = null;
 let cleanupPromise = null;
 
-function ensureRunSchema() {
-  if (schemaEnsured) return;
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS honker_task_runs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      job_id INTEGER NOT NULL,
-      queue TEXT NOT NULL,
-      name TEXT,
-      payload TEXT,
-      worker_id TEXT,
-      attempt INTEGER,
-      status TEXT NOT NULL,
-      error TEXT,
-      queued_at INTEGER,
-      run_at INTEGER,
-      started_at INTEGER NOT NULL,
-      ended_at INTEGER,
-      duration_ms INTEGER,
-      created_at INTEGER NOT NULL DEFAULT (unixepoch())
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_honker_task_runs_started_at ON honker_task_runs(started_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_honker_task_runs_queue_started ON honker_task_runs(queue, started_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_honker_task_runs_job ON honker_task_runs(job_id, queue);
-  `);
+function prepareRunStatements() {
+  if (statementsPrepared) return;
   insertRunStatement = db.prepare(`
     INSERT INTO honker_task_runs (
       job_id,
@@ -269,7 +230,7 @@ function ensureRunSchema() {
     DELETE FROM _honker_dead
     WHERE COALESCE(died_at, created_at) < ?
   `);
-  schemaEnsured = true;
+  statementsPrepared = true;
 }
 
 function getRunLedgerCutoffUnix() {
@@ -277,7 +238,7 @@ function getRunLedgerCutoffUnix() {
 }
 
 async function pruneExpiredRuns() {
-  ensureRunSchema();
+  prepareRunStatements();
   const cutoff = getRunLedgerCutoffUnix();
   pruneRunsStatement.run(cutoff);
   pruneDeadJobsStatement.run(cutoff);
@@ -737,7 +698,7 @@ function readScheduledRows() {
 }
 
 function readRecentRuns() {
-  ensureRunSchema();
+  prepareRunStatements();
   const cutoff = getRunLedgerCutoffUnix();
   return safeQuery(
     `
@@ -1108,7 +1069,7 @@ function groupQueueRows(rows) {
 
 export function recordHonkerTaskRunStarted(job, queue) {
   try {
-    ensureRunSchema();
+    prepareRunStatements();
     const queueName = String(job?.queue || queue?.name || "").trim();
     if (!job?.id || !queueName) return null;
     const liveRow = safeGet(
@@ -1140,7 +1101,7 @@ export function recordHonkerTaskRunStarted(job, queue) {
 
 export function recordHonkerTaskRunFinished(runId, status, error = null) {
   try {
-    ensureRunSchema();
+    prepareRunStatements();
     const id = Number(runId);
     if (!Number.isFinite(id) || id <= 0) return;
     const row = safeGet("SELECT started_at FROM honker_task_runs WHERE id = ?", [id]);
@@ -1159,7 +1120,7 @@ export function recordHonkerTaskRunFinished(runId, status, error = null) {
 }
 
 export async function clearStaleHonkerJobs() {
-  ensureRunSchema();
+  prepareRunStatements();
   const { sweepAllHonkerQueues, getHonkerDb, getHonkerQueueByName } = await import("./honkerDb.js");
   const honkerDb = getHonkerDb();
   const now = nowUnix();
@@ -1237,7 +1198,7 @@ export async function clearStaleHonkerJobs() {
 }
 
 export async function getHonkerTaskStatus() {
-  ensureRunSchema();
+  prepareRunStatements();
   const workerStatuses = await readWorkerStatuses();
   const scheduledRows = readScheduledRows();
   const runRows = readRecentRuns();

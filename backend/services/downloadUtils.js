@@ -2,7 +2,6 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import path from "path";
 import fs from "fs/promises";
-import { parseFile } from "music-metadata";
 
 const execFileAsync = promisify(execFile);
 const AURRAL_IDENTITY_PREFIX = "AURRAL_IDS=";
@@ -40,7 +39,7 @@ export function stringifyStringListJson(value) {
   return normalized.length > 0 ? JSON.stringify(normalized) : null;
 }
 
-export function buildAurralIdentityComment(metadata = {}) {
+export function buildAurralIdentityMarker(metadata = {}) {
   const identity = Object.fromEntries(
     ["artistMbid", "albumMbid", "trackMbid"]
       .map((key) => [key, String(metadata?.[key] || "").trim()])
@@ -51,7 +50,7 @@ export function buildAurralIdentityComment(metadata = {}) {
     : null;
 }
 
-export function parseAurralIdentityComment(value) {
+export function parseAurralIdentityMarker(value) {
   const comments = Array.isArray(value) ? value : [value];
   for (const entry of comments) {
     const text = String(typeof entry === "object" ? entry?.text || "" : entry || "").trim();
@@ -62,16 +61,6 @@ export function parseAurralIdentityComment(value) {
     } catch {}
   }
   return null;
-}
-
-export function readCommentIdentity(metadata) {
-  const nativeComments = Object.values(metadata?.native || {})
-    .flatMap((tags) => (Array.isArray(tags) ? tags : []))
-    .filter((tag) => ["txxx:comment", "comm"].includes(String(tag?.id || "").toLowerCase()))
-    .map((tag) => tag.value);
-  const native = parseAurralIdentityComment(nativeComments);
-  const common = parseAurralIdentityComment(metadata?.common?.comment);
-  return native || common ? { ...(native || {}), ...(common || {}) } : null;
 }
 
 export function buildResolvedJobTrack(job, payloadTrack = {}) {
@@ -228,7 +217,7 @@ export async function writeAudioMetadata(filePath, metadata = {}) {
     ["musicbrainz_releasegroupid", metadata.albumMbid],
     ["musicbrainz_recordingid", metadata.trackMbid],
     ["musicbrainz_trackid", metadata.trackMbid],
-    ["grouping", buildAurralIdentityComment(metadata)],
+    ["grouping", buildAurralIdentityMarker(metadata)],
     ["date", metadata.releaseYear],
     ["track", normalizePositiveInteger(metadata.trackNumber)],
   ]
@@ -237,76 +226,3 @@ export async function writeAudioMetadata(filePath, metadata = {}) {
   return rewriteAudioTags(filePath, tags);
 }
 
-export async function moveIdentityMarkerToGrouping(filePath, identity) {
-  return rewriteAudioTags(filePath, [
-    ["grouping", buildAurralIdentityComment(identity)],
-    ["comment", ""],
-  ]);
-}
-
-export async function repairYtdlpMetadata(jobs = []) {
-  const result = { scanned: 0, repaired: 0, failed: 0 };
-  const seen = new Set();
-  for (const job of jobs) {
-    if (
-      job?.status !== "done" ||
-      job?.downloadClient !== "ytdlp" ||
-      path.extname(job?.finalPath || "").toLowerCase() !== ".m4a"
-    ) {
-      continue;
-    }
-    const filePath = path.resolve(job.finalPath);
-    if (seen.has(filePath)) continue;
-    seen.add(filePath);
-    result.scanned += 1;
-    try {
-      const { common } = await parseFile(filePath, { skipCovers: true });
-      const expected = [
-        [common.title, job.trackName],
-        [common.artist, job.artistName],
-        [common.albumartist, job.artistName],
-        [common.album, job.albumName],
-      ].filter(([, value]) => String(value || "").trim());
-      const embeddedIdentity = Object.assign(
-        {},
-        parseAurralIdentityComment(common.comment) || {},
-        parseAurralIdentityComment(common.grouping) || {},
-      );
-      const expectedIdentity = [
-        [
-          common.musicbrainz_albumartistid ||
-            common.musicbrainz_artistid ||
-            embeddedIdentity.artistMbid,
-          job.artistMbid,
-        ],
-        [
-          common.musicbrainz_releasegroupid ||
-            common.musicbrainz_albumid ||
-            embeddedIdentity.albumMbid,
-          job.albumMbid,
-        ],
-        [
-          common.musicbrainz_recordingid ||
-            common.musicbrainz_trackid ||
-            embeddedIdentity.trackMbid,
-          job.trackMbid,
-        ],
-      ].filter(([, value]) => String(value || "").trim());
-      if (
-        expected.every(
-          ([actual, value]) => String(actual || "").trim() === String(value).trim(),
-        ) &&
-        expectedIdentity.every(
-          ([actual, value]) => String(actual || "").trim() === String(value).trim(),
-        )
-      ) {
-        continue;
-      }
-      await writeAudioMetadata(filePath, job);
-      result.repaired += 1;
-    } catch {
-      result.failed += 1;
-    }
-  }
-  return result;
-}

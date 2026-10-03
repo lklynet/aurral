@@ -150,7 +150,7 @@ test("admin can update and test Navidrome after onboarding", async () => {
   await waitForLibraryVerification(requestStartIndex);
   assert.deepEqual(libraryRequest?.body, {
     name: "Aurral Playlists",
-    path: path.join(isolatedState.baseDir, "weekly-flow"),
+    path: path.join(isolatedState.baseDir, "downloads"),
   });
 
   const tested = await apiFetch("/api/settings/navidrome/test", {

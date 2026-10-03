@@ -42,7 +42,7 @@ test("single-track removal retains the job and provider work needed by another l
 
 test("deleting the original playlist preserves a survivor's completed media", async (t) => {
   const { source, survivor, jobId } = fixture(t);
-  const root = process.env.WEEKLY_FLOW_FOLDER;
+  const root = process.env.DOWNLOAD_FOLDER;
   const file = path.join(root, "aurral-weekly-flow", source.id, "Artist", "Album", "Track.flac");
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "disposable audio");
@@ -65,7 +65,7 @@ test("replacing imported tracks preserves a removed job referenced by another pl
 test("an import persistence failure preserves an unshared completed job and its file", async (t) => {
   const { source, survivor, jobId } = fixture(t);
   config.flowPlaylistConfig.deleteStaticPlaylist(survivor.id);
-  const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "aurral-playlists", source.id, "Track.flac");
+  const file = path.join(process.env.DOWNLOAD_FOLDER, "aurral-playlists", source.id, "Track.flac");
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "original audio");
   downloadTracker.setDone(jobId, file);
@@ -100,7 +100,7 @@ test("removal locks include reused files and quality-upgrade album peers", async
   config.flowPlaylistConfig.deleteStaticPlaylist(survivor.id);
   const fileOwner = config.flowPlaylistConfig.createStaticPlaylist({ name: "File owner" });
   const peerOwner = config.flowPlaylistConfig.createStaticPlaylist({ name: "Upgrade peer owner" });
-  const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "shared.flac");
+  const file = path.join(process.env.DOWNLOAD_FOLDER, "shared.flac");
   downloadTracker.setDone(jobId, file);
   const sharedJobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Shared" }, fileOwner.id);
   downloadTracker.setDone(sharedJobId, file);
@@ -115,7 +115,7 @@ test("removal locks include reused files and quality-upgrade album peers", async
 
 test("a failed membership commit keeps both media copies and retries retained ownership", async (t) => {
   const { source, survivor, jobId } = fixture(t);
-  const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "aurral-playlists", source.id, "Retained.flac");
+  const file = path.join(process.env.DOWNLOAD_FOLDER, "aurral-playlists", source.id, "Retained.flac");
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "retained audio");
   downloadTracker.setDone(jobId, file);
@@ -138,7 +138,7 @@ test("a failed membership commit keeps both media copies and retries retained ow
 
 test("whole-playlist deletion resumes external cleanup after membership commits", async (t) => {
   const { source, survivor, jobId } = fixture(t);
-  const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "aurral-playlists", source.id, "Completed.flac");
+  const file = path.join(process.env.DOWNLOAD_FOLDER, "aurral-playlists", source.id, "Completed.flac");
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "completed retained audio");
   downloadTracker.setDone(jobId, file);

@@ -47,7 +47,7 @@ const {
   removePlaylistFileIfUnshared,
 } = reuseModule;
 
-const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+const downloadRoot = process.env.DOWNLOAD_FOLDER;
 
 test.beforeEach(async () => {
   await resetDatabase(db);

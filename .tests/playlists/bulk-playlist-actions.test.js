@@ -140,7 +140,7 @@ test("synchronization failure preserves applied outcomes and retries only unfini
 
 test("failed source commit leaves completed source media intact", async (t) => {
   const f = fixture(t, 1);
-  const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "aurral-weekly-flow", f.source.id, "Track.flac");
+  const file = path.join(process.env.DOWNLOAD_FOLDER, "aurral-weekly-flow", f.source.id, "Track.flac");
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "disposable audio");
   downloadTracker.setDone(f.jobs[0].id, file);
@@ -229,7 +229,7 @@ test("a failed source commit after provider cleanup leaves a recoverable active 
 
 test("failed provider cleanup leaves a retained quality upgrade recoverable", async (t) => {
   const f = fixture(t, 1);
-  const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "original.flac");
+  const file = path.join(process.env.DOWNLOAD_FOLDER, "original.flac");
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "original audio");
   downloadTracker.setDone(f.jobs[0].id, file);

@@ -216,7 +216,7 @@ test.before(async () => {
     },
   });
   syncedFavoriteSourcePath = path.join(
-    process.env.WEEKLY_FLOW_FOLDER,
+    process.env.DOWNLOAD_FOLDER,
     "aurral-weekly-flow",
     syncedFavoritePlaylist.id,
     syncedFavoriteTrack.artistName,
@@ -760,7 +760,7 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
   const playlist = syncedFavoritePlaylist;
   const track = playlist.tracks[0];
   const sourcePath = syncedFavoriteSourcePath;
-  const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+  const downloadRoot = process.env.DOWNLOAD_FOLDER;
   const originalStart = downloadWorker.start;
   let libraryJobId;
   try {

@@ -73,7 +73,7 @@ const { enqueueImportedPlaylist } = importPlaylistModule;
 const { playlistOperationQueue } = operationQueueModule;
 const { logger } = loggerModule;
 
-const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+const downloadRoot = process.env.DOWNLOAD_FOLDER;
 
 test("import sync delegates to the flow owner without blocking the web event loop", async () => {
   const { configureDownloadOwnerClient } = await importFromRepo(

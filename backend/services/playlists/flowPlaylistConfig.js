@@ -695,10 +695,6 @@ export const flowPlaylistConfig = {
     return getStoredFlows();
   },
 
-  saveNormalizedFlows() {
-    setFlows(getStoredFlows());
-  },
-
   getFlowsForUser(user) {
     return getStoredFlows().filter((flow) => this.canUserAccessFlow(user, flow));
   },

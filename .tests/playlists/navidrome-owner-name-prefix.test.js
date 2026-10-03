@@ -37,7 +37,7 @@ test.after(async () => {
 });
 
 function makeManager({ prefixOwnerUsername } = {}) {
-  const manager = new PlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
+  const manager = new PlaylistManager(process.env.DOWNLOAD_FOLDER);
   if (prefixOwnerUsername !== undefined) {
     manager.navidromeDestination.updateConfig({ prefixOwnerUsername });
   }

@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
-test("resolveEnvDownloadFolder prefers DOWNLOAD_FOLDER", async () => {
+test("resolveEnvDownloadFolder reads DOWNLOAD_FOLDER", async () => {
   const previous = process.env.DOWNLOAD_FOLDER;
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aurral-download-env-"));
   process.env.DOWNLOAD_FOLDER = tempDir;
@@ -20,15 +20,11 @@ test("resolveEnvDownloadFolder prefers DOWNLOAD_FOLDER", async () => {
 test("default download folder follows the available writable data root", async () => {
   const previousDataDir = process.env.AURRAL_DATA_DIR;
   const previousDownloadFolder = process.env.DOWNLOAD_FOLDER;
-  const previousPlaylistFolder = process.env.PLAYLIST_FOLDER;
-  const previousWeeklyFlowFolder = process.env.WEEKLY_FLOW_FOLDER;
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aurral-download-default-"));
   const nonDirectoryPath = path.join(tempDir, "not-a-directory");
   fs.writeFileSync(nonDirectoryPath, "test");
   process.env.AURRAL_DATA_DIR = tempDir;
   delete process.env.DOWNLOAD_FOLDER;
-  delete process.env.PLAYLIST_FOLDER;
-  delete process.env.WEEKLY_FLOW_FOLDER;
 
   try {
     const { resolveDefaultDownloadRoot } = await import(
@@ -47,10 +43,6 @@ test("default download folder follows the available writable data root", async (
     else process.env.AURRAL_DATA_DIR = previousDataDir;
     if (previousDownloadFolder === undefined) delete process.env.DOWNLOAD_FOLDER;
     else process.env.DOWNLOAD_FOLDER = previousDownloadFolder;
-    if (previousPlaylistFolder === undefined) delete process.env.PLAYLIST_FOLDER;
-    else process.env.PLAYLIST_FOLDER = previousPlaylistFolder;
-    if (previousWeeklyFlowFolder === undefined) delete process.env.WEEKLY_FLOW_FOLDER;
-    else process.env.WEEKLY_FLOW_FOLDER = previousWeeklyFlowFolder;
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });

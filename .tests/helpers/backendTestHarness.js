@@ -60,7 +60,6 @@ export async function createIsolatedStateDir(
 export function applyIsolatedBackendEnv(paths) {
   process.env.AURRAL_DATA_DIR = paths.dataDir;
   process.env.AURRAL_DB_PATH = paths.dbPath;
-  process.env.WEEKLY_FLOW_FOLDER = join(paths.baseDir, "weekly-flow");
   process.env.DOWNLOAD_FOLDER = join(paths.baseDir, "downloads");
   process.env.NODE_ENV = "test";
   process.env.JSON_BODY_LIMIT = "2mb";
@@ -99,7 +98,11 @@ export async function setupIsolatedBackend(name, ...modulePaths) {
 
 export function resetDatabase(db) {
   for (const table of RESET_TABLES) {
-    db.prepare(`DELETE FROM ${table}`).run();
+    db.prepare(
+      table === "settings"
+        ? "DELETE FROM settings WHERE key != 'schemaVersion'"
+        : `DELETE FROM ${table}`,
+    ).run();
   }
 }
 

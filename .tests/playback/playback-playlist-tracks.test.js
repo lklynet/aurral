@@ -23,7 +23,7 @@ const [
   "backend/services/playback/playbackPlaylistTracks.js",
 );
 
-const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+const downloadRoot = process.env.DOWNLOAD_FOLDER;
 
 test.beforeEach(async () => {
   await resetDatabase(db);

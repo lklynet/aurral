@@ -37,7 +37,7 @@ test.after(async () => {
 });
 
 function makeManager() {
-  const manager = new PlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
+  const manager = new PlaylistManager(process.env.DOWNLOAD_FOLDER);
   manager.__artworkUploads = [];
   manager.navidromeDestination.client = {
     isConfigured: () => true,

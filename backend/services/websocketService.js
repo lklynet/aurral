@@ -1,7 +1,6 @@
 import { WebSocketServer } from 'ws';
 import { dbOps, userOps } from "../db/helpers/index.js";
 import { logger } from "./logger.js";
-import { noteDeprecatedUsage } from "./deprecatedUsage.js";
 import {
   getAuthPassword,
   isProxyAuthEnabled,
@@ -131,7 +130,6 @@ class WebSocketService {
   handleSubscribe(client, channels) {
     for (const channel of channels) {
       client.subscriptions.add(channel);
-      if (channel === "weekly-flow") noteDeprecatedUsage("weekly-flow-channel");
     }
     
     this.send(client, {

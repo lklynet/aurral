@@ -6,10 +6,9 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, honkerDb, { dbOps }] = await setupIsolatedBackend(
+const [isolatedState, honkerDb] = await setupIsolatedBackend(
   "honker-db-config",
   "backend/services/honkerDb.js",
-  "backend/db/helpers/index.js",
 );
 
 test.after(async () => {
@@ -93,51 +92,23 @@ test("Honker uses a low-CPU watcher cadence by default", () => {
   }
 });
 
-test("startup only queues due bootstrap work and a pending migration", () => {
+test("startup queues each bootstrap task once", () => {
   const db = honkerDb.getHonkerDb();
-  const clearQueue = () => {
-    const tx = db.transaction();
-    tx.execute("DELETE FROM _honker_live");
-    tx.commit();
-  };
-  const queuedKinds = () =>
-    db
-      .query("SELECT payload FROM _honker_live ORDER BY id")
-      .map((row) => JSON.parse(row.payload).kind);
+  const tx = db.transaction();
+  tx.execute("DELETE FROM _honker_live");
+  tx.commit();
 
-  clearQueue();
   honkerDb.enqueueHonkerStartupTasks();
   honkerDb.enqueueHonkerStartupTasks();
-  assert.deepEqual(queuedKinds(), [
-    "playlist-startup-migration",
-    "stored-data-migration",
-    "identity-marker-migration",
-    "weekly-flow-startup-check",
-    "upgrade-readiness-check",
-    "discovery-bootstrap",
-    "library-index-bootstrap",
-    "release-metadata-refresh",
-    "news-refresh",
-  ]);
-
-  dbOps.setJSONSetting(honkerDb.PLAYLIST_STARTUP_MIGRATION_SETTING, {
-    version: honkerDb.PLAYLIST_STARTUP_MIGRATION_VERSION,
-    rootPath: process.env.WEEKLY_FLOW_FOLDER,
-  });
-  dbOps.setJSONSetting(honkerDb.STORED_DATA_MIGRATION_SETTING, {
-    version: honkerDb.STORED_DATA_MIGRATION_VERSION,
-  });
-  dbOps.setJSONSetting(honkerDb.IDENTITY_MARKER_MIGRATION_SETTING, {
-    version: honkerDb.IDENTITY_MARKER_MIGRATION_VERSION,
-  });
-  clearQueue();
-  honkerDb.enqueueHonkerStartupTasks();
-  assert.deepEqual(queuedKinds(), [
-    "weekly-flow-startup-check",
-    "upgrade-readiness-check",
-    "discovery-bootstrap",
-    "library-index-bootstrap",
-    "release-metadata-refresh",
-    "news-refresh",
-  ]);
+  assert.deepEqual(
+    db.query("SELECT payload FROM _honker_live ORDER BY id").map((row) => JSON.parse(row.payload).kind),
+    [
+      "weekly-flow-startup-check",
+      "discovery-bootstrap",
+      "library-index-bootstrap",
+      "release-metadata-refresh",
+      "news-refresh",
+    ],
+  );
 });
+

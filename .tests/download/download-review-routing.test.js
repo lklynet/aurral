@@ -535,7 +535,7 @@ btest("deemix reuses an existing final path instead of creating a duplicate", as
   );
   const destination = "deemix-duplicate/Artist Name/Album Name";
   const targetPath = path.join(
-    process.env.WEEKLY_FLOW_FOLDER,
+    process.env.DOWNLOAD_FOLDER,
     destination,
     "Correct Track.mp3",
   );
