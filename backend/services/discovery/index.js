@@ -26,8 +26,6 @@ export {
   resetDiscoveryModuleCache,
   getDiscoveryCache,
   recordDiscoveryUpdateProgress,
-  clearDiscoveryUpdateProgress,
-  getDiscoveryUpdateStatus,
   isGlobalDiscoveryRefreshInProgress,
 } from "./persistence.js";
 

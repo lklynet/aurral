@@ -15,9 +15,9 @@ import {
   testGotifyConnection,
   applyLidarrCommunityGuide,
 } from "../../../utils/api/endpoints/settings.js";
-import { useWebSocketChannel } from "../../../hooks/useWebSocket";
+import { refetchDiscoveryStatus } from "../../../hooks/useDiscoveryStatus";
+import { refreshDiscovery } from "../../../utils/api/endpoints/discovery.js";
 import { DISCOVERY_MANUAL_REFRESH_KEY } from "../../../utils/discoverRecentNavigation.js";
-import { shouldPollDiscoveryHealth } from "../../../utils/requestScheduling.js";
 import { allReleaseTypes } from "../constants";
 import {
   DEFAULT_METADATA_BASE_URL,
@@ -245,9 +245,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [originalSettings, setOriginalSettings] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [refreshingDiscovery, setRefreshingDiscovery] = useState(false);
-  const [discoveryProgressMessage, setDiscoveryProgressMessage] = useState("");
-  const [discoveryProgress, setDiscoveryProgress] = useState(null);
+  const [requestingDiscoveryRefresh, setRequestingDiscoveryRefresh] = useState(false);
   const [clearingCache, setClearingCache] = useState(false);
   const [testingLidarr, setTestingLidarr] = useState(false);
   const [testingGotify, setTestingGotify] = useState(false);
@@ -341,66 +339,15 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   const { refetch: refetchPlayback } = playbackQuery;
   const { refetch: refetchDownloadClients } = downloadClientQuery;
 
-  const applyHealthUpdate = useCallback((healthData, { allowClearRefreshing = true } = {}) => {
-    setHealth(healthData);
-    if (healthData?.discovery?.isUpdating) {
-      setRefreshingDiscovery(true);
-      setDiscoveryProgressMessage(
-        healthData.discovery.updateProgressMessage || "Discovery refresh is running",
-      );
-      if (typeof healthData.discovery.updateProgress === "number") {
-        setDiscoveryProgress(healthData.discovery.updateProgress);
-      }
-    } else if (allowClearRefreshing) {
-      setRefreshingDiscovery(false);
-      setDiscoveryProgress(null);
-    }
-  }, []);
-
-  const refreshHealth = useCallback(async (options) => {
+  const refreshHealth = useCallback(async () => {
     try {
       const healthData = await checkHealth({ force: true });
-      applyHealthUpdate(healthData, options);
+      setHealth(healthData);
       return healthData;
     } catch {
       return null;
     }
-  }, [applyHealthUpdate]);
-
-  const lastDiscoveryWsMessageAtRef = useRef(0);
-
-  const { isConnected: discoveryWsConnected } = useWebSocketChannel("discovery", (msg) => {
-    if (msg.type !== "discovery_update") return;
-
-    if (msg.phase === "error") {
-      lastDiscoveryWsMessageAtRef.current = Date.now();
-      setRefreshingDiscovery(false);
-      setDiscoveryProgress(null);
-      setDiscoveryProgressMessage(msg.progressMessage || "Discovery refresh failed");
-      return;
-    }
-
-    if (msg.isUpdating) {
-      lastDiscoveryWsMessageAtRef.current = Date.now();
-      setRefreshingDiscovery(true);
-      if (msg.progressMessage) {
-        setDiscoveryProgressMessage(msg.progressMessage);
-      }
-      if (typeof msg.progress === "number") {
-        setDiscoveryProgress(msg.progress);
-      }
-      return;
-    }
-
-    if (msg.phase === "completed" || Array.isArray(msg.recommendations)) {
-      lastDiscoveryWsMessageAtRef.current = Date.now();
-      setRefreshingDiscovery(false);
-      setDiscoveryProgress(100);
-      setDiscoveryProgressMessage(msg.progressMessage || "Discovery refresh completed");
-      refreshHealth({ allowClearRefreshing: true });
-      return;
-    }
-  });
+  }, []);
 
   const fetchSettings = useCallback(async () => {
     comparisonEnabledRef.current = false;
@@ -476,39 +423,6 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
       mountedRef.current = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (
-      !refreshingDiscovery ||
-      !shouldPollDiscoveryHealth({ isConnected: discoveryWsConnected })
-    ) {
-      return;
-    }
-
-    let stopped = false;
-    let timeoutId = null;
-    let startedAt = Date.now();
-
-    const pollHealth = async () => {
-      try {
-        const allowClearRefreshing =
-          Date.now() - lastDiscoveryWsMessageAtRef.current >= 20000;
-        const healthData = await refreshHealth({ allowClearRefreshing });
-        if (!healthData?.discovery?.isUpdating && allowClearRefreshing) {
-          setDiscoveryProgressMessage((current) => current || "Discovery refresh completed");
-        }
-      } catch {}
-      if (stopped) return;
-      const delay = Date.now() - startedAt < 60000 ? 3000 : 10000;
-      timeoutId = setTimeout(pollHealth, delay);
-    };
-
-    pollHealth();
-    return () => {
-      stopped = true;
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-  }, [discoveryWsConnected, refreshingDiscovery, refreshHealth]);
 
   const persistSettings = useCallback(
     async (settingsToSave) => {
@@ -622,27 +536,21 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   );
 
   const handleRefreshDiscovery = useCallback(async () => {
-    if (refreshingDiscovery) return;
-    setRefreshingDiscovery(true);
-    setDiscoveryProgressMessage("Submitting discovery refresh request");
-    lastDiscoveryWsMessageAtRef.current = Date.now();
+    if (requestingDiscoveryRefresh) return;
+    setRequestingDiscoveryRefresh(true);
     try {
-      await api.post("/discover/refresh");
+      await refreshDiscovery();
       localStorage.setItem(DISCOVERY_MANUAL_REFRESH_KEY, "1");
-      showInfo(
-        "Discovery refresh started in background. This may take a few minutes to fully hydrate images.",
-      );
-      await refreshHealth({ allowClearRefreshing: false });
     } catch (err) {
-      setRefreshingDiscovery(false);
-      setDiscoveryProgress(null);
-      setDiscoveryProgressMessage("");
       showError(
         "Failed to start refresh: " +
           (err.response?.data?.message || err.response?.data?.error || err.message),
       );
+    } finally {
+      await refetchDiscoveryStatus();
+      setRequestingDiscoveryRefresh(false);
     }
-  }, [refreshingDiscovery, showInfo, showError, refreshHealth]);
+  }, [requestingDiscoveryRefresh, showError]);
 
   const handleClearCache = useCallback(async () => {
     if (
@@ -726,9 +634,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
     handleSaveSettings,
     fetchSettings,
     refreshHealth,
-    refreshingDiscovery,
-    discoveryProgress,
-    discoveryProgressMessage,
+    requestingDiscoveryRefresh,
     clearingCache,
     handleRefreshDiscovery,
     handleClearCache,

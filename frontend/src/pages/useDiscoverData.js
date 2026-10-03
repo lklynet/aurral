@@ -23,13 +23,13 @@ import {
   readStoredDiscoveryData,
   writeStoredDiscoveryData,
   normalizeDiscoveryData,
-  mergeDiscoveryHttp,
   getStoredRecentlyAddedAt,
   getStoredRecentReleasesAt,
   getLibraryArtistImage,
 } from "./discoverUtils";
 
 import { useWebSocketChannel } from "../hooks/useWebSocket";
+import { useDiscoveryStatus } from "../hooks/useDiscoveryStatus";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
 import { queryClient, queryKeys } from "../queryClient.js";
@@ -60,12 +60,7 @@ export function useDiscoverData() {
   );
   const discoveryQuery = useQuery({
     queryKey: discoveryQueryKey,
-    queryFn: async ({ signal }) => {
-      const nextValue = await getDiscovery({ signal });
-      return mergeDiscoveryHttp(queryClient.getQueryData(discoveryQueryKey), nextValue, {
-        allowClearStatus: true,
-      }) || nextValue;
-    },
+    queryFn: async ({ signal }) => normalizeDiscoveryData(await getDiscovery({ signal })),
     initialData: discoveryInitial,
     initialDataUpdatedAt: 0,
     staleTime: 30_000,
@@ -103,12 +98,11 @@ export function useDiscoverData() {
   const recentlyAdded = recentlyAddedQuery.data || [];
   const recentReleases = recentReleasesQuery.data || [];
   const [pendingRecentReleaseIds, setPendingRecentReleaseIds] = useState({});
-  const [error, setError] = useState(null);
   const [libraryLookup, setLibraryLookup] = useState({});
   const { lookup: artistFeedbackLookup, submitFeedback } =
     useArtistTasteFeedback();
-  const lastDiscoveryWsMessageAtRef = useRef(0);
-  const discoveryPollInFlightRef = useRef(false);
+  const { status: discoveryStatus } = useDiscoveryStatus();
+  const previousDiscoveryStatusRef = useRef(null);
   const canAddAlbum = hasPermission("addAlbum");
 
   useEffect(() => {
@@ -118,46 +112,6 @@ export function useDiscoverData() {
   useEffect(() => {
     if (recentReleasesQuery.data) writeStoredRecentReleases(recentReleasesQuery.data, authUser?.id);
   }, [authUser?.id, recentReleasesQuery.data]);
-
-  const applyDiscoveryData = useCallback(
-    (nextValue, { allowClearStatus = true } = {}) => {
-      setData((prev) => {
-        const normalizedData = mergeDiscoveryHttp(prev, nextValue, {
-          allowClearStatus,
-        });
-        if (!normalizedData) return prev;
-        return normalizedData;
-      });
-    },
-    [setData],
-  );
-
-  const fetchAndApplyDiscovery = useCallback(
-    (cacheBust = false, { allowClearStatus } = {}) => {
-      const clearStatus =
-        allowClearStatus ??
-        Date.now() - lastDiscoveryWsMessageAtRef.current >= 20000;
-      return queryClient.fetchQuery({
-        queryKey: discoveryQueryKey,
-        queryFn: ({ signal }) => getDiscovery({ cacheBust, signal }).then((discoveryData) =>
-          mergeDiscoveryHttp(queryClient.getQueryData(discoveryQueryKey), discoveryData, {
-            allowClearStatus: clearStatus,
-          }) || discoveryData,
-        ),
-        staleTime: cacheBust ? 0 : 30_000,
-      })
-        .then(() => setError(null))
-        .catch((err) => {
-          console.warn(err);
-          setError(
-            err?.response?.data?.message ||
-              err?.message ||
-              "Failed to refresh discovery data",
-          );
-        });
-    },
-    [discoveryQueryKey, setError],
-  );
 
   useWebSocketChannel("library", (msg) => {
     if (msg.type === "library_scan_completed") {
@@ -175,110 +129,19 @@ export function useDiscoverData() {
     if (data) writeStoredDiscoveryData(data, authUser?.id);
   }, [authUser?.id, data]);
 
-  useEffect(() => {
-    if (!discoveryQuery.error) return;
-    setError(discoveryQuery.error?.response?.data?.message || "Failed to load discovery data");
-  }, [discoveryQuery.error]);
-
-  const { isConnected: isDiscoverySocketConnected } = useWebSocketChannel(
-    "discovery",
-    (msg) => {
-      if (msg.type !== "discovery_update") return;
-
-      if (msg.phase === "error") {
-        setData((prev) =>
-          normalizeDiscoveryData({
-            ...(prev || {}),
-            isUpdating: false,
-            updatePhase: "error",
-            updateProgress: null,
-            updateProgressMessage:
-              msg.progressMessage || "Discovery refresh failed",
-          }),
-        );
-        return;
-      }
-
-      if (msg.isUpdating) {
-        lastDiscoveryWsMessageAtRef.current = Date.now();
-        setData((prev) =>
-          normalizeDiscoveryData({
-            ...(prev || {}),
-            isUpdating: true,
-            updatePhase: msg.phase || prev?.updatePhase || null,
-            updateProgress:
-              typeof msg.progress === "number"
-                ? msg.progress
-                : prev?.updateProgress ?? null,
-            updateProgressMessage:
-              msg.progressMessage || prev?.updateProgressMessage || null,
-            provider: msg.provider || prev?.provider || "lastfm",
-            capabilities: msg.capabilities || prev?.capabilities || null,
-            configured: true,
-            stale: false,
-          }),
-        );
-        return;
-      }
-
-      if (msg.phase === "completed") {
-        lastDiscoveryWsMessageAtRef.current = Date.now();
-        setData((prev) =>
-          normalizeDiscoveryData({
-            ...(prev || {}),
-            isUpdating: false,
-            updatePhase: null,
-            updateProgress: null,
-            updateProgressMessage: null,
-            stale: false,
-          }),
-        );
-        fetchAndApplyDiscovery(true);
-      }
-    },
-  );
+  const error = discoveryQuery.error
+    ? discoveryQuery.error?.response?.data?.message || "Failed to load discovery data"
+    : null;
 
   useEffect(() => {
-    if (!data?.isUpdating && !data?.isEnriching) {
-      return;
+    const previous = previousDiscoveryStatusRef.current;
+    previousDiscoveryStatusRef.current = discoveryStatus;
+    if (!previous || !discoveryStatus) return;
+    const finished = previous.isUpdating && !discoveryStatus.isUpdating;
+    if (finished || previous.lastUpdated !== discoveryStatus.lastUpdated) {
+      queryClient.invalidateQueries({ queryKey: discoveryQueryKey });
     }
-    const pollDiscovery = () => {
-      if (discoveryPollInFlightRef.current) return;
-      const hasRecentWsUpdate =
-        Date.now() - lastDiscoveryWsMessageAtRef.current < 20000;
-      if (isDiscoverySocketConnected && hasRecentWsUpdate) return;
-      discoveryPollInFlightRef.current = true;
-      fetchAndApplyDiscovery(true, { allowClearStatus: true })
-        .finally(() => {
-          discoveryPollInFlightRef.current = false;
-        });
-    };
-    pollDiscovery();
-    const id = setInterval(pollDiscovery, 10000);
-    return () => clearInterval(id);
-  }, [
-    authUser?.id,
-    data?.isUpdating,
-    data?.isEnriching,
-    isDiscoverySocketConnected,
-    fetchAndApplyDiscovery,
-  ]);
-
-  useEffect(() => {
-    if (!data?.stale || data?.isUpdating || data?.isEnriching) return;
-    if (isDiscoverySocketConnected) return;
-    const id = setTimeout(() => {
-      fetchAndApplyDiscovery(true, { allowClearStatus: true });
-    }, 15000);
-    return () => clearTimeout(id);
-  }, [
-    authUser?.id,
-    data?.stale,
-    data?.isUpdating,
-    data?.isEnriching,
-    isDiscoverySocketConnected,
-    fetchAndApplyDiscovery,
-  ]);
+  }, [discoveryQueryKey, discoveryStatus]);
 
   useEffect(() => {
     if (recentlyAddedQuery.error) showError(recentlyAddedQuery.error?.message || "Failed to load recently added");
@@ -380,14 +243,11 @@ export function useDiscoverData() {
     appliedNearbyZip,
     setAppliedNearbyZip,
     canAddAlbum,
-    isDiscoverySocketConnected,
-    applyDiscoveryData,
-    fetchAndApplyDiscovery,
+    discoveryStatus,
     getLibraryArtistImage,
     getRecentReleaseKey,
     libraryDestination,
     handleRecentReleaseAlbumAction,
     handleDiscoveryFeedback,
-    lastDiscoveryWsMessageAtRef,
   };
 }

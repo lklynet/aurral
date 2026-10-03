@@ -5,6 +5,7 @@ import { DotLoader } from "../../../components/DotLoader";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { formatDateTime } from "../../../utils/dateTime.js";
+import { useDiscoveryStatus } from "../../../hooks/useDiscoveryStatus";
 
 const AUTO_REFRESH_OPTIONS = [
   { value: 24, label: "Daily" },
@@ -47,9 +48,7 @@ export function SettingsDiscoverTab({
   updateSettings,
   health,
   handleSaveSettings,
-  refreshingDiscovery,
-  discoveryProgress,
-  discoveryProgressMessage,
+  requestingDiscoveryRefresh,
   clearingCache,
   handleRefreshDiscovery,
   handleClearCache,
@@ -66,10 +65,11 @@ export function SettingsDiscoverTab({
     health?.discovery?.provider === "listenbrainz-fallback" ? "ListenBrainz fallback" : "Last.fm";
   const isListenBrainzFallback = health?.discovery?.provider === "listenbrainz-fallback";
   const showLastfmDiscoverBanner = isListenBrainzFallback && !lastfmBannerDismissed;
-  const activeProgress = discoveryProgress ?? health?.discovery?.updateProgress;
-  const showProgress = health?.discovery?.isUpdating || refreshingDiscovery;
-  const progressMessage =
-    discoveryProgressMessage || health?.discovery?.updateProgressMessage || "Refreshing discovery";
+  const { status: discoveryStatus } = useDiscoveryStatus();
+  const showProgress = Boolean(discoveryStatus?.isUpdating);
+  const refreshBusy = showProgress || requestingDiscoveryRefresh;
+  const activeProgress = discoveryStatus?.updateProgress;
+  const progressMessage = discoveryStatus?.updateProgressMessage || "Refreshing discovery";
 
   const updateLastfmDiscovery = (patch) =>
     updateSettings({
@@ -207,14 +207,14 @@ export function SettingsDiscoverTab({
                 type="button"
                 className="arr-btn arr-btn--primary"
                 onClick={handleRefreshDiscovery}
-                disabled={refreshingDiscovery}
+                disabled={refreshBusy}
               >
-                {refreshingDiscovery ? (
+                {refreshBusy ? (
                   <DotLoader size="xs" label={null} />
                 ) : (
                   <RefreshCw className="artist-icon-xs" aria-hidden />
                 )}
-                {refreshingDiscovery ? "Refreshing…" : "Refresh discovery"}
+                {refreshBusy ? "Refreshing…" : "Refresh discovery"}
               </button>
               <button
                 type="button"
@@ -240,8 +240,8 @@ export function SettingsDiscoverTab({
             <div>
               <dt className="arr-meta-term">Last updated</dt>
               <dd className="arr-meta-value">
-                {health?.discovery?.lastUpdated
-                  ? formatDateTime(new Date(health.discovery.lastUpdated))
+                {discoveryStatus?.lastUpdated
+                  ? formatDateTime(new Date(discoveryStatus.lastUpdated))
                   : "—"}
               </dd>
             </div>
@@ -258,7 +258,7 @@ export function SettingsDiscoverTab({
           </dl>
 
           {showProgress ? (
-            <div className="arr-progress">
+            <div className="arr-progress" role="status">
               <p className="arr-progress__line">
                 <DotLoader size="xs" label={null} />
                 <span>{progressMessage}</span>
@@ -274,8 +274,10 @@ export function SettingsDiscoverTab({
             </div>
           ) : null}
 
-          {!showProgress && discoveryProgressMessage ? (
-            <p className="arr-form-help arr-form-help--success">{discoveryProgressMessage}</p>
+          {!showProgress && discoveryStatus?.error ? (
+            <p className="arr-form-help arr-form-help--error" role="status">
+              Last refresh failed: {discoveryStatus.error}
+            </p>
           ) : null}
         </SettingsArrFieldSet>
       </form>

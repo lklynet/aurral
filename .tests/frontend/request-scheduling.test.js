@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import {
   getActivityPollIntervalMs,
   getBootstrapPollIntervalMs,
-  shouldPollDiscoveryHealth,
 } from "../../frontend/src/utils/requestScheduling.js";
 
 test("activity polls less often while its sockets are connected", () => {
@@ -18,11 +17,6 @@ test("activity polls less often while its sockets are connected", () => {
     getActivityPollIntervalMs({ isConnected: true, isListLikeView: false }) >
       getActivityPollIntervalMs({ isConnected: true, isListLikeView: true }),
   );
-});
-
-test("discovery health polling is only a disconnected socket fallback", () => {
-  assert.equal(shouldPollDiscoveryHealth({ isConnected: true }), false);
-  assert.equal(shouldPollDiscoveryHealth({ isConnected: false }), true);
 });
 
 test("bootstrap polling slows down while the heartbeat socket is healthy", () => {

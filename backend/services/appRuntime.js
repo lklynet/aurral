@@ -364,18 +364,23 @@ export function startBackgroundWorkers({ logger = console } = {}) {
       });
       if (retired) return recovery;
       if (group !== "discovery-refresh") return recovery;
-      void forwardWorkerBroadcast({
-        type: "websocket-broadcast",
-        channel: "discovery",
-        data: {
-          type: "discovery_update",
-          isUpdating: false,
-          phase: "error",
-          progressMessage: "Discovery refresh stopped; queued jobs will retry",
-        },
-      }).catch((error) => {
-        logger.warn?.("[AppRuntime] Failed to report discovery restart:", error?.message || error);
-      });
+      void import("./discovery/persistence.js")
+        .then(({ markInterruptedDiscoveryRefresh }) => {
+          markInterruptedDiscoveryRefresh("Discovery refresh stopped unexpectedly");
+          return forwardWorkerBroadcast({
+            type: "websocket-broadcast",
+            channel: "discovery",
+            data: {
+              type: "discovery_update",
+              isUpdating: false,
+              phase: "error",
+              progressMessage: "Discovery refresh stopped; queued jobs will retry",
+            },
+          });
+        })
+        .catch((error) => {
+          logger.warn?.("[AppRuntime] Failed to report discovery restart:", error?.message || error);
+        });
       return recovery;
     },
   });

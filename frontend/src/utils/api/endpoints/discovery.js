@@ -15,6 +15,11 @@ export const getDiscovery = (options = false) => {
   return getData("/discover", { params, signal });
 };
 
+export const getDiscoveryStatus = ({ signal } = {}) =>
+  getData("/discover/status", { signal });
+
+export const refreshDiscovery = () => postData("/discover/refresh");
+
 export const getEditorialShelf = (options = {}) => getData("/discover/editorial", options);
 
 export const getEditorialPlaylist = (playlistId, options = {}) =>

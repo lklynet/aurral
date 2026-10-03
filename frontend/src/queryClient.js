@@ -24,6 +24,8 @@ export const queryClient = new QueryClient({
 export const queryKeys = {
   authBootstrap: ["auth", "bootstrap"],
   discovery: (userId) => ["discovery", "home", userId || null],
+  discoveryStatusPrefix: ["discovery", "status"],
+  discoveryStatus: (userId) => ["discovery", "status", userId || null],
   editorialShelf: (userId) => ["discovery", "editorial", "shelf", userId || null],
   editorialPlaylist: (userId, playlistId) => ["discovery", "editorial", "playlist", userId || null, playlistId],
   appHealth: ["app", "health"],

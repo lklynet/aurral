@@ -7,12 +7,9 @@ import {
   getDiscoveryRefreshQueue,
   isHonkerLockHeld,
 } from "../honkerDb.js";
-import {
-  clearDiscoveryUpdateProgress,
-  getDiscoveryAutoRefreshHours,
-  getDiscoveryCache,
-  recordDiscoveryUpdateProgress,
-} from "./index.js";
+import { websocketService } from "../websocketService.js";
+import { getDiscoveryAutoRefreshHours, getDiscoveryCache } from "./index.js";
+import { markDiscoveryRefreshRequested, markInterruptedDiscoveryRefresh } from "./persistence.js";
 
 const DISCOVERY_GLOBAL_REFRESH_LOCK = "discovery-global-refresh";
 
@@ -56,6 +53,7 @@ export function recoverDeadDiscoveryRefresh() {
       queue.cancel(row.id);
     } catch {}
   }
+  if (deadJobs.length) markInterruptedDiscoveryRefresh("Discovery refresh was interrupted");
   for (const row of deadLocks) {
     const tx = honker.transaction();
     try {
@@ -152,7 +150,7 @@ export async function isDiscoveryRefreshConfigured() {
   return getCanonicalArtistProjection({ page: 1, pageSize: 1 }).length > 0;
 }
 
-export function discoveryNeedsRefresh(cache = getDiscoveryCache()) {
+export function discoveryNeedsRefresh(cache = dbOps.getDiscoveryCache()) {
   const refreshHours = getDiscoveryAutoRefreshHours();
   const staleCutoff = Date.now() - refreshHours * 60 * 60 * 1000;
   const lastUpdatedAt = new Date(cache?.lastUpdated || "").getTime();
@@ -165,8 +163,15 @@ export function discoveryNeedsRefresh(cache = getDiscoveryCache()) {
   return !hasRecommendations && !hasGlobalTop;
 }
 
-function emitDiscoveryQueued(reason) {
-  recordDiscoveryUpdateProgress("queued", "Discovery refresh queued", 1, { reason });
+function markDiscoveryQueued(reason) {
+  markDiscoveryRefreshRequested();
+  websocketService.emitDiscoveryUpdate({
+    isUpdating: true,
+    configured: true,
+    phase: "queued",
+    progressMessage: "Discovery refresh queued",
+    reason,
+  });
 }
 
 export function enqueueDiscoveryRefresh(options = {}) {
@@ -177,11 +182,8 @@ export function enqueueDiscoveryRefresh(options = {}) {
     delaySeconds = null,
     scheduleOnly = false,
   } = options;
-  const cache = getDiscoveryCache();
-
-  if (!scheduleOnly && force && recoverDeadDiscoveryRefresh()) {
-    cache.isUpdating = false;
-    clearDiscoveryUpdateProgress();
+  if (!scheduleOnly && force) {
+    recoverDeadDiscoveryRefresh();
   }
 
   if (!scheduleOnly) {
@@ -194,36 +196,26 @@ export function enqueueDiscoveryRefresh(options = {}) {
     if (!force && hasQueuedDiscoveryRefresh()) {
       return { enqueued: false, reason: "queued" };
     }
-    if (!cache.isUpdating) {
-      cache.isUpdating = true;
-      emitDiscoveryQueued(reason);
-    }
   }
 
-  try {
-    if (scheduleOnly && reason === "scheduled" && getPendingScheduledDiscoveryRefresh()) {
-      return { enqueued: false, reason: "already_scheduled" };
-    }
-    enqueueDiscoveryRefreshJob(
-      {
-        reason,
-        requestedAt: Date.now(),
-        scheduleOnly: scheduleOnly === true,
-      },
-      { runAt, delaySeconds },
-    );
-  } catch (error) {
-    if (!scheduleOnly) {
-      cache.isUpdating = false;
-    }
-    throw error;
+  if (scheduleOnly && reason === "scheduled" && getPendingScheduledDiscoveryRefresh()) {
+    return { enqueued: false, reason: "already_scheduled" };
   }
+  enqueueDiscoveryRefreshJob(
+    {
+      reason,
+      requestedAt: Date.now(),
+      scheduleOnly: scheduleOnly === true,
+    },
+    { runAt, delaySeconds },
+  );
+  if (!scheduleOnly) markDiscoveryQueued(reason);
   return { enqueued: true, reason };
 }
 
 export function scheduleNextDiscoveryRefresh() {
   pruneDuplicateScheduledDiscoveryRefreshes();
-  const cache = getDiscoveryCache();
+  const cache = dbOps.getDiscoveryCache();
   const refreshMs = getDiscoveryAutoRefreshHours() * 60 * 60 * 1000;
   const base = cache.lastUpdated ? new Date(cache.lastUpdated).getTime() : Date.now();
   const runAtMs = base + refreshMs;
@@ -249,18 +241,6 @@ export async function enqueueDiscoveryRefreshIfNeeded(options = {}) {
 
 export async function bootstrapDiscoveryRefresh() {
   recoverDeadDiscoveryRefresh();
-  const cache = getDiscoveryCache();
-  const queued = hasQueuedDiscoveryRefresh();
-  if (
-    !isHonkerLockHeld("discovery-global-refresh") &&
-    !queued
-  ) {
-    cache.isUpdating = false;
-    clearDiscoveryUpdateProgress();
-  } else if (queued && !cache.isUpdating) {
-    cache.isUpdating = true;
-    emitDiscoveryQueued("startup");
-  }
 
   if (!(await isDiscoveryRefreshConfigured())) {
     console.log("Discovery not configured (no Last.fm API key and no artists). Clearing cache.");
@@ -280,7 +260,6 @@ export async function bootstrapDiscoveryRefresh() {
         topTags: [],
         topGenres: [],
         lastUpdated: null,
-        isUpdating: false,
       });
     } catch (error) {
       console.error("Failed to clear discovery cache:", error.message);

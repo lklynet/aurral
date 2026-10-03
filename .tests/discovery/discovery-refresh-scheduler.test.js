@@ -6,12 +6,13 @@ import {
   importFromRepo,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, honkerDbModule, refreshScheduler, discoveryIndex] =
+const [isolatedState, honkerDbModule, refreshScheduler, persistence, { getDiscoveryStatus }] =
   await setupIsolatedBackend(
     "discovery-refresh-scheduler",
     "backend/services/honkerDb.js",
     "backend/services/discovery/refreshScheduler.js",
-    "backend/services/discovery/index.js",
+    "backend/services/discovery/persistence.js",
+    "backend/services/discovery/userDiscovery.js",
   );
 
 const {
@@ -22,8 +23,8 @@ const {
   recoverDeadDiscoveryRefresh,
   scheduleNextDiscoveryRefresh,
 } = refreshScheduler;
-const { getDiscoveryCache } = discoveryIndex;
 const { db } = await importFromRepo("backend/config/db-sqlite.js");
+const { dbOps } = await importFromRepo("backend/db/helpers/index.js");
 const originalLastfmApiKey = process.env.LASTFM_API_KEY;
 
 function seedLibraryArtist() {
@@ -92,15 +93,14 @@ function discoveryRefreshPayloads() {
     .map((row) => JSON.parse(row.payload));
 }
 
-function setDiscoveryCache(overrides = {}) {
-  Object.assign(getDiscoveryCache(), {
-    recommendations: [],
-    globalTop: [],
-    topGenres: [],
-    lastUpdated: null,
-    isUpdating: false,
-    ...overrides,
-  });
+// Writes the shared database and leaves this process's memory empty, like a
+// worker process that started before another process refreshed discovery.
+function setDiscoveryCache({ lastUpdated = null, ...data } = {}) {
+  db.prepare("DELETE FROM discovery_cache WHERE key NOT LIKE 'user:%'").run();
+  persistence.resetDiscoveryModuleCache();
+  if (Object.keys(data).length === 0) return;
+  dbOps.updateDiscoveryCache(data);
+  if (lastUpdated) db.prepare("UPDATE discovery_cache SET last_updated = ?").run(lastUpdated);
 }
 
 test.beforeEach(() => {
@@ -233,7 +233,7 @@ test("stale and incomplete discovery caches retry", async () => {
   assert.equal(discoveryRefreshPayloads()[0].reason, "startup");
 
   clearDiscoveryRefreshJobs();
-  setDiscoveryCache({ recommendations: [{ id: "partial" }] });
+  setDiscoveryCache({ topGenres: ["rock"] });
 
   await bootstrapDiscoveryRefresh();
   assert.equal(discoveryRefreshPayloads()[0].reason, "startup");
@@ -288,8 +288,12 @@ test("recoverDeadDiscoveryRefresh clears jobs and locks owned by dead local work
   const jobId = honkerDbModule.getDiscoveryRefreshQueue().enqueue({ reason: "manual" });
   const claimed = honkerDbModule.getDiscoveryRefreshQueue().claimOne(workerId);
   assert.equal(claimed?.id, jobId);
+  persistence.markDiscoveryRefreshStarted();
+  assert.equal(getDiscoveryStatus(null).isUpdating, true);
 
   assert.equal(recoverDeadDiscoveryRefresh(), true);
+  assert.equal(getDiscoveryStatus(null).isUpdating, false);
+  assert.ok(getDiscoveryStatus(null).error);
   assert.equal(
     honkerDbModule.getHonkerDb().query(
       "SELECT COUNT(*) AS count FROM _honker_live WHERE id = ?",
@@ -309,37 +313,32 @@ test("enqueueDiscoveryRefresh deduplicates when refresh queue lock is held", () 
   assert.equal(second.reason, "queued");
 });
 
-test("enqueueDiscoveryRefresh does not treat cache.isUpdating alone as in-progress", () => {
-  const cache = getDiscoveryCache();
-  cache.isUpdating = true;
+test("a recorded refresh request without a queued job does not block a new refresh", () => {
+  persistence.markDiscoveryRefreshRequested();
 
   const result = enqueueDiscoveryRefresh({ reason: "manual" });
   assert.equal(result.enqueued, true);
   assert.equal(result.reason, "manual");
 });
 
-test("enqueueDiscoveryRefresh queues immediate refresh", () => {
-  const cache = getDiscoveryCache();
-  cache.isUpdating = false;
+test("enqueueDiscoveryRefresh queues immediate refresh and reports it as queued", () => {
   const result = enqueueDiscoveryRefresh({ reason: "manual" });
   assert.equal(result.enqueued, true);
-  assert.equal(cache.isUpdating, true);
+  const status = getDiscoveryStatus(null);
+  assert.equal(status.isUpdating, true);
+  assert.equal(status.updatePhase, "queued");
 });
 
 test("scheduleNextDiscoveryRefresh enqueues future job without marking updating", () => {
-  const cache = getDiscoveryCache();
-  cache.isUpdating = false;
-  cache.lastUpdated = new Date().toISOString();
+  setDiscoveryCache({ globalTop: [{ id: "trend-1" }] });
   const result = scheduleNextDiscoveryRefresh();
   assert.equal(result.enqueued, true);
-  assert.equal(cache.isUpdating, false);
+  assert.equal(getDiscoveryStatus(null).isUpdating, false);
 });
 
 test("scheduleNextDiscoveryRefresh deduplicates existing future refresh", () => {
   clearDiscoveryRefreshJobs();
-  const cache = getDiscoveryCache();
-  cache.isUpdating = false;
-  cache.lastUpdated = new Date().toISOString();
+  setDiscoveryCache({ globalTop: [{ id: "trend-1" }] });
 
   const first = scheduleNextDiscoveryRefresh();
   const second = scheduleNextDiscoveryRefresh();

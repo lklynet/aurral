@@ -16,7 +16,5 @@ export const getActivityPollIntervalMs = ({ isConnected, isListLikeView } = {}) 
     : ACTIVITY_HISTORY_FALLBACK_MS;
 };
 
-export const shouldPollDiscoveryHealth = ({ isConnected } = {}) => !isConnected;
-
 export const getBootstrapPollIntervalMs = ({ isConnected } = {}) =>
   isConnected ? BOOTSTRAP_CONNECTED_POLL_MS : BOOTSTRAP_DISCONNECTED_POLL_MS;

@@ -1,11 +1,8 @@
 import { requireAuth } from "../../../middleware/requirePermission.js";
-import { getUserDiscovery } from "../../../services/discovery/userDiscovery.js";
-
-const CACHE_HEADERS = {
-  fresh: "private, max-age=120, stale-while-revalidate=300",
-  updating: "no-cache, no-store, must-revalidate",
-  empty: "private, max-age=30, stale-while-revalidate=120",
-};
+import {
+  getDiscoveryStatus,
+  getUserDiscovery,
+} from "../../../services/discovery/userDiscovery.js";
 
 const toDiscoveryArtist = (artist) => ({
   id: artist.id ?? null,
@@ -30,6 +27,11 @@ const toDiscoveryArtist = (artist) => ({
 });
 
 export function registerMain(router) {
+  router.get("/status", requireAuth, (req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(getDiscoveryStatus(req.user.id));
+  });
+
   router.get("/", requireAuth, async (req, res) => {
     const hasExplicitLimit = typeof req.query.limit === "string" && req.query.limit.trim() !== "";
     const limit = hasExplicitLimit
@@ -38,9 +40,9 @@ export function registerMain(router) {
     const offset = hasExplicitLimit
       ? Math.max(0, parseInt(req.query.offset, 10) || 0)
       : 0;
-    const { body, cacheStrategy } = await getUserDiscovery(req.user.id, limit, offset);
+    const { body } = await getUserDiscovery(req.user.id, limit, offset);
 
-    res.set("Cache-Control", CACHE_HEADERS[cacheStrategy]);
+    res.set("Cache-Control", "private, no-cache");
     res.json({
       ...body,
       recommendations: body.recommendations.map(toDiscoveryArtist),

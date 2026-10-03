@@ -78,7 +78,6 @@ export function registerAdmin(router) {
       enrichmentCompletedAt: null,
       enrichmentProgressMessage: null,
       lastUpdated: null,
-      isUpdating: false,
     });
     pendingTagRequests.clear();
     pendingTagSuggestRequest.promise = null;
