@@ -8,6 +8,7 @@ import {
   requirePermission,
 } from "../../../middleware/requirePermission.js";
 import { logger } from "../../../services/logger.js";
+import { invalidateAllDownloadStatusesCache } from "./downloads.js";
 import {
   getCanonicalLibraryReadModelForArtistReferences,
 } from "../../../services/canonicalLibraryReadAdapter.js";
@@ -212,6 +213,7 @@ export function registerAlbums(router) {
         if (result?.status === "available") {
           recordAlbumSearchCompleted(historyAlbum);
         }
+        invalidateAllDownloadStatusesCache();
         return res.status(201).json({
           ...result,
           queued: result?.managedBy === "aurral"

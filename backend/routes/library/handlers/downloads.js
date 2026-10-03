@@ -359,6 +359,55 @@ export const getLidarrStatusSnapshot = async ({ refresh = false } = {}) => {
 export const getAllDownloadStatuses = async () =>
   (await getLidarrStatusSnapshot()).statuses;
 
+const ACTIVE_LIBRARY_JOB_STATUSES = new Set(["pending", "downloading"]);
+const ACTIVE_LIDARR_ALBUM_STATUSES = new Set([
+  "adding",
+  "searching",
+  "downloading",
+  "moving",
+  "processing",
+]);
+
+const getActiveLidarrAlbums = async () => {
+  const { lidarrClient } = await import("../../../services/lidarrClient.js");
+  if (!lidarrClient.isConfigured()) return [];
+  const { statuses } = await getLidarrStatusSnapshot();
+  const activeIds = new Set(
+    Object.entries(statuses || {})
+      .filter(([, entry]) => ACTIVE_LIDARR_ALBUM_STATUSES.has(entry?.status))
+      .map(([albumId]) => String(albumId)),
+  );
+  if (activeIds.size === 0) return [];
+  const albums = await lidarrClient.getAllAlbums();
+  return albums.filter((album) => activeIds.has(String(album?.id)));
+};
+
+export const getActiveLibraryDownloads = async () => {
+  const albums = new Set();
+  const artists = new Set();
+  const tracks = [];
+  for (const job of downloadTracker.getAll()) {
+    if (job.playlistType !== "library" || !ACTIVE_LIBRARY_JOB_STATUSES.has(job.status)) continue;
+    tracks.push({
+      mbid: job.trackMbid || null,
+      artistName: job.artistName,
+      trackName: job.trackName,
+    });
+    if (!job.requestGroupId) continue;
+    if (job.albumMbid) albums.add(job.albumMbid);
+    if (job.artistMbid) artists.add(job.artistMbid);
+  }
+  try {
+    for (const album of await getActiveLidarrAlbums()) {
+      if (album.foreignAlbumId) albums.add(album.foreignAlbumId);
+      if (album.artist?.foreignArtistId) artists.add(album.artist.foreignArtistId);
+    }
+  } catch (error) {
+    logger.warn("downloads", "Failed to read active Lidarr downloads", { message: error.message });
+  }
+  return { albums: [...albums], artists: [...artists], tracks };
+};
+
 export function registerDownloads(router) {
   router.post(
     "/downloads/tracks/:trackId/research",
@@ -703,6 +752,17 @@ export function registerDownloads(router) {
     } catch (error) {
       res.status(500).json({
         error: "Failed to fetch download status",
+        message: error.message,
+      });
+    }
+  });
+
+  router.get("/downloads/active", noCache, async (_req, res) => {
+    try {
+      res.json(await getActiveLibraryDownloads());
+    } catch (error) {
+      res.status(500).json({
+        error: "Failed to fetch active downloads",
         message: error.message,
       });
     }

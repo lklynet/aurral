@@ -87,10 +87,7 @@ function ShowMeta({ showDate, showLocation, className }) {
 }
 
 const ShowCard = memo(({ show }) => {
-  const artistNames = (Array.isArray(show.artistNames) ? show.artistNames : [show.artistName])
-    .filter((name) => typeof name === "string" && name.trim())
-    .map((name) => name.trim());
-  const artistLabel = artistNames.join(", ") || "Matched artist";
+  const artistLabel = (show.artistNames || []).join(", ") || "Matched artist";
   const eventLabel = show.eventName || artistLabel || "Upcoming show";
   const eventUrl = getEventUrl(show.url);
   const distanceLabel = formatDistance(show.distance);

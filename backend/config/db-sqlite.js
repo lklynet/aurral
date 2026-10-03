@@ -1019,6 +1019,25 @@ db.transaction(() => {
   `).run(now, now);
 }).immediate();
 
+const aurralMissingMonitorModeMigrationKey = "migration:aurral-missing-monitor-mode-v1";
+db.transaction(() => {
+  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(aurralMissingMonitorModeMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  const missingArtistIds = `
+    SELECT entity_id FROM library_management
+    WHERE entity_kind = 'artist' AND managed_by = 'aurral' AND monitor_mode = 'missing'
+  `;
+  db.exec(`
+    UPDATE library_artists
+    SET metadata_json = json_set(metadata_json, '$.monitor', 'all', '$.monitorOption', 'all', '$.addOptions.monitor', 'all')
+    WHERE id IN (${missingArtistIds}) AND json_valid(metadata_json);
+
+    UPDATE library_management SET monitor_mode = 'all'
+    WHERE entity_kind = 'artist' AND managed_by = 'aurral' AND monitor_mode = 'missing';
+  `);
+}).immediate();
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS playlist_download_jobs_revision (
     id INTEGER PRIMARY KEY CHECK (id = 1),

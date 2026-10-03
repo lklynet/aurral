@@ -734,7 +734,7 @@ function DiscoverPage() {
             <>
               {nearbyShows.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((show) => (
                 <div
-                  key={`${show.id}-${show.artistName}-${show.sourceType || "show"}`}
+                  key={show.id}
                   className="artist-discover-show-rail-card"
                 >
                   <ShowCard show={show} />

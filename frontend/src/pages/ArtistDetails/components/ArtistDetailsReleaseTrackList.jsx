@@ -1,11 +1,12 @@
 import { useCallback } from "react";
 import { MoreVertical, Plus } from "lucide-react";
-import { DotLoader } from "../../../components/DotLoader";
+import { DotLoader, DownloadingIcon } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import { TrackList } from "../../../components/TrackList";
 import { TrackPlaylistSubmenu } from "./TrackPlaylistMenu";
 import { useAlbumTrackListToolbar } from "../../../hooks/useAlbumTrackListToolbar";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
+import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
 
 const releaseTrackId = (track, trackKey, index) =>
@@ -57,6 +58,7 @@ export function ArtistDetailsReleaseTrackList({
   onAddTrackToPlaylist,
   onAddTrackToLibrary,
   libraryTrackSavingKey,
+  albumDownloading = false,
   ownedTrackMbids = [],
   resolveMembershipTrack,
   playlists,
@@ -69,6 +71,7 @@ export function ArtistDetailsReleaseTrackList({
 }) {
   const ownedTrackSet = new Set((Array.isArray(ownedTrackMbids) ? ownedTrackMbids : []).map(String));
   const { currentTrack, isPlaying, isLoading, playTrack, togglePlayPause } = useAudioQueue();
+  const { isTrackDownloading } = useActiveDownloads();
 
   if (!release) return null;
   if (loading) {
@@ -106,14 +109,17 @@ export function ArtistDetailsReleaseTrackList({
       .some((identity) => ownedTrackSet.has(String(identity)));
     const canPlay = Boolean(track.preview_url);
     const membershipTrack = resolveMembershipTrack ? resolveMembershipTrack(track, release) : track;
+    const downloading =
+      !isOwned &&
+      (albumDownloading || isTrackDownloading(track) || isTrackDownloading(membershipTrack));
     const items = [
       ...(onAddTrackToLibrary && !isOwned
         ? [
             {
               id: "add-library",
-              label: "Add to library",
-              icon: Plus,
-              disabled: libraryTrackSavingKey === id,
+              label: downloading ? "Downloading…" : "Add to library",
+              icon: downloading ? DownloadingIcon : Plus,
+              disabled: downloading || libraryTrackSavingKey === id,
               onSelect: () => onAddTrackToLibrary(track, release),
             },
           ]
@@ -130,11 +136,13 @@ export function ArtistDetailsReleaseTrackList({
       badge: isOwned ? <SearchLibraryCheck size="discover" /> : null,
       menu: items.length || onAddTrackToPlaylist ? {
         items,
-        triggerLabel: `Add ${title}`,
+        triggerLabel: downloading ? `Downloading ${title}` : `Add ${title}`,
         triggerClassName: "btn btn-add-action btn-add-action--menu",
         triggerIcon: (
           <>
-            <span className="btn-add-action__icon"><Plus aria-hidden="true" /></span>
+            <span className="btn-add-action__icon">
+              {downloading ? <DotLoader size="sm" label={null} /> : <Plus aria-hidden="true" />}
+            </span>
             <MoreVertical className="btn-add-action__more" aria-hidden="true" />
           </>
         ),

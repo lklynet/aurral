@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import { createPortal } from "react-dom";
 import { ChevronRight, Plus, Trash2 } from "lucide-react";
 import AddActionButton from "../../../components/AddActionButton";
+import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import TooltipButton from "../../../components/TooltipButton";
@@ -328,6 +329,9 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
   const menuRef = useRef(null);
   const panelRef = useRef(null);
   const buttonRef = useRef(null);
+  const { isAlbumDownloading, isTrackDownloading } = useActiveDownloads();
+  const downloading =
+    Boolean(onAddToLibrary) && (isTrackDownloading(track) || isAlbumDownloading(track?.albumMbid));
 
   useEffect(() => {
     if (!open) return undefined;
@@ -417,6 +421,8 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
             label={onAddToLibrary ? "Add to library or playlist" : triggerLabel}
             icon={Plus}
             isLoading={saving || librarySaving}
+            busy={downloading}
+            loadingLabel={downloading ? "Downloading" : null}
             disabled={disabled}
             onClick={handleOpen}
             aria-haspopup="menu"
@@ -474,11 +480,15 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
                     await onAddToLibrary?.(track);
                     closeMenu();
                   }}
-                  disabled={saving || librarySaving || disabled}
+                  disabled={saving || librarySaving || downloading || disabled}
                 >
                   <span className="artist-menu-item__main">
-                    <Plus className="artist-icon-sm" />
-                    Add to library
+                    {downloading ? (
+                      <DotLoader size="xs" label={null} />
+                    ) : (
+                      <Plus className="artist-icon-sm" />
+                    )}
+                    {downloading ? "Downloading…" : "Add to library"}
                   </span>
                 </button>
               ) : null}

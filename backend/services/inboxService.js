@@ -3,7 +3,7 @@ import { dbOps, userOps } from "../db/helpers/index.js";
 import { getTicketmasterApiKey } from "./apiClients/index.js";
 import {
   getCanonicalAlbumsByReleaseDate,
-  iterateCanonicalArtistProjection,
+  getLibraryArtistNames,
 } from "./libraryQueryService.js";
 import { getNearbyShows } from "./nearbyShowsService.js";
 import { getUserDiscovery } from "./discovery/userDiscovery.js";
@@ -226,35 +226,19 @@ async function buildShowItems(userId, now, req, ipAddress, zipCode, libraryArtis
   if (!apiKey || (!req && !ipAddress) || !Array.isArray(libraryArtists) || libraryArtists.length === 0) {
     return [];
   }
-  const result = await getNearbyShows({
-    req: req || { headers: {}, ip: ipAddress },
+  const { shows } = await getNearbyShows({
+    req: req || { ip: ipAddress },
     zipCode,
     libraryArtists,
-    recommendedArtists: [],
-    trendingArtists: [],
-    limit: 60,
   });
-  const grouped = new Map();
-  for (const show of result?.libraryShows || []) {
-    const key = String(show?.ticketmasterEventId || show?.id || "").trim();
-    if (!key) continue;
-    const current = grouped.get(key) || { ...show, artistNames: [] };
-    const artistNames = Array.isArray(show.artistNames) ? show.artistNames : [show.artistName];
-    for (const artistName of artistNames) {
-      if (artistName && !current.artistNames.includes(artistName)) {
-        current.artistNames.push(artistName);
-      }
-    }
-    grouped.set(key, current);
-  }
-  return [...grouped.values()].map((show) => {
+  return shows.slice(0, 60).map((show) => {
     const date = show.dateTime || show.date;
     const expiry = toTime(date) || now + RELEASE_FUTURE_DAYS * DAY_MS;
-    const artistNames = show.artistNames.join(", ") || show.artistName || "Library artist";
+    const artistNames = show.artistNames.join(", ");
     return {
       userId,
       kind: "show",
-      sourceKey: String(show.ticketmasterEventId || show.id),
+      sourceKey: String(show.id),
       title: show.eventName || artistNames,
       subtitle: [artistNames, show.date, show.venueName, show.city].filter(Boolean).join(" · "),
       href: show.url || null,
@@ -337,7 +321,7 @@ export async function refreshInboxForUser(
     });
     const preferences = getInboxPreferences();
     const libraryArtists = preferences.shows
-      ? [...iterateCanonicalArtistProjection({ pageSize: 100 })]
+      ? getLibraryArtistNames()
       : [];
     const enabledNewsKinds = new Set(
       getEnabledKinds(preferences).filter((kind) =>

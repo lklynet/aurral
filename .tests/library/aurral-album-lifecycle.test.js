@@ -12,7 +12,7 @@ const [
   libraryStore,
   managementStore,
   { registerAlbums },
-  { registerDownloads },
+  { registerDownloads, invalidateAllDownloadStatusesCache },
   { resolveYtdlpStagingRoot },
   { lidarrClient },
   { dbOps },
@@ -106,6 +106,7 @@ function createCanonicalAlbum({ managedBy = "aurral", trackCount = 3, availableT
         trackName: tracks[index].title,
         albumName: album.title,
         albumMbid,
+        artistMbid,
         trackMbid: tracks[index].trackMbid,
         managedBy: "aurral",
         requestGroupId,
@@ -422,4 +423,71 @@ test("re-requesting a missing completed file reports a missing download source",
   assert.equal(result.albumStatus.status, "blocked");
   assert.equal(result.albumStatus.recovery?.code, "download_source_missing");
   assert.equal(downloadTracker.getJob(jobId).status, "failed");
+});
+
+test("active downloads list in-flight albums, artists, and tracks so buttons survive a reload", async () => {
+  const originalIsConfigured = lidarrClient.isConfigured;
+  const originalRequest = lidarrClient.request;
+  lidarrClient.isConfigured = () => true;
+  lidarrClient.request = async (endpoint) => {
+    if (endpoint.startsWith("/queue")) {
+      return [{ albumId: 7, status: "downloading", size: 100, sizeleft: 40 }];
+    }
+    if (endpoint.startsWith("/history")) return { records: [] };
+    if (endpoint.startsWith("/command")) return [];
+    if (endpoint.startsWith("/album")) {
+      return [
+        { id: 7, foreignAlbumId: "lidarr-album", artist: { foreignArtistId: "lidarr-artist" } },
+        { id: 8, foreignAlbumId: "lidarr-idle-album", artist: { foreignArtistId: "lidarr-idle-artist" } },
+      ];
+    }
+    return [];
+  };
+  invalidateAllDownloadStatusesCache();
+
+  try {
+    const queuedAlbum = createCanonicalAlbum();
+    const downloadingTrack = queuedAlbum.jobFor(0);
+    downloadTracker.setDownloading(downloadingTrack);
+    queuedAlbum.jobFor(1);
+    downloadTracker.setFailed(queuedAlbum.jobFor(2), "No matching source result");
+
+    const finishedAlbum = createCanonicalAlbum();
+    downloadTracker.setCancelled(finishedAlbum.jobFor(0));
+    downloadTracker.setDone(finishedAlbum.jobFor(1), path.join(isolatedState.dataDir, "done.flac"));
+
+    downloadTracker.addJob(
+      {
+        artistName: "Single Artist",
+        trackName: "Single Track",
+        albumMbid: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        artistMbid: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        trackMbid: "single-track-mbid",
+      },
+      "library",
+    );
+    downloadTracker.addJob(
+      { artistName: "Flow Artist", trackName: "Flow Track", trackMbid: "flow-track-mbid" },
+      "discover",
+    );
+
+    const response = await callRoute("GET /downloads/active");
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(
+      [...response.body.albums].sort(),
+      [queuedAlbum.albumMbid, "lidarr-album"].sort(),
+    );
+    assert.deepEqual(
+      [...response.body.artists].sort(),
+      [queuedAlbum.artistMbid, "lidarr-artist"].sort(),
+    );
+    assert.deepEqual(
+      response.body.tracks.map((track) => track.mbid).sort(),
+      [queuedAlbum.tracks[0].trackMbid, queuedAlbum.tracks[1].trackMbid, "single-track-mbid"].sort(),
+    );
+  } finally {
+    lidarrClient.isConfigured = originalIsConfigured;
+    lidarrClient.request = originalRequest;
+    invalidateAllDownloadStatusesCache();
+  }
 });

@@ -38,3 +38,7 @@ export function DotLoader({ size = "sm", label = "Loading", className = "" }) {
     </span>
   );
 }
+
+export function DownloadingIcon() {
+  return <DotLoader size="sm" label={null} />;
+}

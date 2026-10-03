@@ -4,6 +4,7 @@ import { getReleaseGroupCover, getArtistCover } from "../utils/api/endpoints/art
 import { Music } from "lucide-react";
 import ArtistImage from "../components/ArtistImage";
 import AddActionButton from "../components/AddActionButton";
+import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { ArtistContextMenu } from "../components/ArtistContextMenu";
 import SearchLibraryCheck from "../components/SearchLibraryCheck";
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
@@ -197,6 +198,8 @@ export const AlbumCard = memo(
   }) => {
     const releaseGroupMbid = album.mbid || album.foreignAlbumId;
     const artistMbid = album.artistMbid || album.foreignArtistId;
+    const { isAlbumDownloading } = useActiveDownloads();
+    const downloading = isPending || isAlbumDownloading(releaseGroupMbid);
     const [fetchedCover, setFetchedCover] = useState(null);
     const coverUrl = album.coverUrl || fetchedCover;
 
@@ -300,8 +303,9 @@ export const AlbumCard = memo(
               <AddActionButton
                 {...getAlbumAddAction(album, libraryDestination)}
                 onAdd={(managedBy) => onAlbumAction(album, managedBy)}
-                isLoading={isPending}
-                disabled={isPending}
+                isLoading={downloading}
+                loadingLabel="Downloading"
+                disabled={downloading}
               />
             </div>
           ) : null}

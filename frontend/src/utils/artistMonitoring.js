@@ -1,7 +1,7 @@
 import { getMonitorOptionLabel, summarizeAurralMonitoring } from "./aurralMonitoring.js";
 
 const MANAGER_OPTIONS = {
-  aurral: ["none", "all", "future", "missing", "latest", "first"],
+  aurral: ["none", "all", "future", "latest", "first"],
   lidarr: ["none", "existing", "all", "future", "missing", "latest", "first"],
 };
 
