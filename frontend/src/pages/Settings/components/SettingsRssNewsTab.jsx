@@ -17,7 +17,6 @@ const GROUPS = [
   ["country", "Country & Americana"],
   ["jazz", "Jazz"],
   ["classical", "Classical & contemporary classical"],
-  ["specialty", "Genre specialty"],
   ["regional", "Regional music scenes"],
   ["concerts", "Concerts, festivals & live music"],
 ];

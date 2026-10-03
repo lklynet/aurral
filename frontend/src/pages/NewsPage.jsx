@@ -10,7 +10,7 @@ import { DotLoader } from "../components/DotLoader";
 export default function NewsPage() {
   useDocumentTitle("Artist News");
   const navigate = useNavigate();
-  const { bootstrap } = useAuth();
+  const { user, bootstrap } = useAuth();
   const newsConfigured = bootstrap?.newsConfigured === true;
   const [highlightedOnly, setHighlightedOnly] = useState(false);
   const loadMoreRef = useRef(null);
@@ -22,15 +22,12 @@ export default function NewsPage() {
     hasMore,
     loadMore,
     error,
-    disablePublisher,
+    disableFeed,
   } = useLibraryNews({
     enabled: newsConfigured,
     limit: 24,
-    mode: "top",
+    mode: highlightedOnly ? "matched" : "top",
   });
-  const visibleArticles = highlightedOnly
-    ? articles.filter((article) => article.artistName)
-    : articles;
   const refreshWarning = error || refresh?.warning || "";
 
   useEffect(() => {
@@ -81,21 +78,14 @@ export default function NewsPage() {
             </div>
           ) : null}
           <div className="discover-news-page__grid">
-            {visibleArticles.map((article) => (
+            {articles.map((article) => (
               <NewsArticleCard
-                key={article.url}
+                key={article.id}
                 article={article}
-                onDisablePublisher={disablePublisher}
+                onDisableFeed={user?.role === "admin" ? disableFeed : undefined}
               />
             ))}
           </div>
-          {highlightedOnly && visibleArticles.length === 0 ? (
-            <section className="discover-news-page__status">
-              <Newspaper aria-hidden="true" />
-              <h2>No highlighted stories</h2>
-              <p>None of the loaded stories mention a library or recommended artist.</p>
-            </section>
-          ) : null}
           {hasMore ? (
             <div ref={loadMoreRef} className="discover-news-page__load-more" aria-live="polite">
               {loadingMore ? <DotLoader size="sm" label={null} /> : "Loading more stories…"}
@@ -108,13 +98,17 @@ export default function NewsPage() {
           <h2>Artist news is unavailable</h2>
           <p>{error}</p>
         </section>
-      ) : articles.length === 0 ? (
+      ) : (
         <section className="discover-news-page__status">
           <Newspaper aria-hidden="true" />
-          <h2>No recent artist news</h2>
-          <p>{refreshWarning || "No recent RSS stories matched the artists in your library or recommendations."}</p>
+          <h2>{highlightedOnly ? "No highlighted stories" : "No recent stories"}</h2>
+          <p>
+            {refreshWarning || (highlightedOnly
+              ? "No recent RSS stories mention the artists in your library or recommendations."
+              : "Your RSS feeds have no recent stories.")}
+          </p>
         </section>
-      ) : null}
+      )}
     </div>
   );
 }

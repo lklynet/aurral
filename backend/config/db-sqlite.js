@@ -447,6 +447,19 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS news_articles (
+    id TEXT PRIMARY KEY,
+    source_url TEXT NOT NULL,
+    source TEXT NOT NULL,
+    url TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    categories TEXT NOT NULL DEFAULT '[]',
+    image_url TEXT,
+    image_checked INTEGER NOT NULL DEFAULT 0,
+    published_at INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS slskd_transfer_history (
     id TEXT PRIMARY KEY,
     job_id TEXT,
@@ -500,6 +513,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_aurral_history_created_at ON aurral_history(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_inbox_items_user_state ON inbox_items(user_id, is_dismissed, is_read, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_inbox_items_expiry ON inbox_items(expires_at, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_news_articles_published_at ON news_articles(published_at DESC);
+  DELETE FROM settings WHERE key = 'news:rssState' OR key GLOB 'user:*:newsPreferences';
   CREATE INDEX IF NOT EXISTS idx_slskd_transfer_history_username ON slskd_transfer_history(username, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_slskd_transfer_history_created_at ON slskd_transfer_history(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_slskd_transfer_history_status ON slskd_transfer_history(status, created_at DESC);

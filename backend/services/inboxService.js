@@ -8,7 +8,7 @@ import {
 import { getNearbyShows } from "./nearbyShowsService.js";
 import { getUserDiscovery } from "./discovery/userDiscovery.js";
 import { logger } from "./logger.js";
-import { getNewsForUser, getNewsPreferences } from "./newsService.js";
+import { getNewsForUser } from "./newsService.js";
 import {
   enqueueSystemTaskJob,
   findActiveHonkerJob,
@@ -269,61 +269,38 @@ async function buildNewsItems(userId, now, enabledKinds) {
   const { articles } = await getNewsForUser({ userId, limit: 100 });
   const grouped = new Map();
   for (const article of articles) {
-    const kind = article.newsType === "recommended"
-      ? "recommendedNews"
-      : "news";
-    if (!enabledKinds.has(kind)) continue;
-    const artistMbid = String(article?.artistMbid || article?.artistName || "").trim();
-    const artistName = String(article?.artistName || "").trim();
-    if (!artistName) continue;
-    const day = String(article?.publishedAt || "").slice(0, 10) || new Date(now).toISOString().slice(0, 10);
-    const key = `${kind}:${artistMbid}:${day}`;
-    const list = grouped.get(key) || [];
-    if (list.length < 5) list.push(article);
-    grouped.set(key, list);
+    for (const artist of article.artists) {
+      const kind = artist.newsType === "recommended" ? "recommendedNews" : "news";
+      if (!enabledKinds.has(kind)) continue;
+      const day = article.publishedAt.slice(0, 10);
+      const key = `${kind}:${artist.artistMbid || artist.artistName}:${day}`;
+      const group = grouped.get(key) || { kind, artist, articles: [] };
+      if (group.articles.length < 5) group.articles.push(article);
+      grouped.set(key, group);
+    }
   }
 
-  return [...grouped.entries()].map(([key, dailyArticles]) => {
+  return [...grouped.entries()].map(([key, { kind, artist, articles: dailyArticles }]) => {
     const first = dailyArticles[0];
     const sources = [...new Set(dailyArticles.map((article) => article.source).filter(Boolean))];
-    const kind = first.newsType === "recommended" ? "recommendedNews" : "news";
     return {
       userId,
       kind,
       sourceKey: key,
-      title: `${first.artistName} news`,
+      title: `${artist.artistName} news`,
       subtitle: `${dailyArticles.length} ${dailyArticles.length === 1 ? "story" : "stories"}${sources.length ? ` · ${sources.slice(0, 2).join(", ")}` : ""}`,
       href: first.url,
       imageUrl: first.imageUrl,
       metadata: {
-        artistMbid: first.artistMbid,
-        artistName: first.artistName,
-        newsType: first.newsType,
+        artistMbid: artist.artistMbid,
+        artistName: artist.artistName,
+        newsType: artist.newsType,
         articles: dailyArticles,
       },
       expiresAt: now + CONTENT_TTL_MS,
     };
   });
 }
-
-const dismissBlockedNewsItems = (userId) => {
-  const blocked = new Set(
-    getNewsPreferences(userId).blockedPublishers.map((publisher) => publisher.toLowerCase()),
-  );
-  if (blocked.size === 0) return;
-  for (const item of dbOps.getInboxItems(userId, {
-    kinds: ["news", "recommendedNews"],
-    limit: 50,
-  })) {
-    const articles = Array.isArray(item.metadata?.articles) ? item.metadata.articles : [];
-    if (
-      articles.length > 0 &&
-      articles.every((article) => blocked.has(String(article?.source || "").trim().toLowerCase()))
-    ) {
-      dbOps.updateInboxItem(userId, item.id, { isDismissed: true });
-    }
-  }
-};
 
 export async function refreshInboxForUser(
   userId,
@@ -390,7 +367,6 @@ export async function refreshInboxForUser(
       .flatMap((result) => result.value);
     db.transaction(() => {
       upsertAll(items);
-      dismissBlockedNewsItems(normalizedUserId);
     })();
     refreshState.set(normalizedUserId, { at: now, hadLocationRequest: hasLocationRequest });
     const refreshStatus = failures.length === 0

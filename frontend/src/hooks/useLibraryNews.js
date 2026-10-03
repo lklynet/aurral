@@ -20,11 +20,10 @@ export function useLibraryNews({ enabled = false, limit = 60, mode = "matched", 
     staleTime: 5 * 60 * 1000,
   });
   const disableMutation = useMutation({
-    mutationFn: ({ publisher, sourceUrl }) => disableNewsFeed(sourceUrl, publisher),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    mutationFn: disableNewsFeed,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["news"] }),
   });
   const pages = query.data?.pages || [];
-  const firstPage = pages[0] || null;
   const articles = pages.flatMap((page) => Array.isArray(page?.articles) ? page.articles : []);
   const { fetchNextPage, hasNextPage, isFetchingNextPage } = query;
   const loadMore = useCallback(
@@ -34,22 +33,14 @@ export function useLibraryNews({ enabled = false, limit = 60, mode = "matched", 
         : Promise.resolve(null),
     [fetchNextPage, hasNextPage, isFetchingNextPage],
   );
-  const { mutateAsync: disableNewsFeedMutation } = disableMutation;
-  const disablePublisher = useCallback(
-    (publisher, sourceUrl) => disableNewsFeedMutation({ publisher, sourceUrl }),
-    [disableNewsFeedMutation],
-  );
-
   return {
     articles,
-    artistCount: Number(firstPage?.artistCount || 0),
-    refresh: firstPage?.refresh || null,
-    configured: firstPage?.configured === true,
+    refresh: pages[0]?.refresh || null,
     loading: enabled && query.isLoading,
     loadingMore: query.isFetchingNextPage,
     hasMore: query.hasNextPage === true,
     loadMore,
     error: query.error?.response?.data?.message || query.error?.message || "",
-    disablePublisher,
+    disableFeed: disableMutation.mutateAsync,
   };
 }

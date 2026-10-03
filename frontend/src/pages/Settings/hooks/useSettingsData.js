@@ -147,7 +147,6 @@ const defaultSettings = {
         country: true,
         jazz: true,
         classical: true,
-        specialty: true,
         regional: true,
         concerts: true,
       },

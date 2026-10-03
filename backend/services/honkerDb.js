@@ -562,6 +562,7 @@ export function enqueueHonkerStartupTasks() {
   enqueueIfAbsent({ kind: "discovery-bootstrap" }, { delaySeconds: 15, priority: 5 });
   enqueueIfAbsent({ kind: "library-index-bootstrap" }, { delaySeconds: 8, priority: 0 });
   enqueueIfAbsent({ kind: "release-metadata-refresh" }, { delaySeconds: 12, priority: -5 });
+  enqueueIfAbsent({ kind: "news-refresh" }, { delaySeconds: 20, priority: -5 });
 }
 
 export function findActiveHonkerJob(

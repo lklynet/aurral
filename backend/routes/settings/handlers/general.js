@@ -602,6 +602,17 @@ export function registerGeneral(router) {
           { priority: -10 },
         );
       }
+      if (
+        !isDeepStrictEqual(
+          currentSettings.integrations?.news,
+          updatedSettings.integrations?.news,
+        )
+      ) {
+        const { enqueueSystemTaskJob } = await import(
+          "../../../services/honkerDb.js"
+        );
+        enqueueSystemTaskJob({ kind: "news-refresh" });
+      }
       const playbackSettingsChanged = ["navidrome", "jellyfin"].some((key) =>
         !isDeepStrictEqual(
           currentSettings.integrations?.[key],

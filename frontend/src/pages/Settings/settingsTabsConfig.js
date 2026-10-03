@@ -234,7 +234,7 @@ const SETTINGS_SEARCH_METADATA = {
       "Add RSS feed": "custom source",
       "Feed name": "custom RSS source",
       "Feed URL": "custom RSS address",
-      "Feed groups": "major publications magazines indie alternative discovery hip hop rap pop mainstream electronic dance metal hard rock country americana jazz classical specialty regional concerts festivals live music",
+      "Feed groups": "major publications magazines indie alternative discovery hip hop rap pop mainstream electronic dance metal hard rock country americana jazz classical regional concerts festivals live music",
     },
   },
   discover: {
