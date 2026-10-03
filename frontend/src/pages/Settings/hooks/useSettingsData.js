@@ -308,7 +308,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
       // Library endpoints return without changing the query key, so mark the
       // Library views stale on save to pick up the new filtering on next view.
       queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
-      queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
+      queryClient.invalidateQueries({ queryKey: queryKeys.libraryPagePrefix });
     },
   });
   const lidarrQueries = useQueries({

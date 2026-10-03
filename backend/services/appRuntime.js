@@ -201,8 +201,8 @@ export async function forwardWorkerBroadcast(message) {
     }
   }
   if (message.channel === "library" && message.data?.type === "library_scan_completed") {
-    const { invalidateCanonicalLibraryCache } = await import("./libraryQueryService.js");
-    invalidateCanonicalLibraryCache({ persistedGenres: false });
+    const { invalidateLibraryQueryCache } = await import("./libraryQueryService.js");
+    invalidateLibraryQueryCache({ persistedGenres: false });
     const { clearSearchContextCache } = await import("./unifiedSearchService.js");
     clearSearchContextCache();
   }

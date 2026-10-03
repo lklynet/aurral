@@ -29,7 +29,7 @@ const DELETE_FILES_PREFERENCE_KEY = "aurral:library-delete-files";
 
 const invalidateLibraryQueries = (mbid = null, artistId = null) => {
   const queryKeysToInvalidate = [
-    queryKeys.libraryCanonicalPrefix,
+    queryKeys.libraryPagePrefix,
     queryKeys.libraryViewPrefix,
     queryKeys.libraryAlbumsPrefix,
     queryKeys.libraryAlbumLookupPrefix,

@@ -1,14 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  buildPlaybackQueueFromCanonicalLibrary,
+  buildPlaybackQueueFromLibrary,
   buildTrackFileIndex,
   enrichLidarrTrackWithFiles,
   albumNeedsTrackFiles,
 } from "../../backend/services/libraryManager.js";
 
-test("buildPlaybackQueueFromCanonicalLibrary uses indexed files without Lidarr reads", () => {
-  const queue = buildPlaybackQueueFromCanonicalLibrary({
+test("buildPlaybackQueueFromLibrary uses indexed files without Lidarr reads", () => {
+  const queue = buildPlaybackQueueFromLibrary({
     artists: [{ id: 1, name: "Artist" }],
     albums: [{ id: 603, artistId: 1, title: "Album", trackIds: [7] }],
     tracks: [{

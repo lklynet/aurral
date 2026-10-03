@@ -12,8 +12,8 @@ import {
 } from "../../backend/services/releaseCalendarStore.js";
 import { db } from "../../backend/config/db-sqlite.js";
 import {
-  getCanonicalAlbumsByReleaseDate,
-  getCanonicalArtistProjection,
+  getLibraryAlbumsByReleaseDate,
+  getLibraryArtistProjection,
 } from "../../backend/services/libraryQueryService.js";
 import {
   linkLibraryAlbumTrack,
@@ -125,7 +125,7 @@ test("recent missing releases keep upcoming albums by default for the Discover r
   }
 });
 
-test("recent missing releases can be scoped to canonical artists", async () => {
+test("recent missing releases can be scoped to library artists", async () => {
   const includedArtist = createCalendarArtist("Included Calendar Artist");
   const excludedArtist = createCalendarArtist("Excluded Calendar Artist");
   addCalendarRelease(includedArtist.id, "Included Release", "2026-06-11");
@@ -305,10 +305,10 @@ test("collaboration releases retain an independent calendar row for each artist"
   }
 });
 
-test("BrainzMash refresh skips owned albums and leaves their canonical metadata alone", async (t) => {
+test("BrainzMash refresh skips owned albums and leaves their library metadata alone", async (t) => {
   const artistMbid = randomUUID();
   const releaseMbid = randomUUID();
-  const canonicalArtist = upsertLibraryArtist({
+  const libraryArtist = upsertLibraryArtist({
     identityKey: `mbid:${artistMbid}`,
     mbid: artistMbid,
     name: "Owned Metadata Artist",
@@ -320,27 +320,27 @@ test("BrainzMash refresh skips owned albums and leaves their canonical metadata 
     monitored: true,
     aurralOnly: "keep-me",
   };
-  const canonicalAlbum = upsertLibraryAlbum({
+  const libraryAlbum = upsertLibraryAlbum({
     identityKey: `release-group:${releaseMbid}`,
     releaseGroupMbid: releaseMbid,
-    artistId: canonicalArtist.id,
+    artistId: libraryArtist.id,
     title: "Owned Metadata Album",
     metadata: ownedMetadata,
   });
-  const canonicalTrack = upsertLibraryTrack({
+  const libraryTrack = upsertLibraryTrack({
     identityKey: `recording:${randomUUID()}`,
     title: "Owned Metadata Track",
     artistName: "Owned Metadata Artist",
   });
   linkLibraryAlbumTrack({
-    albumId: canonicalAlbum.id,
-    trackId: canonicalTrack.id,
+    albumId: libraryAlbum.id,
+    trackId: libraryTrack.id,
     trackNumber: 1,
   });
   const mediaPath = `/tmp/release-calendar-${randomUUID()}.flac`;
   upsertLibraryMediaFile({
-    trackId: canonicalTrack.id,
-    albumId: canonicalAlbum.id,
+    trackId: libraryTrack.id,
+    albumId: libraryAlbum.id,
     source: "aurral",
     path: mediaPath,
     available: true,
@@ -353,12 +353,12 @@ test("BrainzMash refresh skips owned albums and leaves their canonical metadata 
 
   try {
     await refreshReleaseMetadata({
-      artists: [{ id: canonicalArtist.id, mbid: artistMbid, name: "Owned Metadata Artist" }],
+      artists: [{ id: libraryArtist.id, mbid: artistMbid, name: "Owned Metadata Artist" }],
       now: "2026-09-27T12:00:00Z",
     });
     const stored = db.prepare(
       "SELECT release_date, metadata_json FROM library_albums WHERE id = ?",
-    ).get(canonicalAlbum.id);
+    ).get(libraryAlbum.id);
     assert.deepEqual(albumRequests, []);
     assert.equal(stored.release_date, null);
     assert.deepEqual(JSON.parse(stored.metadata_json), ownedMetadata);
@@ -367,17 +367,17 @@ test("BrainzMash refresh skips owned albums and leaves their canonical metadata 
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path = ?").run(mediaPath);
     db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'album' AND entity_id = ?")
-      .run(canonicalAlbum.id);
+      .run(libraryAlbum.id);
     db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?")
-      .run(canonicalArtist.id);
-    db.prepare("DELETE FROM library_artists WHERE id = ?").run(canonicalArtist.id);
-    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(canonicalTrack.id);
+      .run(libraryArtist.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(libraryArtist.id);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(libraryTrack.id);
   }
 });
 
-test("canonical release-date reads return dated albums without loading old albums", async () => {
+test("library release-date reads return dated albums without loading old albums", async () => {
   const key = `recent-canonical-${process.pid}-${Date.now()}`;
-  const canonicalArtist = upsertLibraryArtist({
+  const libraryArtist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
     mbid: "45454545-4545-4454-8454-454545454545",
     name: "Canonical Release Artist",
@@ -388,7 +388,7 @@ test("canonical release-date reads return dated albums without loading old album
     const album = upsertLibraryAlbum({
       identityKey: `${key}:album:${suffix}`,
       releaseGroupMbid: `56565656-5656-4565-8565-${String(suffix).padStart(12, "0")}`,
-      artistId: canonicalArtist.id,
+      artistId: libraryArtist.id,
       title,
       releaseDate,
     });
@@ -434,8 +434,8 @@ test("canonical release-date reads return dated albums without loading old album
       addAlbum({ suffix: index + 100, title: `Old Album ${index}`, releaseDate: "2000-01-01" });
     }
 
-    const projectedArtist = getCanonicalArtistProjection({ reference: canonicalArtist.id })[0];
-    const projectedAlbums = getCanonicalAlbumsByReleaseDate({
+    const projectedArtist = getLibraryArtistProjection({ reference: libraryArtist.id })[0];
+    const projectedAlbums = getLibraryAlbumsByReleaseDate({
       from: "2026-08-01",
       to: "2026-08-22",
       limit: 10,
@@ -451,7 +451,7 @@ test("canonical release-date reads return dated albums without loading old album
     );
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path LIKE ?").run(`/tmp/${key}/%`);
-    db.prepare("DELETE FROM library_artists WHERE id = ?").run(canonicalArtist.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(libraryArtist.id);
     if (trackIds.length) {
       db.prepare(
         `DELETE FROM library_tracks WHERE id IN (${trackIds.map(() => "?").join(",")})`,

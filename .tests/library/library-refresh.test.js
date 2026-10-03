@@ -6,8 +6,8 @@ import { EventEmitter } from "node:events";
 
 process.env.NODE_ENV = "test";
 
-const { registerCanonical } = await import(
-  "../../backend/routes/library/handlers/canonical.js"
+const { registerLibraryIndex } = await import(
+  "../../backend/routes/library/handlers/libraryIndex.js"
 );
 const {
   claimScheduledLibraryScanJob,
@@ -69,7 +69,7 @@ test("library refresh queues a quick or full scan and exposes its queue status",
   clearScheduledLibraryScan();
 
   const routes = new Map();
-  registerCanonical({
+  registerLibraryIndex({
     get(path, ...handlers) {
       routes.set(`GET ${path}`, handlers.at(-1));
     },

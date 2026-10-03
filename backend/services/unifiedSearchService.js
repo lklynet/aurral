@@ -7,7 +7,7 @@ import { getMetadataBaseUrl } from "./providers/brainzmashProvider.js";
 import { searchAlbums, searchArtists } from "./providers/brainzmashProvider.js";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.js";
 import { getCachedArtists } from "./libraryManager.js";
-import { getCanonicalSearchPage } from "./libraryQueryService.js";
+import { getLibrarySearchPage } from "./libraryQueryService.js";
 import { compareSearchResults, getLocalMatchThreshold } from "./searchRanking.js";
 import { parsePositiveInt } from "./searchService.js";
 
@@ -636,7 +636,7 @@ export function searchLocalFromData(
 }
 
 function searchLocalLibrary(query, limit, context) {
-  const canonical = getCanonicalSearchPage({
+  const libraryResults = getLibrarySearchPage({
     source: "all",
     availableOnly: true,
     query,
@@ -646,15 +646,15 @@ function searchLocalLibrary(query, limit, context) {
   });
   const artists = dedupeSearchArtists([
     ...context.artists,
-    ...(canonical.artists || []),
-    ...(canonical.albums?.artists || []),
-    ...(canonical.tracks?.artists || []),
+    ...(libraryResults.artists || []),
+    ...(libraryResults.albums?.artists || []),
+    ...(libraryResults.tracks?.artists || []),
   ]);
   const artistsById = new Map(artists.map((artist) => [String(artist.id), artist]));
   const albumsById = new Map(
     [
-      ...(canonical.albums?.albums || []),
-      ...(canonical.tracks?.albums || []),
+      ...(libraryResults.albums?.albums || []),
+      ...(libraryResults.tracks?.albums || []),
     ].map((album) => [String(album.id), album]),
   );
   const describeAlbum = (album) => {
@@ -668,8 +668,8 @@ function searchLocalLibrary(query, limit, context) {
       releaseDate: album.releaseDate || null,
     };
   };
-  const albums = (canonical.albums?.albums || []).map(describeAlbum);
-  const tracks = (canonical.tracks?.tracks || []).map((track) => {
+  const albums = (libraryResults.albums?.albums || []).map(describeAlbum);
+  const tracks = (libraryResults.tracks?.tracks || []).map((track) => {
     const album = track.albums
       ?.map((entry) => albumsById.get(String(entry.albumId)))
       .find(Boolean);

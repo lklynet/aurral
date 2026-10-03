@@ -9,7 +9,7 @@ import {
 import { logger } from "../logger.js";
 import { getListenHistoryProfile, hasListenHistoryProfile } from "../listeningHistory.js";
 import {
-  getCanonicalArtistKeyProjection,
+  getLibraryArtistKeyProjection,
   sampleLibraryArtistsForDiscovery,
 } from "../libraryQueryService.js";
 import {
@@ -317,7 +317,7 @@ export const updateDiscoveryCache = async (options = {}) => {
     let globalTop = discoveryCache.globalTop || [];
     try {
       globalTop = await fetchTrendingArtists(
-        buildExistingArtistKeySet(getCanonicalArtistKeyProjection()),
+        buildExistingArtistKeySet(getLibraryArtistKeyProjection()),
         { success: 0, failure: 0 },
       );
       logger.info('discovery', `Found ${globalTop.length} trending artists.`);
@@ -441,7 +441,7 @@ const buildUserRecommendations = async ({ userId, user, existing, startedAt }) =
   const seeds = await collectUserSeeds(user, feedback, lastfmHealth);
   const blockedArtists = feedbackArtists(feedback, "block_artist");
   const existingArtistKeys = buildExistingArtistKeySet([
-    ...getCanonicalArtistKeyProjection(),
+    ...getLibraryArtistKeyProjection(),
     ...blockedArtists,
   ]);
   if (seeds.length === 0) {

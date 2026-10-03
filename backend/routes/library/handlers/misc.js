@@ -6,17 +6,17 @@ import { libraryManager } from "../../../services/libraryManager.js";
 import { normalizePercentOfTracks } from "../../../services/lidarrAlbumStats.js";
 import { logger } from "../../../services/logger.js";
 import {
-  getCanonicalLibraryReadModelForAlbumReferences,
-  getCanonicalLibraryReadModelForArtists,
-} from "../../../services/canonicalLibraryReadAdapter.js";
+  getLibraryReadModelForAlbumReferences,
+  getLibraryReadModelForArtists,
+} from "../../../services/libraryReadModel.js";
 import {
-  getCanonicalArtistMbids,
-  getCanonicalArtistProjection,
+  getLibraryArtistMbids,
+  getLibraryArtistProjection,
 } from "../../../services/libraryQueryService.js";
 
 const ARTIST_LOOKUP_BATCH_MAX = 100;
 
-const canonicalAlbumLookup = (albums, reference) => {
+const libraryAlbumLookup = (albums, reference) => {
   const value = String(reference || "").trim();
   if (!value) return undefined;
   return albums.find((album) =>
@@ -26,7 +26,7 @@ const canonicalAlbumLookup = (albums, reference) => {
   );
 };
 
-const canonicalAlbumResult = (album, ownedTrackMbids = []) => ({
+const libraryAlbumResult = (album, ownedTrackMbids = []) => ({
   inLibrary: true,
   canonicalInLibrary: true,
   canonicalAlbumId: String(album.canonicalId ?? album.id),
@@ -76,14 +76,14 @@ const toLibraryAlbum = (album) => ({
 });
 
 export async function getArtistLibraryLookup(mbid) {
-  const { artists, albums } = getCanonicalLibraryReadModelForArtists({
+  const { artists, albums } = getLibraryReadModelForArtists({
     source: "all",
     availableOnly: false,
     mbids: [mbid],
   });
   const artist = artists.find((candidate) => candidate.mbid === mbid);
   const libraryArtistId = artist ? String(artist.canonicalId ?? artist.id) : null;
-  const aurralArtist = getCanonicalArtistProjection({ reference: mbid })
+  const aurralArtist = getLibraryArtistProjection({ reference: mbid })
     .find((candidate) => candidate.mbid === mbid && candidate.managedBy === "aurral");
   if (aurralArtist) {
     return {
@@ -198,7 +198,7 @@ export function registerMisc(router) {
         });
       }
 
-      const existingArtistIds = getCanonicalArtistMbids({
+      const existingArtistIds = getLibraryArtistMbids({
         source: "all",
         availableOnly: false,
         mbids: wanted,
@@ -234,26 +234,26 @@ export function registerMisc(router) {
         });
       }
 
-      const { albums: canonicalAlbums, tracks: canonicalTracks } =
-        getCanonicalLibraryReadModelForAlbumReferences({
+      const { albums: libraryAlbums, tracks: libraryTracks } =
+        getLibraryReadModelForAlbumReferences({
           source: "all",
           availableOnly: false,
           references: wanted,
         });
       const tracksByAlbumId = new Map();
-      for (const track of canonicalTracks) {
+      for (const track of libraryTracks) {
         const albumTracks = tracksByAlbumId.get(String(track.albumId)) || [];
         albumTracks.push(track);
         tracksByAlbumId.set(String(track.albumId), albumTracks);
       }
       const results = {};
       for (const foreignAlbumId of wanted) {
-        const album = canonicalAlbumLookup(canonicalAlbums, foreignAlbumId);
+        const album = libraryAlbumLookup(libraryAlbums, foreignAlbumId);
         if (album) {
           const albumTracks = tracksByAlbumId.get(String(album.id)) || [];
           const trackCount = albumTracks.length;
           const trackFileCount = albumTracks.filter((track) => track.available).length;
-          results[foreignAlbumId] = canonicalAlbumResult(
+          results[foreignAlbumId] = libraryAlbumResult(
             {
               ...album,
               available: trackFileCount > 0,

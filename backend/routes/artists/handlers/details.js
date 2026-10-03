@@ -11,10 +11,10 @@ import { requireAuth } from "../../../middleware/requirePermission.js";
 import { buildArtistRequestKey, pendingArtistRequests } from "../utils.js";
 import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.js";
 import { getArtistTagPayload, buildArtistBase } from "../shared/transform.js";
-import { getCanonicalArtistProjection } from "../../../services/libraryQueryService.js";
+import { getLibraryArtistProjection } from "../../../services/libraryQueryService.js";
 
-export function getCanonicalLidarrArtist(reference) {
-  const artist = getCanonicalArtistProjection({ reference })[0] || null;
+export function getLibraryLidarrArtist(reference) {
+  const artist = getLibraryArtistProjection({ reference })[0] || null;
   if (!artist?.lidarrManaged) return null;
   return {
     id: artist.providerId || artist.id,
@@ -163,8 +163,8 @@ export function registerDetails(router) {
       const resolvedMbid = override?.musicbrainzId || mbid;
 
       const lidarrArtist =
-        getCanonicalLidarrArtist(resolvedMbid) ||
-        (resolvedMbid === mbid ? null : getCanonicalLidarrArtist(mbid));
+        getLibraryLidarrArtist(resolvedMbid) ||
+        (resolvedMbid === mbid ? null : getLibraryLidarrArtist(mbid));
 
       if (lidarrArtist) {
         const artistMbid = override?.musicbrainzId || mbid;

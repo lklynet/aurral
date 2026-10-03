@@ -8,7 +8,7 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
 
-const [state, { db }, store, management, { registerMisc }, { scanMusicRoot }, { lidarrClient }, { getCanonicalLibraryPage }] =
+const [state, { db }, store, management, { registerMisc }, { scanMusicRoot }, { lidarrClient }, { getLibraryPage }] =
   await setupIsolatedBackend(
     "recent-artists",
     "backend/config/db-sqlite.js",
@@ -44,7 +44,7 @@ test.beforeEach(() => {
 });
 test.after(() => cleanupIsolatedState(state));
 
-test("recent artists combines both owners with artwork and canonical identities while Lidarr is unavailable", async (t) => {
+test("recent artists combines both owners with artwork and library identities while Lidarr is unavailable", async (t) => {
   t.mock.method(lidarrClient, "isConfigured", () => true);
   t.mock.method(lidarrClient, "request", async () => {
     throw new Error("Lidarr is unavailable");
@@ -87,13 +87,13 @@ test("recent artists selects the newest twenty across the library and includes a
   assert.ok(recent.every((artist) => artist.mbid === null && artist.canonicalId));
   const artistId = recent[0].canonicalId;
   for (const kind of ["albums", "tracks"]) {
-    const page = getCanonicalLibraryPage({ kind, artistId, availableOnly: true });
+    const page = getLibraryPage({ kind, artistId, availableOnly: true });
     assert.deepEqual(page.items, []);
     assert.equal(page.artists[0]?.name, recent[0].artistName);
     assert.equal(page.artists[0]?.mbid, null);
   }
   db.prepare("DELETE FROM library_artists WHERE id = ?").run(artistId);
-  assert.deepEqual(getCanonicalLibraryPage({ kind: "albums", artistId }).artists, []);
+  assert.deepEqual(getLibraryPage({ kind: "albums", artistId }).artists, []);
 });
 
 test("file scans retain artist identity, artwork and added date while updating file tags", async () => {

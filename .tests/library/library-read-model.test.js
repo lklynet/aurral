@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  buildCanonicalLibraryReadModel,
-  findCanonicalArtist,
-  findCanonicalTracksForAlbum,
-} from "../../backend/services/canonicalLibraryReadAdapter.js";
+  buildLibraryReadModel,
+  findLibraryArtist,
+  findLibraryTracksForAlbum,
+} from "../../backend/services/libraryReadModel.js";
 import { selectCanonicalFile } from "../../backend/services/canonicalFileSelector.js";
 
 const library = {
@@ -58,12 +58,12 @@ const library = {
   ],
 };
 
-test("canonical read model maps the existing root to Library-shaped records", () => {
-  const result = buildCanonicalLibraryReadModel(library);
+test("library read model maps the existing root to Library-shaped records", () => {
+  const result = buildLibraryReadModel(library);
 
-  assert.equal(findCanonicalArtist(result.artists, "artist-1")?.artistName, "Root Artist");
+  assert.equal(findLibraryArtist(result.artists, "artist-1")?.artistName, "Root Artist");
   assert.equal(result.albums[0].artistMbid, "artist-1");
-  assert.deepEqual(findCanonicalTracksForAlbum(result.tracks, 2).map((track) => track.trackName), [
+  assert.deepEqual(findLibraryTracksForAlbum(result.tracks, 2).map((track) => track.trackName), [
     "Root Track",
   ]);
   assert.equal(result.albums[0].mbid, "release-1");
@@ -74,8 +74,8 @@ test("canonical read model maps the existing root to Library-shaped records", ()
   assert.equal(result.tracks[0].path, "/music/Root Artist/Root Album/01 Root Track.flac");
 });
 
-test("canonical album statistics exclude unavailable file sizes", () => {
-  const result = buildCanonicalLibraryReadModel({
+test("library album statistics exclude unavailable file sizes", () => {
+  const result = buildLibraryReadModel({
     artists: [{ id: 11, name: "Unavailable Artist", albumIds: [12] }],
     albums: [{ id: 12, artistId: 11, title: "Unavailable Album", trackIds: [13] }],
     tracks: [{
@@ -90,8 +90,8 @@ test("canonical album statistics exclude unavailable file sizes", () => {
   assert.equal(result.albums[0].statistics.sizeOnDisk, 0);
 });
 
-test("canonical read model preserves non-MBID provider artist identity", () => {
-  const result = buildCanonicalLibraryReadModel({
+test("library read model preserves non-MBID provider artist identity", () => {
+  const result = buildLibraryReadModel({
     artists: [
       {
         id: 4,
@@ -118,8 +118,8 @@ test("canonical read model preserves non-MBID provider artist identity", () => {
   assert.equal(result.artists[0].foreignArtistId, "705@deezer");
 });
 
-test("canonical read model keeps flow-like records out when the index excludes them", () => {
-  const result = buildCanonicalLibraryReadModel({
+test("library read model keeps flow-like records out when the index excludes them", () => {
+  const result = buildLibraryReadModel({
     artists: [],
     albums: [],
     tracks: [],
@@ -128,7 +128,7 @@ test("canonical read model keeps flow-like records out when the index excludes t
   assert.deepEqual(result, { artists: [], albums: [], tracks: [] });
 });
 
-test("canonical file reads prefer the album manager before Lidarr", () => {
+test("library file reads prefer the album manager before Lidarr", () => {
   const file = selectCanonicalFile([
     { albumId: 2, source: "lidarr", path: "/music/lidarr.flac", available: true },
     { albumId: 2, source: "aurral", path: "/music/aurral.flac", available: true },

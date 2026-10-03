@@ -14,15 +14,15 @@ import { getReleaseGroupCoversBatch } from "../../utils/api/endpoints/artists.js
 import {
   downloadTrackToLibrary,
   fetchLibraryFavorites,
-  getCanonicalLibraryPage,
+  getLibraryPage,
   lookupAlbumsInLibraryBatch,
   lookupArtistInLibrary,
   updateLibraryFavorites,
 } from "../../utils/api/endpoints/library.js";
 import {
-  canonicalLibraryId,
-  findCanonicalAlbumByName,
-  findCanonicalArtistByName,
+  libraryRecordId,
+  findLibraryAlbumByName,
+  findLibraryArtistByName,
 } from "../../utils/libraryTrackNavigation.js";
 import { useToast } from "../../contexts/ToastContext";
 import { queryClient, queryKeys } from "../../queryClient.js";
@@ -266,7 +266,7 @@ export function PlaylistTracks({
     } catch {}
     if (!canonicalId && track.artistName) {
       try {
-        const page = await getCanonicalLibraryPage({
+        const page = await getLibraryPage({
           kind: "artists",
           page: 1,
           pageSize: 100,
@@ -274,7 +274,7 @@ export function PlaylistTracks({
           // Resolve for navigation even if nothing is available yet.
           availableOnly: false,
         });
-        canonicalId = canonicalLibraryId(findCanonicalArtistByName(page?.items, track.artistName));
+        canonicalId = libraryRecordId(findLibraryArtistByName(page?.items, track.artistName));
       } catch {}
     }
     if (canonicalId) navigate(`/library/artist/${encodeURIComponent(canonicalId)}`);
@@ -299,7 +299,7 @@ export function PlaylistTracks({
     } catch {}
     if (!canonicalId && track.albumName) {
       try {
-        const page = await getCanonicalLibraryPage({
+        const page = await getLibraryPage({
           kind: "albums",
           page: 1,
           pageSize: 100,
@@ -307,8 +307,8 @@ export function PlaylistTracks({
           // Resolve for navigation even if nothing is available yet.
           availableOnly: false,
         });
-        canonicalId = canonicalLibraryId(
-          findCanonicalAlbumByName(page?.items, track.albumName, track.artistName),
+        canonicalId = libraryRecordId(
+          findLibraryAlbumByName(page?.items, track.albumName, track.artistName),
         );
       } catch {}
     }

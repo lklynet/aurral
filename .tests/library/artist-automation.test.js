@@ -411,14 +411,14 @@ test("Lidarr monitoring defaults leave Lidarr alone when given Aurral's own albu
   const track = libraryStore.upsertLibraryTrack({ identityKey: "track:automation-fallback", title: "Track", artistName: "Automation Artist" });
   libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
   lidarr.albums = [lidarrAlbum(album.id, otherAlbumMbid, false)];
-  const canonicalAlbums = await libraryManager.getAlbums(artist.id, null, { managedBy: "aurral" });
-  assert.equal(canonicalAlbums[0].id, String(album.id));
+  const libraryAlbums = await libraryManager.getAlbums(artist.id, null, { managedBy: "aurral" });
+  assert.equal(libraryAlbums[0].id, String(album.id));
 
   await libraryManager.applyArtistMonitoringDefaults(
     { id: "41", monitored: true, monitorOption: "all", managedBy: "lidarr" },
-    canonicalAlbums,
+    libraryAlbums,
   );
 
-  assert.equal(canonicalAlbums.length, 1);
+  assert.equal(libraryAlbums.length, 1);
   assert.equal(lidarr.albums[0].monitored, false);
 });

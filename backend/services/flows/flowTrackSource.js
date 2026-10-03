@@ -6,12 +6,12 @@ import { mapWithConcurrency } from "../discovery/helpers.js";
 import { getYear } from "../providers/brainzmashRanking.js";
 import { resolveTrackSearchContext } from "../downloadJobs/trackSearchContext.js";
 import {
-  buildCanonicalLibraryReadModel,
-} from "../canonicalLibraryReadAdapter.js";
+  buildLibraryReadModel,
+} from "../libraryReadModel.js";
 import {
-  getCanonicalLibraryPage,
-  getCanonicalLibraryForArtistReferences,
-  iterateCanonicalArtistProjection,
+  getLibraryPage,
+  getLibraryForArtistReferences,
+  iterateLibraryArtistProjection,
 } from "../libraryQueryService.js";
 import BoundedMap from "../boundedMap.js";
 const LASTFM_HARVEST_CONCURRENCY = 12;
@@ -425,7 +425,7 @@ export class FlowTrackSource {
     }
 
     const promise = (async () => {
-      const artists = [...iterateCanonicalArtistProjection({ pageSize: 100 })];
+      const artists = [...iterateLibraryArtistProjection({ pageSize: 100 })];
       return this._buildArtistKeySet(artists);
     })();
     this.libraryArtistKeysCache = { promise };
@@ -1915,8 +1915,8 @@ export class FlowTrackSource {
     if (cached?.data && cached.expiresAt > Date.now()) {
       return cached.data;
     }
-    const { albums, tracks } = buildCanonicalLibraryReadModel(
-      getCanonicalLibraryForArtistReferences({
+    const { albums, tracks } = buildLibraryReadModel(
+      getLibraryForArtistReferences({
         source: "all",
         availableOnly: false,
         references: [artistId],
@@ -1943,8 +1943,8 @@ export class FlowTrackSource {
   }
 
   async getLibraryTrackTitles(_libraryManager, artistId, _knownAlbums = null) {
-    const { tracks } = buildCanonicalLibraryReadModel(
-      getCanonicalLibraryForArtistReferences({
+    const { tracks } = buildLibraryReadModel(
+      getLibraryForArtistReferences({
         source: "all",
         availableOnly: false,
         references: [artistId],
@@ -1959,8 +1959,8 @@ export class FlowTrackSource {
   }
 
   async getLibraryAlbumNames(_libraryManager, artistId, _knownAlbums = null) {
-    const { albums } = buildCanonicalLibraryReadModel(
-      getCanonicalLibraryForArtistReferences({
+    const { albums } = buildLibraryReadModel(
+      getLibraryForArtistReferences({
         source: "all",
         availableOnly: false,
         references: [artistId],
@@ -1977,7 +1977,7 @@ export class FlowTrackSource {
   async getMixTracks(limit, options = {}) {
     const artists = Array.isArray(options?.libraryArtists)
       ? options.libraryArtists
-      : [...iterateCanonicalArtistProjection({ pageSize: 100 })];
+      : [...iterateLibraryArtistProjection({ pageSize: 100 })];
     if (artists.length === 0) {
       throw new Error("No artists in library. Add artists to enable Mix.");
     }
@@ -2061,7 +2061,7 @@ export class FlowTrackSource {
     const set = new Set();
     try {
       for (let page = 1; ; page += 1) {
-        const result = getCanonicalLibraryPage({
+        const result = getLibraryPage({
           source: "all",
           availableOnly: false,
           kind: "albums",

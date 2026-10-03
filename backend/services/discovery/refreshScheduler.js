@@ -1,6 +1,6 @@
 import { dbOps } from "../../db/helpers/index.js";
 import { getLastfmApiKey } from "../apiClients/index.js";
-import { getCanonicalArtistProjection } from "../libraryQueryService.js";
+import { getLibraryArtistProjection } from "../libraryQueryService.js";
 import {
   enqueueDiscoveryRefreshJob,
   getHonkerDb,
@@ -151,7 +151,7 @@ function hasQueuedDiscoveryRefresh() {
 export async function isDiscoveryRefreshConfigured() {
   const hasLastfm = !!getLastfmApiKey();
   if (hasLastfm) return true;
-  return getCanonicalArtistProjection({ page: 1, pageSize: 1 }).length > 0;
+  return getLibraryArtistProjection({ page: 1, pageSize: 1 }).length > 0;
 }
 
 export function discoveryNeedsRefresh(cache = dbOps.getDiscoveryCache()) {

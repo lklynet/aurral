@@ -1,5 +1,5 @@
 import path from "node:path";
-import { getCanonicalLibraryForTrackIds } from "./libraryQueryService.js";
+import { getLibraryForTrackIds } from "./libraryQueryService.js";
 import { isAurralOwnedPath } from "./qualityProfileService.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 
@@ -17,7 +17,7 @@ export function resolveAurralOwnedTrackJob({ trackId, albumId } = {}) {
     return null;
   }
 
-  const library = getCanonicalLibraryForTrackIds({
+  const library = getLibraryForTrackIds({
     source: "aurral",
     availableOnly: true,
     ids: [safeTrackId],

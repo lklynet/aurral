@@ -1,10 +1,10 @@
 import {
-  getCanonicalArtistPage,
-  getCanonicalLibraryForAlbumIds,
-  getCanonicalLibraryForAlbumReferences,
-  getCanonicalLibraryForArtistReferences,
-  getCanonicalLibraryForArtists,
-  getCanonicalTrackPath,
+  getLibraryArtistPage,
+  getLibraryForAlbumIds,
+  getLibraryForAlbumReferences,
+  getLibraryForArtistReferences,
+  getLibraryForArtists,
+  getLibraryTrackPath,
 } from "./libraryQueryService.js";
 import { getManagedByMap } from "./libraryManagementStore.js";
 import { selectCanonicalFile } from "./canonicalFileSelector.js";
@@ -140,7 +140,7 @@ const buildTrack = (track, album) => {
   };
 };
 
-export function buildCanonicalLibraryReadModel(library) {
+export function buildLibraryReadModel(library) {
   const { artists, albums, tracks } = library;
   const artistsById = new Map(artists.map((artist) => [artist.id, artist]));
   const tracksById = new Map(tracks.map((track) => [track.id, track]));
@@ -169,13 +169,13 @@ export function buildCanonicalLibraryReadModel(library) {
   return { artists: readArtists, albums: readAlbums, tracks: readTracks };
 }
 
-export function getCanonicalLibraryReadModelForArtistPage({
+export function getLibraryReadModelForArtistPage({
   source = "lidarr",
   availableOnly = true,
   limit = 10000,
   offset = 0,
 } = {}) {
-  const library = getCanonicalArtistPage({ source, availableOnly, limit, offset, includeStats: true });
+  const library = getLibraryArtistPage({ source, availableOnly, limit, offset, includeStats: true });
   return {
     artists: library.artists.map((artist) =>
       buildArtist(artist, new Map(), getManagedByMap("artist")),
@@ -185,53 +185,53 @@ export function getCanonicalLibraryReadModelForArtistPage({
   };
 }
 
-export function getCanonicalLibraryReadModelForArtists({
+export function getLibraryReadModelForArtists({
   source = "lidarr",
   availableOnly = true,
   mbids = [],
 } = {}) {
-  return buildCanonicalLibraryReadModel(
-    getCanonicalLibraryForArtists({ source, availableOnly, mbids }),
+  return buildLibraryReadModel(
+    getLibraryForArtists({ source, availableOnly, mbids }),
   );
 }
 
-export function getCanonicalLibraryReadModelForArtistReferences({
+export function getLibraryReadModelForArtistReferences({
   source = "all",
   availableOnly = false,
   references = [],
 } = {}) {
-  return buildCanonicalLibraryReadModel(
-    getCanonicalLibraryForArtistReferences({ source, availableOnly, references }),
+  return buildLibraryReadModel(
+    getLibraryForArtistReferences({ source, availableOnly, references }),
   );
 }
 
-export function getCanonicalLibraryReadModelForAlbumIds({
+export function getLibraryReadModelForAlbumIds({
   source = "lidarr",
   availableOnly = true,
   ids = [],
 } = {}) {
-  return buildCanonicalLibraryReadModel(
-    getCanonicalLibraryForAlbumIds({ source, availableOnly, ids }),
+  return buildLibraryReadModel(
+    getLibraryForAlbumIds({ source, availableOnly, ids }),
   );
 }
-export function getCanonicalLibraryReadModelForAlbumReferences({
+export function getLibraryReadModelForAlbumReferences({
   source = "lidarr",
   availableOnly = true,
   references = [],
 } = {}) {
-  return buildCanonicalLibraryReadModel(
-    getCanonicalLibraryForAlbumReferences({ source, availableOnly, references }),
+  return buildLibraryReadModel(
+    getLibraryForAlbumReferences({ source, availableOnly, references }),
   );
 }
 
-export function resolveCanonicalTrackPath(albumReference, trackReference) {
-  return getCanonicalTrackPath(albumReference, trackReference);
+export function resolveLibraryTrackPath(albumReference, trackReference) {
+  return getLibraryTrackPath(albumReference, trackReference);
 }
 
-export function findCanonicalArtist(artists, reference) {
+export function findLibraryArtist(artists, reference) {
   return artists.find((artist) => recordMatches(artist, reference)) || null;
 }
 
-export function findCanonicalTracksForAlbum(tracks, reference) {
+export function findLibraryTracksForAlbum(tracks, reference) {
   return tracks.filter((track) => String(track.albumId) === String(reference));
 }

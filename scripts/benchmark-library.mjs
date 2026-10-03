@@ -396,7 +396,7 @@ import {
   listArtists,
   searchLibrary,
 } from "./backend/services/subsonicLibraryService.js";
-import { getCanonicalTrackPage } from "./backend/services/libraryQueryService.js";
+import { getLibraryTrackPage } from "./backend/services/libraryQueryService.js";
 
 const user = {
   id: Number(process.env.AURRAL_BENCHMARK_USER_ID),
@@ -414,7 +414,7 @@ const read = {
     albumCount: "20",
     songCount: "20",
   }),
-  randomSongs: () => getCanonicalTrackPage({
+  randomSongs: () => getLibraryTrackPage({
     source: "lidarr",
     availableOnly: true,
     random: true,
@@ -609,7 +609,7 @@ async function main() {
     const musicRoot = path.join(dataDir, "music");
     const seed = seedDatabase(database, { ...options, musicRoot });
     rebuildLibrarySearchIndex();
-    queryService.rebuildCanonicalGenreStats();
+    queryService.rebuildLibraryGenreStats();
     const benchmarkUser = seedSubsonicFavorite(database);
     flowPlaylistConfig.createSharedPlaylist({
       name: "Benchmark Playlist",
@@ -636,18 +636,18 @@ async function main() {
     const pages = {};
     for (const [name, pageOptions] of pageCases) {
       pages[name] = collectPageSamples(
-        () => queryService.getCanonicalLibraryPage(pageOptions),
-        () => queryService.invalidateCanonicalLibraryCache({ persistedGenres: false }),
+        () => queryService.getLibraryPage(pageOptions),
+        () => queryService.invalidateLibraryQueryCache({ persistedGenres: false }),
         options.repeats,
       );
     }
     const artistProjectionCold = measure(
-      () => queryService.getCanonicalArtistProjection({ page: 1, pageSize: 100 }),
+      () => queryService.getLibraryArtistProjection({ page: 1, pageSize: 100 }),
     );
     const artistProjectionSamples = [];
     for (let index = 0; index < options.repeats; index += 1) {
       artistProjectionSamples.push(
-        measure(() => queryService.getCanonicalArtistProjection({ page: 1, pageSize: 100 })),
+        measure(() => queryService.getLibraryArtistProjection({ page: 1, pageSize: 100 })),
       );
     }
     const stripProjection = ({ value: _value, ...sample }) => sample;
@@ -656,7 +656,7 @@ async function main() {
       cold: summarizeSamples([stripProjection(artistProjectionCold)]),
       warm: summarizeSamples(artistProjectionSamples.map(stripProjection)),
     };
-    const artistProjectionPlan = queryService.getCanonicalArtistProjectionQueryPlan({
+    const artistProjectionPlan = queryService.getLibraryArtistProjectionQueryPlan({
       page: 1,
       pageSize: 100,
     });
@@ -677,7 +677,7 @@ async function main() {
     const fixtureAlbumId = database.prepare(
       "SELECT album_id FROM library_media_files WHERE source = 'lidarr' AND path = ?",
     ).get(target).album_id;
-    const searchFixture = (query) => queryService.getCanonicalLibraryPage({
+    const searchFixture = (query) => queryService.getLibraryPage({
       kind: "tracks", query, albumId: fixtureAlbumId, source: "lidarr", availableOnly: true,
     }).total;
     const scopedPathSamples = [];
@@ -698,7 +698,7 @@ async function main() {
       });
       previousTitle = title;
     }
-    queryService.rebuildCanonicalGenreStats();
+    queryService.rebuildLibraryGenreStats();
     const scopedPaths = summarizeSamples(scopedPathSamples);
     const targetedScans = summarizeSamples(targetedScanSamples);
     database.close();

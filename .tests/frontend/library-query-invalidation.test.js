@@ -10,16 +10,16 @@ const waitForRequestSignal = async (getSignal) => {
   assert.ok(getSignal(), "fetch was not called before the request signal timeout");
 };
 
-test("canonical cache invalidation does not abort an active request", async (t) => {
+test("library cache invalidation does not abort an active request", async (t) => {
   const vite = await startFrontendServer();
   t.after(() => vite.close());
 
-  const { clearCanonicalLibraryPageCache } = await vite.ssrLoadModule(
+  const { clearLibraryPageCache } = await vite.ssrLoadModule(
     "/src/utils/api/endpoints/library.js?canonical-invalidation-test",
   );
   const { queryClient, queryKeys } = await vite.ssrLoadModule("/src/queryClient.js");
   const options = { kind: "artists", page: 1, pageSize: 100 };
-  const queryKey = queryKeys.libraryCanonical(options);
+  const queryKey = queryKeys.libraryPage(options);
   let resolveRequest;
   let aborted = false;
   const request = queryClient.fetchQuery({
@@ -35,12 +35,12 @@ test("canonical cache invalidation does not abort an active request", async (t) 
   });
 
   while (!resolveRequest) await new Promise((resolve) => setImmediate(resolve));
-  await clearCanonicalLibraryPageCache();
+  await clearLibraryPageCache();
   assert.equal(aborted, false);
   resolveRequest({ artists: [] });
   await request;
 
-  assert.notDeepEqual(queryKeys.libraryCanonical(options), queryKey);
+  assert.notDeepEqual(queryKeys.libraryPage(options), queryKey);
   queryClient.clear();
 });
 
@@ -48,7 +48,7 @@ test("library requests forward caller cancellation", async (t) => {
   const vite = await startFrontendServer();
   t.after(() => vite.close());
 
-  const { getCanonicalLibraryPage, getLibraryFavorites } = await vite.ssrLoadModule(
+  const { getLibraryPage, getLibraryFavorites } = await vite.ssrLoadModule(
     "/src/utils/api/endpoints/library.js?library-request-cancellation-test",
   );
   const { queryClient, queryKeys } = await vite.ssrLoadModule("/src/queryClient.js");
@@ -73,7 +73,7 @@ test("library requests forward caller cancellation", async (t) => {
   };
 
   await assertForwardedCancellation((signal) =>
-    getCanonicalLibraryPage({ kind: "artists", page: 1, pageSize: 100 }, { signal }),
+    getLibraryPage({ kind: "artists", page: 1, pageSize: 100 }, { signal }),
   );
   await assertForwardedCancellation((signal) => getLibraryFavorites({ signal }));
 
@@ -96,8 +96,8 @@ test("library requests forward caller cancellation", async (t) => {
   };
 
   await assertQueryCancellation(
-    () => getCanonicalLibraryPage({ kind: "artists", page: 1, pageSize: 100 }),
-    queryKeys.libraryCanonical({
+    () => getLibraryPage({ kind: "artists", page: 1, pageSize: 100 }),
+    queryKeys.libraryPage({
       kind: "artists",
       page: 1,
       pageSize: 100,

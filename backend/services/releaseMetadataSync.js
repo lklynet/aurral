@@ -7,7 +7,7 @@ import {
   getSystemTaskQueueName,
   listHonkerJobs,
 } from "./honkerDb.js";
-import { iterateCanonicalArtistProjection } from "./libraryQueryService.js";
+import { iterateLibraryArtistProjection } from "./libraryQueryService.js";
 import { logger } from "./logger.js";
 import { getAlbumByMbid, listArtistAlbums } from "./providers/brainzmashProvider.js";
 import {
@@ -100,7 +100,7 @@ export async function refreshReleaseMetadata({
   const nowMs = Number.isFinite(requestedNow) ? requestedNow : Date.now();
   const catalogueArtists = Array.isArray(artists)
     ? artists
-    : [...iterateCanonicalArtistProjection({ pageSize: 100 })];
+    : [...iterateLibraryArtistProjection({ pageSize: 100 })];
   const eligibleArtists = catalogueArtists.filter((artist) => UUID_REGEX.test(text(artist?.mbid)));
   let artistsRefreshed = 0;
   let artistsFailed = 0;

@@ -11,7 +11,7 @@ import { indexLidarrLibrary } from "../../backend/services/libraryLidarrIndexer.
 
 test("bounded backend callers do not materialize the compatibility library", async () => {
   const boundedCallers = [
-    new URL("../../backend/routes/library/handlers/canonical.js", import.meta.url),
+    new URL("../../backend/routes/library/handlers/libraryIndex.js", import.meta.url),
     new URL("../../backend/routes/library/handlers/downloads.js", import.meta.url),
     new URL("../../backend/services/libraryManager.js", import.meta.url),
     new URL("../../backend/services/storageHealthService.js", import.meta.url),
@@ -19,12 +19,12 @@ test("bounded backend callers do not materialize the compatibility library", asy
 
   for (const caller of boundedCallers) {
     const source = await readFile(caller, "utf8");
-    assert.doesNotMatch(source, /\bgetCanonicalLibrary(?:ReadModel)?\s*\(/);
-    assert.doesNotMatch(source, /\bbuildCanonicalLibraryReadModel\s*\(/);
+    assert.doesNotMatch(source, /\bgetLibrary(?:ReadModel)?\s*\(/);
+    assert.doesNotMatch(source, /\bbuildLibraryReadModel\s*\(/);
   }
 });
 
-test("canonical track reads remove nested filesystem paths", async () => {
+test("library track reads remove nested filesystem paths", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-canonical-route-"));
   const filePath = path.join(root, "Route Artist", "Route Album", "01 Route Track.flac");
   await mkdir(path.dirname(filePath), { recursive: true });

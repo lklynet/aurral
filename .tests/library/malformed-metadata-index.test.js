@@ -46,7 +46,7 @@ test("malformed artist metadata does not break startup or indexed reference look
             upsertLibraryMediaFile,
             upsertLibraryTrack,
           } = await import("./backend/services/libraryMediaStore.js");
-          const { getCanonicalLibraryForArtistReferences } = await import("./backend/services/libraryQueryService.js");
+          const { getLibraryForArtistReferences } = await import("./backend/services/libraryQueryService.js");
           const artist = upsertLibraryArtist({
             identityKey: "valid:artist",
             mbid: "valid-artist-mbid",
@@ -72,10 +72,10 @@ test("malformed artist metadata does not break startup or indexed reference look
             source: "aurral",
             path: "/tmp/valid-track.flac",
           });
-          const providerResult = getCanonicalLibraryForArtistReferences({
+          const providerResult = getLibraryForArtistReferences({
             references: ["valid-provider-id"],
           });
-          const foreignResult = getCanonicalLibraryForArtistReferences({
+          const foreignResult = getLibraryForArtistReferences({
             references: ["valid-foreign-artist-id"],
           });
           const expression = "CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT)";

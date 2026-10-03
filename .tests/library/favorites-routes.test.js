@@ -17,8 +17,8 @@ const [isolatedState, { db }, { userOps }, libraryService, libraryStore] =
     "backend/services/libraryMediaStore.js",
   );
 
-const { registerCanonical } = await import(
-  "../../backend/routes/library/handlers/canonical.js"
+const { registerLibraryIndex } = await import(
+  "../../backend/routes/library/handlers/libraryIndex.js"
 );
 const {
   linkLibraryAlbumTrack,
@@ -107,7 +107,7 @@ test.after(async () => {
 
 function getRoute(path) {
   const routes = new Map();
-  registerCanonical({
+  registerLibraryIndex({
     get(routePath, ...handlers) {
       routes.set(`GET ${routePath}`, handlers.at(-1));
     },
@@ -170,7 +170,7 @@ test("native favorites return changed identities and reuse Subsonic star identit
   assert.deepEqual(getResponse.body.artist.map((entry) => entry.id), [target]);
 });
 
-test("native favorites include the canonical favorite subset", () => {
+test("native favorites include the library favorite subset", () => {
   const response = responseFor();
   getRoute("GET /favorites")({ user }, response);
 
@@ -183,7 +183,7 @@ test("native favorites include the canonical favorite subset", () => {
   assert.equal(response.body.library.tracks[0].files[0].path, undefined);
 });
 
-test("canonical library pages return bounded collection responses", () => {
+test("library pages return bounded collection responses", () => {
   const response = responseFor();
   getRoute("GET /canonical")(
     { user, query: { kind: "tracks", page: "1", pageSize: "1", availableOnly: "false" } },
@@ -233,7 +233,7 @@ test("canonical library pages return bounded collection responses", () => {
   assert.equal(artistResponse.body.items[0].userFavorite, true);
 });
 
-test("canonical track responses expose additive ownership fields", () => {
+test("library track responses expose additive ownership fields", () => {
   const response = responseFor();
   getRoute("GET /canonical")(
     { user, query: { kind: "tracks", page: "1", pageSize: "1", availableOnly: "false" } },
@@ -249,7 +249,7 @@ test("canonical track responses expose additive ownership fields", () => {
   assert.equal(track.monitorMode, null);
 });
 
-test("canonical library rejects unbounded requests", () => {
+test("library rejects unbounded requests", () => {
   const response = responseFor();
   getRoute("GET /canonical")({ user, query: { kind: "tracks" } }, response);
 
@@ -269,7 +269,7 @@ test("native favorites rejects unknown targets without changing stars", () => {
   assert.equal(libraryService.getStarred(user).artist.length, 1);
 });
 
-test("canonical pages filter, count, and paginate in the read query", () => {
+test("library pages filter, count, and paginate in the read query", () => {
   const response = responseFor();
   getRoute("GET /canonical")(
     {

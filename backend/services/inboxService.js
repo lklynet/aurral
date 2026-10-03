@@ -2,7 +2,7 @@ import { db } from "../config/db-sqlite.js";
 import { dbOps, userOps } from "../db/helpers/index.js";
 import { getTicketmasterApiKey } from "./apiClients/index.js";
 import {
-  getCanonicalAlbumsByReleaseDate,
+  getLibraryAlbumsByReleaseDate,
   getLibraryArtistNames,
 } from "./libraryQueryService.js";
 import { getNearbyShows } from "./nearbyShowsService.js";
@@ -140,7 +140,7 @@ const upsertAll = (items) => {
 async function buildReleaseItems(userId, now) {
   const cutoff = now - RELEASE_PAST_DAYS * DAY_MS;
   const horizon = now + RELEASE_FUTURE_DAYS * DAY_MS;
-  const rawAlbums = getCanonicalAlbumsByReleaseDate({
+  const rawAlbums = getLibraryAlbumsByReleaseDate({
     from: new Date(cutoff).toISOString().slice(0, 10),
     to: new Date(horizon).toISOString().slice(0, 10),
     limit: 1000,

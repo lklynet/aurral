@@ -21,7 +21,7 @@ const {
   getTopSongs,
   idFor,
   parseId,
-  resolveCanonicalTracks,
+  resolveLibraryTracks,
   starMany,
 } = subsonic;
 
@@ -71,7 +71,7 @@ test("keeps Subsonic IDs readable while safely encoding key content", () => {
   assert.deepEqual(parseId(encoded), { kind: "album", key });
 });
 
-test("starMany validates duplicate and equivalent encoded canonical targets", () => {
+test("starMany validates duplicate and equivalent encoded library targets", () => {
   const user = db.prepare(
     "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, '', 'user', '{}') RETURNING id",
   ).get("subsonic-star-many");
@@ -260,7 +260,7 @@ test("resolves playlist descriptors to library tracks in bulk", () => {
   };
   let resolved;
   try {
-    resolved = resolveCanonicalTracks(descriptors);
+    resolved = resolveLibraryTracks(descriptors);
   } finally {
     db.prepare = prepare;
   }
@@ -277,7 +277,7 @@ test("resolves playlist descriptors to library tracks in bulk", () => {
 });
 
 test("favorite reads preserve shared relationships, media filters, and user isolation", async () => {
-  const { getCanonicalLibrary } = await import("../../backend/services/libraryQueryService.js");
+  const { getLibrary } = await import("../../backend/services/libraryQueryService.js");
   const existing = db.prepare("SELECT id, identity_key FROM library_tracks WHERE title = 'Old Song'").get();
   const guest = upsertLibraryArtist({ identityKey: "favorite:guest", name: "Guest Artist" });
   const guestAlbum = upsertLibraryAlbum({
@@ -330,14 +330,14 @@ test("favorite reads preserve shared relationships, media filters, and user isol
       { kind: "album", key: "favorite:guest-album" },
       { kind: "song", key: "removed-target" },
     ];
-    const filtered = getCanonicalLibrary({ source: "aurral", favoriteKeys });
+    const filtered = getLibrary({ source: "aurral", favoriteKeys });
     assert.deepEqual(filtered.albums.map((album) => album.title), ["Guest Album"]);
     assert.deepEqual(filtered.tracks.map((track) => track.id), [existing.id]);
     assert.deepEqual(filtered.tracks[0].files.map((file) => file.path), ["/test/favorite/guest.flac"]);
-    assert.deepEqual(getCanonicalLibrary({
+    assert.deepEqual(getLibrary({
       source: "aurral", availableOnly: true, favoriteKeys,
     }), { artists: [], albums: [], tracks: [] });
-    assert.deepEqual(getCanonicalLibrary({ favoriteKeys: [] }), { artists: [], albums: [], tracks: [] });
+    assert.deepEqual(getLibrary({ favoriteKeys: [] }), { artists: [], albums: [], tracks: [] });
     assert.deepEqual(db.prepare("SELECT * FROM subsonic_stars ORDER BY user_id, entity_kind, entity_key").all(), starsBefore);
     assert.deepEqual(db.prepare("SELECT COUNT(*) AS count FROM playlist_download_jobs").get(), jobsBefore);
   } finally {
@@ -350,7 +350,7 @@ test("favorite reads preserve shared relationships, media filters, and user isol
   }
 });
 
-test("frequent albums keep same-titled releases separated by canonical identity", () => {
+test("frequent albums keep same-titled releases separated by library identity", () => {
   const artist = db.prepare("SELECT id, name FROM library_artists WHERE identity_key = ?")
     .get("test-artist:artist-a");
   const duplicate = upsertLibraryAlbum({

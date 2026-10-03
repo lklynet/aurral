@@ -7,11 +7,11 @@ import {
   tracksShareMembership,
 } from "../playlists/flowPlaylistConfig.js";
 import {
-  buildCanonicalLibraryReadModel,
-  findCanonicalArtist,
-  findCanonicalTracksForAlbum,
-} from "../canonicalLibraryReadAdapter.js";
-import { getCanonicalLibraryForArtistReferences } from "../libraryQueryService.js";
+  buildLibraryReadModel,
+  findLibraryArtist,
+  findLibraryTracksForAlbum,
+} from "../libraryReadModel.js";
+import { getLibraryForArtistReferences } from "../libraryQueryService.js";
 import { scheduleLibraryScan as scheduleLibraryScanJob } from "../libraryScanWorker.js";
 import {
   commitDownloadedFile,
@@ -135,9 +135,9 @@ function isFlowPlaylistType(playlistType) {
  * Checks whether a playlist type corresponds to the library or a static playlist.
  *
  * @param {string} playlistType - Target playlist identifier.
- * @returns {boolean} True if the playlist type is canonical or shared.
+ * @returns {boolean} True for the library and static playlists.
  */
-function isCanonicalPlaylistType(playlistType) {
+function usesLibraryFolders(playlistType) {
   const key = String(playlistType || "").trim();
   return key === "library" || Boolean(flowPlaylistConfig.getStaticPlaylist(key));
 }
@@ -170,7 +170,7 @@ async function findLocalExistingSource(track, options = {}) {
 
   const root = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const ephemeral = isFlowPlaylistType(targetPlaylistType);
-  const canonical = isCanonicalPlaylistType(targetPlaylistType);
+  const libraryFolders = usesLibraryFolders(targetPlaylistType);
 
   const artistDir = sanitizeSafeSegment(track?.artistName, "Unknown Artist");
   const albumDir = sanitizeSafeSegment(track?.albumName, "Unknown Album");
@@ -186,7 +186,7 @@ async function findLocalExistingSource(track, options = {}) {
     candidateDirs.push(
       path.resolve(root, AURRAL_FLOWS_DIR, targetPlaylistType, artistDir, albumDir),
     );
-  } else if (canonical) {
+  } else if (libraryFolders) {
     // Library and static playlists store at: <root>/Artist/Album/
     candidateDirs.push(path.resolve(root, artistDir, albumDir));
   } else {
@@ -310,12 +310,12 @@ export async function adoptFileIntoPlaylist(sourcePath, targetPlaylistType, down
   if (options.protectPlayback !== false && isPlaybackRetainedFile(resolvedSource)) return resolvedSource;
 
   const knownFlow = isFlowPlaylistType(safeTarget);
-  const knownPlaylist = isCanonicalPlaylistType(safeTarget);
-  const canonical = knownFlow || knownPlaylist;
+  const knownPlaylist = usesLibraryFolders(safeTarget);
+  const currentLayout = knownFlow || knownPlaylist;
   const ephemeral = knownFlow;
   const targetRoot = ephemeral
     ? path.resolve(root, AURRAL_FLOWS_DIR, safeTarget)
-    : canonical
+    : currentLayout
       ? path.resolve(root)
       : path.resolve(root, PLAYLIST_FILES_DIR, safeTarget);
   const legacySource = [PLAYLIST_FILES_DIR, AURRAL_FLOWS_DIR].some((directory) =>
@@ -323,8 +323,8 @@ export async function adoptFileIntoPlaylist(sourcePath, targetPlaylistType, down
   );
   if (
     (ephemeral && isPathInsideRoot(resolvedSource, targetRoot)) ||
-    (!ephemeral && !canonical && isPathInsideRoot(resolvedSource, targetRoot)) ||
-    (!ephemeral && canonical && !legacySource)
+    (!ephemeral && !currentLayout && isPathInsideRoot(resolvedSource, targetRoot)) ||
+    (!ephemeral && currentLayout && !legacySource)
   ) {
     return resolvedSource;
   }
@@ -347,7 +347,7 @@ export async function adoptFileIntoPlaylist(sourcePath, targetPlaylistType, down
   const artistDir = sanitizePathPart(options.track?.artistName || segments.at(-3), "Unknown Artist");
   const albumDir = sanitizePathPart(options.track?.albumName || segments.at(-2), "Unknown Album");
   const fileName = path.basename(resolvedSource);
-  const destPath = canonical
+  const destPath = currentLayout
     ? joinUnderRoot(targetRoot, path.join(artistDir, albumDir), fileName)
     : path.join(targetRoot, relative);
   const committed = await commitDownloadedFile(resolvedSource, destPath);
@@ -516,14 +516,14 @@ function findMatchingTrack(tracks, track, strictAlbum = false) {
 
 async function findLidarrSource(track, options = {}) {
   const strictAlbum = options.targetPlaylistType === "library";
-  const { artists, albums, tracks } = buildCanonicalLibraryReadModel(
-    getCanonicalLibraryForArtistReferences({
+  const { artists, albums, tracks } = buildLibraryReadModel(
+    getLibraryForArtistReferences({
       source: "lidarr",
       availableOnly: false,
       references: [track?.artistMbid, track?.artistName],
     }),
   );
-  const artist = findCanonicalArtist(artists, track?.artistMbid) ||
+  const artist = findLibraryArtist(artists, track?.artistMbid) ||
     findMatchingArtist(artists, track);
   if (!artist) {
     console.log(
@@ -558,7 +558,7 @@ async function findLidarrSource(track, options = {}) {
       })
     : rankedAlbums;
   for (const album of albumsToCheck) {
-    const albumTracks = findCanonicalTracksForAlbum(tracks, album.id);
+    const albumTracks = findLibraryTracksForAlbum(tracks, album.id);
     const matchedTrack = findMatchingTrack(
       albumTracks,
       track,

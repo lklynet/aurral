@@ -221,7 +221,7 @@ function ArtistDetailsPage() {
     queryFn: ({ signal }) => lookupArtistInLibrary(mbid, { signal }),
     enabled: false,
   });
-  const libraryCanonicalId = libraryLookup.data?.libraryArtistId || null;
+  const libraryArtistRecordId = libraryLookup.data?.libraryArtistId || null;
 
   const preview = usePreviewPlayer(mbid, artistNameFromNav, artist);
   const {
@@ -501,10 +501,10 @@ function ArtistDetailsPage() {
         artistName={artist?.name || artistNameFromNav || ""}
         existsInLibrary={existsInLibrary}
         libraryLink={
-          libraryCanonicalId ? (
+          libraryArtistRecordId ? (
             <CrossViewLink
               view="library"
-              to={`/library/artist/${encodeURIComponent(libraryCanonicalId)}`}
+              to={`/library/artist/${encodeURIComponent(libraryArtistRecordId)}`}
             />
           ) : null
         }

@@ -19,7 +19,7 @@ const [
   { downloadWorker },
   { lidarrClient },
   { libraryManager },
-  { getCanonicalLibraryForAlbumIds },
+  { getLibraryForAlbumIds },
   { scanMusicRoot },
   { clearMetadataProviderCaches },
   { registerAlbums },
@@ -130,7 +130,7 @@ async function scanFile(index, { downloadedByAurral, albumTitle = "Playlist Albu
 
 const albumState = () => {
   const albumId = db.prepare("SELECT id FROM library_albums WHERE release_group_mbid = ?").get(albumMbid).id;
-  const library = getCanonicalLibraryForAlbumIds({ ids: [albumId] });
+  const library = getLibraryForAlbumIds({ ids: [albumId] });
   const monitoredByMbid = Object.fromEntries(library.tracks.map((track) => [track.mbid, track.monitored]));
   return { albumId, album: library.albums[0], monitored: trackMbids.map((mbid) => monitoredByMbid[mbid]) };
 };
@@ -215,7 +215,7 @@ test("downloading a missing track of an unmonitored Aurral album monitors and qu
   const { albumId } = albumState();
   await libraryManager.setAurralAlbumMonitoring(albumId, { monitored: false });
   const missing = albumState().album.trackIds
-    .map((id) => getCanonicalLibraryForAlbumIds({ ids: [albumId] }).tracks.find((track) => track.id === id))
+    .map((id) => getLibraryForAlbumIds({ ids: [albumId] }).tracks.find((track) => track.id === id))
     .find((track) => track.mbid === trackMbids[2]);
 
   const response = await callRoute("POST /downloads/track", {

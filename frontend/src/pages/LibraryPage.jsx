@@ -54,15 +54,15 @@ import {
   getReleaseGroupTracks,
 } from "../utils/api/endpoints/artists.js";
 import {
-  clearCanonicalLibraryPageCache,
+  clearLibraryPageCache,
   deleteAlbumFromLibrary,
   deleteArtistFromLibrary,
   deleteAurralAlbumFromLibrary,
   deleteLidarrAlbumFromLibrary,
   deleteTrackFromLibrary,
-  fetchCanonicalLibraryPage,
+  fetchLibraryPage,
   getActiveLibraryRefresh,
-  getCanonicalLibraryPage,
+  getLibraryPage,
   getDownloadStatus,
   getLibraryFavorites,
   getLibraryRefreshStatus,
@@ -371,12 +371,12 @@ function LibraryPage() {
 
   const handleLibraryScanMessage = useCallback((message) => {
     if (message?.type !== "library_scan_completed") return;
-    clearCanonicalLibraryPageCache();
+    clearLibraryPageCache();
     queryClient.invalidateQueries({
       queryKey: queryKeys.libraryAlbumTracksPrefix,
       refetchType: "none",
     });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPagePrefix });
     void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
   }, []);
 
@@ -389,12 +389,12 @@ function LibraryPage() {
   }, []);
 
   const completeLibraryRefresh = useCallback(() => {
-    clearCanonicalLibraryPageCache();
+    clearLibraryPageCache();
     queryClient.invalidateQueries({
       queryKey: queryKeys.libraryAlbumTracksPrefix,
       refetchType: "none",
     });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPagePrefix });
     void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
   }, []);
 
@@ -446,7 +446,7 @@ function LibraryPage() {
     refreshAttemptRef.current = attempt;
     setRefreshing(true);
     try {
-      clearCanonicalLibraryPageCache();
+      clearLibraryPageCache();
       const queued = await requestLibraryRefresh(mode);
       const jobId = queued?.jobId;
       if (!jobId) throw new Error("Library refresh did not start");
@@ -560,7 +560,7 @@ function LibraryPage() {
     queryFn: async ({ signal }) => {
       const nextData = isDetail
         ? routeAlbumId
-          ? await fetchCanonicalLibraryPage({
+          ? await fetchLibraryPage({
               kind: "tracks",
               albumId: routeAlbumId,
               page: 1,
@@ -570,14 +570,14 @@ function LibraryPage() {
               availableOnly: false,
             }, { signal })
           : await Promise.all([
-              fetchCanonicalLibraryPage({
+              fetchLibraryPage({
                 kind: "albums",
                 artistId: routeArtistId,
                 page: 1,
                 pageSize,
                 availableOnly: true,
               }, { signal }),
-              fetchCanonicalLibraryPage({
+              fetchLibraryPage({
                 kind: "tracks",
                 artistId: routeArtistId,
                 page: 1,
@@ -589,7 +589,7 @@ function LibraryPage() {
           ? await getLibraryFavorites({ signal })
           : section === "home"
             ? await Promise.all([
-                fetchCanonicalLibraryPage({
+                fetchLibraryPage({
                   kind: "albums",
                   page: 1,
                   pageSize,
@@ -597,7 +597,7 @@ function LibraryPage() {
                   // "Recently added" defers to the Lidarr "available only"
                   // setting (omitted param) like the Albums/Artists tabs.
                 }, { signal }),
-                fetchCanonicalLibraryPage({
+                fetchLibraryPage({
                   kind: "tracks",
                   page: 1,
                   pageSize: 12,
@@ -605,7 +605,7 @@ function LibraryPage() {
                   availableOnly: true,
                 }, { signal }),
               ])
-            : await fetchCanonicalLibraryPage({
+            : await fetchLibraryPage({
                 kind: tab,
                 page: pageIndex,
                 pageSize,
@@ -719,7 +719,7 @@ function LibraryPage() {
     const result = await queryClient.fetchQuery({
       queryKey: queryKeys.libraryAlbumTracks(String(album.id), releaseGroupMbid),
       queryFn: async ({ signal }) => {
-        const page = await getCanonicalLibraryPage({
+        const page = await getLibraryPage({
           kind: "tracks",
           albumId: album.id,
           page: 1,
@@ -929,12 +929,12 @@ function LibraryPage() {
         tracks: current.tracks.filter((track) => String(track.id) !== entityId),
       };
     });
-    clearCanonicalLibraryPageCache();
+    clearLibraryPageCache();
     queryClient.invalidateQueries({
       queryKey: queryKeys.libraryAlbumTracksPrefix,
       refetchType: "none",
     });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPagePrefix });
     void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
   }, [setLibrary]);
 
@@ -1004,8 +1004,8 @@ function LibraryPage() {
   ]);
 
   const refreshLibraryArtistMonitoring = useCallback(() => {
-    clearCanonicalLibraryPageCache();
-    void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
+    clearLibraryPageCache();
+    void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPagePrefix });
     return queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
   }, []);
 
@@ -1375,8 +1375,8 @@ function LibraryPage() {
             : entry,
         ),
       }));
-      clearCanonicalLibraryPageCache();
-      void queryClient.invalidateQueries({ queryKey: queryKeys.libraryCanonicalPrefix });
+      clearLibraryPageCache();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPagePrefix });
       void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
       refreshLibraryActivity();
     },
@@ -1398,7 +1398,7 @@ function LibraryPage() {
       queryClient.setQueriesData({ queryKey: queryKeys.libraryAlbumTracksPrefix }, (data) =>
         Array.isArray(data?.tracks) ? { ...data, tracks: data.tracks.map(mark) } : data,
       );
-      clearCanonicalLibraryPageCache();
+      clearLibraryPageCache();
       void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
       refreshLibraryActivity();
     },

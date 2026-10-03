@@ -8,24 +8,24 @@ import { db } from "../../backend/config/db-sqlite.js";
 import { scanMusicRoot } from "../../backend/services/libraryFileScanner.js";
 import { indexLidarrLibrary } from "../../backend/services/libraryLidarrIndexer.js";
 import {
-  getCanonicalArtistMbids,
-  getCanonicalLibrary,
-  getCanonicalLibraryForAlbumReferences,
-  getCanonicalLibraryForArtistReferences,
-  getCanonicalLibraryForArtists,
-  getCanonicalLibraryPage,
-  getCanonicalTrack,
-  getCanonicalTrackCount,
-  getCanonicalTrackOwnership,
-  getCanonicalTrackPath,
-  getCanonicalTrackSample,
-  invalidateCanonicalLibraryCache,
+  getLibraryArtistMbids,
+  getLibrary,
+  getLibraryForAlbumReferences,
+  getLibraryForArtistReferences,
+  getLibraryForArtists,
+  getLibraryPage,
+  getLibraryTrack,
+  getLibraryTrackCount,
+  getLibraryTrackOwnership,
+  getLibraryTrackPath,
+  getLibraryTrackSample,
+  invalidateLibraryQueryCache,
 } from "../../backend/services/libraryQueryService.js";
-import { toPublicLibrary } from "../../backend/routes/library/handlers/canonical.js";
+import { toPublicLibrary } from "../../backend/routes/library/handlers/libraryIndex.js";
 import {
-  buildCanonicalLibraryReadModel,
-  getCanonicalLibraryReadModelForAlbumReferences,
-} from "../../backend/services/canonicalLibraryReadAdapter.js";
+  buildLibraryReadModel,
+  getLibraryReadModelForAlbumReferences,
+} from "../../backend/services/libraryReadModel.js";
 import {
   linkLibraryAlbumTrack,
   upsertLibraryArtist,
@@ -56,7 +56,7 @@ async function createAudioFile(root, relativePath) {
   return filePath;
 }
 
-test("getCanonicalTrackPath keeps shared tracks scoped to the requested album", () => {
+test("getLibraryTrackPath keeps shared tracks scoped to the requested album", () => {
   const key = `query-track-path-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -103,12 +103,12 @@ test("getCanonicalTrackPath keeps shared tracks scoped to the requested album", 
   });
 
   try {
-    assert.equal(getCanonicalTrackPath(firstAlbum.id, track.id), firstPath);
-    assert.equal(getCanonicalTrackPath(secondAlbum.identity_key, track.mbid), secondPath);
-    assert.equal(getCanonicalTrackPath(fallbackAlbum.id, track.id), null);
+    assert.equal(getLibraryTrackPath(firstAlbum.id, track.id), firstPath);
+    assert.equal(getLibraryTrackPath(secondAlbum.identity_key, track.mbid), secondPath);
+    assert.equal(getLibraryTrackPath(fallbackAlbum.id, track.id), null);
     upsertLibraryMediaFile({ trackId: track.id, source: "aurral", path: fallbackPath });
-    assert.equal(getCanonicalTrackPath(fallbackAlbum.id, track.id), fallbackPath);
-    assert.equal(getCanonicalTrackPath(firstAlbum.id, track.id), firstPath);
+    assert.equal(getLibraryTrackPath(fallbackAlbum.id, track.id), fallbackPath);
+    assert.equal(getLibraryTrackPath(firstAlbum.id, track.id), firstPath);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE track_id = ?").run(track.id);
     db.prepare("DELETE FROM library_album_tracks WHERE track_id = ?").run(track.id);
@@ -118,7 +118,7 @@ test("getCanonicalTrackPath keeps shared tracks scoped to the requested album", 
   }
 });
 
-test("canonical references prefer the canonical ID over a provider ID collision", () => {
+test("library references prefer the library ID over a provider ID collision", () => {
   const key = `query-reference-collision-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -159,13 +159,13 @@ test("canonical references prefer the canonical ID over a provider ID collision"
   });
 
   try {
-    assert.equal(getCanonicalTrackPath(targetAlbum.id, targetTrack.id), targetPath);
+    assert.equal(getLibraryTrackPath(targetAlbum.id, targetTrack.id), targetPath);
     assert.deepEqual(
-      getCanonicalTrack({ trackId: targetTrack.id }).tracks.map((track) => track.id),
+      getLibraryTrack({ trackId: targetTrack.id }).tracks.map((track) => track.id),
       [targetTrack.id],
     );
     assert.deepEqual(
-      getCanonicalLibraryForAlbumReferences({ references: [targetAlbum.id] }).albums
+      getLibraryForAlbumReferences({ references: [targetAlbum.id] }).albums
         .map((album) => album.id),
       [targetAlbum.id],
     );
@@ -182,7 +182,7 @@ test("canonical references prefer the canonical ID over a provider ID collision"
       targetAlbum.id,
     );
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-    invalidateCanonicalLibraryCache();
+    invalidateLibraryQueryCache();
   }
 });
 
@@ -229,7 +229,7 @@ test("focused track, ownership, count, and sample queries stay bounded", () => {
   });
 
   try {
-    const focused = getCanonicalTrack({
+    const focused = getLibraryTrack({
       trackId: ownedTrack.id,
       source: "aurral",
       availableOnly: true,
@@ -239,7 +239,7 @@ test("focused track, ownership, count, and sample queries stay bounded", () => {
     assert.deepEqual(focused.albums.map((entry) => entry.id), [album.id]);
     assert.deepEqual(focused.tracks[0].files.map((file) => file.path), [ownedPath]);
 
-    const stale = getCanonicalTrack({
+    const stale = getLibraryTrack({
       trackId: unavailableTrack.id,
       source: "aurral",
       availableOnly: false,
@@ -248,23 +248,23 @@ test("focused track, ownership, count, and sample queries stay bounded", () => {
     assert.equal(stale.tracks[0].files[0].available, false);
 
     assert.equal(
-      getCanonicalTrackOwnership({ trackMbid: ownedTrack.mbid }),
+      getLibraryTrackOwnership({ trackMbid: ownedTrack.mbid }),
       true,
     );
     assert.equal(
-      getCanonicalTrackOwnership({ artistName: artist.name, trackName: ownedTrack.title }),
+      getLibraryTrackOwnership({ artistName: artist.name, trackName: ownedTrack.title }),
       true,
     );
     assert.equal(
-      getCanonicalTrackOwnership({ trackMbid: unavailableTrack.mbid }),
+      getLibraryTrackOwnership({ trackMbid: unavailableTrack.mbid }),
       false,
     );
 
-    const countBefore = getCanonicalTrackCount({ source: "aurral" });
-    const availableCountBefore = getCanonicalTrackCount({ source: "aurral", availableOnly: true });
+    const countBefore = getLibraryTrackCount({ source: "aurral" });
+    const availableCountBefore = getLibraryTrackCount({ source: "aurral", availableOnly: true });
     assert.equal(countBefore >= 2, true);
     assert.equal(availableCountBefore >= 1, true);
-    const sample = getCanonicalTrackSample({ source: "aurral", availableOnly: true, limit: 1 });
+    const sample = getLibraryTrackSample({ source: "aurral", availableOnly: true, limit: 1 });
     assert.ok(sample.tracks.length <= 1);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(ownedPath, unavailablePath);
@@ -272,11 +272,11 @@ test("focused track, ownership, count, and sample queries stay bounded", () => {
     db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(ownedTrack.id, unavailableTrack.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-    invalidateCanonicalLibraryCache();
+    invalidateLibraryQueryCache();
   }
 });
 
-test("getCanonicalLibrary merges sources and preserves normalized hierarchy", async () => {
+test("getLibrary merges sources and preserves normalized hierarchy", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-query-"));
   const source = `query-aurral-${process.pid}`;
   let filePath;
@@ -308,8 +308,8 @@ test("getCanonicalLibrary merges sources and preserves normalized hierarchy", as
       },
     });
 
-    const all = getCanonicalLibrary();
-    assert.strictEqual(getCanonicalLibrary(), all);
+    const all = getLibrary();
+    assert.strictEqual(getLibrary(), all);
     assert.equal(all.artists.length, 1);
     assert.equal(all.albums.length, 1);
     assert.equal(all.tracks.length, 1);
@@ -319,7 +319,7 @@ test("getCanonicalLibrary merges sources and preserves normalized hierarchy", as
     assert.equal(all.artists[0].albumIds[0], all.albums[0].id);
     assert.equal(all.tracks[0].available, true);
 
-    const lidarr = getCanonicalLibrary({ source: "lidarr" });
+    const lidarr = getLibrary({ source: "lidarr" });
     assert.equal(lidarr.tracks.length, 1);
     assert.deepEqual(lidarr.tracks[0].sources, ["lidarr"]);
 
@@ -327,7 +327,7 @@ test("getCanonicalLibrary merges sources and preserves normalized hierarchy", as
       "lidarr",
       filePath,
     );
-    const available = getCanonicalLibrary({ availableOnly: true });
+    const available = getLibrary({ availableOnly: true });
     assert.equal(available.tracks.length, 1);
     assert.deepEqual(available.tracks[0].sources, [source]);
     assert.equal(available.tracks[0].files.length, 1);
@@ -341,14 +341,14 @@ test("getCanonicalLibrary merges sources and preserves normalized hierarchy", as
   }
 });
 
-test("getCanonicalLibrary deduplicates a file shared by multiple album relationships", async () => {
+test("getLibrary deduplicates a file shared by multiple album relationships", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-query-duplicate-"));
   let filePath;
   let duplicateAlbumId;
   try {
     filePath = await createAudioFile(root, "Artist/Album/01 Track.flac");
     await scanMusicRoot({ rootPath: root, source: "aurral", metadataReader: async () => metadata });
-    const first = getCanonicalLibrary({ source: "aurral" });
+    const first = getLibrary({ source: "aurral" });
     const track = first.tracks.find((entry) => entry.files.some((file) => file.path === filePath));
     const album = first.albums.find((entry) => entry.trackIds.includes(track.id));
     const duplicateAlbum = upsertLibraryAlbum({
@@ -359,7 +359,7 @@ test("getCanonicalLibrary deduplicates a file shared by multiple album relations
     duplicateAlbumId = duplicateAlbum.id;
     linkLibraryAlbumTrack({ albumId: duplicateAlbum.id, trackId: track.id, trackNumber: 1 });
 
-    const result = getCanonicalLibrary({ source: "aurral" });
+    const result = getLibrary({ source: "aurral" });
     const resultTrack = result.tracks.find((entry) => entry.files.some((file) => file.path === filePath));
     assert.equal(resultTrack.files.length, 1);
   } finally {
@@ -372,11 +372,11 @@ test("getCanonicalLibrary deduplicates a file shared by multiple album relations
   }
 });
 
-test("getCanonicalLibrary rejects unknown source filters", () => {
-  assert.throws(() => getCanonicalLibrary({ source: "plex" }), /Unsupported library source/);
+test("getLibrary rejects unknown source filters", () => {
+  assert.throws(() => getLibrary({ source: "plex" }), /Unsupported library source/);
 });
 
-test("scoped canonical reads keep ownership lookups off unrelated library records", () => {
+test("scoped library reads keep ownership lookups off unrelated library records", () => {
   const key = `query-scoped-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -440,11 +440,11 @@ test("scoped canonical reads keep ownership lookups off unrelated library record
 
   try {
     assert.deepEqual(
-      [...getCanonicalArtistMbids({ source: "all", mbids: [artist.mbid] })],
+      [...getLibraryArtistMbids({ source: "all", mbids: [artist.mbid] })],
       [artist.mbid],
     );
 
-    const artistLibrary = getCanonicalLibraryForArtists({
+    const artistLibrary = getLibraryForArtists({
       source: "all",
       availableOnly: false,
       mbids: [artist.mbid],
@@ -452,7 +452,7 @@ test("scoped canonical reads keep ownership lookups off unrelated library record
     assert.deepEqual(artistLibrary.artists.map((entry) => entry.mbid), [artist.mbid]);
     assert.deepEqual(artistLibrary.albums.map((entry) => entry.mbid), [album.mbid]);
 
-    const albumLibrary = getCanonicalLibraryForAlbumReferences({
+    const albumLibrary = getLibraryForAlbumReferences({
       source: "all",
       availableOnly: false,
       references: [releaseGroupMbid],
@@ -478,7 +478,7 @@ test("scoped canonical reads keep ownership lookups off unrelated library record
       artist.id,
       unrelatedArtist.id,
     );
-    invalidateCanonicalLibraryCache();
+    invalidateLibraryQueryCache();
   }
 });
 
@@ -517,7 +517,7 @@ test("artist and album reference reads resolve through indexed entity lookups", 
 
   try {
     assert.deepEqual(
-      getCanonicalLibraryForArtistReferences({
+      getLibraryForArtistReferences({
         references: [
           artist.mbid,
           `${key}:provider-id`,
@@ -528,7 +528,7 @@ test("artist and album reference reads resolve through indexed entity lookups", 
       [artist.id],
     );
     assert.deepEqual(
-      getCanonicalLibraryForAlbumReferences({ references: [album.release_group_mbid] }).albums.map(({ id }) => id),
+      getLibraryForAlbumReferences({ references: [album.release_group_mbid] }).albums.map(({ id }) => id),
       [album.id],
     );
     spy.mock.restore();
@@ -615,7 +615,7 @@ test("album-reference reads preserve identity keys and album-specific ownership"
   });
 
   try {
-    const readModel = getCanonicalLibraryReadModelForAlbumReferences({
+    const readModel = getLibraryReadModelForAlbumReferences({
       source: "aurral",
       availableOnly: false,
       references: [ownedAlbum.identity_key, missingAlbum.identity_key],
@@ -633,7 +633,7 @@ test("album-reference reads preserve identity keys and album-specific ownership"
       ["Owned Only By Missing Album"],
     );
     db.prepare("UPDATE library_media_files SET available = 0 WHERE path = ?").run(missingAlbumPath);
-    const available = getCanonicalLibraryReadModelForAlbumReferences({
+    const available = getLibraryReadModelForAlbumReferences({
       source: "aurral",
       availableOnly: true,
       references: [missingAlbum.identity_key],
@@ -658,12 +658,12 @@ test("album-reference reads preserve identity keys and album-specific ownership"
       missingAlbum.id,
     );
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-    invalidateCanonicalLibraryCache();
+    invalidateLibraryQueryCache();
   }
 });
 
 test("album reads prefer an album-specific file over an earlier unscoped file", () => {
-  const readModel = buildCanonicalLibraryReadModel({
+  const readModel = buildLibraryReadModel({
     artists: [{ id: 1, name: "Artist", albumIds: [2], sources: ["aurral"] }],
     albums: [{ id: 2, artistId: 1, title: "Album", trackIds: [3], sources: ["aurral"] }],
     tracks: [{
@@ -681,7 +681,7 @@ test("album reads prefer an album-specific file over an earlier unscoped file", 
   assert.equal(readModel.tracks[0].path, "/music/01-album.flac");
 });
 
-test("canonical newest ordering follows library arrival time", () => {
+test("library newest ordering follows library arrival time", () => {
   const key = `query-newest-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, name: "Newest Fixture" });
   const oldAlbum = upsertLibraryAlbum({
@@ -731,7 +731,7 @@ test("canonical newest ordering follows library arrival time", () => {
   );
 
   try {
-    const page = getCanonicalLibraryPage({
+    const page = getLibraryPage({
       source: "aurral",
       kind: "albums",
       page: 1,
@@ -751,7 +751,7 @@ test("canonical newest ordering follows library arrival time", () => {
   }
 });
 
-test("canonical album track pages keep the selected album relationship", () => {
+test("library album track pages keep the selected album relationship", () => {
   const key = `query-album-scope-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, name: "Eve 6" });
   const firstAlbum = upsertLibraryAlbum({
@@ -781,7 +781,7 @@ test("canonical album track pages keep the selected album relationship", () => {
   });
 
   try {
-    const page = getCanonicalLibraryPage({
+    const page = getLibraryPage({
       source: "aurral",
       kind: "tracks",
       albumId: selectedAlbum.id,
@@ -805,7 +805,7 @@ test("canonical album track pages keep the selected album relationship", () => {
   }
 });
 
-test("canonical album track pages include indexed tracks without media", () => {
+test("library album track pages include indexed tracks without media", () => {
   const key = `query-album-missing-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, name: "Partial Fixture" });
   const album = upsertLibraryAlbum({
@@ -837,7 +837,7 @@ test("canonical album track pages include indexed tracks without media", () => {
   });
 
   try {
-    const page = getCanonicalLibraryPage({
+    const page = getLibraryPage({
       source: "aurral",
       kind: "tracks",
       albumId: album.id,
@@ -850,7 +850,7 @@ test("canonical album track pages include indexed tracks without media", () => {
     assert.equal(page.albums[0].trackCount, 2);
     assert.equal(page.albums[0].availableTrackCount, 1);
 
-    const filtered = getCanonicalLibraryPage({
+    const filtered = getLibraryPage({
       kind: "tracks",
       albumId: album.id,
       page: 1,
@@ -862,7 +862,7 @@ test("canonical album track pages include indexed tracks without media", () => {
     });
     assert.deepEqual(filtered.items.map((track) => track.title), ["Missing Track"]);
 
-    const artistScoped = getCanonicalLibraryPage({
+    const artistScoped = getLibraryPage({
       kind: "tracks",
       albumId: album.id,
       artistId: artist.id,
@@ -881,7 +881,7 @@ test("canonical album track pages include indexed tracks without media", () => {
   }
 });
 
-test("canonical library responses do not expose filesystem paths", () => {
+test("library responses do not expose filesystem paths", () => {
   const response = toPublicLibrary({
     artists: [{ metadata: { path: "/music/private", tags: { genre: "rock" } } }],
     albums: [{ metadata: { rootFolderPath: "/music/private" } }],
@@ -898,7 +898,7 @@ test("canonical library responses do not expose filesystem paths", () => {
   assert.deepEqual(response.tracks[0].files, [{ id: 2, source: "aurral" }]);
 });
 
-test("canonical album responses return public metadata artwork links", () => {
+test("library album responses return public metadata artwork links", () => {
   const remoteUrl = "https://cdn.example.test/cover.jpg?size=500";
   const response = toPublicLibrary({
     artists: [],

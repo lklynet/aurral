@@ -1,7 +1,7 @@
 import { db } from "../config/db-sqlite.js";
 import { buildImageProxyUrl } from "./imageProxyService.js";
 import { dbOps } from "../db/helpers/index.js";
-import { getCanonicalArtistKeyProjection } from "./libraryQueryService.js";
+import { getLibraryArtistKeyProjection } from "./libraryQueryService.js";
 import { getNewsSettings } from "./apiClients/config.js";
 import { fetchArticleImage, fetchRssFeed } from "./rssNews.js";
 import { mapWithConcurrency } from "./discovery/helpers.js";
@@ -91,7 +91,7 @@ async function getNewsArtists(userId) {
     ? ((await getUserDiscovery(userId, 50, 0))?.body?.recommendations || [])
     : [];
   const artists = [
-    ...getCanonicalArtistKeyProjection().map((artist) => ({
+    ...getLibraryArtistKeyProjection().map((artist) => ({
       artistMbid: artist.mbid || null,
       artistName: String(artist.artistName || "").trim(),
       newsType: "library",

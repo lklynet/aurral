@@ -9,12 +9,12 @@ import fsp from "fs/promises";
 import path from "path";
 import { logger } from "../../../services/logger.js";
 import {
-  findCanonicalTracksForAlbum,
-  getCanonicalLibraryReadModelForAlbumReferences,
-  resolveCanonicalTrackPath,
-} from "../../../services/canonicalLibraryReadAdapter.js";
-import { getCanonicalLibraryForTrackIds } from "../../../services/libraryQueryService.js";
-import { stripFilesystemPaths } from "./canonical.js";
+  findLibraryTracksForAlbum,
+  getLibraryReadModelForAlbumReferences,
+  resolveLibraryTrackPath,
+} from "../../../services/libraryReadModel.js";
+import { getLibraryForTrackIds } from "../../../services/libraryQueryService.js";
+import { stripFilesystemPaths } from "./libraryIndex.js";
 import { streamAudioFile } from "../../../services/audioFileStream.js";
 
 const canReadAudioFile = async (filePath) => {
@@ -115,7 +115,7 @@ export function registerTracks(router) {
   });
 
   router.get("/tracks/:id/files", requireAdmin, noCache, (req, res) => {
-    const [track] = getCanonicalLibraryForTrackIds({ ids: [req.params.id] }).tracks;
+    const [track] = getLibraryForTrackIds({ ids: [req.params.id] }).tracks;
     if (!track) return res.status(404).json({ error: "Track not found" });
     res.json({ paths: track.files.map((file) => file.path).filter(Boolean) });
   });
@@ -125,25 +125,25 @@ export function registerTracks(router) {
       const { albumId, releaseGroupMbid } = req.query;
 
       if (req.query.readPath === "canonical") {
-        let canonical = albumId
-          ? getCanonicalLibraryReadModelForAlbumReferences({
+        let readModel = albumId
+          ? getLibraryReadModelForAlbumReferences({
               source: req.query.source || "all",
               availableOnly: true,
               references: [albumId],
             })
-          : getCanonicalLibraryReadModelForAlbumReferences({
+          : getLibraryReadModelForAlbumReferences({
               source: req.query.source || "all",
               availableOnly: true,
               references: releaseGroupMbid ? [releaseGroupMbid] : [],
             });
-        if (albumId && canonical.albums.length === 0 && releaseGroupMbid) {
-          canonical = getCanonicalLibraryReadModelForAlbumReferences({
+        if (albumId && readModel.albums.length === 0 && releaseGroupMbid) {
+          readModel = getLibraryReadModelForAlbumReferences({
             source: req.query.source || "all",
             availableOnly: true,
             references: [releaseGroupMbid],
           });
         }
-        const { albums, tracks } = canonical;
+        const { albums, tracks } = readModel;
         const album = [albumId, releaseGroupMbid]
           .filter(Boolean)
           .map((reference) =>
@@ -154,15 +154,15 @@ export function registerTracks(router) {
             ),
           )
           .find(Boolean);
-        const canonicalTracks = album
-          ? findCanonicalTracksForAlbum(tracks, album.id).map((track) => ({
+        const libraryTracks = album
+          ? findLibraryTracksForAlbum(tracks, album.id).map((track) => ({
               ...stripFilesystemPaths(track),
               streamPath: track.hasFile
                 ? `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`
                 : null,
             }))
           : [];
-        return res.json(canonicalTracks);
+        return res.json(libraryTracks);
       }
 
       let tracks = [];
@@ -277,7 +277,7 @@ export function registerTracks(router) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const filePath = resolveCanonicalTrackPath(req.params.albumId, req.params.trackId);
+    const filePath = resolveLibraryTrackPath(req.params.albumId, req.params.trackId);
     if (!filePath) return res.status(404).json({ error: "Track file missing" });
     try {
       if (!(await streamAudioFile(res, filePath)) && !res.headersSent) {

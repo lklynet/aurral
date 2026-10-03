@@ -29,18 +29,18 @@ test("genre reads retain inheritance, metadata shapes, availability, and updates
   store.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
   const file = { trackId: track.id, albumId: album.id, source: "aurral", path: "/genre/track.flac" };
   store.upsertLibraryMediaFile(file);
-  const read = (genre) => query.getCanonicalLibraryPage({ kind: "tracks", genre, pageSize: 100 });
+  const read = (genre) => query.getLibraryPage({ kind: "tracks", genre, pageSize: 100 });
   for (const genre of ["rock", "jazz", "soul", "ambient"]) {
     assert.deepEqual(read(genre).items.map((item) => item.id), [track.id]);
   }
-  const genres = () => query.getCanonicalLibraryPage({ kind: "genres", pageSize: 100 }).items;
+  const genres = () => query.getLibraryPage({ kind: "genres", pageSize: 100 }).items;
   assert.deepEqual(genres(), [
     { name: "Ambient", artists: 0, albums: 0, tracks: 1 },
     { name: "Jazz", artists: 0, albums: 1, tracks: 0 },
     { name: "Rock", artists: 1, albums: 0, tracks: 0 },
     { name: "Soul", artists: 0, albums: 0, tracks: 1 },
   ]);
-  assert.deepEqual(query.getCanonicalGenres(), ["Ambient", "Jazz", "Rock", "Soul"].map((value) => ({
+  assert.deepEqual(query.getLibraryGenres(), ["Ambient", "Jazz", "Rock", "Soul"].map((value) => ({
     value, albumCount: 1, songCount: 1,
   })));
   store.upsertLibraryTrack({ identityKey: track.identity_key, title: track.title, metadata: { genre: "Folk" } });
@@ -49,16 +49,16 @@ test("genre reads retain inheritance, metadata shapes, availability, and updates
   assert.equal(read("folk").total, 1);
   assert.deepEqual(genres().map((entry) => entry.name), ["Folk", "Jazz", "Rock"]);
   store.upsertLibraryMediaFile({ ...file, available: false });
-  assert.deepEqual(query.getCanonicalGenres({ availableOnly: true }), []);
-  assert.deepEqual(query.getCanonicalGenres({ source: "lidarr" }), []);
-  assert.deepEqual(query.getCanonicalGenres().map((genre) => genre.value), ["Folk", "Jazz", "Rock"]);
-  assert.equal(query.getCanonicalLibraryPage({ kind: "tracks", genre: "folk", availableOnly: true }).total, 0);
+  assert.deepEqual(query.getLibraryGenres({ availableOnly: true }), []);
+  assert.deepEqual(query.getLibraryGenres({ source: "lidarr" }), []);
+  assert.deepEqual(query.getLibraryGenres().map((genre) => genre.value), ["Folk", "Jazz", "Rock"]);
+  assert.equal(query.getLibraryPage({ kind: "tracks", genre: "folk", availableOnly: true }).total, 0);
   assert.equal(read("folk").total, 1);
-  assert.equal(query.getCanonicalLibraryPage({ kind: "tracks", genre: "folk", source: "lidarr" }).total, 0);
+  assert.equal(query.getLibraryPage({ kind: "tracks", genre: "folk", source: "lidarr" }).total, 0);
   db.prepare("UPDATE library_tracks SET metadata_json = '{' WHERE id = ?").run(track.id);
   assert.equal(read("folk").total, 0);
   db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-  query.invalidateCanonicalLibraryCache();
+  query.invalidateLibraryQueryCache();
   assert.deepEqual(genres(), []);
 });
 
@@ -75,22 +75,22 @@ test("startup backfills existing genres, repairs missed updates, and leaves libr
   const before = db.prepare("SELECT * FROM library_tracks WHERE id = ?").get(track.id);
   initializeLibraryGenreIndex(db);
   assert.deepEqual(db.prepare("SELECT * FROM library_tracks WHERE id = ?").get(track.id), before);
-  const read = (genre) => query.getCanonicalLibraryPage({ kind: "tracks", genre, pageSize: 100 }).total;
+  const read = (genre) => query.getLibraryPage({ kind: "tracks", genre, pageSize: 100 }).total;
   assert.equal(read("pop"), 1);
-  query.rebuildCanonicalGenreStats();
+  query.rebuildLibraryGenreStats();
   db.exec("DROP TRIGGER library_genres_tracks_update");
   db.prepare("UPDATE library_tracks SET metadata_json = ? WHERE id = ?").run(JSON.stringify({ genre: "Classical" }), track.id);
   initializeLibraryGenreIndex(db);
-  query.invalidateCanonicalLibraryCache({ persistedGenres: false });
+  query.invalidateLibraryQueryCache({ persistedGenres: false });
   assert.equal(read("pop"), 0);
   assert.equal(read("classical"), 1);
-  assert.deepEqual(query.getCanonicalLibraryPage({ kind: "genres" }).items.map((genre) => genre.name), ["Classical"]);
+  assert.deepEqual(query.getLibraryPage({ kind: "genres" }).items.map((genre) => genre.name), ["Classical"]);
   db.exec("DROP TRIGGER library_genres_tracks_update");
   db.exec("CREATE TRIGGER library_genres_tracks_update AFTER UPDATE OF metadata_json ON library_tracks BEGIN SELECT 1; END");
   db.prepare("UPDATE settings SET value = '0' WHERE key = 'libraryGenreIndexVersion'").run();
   initializeLibraryGenreIndex(db);
   db.prepare("UPDATE library_tracks SET metadata_json = ? WHERE id = ?").run(JSON.stringify({ genre: "Blues" }), track.id);
-  query.invalidateCanonicalLibraryCache({ persistedGenres: false });
+  query.invalidateLibraryQueryCache({ persistedGenres: false });
   assert.equal(read("classical"), 0);
   assert.equal(read("blues"), 1);
   const changes = db.prepare("SELECT total_changes() AS total").get().total;
@@ -114,11 +114,11 @@ test("Subsonic genre counts deduplicate files and preserve inherited genres acro
     { trackId: missing.id, albumId: first.id, source: "flow", path: "/genre/counts-missing.flac", available: false },
   ]) store.upsertLibraryMediaFile(file);
   const expected = ["Album One", "Inherited", "Track Only"];
-  assert.deepEqual(query.getCanonicalGenres({ source: "flow", availableOnly: true }), expected.map((value) => ({ value, albumCount: 1, songCount: 1 })));
-  assert.deepEqual(query.getCanonicalGenres({ source: "flow" }), expected.map((value) => ({ value, albumCount: 1, songCount: 2 })));
-  assert.deepEqual(query.getCanonicalGenres({ source: "lidarr", availableOnly: true }), ["Album Two", "Inherited", "Track Only"].map((value) => ({ value, albumCount: 1, songCount: 1 })));
+  assert.deepEqual(query.getLibraryGenres({ source: "flow", availableOnly: true }), expected.map((value) => ({ value, albumCount: 1, songCount: 1 })));
+  assert.deepEqual(query.getLibraryGenres({ source: "flow" }), expected.map((value) => ({ value, albumCount: 1, songCount: 2 })));
+  assert.deepEqual(query.getLibraryGenres({ source: "lidarr", availableOnly: true }), ["Album Two", "Inherited", "Track Only"].map((value) => ({ value, albumCount: 1, songCount: 1 })));
   const values = new Set([...expected, "Album Two"]);
-  assert.deepEqual(query.getCanonicalGenres({ availableOnly: true }).filter((genre) => values.has(genre.value)), [
+  assert.deepEqual(query.getLibraryGenres({ availableOnly: true }).filter((genre) => values.has(genre.value)), [
     { value: "Album One", albumCount: 1, songCount: 1 },
     { value: "Album Two", albumCount: 1, songCount: 1 },
     { value: "Inherited", albumCount: 2, songCount: 2 },

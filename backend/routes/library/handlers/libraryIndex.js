@@ -6,8 +6,8 @@ import {
 import { dbOps } from "../../../db/helpers/index.js";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import {
-  getCanonicalFavoriteTargetKeys,
-  getCanonicalLibraryPage,
+  getLibraryFavoriteTargetKeys,
+  getLibraryPage,
 } from "../../../services/libraryQueryService.js";
 import {
   getStarredIdentityKeys,
@@ -33,13 +33,13 @@ export function stripFilesystemPaths(value) {
   );
 }
 
-// Resolves the effective availableOnly flag for a canonical library read.
+// Resolves the effective availableOnly flag for a library page read.
 // An explicit query param always wins so detail/track views can force a value.
 // Otherwise the Lidarr "show available music only" setting decides once Lidarr
 // has been connected, defaulting to on so the Library hides Lidarr's full
 // discography. Without Lidarr, every library item was added through Aurral, so
 // albums that are still downloading stay visible.
-export function resolveCanonicalAvailableOnly(queryValue, settings) {
+export function resolveAvailableOnly(queryValue, settings) {
   if (queryValue === "true") return true;
   if (queryValue === "false") return false;
   const lidarr = settings?.integrations?.lidarr;
@@ -100,7 +100,7 @@ export function toPublicLibraryPage(page, favoriteKeys = null) {
 
 const LIBRARY_REFRESH_MODES = new Set(["quick", "full"]);
 
-export function registerCanonical(router) {
+export function registerLibraryIndex(router) {
   router.post("/refresh", requireAuth, (req, res) => {
     const mode = req.body?.mode ?? "quick";
     if (!LIBRARY_REFRESH_MODES.has(mode)) {
@@ -147,9 +147,9 @@ export function registerCanonical(router) {
           error: "kind and pageSize (1-100) are required",
         });
       }
-      return res.json(toPublicLibraryPage(getCanonicalLibraryPage({
+      return res.json(toPublicLibraryPage(getLibraryPage({
         source: req.query.source,
-        availableOnly: resolveCanonicalAvailableOnly(
+        availableOnly: resolveAvailableOnly(
           req.query.availableOnly,
           dbOps.getSettings(),
         ),
@@ -171,7 +171,7 @@ export function registerCanonical(router) {
         return res.status(400).json({ error: error.message });
       }
       return res.status(500).json({
-        error: "Failed to query canonical library",
+        error: "Failed to query library",
         message: error.message,
       });
     }
@@ -193,15 +193,15 @@ export function registerCanonical(router) {
     }
 
     if (req.body.starred) {
-      const canonicalIds = ids.filter((id) => /^(artist|album|song):.+/.test(id));
-      const validTargets = getCanonicalFavoriteTargetKeys(canonicalIds);
-      if (canonicalIds.some((id) => !validTargets.has(id))) {
+      const libraryIds = ids.filter((id) => /^(artist|album|song):.+/.test(id));
+      const validTargets = getLibraryFavoriteTargetKeys(libraryIds);
+      if (libraryIds.some((id) => !validTargets.has(id))) {
         return res.status(400).json({ error: "Invalid favorite target" });
       }
     }
 
     const changed = req.body.starred
-      ? starMany(req.user, ids, { skipCanonicalValidation: true })
+      ? starMany(req.user, ids, { skipLibraryValidation: true })
       : unstarMany(req.user, ids);
     if (!changed) {
       return res.status(400).json({ error: "Invalid favorite target" });

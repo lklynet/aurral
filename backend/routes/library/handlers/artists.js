@@ -6,8 +6,8 @@ import {
   requirePermission,
 } from "../../../middleware/requirePermission.js";
 import { logger } from "../../../services/logger.js";
-import { getCanonicalLibraryReadModelForArtistPage } from "../../../services/canonicalLibraryReadAdapter.js";
-import { getCanonicalArtistProjection } from "../../../services/libraryQueryService.js";
+import { getLibraryReadModelForArtistPage } from "../../../services/libraryReadModel.js";
+import { getLibraryArtistProjection } from "../../../services/libraryQueryService.js";
 import { setLibraryArtistMbid } from "../../../services/libraryMediaStore.js";
 import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.js";
 export function registerArtists(router) {
@@ -16,7 +16,7 @@ export function registerArtists(router) {
       const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10000, 1), 10000);
       const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
       if (req.query.readPath === "canonical") {
-        const { artists } = getCanonicalLibraryReadModelForArtistPage({
+        const { artists } = getLibraryReadModelForArtistPage({
           source: req.query.source || "all",
           limit,
           offset,
@@ -26,7 +26,7 @@ export function registerArtists(router) {
           added: artist.addedAt,
         })));
       }
-      const artists = getCanonicalArtistProjection({ pageSize: limit, offset });
+      const artists = getLibraryArtistProjection({ pageSize: limit, offset });
       const formatted = artists.map((artist) => ({
         ...artist,
         foreignArtistId: artist.foreignArtistId || artist.mbid,

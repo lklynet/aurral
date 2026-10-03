@@ -12,7 +12,7 @@ import {
 } from "./libraryMediaStore.js";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.js";
 import { rebuildLibrarySearchIndex } from "./librarySearchIndex.js";
-import { rebuildCanonicalGenreStats } from "./libraryQueryService.js";
+import { rebuildLibraryGenreStats } from "./libraryQueryService.js";
 import {
   musicbrainzGetArtistNameByMbid,
   musicbrainzResolveLibraryArtistMbid,
@@ -225,7 +225,7 @@ export async function scanConfiguredLibrary({
   } finally {
     if (scanFailed || artistsResolved || local?.changed || lidarr?.changed || flow?.changed) {
       if (!targeted || scanFailed || artistsResolved) rebuildLibrarySearchIndex();
-      if (!targeted) rebuildCanonicalGenreStats();
+      if (!targeted) rebuildLibraryGenreStats();
     }
   }
   return { local, lidarr, flow };

@@ -99,7 +99,7 @@ test.beforeEach(async () => {
   });
 });
 
-test("playlist jobs annotate tracks that are already in the canonical library", async () => {
+test("playlist jobs annotate tracks that are already in the library", async () => {
   const playlistId = "library-ownership-annotation";
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,

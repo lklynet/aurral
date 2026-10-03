@@ -3,7 +3,7 @@ import { expandAlbumGrabHistory } from "./albumGrabActivity.js";
 import { dbOps } from "../db/helpers/index.js";
 import { resolveBlockedJobSourceFilename } from "./downloadUtils.js";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.js";
-import { getCanonicalLibraryForAlbumReferences } from "./libraryQueryService.js";
+import { getLibraryForAlbumReferences } from "./libraryQueryService.js";
 
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const STALE_TRACK_JOB_MS = 15 * 60 * 1000;
@@ -47,7 +47,7 @@ const buildPlaylistHref = (playlistId) => {
 const buildTrackJobHref = (job) => {
   const playlistId = job?.playlistId || job?.playlistType;
   if (playlistId === "library" && job?.albumMbid) {
-    const album = getCanonicalLibraryForAlbumReferences({
+    const album = getLibraryForAlbumReferences({
       source: "all",
       references: [job.albumMbid],
     }).albums[0];

@@ -8,7 +8,7 @@ import {
   albumHasTrackFiles,
 } from "../../../services/albumSearchState.js";
 import { logger } from "../../../services/logger.js";
-import { getCanonicalTrackOwnership } from "../../../services/libraryQueryService.js";
+import { getLibraryTrackOwnership } from "../../../services/libraryQueryService.js";
 import { resolveAurralOwnedTrackJob } from "../../../services/libraryTrackResearchService.js";
 import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.js";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.js";
@@ -472,7 +472,7 @@ export function registerDownloads(router) {
     }
 
     try {
-      const alreadyOwned = getCanonicalTrackOwnership({
+      const alreadyOwned = getLibraryTrackOwnership({
         trackMbid: track.trackMbid,
         artistName: track.artistName,
         trackName: track.trackName,

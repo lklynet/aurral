@@ -55,7 +55,7 @@ test("substring search uses the trigram index with stable pagination", (t) => {
     return prepare(sql);
   });
 
-  const result = queryService.getCanonicalSearchPage({
+  const result = queryService.getLibrarySearchPage({
     source: "all",
     query: "Needle",
     artistLimit: 20,
@@ -113,17 +113,17 @@ test("search keeps category matches and literal wildcards distinct after interle
 
   try {
     for (const query of ["literal %_", "%_", "literal", ""]) {
-      const result = queryService.getCanonicalSearchPage({ query });
+      const result = queryService.getLibrarySearchPage({ query });
       assert.ok(result.artists.some((entry) => entry.id === searchArtist.id));
       assert.ok(result.artists.some((entry) => entry.id === laterArtist.id));
       assert.ok(result.albums.albums.some((entry) => entry.id === searchAlbum.id));
       assert.ok(result.albums.albums.some((entry) => entry.id === laterAlbum.id));
     }
-    const songs = queryService.getCanonicalSearchPage({ query: "literal %_ song" });
+    const songs = queryService.getLibrarySearchPage({ query: "literal %_ song" });
     assert.deepEqual(songs.artists, []);
     assert.deepEqual(songs.albums.albums, []);
     assert.deepEqual(songs.tracks.tracks.map((entry) => entry.id), [first.id]);
-    const albums = queryService.getCanonicalSearchPage({
+    const albums = queryService.getLibrarySearchPage({
       query: "literal %_ album",
       artistLimit: 0,
       albumLimit: 1,
@@ -150,7 +150,7 @@ test("search keeps category matches and literal wildcards distinct after interle
   }
 });
 
-test("unchanged canonical upserts do not rewrite search documents", () => {
+test("unchanged library upserts do not rewrite search documents", () => {
   db.exec(`
     CREATE TEMP TABLE search_update_probe (count INTEGER NOT NULL);
     INSERT INTO search_update_probe VALUES (0);
@@ -185,9 +185,9 @@ test("unchanged canonical upserts do not rewrite search documents", () => {
   }
 });
 
-test("canonical page search uses FTS and genre reads use the stored scan snapshot", (t) => {
-  queryService.rebuildCanonicalGenreStats();
-  queryService.invalidateCanonicalLibraryCache({ persistedGenres: false });
+test("library page search uses FTS and genre reads use the stored scan snapshot", (t) => {
+  queryService.rebuildLibraryGenreStats();
+  queryService.invalidateLibraryQueryCache({ persistedGenres: false });
   const storedBefore = db.prepare(
     "SELECT key, value FROM settings WHERE key LIKE 'libraryGenreStats:%' ORDER BY key",
   ).all();
@@ -198,7 +198,7 @@ test("canonical page search uses FTS and genre reads use the stored scan snapsho
     return prepare(sql);
   });
 
-  const page = queryService.getCanonicalLibraryPage({
+  const page = queryService.getLibraryPage({
     kind: "tracks",
     page: 1,
     pageSize: 20,
@@ -232,7 +232,7 @@ test("search documents update transactionally and random reads use rowid samplin
     artistName: artist.name,
   });
   assert.equal(
-    queryService.getCanonicalSearchPage({ query: "Renamed Needle", songLimit: 20 }).tracks.tracks[0].title,
+    queryService.getLibrarySearchPage({ query: "Renamed Needle", songLimit: 20 }).tracks.tracks[0].title,
     "Renamed Needle Song",
   );
 
@@ -243,7 +243,7 @@ test("search documents update transactionally and random reads use rowid samplin
     return prepare(sql);
   });
   t.mock.method(Math, "random", () => 0.999);
-  const result = queryService.getCanonicalTrackPage({
+  const result = queryService.getLibraryTrackPage({
     source: "all",
     availableOnly: true,
     random: true,
@@ -259,7 +259,7 @@ test("search documents update transactionally and random reads use rowid samplin
   assert.equal(plan.some((row) => row.detail.includes("USE TEMP B-TREE")), false);
 });
 
-test("artist pages project a large discography without canonical row hydration", (t) => {
+test("artist pages project a large discography without library row hydration", (t) => {
   const key = `measured-artist-page-${process.pid}-${Date.now()}`;
   const artist = libraryStore.upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -293,7 +293,7 @@ test("artist pages project a large discography without canonical row hydration",
     return prepare(sql);
   });
   try {
-    const page = queryService.getCanonicalLibraryPage({
+    const page = queryService.getLibraryPage({
       source: "aurral",
       kind: "artists",
       page: 1,
@@ -361,7 +361,7 @@ test("album track pages count and hydrate only the requested track slice", (t) =
     return prepare(sql);
   });
   try {
-    const page = queryService.getCanonicalLibraryPage({
+    const page = queryService.getLibraryPage({
       source: "aurral",
       kind: "tracks",
       albumId: album.id,

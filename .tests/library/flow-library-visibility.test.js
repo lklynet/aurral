@@ -16,7 +16,7 @@ const [
   { dbOps },
   { flowPlaylistConfig },
   { scanConfiguredLibrary },
-  { getCanonicalLibrary },
+  { getLibrary },
 ] = await setupIsolatedBackend(
   "flow-library-visibility",
   "backend/config/db-sqlite.js",
@@ -96,7 +96,7 @@ function createFlow(name, showInLibrary) {
 const scan = () => scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
 
 const libraryTrackTitles = () =>
-  getCanonicalLibrary({ availableOnly: true })
+  getLibrary({ availableOnly: true })
     .tracks.map((track) => track.title)
     .sort();
 
@@ -124,7 +124,7 @@ test("flow tracks join the library only while their flow opts in", async () => {
   flowPlaylistConfig.updateFlow(flow.id, { showInLibrary: false });
   await scan();
   assert.deepEqual(libraryTrackTitles(), []);
-  assert.deepEqual(getCanonicalLibrary({ availableOnly: false }).tracks, []);
+  assert.deepEqual(getLibrary({ availableOnly: false }).tracks, []);
 
   assert.deepEqual(await listFiles(root), filesBefore);
 });
@@ -142,11 +142,11 @@ test("tracks that leave an included flow leave the library", async () => {
   db.prepare("DELETE FROM playlist_download_jobs WHERE id = ?").run(rotatedJob);
   await rm(rotated);
   await scan();
-  assert.deepEqual(getCanonicalLibrary({ availableOnly: false }).tracks.map((t) => t.title), ["Kept"]);
+  assert.deepEqual(getLibrary({ availableOnly: false }).tracks.map((t) => t.title), ["Kept"]);
 
   flowPlaylistConfig.deleteFlow(flow.id);
   await scan();
-  assert.deepEqual(getCanonicalLibrary({ availableOnly: false }).tracks, []);
+  assert.deepEqual(getLibrary({ availableOnly: false }).tracks, []);
 });
 
 test("a file shared with an excluded flow stays while any included flow owns it", async () => {
@@ -170,7 +170,7 @@ test("a flow track already in the music library appears once", async () => {
   await scan();
   assert.deepEqual(libraryTrackTitles(), ["Twice"]);
   assert.deepEqual(
-    getCanonicalLibrary({ availableOnly: true }).tracks[0].sources,
+    getLibrary({ availableOnly: true }).tracks[0].sources,
     ["aurral", "flow"],
   );
 });
@@ -186,7 +186,7 @@ test("a missing flow file leaves the library once its flow stops including it", 
   flowPlaylistConfig.updateFlow(flow.id, { showInLibrary: false });
   await scan();
 
-  assert.deepEqual(getCanonicalLibrary({ availableOnly: false }).tracks, []);
+  assert.deepEqual(getLibrary({ availableOnly: false }).tracks, []);
 });
 
 test("flow tracks outside a new download root leave the library", async () => {
@@ -199,7 +199,7 @@ test("flow tracks outside a new download root leave the library", async () => {
   const newRoot = await mkdtemp(path.join(tmpdir(), "aurral-flow-library-new-root-"));
   try {
     await scanConfiguredLibrary({ musicRoot: newRoot, includeLidarr: false });
-    assert.deepEqual(getCanonicalLibrary({ availableOnly: false }).tracks, []);
+    assert.deepEqual(getLibrary({ availableOnly: false }).tracks, []);
   } finally {
     await rm(newRoot, { recursive: true, force: true });
   }

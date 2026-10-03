@@ -6,7 +6,7 @@ import {
   buildAuthenticatedApiUrl,
 } from "../core.js";
 import {
-  bumpLibraryCanonicalGeneration,
+  bumpLibraryPageGeneration,
   queryClient,
   queryKeys,
 } from "../../../queryClient.js";
@@ -24,7 +24,7 @@ const mergeSignals = (callerSignal, querySignal) => {
 export const getLibraryArtists = (options = {}) =>
   getData("/library/artists", options);
 
-const canonicalLibraryPageParams = (options = {}) => Object.fromEntries(
+const libraryPageParams = (options = {}) => Object.fromEntries(
   Object.entries({
     kind: options.kind,
     page: options.page,
@@ -44,14 +44,14 @@ const canonicalLibraryPageParams = (options = {}) => Object.fromEntries(
   }).filter(([, value]) => value !== undefined && value !== null && value !== ""),
 );
 
-export const fetchCanonicalLibraryPage = (options = {}, { signal } = {}) =>
-  getData("/library/canonical", { params: canonicalLibraryPageParams(options), signal });
+export const fetchLibraryPage = (options = {}, { signal } = {}) =>
+  getData("/library/canonical", { params: libraryPageParams(options), signal });
 
-export const getCanonicalLibraryPage = (options = {}, { signal } = {}) => {
-  const params = canonicalLibraryPageParams(options);
+export const getLibraryPage = (options = {}, { signal } = {}) => {
+  const params = libraryPageParams(options);
   return queryClient.fetchQuery({
-    queryKey: queryKeys.libraryCanonical(params),
-    queryFn: ({ signal: querySignal }) => fetchCanonicalLibraryPage(
+    queryKey: queryKeys.libraryPage(params),
+    queryFn: ({ signal: querySignal }) => fetchLibraryPage(
       options,
       { signal: mergeSignals(signal, querySignal) },
     ),
@@ -59,10 +59,10 @@ export const getCanonicalLibraryPage = (options = {}, { signal } = {}) => {
   });
 };
 
-export const clearCanonicalLibraryPageCache = () => {
-  bumpLibraryCanonicalGeneration();
+export const clearLibraryPageCache = () => {
+  bumpLibraryPageGeneration();
   return queryClient.removeQueries({
-    queryKey: queryKeys.libraryCanonicalPrefix,
+    queryKey: queryKeys.libraryPagePrefix,
     predicate: (query) => query.state.fetchStatus !== "fetching",
   });
 };
@@ -70,7 +70,7 @@ export const clearCanonicalLibraryPageCache = () => {
 export const settleLibraryOwnerConflict = (error) => {
   const conflict = getLibraryOwnerConflict(error);
   if (!conflict) return null;
-  clearCanonicalLibraryPageCache();
+  clearLibraryPageCache();
   queryClient.invalidateQueries({ queryKey: queryKeys.libraryPrefix });
   return conflict;
 };
@@ -83,7 +83,7 @@ export const updateLibraryArtistMbid = async (artistId, mbid) => {
     `/library/canonical/artists/${encodeURIComponent(artistId)}/mbid`,
     { mbid },
   );
-  clearCanonicalLibraryPageCache();
+  clearLibraryPageCache();
   void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPrefix });
   return result;
 };
@@ -152,7 +152,7 @@ export const updateLibraryFavorites = (ids, starred) => {
       }
       return data;
     } finally {
-      clearCanonicalLibraryPageCache();
+      clearLibraryPageCache();
     }
   });
   const pending = write.catch(() => {});

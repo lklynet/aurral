@@ -14,8 +14,8 @@ const [isolatedState, { db }, { dbOps }, libraryStore] = await setupIsolatedBack
   "backend/services/libraryMediaStore.js",
 );
 
-const { registerCanonical } = await import(
-  "../../backend/routes/library/handlers/canonical.js"
+const { registerLibraryIndex } = await import(
+  "../../backend/routes/library/handlers/libraryIndex.js"
 );
 const {
   linkLibraryAlbumTrack,
@@ -27,7 +27,7 @@ const {
 
 function getRoute(path) {
   const routes = new Map();
-  registerCanonical({
+  registerLibraryIndex({
     get(routePath, ...handlers) {
       routes.set(`GET ${routePath}`, handlers.at(-1));
     },
@@ -38,7 +38,7 @@ function getRoute(path) {
   return routes.get(path);
 }
 
-function callCanonical(query) {
+function callLibraryPage(query) {
   let body;
   getRoute("GET /canonical")(
     { query },
@@ -138,14 +138,14 @@ test.after(async () => {
 
 test("albums list hides unavailable albums when the setting is on (default)", () => {
   setAvailableOnly(true);
-  const page = callCanonical({ kind: "albums", page: "1", pageSize: "50" });
+  const page = callLibraryPage({ kind: "albums", page: "1", pageSize: "50" });
   assert.deepEqual(page.items.map((album) => album.title), ["Owned Album"]);
   assert.equal(page.total, 1);
 });
 
 test("albums list shows the full catalog when the setting is off", () => {
   setAvailableOnly(false);
-  const page = callCanonical({ kind: "albums", page: "1", pageSize: "50" });
+  const page = callLibraryPage({ kind: "albums", page: "1", pageSize: "50" });
   assert.deepEqual(
     page.items.map((album) => album.title).sort(),
     ["Catalog Album", "Owned Album", "Unowned Album"],
@@ -155,14 +155,14 @@ test("albums list shows the full catalog when the setting is off", () => {
 
 test("artists with zero available albums disappear when the setting is on (#750)", () => {
   setAvailableOnly(true);
-  const page = callCanonical({ kind: "artists", page: "1", pageSize: "50" });
+  const page = callLibraryPage({ kind: "artists", page: "1", pageSize: "50" });
   assert.deepEqual(page.items.map((entry) => entry.name), ["Owns Some"]);
   assert.equal(page.total, 1);
 });
 
 test("artists with zero available albums remain when the setting is off", () => {
   setAvailableOnly(false);
-  const page = callCanonical({ kind: "artists", page: "1", pageSize: "50" });
+  const page = callLibraryPage({ kind: "artists", page: "1", pageSize: "50" });
   assert.deepEqual(
     page.items.map((entry) => entry.name).sort(),
     ["Owns Nothing", "Owns Some"],
@@ -172,7 +172,7 @@ test("artists with zero available albums remain when the setting is off", () => 
 
 test("an explicit availableOnly query param overrides the setting", () => {
   setAvailableOnly(false);
-  const filtered = callCanonical({
+  const filtered = callLibraryPage({
     kind: "albums",
     page: "1",
     pageSize: "50",
@@ -181,7 +181,7 @@ test("an explicit availableOnly query param overrides the setting", () => {
   assert.deepEqual(filtered.items.map((album) => album.title), ["Owned Album"]);
 
   setAvailableOnly(true);
-  const unfiltered = callCanonical({
+  const unfiltered = callLibraryPage({
     kind: "albums",
     page: "1",
     pageSize: "50",
@@ -192,6 +192,6 @@ test("an explicit availableOnly query param overrides the setting", () => {
 
 test("without a Lidarr connection, the Library shows albums that are still downloading", () => {
   dbOps.updateSettings({ integrations: { lidarr: {} } });
-  assert.equal(callCanonical({ kind: "albums", page: "1", pageSize: "50" }).total, 3);
-  assert.equal(callCanonical({ kind: "artists", page: "1", pageSize: "50" }).total, 2);
+  assert.equal(callLibraryPage({ kind: "albums", page: "1", pageSize: "50" }).total, 3);
+  assert.equal(callLibraryPage({ kind: "artists", page: "1", pageSize: "50" }).total, 2);
 });

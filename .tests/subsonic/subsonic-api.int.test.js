@@ -35,8 +35,8 @@ let staticPlaylist;
 let syncedFavoritePlaylist;
 let syncedFavoriteSourcePath;
 let syncedFavoriteSourceJobId;
-let canonicalFavoritePlaylist;
-let canonicalFavoriteJobId;
+let libraryFavoritePlaylist;
+let libraryFavoriteJobId;
 
 function subsonicUrl(method, params = {}) {
   const query = new URLSearchParams({
@@ -177,7 +177,7 @@ test.before(async () => {
     durationMs: 1000,
   }, staticPlaylist.id);
   downloadTracker.setDone(sharedJobId, fixturePath);
-  canonicalFavoritePlaylist = flowPlaylistConfig.createStaticPlaylist({
+  libraryFavoritePlaylist = flowPlaylistConfig.createStaticPlaylist({
     name: "Canonical Favorite Playlist",
     ownerUserId: alice.id,
     tracks: [{
@@ -187,7 +187,7 @@ test.before(async () => {
       durationMs: 10_000,
     }],
   });
-  canonicalFavoriteJobId = downloadTracker.addJob({
+  libraryFavoriteJobId = downloadTracker.addJob({
     artistName: "Canonical Artist",
     artistMbid: "11111111-1111-4111-8111-111111111111",
     albumName: "Canonical Album",
@@ -195,8 +195,8 @@ test.before(async () => {
     trackName: "Canonical Song",
     trackMbid: "55555555-5555-4555-8555-555555555555",
     durationMs: 10_000,
-  }, canonicalFavoritePlaylist.id);
-  downloadTracker.setDone(canonicalFavoriteJobId, fixturePath, "Canonical Album");
+  }, libraryFavoritePlaylist.id);
+  downloadTracker.setDone(libraryFavoriteJobId, fixturePath, "Canonical Album");
   const syncedFavoriteTrack = {
     artistName: "Synced Favorite Artist",
     albumName: "Synced Favorite Album",
@@ -268,7 +268,7 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("browses canonical artists, albums, and songs with stable protocol IDs", async () => {
+test("browses library artists, albums, and songs with stable protocol IDs", async () => {
   const user = responseJson(await request("getUser")).user;
   assert.equal(user.username, "alice");
   assert.equal(user.adminRole, true);
@@ -462,7 +462,7 @@ test("accepts Subsonic token auth for the configured Aurral account", async () =
   assert.equal(result.user.username, "alice");
 });
 
-test("searches canonical records and exposes flow entries as playlist items", async () => {
+test("searches library records and exposes flow entries as playlist items", async () => {
   const search = responseJson(await request("search3", { query: "Canonical" }));
   assert.equal(search.searchResult3.artist[0].name, "Canonical Artist");
   assert.equal(search.searchResult3.song[0].title, "Canonical Song");
@@ -543,9 +543,9 @@ test("exposes owned static playlists and keeps their entries playable", async ()
   assert.equal(stream.body, "0123456789");
 });
 
-test("returns canonical song ids for playlist entries that exist in the library", async () => {
+test("returns library song ids for playlist entries that exist in the library", async () => {
   const playlist = responseJson(await request("getPlaylist", {
-    id: `shared:${encodeURIComponent(canonicalFavoritePlaylist.id)}`,
+    id: `shared:${encodeURIComponent(libraryFavoritePlaylist.id)}`,
   })).playlist;
   assert.equal(playlist.entry.length, 1);
   assert.match(playlist.entry[0].id, /^song:/);
@@ -554,8 +554,8 @@ test("returns canonical song ids for playlist entries that exist in the library"
   assert.equal(playlist.entry[0].musicBrainzId, "33333333-3333-4333-8333-333333333333");
   const artistId = responseJson(await request("getArtists")).artists.index[0].artist[0].id;
   const album = responseJson(await request("getArtist", { id: artistId })).artist.album[0];
-  const canonicalSong = responseJson(await request("getAlbum", { id: album.id })).album.song[0];
-  assert.equal(playlist.entry[0].id, canonicalSong.id);
+  const librarySong = responseJson(await request("getAlbum", { id: album.id })).album.song[0];
+  assert.equal(playlist.entry[0].id, librarySong.id);
   const stream = await request("stream", { id: playlist.entry[0].id });
   assert.equal(stream.response.status, 200);
 });
@@ -642,11 +642,11 @@ test("creates durable Subsonic playlists around one promoted library job", async
   assert.equal(removed.status, "ok");
   const secondEntry = responseJson(await request("getPlaylist", { id: second.id })).playlist.entry[0];
   assert.equal((await request("stream", { id: secondEntry.id })).response.status, 200);
-  const removeCanonicalResponse = await apiFetch(
+  const removeLibraryTrackResponse = await apiFetch(
     `/api/playlists/shared-playlists/${encodeURIComponent(secondAurralPlaylistId)}/tracks/${encodeURIComponent(canonicalJobId)}`,
     { method: "DELETE" },
   );
-  assert.equal(removeCanonicalResponse.status, 200);
+  assert.equal(removeLibraryTrackResponse.status, 200);
   await waitFor(async () => {
     const response = await apiFetch(
       `/api/playlists/jobs/${encodeURIComponent(secondAurralPlaylistId)}`,
@@ -661,13 +661,13 @@ test("creates durable Subsonic playlists around one promoted library job", async
 });
 
 test("failed Subsonic playlist creation rolls back its playlist and jobs", async () => {
-  const canonicalSong = responseJson(await request("search3", { query: "Canonical Song" })).searchResult3.song[0];
+  const librarySong = responseJson(await request("search3", { query: "Canonical Song" })).searchResult3.song[0];
   const user = userOps.getUserByUsername("alice");
   const originalUpdate = flowPlaylistConfig.updateStaticPlaylist;
   flowPlaylistConfig.updateStaticPlaylist = () => null;
   try {
     assert.equal(
-      await createSubsonicPlaylist(user, { name: "Failed Subsonic Playlist", songIds: [canonicalSong.id] }),
+      await createSubsonicPlaylist(user, { name: "Failed Subsonic Playlist", songIds: [librarySong.id] }),
       null,
     );
     assert.equal(
@@ -802,9 +802,9 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
   }
 });
 
-test("playlist favorites resolve to the owned canonical track", async () => {
-  const playlistSongId = `shared-song:${encodeURIComponent(`${canonicalFavoritePlaylist.id}:${canonicalFavoriteJobId}`)}`;
-  let canonicalSongId;
+test("playlist favorites resolve to the owned library track", async () => {
+  const playlistSongId = `shared-song:${encodeURIComponent(`${libraryFavoritePlaylist.id}:${libraryFavoriteJobId}`)}`;
+  let librarySongId;
   try {
     assert.equal(responseJson(await request("star", { id: playlistSongId })).status, "ok");
 
@@ -815,27 +815,27 @@ test("playlist favorites resolve to the owned canonical track", async () => {
     const album = responseJson(await request("getArtist", {
       id: responseJson(await request("getArtists")).artists.index[0].artist[0].id,
     })).artist.album[0];
-    canonicalSongId = responseJson(await request("getAlbum", { id: album.id })).album.song[0].id;
+    librarySongId = responseJson(await request("getAlbum", { id: album.id })).album.song[0].id;
     const page = await (await apiFetch(
       "/api/library/canonical?kind=tracks&page=1&pageSize=100&availableOnly=true",
     )).json();
     assert.equal(page.items.find((track) => track.title === "Canonical Song").userFavorite, true);
 
-    assert.equal(responseJson(await request("unstar", { id: canonicalSongId })).status, "ok");
+    assert.equal(responseJson(await request("unstar", { id: librarySongId })).status, "ok");
     assert.equal(
       responseJson(await request("getStarred")).starred.song.some(
-        (song) => song.id === canonicalSongId,
+        (song) => song.id === librarySongId,
       ),
       false,
     );
   } finally {
-    await request("unstar", { id: [playlistSongId, canonicalSongId].filter(Boolean) });
+    await request("unstar", { id: [playlistSongId, librarySongId].filter(Boolean) });
   }
 });
 
-test("canonical song responses agree on the earliest star date", async () => {
+test("library song responses agree on the earliest star date", async () => {
   const user = userOps.getUserByUsername("alice");
-  const playlistSongKey = `${canonicalFavoritePlaylist.id}:${canonicalFavoriteJobId}`;
+  const playlistSongKey = `${libraryFavoritePlaylist.id}:${libraryFavoriteJobId}`;
   const song = responseJson(await request("search3", { query: "Canonical Song" })).searchResult3.song[0];
   const songKey = decodeURIComponent(song.id.slice("song:".length));
   const insertStar = db.prepare(
@@ -858,7 +858,7 @@ test("canonical song responses agree on the earliest star date", async () => {
   }
 });
 
-test("streams canonical files with full and range responses", async () => {
+test("streams library files with full and range responses", async () => {
   const artist = responseJson(await request("getArtists")).artists.index[0].artist[0];
   const album = responseJson(await request("getArtist", { id: artist.id })).artist.album[0];
   const song = responseJson(await request("getAlbum", { id: album.id })).album.song[0];
@@ -889,7 +889,7 @@ test("streams canonical files with full and range responses", async () => {
   assert.equal(unsatisfiable.response.status, 416);
 });
 
-test("streams canonical files through the authenticated native route", async () => {
+test("streams library files through the authenticated native route", async () => {
   const login = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -935,7 +935,7 @@ test("returns missing files and stale IDs without exposing filesystem paths", as
   assert.equal(stale.body.includes(fixturePath), false);
 });
 
-test("keeps canonical protocol IDs and flow entries after restart", async () => {
+test("keeps library protocol IDs and flow entries after restart", async () => {
   const before = responseJson(await request("getArtists")).artists.index[0].artist[0].id;
   await aurral.stop();
   aurral = await startServerProcess();
@@ -944,7 +944,7 @@ test("keeps canonical protocol IDs and flow entries after restart", async () => 
   assert.equal(responseJson(await request("getPlaylists")).playlists.playlist[0].name, "Canonical Flow");
 });
 
-test("returns the canonical artwork redirect contract", async () => {
+test("returns the library artwork redirect contract", async () => {
   const artist = responseJson(await request("getArtists")).artists.index[0].artist[0];
   const source = "https://example.com/cover.jpg";
   dbOps.setImage("11111111-1111-4111-8111-111111111111", source);
@@ -954,7 +954,7 @@ test("returns the canonical artwork redirect contract", async () => {
   assert.equal(result.response.headers.get("cache-control"), "public, max-age=31536000, immutable");
 });
 
-test("resolves playlist release-group artwork without a canonical album row", async () => {
+test("resolves playlist release-group artwork without a library album row", async () => {
   const originalFetch = global.fetch;
   global.fetch = async () =>
     new Response(

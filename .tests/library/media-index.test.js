@@ -6,11 +6,11 @@ import path from "node:path";
 
 import { db } from "../../backend/config/db-sqlite.js";
 import {
-  getCanonicalArtistProjection,
-  getCanonicalLibrary,
-  getCanonicalLibraryLastModified,
-  getCanonicalLibraryPage,
-  invalidateCanonicalLibraryCache,
+  getLibraryArtistProjection,
+  getLibrary,
+  getLibraryIndexLastModified,
+  getLibraryPage,
+  invalidateLibraryQueryCache,
 } from "../../backend/services/libraryQueryService.js";
 import {
   buildFallbackIdentityKey,
@@ -111,7 +111,7 @@ test("a failed scan-run insert does not leak scan state", async () => {
       path: `/tmp/scan-insert-failure-${process.pid}.flac`,
       available: true,
     });
-    assert.equal(getCanonicalLibrary().artists.find((item) => item.id === artist.id)?.name, "Before Failure");
+    assert.equal(getLibrary().artists.find((item) => item.id === artist.id)?.name, "Before Failure");
 
     db.exec(`CREATE TEMP TRIGGER fail_library_scan_insert
       BEFORE INSERT ON library_scan_runs BEGIN
@@ -128,12 +128,12 @@ test("a failed scan-run insert does not leak scan state", async () => {
       return { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
     });
 
-    assert.equal(getCanonicalLibrary().artists.find((item) => item.id === artist.id)?.name, "After Failure");
+    assert.equal(getLibrary().artists.find((item) => item.id === artist.id)?.name, "After Failure");
   } finally {
     db.exec("DROP TRIGGER IF EXISTS fail_library_scan_insert");
     if (artist) db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
     db.prepare("DELETE FROM library_scan_runs WHERE source LIKE 'test-%insert-failure'").run();
-    invalidateCanonicalLibraryCache();
+    invalidateLibraryQueryCache();
   }
 });
 
@@ -1221,7 +1221,7 @@ test("indexLidarrLibrary keeps artists without albums and refreshes monitoring m
 
   try {
     await indexLidarrLibrary({ client });
-    let projection = getCanonicalArtistProjection({ reference: providerArtistId })[0];
+    let projection = getLibraryArtistProjection({ reference: providerArtistId })[0];
     assert.equal(projection?.name, "Albumless Artist");
     assert.equal(projection?.foreignArtistId, providerArtistId);
     assert.equal(projection?.providerId, "1212");
@@ -1232,7 +1232,7 @@ test("indexLidarrLibrary keeps artists without albums and refreshes monitoring m
 
     monitored = true;
     await indexLidarrLibrary({ client });
-    projection = getCanonicalArtistProjection({ reference: providerArtistId })[0];
+    projection = getLibraryArtistProjection({ reference: providerArtistId })[0];
     assert.equal(projection?.monitored, true);
     assert.equal(projection?.monitorOption, "all");
   } finally {
@@ -1242,7 +1242,7 @@ test("indexLidarrLibrary keeps artists without albums and refreshes monitoring m
   }
 });
 
-test("indexLidarrLibrary keeps fully missing albums in canonical reads", async () => {
+test("indexLidarrLibrary keeps fully missing albums in library reads", async () => {
   const artistMbid = "13131313-1313-4131-8131-131313131313";
   const albumMbid = "14141414-1414-4141-8141-141414141414";
   const trackMbid = "15151515-1515-4151-8151-151515151515";
@@ -1274,7 +1274,7 @@ test("indexLidarrLibrary keeps fully missing albums in canonical reads", async (
 
   try {
     await indexLidarrLibrary({ client });
-    const page = getCanonicalLibraryPage({
+    const page = getLibraryPage({
       kind: "albums",
       page: 1,
       pageSize: 10,
@@ -1634,7 +1634,7 @@ test("indexLidarrLibrary does not reuse a file from another album", async () => 
       { title: "Eve 6", files: 1 },
       { title: "Inside Out", files: 0 },
     ]);
-    const lidarrPage = getCanonicalLibraryPage({
+    const lidarrPage = getLibraryPage({
       source: "lidarr",
       kind: "albums",
       page: 1,
@@ -1852,7 +1852,7 @@ test("a Lidarr rescan marks the final removed media file unavailable", async () 
   }
 });
 
-test("album/track relation changes move the canonical library timestamp", async () => {
+test("album/track relation changes move the library timestamp", async () => {
   const identityKey = `name:relation-timestamp-${process.pid}`;
   const artist = upsertLibraryArtist({ identityKey, name: "Relation Timestamp", syncSearch: false });
   const album = upsertLibraryAlbum({
@@ -1890,7 +1890,7 @@ test("album/track relation changes move the canonical library timestamp", async 
     linkLibraryAlbumTrack({ albumId: album.id, trackId: tracks[1].id, syncSearch: false });
     assert.equal(relationCount(), 2);
     assert.ok(albumUpdatedAt() > 1, "linking a track must refresh the album timestamp");
-    assert.ok(getCanonicalLibraryLastModified() >= albumUpdatedAt());
+    assert.ok(getLibraryIndexLastModified() >= albumUpdatedAt());
 
     upsertLibraryMediaFile({
       trackId: tracks[1].id,
@@ -1903,7 +1903,7 @@ test("album/track relation changes move the canonical library timestamp", async 
     assert.equal(removeLibraryTrackIfNoAvailableMedia(tracks[1].id), true);
     assert.equal(relationCount(), 1);
     assert.ok(albumUpdatedAt() > 1, "dropping a track must refresh the album timestamp");
-    assert.ok(getCanonicalLibraryLastModified() >= albumUpdatedAt());
+    assert.ok(getLibraryIndexLastModified() >= albumUpdatedAt());
   } finally {
     for (const track of tracks) {
       db.prepare("DELETE FROM library_media_files WHERE track_id = ?").run(track.id);
@@ -1912,6 +1912,6 @@ test("album/track relation changes move the canonical library timestamp", async 
     }
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-    invalidateCanonicalLibraryCache();
+    invalidateLibraryQueryCache();
   }
 });

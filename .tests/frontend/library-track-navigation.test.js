@@ -2,12 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  findCanonicalArtistByName,
-  findCanonicalAlbumByName,
+  findLibraryArtistByName,
+  findLibraryAlbumByName,
 } from "../../frontend/src/utils/libraryTrackNavigation.js";
 
-test("finds an imported artist when canonical metadata has no MBID", () => {
-  const artist = findCanonicalArtistByName(
+test("finds an imported artist when library metadata has no MBID", () => {
+  const artist = findLibraryArtistByName(
     [{ id: 906098, name: "Circle Jerks", mbid: null }],
     "Circle Jerks",
   );
@@ -15,8 +15,8 @@ test("finds an imported artist when canonical metadata has no MBID", () => {
   assert.equal(artist?.id, 906098);
 });
 
-test("finds an imported album by title and artist when canonical metadata has no MBID", () => {
-  const album = findCanonicalAlbumByName(
+test("finds an imported album by title and artist when library metadata has no MBID", () => {
+  const album = findLibraryAlbumByName(
     [{ id: 906098, title: "Wild In The Streets", albumArtist: "Circle Jerks" }],
     "Wild in the Streets",
     "Circle Jerks",

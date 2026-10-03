@@ -1,5 +1,5 @@
 import {
-  getCanonicalArtistKeyProjection,
+  getLibraryArtistKeyProjection,
   getLibraryArtistsSignature,
 } from "../libraryQueryService.js";
 
@@ -36,7 +36,7 @@ export const getLibraryArtistKeys = () => {
   if (signature !== libraryArtistKeys.signature) {
     libraryArtistKeys = {
       signature,
-      keys: buildArtistMatchKeySet(getCanonicalArtistKeyProjection()),
+      keys: buildArtistMatchKeySet(getLibraryArtistKeyProjection()),
     };
   }
   return libraryArtistKeys;

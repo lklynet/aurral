@@ -33,7 +33,7 @@ import {
   queueQualityUpgrade,
   runQualityUpgradeCheck,
 } from "../../../services/qualityProfileService.js";
-import { getCanonicalTrackOwnershipBatch } from "../../../services/libraryQueryService.js";
+import { getLibraryTrackOwnershipBatch } from "../../../services/libraryQueryService.js";
 import { logger, safeLogDiagnostic } from "../../../services/logger.js";
 import { clearAllDownloadJobs } from "../../../services/downloadJobs/downloadCancellationService.js";
 import {
@@ -151,7 +151,7 @@ export function registerJobs(router) {
     const accessibleJobs = filterJobsForUser(req.user, jobs).map((job) =>
       decorateJobQuality(job, profile),
     );
-    const libraryOwnership = getCanonicalTrackOwnershipBatch(accessibleJobs);
+    const libraryOwnership = getLibraryTrackOwnershipBatch(accessibleJobs);
     res.json(
       accessibleJobs.map((job, index) => ({
         ...toPublicJob(job),

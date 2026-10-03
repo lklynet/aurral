@@ -15,19 +15,19 @@ import { getRecentMissingReleases } from "../../backend/services/discovery/recen
 import { libraryManager } from "../../backend/services/libraryManager.js";
 import { lidarrClient } from "../../backend/services/lidarrClient.js";
 import {
-  getCanonicalAlbumPage,
-  getCanonicalArtistPage,
-  getCanonicalArtistKeyProjection,
-  getCanonicalArtistProjection,
-  getCanonicalLibraryPage,
-  getCanonicalTrackPage,
+  getLibraryAlbumPage,
+  getLibraryArtistPage,
+  getLibraryArtistKeyProjection,
+  getLibraryArtistProjection,
+  getLibraryPage,
+  getLibraryTrackPage,
 } from "../../backend/services/libraryQueryService.js";
 import {
   clearScheduledLibraryScan,
   getScheduledLibraryScanJobId,
 } from "../../backend/services/libraryScanWorker.js";
 import { getLibraryScanQueue } from "../../backend/services/honkerDb.js";
-import { getCanonicalLidarrArtist } from "../../backend/routes/artists/handlers/details.js";
+import { getLibraryLidarrArtist } from "../../backend/routes/artists/handlers/details.js";
 import { registerArtists } from "../../backend/routes/library/handlers/artists.js";
 import { getLibrarySearchMatch } from "../../backend/services/librarySearchIndex.js";
 
@@ -141,7 +141,7 @@ test("optional Lidarr reads use indexed Aurral media without provider calls", as
   }
 });
 
-test("configured Lidarr read failures fall back to the canonical index", async (t) => {
+test("configured Lidarr read failures fall back to the library index", async (t) => {
   const key = `fallback-lidarr-read-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -221,7 +221,7 @@ test("artist key reads use identity columns and preserve metadata foreign IDs", 
   });
 
   try {
-    const projection = getCanonicalArtistKeyProjection().find(
+    const projection = getLibraryArtistKeyProjection().find(
       (candidate) => candidate.id === String(artist.id),
     );
     assert.deepEqual(projection, {
@@ -240,7 +240,7 @@ test("artist key reads use identity columns and preserve metadata foreign IDs", 
   }
 });
 
-test("artist monitoring mutations dedupe canonical reconciliation scans", async (t) => {
+test("artist monitoring mutations dedupe library reconciliation scans", async (t) => {
   clearScheduledLibraryScan();
   t.mock.method(lidarrClient, "isConfigured", () => true);
   t.mock.method(lidarrClient, "getArtistByMbid", async () => ({
@@ -281,7 +281,7 @@ test("artist monitoring mutations dedupe canonical reconciliation scans", async 
   }
 });
 
-test("deleting a Lidarr artist clears canonical provider state for both IDs", async (t) => {
+test("deleting a Lidarr artist clears library provider state for both IDs", async (t) => {
   const mbid = "89898989-8989-4898-8989-898989898989";
   const foreignArtistId = "8989@deezer";
   const artist = upsertLibraryArtist({
@@ -315,13 +315,13 @@ test("deleting a Lidarr artist clears canonical provider state for both IDs", as
 
   try {
     assert.deepEqual(await libraryManager.deleteArtist(mbid), { success: true });
-    const projection = getCanonicalArtistProjection({ reference: artist.id })[0];
+    const projection = getLibraryArtistProjection({ reference: artist.id })[0];
     assert.equal(projection?.lidarrManaged, false);
     assert.equal(projection?.providerId, null);
     assert.equal(projection?.monitored, false);
-    assert.equal(getCanonicalArtistProjection({ reference: resolvedArtist.id })[0]?.providerId, null);
-    assert.equal(getCanonicalLidarrArtist(mbid), null);
-    assert.equal(getCanonicalLidarrArtist(foreignArtistId), null);
+    assert.equal(getLibraryArtistProjection({ reference: resolvedArtist.id })[0]?.providerId, null);
+    assert.equal(getLibraryLidarrArtist(mbid), null);
+    assert.equal(getLibraryLidarrArtist(foreignArtistId), null);
   } finally {
     const jobId = getScheduledLibraryScanJobId();
     if (jobId) getLibraryScanQueue().cancel(jobId);
@@ -330,7 +330,7 @@ test("deleting a Lidarr artist clears canonical provider state for both IDs", as
   }
 });
 
-test("canonical artist compatibility reads apply SQL pagination", async () => {
+test("library artist compatibility reads apply SQL pagination", async () => {
   const key = `canonical-artist-route:${process.pid}:${Date.now()}`;
   const artists = [];
   const albums = [];
@@ -399,7 +399,7 @@ test("canonical artist compatibility reads apply SQL pagination", async () => {
   }
 });
 
-test("canonical paginated reads keep tied rows stable", () => {
+test("library paginated reads keep tied rows stable", () => {
   const key = `canonical-stable-order:${process.pid}:${Date.now()}`;
   const artistName = `${key} Artist`;
   const albumTitle = `${key} Album`;
@@ -460,12 +460,12 @@ test("canonical paginated reads keep tied rows stable", () => {
           ))`,
     ).get(artistName, artistName, artistName, artistName, artists[0].id).count;
     assert.deepEqual(
-      getCanonicalArtistProjection({ pageSize: 2, offset: projectionOffset })
+      getLibraryArtistProjection({ pageSize: 2, offset: projectionOffset })
         .map((artist) => artist.id),
       expectedProjectionIds,
     );
     assert.deepEqual(
-      [0, 1].map((offset) => getCanonicalArtistProjection({
+      [0, 1].map((offset) => getLibraryArtistProjection({
         pageSize: 1,
         offset: projectionOffset + offset,
       })[0]?.id),
@@ -473,7 +473,7 @@ test("canonical paginated reads keep tied rows stable", () => {
     );
 
     assert.deepEqual(
-      [0, 1].map((offset) => getCanonicalArtistPage({
+      [0, 1].map((offset) => getLibraryArtistPage({
         source: "lidarr",
         availableOnly: true,
         query: artistName,
@@ -483,7 +483,7 @@ test("canonical paginated reads keep tied rows stable", () => {
       expectedIds,
     );
     assert.deepEqual(
-      [0, 1].map((offset) => getCanonicalAlbumPage({
+      [0, 1].map((offset) => getLibraryAlbumPage({
         source: "lidarr",
         availableOnly: true,
         query: albumTitle,
@@ -493,7 +493,7 @@ test("canonical paginated reads keep tied rows stable", () => {
       albums.map((album) => album.id),
     );
     for (const sort of ["name", "artist", "newest"]) {
-      const expectedTrackIds = getCanonicalLibraryPage({
+      const expectedTrackIds = getLibraryPage({
         source: "lidarr",
         availableOnly: true,
         kind: "tracks",
@@ -502,7 +502,7 @@ test("canonical paginated reads keep tied rows stable", () => {
         pageSize: 2,
       }).tracks.map((track) => track.id);
       assert.deepEqual(
-        [0, 1].map((offset) => getCanonicalLibraryPage({
+        [0, 1].map((offset) => getLibraryPage({
           source: "lidarr",
           availableOnly: true,
           kind: "tracks",
@@ -520,7 +520,7 @@ test("canonical paginated reads keep tied rows stable", () => {
     const trackSearchMatch = getLibrarySearchMatch(trackTitle);
     assert.ok(artistSearchMatch && albumSearchMatch && trackSearchMatch);
     assert.deepEqual(
-      [0, 1].map((offset) => getCanonicalArtistPage({
+      [0, 1].map((offset) => getLibraryArtistPage({
         source: "lidarr",
         availableOnly: true,
         query: artistName,
@@ -531,7 +531,7 @@ test("canonical paginated reads keep tied rows stable", () => {
       expectedIds,
     );
     assert.deepEqual(
-      [0, 1].map((offset) => getCanonicalAlbumPage({
+      [0, 1].map((offset) => getLibraryAlbumPage({
         source: "lidarr",
         availableOnly: true,
         query: albumTitle,
@@ -542,7 +542,7 @@ test("canonical paginated reads keep tied rows stable", () => {
       albums.map((album) => album.id),
     );
     assert.deepEqual(
-      [0, 1].map((offset) => getCanonicalTrackPage({
+      [0, 1].map((offset) => getLibraryTrackPage({
         source: "lidarr",
         availableOnly: true,
         query: trackTitle,
@@ -671,13 +671,13 @@ test("artist details do not expose Lidarr state for Aurral-only artists", () => 
   });
 
   try {
-    assert.equal(getCanonicalLidarrArtist(mbid), null);
+    assert.equal(getLibraryLidarrArtist(mbid), null);
   } finally {
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }
 });
 
-test("canonical artist page totals match hydrated items", () => {
+test("library artist page totals match hydrated items", () => {
   const key = `artist-page-shape:${process.pid}:${Date.now()}`;
   const emptyArtist = upsertLibraryArtist({
     identityKey: `${key}:empty`,
@@ -699,7 +699,7 @@ test("canonical artist page totals match hydrated items", () => {
   linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
 
   try {
-    const page = getCanonicalLibraryPage({ kind: "artists", query: key });
+    const page = getLibraryPage({ kind: "artists", query: key });
     assert.equal(page.total, 1);
     assert.deepEqual(page.items.map((artist) => artist.id), [populatedArtist.id]);
   } finally {
@@ -733,7 +733,7 @@ test("explicit artist synchronization retains its Lidarr request", async (t) => 
   }
 });
 
-test("a failed provider scan keeps the canonical artist and marks it stale", () => {
+test("a failed provider scan keeps the library artist and marks it stale", () => {
   const identityKey = `stale-read-test:${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey,
@@ -744,7 +744,7 @@ test("a failed provider scan keeps the canonical artist and marks it stale", () 
 
   try {
     finishLibraryScan(scanId, { status: "failed", error: "provider unavailable" });
-    const projection = getCanonicalArtistProjection({ reference: artist.id });
+    const projection = getLibraryArtistProjection({ reference: artist.id });
     assert.equal(projection[0]?.name, "Stale Read Artist");
     assert.equal(projection[0]?.stale, true);
   } finally {

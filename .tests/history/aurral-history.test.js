@@ -466,7 +466,7 @@ test("cancelled album track downloads show as cancelled, never as failed", async
   assert.equal(downloadTracker.getJob(jobId)?.status, "cancelled");
 });
 
-test("Aurral album requests are not checked against Lidarr by canonical album ID", async (t) => {
+test("Aurral album requests are not checked against Lidarr by library album ID", async (t) => {
   const lidarrAlbumLookups = [];
   const lidarrStub = {
     isConfigured: () => true,

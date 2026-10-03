@@ -7,7 +7,7 @@ import { registerMisc } from "../../backend/routes/library/handlers/misc.js";
 import { libraryManager } from "../../backend/services/libraryManager.js";
 import { lidarrClient } from "../../backend/services/lidarrClient.js";
 import { logger } from "../../backend/services/logger.js";
-import { invalidateCanonicalLibraryCache } from "../../backend/services/libraryQueryService.js";
+import { invalidateLibraryQueryCache } from "../../backend/services/libraryQueryService.js";
 import {
   clearLibraryManagement,
   setLibraryManagement,
@@ -50,7 +50,7 @@ test("artist batch lookup rejects oversized batches", async () => {
   assert.equal(body?.error, "mbids must contain at most 100 unique values");
 });
 
-test("artist lookup follows fresh Lidarr artist and album membership while the canonical index catches up", async (t) => {
+test("artist lookup follows fresh Lidarr artist and album membership while the library index catches up", async (t) => {
   const mbid = "55555555-5555-4555-8555-555555555555";
   const artist = upsertLibraryArtist({
     identityKey: `artist-lookup-stale-${process.pid}-${Date.now()}`,
@@ -70,7 +70,7 @@ test("artist lookup follows fresh Lidarr artist and album membership while the c
     title: "Stale Artist Track",
   });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
-  invalidateCanonicalLibraryCache();
+  invalidateLibraryQueryCache();
   const routes = new Map();
   registerMisc({
     get(path, handler) {
@@ -150,7 +150,7 @@ test("artist lookup follows fresh Lidarr artist and album membership while the c
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-    invalidateCanonicalLibraryCache();
+    invalidateLibraryQueryCache();
   }
 });
 
@@ -172,7 +172,7 @@ test("artist lookup does not restore an Aurral-only artist after a Lidarr error"
     title: "Aurral-only Track",
   });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
-  invalidateCanonicalLibraryCache();
+  invalidateLibraryQueryCache();
 
   const routes = new Map();
   registerMisc({
@@ -208,7 +208,7 @@ test("artist lookup does not restore an Aurral-only artist after a Lidarr error"
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-    invalidateCanonicalLibraryCache();
+    invalidateLibraryQueryCache();
   }
 });
 
@@ -225,7 +225,7 @@ test("artist lookup reports an Aurral-owned artist even when Lidarr does not hav
     managedBy: "aurral",
     monitorMode: "none",
   });
-  invalidateCanonicalLibraryCache();
+  invalidateLibraryQueryCache();
 
   const routes = new Map();
   registerMisc({
@@ -257,11 +257,11 @@ test("artist lookup reports an Aurral-owned artist even when Lidarr does not hav
   } finally {
     clearLibraryManagement("artist", artist.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-    invalidateCanonicalLibraryCache();
+    invalidateLibraryQueryCache();
   }
 });
 
-test("artist lookup sees a fresh Lidarr add before the canonical index catches up", async (t) => {
+test("artist lookup sees a fresh Lidarr add before the library index catches up", async (t) => {
   const mbid = "66666666-6666-4666-8666-666666666666";
   const routes = new Map();
   registerMisc({
@@ -389,7 +389,7 @@ test("album batch lookup bypasses stale cache and unrelated broken albums", asyn
   }
 });
 
-test("canonical album lookup reports partial ownership, its manager, and the complete track count", async () => {
+test("library album lookup reports partial ownership, its manager, and the complete track count", async () => {
   const key = `album-lookup-partial-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -468,7 +468,7 @@ test("canonical album lookup reports partial ownership, its manager, and the com
   }
 });
 
-test("album lookup follows fresh Lidarr removal while the canonical index catches up", async (t) => {
+test("album lookup follows fresh Lidarr removal while the library index catches up", async (t) => {
   const key = `album-lookup-stale-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -487,7 +487,7 @@ test("album lookup follows fresh Lidarr removal while the canonical index catche
     title: "Stale Album Track",
   });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
-  invalidateCanonicalLibraryCache();
+  invalidateLibraryQueryCache();
   const routes = new Map();
   registerMisc({
     get() {},
@@ -514,11 +514,11 @@ test("album lookup follows fresh Lidarr removal while the canonical index catche
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-    invalidateCanonicalLibraryCache();
+    invalidateLibraryQueryCache();
   }
 });
 
-test("canonical album lookup includes owned tracks after the first track page", async () => {
+test("library album lookup includes owned tracks after the first track page", async () => {
   const key = `album-lookup-pagination-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -590,6 +590,6 @@ test("canonical album lookup includes owned tracks after the first track page", 
     db.prepare(`DELETE FROM library_tracks WHERE id IN (${trackIds.map(() => "?").join(",")})`).run(...trackIds);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
-    invalidateCanonicalLibraryCache();
+    invalidateLibraryQueryCache();
   }
 });

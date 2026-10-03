@@ -61,7 +61,7 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("Aurral writes canonical album state, queues missing tracks, and reports conflicts", async () => {
+test("Aurral writes library album state, queues missing tracks, and reports conflicts", async () => {
   const server = await createMockHttpServer((request, response) => {
     const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
     response.setHeader("content-type", "application/json");

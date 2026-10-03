@@ -1,8 +1,8 @@
 const normalizeName = (value) => String(value || "").trim().toLocaleLowerCase();
 
-export const canonicalLibraryId = (entry) => entry?.canonicalId ?? entry?.id ?? null;
+export const libraryRecordId = (entry) => entry?.canonicalId ?? entry?.id ?? null;
 
-export function findCanonicalArtistByName(artists, artistName) {
+export function findLibraryArtistByName(artists, artistName) {
   const target = normalizeName(artistName);
   if (!target) return null;
   return (
@@ -12,7 +12,7 @@ export function findCanonicalArtistByName(artists, artistName) {
   );
 }
 
-export function findCanonicalAlbumByName(albums, albumName, artistName) {
+export function findLibraryAlbumByName(albums, albumName, artistName) {
   const targetAlbum = normalizeName(albumName);
   const targetArtist = normalizeName(artistName);
   if (!targetAlbum) return null;

@@ -3,8 +3,8 @@ import fs from "fs/promises";
 import path from "path";
 import { dbOps } from "../db/helpers/index.js";
 import {
-  getCanonicalTrackCount,
-  getCanonicalTrackSample,
+  getLibraryTrackCount,
+  getLibraryTrackSample,
 } from "./libraryQueryService.js";
 import { lidarrClient } from "./lidarrClient.js";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
@@ -851,16 +851,16 @@ async function checkNavidromeSection() {
 }
 
 async function checkNativePlaybackSection() {
-  const trackCount = getCanonicalTrackCount({ availableOnly: true });
+  const trackCount = getLibraryTrackCount({ availableOnly: true });
   if (trackCount === 0) {
     return buildSection("native-playback", "Aurral-native playback", [
-      healthStep("indexed", "warn", "Canonical media is ready for native playback", {
+      healthStep("indexed", "warn", "Library media is ready for native playback", {
         fix: "Connect Lidarr, let the library index refresh, then run Storage Health again.",
       }),
     ]);
   }
 
-  const sample = getCanonicalTrackSample({
+  const sample = getLibraryTrackSample({
     availableOnly: true,
     limit: MEDIA_HEALTH_SAMPLE_LIMIT,
   }).tracks;
@@ -878,7 +878,7 @@ async function checkNativePlaybackSection() {
     }
   }
 
-  const detail = `${trackCount} canonical track${trackCount === 1 ? "" : "s"} indexed`;
+  const detail = `${trackCount} library track${trackCount === 1 ? "" : "s"} indexed`;
   if (missing.length > 0) {
     return buildSection("native-playback", "Aurral-native playback", [
       healthStep("indexed", "fail", "Aurral-native playback can read indexed media", {

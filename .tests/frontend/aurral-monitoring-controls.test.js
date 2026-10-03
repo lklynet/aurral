@@ -151,7 +151,7 @@ test("album monitored state follows the server for Aurral albums", () => {
   assert.equal(getAlbumMonitoredState({ managedBy: "aurral" }), false);
 });
 
-test("album monitored state reads the canonical library page shape", () => {
+test("album monitored state reads the library page shape", () => {
   assert.equal(
     getAlbumMonitoredState({ managedBy: "aurral", monitorMode: null, metadata: { monitored: true } }),
     true,

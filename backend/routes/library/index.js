@@ -4,11 +4,11 @@ import { registerAlbums } from "./handlers/albums.js";
 import { registerTracks } from "./handlers/tracks.js";
 import { registerDownloads } from "./handlers/downloads.js";
 import { registerMisc } from "./handlers/misc.js";
-import { registerCanonical } from "./handlers/canonical.js";
+import { registerLibraryIndex } from "./handlers/libraryIndex.js";
 import mountRoutes from "../shared/mountRoutes.js";
 
 export default mountRoutes([
-  registerCanonical,
+  registerLibraryIndex,
   registerStream,
   registerArtists,
   registerAlbums,

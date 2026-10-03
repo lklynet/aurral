@@ -10,8 +10,8 @@ import {
 import { logger } from "../../../services/logger.js";
 import { invalidateAllDownloadStatusesCache } from "./downloads.js";
 import {
-  getCanonicalLibraryReadModelForArtistReferences,
-} from "../../../services/canonicalLibraryReadAdapter.js";
+  getLibraryReadModelForArtistReferences,
+} from "../../../services/libraryReadModel.js";
 
 export function registerAlbums(router) {
   router.get("/albums", cacheMiddleware(5), async (req, res) => {
@@ -22,7 +22,7 @@ export function registerAlbums(router) {
       }
 
       if (req.query.readPath === "canonical") {
-        const { albums } = getCanonicalLibraryReadModelForArtistReferences({
+        const { albums } = getLibraryReadModelForArtistReferences({
           source: req.query.source || "all",
           availableOnly: true,
           references: [artistId],

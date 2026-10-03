@@ -223,7 +223,7 @@ test("Subsonic edits remove a file shared only by jobs from the edited playlist"
   await assert.rejects(fs.access(finalPath), { code: "ENOENT" });
 });
 
-test("renaming a Subsonic playlist keeps its canonical song and file", async () => {
+test("renaming a Subsonic playlist keeps its library song and file", async () => {
   const playlistId = "subsonic-edit-retained-canonical-song";
   const finalPath = path.join(playlistManager.downloadRoot, "Retained Artist", "Retained Song.flac");
   const jobId = downloadTracker.addJob(

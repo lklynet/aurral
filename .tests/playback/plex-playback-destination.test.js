@@ -310,7 +310,7 @@ test("ensures and scans the Plex library through the adapter", async () => {
   ]);
 });
 
-test("configures Plex with the canonical root and explicit flow location", async () => {
+test("configures Plex with the download root and explicit flow location", async () => {
   const client = new PlexClient("http://plex.local:32400", "admin-token", "admin-client");
   const root = "/downloads/aurral";
   const calls = [];

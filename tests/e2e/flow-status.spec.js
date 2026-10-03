@@ -3,7 +3,7 @@ import { openApp, requireCredentials } from "./helpers.js";
 
 requireCredentials();
 
-test("Flow status uses the canonical channel and refreshes after reconnect", async ({ page }) => {
+test("Flow status uses the playlists channel and refreshes after reconnect", async ({ page }) => {
   await page.addInitScript(() => {
     window.flowStatusCheck = { sockets: [], channels: [], reads: 0 };
     const NativeWebSocket = window.WebSocket;

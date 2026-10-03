@@ -59,7 +59,7 @@ test("album and track search syncs report changed and unchanged documents", () =
 });
 
 test("targeted configured rescans update related searches and preserve failed or untouched files", async () => {
-  const { getCanonicalLibraryPage } = await importFromRepo("backend/services/libraryQueryService.js");
+  const { getLibraryPage } = await importFromRepo("backend/services/libraryQueryService.js");
   const { scanConfiguredLibrary } = await importFromRepo("backend/services/libraryIndexService.js");
   const root = path.join(isolatedState.dataDir, "music");
   await mkdir(root, { recursive: true });
@@ -90,7 +90,7 @@ test("targeted configured rescans update related searches and preserve failed or
     await writeFile(files[index], Buffer.concat([Buffer.from("fLaC"), Buffer.from([0, 0, 0, 34]), streamInfo, header, comment]));
   };
   const scan = (changedPaths = null) => scanConfiguredLibrary({ musicRoot: root, includeLidarr: false, changedPaths, force: true });
-  const read = (query, availableOnly = true) => getCanonicalLibraryPage({ kind: "tracks", pageSize: 100, query, availableOnly });
+  const read = (query, availableOnly = true) => getLibraryPage({ kind: "tracks", pageSize: 100, query, availableOnly });
   await writeAudio(0, "Original Album", "First Song", "Rock");
   await writeAudio(1, "Original Album", "Second Song", "Rock");
   await scan();
@@ -103,7 +103,7 @@ test("targeted configured rescans update related searches and preserve failed or
   assert.equal(read("Updated First").total, 1);
   assert.equal(read("First Song").total, 0);
   assert.equal(read("Second Song").total, 1);
-  assert.deepEqual(getCanonicalLibraryPage({ kind: "genres" }).items.map((genre) => genre.name), ["Jazz", "Rock"]);
+  assert.deepEqual(getLibraryPage({ kind: "genres" }).items.map((genre) => genre.name), ["Jazz", "Rock"]);
 
   await writeFile(files[0], "unreadable");
   const failed = await scan([files[0]]);
@@ -119,11 +119,11 @@ test("targeted configured rescans update related searches and preserve failed or
   assert.equal(read("Restored First").total, 1);
   assert.equal(read("Updated First").total, 0);
   assert.equal(read("Second Song").total, 1);
-  assert.deepEqual(getCanonicalLibraryPage({ kind: "genres" }).items.map((genre) => genre.name), ["Folk", "Rock"]);
+  assert.deepEqual(getLibraryPage({ kind: "genres" }).items.map((genre) => genre.name), ["Folk", "Rock"]);
 });
 
 test("merging a fallback artist into its resolved artist updates moved album and track searches", async () => {
-  const { getCanonicalLibraryPage } = await importFromRepo("backend/services/libraryQueryService.js");
+  const { getLibraryPage } = await importFromRepo("backend/services/libraryQueryService.js");
   const fallbackKey = libraryStore.buildFallbackIdentityKey("artist", "Merge Searché");
   const fallback = libraryStore.upsertLibraryArtist({ identityKey: fallbackKey, name: "Merge Searche" });
   const resolvedId = Number(db.prepare(
@@ -148,7 +148,7 @@ test("merging a fallback artist into its resolved artist updates moved album and
 
   assert.equal(libraryStore.upsertLibraryArtist({ identityKey: fallbackKey, name: "Merge Searche" }).id, resolvedId);
 
-  const search = (kind, query) => getCanonicalLibraryPage({ kind, query, pageSize: 100 }).items;
+  const search = (kind, query) => getLibraryPage({ kind, query, pageSize: 100 }).items;
   assert.deepEqual(search("albums", "Merge Searché").map((album) => album.id).sort(), albumIds.sort());
   assert.equal(search("tracks", "Merge Searché").length, 2);
   assert.deepEqual(search("artists", "Merge Search").map((artist) => artist.id), [resolvedId]);

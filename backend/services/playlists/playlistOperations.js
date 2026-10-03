@@ -176,11 +176,11 @@ const queueTracksForPlaylist = async (tracks, playlistId) => {
   const jobIds = [];
   const createdJobIds = [];
   for (const track of normalizeTrackList(tracks)) {
-    const canonicalJob = track.canonicalJobId
+    const libraryJob = track.canonicalJobId
       ? downloadTracker.getJob(track.canonicalJobId)
       : null;
-    if (canonicalJob && tracksShareMembership(canonicalJob, track)) {
-      reusedJobIds.push(canonicalJob.id);
+    if (libraryJob && tracksShareMembership(libraryJob, track)) {
+      reusedJobIds.push(libraryJob.id);
       continue;
     }
     const jobId = downloadTracker.addJob(track, playlistId);
@@ -214,11 +214,11 @@ const filterTracksMissingDownloadJobs = (tracks, playlistId) => {
   const missing = [];
   const queued = [];
   for (const track of normalizeTrackList(tracks)) {
-    const canonicalJob = track.canonicalJobId
+    const libraryJob = track.canonicalJobId
       ? downloadTracker.getJob(track.canonicalJobId)
       : null;
     const duplicate =
-      Boolean(canonicalJob && tracksShareMembership(canonicalJob, track)) ||
+      Boolean(libraryJob && tracksShareMembership(libraryJob, track)) ||
       existingJobs.some((job) => tracksShareMembership(job, track)) ||
       queued.some((entry) => tracksShareMembership(entry, track));
     if (duplicate) continue;
@@ -479,14 +479,14 @@ async function adoptFlowSeed({ flowId, tracks = [] } = {}) {
   return result;
 }
 
-async function withCanonicalPlaylistMutation(payload, operation) {
+async function withLibraryPlaylistMutation(payload, operation) {
   const playlistId = String(payload.playlistId || "").trim();
-  const canonicalIds = (Array.isArray(payload.tracks) ? payload.tracks : []).map((track) => track?.canonicalJobId).filter(Boolean);
+  const libraryIds = (Array.isArray(payload.tracks) ? payload.tracks : []).map((track) => track?.canonicalJobId).filter(Boolean);
   while (true) {
-    const jobs = [...downloadTracker.getByPlaylistId(playlistId), ...canonicalIds.map((id) => downloadTracker.getJob(id)).filter(Boolean)];
+    const jobs = [...downloadTracker.getByPlaylistId(playlistId), ...libraryIds.map((id) => downloadTracker.getJob(id)).filter(Boolean)];
     const lockIds = getPlaylistRemovalLockIds(playlistId, jobs);
     const result = await withPlaylistMutationLock(lockIds, async () => {
-      const currentJobs = [...downloadTracker.getByPlaylistId(playlistId), ...canonicalIds.map((id) => downloadTracker.getJob(id)).filter(Boolean)];
+      const currentJobs = [...downloadTracker.getByPlaylistId(playlistId), ...libraryIds.map((id) => downloadTracker.getJob(id)).filter(Boolean)];
       if (!getPlaylistRemovalLockIds(playlistId, currentJobs).every((id) => lockIds.includes(id))) return { retryLocks: true };
       for (const track of payload.tracks || []) {
         if (!track?.canonicalJobId) continue;
@@ -502,15 +502,15 @@ async function withCanonicalPlaylistMutation(payload, operation) {
 }
 
 async function createStaticPlaylist(payload = {}) {
-  return withCanonicalPlaylistMutation({ ...payload, playlistId: String(payload.playlistId || "").trim() || randomUUID() }, createStaticPlaylistLocked);
+  return withLibraryPlaylistMutation({ ...payload, playlistId: String(payload.playlistId || "").trim() || randomUUID() }, createStaticPlaylistLocked);
 }
 
 export async function appendStaticPlaylistTracks(payload = {}) {
-  return withCanonicalPlaylistMutation(payload, appendStaticPlaylistTracksLocked);
+  return withLibraryPlaylistMutation(payload, appendStaticPlaylistTracksLocked);
 }
 
 export async function updateStaticPlaylist(payload = {}) {
-  return withCanonicalPlaylistMutation(payload, updateStaticPlaylistLocked);
+  return withLibraryPlaylistMutation(payload, updateStaticPlaylistLocked);
 }
 
 async function createStaticPlaylistLocked({

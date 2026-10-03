@@ -15,10 +15,10 @@ const [isolatedState, { db }] = await setupIsolatedBackend(
 
 const store = await import("../../backend/services/libraryManagementStore.js");
 const libraryStore = await import("../../backend/services/libraryMediaStore.js");
-const { buildCanonicalLibraryReadModel } = await import(
-  "../../backend/services/canonicalLibraryReadAdapter.js"
+const { buildLibraryReadModel } = await import(
+  "../../backend/services/libraryReadModel.js"
 );
-const { getCanonicalLibrary, getCanonicalLibraryPage } = await import(
+const { getLibrary, getLibraryPage } = await import(
   "../../backend/services/libraryQueryService.js"
 );
 const { computeLibraryRootOverlaps } = await import(
@@ -33,7 +33,7 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("manager state uses canonical ids and round-trips through the store", () => {
+test("manager state uses library ids and round-trips through the store", () => {
   store.setLibraryManagement({
     entityKind: "album",
     entityId: 7,
@@ -161,7 +161,7 @@ test("read model exposes managedBy and monitorMode without inventing values", ()
     monitorMode: "all",
   });
 
-  const model = buildCanonicalLibraryReadModel(library);
+  const model = buildLibraryReadModel(library);
   const managed = model.artists.find((a) => a.id === 11);
   const open = model.artists.find((a) => a.id === 12);
   assert.equal(managed.managedBy, "lidarr");
@@ -171,7 +171,7 @@ test("read model exposes managedBy and monitorMode without inventing values", ()
   assert.equal(model.albums.find((a) => a.id === 21).managedBy, null);
 });
 
-test("canonical page cache reflects ownership changes without manual invalidation", () => {
+test("library page cache reflects ownership changes without manual invalidation", () => {
   const artist = libraryStore.upsertLibraryArtist({
     identityKey: "mbid:cache-artist",
     mbid: "cache-artist",
@@ -199,19 +199,19 @@ test("canonical page cache reflects ownership changes without manual invalidatio
   });
 
   store.setLibraryManagement({ entityKind: "artist", entityId: artist.id, managedBy: "aurral" });
-  const before = getCanonicalLibraryPage({ kind: "artists", pageSize: 100 });
+  const before = getLibraryPage({ kind: "artists", pageSize: 100 });
   assert.equal(before.items.find((entry) => String(entry.id) === String(artist.id))?.managedBy, "aurral");
 
   store.setLibraryManagement({ entityKind: "artist", entityId: artist.id, managedBy: "lidarr" });
-  const updated = getCanonicalLibraryPage({ kind: "artists", pageSize: 100 });
+  const updated = getLibraryPage({ kind: "artists", pageSize: 100 });
   assert.equal(updated.items.find((entry) => String(entry.id) === String(artist.id))?.managedBy, "lidarr");
 
   store.clearLibraryManagement("artist", artist.id);
-  const cleared = getCanonicalLibraryPage({ kind: "artists", pageSize: 100 });
+  const cleared = getLibraryPage({ kind: "artists", pageSize: 100 });
   assert.equal(cleared.items.find((entry) => String(entry.id) === String(artist.id))?.managedBy, null);
 });
 
-test("canonical library cache reflects ownership changed by another connection", async () => {
+test("library cache reflects ownership changed by another connection", async () => {
   const { default: Database } = await import("better-sqlite3");
   const artist = libraryStore.upsertLibraryArtist({
     identityKey: "mbid:external-cache-artist",
@@ -226,14 +226,14 @@ test("canonical library cache reflects ownership changed by another connection",
   });
   libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
   store.setLibraryManagement({ entityKind: "artist", entityId: artist.id, managedBy: "aurral", monitorMode: "all" });
-  assert.equal(getCanonicalLibrary().artists.find((entry) => entry.id === artist.id).monitorMode, "all");
+  assert.equal(getLibrary().artists.find((entry) => entry.id === artist.id).monitorMode, "all");
 
   const otherConnection = new Database(db.name);
   try {
     otherConnection.prepare(
       "UPDATE library_management SET monitor_mode = 'none' WHERE entity_kind = 'artist' AND entity_id = ?",
     ).run(artist.id);
-    assert.equal(getCanonicalLibrary().artists.find((entry) => entry.id === artist.id).monitorMode, "none");
+    assert.equal(getLibrary().artists.find((entry) => entry.id === artist.id).monitorMode, "none");
   } finally {
     otherConnection.close();
   }

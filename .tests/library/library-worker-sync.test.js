@@ -10,7 +10,7 @@ test("completed child scans invalidate the API's library cache", async () => {
     upsertLibraryMediaFile,
     upsertLibraryTrack,
   } = await import("../../backend/services/libraryMediaStore.js");
-  const { getCanonicalLibrary } = await import("../../backend/services/libraryQueryService.js");
+  const { getLibrary } = await import("../../backend/services/libraryQueryService.js");
   const { forwardWorkerBroadcast } = await import("../../backend/services/appRuntime.js");
   const key = `worker-cache-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, name: "Before Scan" });
@@ -25,7 +25,7 @@ test("completed child scans invalidate the API's library cache", async () => {
     trackId: track.id, albumId: album.id, source: "aurral",
     path: `/${key}.flac`, available: true,
   });
-  const artistName = () => getCanonicalLibrary().artists.find((item) => item.id === artist.id)?.name;
+  const artistName = () => getLibrary().artists.find((item) => item.id === artist.id)?.name;
   assert.equal(artistName(), "Before Scan");
   db.prepare("UPDATE library_artists SET name = ? WHERE id = ?").run("After Scan", artist.id);
   assert.equal(artistName(), "Before Scan");

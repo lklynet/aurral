@@ -30,7 +30,7 @@ function fixture(t) {
   return { source, survivor, jobId };
 }
 
-test("single-track removal retains the job and provider work needed by another canonical membership", async (t) => {
+test("single-track removal retains the job and provider work needed by another library membership", async (t) => {
   const { source, survivor, jobId } = fixture(t);
   const queuedId = honker.getPipelineQueue().enqueue({ jobId, playlistId: source.id, playlistGeneration: 0, phase: "poll", source: "deemix", queueUuid: "needed-provider-work" });
   await operations.processPlaylistOperation({ kind: "shared-playlist-delete-track", playlistId: source.id, jobId });

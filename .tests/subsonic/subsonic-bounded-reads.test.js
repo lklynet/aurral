@@ -11,7 +11,7 @@ const [
   { db },
   subsonic,
   libraryStore,
-  { rebuildCanonicalGenreStats },
+  { rebuildLibraryGenreStats },
   { forwardWorkerBroadcast },
 ] = await setupIsolatedBackend(
   "subsonic-bounded-reads",
@@ -99,7 +99,7 @@ test("focused Subsonic requests never execute an unfiltered complete-library que
 
 test("Subsonic genres come from the last library scan until the library changes", async () => {
   const completeScan = async () => {
-    rebuildCanonicalGenreStats();
+    rebuildLibraryGenreStats();
     await forwardWorkerBroadcast({
       type: "websocket-broadcast",
       channel: "library",

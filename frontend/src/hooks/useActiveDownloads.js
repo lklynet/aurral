@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient, queryKeys } from "../queryClient.js";
 import {
-  clearCanonicalLibraryPageCache,
+  clearLibraryPageCache,
   getActiveDownloads,
 } from "../utils/api/endpoints/library.js";
 import {
@@ -18,7 +18,7 @@ import {
 const ACTIVE_POLL_MS = 5_000;
 
 const refreshFinishedDownloads = () => {
-  clearCanonicalLibraryPageCache();
+  clearLibraryPageCache();
   void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPrefix });
   void queryClient.invalidateQueries({ queryKey: ["search"] });
   void queryClient.invalidateQueries({ queryKey: queryKeys.artistDetailsPrefix });

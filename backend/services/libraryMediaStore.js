@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { db, dbHelpers } from "../config/db-sqlite.js";
-import { invalidateCanonicalLibraryCache } from "./libraryQueryService.js";
+import { invalidateLibraryQueryCache } from "./libraryQueryService.js";
 import {
   removeLibrarySearchDocument,
   syncLibrarySearchAlbum,
@@ -68,7 +68,7 @@ const invalidateLibraryCache = () => {
     libraryCacheInvalidationPending = true;
     return;
   }
-  invalidateCanonicalLibraryCache();
+  invalidateLibraryQueryCache();
 };
 
 export function buildIdentityKey(prefix, value) {
@@ -351,7 +351,7 @@ function clearLidarrMetadata(table, where, parameters) {
   return true;
 }
 
-export function clearCanonicalLidarrArtist(reference) {
+export function clearLibraryLidarrArtist(reference) {
   const value = normalizeText(reference);
   if (!value) return false;
   return clearLidarrMetadata(
@@ -364,7 +364,7 @@ export function clearCanonicalLidarrArtist(reference) {
   );
 }
 
-export function clearCanonicalLidarrAlbum(reference) {
+export function clearLibraryLidarrAlbum(reference) {
   const value = normalizeText(reference);
   if (!value) return false;
   return clearLidarrMetadata(
@@ -515,7 +515,7 @@ export function upsertLibraryTrack({
 }
 
 // library_album_tracks has no updated_at and rows are deleted outright, so relation changes ride
-// on the album's timestamp to stay visible in getCanonicalLibraryLastModified.
+// on the album's timestamp to stay visible in getLibraryIndexLastModified.
 const touchLibraryAlbum = (albumId) => {
   db.prepare("UPDATE library_albums SET updated_at = ? WHERE id = ?").run(now(), Number(albumId));
 };
@@ -806,7 +806,7 @@ export async function withLibraryScan(source, rootPath, run) {
       libraryScanDepth -= 1;
       if (libraryScanDepth === 0 && libraryCacheInvalidationPending) {
         libraryCacheInvalidationPending = false;
-        invalidateCanonicalLibraryCache();
+        invalidateLibraryQueryCache();
       }
     }
   });
