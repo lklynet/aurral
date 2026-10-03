@@ -8,25 +8,25 @@ export const isReleaseRadarFlow = (flow) =>
 export const isEditorialFlow = (flow) =>
   String(flow?.type || "").trim() === "editorial";
 
-const flowNumber = (value) => Number(value || 0);
+const statCount = (value) => Number(value || 0);
 
 export const getFlowDisplayTrackCount = (flow, stats, trackListLength = 0) => {
   if (isReleaseRadarFlow(flow)) {
-    const actual = Math.max(flowNumber(trackListLength), flowNumber(stats?.total));
-    return actual > 0 ? actual : flowNumber(flow?.size);
+    const actual = Math.max(statCount(trackListLength), statCount(stats?.total));
+    return actual > 0 ? actual : statCount(flow?.size);
   }
-  return Math.max(flowNumber(flow?.size), flowNumber(trackListLength), flowNumber(stats?.total));
+  return Math.max(statCount(flow?.size), statCount(trackListLength), statCount(stats?.total));
 };
 
 export const getStaticPlaylistTrackCount = (playlist, stats, trackListLength = 0) => {
   return Math.max(
-    flowNumber(playlist?.trackCount),
-    flowNumber(trackListLength),
-    flowNumber(stats?.total),
+    statCount(playlist?.trackCount),
+    statCount(trackListLength),
+    statCount(stats?.total),
   );
 };
 
-export const EMPTY_FLOW_STATS = {
+export const EMPTY_PLAYLIST_STATS = {
   total: 0,
   done: 0,
   pending: 0,
@@ -36,17 +36,17 @@ export const EMPTY_FLOW_STATS = {
 };
 
 export const getPlaylistDownloadProgressPct = (stats, trackCount = 0) => {
-  const done = flowNumber(stats?.done);
+  const done = statCount(stats?.done);
   const total = Math.max(
-    flowNumber(trackCount),
-    flowNumber(stats?.pending) + flowNumber(stats?.downloading) + flowNumber(stats?.blocked) + done + flowNumber(stats?.failed),
+    statCount(trackCount),
+    statCount(stats?.pending) + statCount(stats?.downloading) + statCount(stats?.blocked) + done + statCount(stats?.failed),
   );
   if (total <= 0) return null;
   return Math.min(100, Math.round((done / total) * 100));
 };
 
 export const formatTrackCountLabel = (trackCount, stats) => {
-  const count = flowNumber(trackCount);
+  const count = statCount(trackCount);
   const trackWord = count === 1 ? "track" : "tracks";
   const base = `${count} ${trackWord}`;
   const pct = getPlaylistDownloadProgressPct(stats, count);
@@ -70,12 +70,12 @@ export const formatFlowLastRun = (lastRunAt) => {
   });
 };
 
-export const sanitizeFlowStats = (stats) => {
-  const pending = flowNumber(stats?.pending);
-  const downloading = flowNumber(stats?.downloading);
-  const blocked = flowNumber(stats?.blocked);
-  const done = flowNumber(stats?.done);
-  const failed = flowNumber(stats?.failed);
+export const sanitizePlaylistStats = (stats) => {
+  const pending = statCount(stats?.pending);
+  const downloading = statCount(stats?.downloading);
+  const blocked = statCount(stats?.blocked);
+  const done = statCount(stats?.done);
+  const failed = statCount(stats?.failed);
   return {
     total: pending + downloading + blocked + done + failed,
     pending,
@@ -94,13 +94,13 @@ export const getPlaylistStateFromStats = (stats) => {
 };
 
 export const getCombinedActivityStats = (status) => {
-  const flow = status?.stats || EMPTY_FLOW_STATS;
-  const shared = status?.sharedStats || EMPTY_FLOW_STATS;
-  const pending = flowNumber(flow.pending) + flowNumber(shared.pending);
-  const downloading = flowNumber(flow.downloading) + flowNumber(shared.downloading);
-  const blocked = flowNumber(flow.blocked) + flowNumber(shared.blocked);
-  const done = flowNumber(flow.done) + flowNumber(shared.done);
-  const failed = flowNumber(flow.failed) + flowNumber(shared.failed);
+  const flow = status?.stats || EMPTY_PLAYLIST_STATS;
+  const shared = status?.sharedStats || EMPTY_PLAYLIST_STATS;
+  const pending = statCount(flow.pending) + statCount(shared.pending);
+  const downloading = statCount(flow.downloading) + statCount(shared.downloading);
+  const blocked = statCount(flow.blocked) + statCount(shared.blocked);
+  const done = statCount(flow.done) + statCount(shared.done);
+  const failed = statCount(flow.failed) + statCount(shared.failed);
   return {
     pending,
     downloading,
@@ -111,7 +111,7 @@ export const getCombinedActivityStats = (status) => {
   };
 };
 
-export const hasFlowWorkerActivity = (status) => {
+export const hasDownloadWorkerActivity = (status) => {
   if (!status) return false;
   if (status.worker?.running === true) return true;
   if (status.operationQueue?.processing === true) return true;

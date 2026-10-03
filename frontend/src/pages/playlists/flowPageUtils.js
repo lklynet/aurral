@@ -1,4 +1,4 @@
-import { parseFlowTimestamp } from "./flowStats";
+import { parseFlowTimestamp } from "./playlistStats";
 import { formatDate } from "../../utils/dateTime.js";
 
 export const DEFAULT_MIX = { discover: 34, mix: 33, trending: 33, focus: 0 };
@@ -81,7 +81,7 @@ export const normalizeNameKey = (value) =>
     .trim()
     .toLowerCase();
 
-export const reserveUniqueFlowName = (reservedNames, baseName) => {
+export const reserveUniqueName = (reservedNames, baseName) => {
   const normalizedBase = String(baseName || "").trim() || "Flow";
   const baseKey = normalizeNameKey(normalizedBase);
   if (!reservedNames.has(baseKey)) {
@@ -104,7 +104,7 @@ export const reserveUniqueFlowName = (reservedNames, baseName) => {
 };
 
 export const getNextFlowName = (flows, baseName = "Discover") =>
-  reserveUniqueFlowName(
+  reserveUniqueName(
     new Set(
       (Array.isArray(flows) ? flows : [])
         .map((flow) => normalizeNameKey(flow?.name))
@@ -459,7 +459,7 @@ export const buildStaticTracklistPayload = ({ name, sourceName, sourceFlowId, tr
   })),
 });
 
-export const downloadFlowShareBundle = (fileName, payload) => {
+export const downloadTracklistFile = (fileName, payload) => {
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: "application/json",
   });
@@ -475,7 +475,7 @@ export const downloadFlowShareBundle = (fileName, payload) => {
   }, 0);
 };
 
-export const parseFlowImportFile = (content) => {
+export const parseTracklistImportFile = (content) => {
   let parsed;
   try {
     parsed = JSON.parse(content);

@@ -13,7 +13,7 @@ import {
   Ticket,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
-import { useFlowWorkerActivity } from "../pages/flows/useFlowWorkerActivity";
+import { useDownloadWorkerActivity } from "../pages/playlists/useDownloadWorkerActivity";
 import { DEFAULT_SETTINGS_TAB, SETTINGS_NAV_TABS } from "../pages/Settings/settingsTabsConfig";
 import { DEFAULT_SHOWS_FILTER, SHOWS_FILTERS } from "../navigation/showsNavConfig";
 import {
@@ -43,7 +43,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
     : null;
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
   const canAccessSettings = user?.role === "admin" || !!user?.permissions?.accessSettings;
-  const { hasReview: hasReviewAlert } = useFlowWorkerActivity({
+  const { hasReview: hasReviewAlert } = useDownloadWorkerActivity({
     enabled: hasFlowAccess,
   });
   const { hasFailure: hasStorageFailure } = useStorageHealth({

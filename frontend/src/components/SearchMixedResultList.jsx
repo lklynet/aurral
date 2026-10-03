@@ -1,7 +1,7 @@
 import { Music } from "lucide-react";
 import ArtistImage from "./ArtistImage";
 import { getSearchResultKey, navigateFromSearchResult } from "../utils/searchNavigation";
-import { getFlowArtworkUrl } from "../utils/api/endpoints/playlists.js";
+import { getPlaylistArtworkUrl } from "../utils/api/endpoints/playlists.js";
 import { getArtistRecordId } from "../utils/artistTaste";
 import Tooltip from "./Tooltip";
 
@@ -15,7 +15,7 @@ function getSearchPlaylistArtworkUrl(playlist) {
   if (!playlist) return null;
   if (playlist.coverUrl) return playlist.coverUrl;
   const playlistId = String(playlist.id || "").trim();
-  return playlistId ? getFlowArtworkUrl(playlistId) : null;
+  return playlistId ? getPlaylistArtworkUrl(playlistId) : null;
 }
 
 function getTypeLabel(item) {

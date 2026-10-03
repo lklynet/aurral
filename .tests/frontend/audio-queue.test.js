@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { normalizeFlowTrack } from "../../frontend/src/utils/audioQueue.js";
+import { normalizePlaylistQueueTrack } from "../../frontend/src/utils/audioQueue.js";
 
 const track = {
   id: "flow-track",
@@ -11,9 +11,9 @@ const track = {
 };
 
 test("flow playback can opt out of listening history", () => {
-  assert.equal(normalizeFlowTrack(track).recordHistory, true);
+  assert.equal(normalizePlaylistQueueTrack(track).recordHistory, true);
   assert.equal(
-    normalizeFlowTrack(track, { recordHistory: false }).recordHistory,
+    normalizePlaylistQueueTrack(track, { recordHistory: false }).recordHistory,
     false,
   );
 });

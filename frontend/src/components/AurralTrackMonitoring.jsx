@@ -7,7 +7,7 @@ import {
   describeTrackMonitoringResult,
   getMonitoringMenuAction,
 } from "../utils/aurralMonitoring.js";
-import { ConfirmModal } from "../pages/flows/flowComponents/ConfirmModal.jsx";
+import { ConfirmModal } from "./ConfirmModal.jsx";
 
 const errorMessage = (error) =>
   error?.response?.data?.message ||

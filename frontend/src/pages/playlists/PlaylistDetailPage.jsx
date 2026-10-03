@@ -17,12 +17,12 @@ import {
   updateStaticPlaylist,
 } from "../../utils/api/endpoints/playlists.js";
 import { getApiErrorMessage } from "../onboardingUtils.jsx";
-import { ConfirmModal } from "./flowComponents/ConfirmModal.jsx";
-import { PlaylistArtworkThumb } from "./flowComponents/PlaylistArtworkThumb.jsx";
-import { getStaticPlaylistTrackCount } from "./flowStats";
+import { ConfirmModal } from "../../components/ConfirmModal.jsx";
+import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.jsx";
+import { getStaticPlaylistTrackCount } from "./playlistStats";
 import { PlaylistEditModal } from "./PlaylistEditModal.jsx";
 import { PlaylistTracks } from "./PlaylistTracks.jsx";
-import { useFlowTrackPlayback } from "./flowComponents/flowTrackComponents.jsx";
+import { usePlaylistTrackPlayback } from "./components/playlistTrackComponents.jsx";
 import {
   SYNC_INTERVAL_OPTIONS,
   SYNCABLE_IMPORT_PROVIDERS,
@@ -33,9 +33,9 @@ import {
   optionMenuItem,
   usePlaylistArtwork,
   usePlaylistTracks,
-} from "./playlistShared";
+} from "./playlistPageUtils";
 import { countAvailableTracks } from "./trackAvailability.js";
-import { useFlowStatus } from "./useFlowStatus";
+import { usePlaylistStatus } from "./usePlaylistStatus";
 
 function updateCachedPlaylist(playlistId, changes) {
   queryClient.setQueryData(queryKeys.playlistStatus, (current) =>
@@ -54,7 +54,7 @@ export default function PlaylistDetailPage() {
   const { playlistId } = useParams();
   const location = useLocation();
   const { status, loading, error, fetchStatus, getPlaylistStats, staticPlaylists } =
-    useFlowStatus();
+    usePlaylistStatus();
   const playlist = staticPlaylists.find((entry) => entry.id === playlistId) || null;
   useDocumentTitle(playlist?.name || "Playlist");
 
@@ -116,7 +116,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
     label: playlist.name || "Playlist",
     recordHistory: playlist.recordHistory !== false,
   };
-  const playback = useFlowTrackPlayback({ tracks, playbackSource });
+  const playback = usePlaylistTrackPlayback({ tracks, playbackSource });
   const [editOpen, setEditOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameError, setRenameError] = useState("");

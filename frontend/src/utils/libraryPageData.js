@@ -1,5 +1,5 @@
 import { queryClient, queryKeys } from "../queryClient.js";
-import { getFlowTrackStreamUrl } from "./api/endpoints/playlists.js";
+import { getPlaylistTrackStreamUrl } from "./api/endpoints/playlists.js";
 
 const text = (value) => String(value || "").trim();
 
@@ -55,7 +55,7 @@ export const favoriteLibraryFromResponse = (favorites) => {
         albums: [],
         files: [{
           available: true,
-          previewUrl: getFlowTrackStreamUrl(jobId),
+          previewUrl: getPlaylistTrackStreamUrl(jobId),
           format: track.suffix || null,
           durationMs,
         }],

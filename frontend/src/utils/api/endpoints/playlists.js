@@ -7,19 +7,19 @@ import {
 } from "../core.js";
 import { queryClient, queryKeys } from "../../../queryClient.js";
 
-export const getFlowTrackStreamUrl = (jobId) =>
+export const getPlaylistTrackStreamUrl = (jobId) =>
   buildAuthenticatedApiUrl(`/playlists/stream/${encodeURIComponent(jobId)}`);
 
 export const getStagingStreamUrl = (jobId) =>
   buildAuthenticatedApiUrl(`/playlists/staging-stream/${encodeURIComponent(jobId)}`);
 
-export const getFlowArtworkUrl = (playlistId, version = "current") =>
+export const getPlaylistArtworkUrl = (playlistId, version = "current") =>
   buildAuthenticatedApiUrl(
     `/playlists/artwork/${encodeURIComponent(playlistId)}`,
     { v: version },
   );
 
-export const uploadFlowArtwork = (playlistId, file) =>
+export const uploadPlaylistArtwork = (playlistId, file) =>
   putData(
     `/playlists/artwork/${encodeURIComponent(playlistId)}`,
     file,
@@ -30,17 +30,17 @@ export const uploadFlowArtwork = (playlistId, file) =>
     },
   );
 
-export const deleteFlowArtwork = (playlistId) =>
+export const deletePlaylistArtwork = (playlistId) =>
   deleteData(
     `/playlists/artwork/${encodeURIComponent(playlistId)}`,
   );
 
-export const generateFlowArtwork = (playlistId) =>
+export const generatePlaylistArtwork = (playlistId) =>
   postData(
     `/playlists/artwork/${encodeURIComponent(playlistId)}/generate`,
   );
 
-export const getFlowStatus = ({ signal, bypassCache = false } = {}) => {
+export const getPlaylistStatus = ({ signal, bypassCache = false } = {}) => {
   if (bypassCache) return getData("/playlists/status", { signal });
   return queryClient.fetchQuery({
     queryKey: queryKeys.playlistStatus,
@@ -49,22 +49,22 @@ export const getFlowStatus = ({ signal, bypassCache = false } = {}) => {
   });
 };
 
-export const getFlowJobs = (flowId, limit = null, options = {}) => {
+export const getPlaylistJobs = (playlistId, limit = null, options = {}) => {
   const params = { ...(options.params || {}) };
   const parsedLimit = Number(limit);
   if (Number.isFinite(parsedLimit) && parsedLimit > 0) {
     params.limit = Math.floor(parsedLimit);
   }
-  return getData(`/playlists/jobs/${flowId}`, {
+  return getData(`/playlists/jobs/${playlistId}`, {
     ...options,
     params,
   });
 };
 
-export const getAllFlowJobs = (options = {}) =>
+export const getDownloadJobs = (options = {}) =>
   getData("/playlists/jobs", options);
 
-export const getFlowJobFiles = (jobId, options = {}) =>
+export const getJobFiles = (jobId, options = {}) =>
   getData(`/playlists/jobs/${encodeURIComponent(jobId)}/files`, options);
 
 export const getManualMissingSearchSources = (jobId, { mode = "missing", playlistId = null } = {}) =>
@@ -172,7 +172,7 @@ export const approveBlockedJob = (jobId) =>
 export const denyBlockedJob = (jobId) =>
   postData(`/playlists/jobs/${jobId}/deny`);
 
-export const startFlowPlaylist = (flowId, limit = 30) =>
+export const startFlow = (flowId, limit = 30) =>
   postData(`/playlists/start/${flowId}`, {
     limit,
   });

@@ -1,12 +1,12 @@
 import { Navigate, useSearchParams } from "react-router";
 import { DotLoader } from "../../components/DotLoader";
 import { flowPath, playlistPath } from "../../navigation/playlistPaths";
-import { useFlowStatus } from "./useFlowStatus";
+import { usePlaylistStatus } from "./usePlaylistStatus";
 
 export default function PlaylistRedirect() {
   const [searchParams] = useSearchParams();
   const selectedId = String(searchParams.get("selected") || "").trim();
-  const { status, loading, flows, staticPlaylists } = useFlowStatus();
+  const { status, loading, flows, staticPlaylists } = usePlaylistStatus();
 
   if (!selectedId) return <Navigate to="/library/playlists" replace />;
   if (loading && !status) {

@@ -1,6 +1,6 @@
 import { useId } from "react";
-import { DotLoader } from "../../../components/DotLoader";
-import { useModalDialog } from "../../../hooks/useModalDialog.js";
+import { DotLoader } from "./DotLoader";
+import { useModalDialog } from "../hooks/useModalDialog.js";
 
 export function ConfirmModal({
   open,

@@ -380,7 +380,7 @@ function playlistJobFromId(user, value) {
     : null;
 }
 
-const flowJobs = (flow, { includePending = false } = {}) =>
+const visiblePlaylistJobs = (flow, { includePending = false } = {}) =>
   playlistJobs(flow).filter(
     (job) => includePending || (job.status === "done" && job.finalPath),
   );
@@ -1166,9 +1166,9 @@ export function getTopSongs(artist, options = {}, user = null) {
   return library.tracks.map((track) => toSong(library, track));
 }
 
-export function getFlowPlaylists(user) {
+export function getSubsonicPlaylists(user) {
   const flows = visibleFlows(user).map((flow) => {
-    const jobs = flowJobs(flow);
+    const jobs = visiblePlaylistJobs(flow);
     const playlist = {
       id: idFor("flow", flow.id),
       name: flow.name,
@@ -1184,7 +1184,7 @@ export function getFlowPlaylists(user) {
     return playlist;
   });
   const staticPlaylists = flowPlaylistConfig.getStaticPlaylistsForUser(user).map((playlist) => {
-    const jobs = flowJobs(playlist, { includePending: true });
+    const jobs = visiblePlaylistJobs(playlist, { includePending: true });
     const value = {
       id: idFor("shared", playlist.id),
       name: playlist.name,
@@ -1202,12 +1202,12 @@ export function getFlowPlaylists(user) {
   return [...flows, ...staticPlaylists];
 }
 
-export function getFlowPlaylist(value, user) {
+export function getSubsonicPlaylist(value, user) {
   const parsed = parseId(value);
   const kind = parsed?.kind === "shared" ? "shared" : "flow";
   const playlist = playlistFromId(user, value);
   if (!playlist) return null;
-  const jobs = flowJobs(playlist);
+  const jobs = visiblePlaylistJobs(playlist);
   const starredAt = starredAtFor(user);
   const owned = resolveCanonicalTracks(jobs.map((job) => trackFromJob(job)));
   return {

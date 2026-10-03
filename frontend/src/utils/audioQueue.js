@@ -85,7 +85,7 @@ export function normalizeQueueTrack(track, overrides = {}) {
   };
 }
 
-export function normalizeFlowTrack(track, overrides = {}) {
+export function normalizePlaylistQueueTrack(track, overrides = {}) {
   return normalizeQueueTrack({
     id: track.id,
     title: track.trackName,

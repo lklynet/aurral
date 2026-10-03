@@ -5,7 +5,7 @@ import TooltipButton from "../components/TooltipButton";
 import { useAuth } from "../contexts/AuthContext";
 import { useModalDialog } from "../hooks/useModalDialog.js";
 import { getLibraryTrackFiles } from "../utils/api/endpoints/library.js";
-import { getFlowJobFiles } from "../utils/api/endpoints/playlists.js";
+import { getJobFiles } from "../utils/api/endpoints/playlists.js";
 
 const text = (value) => String(value ?? "").trim();
 
@@ -124,7 +124,7 @@ export default function LibraryInfoModal({ item, onClose }) {
   const pathsQuery = useQuery({
     queryKey: ["track-files", item?.source || "library", trackId],
     queryFn: ({ signal }) =>
-      (item.source === "playlist" ? getFlowJobFiles : getLibraryTrackFiles)(trackId, { signal }),
+      (item.source === "playlist" ? getJobFiles : getLibraryTrackFiles)(trackId, { signal }),
     enabled: showPaths,
     staleTime: 30_000,
   });

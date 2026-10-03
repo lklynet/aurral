@@ -2,24 +2,24 @@ import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Circle, CircleDot, Square, SquareCheck } from "lucide-react";
 import {
-  getFlowArtworkUrl,
-  getFlowJobs,
-  getFlowTrackStreamUrl,
+  getPlaylistArtworkUrl,
+  getPlaylistJobs,
+  getPlaylistTrackStreamUrl,
 } from "../../utils/api/endpoints/playlists.js";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import {
   buildStaticTracklistPayload,
-  downloadFlowShareBundle,
+  downloadTracklistFile,
   formatNextRun,
   slugifyFilePart,
 } from "./flowPageUtils";
-import { getPlaylistRunActivity } from "./flowRunActivity";
+import { getPlaylistRunActivity } from "./playlistRunActivity";
 import lastfmLogo from "../../../images/logos/last-fm-color.svg";
 import listenbrainzLogo from "../../../images/logos/listenbrainz-color.svg";
 import spotifyLogo from "../../../images/logos/spotify-color.svg";
 import youtubeMusicLogo from "../../../images/logos/youtube-music-color.svg";
 import deezerLogo from "../../../images/logos/deezer-color.svg";
-import { formatTrackCountLabel, isEditorialFlow } from "./flowStats";
+import { formatTrackCountLabel, isEditorialFlow } from "./playlistStats";
 
 export const SYNCABLE_IMPORT_PROVIDERS = new Set([
   "spotify-playlist",
@@ -90,19 +90,19 @@ export const getFlowActivityMessage = ({ flow, status, stats, rerunning = false 
     rerunning,
   })?.message || null;
 
-const normalizeFlowJobs = (jobs) =>
+const normalizePlaylistJobs = (jobs) =>
   (Array.isArray(jobs) ? jobs : []).map((job) => ({
     ...job,
     albumName: job?.albumName || null,
     reason: job?.reason || null,
-    streamUrl: job?.status === "done" && job?.id ? getFlowTrackStreamUrl(job.id) : null,
+    streamUrl: job?.status === "done" && job?.id ? getPlaylistTrackStreamUrl(job.id) : null,
   }));
 
 export function usePlaylistTracks(playlistId, { pollAvailability = false } = {}) {
   const queryKey = queryKeys.playlistJobs(playlistId);
   const query = useQuery({
     queryKey,
-    queryFn: ({ signal }) => getFlowJobs(playlistId, null, { signal }).then(normalizeFlowJobs),
+    queryFn: ({ signal }) => getPlaylistJobs(playlistId, null, { signal }).then(normalizePlaylistJobs),
     enabled: Boolean(playlistId),
     staleTime: 15_000,
     refetchInterval: (currentQuery) => {
@@ -145,7 +145,7 @@ export function exportPlaylistTracklist(entry, jobs, { sourceFlowId = null } = {
   if (tracks.length === 0) {
     throw new Error("No tracks available to export yet");
   }
-  downloadFlowShareBundle(
+  downloadTracklistFile(
     `aurral-tracklist-${slugifyFilePart(entry.name)}.json`,
     buildStaticTracklistPayload({
       name: entry.name,
@@ -165,7 +165,7 @@ export function usePlaylistArtwork() {
     gcTime: Infinity,
   });
   const artworkUrlFor = useCallback(
-    (playlistId) => getFlowArtworkUrl(playlistId, revisions[playlistId]),
+    (playlistId) => getPlaylistArtworkUrl(playlistId, revisions[playlistId]),
     [revisions],
   );
   const bumpArtwork = useCallback((playlistId) => {

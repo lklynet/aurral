@@ -9,8 +9,8 @@ import {
   getAlbumList,
   getArtist,
   getArtistInfo,
-  getFlowPlaylist,
-  getFlowPlaylists,
+  getSubsonicPlaylist,
+  getSubsonicPlaylists,
   getLibraryLastModified,
   getGenres,
   getMusicDirectory,
@@ -450,7 +450,7 @@ async function handleSubsonicRequest(req, res) {
     });
   }
   if (method === "getplaylists") {
-    return sendResponse(res, format, "ok", null, { playlists: { playlist: getFlowPlaylists(user) } });
+    return sendResponse(res, format, "ok", null, { playlists: { playlist: getSubsonicPlaylists(user) } });
   }
   if (method === "createplaylist") {
     const playlistId = getParameter(req, "playlistId");
@@ -474,7 +474,7 @@ async function handleSubsonicRequest(req, res) {
           });
       if (!playlist) return sendError(res, format, 70, "Requested data was not found");
       return sendResponse(res, format, "ok", null, {
-        playlist: getFlowPlaylist(`shared:${encodeURIComponent(playlist.id)}`, user),
+        playlist: getSubsonicPlaylist(`shared:${encodeURIComponent(playlist.id)}`, user),
       });
     } catch (error) {
       if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
@@ -511,7 +511,7 @@ async function handleSubsonicRequest(req, res) {
     });
   }
   if (method === "getplaylist") {
-    const playlist = getFlowPlaylist(getParameter(req, "id"), user);
+    const playlist = getSubsonicPlaylist(getParameter(req, "id"), user);
     return playlist
       ? sendResponse(res, format, "ok", null, { playlist })
       : sendError(res, format, 70, "Requested data was not found");

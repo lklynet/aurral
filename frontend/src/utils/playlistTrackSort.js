@@ -13,7 +13,7 @@ const compareText = (left, right) =>
 
 const statusRank = (status) => STATUS_SORT_ORDER[String(status || "").toLowerCase()] ?? 99;
 
-export function sortFlowTracks(tracks, sortKey, sortDirection) {
+export function sortPlaylistTracks(tracks, sortKey, sortDirection) {
   const originalIndexById = new Map(tracks.map((track, index) => [track.id, index]));
   const direction = sortDirection === "desc" ? -1 : 1;
 
@@ -49,7 +49,7 @@ export function sortFlowTracks(tracks, sortKey, sortDirection) {
   });
 }
 
-export function getFlowTrackDisplayNumber(
+export function getPlaylistTrackDisplayNumber(
   track,
   { tracks, sortedTracks, sortedIndex, sortKey, sortDirection },
 ) {

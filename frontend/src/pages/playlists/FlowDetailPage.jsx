@@ -12,19 +12,19 @@ import {
   convertFlowToStaticPlaylist,
   deleteFlow,
   getFlowLidarrImportListUrl,
-  startFlowPlaylist,
+  startFlow,
   updateFlow,
 } from "../../utils/api/endpoints/playlists.js";
 import { getApiErrorMessage } from "../onboardingUtils.jsx";
-import { ConfirmModal } from "./flowComponents/ConfirmModal.jsx";
-import { PlaylistArtworkThumb } from "./flowComponents/PlaylistArtworkThumb.jsx";
+import { ConfirmModal } from "../../components/ConfirmModal.jsx";
+import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.jsx";
 import { FlowEnabledSwitch } from "./FlowEnabledSwitch.jsx";
 import {
   formatFlowLastRun,
   getFlowDisplayTrackCount,
   isEditorialFlow,
   isReleaseRadarFlow,
-} from "./flowStats";
+} from "./playlistStats";
 import {
   buildFlowFromForm,
   buildReleaseRadarFlowFromForm,
@@ -34,11 +34,11 @@ import {
   isScheduleOnlyFlowDirty,
   normalizeMixPercent,
   normalizeNameKey,
-  reserveUniqueFlowName,
+  reserveUniqueName,
 } from "./flowPageUtils";
 import { PlaylistEditModal } from "./PlaylistEditModal.jsx";
 import { PlaylistTracks } from "./PlaylistTracks.jsx";
-import { useFlowTrackPlayback } from "./flowComponents/flowTrackComponents.jsx";
+import { usePlaylistTrackPlayback } from "./components/playlistTrackComponents.jsx";
 import {
   describeFlowSchedule,
   formatFlowTrackLabel,
@@ -47,14 +47,14 @@ import {
   optionMenuItem,
   usePlaylistArtwork,
   usePlaylistTracks,
-} from "./playlistShared";
-import { useFlowStatus } from "./useFlowStatus";
+} from "./playlistPageUtils";
+import { usePlaylistStatus } from "./usePlaylistStatus";
 
 const FlowFormFields = lazy(() =>
-  import("./flowComponents/flowFormComponents.jsx").then((m) => ({ default: m.FlowFormFields })),
+  import("./components/flowFormComponents.jsx").then((m) => ({ default: m.FlowFormFields })),
 );
 const ReleaseRadarRecipeFields = lazy(() =>
-  import("./flowComponents/flowFormComponents.jsx").then((m) => ({
+  import("./components/flowFormComponents.jsx").then((m) => ({
     default: m.ReleaseRadarRecipeFields,
   })),
 );
@@ -66,7 +66,7 @@ const DETAIL_TABS = [
 
 export default function FlowDetailPage() {
   const { flowId } = useParams();
-  const { status, loading, error, fetchStatus, flows } = useFlowStatus();
+  const { status, loading, error, fetchStatus, flows } = usePlaylistStatus();
   const flow = flows.find((entry) => entry.id === flowId) || null;
   useDocumentTitle(flow?.name || "Flow");
 
@@ -109,14 +109,14 @@ function FlowDetail({ flow }) {
   const location = useLocation();
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
-  const { status, fetchStatus, getPlaylistStats, countdownNow, staticPlaylists } = useFlowStatus();
+  const { status, fetchStatus, getPlaylistStats, countdownNow, staticPlaylists } = usePlaylistStatus();
   const { artworkUrlFor } = usePlaylistArtwork();
   const { tracks, loading, error, refresh } = usePlaylistTracks(flow.id);
   const [tab, setTab] = useState(location.state?.tab === "recipe" ? "recipe" : "tracks");
   const [draft, setDraft] = useState(() => flowToForm(flow));
   const [recipeError, setRecipeError] = useState("");
   const [savingRecipe, setSavingRecipe] = useState(false);
-  const playback = useFlowTrackPlayback({
+  const playback = usePlaylistTrackPlayback({
     tracks,
     playbackSource: {
       type: "flow",
@@ -154,7 +154,7 @@ function FlowDetail({ flow }) {
   const handleRunNow = async () => {
     setRunning(true);
     try {
-      const response = await startFlowPlaylist(flow.id, flow.size);
+      const response = await startFlow(flow.id, flow.size);
       const queued = Number(response?.tracksQueued || 0);
       showSuccess(queued > 0 ? `${flow.name} queued ${queued} tracks` : `${flow.name} run started`);
       await fetchStatus();
@@ -229,7 +229,7 @@ function FlowDetail({ flow }) {
         staticPlaylists.map((playlist) => normalizeNameKey(playlist?.name)).filter(Boolean),
       );
       const response = await convertFlowToStaticPlaylist(flow.id, {
-        name: reserveUniqueFlowName(reservedNames, `${flow.name} Static`),
+        name: reserveUniqueName(reservedNames, `${flow.name} Static`),
       });
       showSuccess(`Saved ${flow.name} as ${response?.playlist?.name || "a playlist"}`);
       await fetchStatus();

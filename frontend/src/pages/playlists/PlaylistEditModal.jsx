@@ -2,11 +2,11 @@ import { useState } from "react";
 import { RenamePlaylistModal } from "../../components/PlaylistModals";
 import { useToast } from "../../contexts/ToastContext";
 import {
-  deleteFlowArtwork,
-  generateFlowArtwork,
-  uploadFlowArtwork,
+  deletePlaylistArtwork,
+  generatePlaylistArtwork,
+  uploadPlaylistArtwork,
 } from "../../utils/api/endpoints/playlists.js";
-import { usePlaylistArtwork } from "./playlistShared";
+import { usePlaylistArtwork } from "./playlistPageUtils";
 
 export function PlaylistEditModal({ entry, title, open, saving, error, onClose, onRename }) {
   const { showSuccess, showError } = useToast();
@@ -50,16 +50,16 @@ export function PlaylistEditModal({ entry, title, open, saving, error, onClose, 
       onUpload={(file) =>
         file &&
         runCoverAction(
-          (id) => uploadFlowArtwork(id, file),
+          (id) => uploadPlaylistArtwork(id, file),
           "Cover updated",
           "Failed to upload cover",
         )
       }
       onRemoveCover={() =>
-        runCoverAction(deleteFlowArtwork, "Cover removed", "Failed to remove cover")
+        runCoverAction(deletePlaylistArtwork, "Cover removed", "Failed to remove cover")
       }
       onGenerateCover={() =>
-        runCoverAction(generateFlowArtwork, "Cover generated", "Failed to generate cover")
+        runCoverAction(generatePlaylistArtwork, "Cover generated", "Failed to generate cover")
       }
     />
   );

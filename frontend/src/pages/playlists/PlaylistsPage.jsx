@@ -9,16 +9,16 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { createStaticPlaylist } from "../../utils/api/endpoints/playlists.js";
-import { PlaylistArtworkThumb } from "./flowComponents/PlaylistArtworkThumb.jsx";
-import { getStaticPlaylistTrackCount } from "./flowStats";
-import { normalizeNameKey, reserveUniqueFlowName } from "./flowPageUtils";
+import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.jsx";
+import { getStaticPlaylistTrackCount } from "./playlistStats";
+import { normalizeNameKey, reserveUniqueName } from "./flowPageUtils";
 import {
   formatTrackTotal,
   getImportedProviderLabel,
   getImportedProviderLogo,
   usePlaylistArtwork,
-} from "./playlistShared";
-import { useFlowStatus } from "./useFlowStatus";
+} from "./playlistPageUtils";
+import { usePlaylistStatus } from "./usePlaylistStatus";
 import { playlistPath } from "../../navigation/playlistPaths";
 
 const PlaylistImportModal = lazy(() =>
@@ -46,7 +46,7 @@ export default function PlaylistsPage() {
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
   const { status, loading, error, fetchStatus, getPlaylistStats, staticPlaylists } =
-    useFlowStatus();
+    usePlaylistStatus();
   const { artworkUrlFor } = usePlaylistArtwork();
   const [importOpen, setImportOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -199,7 +199,7 @@ export default function PlaylistsPage() {
       <div className="native-library-content">{renderContent()}</div>
       <CreatePlaylistModal
         open={createOpen}
-        defaultName={reserveUniqueFlowName(
+        defaultName={reserveUniqueName(
           new Set(staticPlaylists.map((playlist) => normalizeNameKey(playlist?.name)).filter(Boolean)),
           "Playlist",
         )}

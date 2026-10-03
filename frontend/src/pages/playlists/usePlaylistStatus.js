@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { sanitizeFlowStats, EMPTY_FLOW_STATS, getPlaylistStateFromStats } from "./flowStats";
+import { sanitizePlaylistStats, EMPTY_PLAYLIST_STATS, getPlaylistStateFromStats } from "./playlistStats";
 import { usePlaylistStatusQuery } from "./usePlaylistStatusQuery";
 
-export function useFlowStatus() {
+export function usePlaylistStatus() {
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const { data: status, isPending: loading, error, fetchStatus } = usePlaylistStatusQuery();
 
@@ -12,17 +12,17 @@ export function useFlowStatus() {
   }, []);
 
   const getPlaylistStats = useCallback(
-    (flowId) =>
-      sanitizeFlowStats(
-        status?.flowStats?.[flowId] ||
-          status?.sharedPlaylistStats?.[flowId] ||
-          EMPTY_FLOW_STATS,
+    (playlistId) =>
+      sanitizePlaylistStats(
+        status?.flowStats?.[playlistId] ||
+          status?.sharedPlaylistStats?.[playlistId] ||
+          EMPTY_PLAYLIST_STATS,
       ),
     [status?.flowStats, status?.sharedPlaylistStats],
   );
 
   const getPlaylistState = useCallback(
-    (flowId) => getPlaylistStateFromStats(getPlaylistStats(flowId)),
+    (playlistId) => getPlaylistStateFromStats(getPlaylistStats(playlistId)),
     [getPlaylistStats],
   );
 

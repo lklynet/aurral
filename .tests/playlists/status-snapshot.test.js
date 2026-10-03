@@ -7,7 +7,7 @@ import {
   importFromRepo,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
-import { getStaticPlaylistTrackCount } from "../../frontend/src/pages/flows/flowStats.js";
+import { getStaticPlaylistTrackCount } from "../../frontend/src/pages/playlists/playlistStats.js";
 
 const [isolatedState, { db }, { dbOps }, { flowPlaylistConfig }, snapshotModule] =
   await setupIsolatedBackend(

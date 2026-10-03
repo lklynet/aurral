@@ -1,4 +1,4 @@
-import { PlaylistBulkActionsProvider } from "./pages/flows/usePlaylistBulkActions.js";
+import { PlaylistBulkActionsProvider } from "./pages/playlists/usePlaylistBulkActions.js";
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from "react-router";
 import { useState, useEffect, Suspense, lazy, useRef } from "react";
 import Layout from "./components/Layout";
@@ -48,11 +48,11 @@ const ArtistDetailsPage = lazy(() => import("./pages/ArtistDetails/ArtistDetails
 const ArtistReleaseListPage = lazy(() => import("./pages/ArtistDetails/ArtistReleaseListPage"));
 const ReleasePage = lazy(() => import("./pages/ArtistDetails/ReleasePage"));
 const ActivityPage = lazy(() => import("./pages/ActivityPage"));
-const PlaylistsPage = lazy(() => import("./pages/flows/PlaylistsPage"));
-const PlaylistDetailPage = lazy(() => import("./pages/flows/PlaylistDetailPage"));
-const FlowsPage = lazy(() => import("./pages/flows/FlowsPage"));
-const FlowDetailPage = lazy(() => import("./pages/flows/FlowDetailPage"));
-const PlaylistRedirect = lazy(() => import("./pages/flows/PlaylistRedirect"));
+const PlaylistsPage = lazy(() => import("./pages/playlists/PlaylistsPage"));
+const PlaylistDetailPage = lazy(() => import("./pages/playlists/PlaylistDetailPage"));
+const FlowsPage = lazy(() => import("./pages/playlists/FlowsPage"));
+const FlowDetailPage = lazy(() => import("./pages/playlists/FlowDetailPage"));
+const PlaylistRedirect = lazy(() => import("./pages/playlists/PlaylistRedirect"));
 const DiscoverPlaylistsPage = lazy(() => import("./pages/DiscoverPlaylistsPage"));
 const EditorialPlaylistDetailPage = lazy(() => import("./pages/EditorialPlaylistDetailPage"));
 const NewsPage = lazy(() => import("./pages/NewsPage"));

@@ -9,17 +9,17 @@ import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { createFlow, getFlowTemplates } from "../../utils/api/endpoints/playlists.js";
 import { queryKeys } from "../../queryClient.js";
-import { PlaylistArtworkThumb } from "./flowComponents/PlaylistArtworkThumb.jsx";
+import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.jsx";
 import { FlowEnabledSwitch } from "./FlowEnabledSwitch.jsx";
-import { getFlowDisplayTrackCount } from "./flowStats";
+import { getFlowDisplayTrackCount } from "./playlistStats";
 import { NEW_FLOW_TEMPLATE, buildFlowFromForm, flowToForm, getNextFlowName } from "./flowPageUtils";
 import {
   describeFlowSchedule,
   formatFlowTrackLabel,
   getFlowActivityMessage,
   usePlaylistArtwork,
-} from "./playlistShared";
-import { useFlowStatus } from "./useFlowStatus";
+} from "./playlistPageUtils";
+import { usePlaylistStatus } from "./usePlaylistStatus";
 import { flowPath } from "../../navigation/playlistPaths";
 
 export default function FlowsPage() {
@@ -28,7 +28,7 @@ export default function FlowsPage() {
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
   const { status, loading, error, fetchStatus, getPlaylistStats, countdownNow, flows } =
-    useFlowStatus();
+    usePlaylistStatus();
   const { artworkUrlFor } = usePlaylistArtwork();
   const [creating, setCreating] = useState(false);
   const canCreate = Object.keys(status?.capabilities?.unavailableSources || {}).length === 0;

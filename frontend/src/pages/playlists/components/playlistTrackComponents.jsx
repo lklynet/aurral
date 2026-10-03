@@ -17,10 +17,10 @@ import {
 import { DotLoader, DownloadingIcon } from "../../../components/DotLoader";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import TooltipButton from "../../../components/TooltipButton";
-import { getFlowTrackDisplayNumber, sortFlowTracks } from "../../../utils/flowTrackSort";
+import { getPlaylistTrackDisplayNumber, sortPlaylistTracks } from "../../../utils/playlistTrackSort";
 import { Link } from "react-router";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
-import { normalizeFlowTrack } from "../../../utils/audioQueue";
+import { normalizePlaylistQueueTrack } from "../../../utils/audioQueue";
 import { TrackPlaylistMenu, TrackPlaylistSubmenu } from "../../ArtistDetails/components/TrackPlaylistMenu";
 import { LibraryItemMenu } from "../../../components/LibraryItemMenu";
 import { TrackList } from "../../../components/TrackList";
@@ -106,7 +106,7 @@ function BulkPlaylistAction({
   );
 }
 
-function FlowTrackKebabMenu({
+function PlaylistTrackKebabMenu({
   track,
   canPlay = false,
   isPlaying = false,
@@ -336,19 +336,19 @@ function TrackStatusDot({ status }) {
 
 
 
-export function useFlowTrackPlayback({ tracks, playbackSource }) {
+export function usePlaylistTrackPlayback({ tracks, playbackSource }) {
   const recordHistory = playbackSource?.recordHistory !== false;
   const getQueueTracks = useCallback(
     () =>
       tracks
         .filter((track) => track.status === "done" && track.streamUrl)
-        .map((track) => normalizeFlowTrack(track, { recordHistory })),
+        .map((track) => normalizePlaylistQueueTrack(track, { recordHistory })),
     [recordHistory, tracks],
   );
   return useAlbumTrackListToolbar({ getQueueTracks, playbackSource });
 }
 
-export function FlowTracksPanel({
+export function PlaylistTracksPanel({
   label = "Tracks",
   tracks,
   loading,
@@ -408,7 +408,7 @@ export function FlowTracksPanel({
     useAudioQueue();
 
   const sortedTracks = useMemo(
-    () => sortFlowTracks(tracks, sortKey, sortDirection),
+    () => sortPlaylistTracks(tracks, sortKey, sortDirection),
     [tracks, sortKey, sortDirection],
   );
   const activeReplacementTrackIds = useMemo(
@@ -456,9 +456,9 @@ export function FlowTracksPanel({
       togglePlayPause();
       return;
     }
-    playTrack(normalizeFlowTrack(track, { recordHistory }), {
+    playTrack(normalizePlaylistQueueTrack(track, { recordHistory }), {
       source: playbackSource,
-      queue: playableTracks.map((entry) => normalizeFlowTrack(entry, { recordHistory })),
+      queue: playableTracks.map((entry) => normalizePlaylistQueueTrack(entry, { recordHistory })),
       shuffle: isShuffleEnabled,
     });
   };
@@ -508,7 +508,7 @@ export function FlowTracksPanel({
       : null;
     return {
       key: track.id,
-      number: getFlowTrackDisplayNumber(track, {
+      number: getPlaylistTrackDisplayNumber(track, {
         tracks,
         sortedTracks,
         sortedIndex: index,
@@ -563,7 +563,7 @@ export function FlowTracksPanel({
           return next;
         }),
       menuElement: (
-        <FlowTrackKebabMenu
+        <PlaylistTrackKebabMenu
           track={track}
           canPlay={canPlay}
           isPlaying={isCurrent && isPlaying}

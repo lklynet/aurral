@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getFlowStatus } from "../utils/api/endpoints/playlists.js";
+import { getPlaylistStatus } from "../utils/api/endpoints/playlists.js";
 import { useToast } from "../contexts/ToastContext";
 import { queryClient, queryKeys } from "../queryClient.js";
 
@@ -9,7 +9,7 @@ export function useStaticPlaylists() {
   const [playlistsError, setPlaylistsError] = useState("");
   const query = useQuery({
     queryKey: queryKeys.playlistStatus,
-    queryFn: ({ signal }) => getFlowStatus({ signal, bypassCache: true }),
+    queryFn: ({ signal }) => getPlaylistStatus({ signal, bypassCache: true }),
     staleTime: 4_000,
   });
   const staticPlaylists = Array.isArray(query.data?.sharedPlaylists)

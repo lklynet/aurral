@@ -23,7 +23,7 @@ import {
 } from "../../../utils/api/endpoints/playlists.js";
 import { getMyListeningHistory, getScrobbleStatus } from "../../../utils/api/endpoints/auth.js";
 import { getAppBasePath, normalizeBasePathWithTrailingSlash } from "../../../utils/basePath";
-import { parseFlowImportFile, reserveUniqueFlowName, normalizeNameKey } from "../flowPageUtils";
+import { parseTracklistImportFile, reserveUniqueName, normalizeNameKey } from "../flowPageUtils";
 
 const SYNC_INTERVAL_OPTIONS = [
   { value: 0, label: "None" },
@@ -602,7 +602,7 @@ export function PlaylistImportModal({
     if (!file) return;
     try {
       const content = await file.text();
-      const flows = parseFlowImportFile(content).map((flow) => ({
+      const flows = parseTracklistImportFile(content).map((flow) => ({
         ...flow,
         importName: flow?.name || "",
       }));
@@ -622,7 +622,7 @@ export function PlaylistImportModal({
       return;
     }
     const reservedNames = new Set(reservedNameKeys);
-    const finalName = reserveUniqueFlowName(reservedNames, baseName);
+    const finalName = reserveUniqueName(reservedNames, baseName);
     const isListenBrainz = source === "listenbrainz";
     const isLastfm = source === "lastfm";
     const isYoutube = source === "youtube";
@@ -680,7 +680,7 @@ export function PlaylistImportModal({
     for (const payload of jsonReview.flows) {
       const desiredName = String(payload?.importName ?? payload?.name ?? "").trim();
       const baseName = desiredName || String(payload?.name || "").trim();
-      const finalName = reserveUniqueFlowName(reservedNames, baseName);
+      const finalName = reserveUniqueName(reservedNames, baseName);
       try {
         await importStaticPlaylist({
           name: finalName,

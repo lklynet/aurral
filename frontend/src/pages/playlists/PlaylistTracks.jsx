@@ -26,14 +26,14 @@ import {
 } from "../../utils/libraryTrackNavigation.js";
 import { useToast } from "../../contexts/ToastContext";
 import { queryClient, queryKeys } from "../../queryClient.js";
-import { FlowTracksPanel } from "./flowComponents/flowTrackComponents.jsx";
+import { PlaylistTracksPanel } from "./components/playlistTrackComponents.jsx";
 import ManualMissingSearchModal from "../activity/ManualMissingSearchModal.jsx";
 import LibraryInfoModal from "../LibraryInfoModal.jsx";
 import { getTrackSearchAction } from "./trackAvailability.js";
 import {
   normalizeNameKey,
   normalizePlaylistTrackEntry,
-  reserveUniqueFlowName,
+  reserveUniqueName,
 } from "./flowPageUtils";
 
 const errorMessage = (err, fallback) =>
@@ -118,7 +118,7 @@ export function PlaylistTracks({
   }, [tracks]);
 
   const getNextPlaylistName = (baseName) =>
-    reserveUniqueFlowName(
+    reserveUniqueName(
       new Set(staticPlaylists.map((playlist) => normalizeNameKey(playlist?.name)).filter(Boolean)),
       baseName,
     );
@@ -387,7 +387,7 @@ export function PlaylistTracks({
 
   return (
     <>
-      <FlowTracksPanel
+      <PlaylistTracksPanel
         label={`${entry.name || "Playlist"} tracks`}
         showTrackStatus={isFlow}
         tracks={tracks}

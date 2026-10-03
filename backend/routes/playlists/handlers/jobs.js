@@ -111,9 +111,9 @@ export function registerJobs(router) {
     res.json(getPlaylistStatusSnapshot({ user: req.user }));
   });
 
-  router.get("/jobs/:flowId", noCache, async (req, res) => {
-    const { flowId } = req.params;
-    if (!canAccessPlaylistType(req.user, flowId)) {
+  router.get("/jobs/:playlistId", noCache, async (req, res) => {
+    const { playlistId } = req.params;
+    if (!canAccessPlaylistType(req.user, playlistId)) {
       return res.status(404).json({ error: "Playlist not found" });
     }
     const rawLimit =
@@ -123,10 +123,10 @@ export function registerJobs(router) {
       rawLimit && Number.isFinite(parsedLimit) && parsedLimit > 0
         ? Math.floor(parsedLimit)
         : null;
-    const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(flowId);
+    const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(playlistId);
     const staticPlaylistTracks = staticPlaylist?.tracks;
     let jobs = downloadTracker.getByPlaylistType(
-      flowId,
+      playlistId,
       staticPlaylistTracks?.length ? null : limit,
     );
     if (staticPlaylistTracks?.length) {
@@ -142,8 +142,8 @@ export function registerJobs(router) {
       jobs = orderJobsByPlaylistTracks(jobs, staticPlaylistTracks);
       if (limit != null) jobs = jobs.slice(0, limit);
       jobs = jobs.map((job) =>
-        referencedJobIds.has(job.id) && job.playlistType !== flowId
-          ? { ...job, playlistId: flowId, playlistType: flowId }
+        referencedJobIds.has(job.id) && job.playlistType !== playlistId
+          ? { ...job, playlistId: playlistId, playlistType: playlistId }
           : job,
       );
     }

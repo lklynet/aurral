@@ -5,7 +5,7 @@ import {
   getTrackAvailability,
   getTrackSearchAction,
   shouldShowAddToLibrary,
-} from "../../frontend/src/pages/flows/trackAvailability.js";
+} from "../../frontend/src/pages/playlists/trackAvailability.js";
 
 test("availability counts playable completed tracks, including tracks reused from another playlist", () => {
   const tracks = [

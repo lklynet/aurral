@@ -2,7 +2,7 @@ import { useState } from "react";
 import PillToggle from "../../components/PillToggle";
 import { useToast } from "../../contexts/ToastContext";
 import { setFlowEnabled } from "../../utils/api/endpoints/playlists.js";
-import { ConfirmModal } from "./flowComponents/ConfirmModal.jsx";
+import { ConfirmModal } from "../../components/ConfirmModal.jsx";
 
 export function FlowEnabledSwitch({ flow, onChanged }) {
   const { showSuccess, showError } = useToast();

@@ -8,7 +8,7 @@ import {
   createStaticPlaylist,
 } from "../utils/api/endpoints/playlists.js";
 import { reserveUniquePlaylistName } from "./ArtistDetails/utils";
-import { normalizePlaylistTrackEntry } from "./flows/flowPageUtils";
+import { normalizePlaylistTrackEntry } from "./playlists/flowPageUtils";
 import { getApiErrorMessage } from "./onboardingUtils";
 
 export function useTrackSaveActions() {

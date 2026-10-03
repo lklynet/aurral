@@ -15,8 +15,8 @@ import { queryClient, queryKeys } from "../queryClient.js";
 import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../components/CollectionHeader";
 import TooltipButton from "../components/TooltipButton";
 import { DotLoader } from "../components/DotLoader";
-import { FlowTracksPanel, useFlowTrackPlayback } from "./flows/flowComponents/flowTrackComponents.jsx";
-import { formatTrackTotal } from "./flows/playlistShared";
+import { PlaylistTracksPanel, usePlaylistTrackPlayback } from "./playlists/components/playlistTrackComponents.jsx";
+import { formatTrackTotal } from "./playlists/playlistPageUtils";
 import { getApiErrorMessage } from "./onboardingUtils";
 import { playlistPath } from "../navigation/playlistPaths";
 import { useTrackSaveActions } from "./useTrackSaveActions";
@@ -65,7 +65,7 @@ export default function EditorialPlaylistDetailPage() {
     }),
     [playlist?.name, playlistId],
   );
-  const playback = useFlowTrackPlayback({ tracks, playbackSource });
+  const playback = usePlaylistTrackPlayback({ tracks, playbackSource });
   const trackSaveActions = useTrackSaveActions();
 
   const openTrackLink = async (track, kind) => {
@@ -218,7 +218,7 @@ export default function EditorialPlaylistDetailPage() {
           </>
         }
       />
-      <FlowTracksPanel
+      <PlaylistTracksPanel
         label={`${playlist.name} tracks`}
         tracks={tracks}
         loading={false}
