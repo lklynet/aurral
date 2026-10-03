@@ -4,16 +4,7 @@ import {
   addDiscoveryFeedback,
   removeDiscoveryFeedback,
   resetDiscoveryFeedback,
-  requestUserDiscoveryRefresh,
 } from "../../../services/discovery/index.js";
-
-const FEEDBACK_REFRESH_DELAY_SECONDS = 60;
-
-const refreshAfterFeedback = (userId) =>
-  requestUserDiscoveryRefresh(userId, {
-    reason: "feedback",
-    delaySeconds: FEEDBACK_REFRESH_DELAY_SECONDS,
-  });
 
 export function registerFeedback(router) {
   router.get("/feedback", requireAuth, (req, res) => {
@@ -25,7 +16,6 @@ export function registerFeedback(router) {
   router.post("/feedback", requireAuth, (req, res) => {
     try {
       const feedback = addDiscoveryFeedback(req.user.id, req.body || {});
-      refreshAfterFeedback(req.user.id);
       res.json({
         success: true,
         feedback,
@@ -41,7 +31,6 @@ export function registerFeedback(router) {
 
   router.delete("/feedback/:id", requireAuth, (req, res) => {
     const feedbackList = removeDiscoveryFeedback(req.user.id, req.params.id);
-    refreshAfterFeedback(req.user.id);
     res.json({
       success: true,
       feedbackList,
@@ -50,7 +39,6 @@ export function registerFeedback(router) {
 
   router.post("/feedback/reset", requireAuth, (req, res) => {
     const feedbackList = resetDiscoveryFeedback(req.user.id);
-    refreshAfterFeedback(req.user.id);
     res.json({
       success: true,
       feedbackList,

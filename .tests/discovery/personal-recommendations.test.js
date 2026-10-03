@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import express from "express";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -14,6 +15,7 @@ const [
   { getUserDiscovery },
   playEvents,
   { sampleLibraryArtistsForDiscovery },
+  { default: discoveryRouter },
 ] = await setupIsolatedBackend(
   "personal-recommendations",
   "backend/config/db-sqlite.js",
@@ -22,6 +24,7 @@ const [
   "backend/services/discovery/userDiscovery.js",
   "backend/services/playEventService.js",
   "backend/services/libraryQueryService.js",
+  "backend/routes/discovery/index.js",
 );
 
 const mbid = (index) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
@@ -146,6 +149,40 @@ test("new feedback softens and hides served picks before the next refresh", asyn
   const blocked = (await getUserDiscovery(alice.id, 0)).body.recommendations.map((artist) => artist.name);
   assert.equal(blocked.includes(FROM_LIBRARY.name), false);
   discovery.removeDiscoveryFeedback(alice.id, lessLike.id);
+});
+
+test("feedback through the API waits for the next scheduled rebuild", async () => {
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    req.user = { id: alice.id, role: "user" };
+    next();
+  });
+  app.use("/api/discover", discoveryRouter);
+  const server = await new Promise((resolve) => {
+    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+  });
+  try {
+    const response = await originalFetch(
+      `http://127.0.0.1:${server.address().port}/api/discover/feedback`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ artistName: "Another Favorite", action: "more_like_this" }),
+      },
+    );
+    assert.equal(response.status, 200);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+
+  const queuedForAlice = db.prepare(
+    "SELECT payload FROM _honker_live WHERE queue = 'discovery-user-refresh'",
+  ).all().filter((row) => JSON.parse(row.payload).userId === alice.id);
+  assert.equal(queuedForAlice.length, 0);
+  assert.ok(
+    discovery.getDiscoveryFeedback(alice.id).some((entry) => entry.artistName === "Another Favorite"),
+  );
 });
 
 test("each user gets their own pool and a missing pool queues one refresh", async () => {
