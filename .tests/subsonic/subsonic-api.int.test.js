@@ -93,11 +93,10 @@ async function waitFor(check, timeoutMs = 5000) {
 test.before(async () => {
   resetDatabase(db);
   dbOps.updateSettings({
-    integrations: { general: { authUser: "alice", authPassword: "password123" } },
     security: { localNetworkBypass: { enabled: false } },
     onboardingComplete: true,
   });
-  const alice = userOps.createUser("alice", hashPassword("password123"), "admin");
+  const alice = userOps.createUser("alice", hashPassword("password123"), "admin", null, true, false, "password123");
 
   fixtureRoot = await mkdtemp(path.join(isolatedState.baseDir, ".media-"));
   fixturePath = path.join(fixtureRoot, "Canonical Artist", "Canonical Album", "01 Canonical Song.flac");
@@ -216,9 +215,7 @@ test.before(async () => {
     },
   });
   syncedFavoriteSourcePath = path.join(
-    process.env.WEEKLY_FLOW_FOLDER,
-    "aurral-weekly-flow",
-    syncedFavoritePlaylist.id,
+    process.env.DOWNLOAD_FOLDER,
     syncedFavoriteTrack.artistName,
     syncedFavoriteTrack.albumName,
     `${syncedFavoriteTrack.trackName}.flac`,
@@ -760,7 +757,7 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
   const playlist = syncedFavoritePlaylist;
   const track = playlist.tracks[0];
   const sourcePath = syncedFavoriteSourcePath;
-  const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+  const downloadRoot = process.env.DOWNLOAD_FOLDER;
   const originalStart = downloadWorker.start;
   let libraryJobId;
   try {
@@ -791,8 +788,8 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
     const updatedLibraryJob = db.prepare(
       "SELECT final_path AS finalPath FROM playlist_download_jobs WHERE id = ?",
     ).get(libraryJobId);
-    await stat(updatedLibraryJob.finalPath);
-    await assert.rejects(stat(sourcePath));
+    assert.equal(updatedLibraryJob.finalPath, sourcePath);
+    await stat(sourcePath);
   } finally {
     downloadWorker.start = originalStart;
     downloadTracker.clearByPlaylistType(playlist.id);

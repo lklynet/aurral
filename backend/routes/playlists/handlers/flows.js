@@ -1,4 +1,5 @@
 import fsp from "fs/promises";
+import path from "path";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.js";
 import { playlistManager } from "../../../services/playlists/playlistManager.js";
 import {
@@ -7,10 +8,6 @@ import {
   isRetiredFlow,
 } from "../../../services/playlists/flowPlaylistConfig.js";
 import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.js";
-import {
-  remapLegacyPath,
-} from "../../../services/downloadPaths.js";
-import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.js";
 import { schedulePlaylistMbidEnrichment } from "../../../services/playlistMbidEnrichmentService.js";
 import {
   buildLidarrImportListItems,
@@ -414,10 +411,7 @@ export function registerFlows(router) {
       });
 
       for (const job of uniqueCompletedJobs) {
-        const safeSourcePath = remapLegacyPath(
-          job.finalPath,
-          downloadWorker.downloadRoot,
-        );
+        const safeSourcePath = path.resolve(job.finalPath);
         const stat = await fsp.stat(safeSourcePath);
         if (!stat.isFile()) {
           throw new Error(`Track file is missing: ${job.finalPath}`);

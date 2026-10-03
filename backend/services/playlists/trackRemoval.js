@@ -7,7 +7,6 @@ import { flowPlaylistConfig, invalidateFlowPlaylistConfigCache, tracksShareMembe
 import { cancelDownloadWorkForJobs } from "../downloadJobs/downloadCancellationService.js";
 import { isDownloadJobCancelled, restoreDownloadJobCancellations } from "../downloadJobs/downloadCancellation.js";
 import { transferDownloadOwnershipInTransaction, replaceAlbumDownloadLeaderInTransaction } from "../downloadJobs/downloadOwnership.js";
-import { prepareRetainedPlaylistFile, commitRetainedPlaylistRelocationInTransaction } from "./mediaRelocation.js";
 import { removePlaylistFileIfUnshared } from "../downloadJobs/fileReuse.js";
 import { downloadWorker } from "../downloadJobs/downloadWorker.js";
 
@@ -88,7 +87,6 @@ export async function removeStaticPlaylistSelectionsLocked({ playlistId, selecti
   if (!playlist) throw new Error("Source playlist no longer exists");
   const removingIds = new Set(selections.filter((selection) => isStaticPlaylistSelectionCurrent(selection, playlist, downloadTracker.getJob(selection.jobId))).map((selection) => selection.jobId));
   const plans = [];
-  const preparedFiles = new Map();
   const affectedPlaylistIds = new Set();
   const outcomes = [];
   for (const selection of selections) {
@@ -109,18 +107,6 @@ export async function removeStaticPlaylistSelectionsLocked({ playlistId, selecti
       } else if (owned && target) {
         restoreDownloadJobCancellations([job.id, ...upgrades.map((entry) => entry.id)]);
       }
-      let relocation = null;
-      if (owned && job.status === "done") {
-        const otherFileJob = downloadTracker.getAll().find((entry) => !removingIds.has(entry.id) && entry.status === "done" && entry.finalPath === job.finalPath);
-        const fileTarget = target?.id || otherFileJob?.playlistType;
-        if (fileTarget) {
-          relocation = preparedFiles.get(job.finalPath);
-          if (!relocation) {
-            relocation = await prepareRetainedPlaylistFile({ jobId: job.id, sourcePlaylistId: playlistId, targetPlaylistId: fileTarget, downloadRoot: downloadWorker.downloadRoot });
-            preparedFiles.set(job.finalPath, relocation);
-          }
-        }
-      }
       affectedPlaylistIds.add(playlistId);
       if (target) {
         for (const reference of references) affectedPlaylistIds.add(reference.id);
@@ -131,7 +117,7 @@ export async function removeStaticPlaylistSelectionsLocked({ playlistId, selecti
           for (const reference of getSharedDownloadReferences(sameFileJob.id, playlistId)) affectedPlaylistIds.add(reference.id);
         }
       }
-      plans.push({ selection, job, owned, target, peer, upgrades, relocation });
+      plans.push({ selection, job, owned, target, peer, upgrades });
       outcomes.push({ jobId: selection.jobId, status: job ? "removed" : "alreadyAbsent" });
     } catch (error) {
       if (job?.playlistType === playlistId && isDownloadJobCancelled(job.id)) {
@@ -162,7 +148,6 @@ export async function removeStaticPlaylistSelectionsLocked({ playlistId, selecti
   const redirects = [];
   try {
     db.transaction(() => {
-      for (const relocation of new Set(plans.map((plan) => plan.relocation))) commitRetainedPlaylistRelocationInTransaction(relocation);
       for (const plan of plans) {
         if (!plan.owned) continue;
         if (plan.target) {
@@ -172,7 +157,7 @@ export async function removeStaticPlaylistSelectionsLocked({ playlistId, selecti
         } else {
           for (const job of [plan.job, ...plan.upgrades]) {
             if (deleteFiles && job.status === "done" && job.finalPath && !job.externalPath && job.managedBy === "aurral") {
-              dbOps.setJSONSetting(`playlistRemovedMedia:${job.id}`, { playlistId, finalPath: plan.relocation?.finalPath || job.finalPath });
+              dbOps.setJSONSetting(`playlistRemovedMedia:${job.id}`, { playlistId, finalPath: job.finalPath });
             }
             db.prepare("DELETE FROM playlist_download_jobs WHERE id = ?").run(job.id);
           }

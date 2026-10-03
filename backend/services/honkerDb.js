@@ -2,16 +2,9 @@ import fs from "fs";
 import path from "path";
 import honker from "@russellthehippo/honker-node";
 import { resolveAurralDataDir } from "../config/data-dir.js";
-import { dbOps } from "../db/helpers/index.js";
-import { resolveDownloadRoot } from "./downloadPaths.js";
+// The database startup checks must run before Honker opens the file.
+import "../config/db-sqlite.js";
 import { ISOLATED_QUEUE_GROUPS, shouldStartQueueHere } from "./backgroundWorkerQueues.js";
-
-export const PLAYLIST_STARTUP_MIGRATION_VERSION = 1;
-export const PLAYLIST_STARTUP_MIGRATION_SETTING = "playlistStartupMigration";
-export const STORED_DATA_MIGRATION_VERSION = 1;
-export const STORED_DATA_MIGRATION_SETTING = "storedDataMigration";
-export const IDENTITY_MARKER_MIGRATION_VERSION = 1;
-export const IDENTITY_MARKER_MIGRATION_SETTING = "identityMarkerMigration";
 
 export const HONKER_QUEUE_NAMES = [
   "system-task",
@@ -553,26 +546,7 @@ export function enqueueHonkerStartupTasks() {
     );
     return existing?.id || enqueueSystemTaskJob(payload, options);
   };
-  const migration = dbOps.getJSONSetting(PLAYLIST_STARTUP_MIGRATION_SETTING);
-  if (
-    migration?.version !== PLAYLIST_STARTUP_MIGRATION_VERSION ||
-    path.resolve(String(migration?.rootPath || "")) !== resolveDownloadRoot()
-  ) {
-    enqueueIfAbsent(
-      { kind: "playlist-startup-migration" },
-      { delaySeconds: 3, priority: 10 },
-    );
-  }
-  const storedData = dbOps.getJSONSetting(STORED_DATA_MIGRATION_SETTING);
-  if (storedData?.version !== STORED_DATA_MIGRATION_VERSION) {
-    enqueueIfAbsent({ kind: "stored-data-migration" }, { delaySeconds: 3, priority: 10 });
-  }
-  const identityMarkers = dbOps.getJSONSetting(IDENTITY_MARKER_MIGRATION_SETTING);
-  if (identityMarkers?.version !== IDENTITY_MARKER_MIGRATION_VERSION) {
-    enqueueIfAbsent({ kind: "identity-marker-migration" }, { delaySeconds: 30, priority: -5 });
-  }
   enqueueIfAbsent({ kind: "weekly-flow-startup-check" }, { delaySeconds: 5, priority: 5 });
-  enqueueIfAbsent({ kind: "upgrade-readiness-check" }, { delaySeconds: 60, priority: -10 });
   enqueueIfAbsent({ kind: "discovery-bootstrap" }, { delaySeconds: 15, priority: 5 });
   enqueueIfAbsent({ kind: "library-index-bootstrap" }, { delaySeconds: 8, priority: 0 });
   enqueueIfAbsent({ kind: "release-metadata-refresh" }, { delaySeconds: 12, priority: -5 });

@@ -470,7 +470,7 @@ test("library file watcher debounces library changes and ignores generated folde
     path.join(process.cwd(), "Artist/Album/track.flac"),
   ]);
 
-  onChange("change", "aurral-weekly-flow/flow/track.flac");
+  onChange("change", "_flows/flow/track.flac");
   onChange("change", "_staging/track.flac");
   await new Promise((resolve) => setTimeout(resolve, 15));
   assert.equal(scheduled, 1);

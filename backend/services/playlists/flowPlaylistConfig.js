@@ -1,9 +1,7 @@
 import { randomBytes, randomUUID } from "crypto";
 import { dbOps } from "../../db/helpers/index.js";
-import { downloadTracker } from "../downloadJobs/downloadTracker.js";
 import { getDiscoverPlaylistPreset } from "../../config/discoverPlaylistPresets.js";
 
-const LEGACY_TYPES = ["discover", "mix", "trending"];
 export const isRetiredFlow = (flow) => flow?.type === "editorial";
 export const IMPORT_SOURCE_PROVIDERS = new Set([
   "spotify-playlist",
@@ -86,21 +84,6 @@ export const resolveYearRangeUpdate = (current, updates = {}) => {
     else yearFrom = null;
   }
   return { yearFrom, yearTo };
-};
-
-export const normalizeWeightMap = (value) => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const out = {};
-  for (const [key, rawValue] of Object.entries(value)) {
-    const name = String(key || "").trim();
-    if (!name) continue;
-    const parsed = Number(rawValue);
-    if (!Number.isFinite(parsed)) continue;
-    const rounded = Math.round(parsed);
-    if (rounded <= 0) continue;
-    out[name] = rounded;
-  }
-  return out;
 };
 
 const getFlowEntryName = (value) => {
@@ -243,18 +226,8 @@ const normalizeFlow = (flow) => {
   const name = String(flow?.name || "").trim();
   const size = clampSize(flow?.size);
   const mix = normalizeMix(flow?.mix);
-  const normalizedTagsArray = normalizeStringArray(flow?.tags);
-  const normalizedRelatedArray = normalizeStringArray(flow?.relatedArtists);
-  const legacyTags = normalizeWeightMap(flow?.tags);
-  const legacyRelatedArtists = normalizeWeightMap(flow?.relatedArtists);
-  const tags =
-    normalizedTagsArray.length > 0
-      ? normalizedTagsArray
-      : Object.keys(legacyTags);
-  const relatedArtists =
-    normalizedRelatedArray.length > 0
-      ? normalizedRelatedArray
-      : Object.keys(legacyRelatedArtists);
+  const tags = normalizeStringArray(flow?.tags);
+  const relatedArtists = normalizeStringArray(flow?.relatedArtists);
   const { yearFrom, yearTo } = normalizeYearRange(flow?.yearFrom, flow?.yearTo);
   return {
     id: flow?.id || randomUUID(),
@@ -531,44 +504,8 @@ const getStoredFlows = () => {
     return cachedFlows;
   }
   flowsCachedAt = Date.now();
-  const settings = dbOps.getSettings();
-  const stored = settings.flows;
-  if (Array.isArray(stored) && stored.length > 0) {
-    const idMap = new Map();
-    let needsSave = false;
-    const nextFlows = stored.map((flow) => {
-      const currentId = flow?.id;
-      if (LEGACY_TYPES.includes(currentId)) {
-        const mapped = idMap.get(currentId) || randomUUID();
-        idMap.set(currentId, mapped);
-        needsSave = true;
-        return normalizeFlow({ ...flow, id: mapped });
-      }
-      if (!Array.isArray(flow?.scheduleDays)) needsSave = true;
-      if (normalizeScheduleTime(flow?.scheduleTime) !== flow?.scheduleTime) {
-        needsSave = true;
-      }
-      return normalizeFlow(flow);
-    });
-    if (idMap.size > 0 || needsSave) {
-      dbOps.updateSettings({
-        ...settings,
-        flows: nextFlows,
-      });
-      downloadTracker.migratePlaylistTypes(idMap);
-    }
-    cachedFlows = nextFlows;
-    return cachedFlows;
-  }
-  if (Array.isArray(stored)) {
-    cachedFlows = [];
-    return cachedFlows;
-  }
-  dbOps.updateSettings({
-    ...settings,
-    flows: [],
-  });
-  cachedFlows = [];
+  const stored = dbOps.getSettings().flows;
+  cachedFlows = Array.isArray(stored) ? stored.map((flow) => normalizeFlow(flow)) : [];
   return cachedFlows;
 };
 
@@ -693,10 +630,6 @@ export const flowPlaylistConfig = {
 
   getFlows() {
     return getStoredFlows();
-  },
-
-  saveNormalizedFlows() {
-    setFlows(getStoredFlows());
   },
 
   getFlowsForUser(user) {

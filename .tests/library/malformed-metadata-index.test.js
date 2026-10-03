@@ -7,24 +7,17 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import test from "node:test";
 
+import { SCHEMA_VERSION, createSchema } from "../../backend/config/databaseSchema.js";
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 test("malformed artist metadata does not break startup or indexed reference lookup", () => {
   const dataDir = mkdtempSync(path.join(tmpdir(), "aurral-malformed-metadata-"));
   const dbPath = path.join(dataDir, "aurral.db");
   const seedDb = new Database(dbPath);
+  createSchema(seedDb);
   seedDb.exec(`
-    CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-    CREATE TABLE library_artists (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      identity_key TEXT NOT NULL UNIQUE,
-      mbid TEXT,
-      name TEXT NOT NULL,
-      sort_name TEXT,
-      metadata_json TEXT,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
+    INSERT INTO settings (key, value) VALUES ('schemaVersion', '${SCHEMA_VERSION}');
     INSERT INTO library_artists
       (identity_key, name, metadata_json, created_at, updated_at)
     VALUES ('malformed:artist', 'Malformed Artist', '{', 1, 1);

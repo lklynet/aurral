@@ -21,8 +21,6 @@ import {
 import {
   AURRAL_FLOWS_DIR,
   isPathInsideRoot,
-  PLAYLIST_FILES_DIR,
-  remapLegacyPath,
   resolveDownloadRoot,
 } from "../downloadPaths.js";
 import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
@@ -132,17 +130,6 @@ function isFlowPlaylistType(playlistType) {
 }
 
 /**
- * Checks whether a playlist type corresponds to the library or a static playlist.
- *
- * @param {string} playlistType - Target playlist identifier.
- * @returns {boolean} True for the library and static playlists.
- */
-function usesLibraryFolders(playlistType) {
-  const key = String(playlistType || "").trim();
-  return key === "library" || Boolean(flowPlaylistConfig.getStaticPlaylist(key));
-}
-
-/**
  * Sanitizes a path segment to strip directory traversal sequences and invalid characters.
  *
  * @param {string|null|undefined} value - Raw path component.
@@ -169,38 +156,14 @@ async function findLocalExistingSource(track, options = {}) {
   if (!targetPlaylistType) return null;
 
   const root = path.resolve(options.downloadRoot || resolveDownloadRoot());
-  const ephemeral = isFlowPlaylistType(targetPlaylistType);
-  const libraryFolders = usesLibraryFolders(targetPlaylistType);
-
   const artistDir = sanitizeSafeSegment(track?.artistName, "Unknown Artist");
   const albumDir = sanitizeSafeSegment(track?.albumName, "Unknown Album");
   const expectedBaseName = sanitizeSafeSegment(track?.trackName, "Unknown Track");
+  const destinationDir = isFlowPlaylistType(targetPlaylistType)
+    ? path.resolve(root, AURRAL_FLOWS_DIR, targetPlaylistType, artistDir, albumDir)
+    : path.resolve(root, artistDir, albumDir);
 
-  // Build candidate directories.
-  // Files can land in different locations depending on playlist type
-  // and whether adoptFileIntoPlaylist has moved them.
-  const candidateDirs = [];
-
-  if (ephemeral) {
-    // Flows store files under: <root>/_flows/<flowId>/Artist/Album/
-    candidateDirs.push(
-      path.resolve(root, AURRAL_FLOWS_DIR, targetPlaylistType, artistDir, albumDir),
-    );
-  } else if (libraryFolders) {
-    // Library and static playlists store at: <root>/Artist/Album/
-    candidateDirs.push(path.resolve(root, artistDir, albumDir));
-  } else {
-    // Regular playlists: the download pipeline writes to <root>/Artist/Album/
-    // but adoptFileIntoPlaylist may have moved files to
-    // <root>/aurral-weekly-flow/<playlistId>/Artist/Album/
-    candidateDirs.push(path.resolve(root, artistDir, albumDir));
-    candidateDirs.push(
-      path.resolve(root, PLAYLIST_FILES_DIR, targetPlaylistType, artistDir, albumDir),
-    );
-  }
-
-  for (const destinationDir of candidateDirs) {
-    if (!isPathInsideRoot(destinationDir, root)) continue;
+  if (isPathInsideRoot(destinationDir, root)) {
     try {
       const files = await fs.readdir(destinationDir);
       for (const file of files) {
@@ -249,7 +212,6 @@ function tracksShareLibraryMembership(left, right) {
 }
 
 async function findAurralSource(track, options = {}) {
-  const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const targetPlaylistType = String(options.targetPlaylistType || "").trim();
   const excludeJobIds = new Set(
     (Array.isArray(options.excludeJobIds) ? options.excludeJobIds : [])
@@ -269,7 +231,7 @@ async function findAurralSource(track, options = {}) {
     if (targetPlaylistType && String(job.playlistType || "") === targetPlaylistType) {
       continue;
     }
-    const sourcePath = remapLegacyPath(job.finalPath, downloadRoot);
+    const sourcePath = job.finalPath;
     if (!(await fileExists(sourcePath))) continue;
     candidates.push(job);
   }
@@ -279,7 +241,7 @@ async function findAurralSource(track, options = {}) {
   if (!sourceJob) return null;
   return {
     sourceType: "aurral",
-    sourcePath: path.resolve(remapLegacyPath(sourceJob.finalPath, downloadRoot)),
+    sourcePath: path.resolve(sourceJob.finalPath),
     sourceJob,
     albumName: sourceJob.albumName || track.albumName || null,
   };
@@ -291,7 +253,7 @@ function retargetJobsToPath(oldPath, newPath, downloadRoot, albumName = null) {
   if (resolvedOld === resolvedNew) return;
   for (const job of downloadTracker.getAll()) {
     if (job?.status !== "done" || typeof job.finalPath !== "string") continue;
-    const current = path.resolve(remapLegacyPath(job.finalPath, downloadRoot));
+    const current = path.resolve(job.finalPath);
     if (current !== resolvedOld) continue;
     downloadTracker.setDone(
       job.id,
@@ -305,40 +267,19 @@ function retargetJobsToPath(oldPath, newPath, downloadRoot, albumName = null) {
 export async function adoptFileIntoPlaylist(sourcePath, targetPlaylistType, downloadRoot, options = {}) {
   const safeTarget = String(targetPlaylistType || "").trim();
   const root = path.resolve(downloadRoot || resolveDownloadRoot());
-  const resolvedSource = path.resolve(remapLegacyPath(sourcePath, root));
+  const resolvedSource = path.resolve(sourcePath);
   if (!safeTarget || !(await fileExists(resolvedSource))) return null;
   if (options.protectPlayback !== false && isPlaybackRetainedFile(resolvedSource)) return resolvedSource;
 
-  const knownFlow = isFlowPlaylistType(safeTarget);
-  const knownPlaylist = usesLibraryFolders(safeTarget);
-  const currentLayout = knownFlow || knownPlaylist;
-  const ephemeral = knownFlow;
-  const targetRoot = ephemeral
-    ? path.resolve(root, AURRAL_FLOWS_DIR, safeTarget)
-    : currentLayout
-      ? path.resolve(root)
-      : path.resolve(root, PLAYLIST_FILES_DIR, safeTarget);
-  const legacySource = [PLAYLIST_FILES_DIR, AURRAL_FLOWS_DIR].some((directory) =>
-    isPathInsideRoot(resolvedSource, path.resolve(root, directory)),
-  );
-  if (
-    (ephemeral && isPathInsideRoot(resolvedSource, targetRoot)) ||
-    (!ephemeral && !currentLayout && isPathInsideRoot(resolvedSource, targetRoot)) ||
-    (!ephemeral && currentLayout && !legacySource)
-  ) {
+  const ephemeral = isFlowPlaylistType(safeTarget);
+  const targetRoot = ephemeral ? path.resolve(root, AURRAL_FLOWS_DIR, safeTarget) : root;
+  const inFlowFolder = isPathInsideRoot(resolvedSource, path.resolve(root, AURRAL_FLOWS_DIR));
+  if (ephemeral ? isPathInsideRoot(resolvedSource, targetRoot) : !inFlowFolder) {
     return resolvedSource;
   }
 
   const sourcePlaylistId = parsePlaylistIdFromFinalPath(resolvedSource, root);
-  const sourceRoot = sourcePlaylistId
-    ? path.resolve(
-        root,
-        resolvedSource.includes(`${path.sep}${AURRAL_FLOWS_DIR}${path.sep}`)
-          ? AURRAL_FLOWS_DIR
-          : PLAYLIST_FILES_DIR,
-        sourcePlaylistId,
-      )
-    : null;
+  const sourceRoot = sourcePlaylistId ? path.resolve(root, AURRAL_FLOWS_DIR, sourcePlaylistId) : null;
   const relative =
     sourceRoot && isPathInsideRoot(resolvedSource, sourceRoot)
       ? path.relative(sourceRoot, resolvedSource)
@@ -347,9 +288,7 @@ export async function adoptFileIntoPlaylist(sourcePath, targetPlaylistType, down
   const artistDir = sanitizePathPart(options.track?.artistName || segments.at(-3), "Unknown Artist");
   const albumDir = sanitizePathPart(options.track?.albumName || segments.at(-2), "Unknown Album");
   const fileName = path.basename(resolvedSource);
-  const destPath = currentLayout
-    ? joinUnderRoot(targetRoot, path.join(artistDir, albumDir), fileName)
-    : path.join(targetRoot, relative);
+  const destPath = joinUnderRoot(targetRoot, path.join(artistDir, albumDir), fileName);
   const committed = await commitDownloadedFile(resolvedSource, destPath);
   retargetJobsToPath(resolvedSource, committed, root);
   return path.resolve(committed);
@@ -360,16 +299,13 @@ export async function relocateSharedFilesBeforePlaylistRemoval(playlistType, opt
   const safePlaylistType = String(playlistType || "").trim();
   if (!safePlaylistType) return { relocated: 0 };
 
-  const removedDirs = [
-    path.resolve(downloadRoot, PLAYLIST_FILES_DIR, safePlaylistType),
-    path.resolve(downloadRoot, AURRAL_FLOWS_DIR, safePlaylistType),
-  ];
+  const removedDir = path.resolve(downloadRoot, AURRAL_FLOWS_DIR, safePlaylistType);
   const byPath = new Map();
   for (const job of downloadTracker.getAll()) {
     if (job?.status !== "done" || typeof job.finalPath !== "string") continue;
     if (String(job.playlistType || "") === safePlaylistType) continue;
-    const finalPath = path.resolve(remapLegacyPath(job.finalPath, downloadRoot));
-    if (!removedDirs.some((removedDir) => isPathInsideRoot(finalPath, removedDir))) continue;
+    const finalPath = path.resolve(job.finalPath);
+    if (!isPathInsideRoot(finalPath, removedDir)) continue;
     if (!(await fileExists(finalPath))) continue;
     const list = byPath.get(finalPath) || [];
     list.push(job);
@@ -399,19 +335,14 @@ export async function removePlaylistFileIfUnshared(finalPath, playlistId, option
   const safePlaylistId = String(playlistId || "").trim();
   if (!safePlaylistId || typeof finalPath !== "string") return { action: "skipped" };
 
-  const playlistRoots = isFlowPlaylistType(safePlaylistId)
-    ? [path.resolve(downloadRoot, AURRAL_FLOWS_DIR, safePlaylistId)]
-    : flowPlaylistConfig.getStaticPlaylist(safePlaylistId)
-      ? [path.resolve(downloadRoot)]
-      : [path.resolve(downloadRoot, PLAYLIST_FILES_DIR, safePlaylistId)];
-  if (
-    flowPlaylistConfig.getStaticPlaylist(safePlaylistId) &&
-    options.deleteIfUnshared !== true
-  ) {
-    return { action: "skipped" };
-  }
-  const resolved = path.resolve(remapLegacyPath(finalPath, downloadRoot));
-  if (!playlistRoots.some((playlistRoot) => isPathInsideRoot(resolved, playlistRoot))) {
+  const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
+  const playlistRoot = isFlowPlaylistType(safePlaylistId)
+    ? path.resolve(downloadRoot, AURRAL_FLOWS_DIR, safePlaylistId)
+    : staticPlaylist && options.deleteIfUnshared === true
+      ? downloadRoot
+      : null;
+  const resolved = path.resolve(finalPath);
+  if (!playlistRoot || !isPathInsideRoot(resolved, playlistRoot)) {
     return { action: "skipped" };
   }
 
@@ -423,7 +354,7 @@ export async function removePlaylistFileIfUnshared(finalPath, playlistId, option
   const matchingJobs = [];
   for (const job of downloadTracker.getAll()) {
     if (!job || job.status !== "done" || typeof job.finalPath !== "string") continue;
-    const current = path.resolve(remapLegacyPath(job.finalPath, downloadRoot));
+    const current = path.resolve(job.finalPath);
     if (current === resolved) matchingJobs.push(job);
   }
   if (matchingJobs.some((job) => job.externalPath)) return { action: "skipped" };
@@ -654,8 +585,7 @@ export async function restoreCompletedTrack(job, options = {}) {
     return { action: "skipped", reason: "Track is not completed" };
   }
 
-  const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
-  const finalPath = path.resolve(remapLegacyPath(job.finalPath, downloadRoot));
+  const finalPath = path.resolve(job.finalPath);
   if (await fileExists(finalPath)) {
     return { action: "ok", reason: "Playlist file exists" };
   }
@@ -719,10 +649,7 @@ export async function repairJobsUnderRemovedPlaylistDir(playlistType, options = 
     return { repaired: 0, requeued: 0, skipped: 0, changedPlaylistTypes: [] };
   }
 
-  const removedDirs = [
-    path.resolve(downloadRoot, PLAYLIST_FILES_DIR, safePlaylistType),
-    path.resolve(downloadRoot, AURRAL_FLOWS_DIR, safePlaylistType),
-  ];
+  const removedDir = path.resolve(downloadRoot, AURRAL_FLOWS_DIR, safePlaylistType);
   let repaired = 0;
   let requeued = 0;
   let skipped = 0;
@@ -730,8 +657,8 @@ export async function repairJobsUnderRemovedPlaylistDir(playlistType, options = 
 
   for (const job of downloadTracker.getAll()) {
     if (job?.status !== "done" || typeof job?.finalPath !== "string") continue;
-    const finalPath = path.resolve(remapLegacyPath(job.finalPath, downloadRoot));
-    if (!removedDirs.some((removedDir) => isPathInsideRoot(finalPath, removedDir))) continue;
+    const finalPath = path.resolve(job.finalPath);
+    if (!isPathInsideRoot(finalPath, removedDir)) continue;
     if (await fileExists(finalPath)) continue;
 
     const result = await restoreCompletedTrack(job, {
@@ -773,16 +700,10 @@ export async function repairJobsUnderRemovedPlaylistDir(playlistType, options = 
 }
 
 function parsePlaylistIdFromFinalPath(finalPath, downloadRoot) {
-  const resolved = path.resolve(remapLegacyPath(finalPath, downloadRoot));
-  for (const directory of [PLAYLIST_FILES_DIR, AURRAL_FLOWS_DIR]) {
-    const marker = `${path.sep}${directory}${path.sep}`;
-    const markerIndex = resolved.indexOf(marker);
-    if (markerIndex < 0) continue;
-    const remainder = resolved.slice(markerIndex + marker.length);
-    const playlistId = remainder.split(path.sep)[0];
-    if (playlistId) return playlistId;
-  }
-  return null;
+  const flowsRoot = path.resolve(downloadRoot, AURRAL_FLOWS_DIR);
+  const resolved = path.resolve(finalPath);
+  if (!isPathInsideRoot(resolved, flowsRoot)) return null;
+  return path.relative(flowsRoot, resolved).split(path.sep)[0] || null;
 }
 
 export async function repairOrphanedPlaylistTrackPaths(options = {}) {
@@ -796,7 +717,7 @@ export async function repairOrphanedPlaylistTrackPaths(options = {}) {
   const removedIds = new Set();
   for (const job of downloadTracker.getAll()) {
     if (job?.status !== "done" || typeof job?.finalPath !== "string") continue;
-    const finalPath = path.resolve(remapLegacyPath(job.finalPath, downloadRoot));
+    const finalPath = path.resolve(job.finalPath);
     if (await fileExists(finalPath)) continue;
     const ownerId = parsePlaylistIdFromFinalPath(finalPath, downloadRoot);
     if (!ownerId || activeIds.has(ownerId)) continue;
@@ -941,7 +862,7 @@ export async function moveHandedOverTracksToLidarr(options = {}) {
   const jobsByPath = new Map();
   for (const job of downloadTracker.getAll()) {
     if (job?.status !== "done" || typeof job.finalPath !== "string") continue;
-    const current = path.resolve(remapLegacyPath(job.finalPath, downloadRoot));
+    const current = path.resolve(job.finalPath);
     if (handedOver.has(current)) jobsByPath.set(current, [...(jobsByPath.get(current) || []), job]);
   }
 

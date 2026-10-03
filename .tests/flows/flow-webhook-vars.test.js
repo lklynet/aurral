@@ -51,7 +51,7 @@ test("flow completion sends display name and track library path", async () => {
     { artistName: "Artist", trackName: "Track" },
     playlist.id,
   );
-  downloadTracker.setDone(jobId, path.join(process.env.WEEKLY_FLOW_FOLDER, "track.mp3"));
+  downloadTracker.setDone(jobId, path.join(process.env.DOWNLOAD_FOLDER, "track.mp3"));
 
   const requests = [];
   const server = http.createServer((req, res) => {

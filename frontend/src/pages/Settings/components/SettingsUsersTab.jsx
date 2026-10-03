@@ -11,7 +11,6 @@ import { useModalDialog } from "../../../hooks/useModalDialog.js";
 import { AdminPlexLinkField } from "./AdminPlexLinkField";
 import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.js";
-import { useAuth } from "../../../contexts/AuthContext";
 import { DotLoader } from "../../../components/DotLoader";
 function getLocalBypassStatus(status) {
   if (!status) {
@@ -153,8 +152,6 @@ export function SettingsUsersTab({
   setEditPermissions,
   editStatus,
   setEditStatus,
-  editAllowAdoption,
-  setEditAllowAdoption,
   savingEdit,
   setSavingEdit,
   changePwCurrent,
@@ -182,8 +179,6 @@ export function SettingsUsersTab({
   showSuccess,
   showError,
 }) {
-  const { bootstrap } = useAuth();
-  const ssoEnabled = !!bootstrap?.oidcEnabled;
   const isSelfEdit = editUser && editUser.id === authUser?.id;
   const localBypassStatus = getLocalBypassStatus(health?.localNetworkBypass);
   const localBypassEnabled = settings?.security?.localNetworkBypass?.enabled === true;
@@ -412,20 +407,6 @@ export function SettingsUsersTab({
                         <td>
                           <span className="arr-table__name-cell">
                             <span>{user.username}</span>
-                            {ssoEnabled && user.needsIdentityMigration && !user.isProtected ? (
-                              <span
-                                className={`arr-badge${
-                                  user.allowIdentityAdoption ? " arr-badge--warning" : ""
-                                }`}
-                                aria-label={
-                                  user.allowIdentityAdoption
-                                    ? "Approved for adoption. The next matching SSO sign-in will claim this account."
-                                    : "This account predates SSO identity linking and has no linked identity. If it belongs to an SSO user, approve it for adoption from Manage."
-                                }
-                              >
-                                {user.allowIdentityAdoption ? "awaiting SSO claim" : "no SSO identity"}
-                              </span>
-                            ) : null}
                           </span>
                         </td>
                         <td>
@@ -461,7 +442,6 @@ export function SettingsUsersTab({
                                 setEditPassword("");
                                 setEditCurrentPassword("");
                                 setEditStatus(user.status || "active");
-                                setEditAllowAdoption(!!user.allowIdentityAdoption);
                                 setEditPermissions(
                                   user.permissions
                                     ? {
@@ -747,9 +727,6 @@ export function SettingsUsersTab({
                               ...(editPassword ? { password: editPassword } : {}),
                               permissions: editPermissions,
                               status: editStatus,
-                              ...(ssoEnabled && editUser.needsIdentityMigration && !editUser.isProtected
-                                ? { allowIdentityAdoption: editAllowAdoption }
-                                : {}),
                             });
                           try {
                             try {
@@ -861,24 +838,6 @@ export function SettingsUsersTab({
                                   <option value="disabled">Disabled</option>
                                 </SettingsSelect>
                               </SettingsArrFormGroup>
-                              {ssoEnabled && editUser.needsIdentityMigration && !editUser.isProtected ? (
-                                <SettingsArrFormGroup
-                                  label="Claim by SSO sign-in"
-                                  help="This account predates SSO identity linking, so it has no linked sign-in identity. If it belonged to an SSO user, turn this on and have them sign in with SSO once - that sign-in takes over this account and keeps its flows, history, and settings. Leave it off and their SSO sign-in creates a separate new account instead. Only enable this if you know who owns this account."
-                                >
-                                  <div className="settings-toggle-row">
-                                    <span>{editAllowAdoption ? "Allowed" : "Not allowed"}</span>
-                                    <PillToggle
-                                      className="settings-toggle"
-                                      checked={editAllowAdoption}
-                                      onChange={(event) =>
-                                        setEditAllowAdoption(event.target.checked)
-                                      }
-                                      aria-label="Allow the next matching SSO sign-in to claim this account"
-                                    />
-                                  </div>
-                                </SettingsArrFormGroup>
-                              ) : null}
                               <SettingsArrFormGroup
                                 label="Plex account"
                                 help="Link this user to a Plex Home managed user so their flow and playlists are created under that Plex account."

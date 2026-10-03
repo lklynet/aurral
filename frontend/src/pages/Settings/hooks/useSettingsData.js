@@ -167,7 +167,7 @@ const defaultSettings = {
       userAgentSuffix: "",
       enableNarrowFallbacks: true,
     },
-    general: { authUser: "", authPassword: "" },
+    general: {},
     gotify: {
       url: "",
       token: "",

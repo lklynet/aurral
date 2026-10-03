@@ -33,7 +33,6 @@ import requestsRouter from "./routes/requests.js";
 import healthRouter from "./routes/health.js";
 import filesystemRouter from "./routes/filesystem.js";
 import updatesRouter from "./routes/updates.js";
-import { noteDeprecatedUsage, warnAboutConfigDeprecations } from "./services/deprecatedUsage.js";
 import playlistsRouter from "./routes/playlists/index.js";
 import { bootstrapHonkerSchedules } from "./services/honkerDb.js";
 import { initializeAppRuntime } from "./services/appRuntime.js";
@@ -191,7 +190,6 @@ app.use("/api/filesystem", filesystemRouter);
 app.use("/api/feeds", lidarrFeedRouter);
 app.use("/api/playlists", playlistsRouter);
 app.use("/api/weekly-flow", (req, res) => {
-  noteDeprecatedUsage("weekly-flow-api");
   const parsed = new URL(req.url, "http://localhost");
   res.redirect(308, `/api/playlists${parsed.pathname}${parsed.search}`);
 });
@@ -399,7 +397,12 @@ process.once("SIGINT", () => {
 
 httpServer.listen(PORT, async () => {
   logger.info("system", `Server running on port ${PORT}`);
-  warnAboutConfigDeprecations();
+  if (process.env.AUTH_USER || process.env.AUTH_PASSWORD) {
+    logger.warn(
+      "system",
+      "AUTH_USER and AUTH_PASSWORD are set, but Aurral ignores them. Sign in with an Aurral account and remove both variables.",
+    );
+  }
   bootstrapHonkerSchedules();
   initializeAppRuntime({ logger });
 });

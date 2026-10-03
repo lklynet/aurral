@@ -17,7 +17,7 @@ const [isolatedState, { db }, { dbOps, userOps }, { jellyfinPlaylistPointerStore
     "backend/services/playback/jellyfinPlaybackDestination.js",
   );
 
-const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+const downloadRoot = process.env.DOWNLOAD_FOLDER;
 const userId = "jellyfin-user";
 
 test.beforeEach(async () => {

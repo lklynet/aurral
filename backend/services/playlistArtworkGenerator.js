@@ -101,7 +101,7 @@ export async function writeGeneratedPlaylistArtwork({
     paletteSeed,
   });
 
-  for (const extension of [".jpg", ".webp", ".png"]) {
+  for (const extension of [".jpg", ".webp"]) {
     if (extension === keepExtension) continue;
     await fs.unlink(path.join(directory, `${baseName}${extension}`)).catch(() => {});
   }

@@ -27,7 +27,7 @@ const [
   "backend/services/playback/navidromePlaybackDestination.js",
 );
 
-const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+const downloadRoot = process.env.DOWNLOAD_FOLDER;
 
 function createClient({ configured = true, playlists = [], songs = {} } = {}) {
   const currentPlaylists = playlists.map((playlist) => ({ ...playlist }));

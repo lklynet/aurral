@@ -17,7 +17,7 @@ const [state, { db }, { dbOps }, retention, { playlistManager }, { downloadTrack
   "backend/services/playlists/flowPlaylistConfig.js",
 );
 const { createPlaybackDeletionGuard, removeUnusedPlaybackFiles, isPlaybackRetainedFile, retryPlaybackRetainedFiles } = retention;
-const root = process.env.WEEKLY_FLOW_FOLDER;
+const root = process.env.DOWNLOAD_FOLDER;
 
 test.beforeEach(async () => {
   resetDatabase(db);
@@ -116,7 +116,6 @@ test("configuration changes invalidate deletion permission within a batch", asyn
 test("flow reset retains external files at the same path and clears outgoing jobs", async (t) => {
   const saved = await makeFile("_flows/flow/saved.flac");
   const unused = await makeFile("_flows/flow/unused.flac");
-  const legacy = await makeFile("aurral-weekly-flow/flow/legacy.flac");
   const id = downloadTracker.addJob({ artistName: "Artist", trackName: "Saved" }, "flow");
   downloadTracker.setDone(id, saved);
   let calls = 0;
@@ -124,11 +123,10 @@ test("flow reset retains external files at the same path and clears outgoing job
     assert.equal(operation, "getReferencedPaths");
     assert.deepEqual(options.excludeEntityIds, ["flow"]);
     calls += 1;
-    return [{ destination: "Jellyfin", ok: true, paths: [saved, legacy] }];
+    return [{ destination: "Jellyfin", ok: true, paths: [saved] }];
   });
   await playlistManager.weeklyReset(["flow"]);
   await fs.access(saved);
-  await fs.access(legacy);
   await assert.rejects(fs.access(unused), { code: "ENOENT" });
   assert.equal(downloadTracker.getByPlaylistType("flow").length, 0);
   assert.equal(calls, 1);
@@ -256,74 +254,6 @@ test("quality upgrades preserve the old file when another playback playlist uses
   assert.equal(isPlaybackRetainedFile(oldFile), true);
 });
 
-test("startup migration leaves an externally referenced orphan at its original path", async (t) => {
-  const { migrateAurralDownloadFolder } = await import("../../backend/services/aurralDownloadFolderMigration.js");
-  const flow = flowPlaylistConfig.createFlow({ name: "Migration source", enabled: true });
-  const file = await makeFile(`aurral-weekly-flow/${flow.id}/Artist/Album/Saved.flac`);
-  t.mock.method(playlistManager.destinationRegistry, "run", async () => [{ destination: "Jellyfin", ok: true, paths: [file] }]);
-  const options = { root, indexDestination: async () => {}, logger: { info() {}, warn() {}, error() {} } };
-  const result = await migrateAurralDownloadFolder(options);
-  assert.equal(result.removed, 0);
-  assert.equal(isPlaybackRetainedFile(file), true);
-  await fs.access(file);
-  await migrateAurralDownloadFolder(options);
-  await fs.access(file);
-});
-
-for (const mode of ["completed-flow", "shared-direct", "shared-batch", "shared-batch-without-job"]) {
-  for (const usage of ["referenced", "unavailable", "unused"]) {
-    test(`indexed migration checks ${mode} sources when playback usage is ${usage}`, async (t) => {
-      const { migrateAurralDownloadFolder } = await import("../../backend/services/aurralDownloadFolderMigration.js");
-      const isFlow = mode === "completed-flow";
-      const playlist = isFlow
-        ? flowPlaylistConfig.createFlow({ name: `${mode}-${usage}`, enabled: true })
-        : flowPlaylistConfig.createStaticPlaylist({ name: `${mode}-${usage}` });
-      const source = await makeFile(`aurral-weekly-flow/${playlist.id}/Artist/Album/Saved.flac`);
-      const destinationPath = isFlow
-        ? path.join(root, "_flows", playlist.id, "Artist/Album/Saved.flac")
-        : path.join(root, "Artist/Album/Saved.flac");
-      let jobId;
-      if (mode !== "shared-batch-without-job") {
-        jobId = downloadTracker.addJob({ artistName: "Artist", albumName: "Album", trackName: "Saved" }, playlist.id);
-        downloadTracker.setDone(jobId, source);
-      }
-      let currentUsage = usage;
-      const checks = t.mock.method(playlistManager.destinationRegistry, "run", async (_operation, { excludeEntityIds }) => {
-        assert.deepEqual(excludeEntityIds, [playlist.id]);
-        return currentUsage === "unavailable" ? [{ ok: false }] : [{ ok: true, paths: currentUsage === "referenced" ? [source] : [] }];
-      });
-      const options = {
-        root, logger: { warn() {} },
-        metadataReader: async () => ({ common: { albumartist: "Artist", album: "Album", title: "Saved" } }),
-        ...(mode === "shared-direct" ? { indexDestination: async () => {} } : {}),
-      };
-      const first = await migrateAurralDownloadFolder(options);
-      assert.equal(first.failed, 0);
-      assert.equal(checks.mock.callCount(), 1);
-      assert.equal(await fs.readFile(destinationPath, "utf8"), "audio");
-      if (jobId) assert.equal(downloadTracker.getJob(jobId).finalPath, destinationPath);
-      if (usage === "unused") {
-        assert.equal(first.migrated, 1);
-        await assert.rejects(fs.access(source), { code: "ENOENT" });
-        return;
-      }
-      assert.equal(first.retained, 1);
-      assert.equal(first.migrated, 0);
-      assert.equal(isPlaybackRetainedFile(source), true);
-      assert.equal(await fs.readFile(source, "utf8"), "audio");
-      await migrateAurralDownloadFolder(options);
-      await fs.access(source);
-      currentUsage = "unused";
-      await retryPlaybackRetainedFiles();
-      await assert.rejects(fs.access(source), { code: "ENOENT" });
-      assert.equal(isPlaybackRetainedFile(source), false);
-      await fs.access(destinationPath);
-      const final = await migrateAurralDownloadFolder(options);
-      assert.equal(final.status, "complete");
-    });
-  }
-}
-
 test("Jellyfin excludes legacy outgoing pointers but keeps pointers from other servers separate", async () => {
   const { JellyfinPlaybackDestination } = await import("../../backend/services/playback/jellyfinPlaybackDestination.js");
   const { jellyfinPlaylistPointerStore: pointers } = await import("../../backend/services/jellyfin/jellyfinPlaylistPointerStore.js");
@@ -411,7 +341,7 @@ test("explicit reset removes symbolic links without touching their targets; auto
   await fs.mkdir(target, { recursive: true });
   const targetFile = path.join(target, "saved.flac");
   await fs.writeFile(targetFile, "external audio");
-  const links = ["_flows/linked/link", "aurral-weekly-flow/linked/link", "_fallback/link"];
+  const links = ["_flows/linked/link", "_fallback/link"];
   for (const relative of links) {
     const link = path.join(root, relative);
     await fs.mkdir(path.dirname(link), { recursive: true });

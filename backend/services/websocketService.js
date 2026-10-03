@@ -1,9 +1,7 @@
 import { WebSocketServer } from 'ws';
 import { dbOps, userOps } from "../db/helpers/index.js";
 import { logger } from "./logger.js";
-import { noteDeprecatedUsage } from "./deprecatedUsage.js";
 import {
-  getAuthPassword,
   isProxyAuthEnabled,
   resolveLocalNetworkBypassUser,
   resolveSessionUserFromToken,
@@ -13,9 +11,7 @@ import {
 const isAuthRequired = () => {
   const settings = dbOps.getSettings();
   if (!settings.onboardingComplete) return false;
-  const users = userOps.getAllUsers();
-  const legacyPasswords = getAuthPassword();
-  return isProxyAuthEnabled() || users.length > 0 || legacyPasswords.length > 0;
+  return isProxyAuthEnabled() || userOps.countUsers() > 0;
 };
 
 class WebSocketService {
@@ -131,7 +127,6 @@ class WebSocketService {
   handleSubscribe(client, channels) {
     for (const channel of channels) {
       client.subscriptions.add(channel);
-      if (channel === "weekly-flow") noteDeprecatedUsage("weekly-flow-channel");
     }
     
     this.send(client, {

@@ -140,7 +140,7 @@ test("synchronization failure preserves applied outcomes and retries only unfini
 
 test("failed source commit leaves completed source media intact", async (t) => {
   const f = fixture(t, 1);
-  const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "aurral-weekly-flow", f.source.id, "Track.flac");
+  const file = path.join(process.env.DOWNLOAD_FOLDER, "aurral-weekly-flow", f.source.id, "Track.flac");
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "disposable audio");
   downloadTracker.setDone(f.jobs[0].id, file);
@@ -229,7 +229,7 @@ test("a failed source commit after provider cleanup leaves a recoverable active 
 
 test("failed provider cleanup leaves a retained quality upgrade recoverable", async (t) => {
   const f = fixture(t, 1);
-  const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "original.flac");
+  const file = path.join(process.env.DOWNLOAD_FOLDER, "original.flac");
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "original audio");
   downloadTracker.setDone(f.jobs[0].id, file);
@@ -263,25 +263,6 @@ test("duplicate supplied membership IDs cannot detach an unselected track", asyn
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id).tracks.length, 1);
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id).tracks[0].trackName, f.jobs[1].trackName);
   assert.ok(downloadTracker.getJob(f.jobs[1].id));
-});
-
-test("a bulk move finalizes retained media under the configured playlist root", async (t) => {
-  const f = fixture(t, 1);
-  const { downloadWorker } = await import("../../backend/services/downloadJobs/downloadWorker.js");
-  const previousRoot = downloadWorker.downloadRoot;
-  const root = path.join(state.baseDir, "custom-playlists");
-  downloadWorker.downloadRoot = root;
-  t.after(() => { downloadWorker.downloadRoot = previousRoot; });
-  const file = path.join(root, "_flows", f.source.id, "Original.flac");
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, "retained custom-root audio");
-  downloadTracker.setDone(f.jobs[0].id, file);
-  const target = config.flowPlaylistConfig.createStaticPlaylist({ name: "Custom target", ownerUserId: f.user.id });
-  const result = await execute({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "move", target: { playlistId: target.id }, selections: f.selections });
-  assert.equal(result.state, "completed");
-  assert.equal(await fs.readFile(downloadTracker.getJob(f.jobs[0].id).finalPath, "utf8"), "retained custom-root audio");
-  await assert.rejects(fs.access(file), { code: "ENOENT" });
-  assert.equal(db.prepare("SELECT count(*) AS count FROM settings WHERE key LIKE 'playlistMediaRelocation:%'").get().count, 0);
 });
 
 test("a conflicting destination membership keeps the source job while other tracks move", async (t) => {

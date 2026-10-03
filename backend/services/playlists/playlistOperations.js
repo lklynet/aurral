@@ -1,5 +1,4 @@
 import { db } from "../../config/db-sqlite.js";
-import { finalizeRetainedPlaylistRelocations } from "./mediaRelocation.js";
 import { randomUUID } from "crypto";
 import { dbOps, userOps } from "../../db/helpers/index.js";
 import {
@@ -701,7 +700,6 @@ async function updateStaticPlaylistLocked({
   playlistManager.updateConfig(false);
   await playlistManager.ensureSmartPlaylists();
   await playlistManager.scheduleScanLibrary(true);
-  await finalizeRetainedPlaylistRelocations(safePlaylistId, { downloadRoot: downloadWorker.downloadRoot });
   if (tracksQueued > 0) {
     await wakeDownloadWorker();
     recordPlaylistHistory(safePlaylistId, { tracksQueued });
@@ -728,7 +726,6 @@ async function deleteStaticPlaylistTrack({ playlistId, jobId } = {}) {
     const pendingIds = pending ? JSON.parse(pending.value) : [safePlaylistId];
     for (const id of pendingIds) await playlistManager.refreshPlaylist(id);
     await playlistManager.scheduleScanLibrary(true);
-    await finalizeRetainedPlaylistRelocations(safePlaylistId, { downloadRoot: downloadWorker.downloadRoot });
     db.prepare("DELETE FROM settings WHERE key = ?").run(synchronizationKey);
     return { missingJob: true };
   }
@@ -750,7 +747,6 @@ async function deleteStaticPlaylistTrack({ playlistId, jobId } = {}) {
   playlistManager.updateConfig(false);
   for (const id of affectedPlaylistIds) await playlistManager.refreshPlaylist(id);
   await playlistManager.scheduleScanLibrary(true);
-  await finalizeRetainedPlaylistRelocations(safePlaylistId, { downloadRoot: downloadWorker.downloadRoot });
   db.prepare("DELETE FROM settings WHERE key = ?").run(synchronizationKey);
   return {
     success: true,
@@ -894,7 +890,6 @@ async function deleteStaticPlaylist({ playlistId } = {}) {
   if (!exists) {
     playlistManager.updateConfig(false);
     await playlistManager.ensureSmartPlaylists();
-    await finalizeRetainedPlaylistRelocations(safePlaylistId, { downloadRoot: downloadWorker.downloadRoot });
     return false;
   }
   const jobs = downloadTracker.getByPlaylistId(safePlaylistId);
@@ -936,7 +931,6 @@ async function deleteStaticPlaylist({ playlistId } = {}) {
     throw error;
   }
   await restartWorkerIfPending();
-  await finalizeRetainedPlaylistRelocations(safePlaylistId, { downloadRoot: downloadWorker.downloadRoot });
   return deleted;
 }
 

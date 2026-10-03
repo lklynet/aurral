@@ -472,59 +472,6 @@ test("disconnecting Plex succeeds and removes the login identity when a fallback
   assert.equal(userIdentityOps.getById(identity.id), null);
 });
 
-test("only an admin can approve a legacy account for SSO adoption, and only an eligible one", async () => {
-  const legacy = userOps.createUser(
-    "adoption-candidate",
-    bcrypt.hashSync("password123", 4),
-    "user",
-    null,
-    false,
-  );
-  userOps.updateUser(legacy.id, { needsIdentityMigration: true });
-
-  const legacyToken = await login("adoption-candidate", "password123");
-  const { response: selfResponse } = await apiFetch(legacyToken, `/api/users/${legacy.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ allowIdentityAdoption: true }),
-  });
-  assert.equal(selfResponse.status, 403, "a user must not be able to approve their own adoption");
-  assert.equal(userOps.getUserById(legacy.id).allowIdentityAdoption, false);
-
-  const { response: adminResponse } = await apiFetch(adminToken, `/api/users/${legacy.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ allowIdentityAdoption: true }),
-  });
-  assert.equal(adminResponse.status, 200);
-  assert.equal(userOps.getUserById(legacy.id).allowIdentityAdoption, true);
-
-  const modern = userOps.createUser("modern-user", bcrypt.hashSync("password123", 4), "user");
-  const { response: modernResponse } = await apiFetch(adminToken, `/api/users/${modern.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ allowIdentityAdoption: true }),
-  });
-  assert.equal(modernResponse.status, 400);
-  assert.equal(userOps.getUserById(modern.id).allowIdentityAdoption, false);
-});
-
-test("the protected recovery account can never be approved for SSO adoption", async () => {
-  const protectedLegacy = userOps.createUser(
-    "protected-legacy-admin",
-    bcrypt.hashSync("password123", 4),
-    "admin",
-    null,
-    false,
-  );
-  userOps.updateUser(protectedLegacy.id, { needsIdentityMigration: true });
-  userOps.setProtected(protectedLegacy.id, true);
-
-  const { response } = await apiFetch(adminToken, `/api/users/${protectedLegacy.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ allowIdentityAdoption: true }),
-  });
-  assert.equal(response.status, 400);
-  assert.equal(userOps.getUserById(protectedLegacy.id).allowIdentityAdoption, false);
-});
-
 test("disconnecting Plex requires a recent reauth, same as the generic identity-unlink route", async () => {
   const target = userOps.createUser(
     "plex-reauth-user",

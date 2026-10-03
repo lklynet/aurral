@@ -32,7 +32,7 @@ export const SETTINGS_NAV_TABS = SETTINGS_TABS.filter((tab) => !tab.hidden);
 
 const SETTINGS_SEARCH_METADATA = {
   system: {
-    sections: ["Runtime", "Aurral 3.0", "Data", "Display", "API key", "More info"],
+    sections: ["Runtime", "Data", "Display", "API key", "More info"],
     services: {
       Runtime: "version uptime host platform",
       Database: "sqlite data runtime",
@@ -48,7 +48,6 @@ const SETTINGS_SEARCH_METADATA = {
       "Database path": "sqlite file",
       "Startup directory": "working directory",
       "API key": "X-Api-Key api_key authentication copy rotate",
-      Readiness: "Aurral 3.0 upgrade update migration deprecated",
     },
   },
   "storage-health": {
@@ -283,7 +282,6 @@ const SETTINGS_SEARCH_METADATA = {
       "Plex account": "link user playback identity",
       "SSO-only": "sign in mode hide local login form SSO",
       Status: "active suspended disabled user account",
-      "Claim by SSO sign-in": "legacy account adoption migration link identity upgrade",
     },
   },
 };
