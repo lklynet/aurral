@@ -1,6 +1,6 @@
 import { listArtistAlbums } from "./providers/brainzmashProvider.js";
 
-const AURRAL_MONITOR_MODES = new Set(["none", "all", "missing", "latest", "first", "future"]);
+const AURRAL_MONITOR_MODES = new Set(["none", "all", "latest", "first", "future"]);
 const ELIGIBLE_RELEASE_TYPES = new Set(["album", "ep"]);
 
 export const AURRAL_ALBUM_CONDITION = `
@@ -43,7 +43,6 @@ export function selectAurralReleases(releases, mode, { monitorStartedAt = null }
     .sort((left, right) => releaseDate(left).localeCompare(releaseDate(right)));
   switch (mode) {
     case "all":
-    case "missing":
       return [...dated, ...releases.filter((release) => !releaseDate(release))];
     case "latest":
       return dated.slice(-1);

@@ -357,6 +357,10 @@ const canonicalArtistKeyProjection = (row) => {
   };
 };
 
+export function getLibraryArtistNames() {
+  return db.prepare("SELECT name FROM library_artists").all();
+}
+
 export function getCanonicalArtistKeyProjection() {
   const rows = db.prepare(
     `SELECT id, identity_key, mbid, name, metadata_json

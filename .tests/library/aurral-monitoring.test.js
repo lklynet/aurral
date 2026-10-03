@@ -281,7 +281,7 @@ test("Aurral monitor modes select the matching releases and reject Lidarr-only m
   assert.deepEqual(queuedMonitoringTasks(), []);
 
   const selections = {};
-  for (const mode of ["latest", "first", "future", "missing", "none"]) {
+  for (const mode of ["latest", "first", "future", "none"]) {
     const response = await callRoute("PUT /artists/:mbid", {
       params: { mbid: artistMbid },
       body: { monitorOption: mode },
@@ -293,15 +293,16 @@ test("Aurral monitor modes select the matching releases and reject Lidarr-only m
   assert.deepEqual(selections.latest, [releases.latestEp.id]);
   assert.deepEqual(selections.first, [releases.firstAlbum.id]);
   assert.deepEqual(selections.future, []);
-  assert.deepEqual([...selections.missing].sort(), [...eligibleIds].sort());
   assert.deepEqual(selections.none, []);
 
-  const rejected = await callRoute("PUT /artists/:mbid", {
-    params: { mbid: artistMbid },
-    body: { monitorOption: "existing" },
-  });
-  assert.equal(rejected.statusCode, 400);
-  assert.equal(rejected.body.code, "unsupported_monitor_mode");
+  for (const mode of ["existing", "missing"]) {
+    const rejected = await callRoute("PUT /artists/:mbid", {
+      params: { mbid: artistMbid },
+      body: { monitorOption: mode },
+    });
+    assert.equal(rejected.statusCode, 400, mode);
+    assert.equal(rejected.body.code, "unsupported_monitor_mode", mode);
+  }
   assert.equal(lidarrCalls.length, 0);
 });
 

@@ -14,16 +14,10 @@ import {
 
 const SHOWS_PAGE_LIMIT = 60;
 
-const getShowGroups = (showsData) => ({
-  all: Array.isArray(showsData?.shows) ? showsData.shows : [],
-  library: Array.isArray(showsData?.libraryShows) ? showsData.libraryShows : [],
-  discover: Array.isArray(showsData?.recommendedShows) ? showsData.recommendedShows : [],
-});
-
-const getShowKey = (show, index) =>
-  [show?.id || `show-${index}`, show?.artistName, show?.sourceType || "show"]
-    .filter(Boolean)
-    .join("-");
+const SHOW_FILTER_MATCHERS = {
+  library: (show) => show.sourceTypes?.includes("library"),
+  discover: (show) => show.sourceTypes?.some((sourceType) => sourceType !== "library"),
+};
 
 function ShowsPage() {
   const navigate = useNavigate();
@@ -47,12 +41,16 @@ function ShowsPage() {
     setLocationMode,
     setAppliedZip,
     locationLabel,
-  } = useNearbyShows({ limit: SHOWS_PAGE_LIMIT });
+  } = useNearbyShows();
 
   const zipModeActive = locationMode === "zip";
-  const showGroups = getShowGroups(showsData);
-  const shows = showGroups[showFilter] || showGroups.all;
-  const hasAnyShows = Object.values(showGroups).some((group) => group.length > 0);
+  const allShows = Array.isArray(showsData?.shows) ? showsData.shows : [];
+  const matchesFilter = SHOW_FILTER_MATCHERS[showFilter];
+  const shows = (matchesFilter ? allShows.filter(matchesFilter) : allShows).slice(
+    0,
+    SHOWS_PAGE_LIMIT,
+  );
+  const hasAnyShows = allShows.length > 0;
   const emptyMessage =
     showFilter === "library"
       ? `We could not find local Ticketmaster shows for artists from your library around ${locationLabel}.`
@@ -135,8 +133,8 @@ function ShowsPage() {
         <section className="shows-page__content">
           {shows.length > 0 ? (
             <div className="shows-page__grid">
-              {shows.map((show, index) => (
-                <div key={getShowKey(show, index)} className="shows-page__grid-item">
+              {shows.map((show) => (
+                <div key={show.id} className="shows-page__grid-item">
                   <ShowCard show={show} />
                 </div>
               ))}

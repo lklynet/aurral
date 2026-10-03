@@ -1,9 +1,8 @@
 import { createHash } from "node:crypto";
 import { requireAuth } from "../../../middleware/requirePermission.js";
-import { db } from "../../../config/db-sqlite.js";
 import { dbOps, userOps } from "../../../db/helpers/index.js";
 import { getTicketmasterApiKey, getLastfmApiKey } from "../../../services/apiClients/index.js";
-import { iterateCanonicalArtistProjection } from "../../../services/libraryQueryService.js";
+import { getLibraryArtistNames } from "../../../services/libraryQueryService.js";
 import {
   getDiscoveryCache,
   getDiscoveryFeedback,
@@ -15,10 +14,6 @@ import {
   getListenHistoryProfile,
 } from "../../../services/listeningHistory.js";
 import { getNearbyShows } from "../../../services/nearbyShowsService.js";
-
-const libraryArtistNamesStmt = db.prepare(
-  "SELECT name FROM library_artists ORDER BY id",
-);
 
 const fingerprintArtists = (artists) => {
   const names = [
@@ -54,9 +49,6 @@ export function registerShows(router) {
           configured: false,
           location: null,
           shows: [],
-          libraryShows: [],
-          recommendedShows: [],
-          total: 0,
         });
       }
 
@@ -88,19 +80,18 @@ export function registerShows(router) {
             feedback,
           }).slice(0, 18)
         : [];
-      const libraryArtistNames = libraryArtistNamesStmt.all();
+      const libraryArtists = getLibraryArtistNames();
       const nearbyShows = await getNearbyShows({
         req,
         zipCode,
         countryCode,
-        libraryArtists: () => [...iterateCanonicalArtistProjection({ pageSize: 100 })],
+        libraryArtists,
         recommendedArtists,
         trendingArtists,
-        limit: req.query.limit,
         radiusMiles,
         responseCacheKey: buildShowsResponseCacheKey({
           userId: req.user.id,
-          libraryArtists: libraryArtistNames,
+          libraryArtists,
           recommendedArtists,
           trendingArtists,
         }),

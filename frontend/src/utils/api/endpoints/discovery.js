@@ -29,23 +29,14 @@ export const resolveEditorialTrackLinks = ({ artistName, albumName, deezerAlbumI
     params: { artist: artistName, album: albumName || undefined, albumId: deezerAlbumId || undefined },
   });
 
-export const getNearbyShows = async (zipCode = "", limit, options = {}) => {
-  const params = {};
-  if (options.cacheBust) params._ = Date.now();
-  if (typeof zipCode === "string" && zipCode.trim()) {
-    params.zip = zipCode.trim();
-  }
-  if (Number.isFinite(limit) && limit > 0) {
-    params.limit = Math.floor(limit);
-  }
-  return getData("/discover/nearby-shows", {
-    ...options,
+export const getNearbyShows = ({ zip, country, signal } = {}) =>
+  getData("/discover/nearby-shows", {
+    signal,
     params: {
-      ...(options.params || {}),
-      ...params,
+      ...(zip ? { zip } : {}),
+      ...(country ? { country } : {}),
     },
   });
-};
 
 export const getDiscoveryFeedback = () => getData("/discover/feedback");
 
