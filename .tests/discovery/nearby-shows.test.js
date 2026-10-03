@@ -136,6 +136,8 @@ test("looks up the server location for private, invalid, or spoofed client addre
   });
   await getNearbyShows({ req: { ip: "10.0.0.5" } });
   await getNearbyShows({ req: { ip: "../../json" } });
+  await getNearbyShows({ req: { ip: "fe90::1" } });
+  await getNearbyShows({ req: { ip: "100.101.102.103" } });
   await getNearbyShows({ req: { ip: "::ffff:198.51.100.7" } });
 
   assert.deepEqual(lookups, [

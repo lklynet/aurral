@@ -1,4 +1,4 @@
-import { isIP } from "node:net";
+import { BlockList, isIP } from "node:net";
 import axios from "../../lib/axiosFetch.js";
 import createCache from "./apiClients/simpleCache.js";
 import { getTicketmasterApiKey } from "./apiClients/index.js";
@@ -46,23 +46,32 @@ const sanitizeCountryCode = (value) => {
   return country.length === 2 ? country : "";
 };
 
-const isPrivateIpAddress = (ip) => {
-  if (ip.includes(":")) {
-    return ip === "::1" || ip.startsWith("fc") || ip.startsWith("fd") || ip.startsWith("fe80");
-  }
-  return (
-    ip.startsWith("127.") ||
-    ip === "0.0.0.0" ||
-    ip.startsWith("10.") ||
-    ip.startsWith("169.254.") ||
-    ip.startsWith("192.168.") ||
-    /^172\.(1[6-9]|2\d|3[0-1])\./.test(ip)
-  );
-};
+const nonPublicAddresses = new BlockList();
+for (const [network, prefix] of [
+  ["0.0.0.0", 8],
+  ["10.0.0.0", 8],
+  ["100.64.0.0", 10],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
+  ["172.16.0.0", 12],
+  ["192.168.0.0", 16],
+]) {
+  nonPublicAddresses.addSubnet(network, prefix, "ipv4");
+}
+for (const [network, prefix] of [
+  ["::", 128],
+  ["::1", 128],
+  ["fc00::", 7],
+  ["fe80::", 10],
+]) {
+  nonPublicAddresses.addSubnet(network, prefix, "ipv6");
+}
 
 const getPublicRequestIp = (req) => {
   const ip = String(req?.ip || "").trim().replace(/^::ffff:/i, "").toLowerCase();
-  return isIP(ip) && !isPrivateIpAddress(ip) ? ip : "";
+  const family = isIP(ip);
+  if (!family) return "";
+  return nonPublicAddresses.check(ip, family === 6 ? "ipv6" : "ipv4") ? "" : ip;
 };
 
 const buildLocationLabel = (location) =>
