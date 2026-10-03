@@ -91,5 +91,5 @@ export const buildAlbumRequestPayload = ({
 
 export const getMonitorOptionsForManager = (options, managedBy) =>
   normalizeLibraryManager(managedBy) === "aurral"
-    ? options.filter((option) => option.value !== "existing")
+    ? options.filter((option) => option.value !== "existing" && option.value !== "missing")
     : options;
