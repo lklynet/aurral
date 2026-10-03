@@ -5304,6 +5304,7 @@ textarea {
 }
 
 .artist-discover-hero {
+  --discover-title-size: clamp(2rem, 4vw, 2.75rem);
   position: relative;
   margin-bottom: 2.5rem;
   padding-bottom: 1.75rem;
@@ -5341,7 +5342,7 @@ textarea {
 }
 
 .artist-discover-hero .page-title {
-  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-size: var(--discover-title-size);
   font-weight: 700;
   letter-spacing: -0.03em;
 }
@@ -5360,6 +5361,10 @@ textarea {
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.artist-discover-hero__title-row .artist-discover-hero__updated {
+  translate: 0 calc(var(--discover-title-size) * 0.085);
 }
 
 .artist-discover-hero__updated--refreshing {
