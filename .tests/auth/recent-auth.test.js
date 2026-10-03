@@ -37,6 +37,18 @@ test("recent authentication requires a valid bearer session", () => {
   );
 });
 
+test("stream requests need sign-in once an account exists, even without a stored single password", () => {
+  const anonymous = { headers: {}, query: {}, ip: "203.0.113.9", socket: { remoteAddress: "203.0.113.9" } };
+  assert.equal(auth.verifyTokenAuth({ ...anonymous }), true);
+
+  dbOps.updateSettings({ onboardingComplete: true });
+  const user = userOps.createUser("stream-owner", bcrypt.hashSync("password123", 4), "admin");
+  assert.equal(auth.verifyTokenAuth({ ...anonymous }), false);
+
+  const session = createSession(user.id);
+  assert.equal(auth.verifyTokenAuth({ ...anonymous, query: { token: session.token } }), true);
+});
+
 test("password and Subsonic authentication reject inactive users", () => {
   const password = "password123";
   const user = userOps.createUser(

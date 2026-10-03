@@ -721,10 +721,7 @@ export const verifyTokenAuth = (req) => {
     req.user = streamTokenUser;
     return true;
   }
-  if (isProxyAuthEnabled()) return false;
-  const passwords = getAuthPassword();
-  if (passwords.length === 0) return true;
-  return false;
+  return !isAuthRequiredByConfig();
 };
 
 export function hasPermission(user, permission) {
