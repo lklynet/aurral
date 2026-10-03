@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../helpers/backendTestHarness.js";
 
-const [state, { db }, { dbOps }, persistedDiscovery, { getUserDiscovery }, discovery] = await setupIsolatedBackend(
+const [state, { db }, { dbOps }, persistedDiscovery, { getUserDiscovery }, discovery, libraryStore] = await setupIsolatedBackend(
   "user-discovery", "backend/config/db-sqlite.js", "backend/db/helpers/index.js",
   "backend/services/discovery/persistence.js", "backend/services/discovery/userDiscovery.js", "backend/services/discovery/index.js",
+  "backend/services/libraryMediaStore.js",
 );
 
 test.beforeEach(() => {
@@ -48,4 +49,20 @@ test("cached discovery applies per-user blocks to recommendations and fallback s
   assert.equal((await getUserDiscovery(8, 0)).body.globalTop.length, 1);
   discovery.removeDiscoveryFeedback(7, block.id);
   assert.equal((await getUserDiscovery(7, 0)).body.globalTop.length, 1);
+});
+
+test("cached discovery hides an artist once the library learns its MBID", async () => {
+  const mbid = "00000000-0000-4000-8000-000000000041";
+  libraryStore.upsertLibraryArtist({
+    identityKey: libraryStore.buildFallbackIdentityKey("artist", "Artist X"),
+    name: "Artist X",
+  });
+  db.prepare(`INSERT INTO library_artists (identity_key, name, created_at, updated_at)
+    VALUES ('newest-write', 'Newest Write', 1, 9000000000000000)`).run();
+  dbOps.updateDiscoveryCache({ recommendations: [{ id: mbid, name: "Artist X (alias)" }] });
+  persistedDiscovery.reloadDiscoveryPersistedCache();
+  assert.equal((await getUserDiscovery(7, 0)).body.recommendationCount, 1);
+
+  libraryStore.upsertLibraryArtist({ identityKey: mbid, mbid, name: "Artist X" });
+  assert.equal((await getUserDiscovery(7, 0)).body.recommendationCount, 0);
 });

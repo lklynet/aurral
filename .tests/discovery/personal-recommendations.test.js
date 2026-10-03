@@ -16,6 +16,7 @@ const [
   playEvents,
   { sampleLibraryArtistsForDiscovery },
   { default: discoveryRouter },
+  { WeeklyFlowPlaylistSource },
 ] = await setupIsolatedBackend(
   "personal-recommendations",
   "backend/config/db-sqlite.js",
@@ -25,6 +26,7 @@ const [
   "backend/services/playEventService.js",
   "backend/services/libraryQueryService.js",
   "backend/routes/discovery/index.js",
+  "backend/services/weeklyFlow/weeklyFlowPlaylistSource.js",
 );
 
 const mbid = (index) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
@@ -151,11 +153,11 @@ test("new feedback softens and hides served picks before the next refresh", asyn
   discovery.removeDiscoveryFeedback(alice.id, lessLike.id);
 });
 
-test("feedback through the API waits for the next scheduled rebuild", async () => {
+const requestDiscoveryApi = async (userId, path, init = {}) => {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.user = { id: alice.id, role: "user" };
+    req.user = { id: userId, role: "user" };
     next();
   });
   app.use("/api/discover", discoveryRouter);
@@ -164,17 +166,36 @@ test("feedback through the API waits for the next scheduled rebuild", async () =
   });
   try {
     const response = await originalFetch(
-      `http://127.0.0.1:${server.address().port}/api/discover/feedback`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ artistName: "Another Favorite", action: "more_like_this" }),
-      },
+      `http://127.0.0.1:${server.address().port}/api/discover${path}`,
+      { ...init, headers: { "content-type": "application/json" } },
     );
-    assert.equal(response.status, 200);
+    return { status: response.status, body: await response.json() };
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+};
+
+test("tag search and flow plans read the user's own pool", async () => {
+  const tagged = await requestDiscoveryApi(alice.id, "/by-tag?tag=shoegaze");
+  assert.equal(tagged.status, 200);
+  assert.ok(tagged.body.recommendations.some((artist) => artist.name === FROM_LIKED.name));
+
+  const source = new WeeklyFlowPlaylistSource();
+  let basedOn = [];
+  source.getReleaseRadarTracks = async (_limit, options) => {
+    basedOn = options.basedOn;
+    return [];
+  };
+  await source.buildFlowRunPlan({ ownerUserId: alice.id, discoverPresetId: "release-radar", size: 2 });
+  assert.ok(basedOn.some((artist) => artist.name === LIKED.name));
+});
+
+test("feedback through the API waits for the next scheduled rebuild", async () => {
+  const response = await requestDiscoveryApi(alice.id, "/feedback", {
+    method: "POST",
+    body: JSON.stringify({ artistName: "Another Favorite", action: "more_like_this" }),
+  });
+  assert.equal(response.status, 200);
 
   const queuedForAlice = db.prepare(
     "SELECT payload FROM _honker_live WHERE queue = 'discovery-user-refresh'",

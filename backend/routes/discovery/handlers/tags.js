@@ -10,6 +10,7 @@ import {
 import { logger } from "../../../services/logger.js";
 import { pendingTagRequests, fetchLastfmTopTagNames } from "./utils.js";
 import { getLibraryArtistKeys } from "../../../services/discovery/artistKeys.js";
+import { getUserDiscovery } from "../../../services/discovery/userDiscovery.js";
 
 export function registerTags(router) {
   router.get("/tags", async (req, res) => {
@@ -176,9 +177,9 @@ export function registerTags(router) {
           });
         }
       } else {
-        const discoveryCache = getDiscoveryCache();
+        const { body: discovery } = getUserDiscovery(req.user?.id ?? null, 0);
         const tagLower = String(tag).trim().toLowerCase();
-        const matches = (discoveryCache.recommendations || []).filter(
+        const matches = discovery.recommendations.filter(
           (artist) => {
             const tags = Array.isArray(artist.tags) ? artist.tags : [];
             return tags.some((t) => String(t).toLowerCase() === tagLower);

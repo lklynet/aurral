@@ -289,8 +289,8 @@ export function upsertLibraryArtist({
         : findFallbackArtist();
       if (fallback && !resolved) {
         libraryChanged = moveLibraryArtistStars(fallback.identity_key, key) || libraryChanged;
-        libraryChanged = db.prepare("UPDATE library_artists SET identity_key = ? WHERE id = ?")
-          .run(key, fallback.id).changes > 0 || libraryChanged;
+        libraryChanged = db.prepare("UPDATE library_artists SET identity_key = ?, updated_at = ? WHERE id = ?")
+          .run(key, timestamp, fallback.id).changes > 0 || libraryChanged;
       } else if (fallback && resolved && fallback.id !== resolved.id) {
         mergeFallbackArtist(fallback, resolved);
       }

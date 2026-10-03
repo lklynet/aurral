@@ -1,5 +1,5 @@
 import { lastfmRequest, getLastfmApiKey } from "../apiClients/index.js";
-import { getDiscoveryCache } from "../discovery/index.js";
+import { getUserDiscovery } from "../discovery/userDiscovery.js";
 import { normalizeWeightMap } from "./weeklyFlowPlaylistConfig.js";
 import { getBlockedArtistKeys } from "../discovery/feedback.js";
 import { mapWithConcurrency } from "../discovery/helpers.js";
@@ -338,7 +338,7 @@ export class WeeklyFlowPlaylistSource {
     if (options?.discoveryCache && typeof options.discoveryCache === "object") {
       return options.discoveryCache;
     }
-    return getDiscoveryCache(options?.listenHistoryProfile);
+    return getUserDiscovery(options?.ownerUserId ?? null, 0).body;
   }
 
   _normalizeTrackReason(value, fallback = "Flow selection") {
@@ -385,56 +385,6 @@ export class WeeklyFlowPlaylistSource {
       artistAliases: normalizedAliases,
       reason: this._normalizeTrackReason(reason),
     };
-  }
-
-  _getRecommendedArtists(listenHistoryProfile = null) {
-    const discoveryCache = getDiscoveryCache(listenHistoryProfile);
-    return Array.isArray(discoveryCache.recommendations) ? discoveryCache.recommendations : [];
-  }
-
-  _getRecommendedArtistSet(listenHistoryProfile = null) {
-    const set = new Set();
-    for (const artist of this._getRecommendedArtists(listenHistoryProfile)) {
-      if (artist?.id) {
-        set.add(this._artistKey(artist.id));
-      }
-      if (artist?.name) {
-        set.add(this._artistKey(artist.name));
-      }
-      if (artist?.artistName) {
-        set.add(this._artistKey(artist.artistName));
-      }
-    }
-    return set;
-  }
-
-  _getRecommendedArtistMap(listenHistoryProfile = null) {
-    const map = new Map();
-    for (const artist of this._getRecommendedArtists(listenHistoryProfile)) {
-      if (!artist) continue;
-      const keys = this._artistKeysFromArtist(artist);
-      for (const key of keys) {
-        if (!map.has(key)) {
-          map.set(key, artist);
-        }
-      }
-    }
-    return map;
-  }
-
-  _getRecommendedArtistsByTags(tags, match, listenHistoryProfile = null) {
-    const wanted = tags.map((tag) => String(tag).trim().toLowerCase()).filter(Boolean);
-    if (wanted.length === 0) return [];
-    const requiredAll = match === "all";
-    return this._getRecommendedArtists(listenHistoryProfile).filter((artist) => {
-      const artistTags = Array.isArray(artist.tags)
-        ? artist.tags.map((t) => String(t).toLowerCase())
-        : [];
-      if (requiredAll) {
-        return wanted.every((tag) => artistTags.includes(tag));
-      }
-      return wanted.some((tag) => artistTags.includes(tag));
-    });
   }
 
   _filterTracksByArtists(tracks, includeSet, excludeSet) {
@@ -1715,7 +1665,8 @@ export class WeeklyFlowPlaylistSource {
     };
   }
 
-  async buildFlowRunPlan(flow, options = {}) {
+  async buildFlowRunPlan(flow, planOptions = {}) {
+    const options = { ...planOptions, ownerUserId: planOptions?.ownerUserId ?? flow?.ownerUserId ?? null };
     const requestedSize = Number(flow?.size || 0);
     const targetSize =
       Number.isFinite(requestedSize) && requestedSize > 0 ? Math.round(requestedSize) : 30;

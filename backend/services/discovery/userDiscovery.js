@@ -55,7 +55,7 @@ const ensureUserRefresh = (userId, userCache, refreshState) => {
   return { ...refreshState, pending: refreshState.pending || result.enqueued };
 };
 
-export async function getUserDiscovery(userId, limit = 50, offset = 0) {
+export function getUserDiscovery(userId, limit = 50, offset = 0) {
   const hasLastfmKey = !!getLastfmApiKey();
   const globalCache = getDiscoveryCache();
   const namespace = hasLastfmKey && userId != null ? getUserDiscoveryNamespace(userId) : null;

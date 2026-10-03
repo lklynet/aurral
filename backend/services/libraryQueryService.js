@@ -367,7 +367,7 @@ export function getCanonicalArtistKeyProjection() {
 
 export function getLibraryArtistsSignature() {
   const row = db.prepare(
-    `SELECT COUNT(*) AS count, COALESCE(MAX(id), 0) AS maxId, COALESCE(MAX(updated_at), 0) AS updatedAt
+    `SELECT COUNT(*) AS count, COALESCE(MAX(id), 0) AS maxId, CAST(COALESCE(SUM(updated_at), 0) AS TEXT) AS updatedAt
      FROM library_artists`,
   ).get();
   return `${row.count}:${row.maxId}:${row.updatedAt}`;
