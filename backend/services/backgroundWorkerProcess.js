@@ -17,6 +17,9 @@ const flowWorker = group === "flow"
 const flowOperationStatus = group === "flow"
   ? (await import("./weeklyFlow/weeklyFlowOperationWorker.js")).getWeeklyFlowOperationWorkerStatus
   : null;
+const hasApprovalFollowUps = group === "flow"
+  ? (await import("./weeklyFlow/weeklyFlowBlockedJobReview.js")).hasApprovalFollowUps
+  : () => false;
 
 let stopping = false;
 let flowCommandsInFlight = 0;
@@ -120,7 +123,7 @@ function isIdle() {
   const idleStopMs = getWorkerIdleStopMs();
   if (stopping || !idleStopMs) return false;
   if (flowCommandsInFlight > 0 || Date.now() - lastFlowCommandAt < idleStopMs) return false;
-  if (flowWorker?.hasWork()) return false;
+  if (flowWorker?.hasWork() || hasApprovalFollowUps()) return false;
   try {
     if (group === "scheduler") return !isHonkerScheduleDue();
     return !hasQueuedBackgroundWork(group);

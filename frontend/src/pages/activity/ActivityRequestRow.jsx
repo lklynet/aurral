@@ -60,8 +60,7 @@ function getRequestMeta(request, title) {
 export default function ActivityRequestRow({
   request,
   reSearchingAlbumIds,
-  approvingJobId,
-  denyingJobId,
+  reviewingJobs,
   jobErrors,
   currentTrack,
   isPlaying,
@@ -104,8 +103,8 @@ export default function ActivityRequestRow({
   const canReSearch =
     request.canReSearch === true && request.albumId && !reSearchingAlbumIds[request.albumId];
   const isReSearching = Boolean(request.albumId && reSearchingAlbumIds[request.albumId]);
-  const isApproving = approvingJobId === request.jobId;
-  const isDenying = denyingJobId === request.jobId;
+  const isApproving = reviewingJobs[request.jobId] === "approve";
+  const isDenying = reviewingJobs[request.jobId] === "deny";
   const isThisPlaying = currentTrack?.id === String(request.jobId) && isPlaying;
   const jobError = jobErrors[request.jobId];
   const reviewReasonSummary = isBlockedTrack

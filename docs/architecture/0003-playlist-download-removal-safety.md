@@ -19,17 +19,19 @@ Treat playlist removal as a durable cancellation boundary.
 - Each download job stores the playlist generation that was active when Aurral created it.
 - The worker, pipeline payload, and commit handler use the stored generation.
   They never substitute the playlist's current generation.
-- The delete path marks the playlist cancelled before it waits for the playlist mutation lock.
+- The delete path marks the playlist cancelled before it waits for the download locks.
 - The delete path cancels matching Honker jobs and known provider work before it clears tracker rows.
 - A pipeline checks the durable state before each phase and before it queues another phase.
-- A finalizer and playlist deletion share the `playlist-mutation:<playlistId>` lock. A finalizer that gets the lock first completes before deletion removes the file. A finalizer that waits sees the cancellation state and does not import the file.
-- A flow refresh validates its operation token, flow state, and planned settings under the playlist mutation lock before it cancels old jobs. Flow settings updates take the same lock. A stale plan therefore leaves the current jobs active, and a settings update cannot race provider cleanup.
+- Download locks are keyed by the job's owner, stored as `playlist_id`. Library downloads all share the owner `library`; flows and shared playlists use their own ID. A pipeline phase holds `download-step:<owner>` for the whole phase. Importing a file holds `download-import:<owner>`. Deletion and other ownership changes take both locks, the step lock first.
+- A finalizer and playlist deletion share the import lock. A finalizer that gets the lock first completes before deletion removes the file. A finalizer that waits sees the cancellation state and does not import the file.
+- Approving a download held for review takes only the import lock. It waits for other imports and ownership changes, but not for another track's search or transfer.
+- A flow refresh validates its operation token, flow state, and planned settings under both download locks before it cancels old jobs. Flow settings updates take the same locks. A stale plan therefore leaves the current jobs active, and a settings update cannot race provider cleanup.
 - Before clearing shared-playlist jobs, deletion removes Aurral-managed completed files that no other job or playback playlist uses. Files owned elsewhere stay in place.
 - Clearing all jobs snapshots the current rows, cancels those jobs, and removes them under the affected playlist locks. Jobs created after the snapshot stay queued.
 - Library-track removal waits for provider cleanup before deleting matching jobs or files. If cleanup fails, the library track and job stay in place for a later retry.
 - Library-track deletion reads each matching job's current `finalPath` after provider cancellation finishes. It includes that path in file cleanup before removing the track, so a finalizer that already held the lock cannot leave an untracked file behind.
 - Library-track deletion checks playlist file references before unlinking a path. It moves a shared managed file to a surviving playlist. It leaves other referenced files in place when it cannot move them safely.
-- slskd, deemix, and Usenet submissions use the playlist mutation lock. Each handler records the provider ID before releasing the lock, and cancellation reads the current job metadata after it acquires the lock. A failed provider cleanup therefore leaves the ID available for retry.
+- slskd, deemix, and Usenet submissions use the import lock. Each handler records the provider ID before releasing the lock, and cancellation reads the current job metadata after it acquires the lock. A failed provider cleanup therefore leaves the ID available for retry.
 - A failed shared-playlist edit restores only job-cancellation tombstones created by that edit. Existing tombstones stay in force, and the old playlist remains unchanged.
 - A failed shared-playlist deletion reactivates the playlist and its jobs, so tracks added before a retry still download.
 
@@ -48,7 +50,7 @@ If slskd, deemix, SABnzbd, or NZBGet has tracked work but is no longer configure
 
 Aurral does not delete a source file merely because a Usenet or deemix provider reports its path. A path mapping can point into a shared library. The provider response does not prove that Aurral owns the file. Cancellation prevents import, while provider-specific cleanup handles work that Aurral can identify.
 
-Subsonic playlist edits use the same mutation lock as other playlist operations. They cancel only legacy jobs removed by the replacement and preserve jobs and files for tracks that remain. If provider cancellation fails, the old playlist stays in place. The edit restores only job tombstones it created, so an earlier playlist cancellation remains in force. Pending jobs resume when the playlist was active before the edit. Interrupted downloads become failed jobs that the user can retry. If flow or playlist cleanup cannot be queued, Aurral restores only the cancellation markers created by that request; a failed flow disable also restores its previous enabled state. Track removal similarly clears only its newly created job marker when queueing fails.
+Subsonic playlist edits take both download locks, like other playlist operations. They cancel only legacy jobs removed by the replacement and preserve jobs and files for tracks that remain. If provider cancellation fails, the old playlist stays in place. The edit restores only job tombstones it created, so an earlier playlist cancellation remains in force. Pending jobs resume when the playlist was active before the edit. Interrupted downloads become failed jobs that the user can retry. If flow or playlist cleanup cannot be queued, Aurral restores only the cancellation markers created by that request; a failed flow disable also restores its previous enabled state. Track removal similarly clears only its newly created job marker when queueing fails.
 
 yt-dlp staging cleanup does not require yt-dlp to be configured because it removes local files.
 

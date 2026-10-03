@@ -43,6 +43,7 @@ const {
   isPipelinePayloadActive,
   listDownloadProviderWork,
   registerDownloadProviderWork,
+  withPipelineCommitLock,
 } = cancellationModule;
 const { playlistManager } = playlistManagerModule;
 const { withHonkerLock } = honkerModule;
@@ -121,8 +122,7 @@ test("playlist deletion keeps a job available until an in-flight commit releases
   const lockHeld = new Promise((resolve) => {
     releaseLock = resolve;
   });
-  const lockName = `playlist-mutation:${playlistId}`;
-  const commitLock = withHonkerLock(lockName, async () => {
+  const commitLock = withPipelineCommitLock({ jobId, playlistId, playlistGeneration: downloadTracker.getJob(jobId).playlistGeneration }, async () => {
     signalLockEntered();
     await lockHeld;
   });
@@ -173,7 +173,7 @@ test("Subsonic edits clean an in-flight legacy file before removing its job", as
   let releaseLock;
   const lockEntered = new Promise((resolve) => { signalLockEntered = resolve; });
   const lockHeld = new Promise((resolve) => { releaseLock = resolve; });
-  const commitLock = withHonkerLock(`playlist-mutation:${playlistId}`, async () => {
+  const commitLock = withPipelineCommitLock({ jobId, playlistId, playlistGeneration: downloadTracker.getJob(jobId).playlistGeneration }, async () => {
     signalLockEntered();
     await lockHeld;
   });

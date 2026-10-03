@@ -34,6 +34,30 @@ test("playlist mutation waits for the active provider stage before changing owne
   assert.equal(mutated, true);
 });
 
+test("a provider stage can import while a playlist mutation waits for it", { timeout: 2000 }, async () => {
+  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Import owner" });
+  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Import track" }, playlist.id);
+  const started = deferred();
+  const release = deferred();
+  let imported = null;
+  const processing = processOrchestratorJob({ jobId, playlistId: playlist.id, playlistGeneration: 0 }, {
+    async processPipelinePayload(payload) {
+      started.resolve();
+      await release.promise;
+      imported = await cancellation.withPipelineCommitLock(payload, () => "imported");
+      return null;
+    },
+    async continuePipeline() {},
+  });
+  await started.promise;
+  const mutation = guards.withPlaylistMutationLock(playlist.id, () => imported);
+  await new Promise(setImmediate);
+  release.resolve();
+  await processing;
+  assert.deepEqual(await mutation, { cancelled: false, result: "imported" });
+});
+
 test("pipeline commit can reuse a live playlist lock", { timeout: 2000 }, async () => {
   const result = await guards.withPlaylistMutationLock("nested", () => cancellation.withPipelineCommitLock({ playlistId: "nested", playlistGeneration: 0 }, () => "committed"));
   assert.deepEqual(result, { cancelled: false, result: "committed" });

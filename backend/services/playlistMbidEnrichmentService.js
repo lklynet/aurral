@@ -1,8 +1,6 @@
-import {
-  enqueuePlaylistMbidEnrichmentJob,
-  withHonkerLock,
-} from "./honkerDb.js";
+import { enqueuePlaylistMbidEnrichmentJob } from "./honkerDb.js";
 import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
+import { withPlaylistMutationLock } from "./weeklyFlow/weeklyFlowMutationGuards.js";
 import { playlistManager } from "./weeklyFlow/weeklyFlowPlaylistManager.js";
 import { resolveWeeklyFlowTrackContext } from "./weeklyFlow/weeklyFlowTrackResolver.js";
 import { mapWithConcurrency } from "./discovery/helpers.js";
@@ -270,8 +268,8 @@ export async function enrichSharedPlaylistMbids(
     };
   }
 
-  return withHonkerLock(
-    `playlist-mutation:${safePlaylistId}`,
+  return withPlaylistMutationLock(
+    safePlaylistId,
     async () => {
       const currentPlaylist = flowPlaylistConfig.getSharedPlaylist(safePlaylistId);
       if (!currentPlaylist) return { missing: true, changed: false };
@@ -335,11 +333,6 @@ export async function enrichSharedPlaylistMbids(
         playlistTracksUpdated,
         jobsUpdated,
       };
-    },
-    {
-      ttlSeconds: 180,
-      waitTimeoutMs: 15 * 60 * 1000,
-      retryDelayMs: 250,
     },
   );
 }
