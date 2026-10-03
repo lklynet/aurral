@@ -108,6 +108,7 @@ import {
 } from "../utils/aurralMonitoring.js";
 import { useArtistMonitoring } from "../components/ArtistMonitoringButtons";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
+import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
 import {
@@ -882,6 +883,7 @@ function LibraryPage() {
   const canAddTracks = hasPermission("addAlbum");
   const canChangeMonitoring = hasPermission("changeMonitoring");
   const libraryDestination = useLibraryDestination();
+  const { isAlbumDownloading, isTrackDownloading } = useActiveDownloads();
   const canEditArtistMbid = hasPermission("addArtist");
 
   const openLibraryRemoval = useCallback((kind, entity, manager = null) => {
@@ -1416,6 +1418,9 @@ function LibraryPage() {
   }, [libraryAlbum, loadAlbumTracks]);
 
   const [albumDownloadPending, setAlbumDownloadPending] = useState(false);
+  const libraryAlbumDownloading =
+    albumDownloadPending ||
+    isAlbumDownloading(libraryAlbum?.mbid || libraryAlbum?.releaseGroupMbid);
   const albumManager = resolveAlbumManager(libraryAlbum);
   const activeManager = libraryDestination.primary;
   const lidarrAlbumId =
@@ -1877,8 +1882,15 @@ function LibraryPage() {
           : null;
         const downloadKey = trackDownloadIdentity(track);
         const downloadState = trackDownloadStates[downloadKey];
-        const downloadPending = TRACK_DOWNLOAD_ACTIVE_STATUSES.has(downloadState?.status);
-        const downloadLabel = trackDownloadActionLabel(downloadState?.status);
+        const backgroundDownload =
+          !file &&
+          (isTrackDownloading({ ...track, artistName: artist?.name || track.artistName }) ||
+            isAlbumDownloading(album?.mbid || album?.releaseGroupMbid));
+        const downloadPending =
+          TRACK_DOWNLOAD_ACTIVE_STATUSES.has(downloadState?.status) || backgroundDownload;
+        const downloadLabel = trackDownloadActionLabel(
+          downloadState?.status || (backgroundDownload ? "downloading" : null),
+        );
         const active =
           String(currentTrack?.id) === String(track.id) &&
           matchesSource(librarySource);
@@ -2506,14 +2518,18 @@ function LibraryPage() {
                 <TooltipButton
                   className="native-library-favorite"
                   onClick={downloadLibraryAlbum}
-                  disabled={albumDownloadPending}
-                  label={albumManager === "lidarr" && albumMonitored ? "Search for album" : "Download album"}
+                  disabled={libraryAlbumDownloading}
+                  label={libraryAlbumDownloading
+                    ? "Downloading album"
+                    : albumManager === "lidarr" && albumMonitored ? "Search for album" : "Download album"}
                   aria-label={
-                    (albumManager === "lidarr" && albumMonitored ? "Search for " : "Download ") +
+                    (libraryAlbumDownloading
+                      ? "Downloading "
+                      : albumManager === "lidarr" && albumMonitored ? "Search for " : "Download ") +
                     (libraryAlbum.title || "album")
                   }
                 >
-                  {albumDownloadPending ? (
+                  {libraryAlbumDownloading ? (
                     <DotLoader size="sm" label={null} />
                   ) : albumManager === "lidarr" && albumMonitored ? (
                     <Search aria-hidden="true" />

@@ -15,6 +15,7 @@ import {
   Star,
 } from "lucide-react";
 import AddActionButton from "../../components/AddActionButton";
+import { useActiveDownloads } from "../../hooks/useActiveDownloads";
 import PillToggle from "../../components/PillToggle";
 import SearchLibraryCheck from "../../components/SearchLibraryCheck";
 import { useAuth } from "../../contexts/AuthContext";
@@ -92,6 +93,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   const navigate = useDiscoverNavigation();
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
+  const { isAlbumDownloading } = useActiveDownloads();
   const { hasPermission } = useAuth();
   const [selectedTab, setSelectedTab] = useState("all");
   const [showLiveAlbums, setShowLiveAlbums] = useState(true);
@@ -414,6 +416,8 @@ function ArtistReleaseListPage({ mode = "releases" }) {
       resolved: fulfilledCoverIds?.has(releaseGroup.id),
     });
     const isComplete = status?.status === "available" || status?.status === "added";
+    const albumBusy =
+      library.requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id);
     const releaseTypeLabel = getReleaseTypeLabel(releaseGroup);
     const artistCredit = isAppearsOn ? releaseGroup["artist-credit"]?.[0]?.name || "" : "";
     const metaLabel = [getReleaseYear(releaseGroup), artistCredit || releaseTypeLabel]
@@ -464,8 +468,9 @@ function ArtistReleaseListPage({ mode = "releases" }) {
                   ownerConflict={status?.ownerConflict}
                   onAdd={(managedBy) =>
                     library.handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)}
-                  isLoading={library.requestingAlbum === releaseGroup.id}
-                  disabled={library.requestingAlbum === releaseGroup.id}
+                  isLoading={albumBusy}
+                  loadingLabel="Downloading"
+                  disabled={albumBusy}
                 />
               </div>
             ) : null}
@@ -506,8 +511,9 @@ function ArtistReleaseListPage({ mode = "releases" }) {
                   ownerConflict={status?.ownerConflict}
                   onAdd={(managedBy) =>
                     library.handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)}
-                  isLoading={library.requestingAlbum === releaseGroup.id}
-                  disabled={library.requestingAlbum === releaseGroup.id}
+                  isLoading={albumBusy}
+                  loadingLabel="Downloading"
+                  disabled={albumBusy}
                 />
               </div>
             ) : null}

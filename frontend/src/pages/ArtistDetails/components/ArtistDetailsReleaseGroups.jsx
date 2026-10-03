@@ -4,6 +4,7 @@ import { ArrowRight, Music, Star } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import AddActionButton from "../../../components/AddActionButton";
+import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { navigateToReleaseGroup } from "../../../utils/searchNavigation";
 import { getPopularReleaseGroups, getReleaseGroupCoverUrl, getReleaseMetric, getReleaseYear } from "../utils";
 import { getAlbumAddAction } from "../../../utils/albumAddAction";
@@ -66,6 +67,7 @@ export function ArtistDetailsReleaseGroups({
   onVisibleCoverIdsChange,
   onViewAll,
 }) {
+  const { isAlbumDownloading } = useActiveDownloads();
   const navigate = useDiscoverNavigation();
   const [viewMode, setViewMode] = useState("popular");
   const [releaseGridRef, previewLimit] = useResponsiveReleaseLimit();
@@ -162,8 +164,9 @@ export function ArtistDetailsReleaseGroups({
                         ownerConflict={status?.ownerConflict}
                         onAdd={(managedBy) =>
                           handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)}
-                        isLoading={requestingAlbum === releaseGroup.id}
-                        disabled={requestingAlbum === releaseGroup.id}
+                        isLoading={requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)}
+                        loadingLabel="Downloading"
+                        disabled={requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)}
                       />
                     </div>
                   ) : null}

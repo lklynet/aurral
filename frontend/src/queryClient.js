@@ -126,6 +126,7 @@ export const queryKeys = {
   ],
   artistSimilarPrefix: ["artists", "similar"],
   artistAppearsOn: (mbid) => ["artists", "appears-on", mbid || null],
+  activeDownloads: ["downloads", "active"],
   downloadStatus: (ids) => ["library", "download-status", [...ids].sort()],
   aurralAlbumStatus: (canonicalId) => ["library", "aurral-album-status", String(canonicalId)],
   searchCatalog: (query, scope, options) => ["search", scope, query, options],

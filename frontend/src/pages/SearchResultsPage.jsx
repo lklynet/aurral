@@ -39,6 +39,7 @@ import {
   buildAlbumRequestPayload,
 } from "../utils/libraryDestination";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
+import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import {
   PAGE_SIZE,
   DEFAULT_ALBUM_SORT,
@@ -151,6 +152,7 @@ function SearchResultsPage() {
   const { hasPermission, bootstrap } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
+  const { isAlbumDownloading } = useActiveDownloads();
 
   const trimmedQuery = useMemo(() => query.trim(), [query]);
   const normalizedType = useMemo(() => {
@@ -1021,13 +1023,14 @@ function SearchResultsPage() {
 
       if (item.type === "album") {
         if (!canAddAlbum || !item.id) return null;
-        const pending = !!pendingAlbumIds[item.id];
+        const pending = !!pendingAlbumIds[item.id] || isAlbumDownloading(item.id);
         return (
           <AddActionButton
             {...getAlbumAddAction(item, libraryDestination)}
             ownerConflict={item.ownerConflict}
             onAdd={(managedBy) => handleAlbumAction(item, managedBy)}
             isLoading={pending}
+            loadingLabel="Downloading"
             disabled={pending || ALBUM_PENDING_STATUSES.has(item.status)}
           />
         );
@@ -1038,6 +1041,7 @@ function SearchResultsPage() {
     [
       canAddAlbum,
       handleAlbumAction,
+      isAlbumDownloading,
       libraryDestination,
       handleSearchTrackAdd,
       isSearchResultInLibrary,

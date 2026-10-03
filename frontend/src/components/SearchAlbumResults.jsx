@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { Music } from "lucide-react";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import AddActionButton from "./AddActionButton";
+import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { getAlbumAddAction, isAlbumCompleteInLibrary } from "../utils/albumAddAction";
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
 import Tooltip from "./Tooltip";
@@ -41,7 +42,9 @@ function AlbumCover({ src, alt }) {
 }
 
 function AlbumAction({ album, isPending, canAddAlbum, onAlbumAction, libraryDestination }) {
-  const actionDisabled = isAlbumActionDisabled(album, isPending, canAddAlbum);
+  const { isAlbumDownloading } = useActiveDownloads();
+  const downloading = isPending || isAlbumDownloading(album.id);
+  const actionDisabled = isAlbumActionDisabled(album, downloading, canAddAlbum);
   const isComplete = isAlbumCompleteInLibrary({ status: album.status });
 
   if (isComplete) {
@@ -62,7 +65,8 @@ function AlbumAction({ album, isPending, canAddAlbum, onAlbumAction, libraryDest
       {...getAlbumAddAction(album, libraryDestination)}
       ownerConflict={album.ownerConflict}
       onAdd={(managedBy) => onAlbumAction(album, managedBy)}
-      isLoading={isPending}
+      isLoading={downloading}
+      loadingLabel="Downloading"
       disabled={actionDisabled}
     />
   );

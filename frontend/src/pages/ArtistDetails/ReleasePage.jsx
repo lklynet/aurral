@@ -23,6 +23,7 @@ import { Link, useLocation, useParams } from "react-router";
 import { ExternalLink } from "lucide-react";
 import AddActionButton from "../../components/AddActionButton";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
+import { useActiveDownloads } from "../../hooks/useActiveDownloads";
 import {
   buildAlbumAddAction,
   countReleaseTracks,
@@ -106,6 +107,7 @@ function ReleasePage() {
   const { state: locationState } = useLocation();
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
+  const { isAlbumDownloading } = useActiveDownloads();
   const [ownerConflictState, setOwnerConflictState] = useState(null);
   const ownerConflict =
     ownerConflictState?.releaseMbid === releaseMbid ? ownerConflictState.conflict : null;
@@ -256,6 +258,9 @@ function ReleasePage() {
   const isComplete = libraryDisplay.isComplete;
   const triggerSearch = libraryDisplay.triggerSearch;
   const albumAddAction = buildAlbumAddAction(triggerSearch, libraryDestination);
+  const albumDownloading =
+    !isComplete &&
+    (isAlbumDownloading(releaseMbid) || ACTIVE_DOWNLOAD_STATUSES.has(String(downloadStatus?.status)));
   const lastfmUrl = artistName && releaseTitle ? buildLastfmAlbumUrl(artistName, releaseTitle) : "";
 
   const releaseMeta = [
@@ -584,8 +589,9 @@ function ReleasePage() {
                 {...albumAddAction}
                 ownerConflict={ownerConflict}
                 onAdd={handleAlbumAction}
-                isLoading={requestingAlbum}
-                disabled={requestingAlbum}
+                isLoading={requestingAlbum || albumDownloading}
+                loadingLabel="Downloading"
+                disabled={requestingAlbum || albumDownloading}
               />
             ) : null}
             {libraryInfo?.canonicalInLibrary ? (
@@ -625,6 +631,7 @@ function ReleasePage() {
         onAddTrackToPlaylist={handleReleaseTrackAdd}
         onAddTrackToLibrary={handleReleaseTrackAddToLibrary}
         libraryTrackSavingKey={libraryTrackSavingKey}
+        albumDownloading={albumDownloading}
         ownedTrackMbids={libraryInfo?.ownedTrackMbids}
         resolveMembershipTrack={buildReleaseTrackPayload}
         playlists={sharedPlaylists}
