@@ -373,7 +373,7 @@ const {
     if (scanResult?.lidarr?.error) {
       throw new Error(`Lidarr library indexing failed: ${scanResult.lidarr.error}`);
     }
-    const { playlistManager } = await import("./weeklyFlow/weeklyFlowPlaylistManager.js");
+    const { playlistManager } = await import("./playlists/playlistManager.js");
     await playlistManager.scanLibrary();
     websocketService.broadcast("library", { type: "library_scan_completed" });
   },

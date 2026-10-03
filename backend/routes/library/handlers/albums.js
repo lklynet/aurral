@@ -1,5 +1,5 @@
 import { libraryManager } from "../../../services/libraryManager.js";
-import { playlistManager } from "../../../services/weeklyFlow/weeklyFlowPlaylistManager.js";
+import { playlistManager } from "../../../services/playlists/playlistManager.js";
 import { dbOps } from "../../../db/helpers/index.js";
 import { hasPermission } from "../../../middleware/auth.js";
 import { cacheMiddleware, noCache } from "../../../middleware/cache.js";

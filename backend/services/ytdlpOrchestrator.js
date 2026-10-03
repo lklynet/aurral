@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
-import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
+import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger } from "./logger.js";
 import {
@@ -10,16 +10,16 @@ import {
   usableEvaluationEntries,
   validateDownloadedTrackFile,
 } from "./trackMatching/index.js";
-import { buildYtdlpSearchQueries } from "./weeklyFlow/weeklyFlowYtdlpSearch.js";
-import { resolvePlaylistRoot } from "./playlistPaths.js";
+import { buildYtdlpSearchQueries } from "./downloadJobs/ytdlpSearch.js";
+import { resolveDownloadRoot } from "./downloadPaths.js";
 import {
-  buildResolvedPlaylistTrack as buildResolvedTrack,
-  commitImportToPlaylistLibrary,
+  buildResolvedJobTrack as buildResolvedTrack,
+  commitDownloadedFile,
   joinUnderRoot,
   sanitizePathPart,
   writeAudioMetadata,
-} from "./playlistDownloadUtils.js";
-import { deferForInactiveOwner } from "./weeklyFlow/weeklyFlowOwnerStatus.js";
+} from "./downloadUtils.js";
+import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.js";
 import {
   getPayloadCandidate,
   hasNextCandidate,
@@ -31,7 +31,7 @@ import {
 import {
   isPipelinePayloadActive,
   withPipelineCommitLock,
-} from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
+} from "./downloadJobs/downloadCancellation.js";
 
 const ytdlpClient = getDownloadClient("ytdlp");
 const LIVE_STATUSES = new Set(["is_live", "was_live", "post_live", "is_upcoming"]);
@@ -245,7 +245,7 @@ async function handleYtdlpFinalize(payload, helpers) {
 
   const inactiveOwner = deferForInactiveOwner(payload, job);
   if (inactiveOwner) return inactiveOwner;
-  const playlistRoot = resolvePlaylistRoot();
+  const playlistRoot = resolveDownloadRoot();
   const destination = String(payload.destination || "").trim();
   const ext = path.extname(filePath).toLowerCase();
   const finalDir = joinUnderRoot(playlistRoot, destination);
@@ -258,7 +258,7 @@ async function handleYtdlpFinalize(payload, helpers) {
       .catch((err) => {
         console.warn(err);
       });
-    const committedFinalPath = await commitImportToPlaylistLibrary(filePath, finalPath);
+    const committedFinalPath = await commitDownloadedFile(filePath, finalPath);
     await ytdlpClient.cleanupStaging(job.id);
     return finalizePipelineJobSuccess({
       downloadTracker,

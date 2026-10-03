@@ -4,7 +4,7 @@ import createRateLimiter from "../apiClients/rateLimiter.js";
 import {
   buildSharedTrackIdentity,
   dedupeSharedTracks,
-} from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
+} from "../playlists/flowPlaylistConfig.js";
 
 const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{10,150}$/;
 const RATE_LIMIT_FALLBACK_MS = 60_000;

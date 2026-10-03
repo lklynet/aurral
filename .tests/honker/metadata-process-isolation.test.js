@@ -46,7 +46,7 @@ test("an isolated metadata request does not delay unrelated system tasks", { tim
     return child;
   }
   const metadata = launch("release-metadata");
-  const flow = launch("flow");
+  const downloads = launch("downloads");
   const waitFinished = (id) => new Promise((resolve) => { finished.set(id, resolve); });
   try {
     await Promise.all(ready.values());
@@ -57,14 +57,14 @@ test("an isolated metadata request does not delay unrelated system tasks", { tim
     assert.equal(honker.getReleaseMetadataQueue().getJob(metadataId)?.state, "processing");
     const taskId = honker.getSystemTaskQueue().enqueue({ kind: "library-index-refresh" });
     const taskDone = waitFinished(taskId);
-    flow.send({ type: "queue-wake" });
+    downloads.send({ type: "queue-wake" });
     await taskDone;
     assert.equal(honker.getSystemTaskQueue().getJob(taskId), null);
     assert.equal(honker.getReleaseMetadataQueue().getJob(metadataId)?.state, "processing");
     const events = honker.getHonkerDb().updateEvents();
     const legacyId = honker.getSystemTaskQueue().enqueue({ kind: "release-metadata-refresh" });
     const legacyDone = waitFinished(legacyId);
-    flow.send({ type: "queue-wake" });
+    downloads.send({ type: "queue-wake" });
     try {
       while (honker.getSystemTaskQueue().getJob(legacyId)?.state !== "processing" ||
         honker.getSystemTaskQueue().getJob(legacyId)?.attempts !== 0) await events.next();

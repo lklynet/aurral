@@ -1,13 +1,13 @@
 import {
   flowPlaylistConfig,
   invalidateFlowPlaylistConfigCache,
-} from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
+} from "../playlists/flowPlaylistConfig.js";
 import { fetchImportedPlaylistTracks } from "./importPlaylist.js";
-import { updateSharedPlaylist } from "../weeklyFlow/weeklyFlowOperations.js";
-import { buildSharedTrackIdentity } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
+import { updateSharedPlaylist } from "../playlists/playlistOperations.js";
+import { buildSharedTrackIdentity } from "../playlists/flowPlaylistConfig.js";
 import { logger, safeLogDiagnostic } from "../logger.js";
 import { dbOps } from "../../db/helpers/index.js";
-import { isFlowOwnerProcess, requestFlowOwner } from "../weeklyFlow/weeklyFlowOwnerClient.js";
+import { isDownloadOwnerProcess, requestDownloadOwner } from "../downloadJobs/downloadOwnerClient.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -21,10 +21,10 @@ export function isImportSourceDue(importSource, now = Date.now()) {
 }
 
 export async function syncSharedPlaylistImport(options = {}) {
-  if (isFlowOwnerProcess()) return syncSharedPlaylistImportHere(options);
+  if (isDownloadOwnerProcess()) return syncSharedPlaylistImportHere(options);
   const { playlistId, user, force = false } = options;
   try {
-    const response = await requestFlowOwner("syncSharedPlaylistImport", [{
+    const response = await requestDownloadOwner("syncSharedPlaylistImport", [{
       playlistId,
       user: { id: user?.id, role: user?.role },
       force,

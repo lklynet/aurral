@@ -1,28 +1,28 @@
 import path from "path";
 import fs from "fs/promises";
-import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
+import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { prowlarrClient } from "./prowlarrClient.js";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger } from "./logger.js";
-import { buildFlowSearchTiers } from "./weeklyFlow/weeklyFlowSoulseekSearch.js";
+import { buildTrackSearchTiers } from "./downloadJobs/trackSearchQueries.js";
 import {
   isAudioFile,
   rankUsenetReleases,
   selectRankedUsenetCandidates,
-} from "./weeklyFlow/weeklyFlowUsenetReleaseSearch.js";
+} from "./downloadJobs/usenetReleaseSearch.js";
 import {
   selectVerifiedDownloadedFile,
 } from "./trackMatching/index.js";
-import { resolvePlaylistRoot } from "./playlistPaths.js";
+import { resolveDownloadRoot } from "./downloadPaths.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 import {
-  buildResolvedPlaylistTrack as buildResolvedTrack,
-  commitImportToPlaylistLibrary,
+  buildResolvedJobTrack as buildResolvedTrack,
+  commitDownloadedFile,
   joinUnderRoot,
   sanitizePathPart,
   writeAudioMetadata,
-} from "./playlistDownloadUtils.js";
-import { deferForInactiveOwner } from "./weeklyFlow/weeklyFlowOwnerStatus.js";
+} from "./downloadUtils.js";
+import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.js";
 import {
   getPayloadCandidate,
   hasNextCandidate,
@@ -34,7 +34,7 @@ import {
 import {
   isPipelinePayloadActive,
   withPipelineCommitLock,
-} from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
+} from "./downloadJobs/downloadCancellation.js";
 import { getQualityProfile } from "./qualityProfileService.js";
 import { orderAdvertisedQualityCandidates } from "./qualityProfileModel.js";
 import { finishAlbumGrab } from "./albumGrab.js";
@@ -203,7 +203,7 @@ async function handleUsenetSearch(payload, helpers) {
       : null,
     upgrade: payload.upgrade === true,
   };
-  const searchTiers = buildFlowSearchTiers(resolvedTrack);
+  const searchTiers = buildTrackSearchTiers(resolvedTrack);
   const deniedSources = Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [];
   const deniedSourceGuidSet = new Set(
     deniedSources
@@ -449,7 +449,7 @@ async function handleUsenetFinalize(payload, helpers) {
     return helpers.failOrTryNextSource(payload, job, reason);
   }
 
-  const playlistRoot = resolvePlaylistRoot();
+  const playlistRoot = resolveDownloadRoot();
   const destination = String(payload.destination || "").trim();
   const ext = path.extname(found.filePath).toLowerCase();
   const finalDir = joinUnderRoot(playlistRoot, destination);
@@ -462,7 +462,7 @@ async function handleUsenetFinalize(payload, helpers) {
       .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
       .catch((err) => { console.warn(err); });
     await writeAudioMetadata(found.filePath, resolvedTrack);
-    const committedFinalPath = await commitImportToPlaylistLibrary(
+    const committedFinalPath = await commitDownloadedFile(
       found.filePath,
       finalPath,
     );

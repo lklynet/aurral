@@ -8,10 +8,10 @@ import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
 import { navidromePlaylistPointerStore } from "../navidrome/navidromePlaylistPointerStore.js";
 import {
   AURRAL_FLOWS_DIR,
-  PLAYLIST_LIBRARY_DIR,
-  resolvePlaylistRoot,
-} from "../playlistPaths.js";
-import { flowPlaylistConfig } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
+  PLAYLIST_FILES_DIR,
+  resolveDownloadRoot,
+} from "../downloadPaths.js";
+import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.js";
 import {
   createPlaybackPlaylistIdentity,
   createPlaybackPlaylistSnapshot,
@@ -64,13 +64,13 @@ function buildM3uContent(tracks) {
 }
 
 export class NavidromePlaybackDestination {
-  constructor(weeklyFlowRoot = resolvePlaylistRoot(), { client = null } = {}) {
+  constructor(downloadRoot = resolveDownloadRoot(), { client = null } = {}) {
     this.key = "navidrome";
     this.name = "Navidrome";
-    this.weeklyFlowRoot = resolvePlaylistRoot(weeklyFlowRoot);
-    this.playlistLibraryRoot = path.join(this.weeklyFlowRoot, PLAYLIST_LIBRARY_DIR);
-    this.mediaLibraryRoot = this.weeklyFlowRoot;
-    this.libraryRoot = path.join(this.playlistLibraryRoot, "_playlists");
+    this.downloadRoot = resolveDownloadRoot(downloadRoot);
+    this.playlistFilesRoot = path.join(this.downloadRoot, PLAYLIST_FILES_DIR);
+    this.mediaLibraryRoot = this.downloadRoot;
+    this.libraryRoot = path.join(this.playlistFilesRoot, "_playlists");
     this.client = client;
     this._prefixOwnerUsername = true;
     this._connectionKey = JSON.stringify({ url: "", username: "", password: "" });
@@ -374,9 +374,9 @@ export class NavidromePlaybackDestination {
   async ensureLibrary() {
     try {
       await fs.mkdir(this.libraryRoot, { recursive: true });
-      await fs.mkdir(path.join(this.weeklyFlowRoot, AURRAL_FLOWS_DIR), { recursive: true });
+      await fs.mkdir(path.join(this.downloadRoot, AURRAL_FLOWS_DIR), { recursive: true });
       if (this.isConfigured()) {
-        await this.client.ensureWeeklyFlowLibrary(
+        await this.client.ensureAurralLibrary(
           this.mediaLibraryRoot.replace(/\\/g, "/").replace(/\/+$/, ""),
         );
         await this._loadPlaylists(true);

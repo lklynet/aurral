@@ -412,7 +412,7 @@ test("matches Navidrome-relative paths under the configured library root", async
     { id: "music-library", name: "Music Library", path: "/data/music" },
     { id: "aurral-song", name: "Aurral Playlists", path: "/data/downloads/aurral" },
   ];
-  await client.ensureWeeklyFlowLibrary("/data/downloads/aurral");
+  await client.ensureAurralLibrary("/data/downloads/aurral");
   client._getIndexedSongs = async () => [{
     id: "relative-match",
     path: "The Rapture/Echoes/Echoes.flac",
@@ -449,7 +449,7 @@ test("waits for and verifies a Navidrome library update", async () => {
     throw new Error(`Unexpected Navidrome request: ${method} ${requestPath}`);
   };
 
-  const library = await client.ensureWeeklyFlowLibrary("/data/downloads");
+  const library = await client.ensureAurralLibrary("/data/downloads");
 
   assert.equal(library.id, "aurral-library");
   assert.equal(library.path, "/data/downloads");
@@ -470,7 +470,7 @@ test("fails when Navidrome keeps the old library path", async () => {
   };
 
   await assert.rejects(
-    client.ensureWeeklyFlowLibrary("/data/downloads"),
+    client.ensureAurralLibrary("/data/downloads"),
     /Navidrome library path verification failed/,
   );
 });

@@ -25,7 +25,7 @@ import { getDiscoveryCache } from "../services/discovery/index.js";
 import { getDiscoveryStatus } from "../services/discovery/userDiscovery.js";
 import { getCachedArtistCount } from "../services/libraryManager.js";
 import { logger } from "../services/logger.js";
-import { resolvePlaylistRoot } from "../services/playlistPaths.js";
+import { resolveDownloadRoot } from "../services/downloadPaths.js";
 import { getFilesystemBrowseRoots } from "../services/downloadFolderConfig.js";
 import { dbOps } from "../db/helpers/index.js";
 import { db } from "../config/db-sqlite.js";
@@ -148,7 +148,7 @@ async function buildDiskSpacePayload(settings) {
 async function computeDiskSpacePayload(settings) {
   const dataDir = resolveAurralDataDir();
   const dbPath = resolveDatabasePath();
-  const downloadRoot = resolvePlaylistRoot();
+  const downloadRoot = resolveDownloadRoot();
   const candidates = [
     { location: dataDir, role: "App data" },
     { location: path.dirname(dbPath), role: "Database" },
@@ -283,7 +283,7 @@ function buildBootstrapPayload(req) {
       permissions: currentUser.permissions,
     };
     payload.authUser = currentUser.username;
-    payload.rootFolderConfigured = lidarrConfigured || Boolean(resolvePlaylistRoot());
+    payload.rootFolderConfigured = lidarrConfigured || Boolean(resolveDownloadRoot());
     payload.lidarr = {
       configured: lidarrConfigured,
       circuitOpen: lidarrClient.isCircuitOpen(),

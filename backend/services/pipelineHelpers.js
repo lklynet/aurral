@@ -105,9 +105,9 @@ export async function recordPipelineJobSuccess({
 
 export async function refreshCompletedPipelinePlaylist(job) {
   const playlistType = job.playlistId || job.playlistType;
-  const { playlistManager } = await import("./weeklyFlow/weeklyFlowPlaylistManager.js");
+  const { playlistManager } = await import("./playlists/playlistManager.js");
   await playlistManager.refreshPlaylist(playlistType);
-  const { weeklyFlowWorker } = await import("./weeklyFlow/weeklyFlowWorker.js");
-  weeklyFlowWorker.wake(0);
-  await weeklyFlowWorker.checkPlaylistComplete(playlistType);
+  const { downloadWorker } = await import("./downloadJobs/downloadWorker.js");
+  downloadWorker.wake(0);
+  await downloadWorker.checkPlaylistComplete(playlistType);
 }

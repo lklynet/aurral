@@ -1,4 +1,4 @@
-import { buildSharedTrackIdentity, dedupeSharedTracks } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
+import { buildSharedTrackIdentity, dedupeSharedTracks } from "../playlists/flowPlaylistConfig.js";
 
 export function parseSpotifyPlaylistItems(items = []) {
   const stats = {

@@ -17,12 +17,12 @@ const [isolatedState, { db }, { dbOps, userOps }, { jellyfinPlaylistPointerStore
     "backend/services/playback/jellyfinPlaybackDestination.js",
   );
 
-const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
+const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
 const userId = "jellyfin-user";
 
 test.beforeEach(async () => {
   resetDatabase(db);
-  await fs.rm(weeklyFlowRoot, { recursive: true, force: true });
+  await fs.rm(downloadRoot, { recursive: true, force: true });
   dbOps.updateSettings({ integrations: {} });
 });
 
@@ -87,7 +87,7 @@ function snapshot(overrides = {}) {
 
 test("publishes, updates, scans, and deletes a managed playlist", async () => {
   const calls = [];
-  const destination = new JellyfinPlaybackDestination(weeklyFlowRoot, {
+  const destination = new JellyfinPlaybackDestination(downloadRoot, {
     client: makeClient(calls),
   });
 
@@ -162,12 +162,12 @@ test("ownership survives destination recreation and an empty source preserves Je
     jellyfinUserId: userId, managedItemIds: ["jellyfin-track-2"],
   });
   const source = snapshot({ tracks: [snapshot().tracks[1]] });
-  let destination = new JellyfinPlaybackDestination(weeklyFlowRoot, { client });
+  let destination = new JellyfinPlaybackDestination(downloadRoot, { client });
   assert.equal((await destination.publishPlaylist(source)).ok, true);
   state.ids.push("custom-after-sync");
 
   // No in-memory hashes or ownership can carry over to the new instance.
-  destination = new JellyfinPlaybackDestination(weeklyFlowRoot, { client });
+  destination = new JellyfinPlaybackDestination(downloadRoot, { client });
   assert.equal((await destination.publishPlaylist(snapshot({ tracks: [] }))).ok, true);
   assert.deepEqual(state.ids, ["custom", "custom-after-sync"]);
   assert.equal(state.deleted, false);
@@ -187,7 +187,7 @@ test("an old pointer without ownership preserves existing tracks during sync and
     } } }),
   );
   assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).managedItemIds, []);
-  const destination = new JellyfinPlaybackDestination(weeklyFlowRoot, { client });
+  const destination = new JellyfinPlaybackDestination(downloadRoot, { client });
   assert.equal((await destination.publishPlaylist(snapshot({ tracks: [snapshot().tracks[1]] }))).ok, true);
   assert.equal((await destination.publishPlaylist(snapshot({ tracks: [] }))).ok, true);
   assert.deepEqual(state.ids, ["legacy", "jellyfin-track-2", "custom"]);
@@ -209,7 +209,7 @@ test("confirmed additions remain owned after a failed deletion and destination r
     }
     return request(method, ...args);
   };
-  let destination = new JellyfinPlaybackDestination(weeklyFlowRoot, { client });
+  let destination = new JellyfinPlaybackDestination(downloadRoot, { client });
   // Keep this test deterministic; exercise retry explicitly after recreation.
   destination._scheduleCatchup = () => {};
   const source = snapshot({ tracks: [snapshot().tracks[1]] });
@@ -218,7 +218,7 @@ test("confirmed additions remain owned after a failed deletion and destination r
   assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).managedItemIds,
     ["old-owned", "jellyfin-track-2"]);
 
-  destination = new JellyfinPlaybackDestination(weeklyFlowRoot, { client });
+  destination = new JellyfinPlaybackDestination(downloadRoot, { client });
   assert.equal((await destination.publishPlaylist(source)).ok, true);
   assert.deepEqual(state.ids, ["custom", "jellyfin-track-2"]);
   assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).managedItemIds,
@@ -246,14 +246,14 @@ test("pointer ownership is isolated by owner and malformed history grants no del
 
 test("an empty source without a remote pointer does not create a playlist", async () => {
   const calls = [];
-  const destination = new JellyfinPlaybackDestination(weeklyFlowRoot, { client: makeClient(calls) });
+  const destination = new JellyfinPlaybackDestination(downloadRoot, { client: makeClient(calls) });
   assert.equal((await destination.publishPlaylist(snapshot({ tracks: [] }))).ok, true);
   assert.deepEqual(calls, []);
 });
 
 test("preserves repeated resolved tracks in a playlist", async () => {
   const calls = [];
-  const destination = new JellyfinPlaybackDestination(weeklyFlowRoot, {
+  const destination = new JellyfinPlaybackDestination(downloadRoot, {
     client: makeClient(calls),
   });
 
@@ -282,7 +282,7 @@ test("preserves repeated resolved tracks in a playlist", async () => {
 test("publishes and updates as the Jellyfin user matching the Aurral username", async () => {
   const calls = [];
   const owner = userOps.createUser("ambi", "hash", "user");
-  const destination = new JellyfinPlaybackDestination(weeklyFlowRoot, {
+  const destination = new JellyfinPlaybackDestination(downloadRoot, {
     client: makeClient(calls),
   });
 
@@ -318,7 +318,7 @@ test("publishes and updates as the Jellyfin user matching the Aurral username", 
 test("does not publish when no Jellyfin username matches", async () => {
   const calls = [];
   const owner = userOps.createUser("not-in-jellyfin", "hash", "user");
-  const destination = new JellyfinPlaybackDestination(weeklyFlowRoot, {
+  const destination = new JellyfinPlaybackDestination(downloadRoot, {
     client: makeClient(calls),
   });
 
@@ -334,7 +334,7 @@ test("does not publish when no Jellyfin username matches", async () => {
 test("removes the legacy public playlist before publishing privately", async () => {
   const calls = [];
   const owner = userOps.createUser("ambi", "hash", "user");
-  const destination = new JellyfinPlaybackDestination(weeklyFlowRoot, {
+  const destination = new JellyfinPlaybackDestination(downloadRoot, {
     client: makeClient(calls),
   });
 
@@ -371,7 +371,7 @@ test("removes the legacy public playlist before publishing privately", async () 
 test("removes the legacy playlist during owner-scoped deletion", async () => {
   const calls = [];
   const owner = userOps.createUser("ambi", "hash", "user");
-  const destination = new JellyfinPlaybackDestination(weeklyFlowRoot, {
+  const destination = new JellyfinPlaybackDestination(downloadRoot, {
     client: makeClient(calls),
   });
 
@@ -406,7 +406,7 @@ test("does not reuse a playlist belonging to a different Jellyfin user", async (
     calls.push({ operation: "delete", playlistId, jellyfinUserId });
   };
 
-  const destination = new JellyfinPlaybackDestination(weeklyFlowRoot, {
+  const destination = new JellyfinPlaybackDestination(downloadRoot, {
     client,
   });
 

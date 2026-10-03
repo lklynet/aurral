@@ -3,9 +3,9 @@ import path from "path";
 import { parseFile } from "music-metadata";
 import { dbOps } from "../db/helpers/index.js";
 import { indexUnmonitoredJobs } from "./aurralUnmonitoredJobs.js";
-import { resolvePlaylistRoot, isPathInsideRoot } from "./playlistPaths.js";
+import { resolveDownloadRoot, isPathInsideRoot } from "./downloadPaths.js";
 import { getEnabledDownloadSources } from "./downloadSourceService.js";
-import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
+import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import {
   classifyAudioQuality,
   getQualityState,
@@ -23,7 +23,7 @@ export function getQualityProfile() {
 
 export function isAurralOwnedPath(filePath) {
   if (!filePath) return false;
-  return isPathInsideRoot(path.resolve(filePath), path.resolve(resolvePlaylistRoot()));
+  return isPathInsideRoot(path.resolve(filePath), path.resolve(resolveDownloadRoot()));
 }
 
 export function decorateJobQuality(job, profile = getQualityProfile()) {
@@ -203,7 +203,7 @@ export async function finalizeQualityUpgradeSuccess(upgradeJob, finalPath, quali
   const changed = downloadTracker.replaceFinalPath(oldPath, finalPath, quality);
   downloadTracker.removeJob(upgradeJob.id);
   const playlistIds = [...new Set(changed.map((job) => job.playlistType).filter(Boolean))];
-  const { playlistManager } = await import("./weeklyFlow/weeklyFlowPlaylistManager.js");
+  const { playlistManager } = await import("./playlists/playlistManager.js");
   for (const playlistId of playlistIds) await playlistManager.refreshPlaylist(playlistId);
   playlistManager.scheduleScanLibrary();
   if (oldPath !== finalPath && isAurralOwnedPath(oldPath)) {

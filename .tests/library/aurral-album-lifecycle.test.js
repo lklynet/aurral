@@ -17,11 +17,11 @@ const [
   { lidarrClient },
   { dbOps },
   { libraryManager },
-  { weeklyFlowWorker },
+  { downloadWorker },
 ] = await setupIsolatedBackend(
   "aurral-album-lifecycle",
-  "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
-  "backend/services/weeklyFlow/weeklyFlowDownloadCancellation.js",
+  "backend/services/downloadJobs/downloadTracker.js",
+  "backend/services/downloadJobs/downloadCancellation.js",
   "backend/services/libraryMediaStore.js",
   "backend/services/libraryManagementStore.js",
   "backend/routes/library/handlers/albums.js",
@@ -30,10 +30,10 @@ const [
   "backend/services/lidarrClient.js",
   "backend/db/helpers/index.js",
   "backend/services/libraryManager.js",
-  "backend/services/weeklyFlow/weeklyFlowWorker.js",
+  "backend/services/downloadJobs/downloadWorker.js",
 );
 
-const { downloadTracker, WeeklyFlowDownloadTracker } = trackerModule;
+const { downloadTracker, DownloadTracker } = trackerModule;
 
 const routes = new Map();
 const route = (method) => (routePath, ...handlers) => {
@@ -152,7 +152,7 @@ test("restart returns interrupted album jobs to pending and never revives cancel
   downloadTracker.setCancelRequested(cancelRequested);
   downloadTracker.setCancelled(cancelled);
 
-  const restarted = new WeeklyFlowDownloadTracker();
+  const restarted = new DownloadTracker();
   const expected = {
     [pending]: "pending",
     [interrupted]: "pending",
@@ -281,7 +281,7 @@ test("album cancellation waits on provider cleanup without reviving the job", as
 
   downloadTracker.setFailed(jobId, "late provider error");
   assert.equal(downloadTracker.getJob(jobId).status, "cancel_requested");
-  assert.equal(new WeeklyFlowDownloadTracker().getJob(jobId).status, "cancelled");
+  assert.equal(new DownloadTracker().getJob(jobId).status, "cancelled");
 });
 
 function setDownloadSourceConfigured(configured) {
@@ -369,8 +369,8 @@ test("album status aggregates canonical availability and per-track jobs", async 
 });
 
 test("re-requesting an Aurral album waits for a download source and retries cancelled tracks in place", async () => {
-  const originalWorkerStart = weeklyFlowWorker.start;
-  weeklyFlowWorker.start = async () => {};
+  const originalWorkerStart = downloadWorker.start;
+  downloadWorker.start = async () => {};
   const { album, albumMbid, artistMbid } = createCanonicalAlbum();
   const albumJobs = () => downloadTracker.getAll().filter((job) => job.albumMbid === albumMbid);
   const request = () =>
@@ -407,7 +407,7 @@ test("re-requesting an Aurral album waits for a download source and retries canc
     downloadTracker.setFailed(queued.jobIds[0], "Source failed after retry");
     assert.equal(downloadTracker.getJob(queued.jobIds[0]).status, "failed");
   } finally {
-    weeklyFlowWorker.start = originalWorkerStart;
+    downloadWorker.start = originalWorkerStart;
     setDownloadSourceConfigured(false);
   }
 });

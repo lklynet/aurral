@@ -1,4 +1,4 @@
-import { dedupeSharedTracks } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
+import { dedupeSharedTracks } from "../playlists/flowPlaylistConfig.js";
 
 const getArtistName = (track) =>
   String(track?.artists?.[0]?.name || track?.artists?.[0]?._name || track?.artist?.name || track?.artist?._name || "").trim();

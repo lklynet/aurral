@@ -1,4 +1,4 @@
-import { registerDownloadProviderWork, clearDownloadProviderWork } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
+import { registerDownloadProviderWork, clearDownloadProviderWork } from "./downloadJobs/downloadCancellation.js";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getDownloadClient } from "./download/downloadClientSettings.js";

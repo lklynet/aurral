@@ -14,19 +14,19 @@ import {
 const previousFileBrowseRoots = process.env.FILE_BROWSE_ROOTS;
 const previousPathMappings = process.env.PATH_MAPPINGS;
 
-const [isolatedState, { db }, { dbOps }, { runStorageHealthCheck }, { resolvePlaylistRoot }] =
+const [isolatedState, { db }, { dbOps }, { runStorageHealthCheck }, { resolveDownloadRoot }] =
   await setupIsolatedBackend(
     "storage-health",
     "backend/config/db-sqlite.js",
     "backend/db/helpers/index.js",
     "backend/services/storageHealthService.js",
-    "backend/services/playlistPaths.js",
+    "backend/services/downloadPaths.js",
   );
 
 test.beforeEach(async () => {
   await resetDatabase(db);
   const { downloadTracker } = await importFromRepo(
-    "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+    "backend/services/downloadJobs/downloadTracker.js",
   );
   downloadTracker.clearAll();
   const downloadFolder = process.env.DOWNLOAD_FOLDER;
@@ -293,7 +293,7 @@ test("slskd missing-path remediation points to slskd rather than a nonexistent A
 });
 
 test("unrelated Navidrome libraries do not fail local storage health", async (t) => {
-  const playlistLibrary = path.join(resolvePlaylistRoot(), "aurral-weekly-flow");
+  const playlistLibrary = path.join(resolveDownloadRoot(), "aurral-weekly-flow");
   await fs.mkdir(playlistLibrary, { recursive: true });
   const server = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
@@ -336,7 +336,7 @@ test("unrelated Navidrome libraries do not fail local storage health", async (t)
 });
 
 test("Navidrome health does not compare reused Lidarr and Navidrome paths", async (t) => {
-  const playlistLibrary = path.join(resolvePlaylistRoot(), "aurral-weekly-flow");
+  const playlistLibrary = path.join(resolveDownloadRoot(), "aurral-weekly-flow");
   await fs.mkdir(playlistLibrary, { recursive: true });
   const lidarrRoot = path.join(isolatedState.baseDir, "lidarr-music");
   await fs.mkdir(lidarrRoot, { recursive: true });
@@ -386,7 +386,7 @@ test("Navidrome health does not compare reused Lidarr and Navidrome paths", asyn
 });
 
 test("configured Plex is included and validates its Aurral library path", async (t) => {
-  const expectedPath = resolvePlaylistRoot();
+  const expectedPath = resolveDownloadRoot();
   const server = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     if (request.url?.startsWith("/identity")) {
@@ -418,7 +418,7 @@ test("configured Plex is included and validates its Aurral library path", async 
 });
 
 test("POSIX library paths remain case-sensitive", async (t) => {
-  const expectedPath = resolvePlaylistRoot();
+  const expectedPath = resolveDownloadRoot();
   const wrongCasePath = expectedPath.toUpperCase();
   const server = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });

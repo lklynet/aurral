@@ -10,8 +10,8 @@ import {
 import { logger } from "../../../services/logger.js";
 import { getCanonicalTrackOwnership } from "../../../services/libraryQueryService.js";
 import { resolveAurralOwnedTrackJob } from "../../../services/libraryTrackResearchService.js";
-import { weeklyFlowOperationQueue } from "../../../services/weeklyFlow/weeklyFlowOperationQueue.js";
-import { downloadTracker } from "../../../services/weeklyFlow/weeklyFlowDownloadTracker.js";
+import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.js";
+import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.js";
 import {
   getDownloadSourceNotConfiguredMessage,
   isAnyDownloadSourceConfigured,
@@ -431,7 +431,7 @@ export function registerDownloads(router) {
       }
 
       try {
-        const result = await weeklyFlowOperationQueue.enqueuePayload({
+        const result = await playlistOperationQueue.enqueuePayload({
           kind: "library-track-research",
           label: `library-track-research:${trackId}:${albumId || "all"}`,
           trackId,
@@ -494,7 +494,7 @@ export function registerDownloads(router) {
       }
 
       const { downloadTracker } = await import(
-        "../../../services/weeklyFlow/weeklyFlowDownloadTracker.js"
+        "../../../services/downloadJobs/downloadTracker.js"
       );
       const existingJob = downloadTracker.getAll().find((job) => {
         if (job.playlistType !== "library" || ["failed", "done"].includes(job.status)) {
@@ -525,18 +525,18 @@ export function registerDownloads(router) {
       const jobId = downloadTracker.addJob(track, "library");
       if (!jobId) return res.status(400).json({ error: "Track details are incomplete" });
 
-      const { weeklyFlowWorker } = await import(
-        "../../../services/weeklyFlow/weeklyFlowWorker.js"
+      const { downloadWorker } = await import(
+        "../../../services/downloadJobs/downloadWorker.js"
       );
       try {
         const { normalizeExistingFileMode, reuseTrackForPlaylist } = await import(
-          "../../../services/weeklyFlow/weeklyFlowFileReuse.js"
+          "../../../services/downloadJobs/fileReuse.js"
         );
         const reuse = await reuseTrackForPlaylist(track, "library", {
           existingFileMode: normalizeExistingFileMode(
-            weeklyFlowWorker.getWorkerSettings().existingFileMode,
+            downloadWorker.getWorkerSettings().existingFileMode,
           ),
-          weeklyFlowRoot: weeklyFlowWorker.weeklyFlowRoot,
+          downloadRoot: downloadWorker.downloadRoot,
           existingJobId: jobId,
           targetPlaylistType: "library",
           skipHistory: true,
@@ -560,7 +560,7 @@ export function registerDownloads(router) {
       );
       recordTrackJobQueued(downloadTracker.getJob(jobId));
       await invalidateActivityRequestsCache();
-      await weeklyFlowWorker.start();
+      await downloadWorker.start();
       return res.status(202).json({ success: true, queued: true, jobId });
     } catch (error) {
       logger.error("library", "Failed to queue track acquisition", error.message);

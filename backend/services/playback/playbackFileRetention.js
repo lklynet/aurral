@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { dbOps } from "../../db/helpers/index.js";
 import { localFileKey } from "./playlistUsage.js";
-import { isPathInsideRoot, resolvePlaylistRoot } from "../playlistPaths.js";
+import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.js";
 
 const SETTINGS_KEY = "playbackRetainedFiles";
 
@@ -32,7 +32,7 @@ export function forgetPlaybackRetainedFile(file) {
 // One fresh playlist snapshot per cleanup batch, never a cached "unused"
 // decision carried from an earlier reset. Failures retain files in place.
 export function createPlaybackDeletionGuard({
-  excludeEntityIds = [], registry = null, playlistRoot = resolvePlaylistRoot(),
+  excludeEntityIds = [], registry = null, playlistRoot = resolveDownloadRoot(),
 } = {}) {
   const retentionRoot = path.resolve(playlistRoot);
   let snapshot;
@@ -45,7 +45,7 @@ export function createPlaybackDeletionGuard({
     checkedConfig = configKey();
     let currentRegistry = registry;
     if (!currentRegistry) {
-      const { playlistManager } = await import("../weeklyFlow/weeklyFlowPlaylistManager.js");
+      const { playlistManager } = await import("../playlists/playlistManager.js");
       playlistManager.updateConfig(false);
       currentRegistry = playlistManager.destinationRegistry;
     }
@@ -77,13 +77,13 @@ export function createPlaybackDeletionGuard({
 export async function retryPlaybackRetainedFiles() {
   const files = Object.entries(readRetainedFiles());
   if (!files.length) return;
-  const { downloadTracker } = await import("../weeklyFlow/weeklyFlowDownloadTracker.js");
+  const { downloadTracker } = await import("../downloadJobs/downloadTracker.js");
   const stillOwned = (file) => downloadTracker.getAll().some((job) =>
     job.finalPath && localFileKey(job.finalPath) === file);
   const guards = new Map();
   for (const [file, metadata] of files) {
     // Older records have no root; only retry those within the current root.
-    const playlistRoot = metadata?.playlistRoot ?? resolvePlaylistRoot();
+    const playlistRoot = metadata?.playlistRoot ?? resolveDownloadRoot();
     if (typeof playlistRoot !== "string" || !path.isAbsolute(playlistRoot)
       || !isPathInsideRoot(file, playlistRoot) || stillOwned(file)) continue;
     const excludeEntityIds = [...new Set((Array.isArray(metadata?.excludeEntityIds)

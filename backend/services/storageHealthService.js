@@ -11,15 +11,15 @@ import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { NavidromeClient } from "./navidrome.js";
 import { PlexClient } from "./plex.js";
 import { runLidarrLibraryAccessTest } from "./lidarrLibraryAccessTest.js";
-import { resolvePlaylistRoot } from "./playlistPaths.js";
+import { resolveDownloadRoot } from "./downloadPaths.js";
 import { normalizeSeparators } from "./textUtils.js";
 import {
   getPathMappings,
   looksLikeExternalOnlyPath,
   resolveLocalPath,
 } from "./pathMappings.js";
-import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
-import { commitImportToPlaylistLibrary } from "./playlistDownloadUtils.js";
+import { downloadTracker } from "./downloadJobs/downloadTracker.js";
+import { commitDownloadedFile } from "./downloadUtils.js";
 import {
   computeLibraryRootOverlaps,
   getFilesystemBrowseRoots,
@@ -241,7 +241,7 @@ async function runDownloadTransferProbe(sourceDir, targetRoot) {
     await fs.writeFile(sourcePath, contents, { flag: "wx" });
     const sourceStat = await fs.stat(sourcePath);
     committedPath = targetPath;
-    committedPath = await commitImportToPlaylistLibrary(sourcePath, targetPath);
+    committedPath = await commitDownloadedFile(sourcePath, targetPath);
     const [targetStat, readBack] = await Promise.all([
       fs.stat(committedPath),
       fs.readFile(committedPath, "utf8"),
@@ -431,7 +431,7 @@ async function checkPathMappingsSection() {
 async function checkDownloadsSection() {
   const steps = [];
   const settings = dbOps.getSettings();
-  const downloadFolder = String(settings.downloadFolderPath || resolvePlaylistRoot() || "").trim();
+  const downloadFolder = String(settings.downloadFolderPath || resolveDownloadRoot() || "").trim();
   const suggested = getSuggestedDownloadFolderPath();
 
   const rootOverlaps = computeLibraryRootOverlaps({
@@ -640,7 +640,7 @@ async function checkDownloadClientSection({
     }),
   );
 
-  const transferProbe = await runDownloadTransferProbe(readablePath, resolvePlaylistRoot());
+  const transferProbe = await runDownloadTransferProbe(readablePath, resolveDownloadRoot());
   if (!transferProbe.ok) {
     steps.push(
       healthStep("transfer", "fail", `Aurral can transfer ${title} completed files`, {
@@ -766,7 +766,7 @@ async function checkNavidromeSection() {
     return buildSection("navidrome", "Navidrome playback", steps);
   }
 
-  const expectedLibraryPath = normalizeSeparators(resolvePlaylistRoot());
+  const expectedLibraryPath = normalizeSeparators(resolveDownloadRoot());
   const expectedLibraryCandidates = [expectedLibraryPath];
 
   let libraries = [];
@@ -949,7 +949,7 @@ async function checkPlexSection() {
     return buildSection("plex", "Plex playback", steps);
   }
 
-  const configuredBase = String(plex.downloadsPath || "").trim() || resolvePlaylistRoot();
+  const configuredBase = String(plex.downloadsPath || "").trim() || resolveDownloadRoot();
   const expectedPath = normalizeSeparators(configuredBase);
   const locations = getPlexLibraryLocations(libraries);
   const coveringLocation = locations.find((location) => pathCoversPrefix(location, expectedPath));

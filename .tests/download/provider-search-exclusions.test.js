@@ -4,7 +4,7 @@ import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../he
 
 const [state, { db }, { downloadTracker }, { getDownloadClient }, deemix, ytdlp] =
   await setupIsolatedBackend("provider-search-exclusions",
-    "backend/config/db-sqlite.js", "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+    "backend/config/db-sqlite.js", "backend/services/downloadJobs/downloadTracker.js",
     "backend/services/download/downloadClientSettings.js", "backend/services/deemixOrchestrator.js",
     "backend/services/ytdlpOrchestrator.js");
 test.beforeEach(() => resetDatabase(db));

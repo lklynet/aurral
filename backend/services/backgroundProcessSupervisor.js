@@ -46,7 +46,7 @@ export function createBackgroundProcessSupervisor({
   const activeJobs = new Map();
   const exitReasons = new Map();
   const pendingRequests = new Map();
-  const flowStatuses = new Map();
+  const downloadOwnerStatuses = new Map();
   const readyGroups = new Set();
   const retiringGroups = new Set();
   const recoveringGroups = new Set();
@@ -133,9 +133,9 @@ export function createBackgroundProcessSupervisor({
       }
       if (message?.type === "heartbeat" && Array.isArray(message.workers)) {
         workerStatuses.set(group, message.workers);
-        if (message.flowStatus) flowStatuses.set(group, message.flowStatus);
+        if (message.downloadOwnerStatus) downloadOwnerStatuses.set(group, message.downloadOwnerStatus);
       }
-      if (message?.type === "flow-response") {
+      if (message?.type === "download-owner-response") {
         const pending = pendingRequests.get(message.requestId);
         if (pending && pending.group === group) {
           pendingRequests.delete(message.requestId);
@@ -172,7 +172,7 @@ export function createBackgroundProcessSupervisor({
       lastSeen.delete(group);
       workerStatuses.delete(group);
       activeJobs.delete(group);
-      flowStatuses.delete(group);
+      downloadOwnerStatuses.delete(group);
       for (const [id, pending] of pendingRequests) {
         if (pending.group !== group || !pending.sent) continue;
         pendingRequests.delete(id);
@@ -306,7 +306,7 @@ export function createBackgroundProcessSupervisor({
     workerStatuses.clear();
     activeJobs.clear();
     exitReasons.clear();
-    flowStatuses.clear();
+    downloadOwnerStatuses.clear();
     for (const pending of pendingRequests.values()) {
       clearTimeout(pending.timer);
       pending.reject(new Error("Background workers stopped"));
@@ -326,7 +326,7 @@ export function createBackgroundProcessSupervisor({
       }, timeoutMs);
       pendingRequests.set(requestId, {
         group, resolve, reject, timer, sent: false,
-        message: { type: "flow-command", requestId, method, args },
+        message: { type: "download-owner-command", requestId, method, args },
       });
       if (!sendRequest(requestId)) ensure(group);
     });
@@ -351,7 +351,7 @@ export function createBackgroundProcessSupervisor({
     stop,
     getGroups: () => [...children.keys()],
     getWorkerStatuses: () => [...workerStatuses.values()].flat(),
-    getFlowStatus: () => flowStatuses.get("flow") || null,
+    getDownloadOwnerStatus: () => downloadOwnerStatuses.get("downloads") || null,
     request,
     wake,
   };

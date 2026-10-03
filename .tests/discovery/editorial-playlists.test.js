@@ -24,21 +24,21 @@ const [
   "editorial-playlists",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
-  "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
-  "backend/services/weeklyFlow/weeklyFlowOperations.js",
-  "backend/services/weeklyFlow/weeklyFlowOperationQueue.js",
-  "backend/services/weeklyFlow/weeklyFlowWorker.js",
-  "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+  "backend/services/playlists/flowPlaylistConfig.js",
+  "backend/services/playlists/playlistOperations.js",
+  "backend/services/playlists/playlistOperationQueue.js",
+  "backend/services/downloadJobs/downloadWorker.js",
+  "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/importLists/importListSync.js",
   "backend/services/discovery/editorialPlaylists.js",
   "backend/services/discovery/persistence.js",
-  "backend/services/weeklyFlow/flowTemplates.js",
+  "backend/services/flows/flowTemplates.js",
 );
 
 const { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } = playlistConfigModule;
-const { processWeeklyFlowOperation } = operationsModule;
-const { weeklyFlowOperationQueue } = operationQueueModule;
-const { weeklyFlowWorker } = workerModule;
+const { processPlaylistOperation } = operationsModule;
+const { playlistOperationQueue } = operationQueueModule;
+const { downloadWorker } = workerModule;
 const { downloadTracker } = trackerModule;
 const { syncSharedPlaylistImport } = importSyncModule;
 const {
@@ -98,7 +98,7 @@ const rockEssentials = (tracks) => ({
 
 const captureEnqueues = (t) => {
   const payloads = [];
-  t.mock.method(weeklyFlowOperationQueue, "enqueuePayload", async (payload) => {
+  t.mock.method(playlistOperationQueue, "enqueuePayload", async (payload) => {
     payloads.push(payload);
     return { queued: true, operationId: payloads.length };
   });
@@ -112,7 +112,7 @@ test.beforeEach(() => {
 });
 
 test.afterEach(() => {
-  weeklyFlowWorker.stop();
+  downloadWorker.stop();
 });
 
 test.after(async () => {
@@ -120,7 +120,7 @@ test.after(async () => {
 });
 
 test("adding a Deezer playlist creates one synced library playlist with its tracks", async (t) => {
-  t.mock.method(weeklyFlowWorker, "start", async () => false);
+  t.mock.method(downloadWorker, "start", async () => false);
   stubDeezer(t, rockEssentials([
     deezerTrack("Back In Black", "AC/DC"),
     deezerTrack("Back In Black", "AC/DC"),
@@ -131,7 +131,7 @@ test("adding a Deezer playlist creates one synced library playlist with its trac
 
   const added = await addEditorialPlaylistToLibrary(OWNER, "1306931615");
   assert.equal(payloads.length, 1);
-  await processWeeklyFlowOperation(payloads[0]);
+  await processPlaylistOperation(payloads[0]);
 
   const playlist = flowPlaylistConfig.getSharedPlaylist(added.playlistId);
   assert.equal(playlist.name, "Rock Essentials");
@@ -181,13 +181,13 @@ test("duplicate Deezer tracks keep the preview and artwork of the first entry", 
 });
 
 test("a Deezer playlist whose name is taken gets a distinct library name", async (t) => {
-  t.mock.method(weeklyFlowWorker, "start", async () => false);
+  t.mock.method(downloadWorker, "start", async () => false);
   stubDeezer(t, rockEssentials([deezerTrack("Paranoid", "Black Sabbath")]));
   const payloads = captureEnqueues(t);
   flowPlaylistConfig.createSharedPlaylist({ name: "rock essentials", ownerUserId: 7 });
 
   const added = await addEditorialPlaylistToLibrary(OWNER, "1306931615");
-  await processWeeklyFlowOperation(payloads[0]);
+  await processPlaylistOperation(payloads[0]);
 
   assert.equal(flowPlaylistConfig.getSharedPlaylist(added.playlistId)?.name, "Rock Essentials (Deezer)");
 });
@@ -203,7 +203,7 @@ test("adding fails without creating anything when Deezer is unavailable", async 
 });
 
 test("syncing a Deezer library playlist follows the editor's changes", async (t) => {
-  t.mock.method(weeklyFlowWorker, "start", async () => false);
+  t.mock.method(downloadWorker, "start", async () => false);
   stubDeezer(t, rockEssentials([deezerTrack("Thunderstruck", "AC/DC")]));
   const playlist = flowPlaylistConfig.createSharedPlaylist({
     name: "Rock Essentials",
@@ -303,7 +303,7 @@ test("flow templates keep their recipe and need history for Listening History", 
 });
 
 test("retired Last.fm editorial flows keep their tracks and never run again", async (t) => {
-  const plan = t.mock.method(weeklyFlowWorker, "prepareFlowRunPlan", async () => ({
+  const plan = t.mock.method(downloadWorker, "prepareFlowRunPlan", async () => ({
     primaryTracks: [{ artistName: "New Artist", trackName: "New Song" }],
     reserveTracks: [],
   }));
@@ -331,7 +331,7 @@ test("retired Last.fm editorial flows keep their tracks and never run again", as
   assert.deepEqual(flowPlaylistConfig.getDueForRefresh().map((flow) => flow.id), ["discover-weekly"]);
 
   for (const kind of ["manual-start-flow", "enable-flow-refresh", "scheduled-flow-refresh"]) {
-    await processWeeklyFlowOperation({ kind, flowId: "metal-mayhem" });
+    await processPlaylistOperation({ kind, flowId: "metal-mayhem" });
   }
 
   assert.equal(plan.mock.callCount(), 0);

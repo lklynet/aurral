@@ -8,12 +8,12 @@ import {
   ALBUM_GRAB_ENDED_REASON,
 } from "./slskdOrchestrator.js";
 import { releaseAlbumGrabJobs } from "./albumGrab.js";
-import { isPipelinePayloadActive } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
+import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.js";
 import { isAnyDownloadSourceConfigured } from "./downloadSourceService.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
 import { recordAlbumGrabQueued, recordAlbumGrabPhase } from "./albumGrabActivity.js";
-import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
-import { withDownloadPayloadMutation } from "./weeklyFlow/weeklyFlowMutationGuards.js";
+import { downloadTracker } from "./downloadJobs/downloadTracker.js";
+import { withDownloadPayloadMutation } from "./downloadJobs/mutationGuards.js";
 
 async function processLockedOrchestratorJob(payload, dependencies = {}) {
   const processPayload = dependencies.processPipelinePayload || processPipelinePayload;

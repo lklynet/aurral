@@ -208,7 +208,7 @@ export function registerPlex(router) {
         });
       }
       const { playlistManager } = await import(
-        "../../../services/weeklyFlow/weeklyFlowPlaylistManager.js"
+        "../../../services/playlists/playlistManager.js"
       );
       playlistManager.updateConfig(false);
       const result = await playlistManager.syncPlexNow();

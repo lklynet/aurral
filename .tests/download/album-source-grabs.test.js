@@ -11,7 +11,7 @@ const [state, { dbOps }, { downloadTracker }, { getDownloadClient },
   { processUsenetPipelinePayload }, { processPipelinePayload }] = await setupIsolatedBackend(
   "album-source-grabs",
   "backend/db/helpers/index.js",
-  "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+  "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/download/downloadClientSettings.js",
   "backend/services/usenetOrchestrator.js",
   "backend/services/slskdOrchestrator.js",

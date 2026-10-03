@@ -5,7 +5,7 @@ import {
 } from "./providers/brainzmashRanking.js";
 import { getMetadataBaseUrl } from "./providers/brainzmashProvider.js";
 import { searchAlbums, searchArtists } from "./providers/brainzmashProvider.js";
-import { flowPlaylistConfig } from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
+import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.js";
 import { getCachedArtists } from "./libraryManager.js";
 import { getCanonicalSearchPage } from "./libraryQueryService.js";
 import { compareSearchResults, getLocalMatchThreshold } from "./searchRanking.js";

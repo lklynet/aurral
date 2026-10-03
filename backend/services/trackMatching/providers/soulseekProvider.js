@@ -12,7 +12,7 @@ import {
   getFileExtension,
 } from "../candidateNormalizer.js";
 import { getNormalizedText } from "../../providers/brainzmashRanking.js";
-import { groupFlowSearchResults } from "../../weeklyFlow/weeklyFlowSoulseekSearch.js";
+import { groupSoulseekSearchResults } from "../../downloadJobs/trackSearchQueries.js";
 
 const AUDIO_EXTENSIONS = new Set([
   ".flac",
@@ -244,7 +244,7 @@ function readAdvertisedDurationMs(item) {
 // folder evidence. Identity decisions belong to the shared engine; this only
 // gathers what Soulseek can (and cannot) prove about each file.
 export function buildSoulseekCandidates(results, request, options = {}) {
-  const groups = groupFlowSearchResults(results, { isAudioFile: isSoulseekAudioFile });
+  const groups = groupSoulseekSearchResults(results, { isAudioFile: isSoulseekAudioFile });
   const entries = [];
   const albumName = readComparableAlbumName(request);
   const hasAlbumContext = Boolean(albumName);

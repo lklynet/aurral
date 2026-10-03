@@ -5,8 +5,8 @@ import { listenbrainzPlaylistClient } from "./listenbrainzPlaylists.js";
 import { lastfmStationClient } from "./lastfmStations.js";
 import { youtubeMusicPlaylistClient } from "./youtubeMusicPlaylists.js";
 import { getDeezerPlaylist } from "./deezerPlaylists.js";
-import { normalizeImportSource } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
-import { weeklyFlowOperationQueue } from "../weeklyFlow/weeklyFlowOperationQueue.js";
+import { normalizeImportSource } from "../playlists/flowPlaylistConfig.js";
+import { playlistOperationQueue } from "../playlists/playlistOperationQueue.js";
 import { logger } from "../logger.js";
 
 export async function fetchImportedPlaylistTracks({
@@ -73,7 +73,7 @@ export async function enqueueImportedPlaylist({
     lastSyncAt: Date.now(),
     lastSyncTrackCount: tracks.length,
   });
-  const result = await weeklyFlowOperationQueue.enqueuePayload({
+  const result = await playlistOperationQueue.enqueuePayload({
     kind: "shared-playlist-create",
     label: "shared-playlist:create",
     playlistId: safePlaylistId,

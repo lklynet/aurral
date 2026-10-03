@@ -4,11 +4,11 @@ import { db } from "../config/db-sqlite.js";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
 import { enqueuePipelineJob, listHonkerJobs } from "./honkerDb.js";
-import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
+import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import {
-  buildFlowSearchTiers,
+  buildTrackSearchTiers,
   selectRankedMatchAttempts,
-} from "./weeklyFlow/weeklyFlowSoulseekSearch.js";
+} from "./downloadJobs/trackSearchQueries.js";
 import {
   buildSourceCandidates,
   buildSoulseekCandidates,
@@ -17,7 +17,7 @@ import {
   usableEvaluationEntries,
   validateDownloadedTrackFile,
 } from "./trackMatching/index.js";
-import { resolvePlaylistRoot } from "./playlistPaths.js";
+import { resolveDownloadRoot } from "./downloadPaths.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 import {
   buildSlskdRankingHistoryOptions,
@@ -41,12 +41,12 @@ import {
   isAnyDownloadSourceConfigured,
 } from "./downloadSourceService.js";
 import {
-  buildResolvedPlaylistTrack as buildResolvedTrack,
-  commitImportToPlaylistLibrary,
+  buildResolvedJobTrack as buildResolvedTrack,
+  commitDownloadedFile,
   joinUnderRoot,
   sanitizePathPart,
   writeAudioMetadata,
-} from "./playlistDownloadUtils.js";
+} from "./downloadUtils.js";
 import {
   getPayloadCandidate,
   hasNextCandidate,
@@ -60,8 +60,8 @@ import {
   isPipelinePayloadActive,
   registerDownloadProviderWork,
   withPipelineCommitLock,
-} from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
-import { deferForInactiveOwner } from "./weeklyFlow/weeklyFlowOwnerStatus.js";
+} from "./downloadJobs/downloadCancellation.js";
+import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.js";
 
 import { getQualityProfile } from "./qualityProfileService.js";
 import {
@@ -72,7 +72,7 @@ import {
 
 const slskdClient = getDownloadClient("slskd");
 
-export { commitImportToPlaylistLibrary };
+export { commitDownloadedFile };
 
 const updateSlskdMetaStmt = db.prepare(`
   UPDATE playlist_download_jobs
@@ -91,7 +91,7 @@ export const SLSKD_NOT_CONFIGURED_MESSAGE =
   "slskd is not configured. Enable slskd and add its Server URL in Settings > Download clients to enable Soulseek downloads for flows and playlists.";
 
 export function buildSlskdSearchTierGroups(resolvedTrack) {
-  return buildFlowSearchTiers(resolvedTrack);
+  return buildTrackSearchTiers(resolvedTrack);
 }
 
 function isDeniedSoulseekFile(raw, deniedSourceKeys) {
@@ -348,9 +348,9 @@ async function failJob(job, message) {
     recordTrackJobFailed(job, message);
   } catch {}
   try {
-    const { weeklyFlowWorker } = await import("./weeklyFlow/weeklyFlowWorker.js");
-    weeklyFlowWorker.wake(0);
-    await weeklyFlowWorker.checkPlaylistComplete(job.playlistId || job.playlistType);
+    const { downloadWorker } = await import("./downloadJobs/downloadWorker.js");
+    downloadWorker.wake(0);
+    await downloadWorker.checkPlaylistComplete(job.playlistId || job.playlistType);
   } catch (error) {
     logger.warn("slskd", "Failed to run post-failure playlist checks", {
       jobId: job.id,
@@ -1198,7 +1198,7 @@ async function handleFinalize(payload) {
   if (payload.albumGrab === true) {
     const slskdRoot = resolveLocalPath(
       await slskdClient.getDownloadDirectory(), getPathMappings("slskd"));
-    const playlistRoot = resolvePlaylistRoot();
+    const playlistRoot = resolveDownloadRoot();
     const remoteFiles = payload.candidate?.raw?.files || [];
     const paths = [];
     for (const [index, transfer] of (payload.albumTransfers || []).entries()) {
@@ -1224,7 +1224,7 @@ async function handleFinalize(payload) {
     }
     return next;
   }
-  const playlistRoot = resolvePlaylistRoot();
+  const playlistRoot = resolveDownloadRoot();
   const slskdRoot = resolveLocalPath(
     await slskdClient.getDownloadDirectory(),
     getPathMappings("slskd"),
@@ -1340,7 +1340,7 @@ async function handleFinalize(payload) {
     import("./aurralHistoryService.js")
       .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
       .catch((err) => { logger.warn("slskd", "Failed to record track job moving", { jobId: job.id, error: err?.message || String(err) }); });
-    const committedFinalPath = await commitImportToPlaylistLibrary(
+    const committedFinalPath = await commitDownloadedFile(
       sourcePath,
       finalPath,
     );

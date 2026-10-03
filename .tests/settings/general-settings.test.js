@@ -13,7 +13,7 @@ const [isolatedState, { db }, { dbOps }, { registerGeneral }, { playlistManager 
     "backend/config/db-sqlite.js",
     "backend/db/helpers/index.js",
     "backend/routes/settings/handlers/general.js",
-    "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
+    "backend/services/playlists/playlistManager.js",
     "backend/services/lidarrClient.js",
   );
 

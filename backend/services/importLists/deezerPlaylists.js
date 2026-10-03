@@ -1,7 +1,7 @@
 import {
   buildSharedTrackIdentity,
   dedupeSharedTracks,
-} from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
+} from "../playlists/flowPlaylistConfig.js";
 
 const DEEZER_API_URL = "https://api.deezer.com";
 const REQUEST_TIMEOUT_MS = 10_000;

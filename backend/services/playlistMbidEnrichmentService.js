@@ -2,15 +2,15 @@ import {
   enqueuePlaylistMbidEnrichmentJob,
   withHonkerLock,
 } from "./honkerDb.js";
-import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
-import { playlistManager } from "./weeklyFlow/weeklyFlowPlaylistManager.js";
-import { resolveWeeklyFlowTrackContext } from "./weeklyFlow/weeklyFlowTrackResolver.js";
+import { downloadTracker } from "./downloadJobs/downloadTracker.js";
+import { playlistManager } from "./playlists/playlistManager.js";
+import { resolveTrackSearchContext } from "./downloadJobs/trackSearchContext.js";
 import { mapWithConcurrency } from "./discovery/helpers.js";
 import {
   flowPlaylistConfig,
   normalizeSharedTrack,
   tracksShareMembership,
-} from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
+} from "./playlists/flowPlaylistConfig.js";
 import { dbOps } from "../db/helpers/index.js";
 
 const PLAYLIST_MBID_ENRICHMENT_DELAY_SECONDS = 20;
@@ -229,7 +229,7 @@ export function schedulePlaylistMbidEnrichmentForMissingPlaylists({
 export async function enrichSharedPlaylistMbids(
   playlistId,
   {
-    resolveTrackContext = resolveWeeklyFlowTrackContext,
+    resolveTrackContext = resolveTrackSearchContext,
     reconcileArtistMbids = false,
   } = {},
 ) {
@@ -247,7 +247,7 @@ export async function enrichSharedPlaylistMbids(
   const resolver =
     typeof resolveTrackContext === "function"
       ? resolveTrackContext
-      : resolveWeeklyFlowTrackContext;
+      : resolveTrackSearchContext;
   const rawResolutions = await mapWithConcurrency(snapshotTracks, 4, (track) =>
     buildResolution(track, snapshotJobs, resolver, reconcileArtistMbids === true),
   );

@@ -10,21 +10,21 @@ import {
   scanMusicRoot,
 } from "./libraryFileScanner.js";
 import { getLibraryMediaFile } from "./libraryMediaStore.js";
-import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
-import { flowPlaylistConfig } from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
+import { downloadTracker } from "./downloadJobs/downloadTracker.js";
+import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.js";
 import {
-  PLAYLIST_LIBRARY_DIR,
+  PLAYLIST_FILES_DIR,
   buildAurralTrackDestination,
   isPathInsideRoot,
   remapLegacyPath,
-  resolvePlaylistRoot,
-} from "./playlistPaths.js";
-import { sanitizePathPart } from "./playlistDownloadUtils.js";
+  resolveDownloadRoot,
+} from "./downloadPaths.js";
+import { sanitizePathPart } from "./downloadUtils.js";
 
 export const AURRAL_DOWNLOAD_FOLDER_MIGRATION_VERSION = 1;
 export const AURRAL_DOWNLOAD_FOLDER_MIGRATION_SETTING = "aurralDownloadFolderMigration";
 
-const LEGACY_PLAYLIST_ROOTS = [PLAYLIST_LIBRARY_DIR, "aurral-playlists"];
+const LEGACY_PLAYLIST_ROOTS = [PLAYLIST_FILES_DIR, "aurral-playlists"];
 const PLAYBACK_RETENTION_REASON = "retained for playback playlist protection";
 const PARTIAL_EXTENSIONS = new Set([
   ".crdownload",
@@ -475,7 +475,7 @@ function resolveOwnership(sourcePath, rootPath, jobs, knownIds) {
 }
 
 export async function migrateAurralDownloadFolder(options = {}) {
-  const rootPath = path.resolve(options.root || resolvePlaylistRoot());
+  const rootPath = path.resolve(options.root || resolveDownloadRoot());
   const logger = options.logger || console;
   const lidarrRoots = configuredLidarrRoots(options);
   if (lidarrRoots.some((candidate) => pathsOverlap(rootPath, candidate))) {

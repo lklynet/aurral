@@ -20,7 +20,7 @@ import {
   getLidarrStatusSnapshot,
   hasActiveLidarrStatusSnapshot,
 } from "./routes/library/handlers/downloads.js";
-import { getWeeklyFlowStatusSnapshot } from "./services/weeklyFlow/weeklyFlowStatusSnapshot.js";
+import { getPlaylistStatusSnapshot } from "./services/playlists/playlistStatusSnapshot.js";
 
 import settingsRouter from "./routes/settings/index.js";
 import onboardingRouter from "./routes/onboarding.js";
@@ -33,7 +33,7 @@ import requestsRouter from "./routes/requests.js";
 import healthRouter from "./routes/health.js";
 import filesystemRouter from "./routes/filesystem.js";
 import updatesRouter from "./routes/updates.js";
-import weeklyFlowRouter from "./routes/weeklyFlow/index.js";
+import playlistsRouter from "./routes/playlists/index.js";
 import { bootstrapHonkerSchedules } from "./services/honkerDb.js";
 import { initializeAppRuntime } from "./services/appRuntime.js";
 import {
@@ -188,7 +188,7 @@ app.use("/api/health", healthRouter);
 app.use("/api/updates", updatesRouter);
 app.use("/api/filesystem", filesystemRouter);
 app.use("/api/feeds", lidarrFeedRouter);
-app.use("/api/playlists", weeklyFlowRouter);
+app.use("/api/playlists", playlistsRouter);
 app.use("/api/weekly-flow", (req, res) => {
   const parsed = new URL(req.originalUrl, "http://localhost");
   res.redirect(308, `/api/playlists${parsed.pathname}${parsed.search}`);
@@ -309,11 +309,11 @@ const broadcastDownloadStatuses = async () => {
   }
 };
 
-const WEEKLY_FLOW_STATUS_INTERVAL_MS = 4000;
-let weeklyFlowStatusBroadcastInFlight = false;
-const broadcastWeeklyFlowStatus = async () => {
-  if (weeklyFlowStatusBroadcastInFlight) return;
-  weeklyFlowStatusBroadcastInFlight = true;
+const PLAYLIST_STATUS_INTERVAL_MS = 4000;
+let playlistStatusBroadcastInFlight = false;
+const broadcastPlaylistStatus = async () => {
+  if (playlistStatusBroadcastInFlight) return;
+  playlistStatusBroadcastInFlight = true;
   try {
     if (!hasWsSubscribers("weekly-flow") && !hasWsSubscribers("playlists")) {
       return;
@@ -328,7 +328,7 @@ const broadcastWeeklyFlowStatus = async () => {
             : `anon:${client?.id || "unknown"}`;
       let cached = payloadByAudience.get(cacheKey);
       if (!cached) {
-        const status = getWeeklyFlowStatusSnapshot({
+        const status = getPlaylistStatusSnapshot({
           user: client?.user || null,
         });
         cached = {
@@ -340,13 +340,13 @@ const broadcastWeeklyFlowStatus = async () => {
         };
         payloadByAudience.set(cacheKey, cached);
       }
-      if (!client._lastWeeklyFlowStatusPayloadByChannel) {
-        client._lastWeeklyFlowStatusPayloadByChannel = new Map();
+      if (!client._lastPlaylistStatusPayloadByChannel) {
+        client._lastPlaylistStatusPayloadByChannel = new Map();
       }
-      if (client._lastWeeklyFlowStatusPayloadByChannel.get(channel) === cached.payload) {
+      if (client._lastPlaylistStatusPayloadByChannel.get(channel) === cached.payload) {
         return null;
       }
-      client._lastWeeklyFlowStatusPayloadByChannel.set(channel, cached.payload);
+      client._lastPlaylistStatusPayloadByChannel.set(channel, cached.payload);
       return cached.message;
     };
     websocketService.broadcastPerClient("weekly-flow", buildPayload("weekly-flow"));
@@ -354,7 +354,7 @@ const broadcastWeeklyFlowStatus = async () => {
   } catch (error) {
     logger.warn("system", "Failed to broadcast weekly flow status:", { message: error.message });
   } finally {
-    weeklyFlowStatusBroadcastInFlight = false;
+    playlistStatusBroadcastInFlight = false;
   }
 };
 
@@ -366,7 +366,7 @@ const scheduleBroadcast = (fn, intervalMs) => {
 };
 
 scheduleBroadcast(broadcastDownloadStatuses, DOWNLOAD_STATUS_INTERVAL_MS);
-scheduleBroadcast(broadcastWeeklyFlowStatus, WEEKLY_FLOW_STATUS_INTERVAL_MS);
+scheduleBroadcast(broadcastPlaylistStatus, PLAYLIST_STATUS_INTERVAL_MS);
 
 let shuttingDown = false;
 

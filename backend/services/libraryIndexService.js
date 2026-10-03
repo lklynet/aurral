@@ -1,7 +1,7 @@
 import path from "node:path";
 import { db } from "../config/db-sqlite.js";
 import { dbOps } from "../db/helpers/index.js";
-import { resolvePlaylistRoot } from "./playlistPaths.js";
+import { resolveDownloadRoot } from "./downloadPaths.js";
 import { scanMusicRoot, scanMusicRoots } from "./libraryFileScanner.js";
 import {
   assignLibraryArtistMbid,
@@ -10,7 +10,7 @@ import {
   removeLibraryMediaFiles,
   upsertLibraryArtist,
 } from "./libraryMediaStore.js";
-import { flowPlaylistConfig } from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
+import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.js";
 import { rebuildLibrarySearchIndex } from "./librarySearchIndex.js";
 import { rebuildCanonicalGenreStats } from "./libraryQueryService.js";
 import {
@@ -161,7 +161,7 @@ const skippedScan = () => ({
 });
 
 export async function scanConfiguredLibrary({
-  musicRoot = resolvePlaylistRoot(),
+  musicRoot = resolveDownloadRoot(),
   lidarrClient,
   includeLidarr = true,
   lidarrRoots = null,

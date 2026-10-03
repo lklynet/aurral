@@ -23,8 +23,8 @@ const [
   { libraryManager },
 ] = await setupIsolatedBackend(
   "aurral-library-removal",
-  "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
-  "backend/services/weeklyFlow/weeklyFlowDownloadCancellation.js",
+  "backend/services/downloadJobs/downloadTracker.js",
+  "backend/services/downloadJobs/downloadCancellation.js",
   "backend/services/libraryMediaStore.js",
   "backend/services/libraryManagementStore.js",
   "backend/routes/library/handlers/albums.js",

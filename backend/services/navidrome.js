@@ -503,7 +503,7 @@ export class NavidromeClient {
     }
   }
 
-  async ensureWeeklyFlowLibrary(libraryPath) {
+  async ensureAurralLibrary(libraryPath) {
     if (!this.isConfigured()) return null;
     const name = PLAYLIST_LIBRARY_NAME;
     const normalizedPath = normalizeLibraryPath(libraryPath);

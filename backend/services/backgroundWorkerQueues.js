@@ -1,4 +1,4 @@
-// Flow queues share one process because their workers coordinate in-memory state.
+// Download queues share one process because their workers coordinate in-memory state.
 // Other background queues are isolated from the web process and from each other.
 export const ISOLATED_QUEUE_GROUPS = Object.freeze({
   "release-metadata-refresh": "release-metadata",
@@ -9,12 +9,12 @@ export const ISOLATED_QUEUE_GROUPS = Object.freeze({
   "system-task-inbox": "inbox",
   "_outbox:notifications": "notifications",
   "_outbox:play-events": "play-events",
-  "system-task": "flow",
-  "weekly-flow-operation": "flow",
-  "slskd-pipeline": "flow",
-  "playlist-retry": "flow",
-  "playlist-reserve-build": "flow",
-  "playlist-mbid-enrichment": "flow",
+  "system-task": "downloads",
+  "weekly-flow-operation": "downloads",
+  "slskd-pipeline": "downloads",
+  "playlist-retry": "downloads",
+  "playlist-reserve-build": "downloads",
+  "playlist-mbid-enrichment": "downloads",
 });
 
 export const ISOLATED_WORKER_GROUPS = Object.freeze(

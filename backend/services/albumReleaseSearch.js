@@ -1,4 +1,4 @@
-import { groupFlowSearchResults } from "./weeklyFlow/weeklyFlowSoulseekSearch.js";
+import { groupSoulseekSearchResults } from "./downloadJobs/trackSearchQueries.js";
 import { getFileExtension } from "./trackMatching/candidateNormalizer.js";
 import {
   normalizeMatchText,
@@ -68,7 +68,7 @@ export function selectSoulseekAlbumFolder(results, jobs) {
     recordingMbid: job.trackMbid,
     trackNumber: job.trackNumber,
   }));
-  const groups = groupAlbumDiscFolders(groupFlowSearchResults(results, {
+  const groups = groupAlbumDiscFolders(groupSoulseekSearchResults(results, {
     isAudioFile: (filePath) => AUDIO_EXTENSIONS.has(getFileExtension(filePath)),
   }));
   const folders = groups.filter((group) => folderFitsRequest(group, jobs)).map((group) => ({

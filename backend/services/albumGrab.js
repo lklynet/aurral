@@ -1,19 +1,19 @@
 import path from "node:path";
 import { recordAlbumGrabQueued, recordAlbumGrabPhase, recordAlbumTrackState } from "./albumGrabActivity.js";
-import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
+import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { assignDownloadedAlbumFiles } from "./albumReleaseAssignment.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
-import { resolvePlaylistRoot } from "./playlistPaths.js";
+import { resolveDownloadRoot } from "./downloadPaths.js";
 import {
-  buildResolvedPlaylistTrack,
-  commitImportToPlaylistLibrary,
+  buildResolvedJobTrack,
+  commitDownloadedFile,
   joinUnderRoot,
   sanitizePathPart,
   writeAudioMetadata,
-} from "./playlistDownloadUtils.js";
+} from "./downloadUtils.js";
 import { finalizePipelineJobSuccess } from "./pipelineHelpers.js";
-import { isPipelinePayloadActive, withPipelineCommitLock } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
-import { downloadDestinationForJob } from "./weeklyFlow/weeklyFlowDownloadOwnership.js";
+import { isPipelinePayloadActive, withPipelineCommitLock } from "./downloadJobs/downloadCancellation.js";
+import { downloadDestinationForJob } from "./downloadJobs/downloadOwnership.js";
 
 const NOT_IN_ALBUM_REASON = "Track was not in the album download";
 
@@ -38,8 +38,8 @@ export function releaseAlbumGrabJobs(payload, reason = null, reasons = new Map()
   }
   if (released) {
     recordAlbumGrabPhase(payload, reason || "Album attempt ended; searching for missing tracks");
-    void import("./weeklyFlow/weeklyFlowWorker.js")
-      .then(({ weeklyFlowWorker }) => weeklyFlowWorker.wake(0))
+    void import("./downloadJobs/downloadWorker.js")
+      .then(({ downloadWorker }) => downloadWorker.wake(0))
       .catch(() => {});
   }
 }
@@ -77,7 +77,7 @@ export async function finishAlbumGrab(payload, { filePaths, source, album = null
   const assigned = await assignDownloadedAlbumFiles({ jobs, filePaths, source });
   const reasons = new Map(assigned.rejected.map(({ jobId, reason }) =>
     [jobId, `Album file failed verification: ${reason}`]));
-  const playlistRoot = resolvePlaylistRoot();
+  const playlistRoot = resolveDownloadRoot();
   for (const match of assigned.accepted) {
     const job = downloadTracker.getJob(match.jobId);
     if (!job || !["pending", "downloading"].includes(job.status)) continue;
@@ -89,8 +89,8 @@ export async function finishAlbumGrab(payload, { filePaths, source, album = null
       const destination = joinUnderRoot(playlistRoot, peerPayload.destination);
       const finalPath = path.join(destination, `${sanitizePathPart(job.trackName, "Unknown Track")}${ext}`);
       const committed = await withPipelineCommitLock(peerPayload, async () => {
-        await writeAudioMetadata(match.filePath, buildResolvedPlaylistTrack(job));
-        const committedFinalPath = await commitImportToPlaylistLibrary(match.filePath, finalPath);
+        await writeAudioMetadata(match.filePath, buildResolvedJobTrack(job));
+        const committedFinalPath = await commitDownloadedFile(match.filePath, finalPath);
         return finalizePipelineJobSuccess({
           downloadTracker, job, committedFinalPath, album: album || job.albumName,
           quality: match.validation.quality,

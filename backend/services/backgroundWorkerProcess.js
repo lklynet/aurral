@@ -11,17 +11,17 @@ const { startWorkerSupervisor, wakeQueuedBackgroundWork, hasQueuedBackgroundWork
 const { getHonkerWorkerStatuses, getWorkerIdleStopMs, shutdownHonkerInfrastructure } =
   await import("./honkerWorkerRuntime.js");
 const { isHonkerScheduleDue } = await import("./honkerDb.js");
-const flowWorker = group === "flow"
-  ? (await import("./weeklyFlow/weeklyFlowWorker.js")).weeklyFlowWorker
+const downloadWorker = group === "downloads"
+  ? (await import("./downloadJobs/downloadWorker.js")).downloadWorker
   : null;
-const flowOperationStatus = group === "flow"
-  ? (await import("./weeklyFlow/weeklyFlowOperationWorker.js")).getWeeklyFlowOperationWorkerStatus
+const playlistOperationStatus = group === "downloads"
+  ? (await import("./playlists/playlistOperationWorker.js")).getPlaylistOperationWorkerStatus
   : null;
 
 let stopping = false;
-let flowCommandsInFlight = 0;
-let lastFlowCommandAt = 0;
-const FLOW_COMMANDS = new Set([
+let ownerCommandsInFlight = 0;
+let lastOwnerCommandAt = 0;
+const DOWNLOAD_OWNER_COMMANDS = new Set([
   "start", "stop", "stopAndDrain", "wake", "researchMissingTracks",
   "retryIncompletePlaylist", "setRetryCyclePaused", "updateWorkerSettings",
   "checkPlaylistComplete", "blockPlaylist", "unblockPlaylist",
@@ -33,34 +33,34 @@ const FLOW_COMMANDS = new Set([
   "approveBlockedJob", "denyBlockedJob",
 ]);
 
-async function handleFlowCommand(message) {
+async function handleDownloadOwnerCommand(message) {
   const { requestId, method, args = [] } = message;
   try {
-    if (group !== "flow" || !FLOW_COMMANDS.has(method) || !Array.isArray(args)) {
-      throw new Error("Unsupported flow worker command");
+    if (group !== "downloads" || !DOWNLOAD_OWNER_COMMANDS.has(method) || !Array.isArray(args)) {
+      throw new Error("Unsupported download worker command");
     }
     const [{ dbOps }, { invalidateFlowPlaylistConfigCache }] = await Promise.all([
       import("../db/helpers/index.js"),
-      import("./weeklyFlow/weeklyFlowPlaylistConfig.js"),
+      import("./playlists/flowPlaylistConfig.js"),
     ]);
     dbOps.invalidateSettingsCache();
     invalidateFlowPlaylistConfigCache();
     let result;
     if (method === "enqueueManualMissingSelection") {
-      const { downloadTracker } = await import("./weeklyFlow/weeklyFlowDownloadTracker.js");
+      const { downloadTracker } = await import("./downloadJobs/downloadTracker.js");
       result = downloadTracker.enqueueManualSelection(args[0], args[1]);
     } else if (method === "enqueueManualReplacementSelection") {
-      const { downloadTracker } = await import("./weeklyFlow/weeklyFlowDownloadTracker.js");
+      const { downloadTracker } = await import("./downloadJobs/downloadTracker.js");
       result = downloadTracker.enqueueManualReplacementSelection(args[0], args[1]);
     } else if (method === "approveBlockedJob" || method === "denyBlockedJob") {
-      const review = await import("./weeklyFlow/weeklyFlowBlockedJobReview.js");
+      const review = await import("./downloadJobs/blockedJobReview.js");
       result = await review[method](args[0]);
     } else if (method === "clearPendingByPlaylist") {
-      const { downloadTracker } = await import("./weeklyFlow/weeklyFlowDownloadTracker.js");
+      const { downloadTracker } = await import("./downloadJobs/downloadTracker.js");
       result = downloadTracker.clearPendingByPlaylistType(args[0]);
     } else if (method === "wakeOrStart") {
-      if (flowWorker.running) flowWorker.wake(args[0]);
-      else await flowWorker.start();
+      if (downloadWorker.running) downloadWorker.wake(args[0]);
+      else await downloadWorker.start();
       result = true;
     } else if (method === "runQualityUpgradeChecks") {
       const { runQualityUpgradeCheck } = await import("./qualityProfileService.js");
@@ -72,7 +72,7 @@ async function handleFlowCommand(message) {
     } else if (method === "queueQualityUpgradeForJob") {
       const [{ queueQualityUpgrade }, { downloadTracker }] = await Promise.all([
         import("./qualityProfileService.js"),
-        import("./weeklyFlow/weeklyFlowDownloadTracker.js"),
+        import("./downloadJobs/downloadTracker.js"),
       ]);
       result = await queueQualityUpgrade(downloadTracker.getJob(args[0]));
     } else if (method === "syncSharedPlaylistImport") {
@@ -90,21 +90,21 @@ async function handleFlowCommand(message) {
         };
       }
     } else {
-      result = await flowWorker[method](...args);
+      result = await downloadWorker[method](...args);
     }
     if (process.connected) {
-      process.send({ type: "cache-invalidate", cache: "flow" });
-      process.send({ type: "flow-response", requestId, result });
+      process.send({ type: "cache-invalidate", cache: "playlists" });
+      process.send({ type: "download-owner-response", requestId, result });
     }
   } catch (error) {
-    logger.error("workers", "Flow worker command failed", {
+    logger.error("workers", "Download worker command failed", {
       group,
       method,
       requestId,
       reason: error?.message || String(error),
     });
     if (process.connected) {
-      process.send({ type: "flow-response", requestId, error: error?.message || String(error) });
+      process.send({ type: "download-owner-response", requestId, error: error?.message || String(error) });
     }
   }
 }
@@ -119,8 +119,8 @@ async function stop() {
 function isIdle() {
   const idleStopMs = getWorkerIdleStopMs();
   if (stopping || !idleStopMs) return false;
-  if (flowCommandsInFlight > 0 || Date.now() - lastFlowCommandAt < idleStopMs) return false;
-  if (flowWorker?.hasWork()) return false;
+  if (ownerCommandsInFlight > 0 || Date.now() - lastOwnerCommandAt < idleStopMs) return false;
+  if (downloadWorker?.hasWork()) return false;
   try {
     if (group === "scheduler") return !isHonkerScheduleDue();
     return !hasQueuedBackgroundWork(group);
@@ -131,11 +131,11 @@ function isIdle() {
 
 process.on("message", (message) => {
   if (message?.type === "shutdown") void stop();
-  if (message?.type === "flow-command") {
-    flowCommandsInFlight += 1;
-    void handleFlowCommand(message).finally(() => {
-      flowCommandsInFlight -= 1;
-      lastFlowCommandAt = Date.now();
+  if (message?.type === "download-owner-command") {
+    ownerCommandsInFlight += 1;
+    void handleDownloadOwnerCommand(message).finally(() => {
+      ownerCommandsInFlight -= 1;
+      lastOwnerCommandAt = Date.now();
     });
   }
   if (message?.type === "queue-wake") wakeQueuedBackgroundWork(group);
@@ -159,15 +159,15 @@ if (group === "scheduler") {
 process.send({ type: "ready", group });
 const heartbeat = setInterval(() => {
   if (process.connected) {
-    const flowStatus = flowWorker
-      ? { ...flowWorker.getStatus(), operationWorker: flowOperationStatus() }
+    const downloadOwnerStatus = downloadWorker
+      ? { ...downloadWorker.getStatus(), operationWorker: playlistOperationStatus() }
       : null;
     process.send({
       type: "heartbeat",
       group,
       workers: getHonkerWorkerStatuses().filter((worker) =>
         isQueueOwnedByGroup(worker.name, group)),
-      ...(flowStatus ? { flowStatus } : {}),
+      ...(downloadOwnerStatus ? { downloadOwnerStatus } : {}),
     });
     if (isIdle()) process.send({ type: "idle" });
   }

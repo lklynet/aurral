@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { resolvePlaylistRoot } from "./playlistPaths.js";
+import { resolveDownloadRoot } from "./downloadPaths.js";
 import { isLibraryScanExcludedDirectory } from "./libraryFileScanner.js";
 import { lidarrClient } from "./lidarrClient.js";
 import { scheduleLibraryScan } from "./libraryScanWorker.js";
@@ -121,7 +121,7 @@ export function createLibraryFileWatcher({
 }
 
 export function resolveLibraryWatchRoots() {
-  const roots = [resolvePlaylistRoot()];
+  const roots = [resolveDownloadRoot()];
   if (lidarrClient.isEnabled()) {
     // Path mapping checks whether the original path exists; defer that I/O to
     // the watcher child along with recursive watcher creation.
@@ -141,7 +141,7 @@ let activeWatcher = null;
 export async function refreshLibraryFileWatcher({ logger = console } = {}) {
   if (!watcherStarted) return false;
   activeWatcher?.close();
-  const playlistRoot = path.resolve(resolvePlaylistRoot());
+  const playlistRoot = path.resolve(resolveDownloadRoot());
   activeWatcher = createLibraryFileWatcher({
     roots: resolveLibraryWatchRoots(),
     onChange: (changedRoots, changedPaths) => scheduleLibraryScan({

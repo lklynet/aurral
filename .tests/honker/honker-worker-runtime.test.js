@@ -20,7 +20,7 @@ const [
   "backend/services/honkerDb.js",
   "backend/services/honkerWorkerRuntime.js",
   "backend/services/honkerTaskStatus.js",
-  "backend/services/weeklyFlow/weeklyFlowOperationQueue.js",
+  "backend/services/playlists/playlistOperationQueue.js",
 );
 
 const STALE_RUNNING_MS = 60 * 60 * 1000;
@@ -30,7 +30,7 @@ test.after(async () => {
 });
 
 test("getHonkerQueueDepth counts claimable pending jobs", () => {
-  honkerDb.getWeeklyFlowOperationQueue().enqueue({ kind: "noop-test" });
+  honkerDb.getPlaylistOperationQueue().enqueue({ kind: "noop-test" });
   const depth = honkerDb.getHonkerQueueDepth("weekly-flow-operation");
   assert.equal(depth, 1);
 });
@@ -403,17 +403,17 @@ test("periodic cleanup prunes expired runs while status only filters them", asyn
   assert.ok(db.prepare("SELECT COUNT(*) AS count FROM honker_task_runs WHERE status = 'running'").get().count > 0);
 });
 
-test("weekly flow operation queue status reflects worker state and depth", () => {
-  operationQueueModule.setWeeklyFlowOperationWorkerState({
+test("playlist operation queue status reflects worker state and depth", () => {
+  operationQueueModule.setPlaylistOperationWorkerState({
     running: true,
     currentLabel: "manual-start-flow",
   });
-  honkerDb.getWeeklyFlowOperationQueue().enqueue({ kind: "manual-start-flow" });
-  const status = operationQueueModule.weeklyFlowOperationQueue.getStatus();
+  honkerDb.getPlaylistOperationQueue().enqueue({ kind: "manual-start-flow" });
+  const status = operationQueueModule.playlistOperationQueue.getStatus();
   assert.equal(status.processing, true);
   assert.equal(status.currentLabel, "manual-start-flow");
   assert.ok(status.pending >= 1);
-  operationQueueModule.setWeeklyFlowOperationWorkerState({
+  operationQueueModule.setPlaylistOperationWorkerState({
     running: false,
     currentLabel: null,
   });

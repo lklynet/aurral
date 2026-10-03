@@ -603,7 +603,7 @@ async function main() {
     const queryService = await import("../backend/services/libraryQueryService.js");
     const { rebuildLibrarySearchIndex } = await import("../backend/services/librarySearchIndex.js");
     const { flowPlaylistConfig } = await import(
-      "../backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js"
+      "../backend/services/playlists/flowPlaylistConfig.js"
     );
     const seedStarted = performance.now();
     const musicRoot = path.join(dataDir, "music");

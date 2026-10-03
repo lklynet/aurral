@@ -8,7 +8,7 @@ import path from "node:path";
 import { db } from "../../backend/config/db-sqlite.js";
 import { lidarrClient } from "../../backend/services/lidarrClient.js";
 import { libraryManager } from "../../backend/services/libraryManager.js";
-import { downloadTracker } from "../../backend/services/weeklyFlow/weeklyFlowDownloadTracker.js";
+import { downloadTracker } from "../../backend/services/downloadJobs/downloadTracker.js";
 import {
   linkLibraryAlbumTrack,
   upsertLibraryAlbum,
@@ -23,7 +23,7 @@ import {
   listDownloadProviderWork,
   registerDownloadProviderWork,
   withPipelineCommitLock,
-} from "../../backend/services/weeklyFlow/weeklyFlowDownloadCancellation.js";
+} from "../../backend/services/downloadJobs/downloadCancellation.js";
 import { createMockHttpServer } from "../helpers/backendTestHarness.js";
 
 test("deletes Aurral-owned track files without Lidarr", async (t) => {

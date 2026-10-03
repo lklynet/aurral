@@ -31,13 +31,13 @@ test("schedule bootstrap skips stale runs without postponing recently due work",
   honkerDb.bootstrapHonkerSchedules();
 
   const rows = scheduler.list();
-  const weeklyFlow = rows.find((row) => row.name === "weekly-flow-refresh");
+  const flowRefresh = rows.find((row) => row.name === "weekly-flow-refresh");
   const enrichment = rows.find(
     (row) => row.name === "playlist-mbid-enrichment-sweep",
   );
 
-  assert.ok(weeklyFlow?.next_fire_at > now);
-  assert.equal(weeklyFlow?.priority, 0);
+  assert.ok(flowRefresh?.next_fire_at > now);
+  assert.equal(flowRefresh?.priority, 0);
 
   const recentlyDue = now - 60;
   const recentTx = honkerDb.getHonkerDb().transaction();

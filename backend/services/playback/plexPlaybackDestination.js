@@ -10,8 +10,8 @@ import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
 import {
   AURRAL_FLOWS_DIR,
   isPathInsideRoot,
-  resolvePlaylistRoot,
-} from "../playlistPaths.js";
+  resolveDownloadRoot,
+} from "../downloadPaths.js";
 import {
   createPlaybackPlaylistIdentity,
   createPlaybackPlaylistSnapshot,
@@ -36,11 +36,11 @@ export const plexSettings = Object.freeze({
 });
 
 export class PlexPlaybackDestination {
-  constructor(weeklyFlowRoot = resolvePlaylistRoot(), { client = null } = {}) {
+  constructor(downloadRoot = resolveDownloadRoot(), { client = null } = {}) {
     this.key = "plex";
     this.name = "Plex";
-    this.weeklyFlowRoot = resolvePlaylistRoot(weeklyFlowRoot);
-    this.playlistLibraryRoot = this.weeklyFlowRoot;
+    this.downloadRoot = resolveDownloadRoot(downloadRoot);
+    this.playlistFilesRoot = this.downloadRoot;
     this.client = client;
     this._configKey = "";
     this._downloadsPath = "";
@@ -96,7 +96,7 @@ export class PlexPlaybackDestination {
         const relative = this._relativeManagedPath(file);
         paths.add(relative == null
           ? resolveLocalPath(file, getPathMappings("plex"))
-          : path.resolve(this.weeklyFlowRoot, relative));
+          : path.resolve(this.downloadRoot, relative));
       }
     }
     return { ok: true, paths: [...paths] };
@@ -104,7 +104,7 @@ export class PlexPlaybackDestination {
 
   _libraryPath() {
     const override = String(this._downloadsPath || "").trim();
-    return (override || this.weeklyFlowRoot).replace(/\\/g, "/").replace(/\/+$/, "");
+    return (override || this.downloadRoot).replace(/\\/g, "/").replace(/\/+$/, "");
   }
 
   async testConnection() {
@@ -130,7 +130,7 @@ export class PlexPlaybackDestination {
     if (!this.isConfigured()) return playbackOperationSuccess();
     try {
       if (this._sectionId == null) {
-        this._sectionId = (await this.client.ensureWeeklyFlowLibrary(this._libraryPath()))?.key ?? null;
+        this._sectionId = (await this.client.ensureAurralLibrary(this._libraryPath()))?.key ?? null;
       }
       if (this._sectionId == null) throw new Error("Could not create or find the Aurral Plex library");
       await this._loadTracks();
@@ -313,7 +313,7 @@ export class PlexPlaybackDestination {
       for (const file of track.files || []) {
         const relative = this._relativeManagedPath(file);
         if (!relative) continue;
-        const localPath = path.resolve(this.weeklyFlowRoot, relative);
+        const localPath = path.resolve(this.downloadRoot, relative);
         if (!managedByPath.has(localPath)) managedByPath.set(localPath, []);
         managedByPath.get(localPath).push(track);
       }
@@ -333,7 +333,7 @@ export class PlexPlaybackDestination {
       const ratingKey = managedByPath.get(localPath)?.[0]?.ratingKey || mainByPath.get(localPath);
       if (ratingKey) keys.push(ratingKey);
     }
-    const entityRoot = path.join(this.weeklyFlowRoot, AURRAL_FLOWS_DIR, snapshot.entityId);
+    const entityRoot = path.join(this.downloadRoot, AURRAL_FLOWS_DIR, snapshot.entityId);
     for (const [localPath, group] of managedByPath) {
       if (!isPathInsideRoot(localPath, entityRoot)) continue;
       if (isPlaybackRetainedFile(localPath)) continue;

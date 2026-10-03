@@ -9,7 +9,7 @@ import { reconcileLocalNetworkBypassSetting } from "../../../middleware/auth.js"
 import { noCache } from "../../../middleware/cache.js";
 import { validateExternalUrl } from "../../../middleware/urlValidator.js";
 import { websocketService } from "../../../services/websocketService.js";
-import { resolvePlaylistRoot } from "../../../services/playlistPaths.js";
+import { resolveDownloadRoot } from "../../../services/downloadPaths.js";
 import {
   resolveYtdlpStagingRoot,
   validateDownloadFolderPath,
@@ -35,7 +35,7 @@ function mergeIntegrations(existing, input, keys) {
 }
 
 function resolveLibraryRootWarnings(settings) {
-  const aurralRoot = settings?.downloadFolderPath || resolvePlaylistRoot();
+  const aurralRoot = settings?.downloadFolderPath || resolveDownloadRoot();
   const lidarrRoots = getOverlapCheckedLidarrRoots(settings?.integrations?.lidarr);
   return computeLibraryRootOverlaps({ aurralRoot, lidarrRoots });
 }
@@ -99,7 +99,7 @@ export function registerGeneral(router) {
         ...settings,
         rootWarnings: resolveLibraryRootWarnings(settings),
         downloadFolderPath:
-          settings.downloadFolderPath || resolvePlaylistRoot(),
+          settings.downloadFolderPath || resolveDownloadRoot(),
         integrations: {
           ...(settings.integrations || {}),
           ytdlp: {
@@ -620,7 +620,7 @@ export function registerGeneral(router) {
         ));
       if (playbackSettingsChanged) {
         const { playlistManager } = await import(
-          "../../../services/weeklyFlow/weeklyFlowPlaylistManager.js"
+          "../../../services/playlists/playlistManager.js"
         );
         playlistManager.updateConfig(false);
         // Library enumeration can take minutes. Saving settings must not wait

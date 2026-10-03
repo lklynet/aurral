@@ -31,15 +31,15 @@ test("default download folder follows the available writable data root", async (
   delete process.env.WEEKLY_FLOW_FOLDER;
 
   try {
-    const { resolveDefaultPlaylistDownloadRoot } = await import(
+    const { resolveDefaultDownloadRoot } = await import(
       "../../backend/services/downloadFolderConfig.js"
     );
     assert.equal(
-      resolveDefaultPlaylistDownloadRoot({ dataRoot: tempDir }),
+      resolveDefaultDownloadRoot({ dataRoot: tempDir }),
       path.join(tempDir, "downloads", "aurral"),
     );
     assert.equal(
-      resolveDefaultPlaylistDownloadRoot({ dataRoot: nonDirectoryPath }),
+      resolveDefaultDownloadRoot({ dataRoot: nonDirectoryPath }),
       path.join(tempDir, "downloads", "aurral"),
     );
   } finally {
@@ -74,18 +74,18 @@ test("yt-dlp staging defaults outside the download folder and honors an override
   }
 });
 
-test("resolvePlaylistRoot prefers stored download folder path", async () => {
+test("resolveDownloadRoot prefers stored download folder path", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aurral-download-db-"));
   const previous = process.env.DOWNLOAD_FOLDER;
   delete process.env.DOWNLOAD_FOLDER;
   const { syncDownloadFolderPath } = await import(
     "../../backend/services/downloadFolderConfig.js"
   );
-  const { resolvePlaylistRoot } = await import(
-    "../../backend/services/playlistPaths.js"
+  const { resolveDownloadRoot } = await import(
+    "../../backend/services/downloadPaths.js"
   );
   syncDownloadFolderPath(tempDir);
-  assert.equal(resolvePlaylistRoot(), path.resolve(tempDir));
+  assert.equal(resolveDownloadRoot(), path.resolve(tempDir));
   syncDownloadFolderPath(null);
   if (previous === undefined) delete process.env.DOWNLOAD_FOLDER;
   else process.env.DOWNLOAD_FOLDER = previous;

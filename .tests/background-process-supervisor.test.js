@@ -12,7 +12,7 @@ test("only the owning process supervises isolated queues", () => {
   assert.deepEqual(ISOLATED_WORKER_GROUPS, [
     "release-metadata", "library", "discovery-refresh",
     "discovery-user-refresh", "maintenance", "inbox", "notifications",
-    "play-events", "flow", "scheduler",
+    "play-events", "downloads", "scheduler",
   ]);
   assert.equal(isQueueOwnedByGroup("library-scan"), false);
   assert.equal(isQueueOwnedByGroup("library-scan", "library"), true);
@@ -22,14 +22,14 @@ test("only the owning process supervises isolated queues", () => {
   assert.equal(isQueueOwnedByGroup("_outbox:notifications", "notifications"), true);
   assert.equal(isQueueOwnedByGroup("_outbox:play-events", "play-events"), true);
   assert.equal(isQueueOwnedByGroup("notification-outbox", "notifications"), true);
-  assert.equal(isQueueOwnedByGroup("system-task", "flow"), true);
+  assert.equal(isQueueOwnedByGroup("system-task", "downloads"), true);
   assert.equal(isQueueOwnedByGroup("release-metadata-refresh", "release-metadata"), true);
-  assert.equal(isQueueOwnedByGroup("release-metadata-refresh", "flow"), false);
-  assert.equal(isQueueOwnedByGroup("weekly-flow-operation", "flow"), true);
-  assert.equal(isQueueOwnedByGroup("slskd-pipeline", "flow"), true);
+  assert.equal(isQueueOwnedByGroup("release-metadata-refresh", "downloads"), false);
+  assert.equal(isQueueOwnedByGroup("weekly-flow-operation", "downloads"), true);
+  assert.equal(isQueueOwnedByGroup("slskd-pipeline", "downloads"), true);
   assert.equal(isQueueOwnedByGroup("system-task"), false);
   assert.equal(isQueueOwnedByGroup("system-task", "library"), false);
-  assert.equal(isQueueOwnedByGroup("playlist-mbid-enrichment", "flow"), true);
+  assert.equal(isQueueOwnedByGroup("playlist-mbid-enrichment", "downloads"), true);
   const previousNodeEnv = process.env.NODE_ENV;
   const previousGroup = process.env.AURRAL_BACKGROUND_WORKER_GROUP;
   try {
@@ -41,7 +41,7 @@ test("only the owning process supervises isolated queues", () => {
     assert.equal(shouldStartQueueHere("library-scan"), true);
     assert.equal(shouldStartQueueHere("system-task"), false);
     assert.equal(shouldStartQueueHere("discovery-refresh"), false);
-    process.env.AURRAL_BACKGROUND_WORKER_GROUP = "flow";
+    process.env.AURRAL_BACKGROUND_WORKER_GROUP = "downloads";
     assert.equal(shouldStartQueueHere("system-task"), true);
     assert.equal(shouldStartQueueHere("weekly-flow-operation"), true);
     assert.equal(shouldStartQueueHere("library-scan"), false);
@@ -85,8 +85,8 @@ function exitIdle(child) {
 }
 
 function reply(child, result) {
-  const command = child.sent.findLast((message) => message.type === "flow-command");
-  child.emit("message", { type: "flow-response", requestId: command.requestId, result });
+  const command = child.sent.findLast((message) => message.type === "download-owner-command");
+  child.emit("message", { type: "download-owner-response", requestId: command.requestId, result });
   return command.method;
 }
 
@@ -166,11 +166,11 @@ test("an idle worker exits without a restart and returns when work arrives", asy
 
 test("a flow request starts its worker and holds off retirement until answered", async () => {
   const { launches, forkProcess } = createFakeFork();
-  const supervisor = createBackgroundProcessSupervisor({ groups: ["flow"], forkProcess });
+  const supervisor = createBackgroundProcessSupervisor({ groups: ["downloads"], forkProcess });
   try {
     supervisor.start();
     assert.equal(launches.length, 0);
-    const pending = supervisor.request("flow", "waitForIdle");
+    const pending = supervisor.request("downloads", "waitForIdle");
     assert.equal(launches.length, 1);
     assert.deepEqual(launches[0].sent, []);
     launches[0].emit("message", { type: "ready" });
@@ -187,15 +187,15 @@ test("a flow request starts its worker and holds off retirement until answered",
 
 test("a flow request made while its worker retires reaches the next worker", async () => {
   const { launches, forkProcess } = createFakeFork();
-  const supervisor = createBackgroundProcessSupervisor({ groups: ["flow"], forkProcess });
+  const supervisor = createBackgroundProcessSupervisor({ groups: ["downloads"], forkProcess });
   try {
     supervisor.start();
-    const first = supervisor.request("flow", "start");
+    const first = supervisor.request("downloads", "start");
     launches[0].emit("message", { type: "ready" });
     reply(launches[0], true);
     await first;
     launches[0].emit("message", { type: "idle" });
-    const second = supervisor.request("flow", "wakeOrStart");
+    const second = supervisor.request("downloads", "wakeOrStart");
     assert.deepEqual(launches[0].sent.at(-1), { type: "retire" });
     exitIdle(launches[0]);
     await flush();
@@ -210,15 +210,15 @@ test("a flow request made while its worker retires reaches the next worker", asy
 
 test("a worker that is busy again keeps running and receives waiting requests", async () => {
   const { launches, forkProcess } = createFakeFork();
-  const supervisor = createBackgroundProcessSupervisor({ groups: ["flow"], forkProcess });
+  const supervisor = createBackgroundProcessSupervisor({ groups: ["downloads"], forkProcess });
   try {
     supervisor.start();
-    const first = supervisor.request("flow", "start");
+    const first = supervisor.request("downloads", "start");
     launches[0].emit("message", { type: "ready" });
     reply(launches[0], true);
     await first;
     launches[0].emit("message", { type: "idle" });
-    const second = supervisor.request("flow", "blockPlaylist", ["disposable"]);
+    const second = supervisor.request("downloads", "blockPlaylist", ["disposable"]);
     launches[0].emit("message", { type: "busy" });
     assert.equal(reply(launches[0], true), "blockPlaylist");
     assert.equal(await second, true);
@@ -259,28 +259,28 @@ test("supervisor restarts an unexpectedly exited worker", async () => {
 test("flow requests return replies and reject when their owner exits", async () => {
   const { launches, forkProcess } = createFakeFork();
   const supervisor = createBackgroundProcessSupervisor({
-    groups: ["flow"],
+    groups: ["downloads"],
     logger: quietLogger,
     forkProcess,
   });
   try {
     supervisor.start();
-    const first = supervisor.request("flow", "start");
+    const first = supervisor.request("downloads", "start");
     launches[0].emit("message", { type: "ready" });
     const request = launches[0].sent.at(-1);
-    assert.equal(request.type, "flow-command");
+    assert.equal(request.type, "download-owner-command");
     assert.equal(request.method, "start");
     reply(launches[0], true);
     assert.equal(await first, true);
 
     launches[0].emit("message", {
-      type: "heartbeat", workers: [], flowStatus: { running: true },
+      type: "heartbeat", workers: [], downloadOwnerStatus: { running: true },
     });
-    assert.deepEqual(supervisor.getFlowStatus(), { running: true });
-    const pending = supervisor.request("flow", "waitForIdle");
+    assert.deepEqual(supervisor.getDownloadOwnerStatus(), { running: true });
+    const pending = supervisor.request("downloads", "waitForIdle");
     launches[0].emit("exit", 1, null);
     await assert.rejects(pending, /exited before responding/);
-    assert.equal(supervisor.getFlowStatus(), null);
+    assert.equal(supervisor.getDownloadOwnerStatus(), null);
   } finally {
     await supervisor.stop();
   }
@@ -291,8 +291,8 @@ test("flow restart waits for job recovery", async () => {
   let finishRecovery;
   const recovery = new Promise((resolve) => { finishRecovery = resolve; });
   const supervisor = createBackgroundProcessSupervisor({
-    groups: ["flow"],
-    findGroupsWithWork: () => ["flow"],
+    groups: ["downloads"],
+    findGroupsWithWork: () => ["downloads"],
     logger: quietLogger,
     onExit: () => recovery,
     forkProcess: () => {

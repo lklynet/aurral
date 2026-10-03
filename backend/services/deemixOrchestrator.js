@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
-import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
+import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
 import {
@@ -10,17 +10,17 @@ import {
   usableEvaluationEntries,
   validateDownloadedTrackFile,
 } from "./trackMatching/index.js";
-import { buildDeemixSearchQueries } from "./weeklyFlow/weeklyFlowDeemixSearch.js";
-import { resolvePlaylistRoot } from "./playlistPaths.js";
+import { buildDeemixSearchQueries } from "./downloadJobs/deemixSearch.js";
+import { resolveDownloadRoot } from "./downloadPaths.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 import {
-  buildResolvedPlaylistTrack as buildResolvedTrack,
-  commitImportToPlaylistLibrary,
+  buildResolvedJobTrack as buildResolvedTrack,
+  commitDownloadedFile,
   joinUnderRoot,
   sanitizePathPart,
   writeAudioMetadata,
-} from "./playlistDownloadUtils.js";
-import { deferForInactiveOwner } from "./weeklyFlow/weeklyFlowOwnerStatus.js";
+} from "./downloadUtils.js";
+import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.js";
 import { getQualityProfile } from "./qualityProfileService.js";
 import { isQualityUpgrade } from "./qualityProfileModel.js";
 import { readDeemixAlbumQueue } from "./deemixClient.js";
@@ -37,7 +37,7 @@ import {
 import {
   isPipelinePayloadActive,
   withPipelineCommitLock,
-} from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
+} from "./downloadJobs/downloadCancellation.js";
 
 const SEARCH_LIMIT = 10;
 const POLL_DELAY_SECONDS = 3;
@@ -433,7 +433,7 @@ async function handleDeemixFinalize(payload, helpers) {
 
   const inactiveOwner = deferForInactiveOwner(payload, job);
   if (inactiveOwner) return inactiveOwner;
-  const playlistRoot = resolvePlaylistRoot();
+  const playlistRoot = resolveDownloadRoot();
   const destination = String(payload.destination || "").trim();
   const ext = path.extname(filePath).toLowerCase();
   const finalDir = joinUnderRoot(playlistRoot, destination);
@@ -449,7 +449,7 @@ async function handleDeemixFinalize(payload, helpers) {
           reason: safeLogDiagnostic(err),
         });
       });
-    const committedFinalPath = await commitImportToPlaylistLibrary(filePath, finalPath, {
+    const committedFinalPath = await commitDownloadedFile(filePath, finalPath, {
       reuseExisting: !payload.manualReplacementSearch,
     });
     return finalizePipelineJobSuccess({

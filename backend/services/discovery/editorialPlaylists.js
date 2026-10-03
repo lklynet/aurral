@@ -1,4 +1,4 @@
-import { flowPlaylistConfig } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
+import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.js";
 import { enqueueImportedPlaylist } from "../importLists/importPlaylist.js";
 import {
   getDeezerPlaylist,

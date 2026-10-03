@@ -1,4 +1,4 @@
-import { dedupeSharedTracks } from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
+import { dedupeSharedTracks } from "../playlists/flowPlaylistConfig.js";
 
 const PLAYLIST_TRACK_EXTENSION = "https://musicbrainz.org/doc/jspf#track";
 const TRACK_URI_PREFIX = "https://musicbrainz.org/recording/";

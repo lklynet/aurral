@@ -18,7 +18,7 @@ import {
 } from "./libraryQueryService.js";
 import { selectCanonicalFile } from "./canonicalFileSelector.js";
 import { scheduleLibraryScan } from "./libraryScanWorker.js";
-import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
+import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import {
   buildIdentityKey,
   clearCanonicalLidarrAlbum,
@@ -38,9 +38,9 @@ import {
   getManagedByMap,
   setLibraryManagement,
 } from "./libraryManagementStore.js";
-import { cancelDownloadWorkForJobs } from "./weeklyFlow/weeklyFlowDownloadCancellationService.js";
-import { restoreDownloadJobCancellations } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
-import { removePlaylistFileIfUnshared } from "./weeklyFlow/weeklyFlowFileReuse.js";
+import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.js";
+import { restoreDownloadJobCancellations } from "./downloadJobs/downloadCancellation.js";
+import { removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.js";
 import {
   cancelAurralAlbumJobs,
   cancelAurralTrackJobs,
@@ -1740,8 +1740,8 @@ export class LibraryManager {
         }
       } catch {}
       try {
-        const { weeklyFlowWorker } = await import("./weeklyFlow/weeklyFlowWorker.js");
-        await weeklyFlowWorker.start();
+        const { downloadWorker } = await import("./downloadJobs/downloadWorker.js");
+        await downloadWorker.start();
       } catch (error) {
         logger.warn("library", "Aurral album jobs remain queued after worker start failed", {
           message: error?.message || String(error),

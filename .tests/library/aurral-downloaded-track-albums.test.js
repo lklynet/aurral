@@ -16,7 +16,7 @@ const [
   libraryStore,
   managementStore,
   { downloadTracker },
-  { weeklyFlowWorker },
+  { downloadWorker },
   { lidarrClient },
   { libraryManager },
   { getCanonicalLibraryForAlbumIds },
@@ -30,8 +30,8 @@ const [
   "backend/db/helpers/index.js",
   "backend/services/libraryMediaStore.js",
   "backend/services/libraryManagementStore.js",
-  "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
-  "backend/services/weeklyFlow/weeklyFlowWorker.js",
+  "backend/services/downloadJobs/downloadTracker.js",
+  "backend/services/downloadJobs/downloadWorker.js",
   "backend/services/lidarrClient.js",
   "backend/services/libraryManager.js",
   "backend/services/libraryQueryService.js",
@@ -143,7 +143,7 @@ const queuedTrackMbids = () =>
 
 const originalSettings = dbOps.getSettings();
 const originalLidarrConfigured = lidarrClient.isConfigured;
-const originalWorkerStart = weeklyFlowWorker.start;
+const originalWorkerStart = downloadWorker.start;
 
 test.before(() => {
   dbOps.updateSettings({
@@ -160,12 +160,12 @@ test.before(() => {
   });
   clearMetadataProviderCaches();
   lidarrClient.isConfigured = () => false;
-  weeklyFlowWorker.start = async () => {};
+  downloadWorker.start = async () => {};
 });
 
 test.after(async () => {
   lidarrClient.isConfigured = originalLidarrConfigured;
-  weeklyFlowWorker.start = originalWorkerStart;
+  downloadWorker.start = originalWorkerStart;
   dbOps.updateSettings(originalSettings);
   await metadataServer.close();
   await cleanupIsolatedState(isolatedState);

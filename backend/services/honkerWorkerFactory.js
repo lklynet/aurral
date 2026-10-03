@@ -115,7 +115,7 @@ export default function createHonkerWorker({
         if (process.env.AURRAL_BACKGROUND_WORKER_GROUP) {
           const [{ dbOps }, { invalidateFlowPlaylistConfigCache }] = await Promise.all([
             import("../db/helpers/index.js"),
-            import("./weeklyFlow/weeklyFlowPlaylistConfig.js"),
+            import("./playlists/flowPlaylistConfig.js"),
           ]);
           dbOps.invalidateSettingsCache();
           invalidateFlowPlaylistConfigCache();

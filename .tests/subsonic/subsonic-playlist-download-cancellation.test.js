@@ -24,10 +24,10 @@ const [
   "subsonic-playlist-download-cancellation",
   "backend/config/db-sqlite.js",
   "backend/services/subsonicLibraryService.js",
-  "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
-  "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
-  "backend/services/weeklyFlow/weeklyFlowDownloadCancellation.js",
-  "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
+  "backend/services/downloadJobs/downloadTracker.js",
+  "backend/services/playlists/flowPlaylistConfig.js",
+  "backend/services/downloadJobs/downloadCancellation.js",
+  "backend/services/playlists/playlistManager.js",
   "backend/services/honkerDb.js",
   "backend/db/helpers/index.js",
 );
@@ -107,7 +107,7 @@ test("playlist deletion keeps a job available until an in-flight commit releases
     playlistId,
   );
   const finalPath = path.join(
-    playlistManager.weeklyFlowRoot,
+    playlistManager.downloadRoot,
     "Commit Artist",
     "Commit Album",
     "Committing Song.flac",
@@ -164,7 +164,7 @@ test("Subsonic edits clean an in-flight legacy file before removing its job", as
     playlistId,
   );
   const finalPath = path.join(
-    playlistManager.weeklyFlowRoot,
+    playlistManager.downloadRoot,
     "Commit Artist",
     "Commit Album",
     "Committing Song.flac",
@@ -208,7 +208,7 @@ test("Subsonic edits remove a file shared only by jobs from the edited playlist"
     tracks: [],
   });
   activatePlaylistDownloadGeneration(playlistId);
-  const finalPath = path.join(playlistManager.weeklyFlowRoot, "Duplicate Artist", "Duplicate Song.flac");
+  const finalPath = path.join(playlistManager.downloadRoot, "Duplicate Artist", "Duplicate Song.flac");
   await fs.mkdir(path.dirname(finalPath), { recursive: true });
   await fs.writeFile(finalPath, "shared by obsolete jobs");
   const jobIds = ["First", "Second"].map((trackName) => {
@@ -225,7 +225,7 @@ test("Subsonic edits remove a file shared only by jobs from the edited playlist"
 
 test("renaming a Subsonic playlist keeps its canonical song and file", async () => {
   const playlistId = "subsonic-edit-retained-canonical-song";
-  const finalPath = path.join(playlistManager.weeklyFlowRoot, "Retained Artist", "Retained Song.flac");
+  const finalPath = path.join(playlistManager.downloadRoot, "Retained Artist", "Retained Song.flac");
   const jobId = downloadTracker.addJob(
     { artistName: "Retained Artist", trackName: "Retained Song" },
     playlistId,
@@ -257,7 +257,7 @@ test("Subsonic deletion preserves a file used by another playlist", async () => 
   ]) {
     flowPlaylistConfig.createSharedPlaylist({ id, name, ownerUserId: user.id, tracks: [] });
   }
-  const finalPath = path.join(playlistManager.weeklyFlowRoot, "Shared Artist", "Shared Album", "Shared Song.flac");
+  const finalPath = path.join(playlistManager.downloadRoot, "Shared Artist", "Shared Album", "Shared Song.flac");
   await fs.mkdir(path.dirname(finalPath), { recursive: true });
   await fs.writeFile(finalPath, "shared audio");
   const removedJobId = downloadTracker.addJob(

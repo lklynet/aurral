@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import { parseFile } from "music-metadata";
 import { assignReleaseFiles, parseListingTitle } from "./trackMatching/nativeMatcher.js";
 import { validateDownloadedTrackFile } from "./trackMatching/postDownloadValidator.js";
-import { buildResolvedPlaylistTrack } from "./playlistDownloadUtils.js";
+import { buildResolvedJobTrack } from "./downloadUtils.js";
 
 function positiveDurationMs(parsed) {
   const seconds = Number(parsed?.format?.duration);
@@ -56,7 +56,7 @@ export async function assignDownloadedAlbumFiles({ jobs, filePaths, source, pars
     const job = jobs[pair.trackIndex];
     const entry = readable[pair.fileIndex];
     const validation = await validateDownloadedTrackFile({
-      request: buildResolvedPlaylistTrack(job),
+      request: buildResolvedJobTrack(job),
       filePath: entry.filePath,
       source,
       options: { parseFile: parseAudio, strict: true },

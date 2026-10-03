@@ -11,10 +11,10 @@ const [state, { db }, { dbOps }, retention, { playlistManager }, { downloadTrack
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
   "backend/services/playback/playbackFileRetention.js",
-  "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
-  "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
-  "backend/services/weeklyFlow/weeklyFlowFileReuse.js",
-  "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
+  "backend/services/playlists/playlistManager.js",
+  "backend/services/downloadJobs/downloadTracker.js",
+  "backend/services/downloadJobs/fileReuse.js",
+  "backend/services/playlists/flowPlaylistConfig.js",
 );
 const { createPlaybackDeletionGuard, removeUnusedPlaybackFiles, isPlaybackRetainedFile, retryPlaybackRetainedFiles } = retention;
 const root = process.env.WEEKLY_FLOW_FOLDER;

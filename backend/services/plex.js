@@ -1,7 +1,7 @@
 import axios from "../../lib/axiosFetch.js";
 import crypto from "crypto";
 import { XMLParser } from "fast-xml-parser";
-import { AURRAL_FLOWS_DIR } from "./playlistPaths.js";
+import { AURRAL_FLOWS_DIR } from "./downloadPaths.js";
 import { readPlaylistPages, requirePlaylistPath } from "./playback/playlistUsage.js";
 
 const PLEX_TV = "https://plex.tv";
@@ -249,7 +249,7 @@ export class PlexClient {
     return data?.MediaContainer?.Directory || [];
   }
 
-  async ensureWeeklyFlowLibrary(libraryPath) {
+  async ensureAurralLibrary(libraryPath) {
     if (!this.isConfigured()) return null;
     const name = "Aurral";
     const flowRoot = libraryPath.replace(/\/+$/, "");

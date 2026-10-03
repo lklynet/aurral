@@ -1,6 +1,6 @@
 import crypto from "crypto";
-import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
-import { flowPlaylistConfig } from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
+import { downloadTracker } from "./downloadJobs/downloadTracker.js";
+import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.js";
 
 const tokenEquals = (left, right) => {
   const a = String(left || "").trim();

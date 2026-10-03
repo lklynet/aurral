@@ -1,8 +1,8 @@
 import crypto from "crypto";
 import { expandAlbumGrabHistory } from "./albumGrabActivity.js";
 import { dbOps } from "../db/helpers/index.js";
-import { resolveBlockedJobSourceFilename } from "./playlistDownloadUtils.js";
-import { flowPlaylistConfig } from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
+import { resolveBlockedJobSourceFilename } from "./downloadUtils.js";
+import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.js";
 import { getCanonicalLibraryForAlbumReferences } from "./libraryQueryService.js";
 
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -599,7 +599,7 @@ const loadRecentHistory = () =>
   dbOps.getAurralHistory({ since: Date.now() - MAX_AGE_MS, limit: 300 });
 
 export const syncTrackDownloadHistory = async (historyEntries = null) => {
-  const { downloadTracker } = await import("./weeklyFlow/weeklyFlowDownloadTracker.js");
+  const { downloadTracker } = await import("./downloadJobs/downloadTracker.js");
   const trackEntries = (historyEntries || loadRecentHistory()).filter(
     (entry) =>
       entry.kind === "track_download" &&
@@ -1125,7 +1125,7 @@ export const getAurralHistoryRequests = async (lidarrClient = null, user = null)
   const entries = [...(await loadPendingPlaylistImportHistory(user)), ...loadRecentHistory()];
   const entryIds = new Set(entries.map((e) => e.id));
 
-  const { downloadTracker } = await import("./weeklyFlow/weeklyFlowDownloadTracker.js");
+  const { downloadTracker } = await import("./downloadJobs/downloadTracker.js");
   const jobs = downloadTracker.getAll();
   for (const job of jobs) {
     if (job.status !== "blocked" && job.status !== "pending" && job.status !== "downloading") {

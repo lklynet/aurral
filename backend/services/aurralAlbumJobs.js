@@ -1,6 +1,6 @@
-import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
-import { cancelDownloadJobs } from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
-import { cancelDownloadWorkForJobs } from "./weeklyFlow/weeklyFlowDownloadCancellationService.js";
+import { downloadTracker } from "./downloadJobs/downloadTracker.js";
+import { cancelDownloadJobs } from "./downloadJobs/downloadCancellation.js";
+import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.js";
 import { logger } from "./logger.js";
 
 export const ACTIVE_JOB_STATUSES = new Set(["pending", "downloading", "cancel_requested"]);

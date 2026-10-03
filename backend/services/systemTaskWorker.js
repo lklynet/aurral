@@ -9,14 +9,14 @@ import {
 } from "./honkerDb.js";
 import { cleanExpiredSessions } from "../config/session-helpers.js";
 import { dbOps } from "../db/helpers/index.js";
-import { resolvePlaylistRoot } from "./playlistPaths.js";
+import { resolveDownloadRoot } from "./downloadPaths.js";
 
 export async function processSystemTask(payload = {}, job = null, context = {}) {
   const kind = String(payload?.kind || "").trim();
   switch (kind) {
     case "weekly-flow-refresh": {
-      const { runScheduledRefresh } = await import("./weeklyFlow/weeklyFlowScheduler.js");
-      await runScheduledRefresh();
+      const { runScheduledFlowRefresh } = await import("./flows/flowScheduler.js");
+      await runScheduledFlowRefresh();
       return;
     }
     case "aurral-monitoring-apply": {
@@ -38,8 +38,8 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       cleanExpiredSessions();
       return;
     case "weekly-flow-reuse-repair": {
-      const { weeklyFlowWorker } = await import("./weeklyFlow/weeklyFlowWorker.js");
-      weeklyFlowWorker.scheduleReuseLinkRepair(false);
+      const { downloadWorker } = await import("./downloadJobs/downloadWorker.js");
+      downloadWorker.scheduleReuseLinkRepair(false);
       return;
     }
     case "quality-upgrade-check": {
@@ -59,8 +59,8 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       return;
     }
     case "weekly-flow-startup-reuse-repair": {
-      const { weeklyFlowWorker } = await import("./weeklyFlow/weeklyFlowWorker.js");
-      weeklyFlowWorker.scheduleReuseLinkRepair(true);
+      const { downloadWorker } = await import("./downloadJobs/downloadWorker.js");
+      downloadWorker.scheduleReuseLinkRepair(true);
       return;
     }
     case "discovery-refresh-check": {
@@ -93,7 +93,7 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       return;
     }
     case "weekly-flow-startup-check": {
-      const { startWorkerIfPending } = await import("./weeklyFlow/weeklyFlowScheduler.js");
+      const { startWorkerIfPending } = await import("./downloadJobs/downloadWorker.js");
       await startWorkerIfPending();
       return;
     }
@@ -137,8 +137,8 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       ] = await Promise.all([
         import("./aurralDownloadFolderMigration.js"),
         import("./playlistFilesystemMigration.js"),
-        import("./weeklyFlow/weeklyFlowDownloadTracker.js"),
-        import("./playlistDownloadUtils.js"),
+        import("./downloadJobs/downloadTracker.js"),
+        import("./downloadUtils.js"),
       ]);
       const { migrateAurralDownloadFolder } = migrationModule;
       const layout = ensurePlaylistFilesystemLayout();
@@ -192,14 +192,14 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
         result.removed > 0 ||
         metadataRepair.repaired > 0
       ) {
-        const { playlistManager } = await import("./weeklyFlow/weeklyFlowPlaylistManager.js");
+        const { playlistManager } = await import("./playlists/playlistManager.js");
         playlistManager.updateConfig(false);
         await playlistManager.ensurePlaylists();
       }
       if (metadataRepair.failed === 0) {
         dbOps.setJSONSetting(PLAYLIST_STARTUP_MIGRATION_SETTING, {
           version: PLAYLIST_STARTUP_MIGRATION_VERSION,
-          rootPath: resolvePlaylistRoot(),
+          rootPath: resolveDownloadRoot(),
           completedAt: Date.now(),
         });
       }

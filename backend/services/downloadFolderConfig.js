@@ -39,7 +39,7 @@ function isWritableDirectory(targetPath) {
   }
 }
 
-export function resolveDefaultPlaylistDownloadRoot({ dataRoot = "/data" } = {}) {
+export function resolveDefaultDownloadRoot({ dataRoot = "/data" } = {}) {
   const envDownloadFolder = resolveEnvDownloadFolder();
   if (envDownloadFolder) {
     return envDownloadFolder;
@@ -51,7 +51,7 @@ export function resolveDefaultPlaylistDownloadRoot({ dataRoot = "/data" } = {}) 
 }
 
 export function getSuggestedDownloadFolderPath() {
-  return resolveDefaultPlaylistDownloadRoot();
+  return resolveDefaultDownloadRoot();
 }
 
 export function resolveYtdlpStagingRoot(configuredPath) {
@@ -89,7 +89,7 @@ export function getFilesystemBrowseRoots() {
   if (envDownloadFolder && isExistingDirectory(envDownloadFolder)) {
     roots.push(fs.realpathSync(envDownloadFolder));
   }
-  const defaultRoot = resolveDefaultPlaylistDownloadRoot();
+  const defaultRoot = resolveDefaultDownloadRoot();
   if (isExistingDirectory(defaultRoot)) {
     roots.push(fs.realpathSync(defaultRoot));
   }

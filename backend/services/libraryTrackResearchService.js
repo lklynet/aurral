@@ -1,7 +1,7 @@
 import path from "node:path";
 import { getCanonicalLibraryForTrackIds } from "./libraryQueryService.js";
 import { isAurralOwnedPath } from "./qualityProfileService.js";
-import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
+import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 
 function positiveInteger(value) {
   const parsed = Number(value);

@@ -3,7 +3,7 @@ import path from "path";
 import honker from "@russellthehippo/honker-node";
 import { resolveAurralDataDir } from "../config/data-dir.js";
 import { dbOps } from "../db/helpers/index.js";
-import { resolvePlaylistRoot } from "./playlistPaths.js";
+import { resolveDownloadRoot } from "./downloadPaths.js";
 import { ISOLATED_QUEUE_GROUPS, shouldStartQueueHere } from "./backgroundWorkerQueues.js";
 
 export const PLAYLIST_STARTUP_MIGRATION_VERSION = 1;
@@ -288,23 +288,23 @@ const discoveryUserRefresh = registerQueue({
 export const getDiscoveryUserRefreshQueue = discoveryUserRefresh.getQueue;
 export const enqueueDiscoveryUserRefreshJob = discoveryUserRefresh.enqueueJob;
 
-const weeklyFlowOperation = registerQueue({
+const playlistOperation = registerQueue({
   name: "weekly-flow-operation",
   visibilityTimeoutS: 3600,
   maxAttempts: 3,
-  workerModule: "./weeklyFlow/weeklyFlowOperationWorker.js",
-  workerStartFn: "startWeeklyFlowOperationWorker",
+  workerModule: "./playlists/playlistOperationWorker.js",
+  workerStartFn: "startPlaylistOperationWorker",
 });
 
-export const getWeeklyFlowOperationQueue = weeklyFlowOperation.getQueue;
-export const enqueueWeeklyFlowOperationJob = weeklyFlowOperation.enqueueJob;
+export const getPlaylistOperationQueue = playlistOperation.getQueue;
+export const enqueuePlaylistOperationJob = playlistOperation.enqueueJob;
 
 const playlistRetry = registerQueue({
   name: "playlist-retry",
   visibilityTimeoutS: 1800,
   maxAttempts: 5,
-  workerModule: "./weeklyFlow/weeklyFlowPlaylistRetryWorker.js",
-  workerStartFn: "startWeeklyFlowPlaylistRetryWorker",
+  workerModule: "./downloadJobs/playlistRetryWorker.js",
+  workerStartFn: "startPlaylistRetryWorker",
 });
 export const getPlaylistRetryQueue = playlistRetry.getQueue;
 export const enqueuePlaylistRetryJob = playlistRetry.enqueueJob;
@@ -313,8 +313,8 @@ const playlistReserveBuild = registerQueue({
   name: "playlist-reserve-build",
   visibilityTimeoutS: 1800,
   maxAttempts: 4,
-  workerModule: "./weeklyFlow/weeklyFlowPlaylistReserveBuildWorker.js",
-  workerStartFn: "startWeeklyFlowPlaylistReserveBuildWorker",
+  workerModule: "./flows/flowReserveBuildWorker.js",
+  workerStartFn: "startFlowReserveBuildWorker",
 });
 
 export const getPlaylistReserveBuildQueue = playlistReserveBuild.getQueue;
@@ -552,7 +552,7 @@ export function enqueueHonkerStartupTasks() {
   const migration = dbOps.getJSONSetting(PLAYLIST_STARTUP_MIGRATION_SETTING);
   if (
     migration?.version !== PLAYLIST_STARTUP_MIGRATION_VERSION ||
-    path.resolve(String(migration?.rootPath || "")) !== resolvePlaylistRoot()
+    path.resolve(String(migration?.rootPath || "")) !== resolveDownloadRoot()
   ) {
     enqueueIfAbsent(
       { kind: "playlist-startup-migration" },

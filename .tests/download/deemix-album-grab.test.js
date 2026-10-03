@@ -15,7 +15,7 @@ const [state, { dbOps }, { downloadTracker }, { processDeemixPipelinePayload }] 
   await setupIsolatedBackend(
     "deemix-album-grab",
     "backend/db/helpers/index.js",
-    "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+    "backend/services/downloadJobs/downloadTracker.js",
     "backend/services/deemixOrchestrator.js",
   );
 

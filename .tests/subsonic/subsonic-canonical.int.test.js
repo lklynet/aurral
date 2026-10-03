@@ -11,20 +11,20 @@ import {
   startServerProcess,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidarrLibrary }, { flowPlaylistConfig }, { downloadTracker }, { weeklyFlowWorker }, { updateSharedPlaylist }, { resolveArtworkUrl, createSubsonicPlaylist, star }, { warmImageProxy }, { playlistManager }] =
+const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidarrLibrary }, { flowPlaylistConfig }, { downloadTracker }, { downloadWorker }, { updateSharedPlaylist }, { resolveArtworkUrl, createSubsonicPlaylist, star }, { warmImageProxy }, { playlistManager }] =
   await setupIsolatedBackend(
     "subsonic-canonical",
     "backend/config/db-sqlite.js",
     "backend/db/helpers/index.js",
     "backend/middleware/passwordHash.js",
     "backend/services/libraryLidarrIndexer.js",
-    "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
-  "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
-  "backend/services/weeklyFlow/weeklyFlowWorker.js",
-  "backend/services/weeklyFlow/weeklyFlowOperations.js",
+    "backend/services/playlists/flowPlaylistConfig.js",
+  "backend/services/downloadJobs/downloadTracker.js",
+  "backend/services/downloadJobs/downloadWorker.js",
+  "backend/services/playlists/playlistOperations.js",
   "backend/services/subsonicLibraryService.js",
   "backend/services/imageProxyService.js",
-  "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
+  "backend/services/playlists/playlistManager.js",
 );
 
 let aurral;
@@ -760,11 +760,11 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
   const playlist = syncedFavoritePlaylist;
   const track = playlist.tracks[0];
   const sourcePath = syncedFavoriteSourcePath;
-  const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
-  const originalStart = weeklyFlowWorker.start;
+  const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+  const originalStart = downloadWorker.start;
   let libraryJobId;
   try {
-    weeklyFlowWorker.start = async () => false;
+    downloadWorker.start = async () => false;
     const songId = `shared-song:${encodeURIComponent(`${playlist.id}:${syncedFavoriteSourceJobId}`)}`;
     assert.equal(star(userOps.getUserByUsername("alice"), songId), true);
 
@@ -794,10 +794,10 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
     await stat(updatedLibraryJob.finalPath);
     await assert.rejects(stat(sourcePath));
   } finally {
-    weeklyFlowWorker.start = originalStart;
+    downloadWorker.start = originalStart;
     downloadTracker.clearByPlaylistType(playlist.id);
     if (libraryJobId) downloadTracker.removeJob(libraryJobId);
-    await rm(path.join(weeklyFlowRoot, track.artistName), { recursive: true, force: true });
+    await rm(path.join(downloadRoot, track.artistName), { recursive: true, force: true });
     flowPlaylistConfig.deleteSharedPlaylist(playlist.id);
   }
 });

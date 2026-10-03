@@ -7,7 +7,7 @@ import {
   requireRecentAuth,
 } from "../../middleware/requirePermission.js";
 import { plexConnectionStore } from "../../services/plex/plexConnectionStore.js";
-import { playlistManager } from "../../services/weeklyFlow/weeklyFlowPlaylistManager.js";
+import { playlistManager } from "../../services/playlists/playlistManager.js";
 import { logger } from "../../services/logger.js";
 
 function getGlobalPlexConfig() {

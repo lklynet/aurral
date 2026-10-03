@@ -18,7 +18,7 @@ import {
   getLibraryManagementEntry,
   setLibraryManagement,
 } from "./libraryManagementStore.js";
-import { parseAurralIdentityComment } from "./playlistDownloadUtils.js";
+import { parseAurralIdentityComment } from "./downloadUtils.js";
 
 const AUDIO_EXTENSIONS = new Set([
   ".aac",

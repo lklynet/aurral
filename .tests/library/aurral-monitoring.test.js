@@ -16,7 +16,7 @@ const [
   libraryStore,
   managementStore,
   { downloadTracker },
-  { weeklyFlowWorker },
+  { downloadWorker },
   { lidarrClient },
   { listHonkerJobs, getHonkerQueueByName },
   { processSystemTask },
@@ -30,8 +30,8 @@ const [
   "backend/routes/library/handlers/albums.js",
   "backend/services/libraryMediaStore.js",
   "backend/services/libraryManagementStore.js",
-  "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
-  "backend/services/weeklyFlow/weeklyFlowWorker.js",
+  "backend/services/downloadJobs/downloadTracker.js",
+  "backend/services/downloadJobs/downloadWorker.js",
   "backend/services/lidarrClient.js",
   "backend/services/honkerDb.js",
   "backend/services/systemTaskWorker.js",
@@ -190,7 +190,7 @@ const originalLidarr = {
   getArtist: lidarrClient.getArtist,
   getArtistByMbid: lidarrClient.getArtistByMbid,
 };
-const originalWorkerStart = weeklyFlowWorker.start;
+const originalWorkerStart = downloadWorker.start;
 
 test.before(() => {
   dbOps.updateSettings({
@@ -213,7 +213,7 @@ test.before(() => {
       throw new Error("Lidarr must not be called");
     };
   }
-  weeklyFlowWorker.start = async () => {};
+  downloadWorker.start = async () => {};
 });
 
 test.beforeEach(() => {
@@ -236,7 +236,7 @@ test.beforeEach(() => {
 
 test.after(async () => {
   Object.assign(lidarrClient, originalLidarr);
-  weeklyFlowWorker.start = originalWorkerStart;
+  downloadWorker.start = originalWorkerStart;
   dbOps.updateSettings(originalSettings);
   await metadataServer.close();
   await cleanupIsolatedState(isolatedState);

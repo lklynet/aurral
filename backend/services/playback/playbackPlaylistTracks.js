@@ -3,12 +3,12 @@ import path from "node:path";
 import {
   flowPlaylistConfig,
   orderJobsBySharedPlaylistTracks,
-} from "../weeklyFlow/weeklyFlowPlaylistConfig.js";
-import { downloadTracker } from "../weeklyFlow/weeklyFlowDownloadTracker.js";
+} from "../playlists/flowPlaylistConfig.js";
+import { downloadTracker } from "../downloadJobs/downloadTracker.js";
 import {
   resolveExistingTrackPath,
-  resolvePlaylistRoot,
-} from "../playlistPaths.js";
+  resolveDownloadRoot,
+} from "../downloadPaths.js";
 
 async function isFile(filePath) {
   try {
@@ -19,7 +19,7 @@ async function isFile(filePath) {
 }
 
 export async function collectPlaybackPlaylistTracks(entityId, options = {}) {
-  const weeklyFlowRoot = path.resolve(options.weeklyFlowRoot || resolvePlaylistRoot());
+  const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const playlist = flowPlaylistConfig.getSharedPlaylist(entityId);
   const referencedJobs = (playlist?.tracks || [])
     .map((track) => (track?.canonicalJobId ? downloadTracker.getJob(track.canonicalJobId) : null))
@@ -38,7 +38,7 @@ export async function collectPlaybackPlaylistTracks(entityId, options = {}) {
   );
   const tracks = [];
   for (const job of orderedJobs) {
-    const resolved = await resolveExistingTrackPath(job.finalPath, weeklyFlowRoot);
+    const resolved = await resolveExistingTrackPath(job.finalPath, downloadRoot);
     if (!resolved || !(await isFile(resolved.path))) continue;
     tracks.push({
       path: resolved.path,

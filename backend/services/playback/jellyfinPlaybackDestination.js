@@ -3,7 +3,7 @@ import { userOps } from "../../db/helpers/index.js";
 import { JellyfinClient } from "../jellyfin.js";
 import { jellyfinPlaylistPointerStore } from "../jellyfin/jellyfinPlaylistPointerStore.js";
 import { getPathMappings, resolveRemotePath, resolveLocalPath } from "../pathMappings.js";
-import { resolvePlaylistRoot } from "../playlistPaths.js";
+import { resolveDownloadRoot } from "../downloadPaths.js";
 import {
   createPlaybackPlaylistIdentity,
   createPlaybackPlaylistSnapshot,
@@ -47,7 +47,7 @@ const itemId = (item) => item?.Id ?? item?.id ?? null;
 const isNotFound = (error) => Number(error?.response?.status) === 404;
 
 export class JellyfinPlaybackDestination {
-  constructor(_weeklyFlowRoot = resolvePlaylistRoot(), { client = null } = {}) {
+  constructor(_downloadRoot = resolveDownloadRoot(), { client = null } = {}) {
     this.key = "jellyfin";
     this.name = "Jellyfin";
     this.client = client;

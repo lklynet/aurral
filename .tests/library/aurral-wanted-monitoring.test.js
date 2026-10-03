@@ -13,7 +13,7 @@ const [
   libraryStore,
   managementStore,
   { downloadTracker },
-  { weeklyFlowWorker },
+  { downloadWorker },
   { registerJobs },
 ] = await setupIsolatedBackend(
   "aurral-wanted-monitoring",
@@ -21,9 +21,9 @@ const [
   "backend/db/helpers/index.js",
   "backend/services/libraryMediaStore.js",
   "backend/services/libraryManagementStore.js",
-  "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
-  "backend/services/weeklyFlow/weeklyFlowWorker.js",
-  "backend/routes/weeklyFlow/handlers/jobs.js",
+  "backend/services/downloadJobs/downloadTracker.js",
+  "backend/services/downloadJobs/downloadWorker.js",
+  "backend/routes/playlists/handlers/jobs.js",
 );
 
 const app = express();
@@ -125,7 +125,7 @@ const upgradedJobIds = () =>
   new Set(downloadTracker.getAll().filter((job) => job.upgradeForJobId).map((job) => job.upgradeForJobId));
 
 const originalSettings = dbOps.getSettings();
-const originalWorkerStart = weeklyFlowWorker.start;
+const originalWorkerStart = downloadWorker.start;
 
 test.before(async () => {
   await fs.mkdir(managedRoot, { recursive: true });
@@ -137,7 +137,7 @@ test.before(async () => {
       slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
     },
   });
-  weeklyFlowWorker.start = async () => {};
+  downloadWorker.start = async () => {};
 });
 
 test.beforeEach(() => {
@@ -145,7 +145,7 @@ test.beforeEach(() => {
 });
 
 test.after(async () => {
-  weeklyFlowWorker.start = originalWorkerStart;
+  downloadWorker.start = originalWorkerStart;
   dbOps.updateSettings(originalSettings);
   await new Promise((resolve) => server.close(resolve));
   await cleanupIsolatedState(isolatedState);

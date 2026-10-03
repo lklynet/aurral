@@ -20,8 +20,8 @@ const [
   "aurral-download-folder-migration",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
-  "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
-  "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+  "backend/services/playlists/flowPlaylistConfig.js",
+  "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/aurralDownloadFolderMigration.js",
 );
 

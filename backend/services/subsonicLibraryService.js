@@ -20,27 +20,27 @@ import {
 import { fetchReleaseGroupCoverUrl } from "./releaseGroupCoverService.js";
 import { getArtistImage } from "./imageService.js";
 import { buildImageProxyUrl, warmPublicImageUrl } from "./imageProxyService.js";
-import { downloadTracker } from "./weeklyFlow/weeklyFlowDownloadTracker.js";
+import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import {
   flowPlaylistConfig,
   normalizeSharedTrack,
   orderJobsBySharedPlaylistTracks,
   tracksShareMembership,
-} from "./weeklyFlow/weeklyFlowPlaylistConfig.js";
-import { playlistManager } from "./weeklyFlow/weeklyFlowPlaylistManager.js";
-import { weeklyFlowWorker } from "./weeklyFlow/weeklyFlowWorker.js";
+} from "./playlists/flowPlaylistConfig.js";
+import { playlistManager } from "./playlists/playlistManager.js";
+import { downloadWorker } from "./downloadJobs/downloadWorker.js";
 import { hasPermission } from "../middleware/auth.js";
 import { recordTrackJobQueued } from "./aurralHistoryService.js";
 import { selectCanonicalFile } from "./canonicalFileSelector.js";
 import { logger } from "./logger.js";
 import { withHonkerLock } from "./honkerDb.js";
-import { removePlaylistFileIfUnshared } from "./weeklyFlow/weeklyFlowFileReuse.js";
+import { removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.js";
 import {
   isDownloadJobCancelled,
   restoreDownloadJobCancellations,
-} from "./weeklyFlow/weeklyFlowDownloadCancellation.js";
-import { processWeeklyFlowOperation } from "./weeklyFlow/weeklyFlowOperations.js";
-import { cancelDownloadWorkForJobs } from "./weeklyFlow/weeklyFlowDownloadCancellationService.js";
+} from "./downloadJobs/downloadCancellation.js";
+import { processPlaylistOperation } from "./playlists/playlistOperations.js";
+import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.js";
 
 const idFor = (kind, key) =>
   `${kind}:${encodeURIComponent(String(key)).replaceAll("%3A", ":")}`;
@@ -772,7 +772,7 @@ const ensureLibraryJob = (track, createdJobIds = null) => {
       downloadTracker.setPending(existing.id, "Requested again", { asRetryCycle: true });
     }
     if (existing.status !== "done") {
-      weeklyFlowWorker.start().catch((error) => {
+      downloadWorker.start().catch((error) => {
         logger.error("subsonic", "Could not start download for a playlist track", {
           jobId: existing.id,
           reason: error?.message || String(error),
@@ -801,7 +801,7 @@ const ensureLibraryJob = (track, createdJobIds = null) => {
     return jobId;
   }
   recordTrackJobQueued(downloadTracker.getJob(jobId));
-  weeklyFlowWorker.start().catch((error) => {
+  downloadWorker.start().catch((error) => {
     logger.error("subsonic", "Could not start download for a playlist track", {
       jobId,
       reason: error?.message || String(error),
@@ -894,7 +894,7 @@ const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {
         if (current.status === "done" && current.finalPath && current.managedBy === "aurral" && !current.externalPath) {
           try {
             const removal = await removePlaylistFileIfUnshared(current.finalPath, playlist.id, {
-              weeklyFlowRoot: playlistManager.weeklyFlowRoot,
+              downloadRoot: playlistManager.downloadRoot,
               excludeJobIds: legacyJobIds,
               deleteIfUnshared: true,
             });
@@ -994,7 +994,7 @@ export async function deleteSubsonicPlaylist(user, playlistId) {
     normalizeSharedPlaylistId(playlistId),
   );
   if (!playlist || !hasPermission(user, "accessFlow")) return false;
-  return processWeeklyFlowOperation({
+  return processPlaylistOperation({
     kind: "shared-playlist-delete",
     playlistId: playlist.id,
   });

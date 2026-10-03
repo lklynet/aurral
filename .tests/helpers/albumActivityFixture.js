@@ -4,7 +4,7 @@ export async function createAlbumActivityFixture() {
   const [state, { dbOps, userOps }, { downloadTracker }, { recordAlbumGrabQueued, recordAlbumGrabPhase, recordAlbumTrackState }, { hashPassword }] = await setupIsolatedBackend(
     "album-activity-browser",
     "backend/db/helpers/index.js",
-    "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
+    "backend/services/downloadJobs/downloadTracker.js",
     "backend/services/albumGrabActivity.js",
     "backend/middleware/passwordHash.js",
   );

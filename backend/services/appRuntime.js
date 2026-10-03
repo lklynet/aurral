@@ -13,7 +13,7 @@ import { createBackgroundProcessSupervisor } from "./backgroundProcessSupervisor
 import { ISOLATED_QUEUE_GROUPS, isQueueOwnedByGroup } from "./backgroundWorkerQueues.js";
 import { getHonkerWorkerStatuses, isHonkerShuttingDown, registerHonkerShutdownHandler } from "./honkerWorkerRuntime.js";
 import { HONKER_QUEUE_NAMES } from "./honkerDb.js";
-import { configureFlowOwnerClient } from "./weeklyFlow/weeklyFlowOwnerClient.js";
+import { configureDownloadOwnerClient } from "./downloadJobs/downloadOwnerClient.js";
 
 let backgroundWorkersStarted = false;
 let workerSupervisorStarted = false;
@@ -48,9 +48,9 @@ const WORKER_STARTS = {
   "slskd-pipeline": ["./slskdOrchestratorWorker.js", "startSlskdOrchestratorWorker"],
   "discovery-refresh": ["./discoveryRefreshWorker.js", "startDiscoveryRefreshWorker"],
   "discovery-user-refresh": ["./discoveryUserRefreshWorker.js", "startDiscoveryUserRefreshWorker"],
-  "weekly-flow-operation": ["./weeklyFlow/weeklyFlowOperationWorker.js", "startWeeklyFlowOperationWorker"],
-  "playlist-retry": ["./weeklyFlow/weeklyFlowPlaylistRetryWorker.js", "startWeeklyFlowPlaylistRetryWorker"],
-  "playlist-reserve-build": ["./weeklyFlow/weeklyFlowPlaylistReserveBuildWorker.js", "startWeeklyFlowPlaylistReserveBuildWorker"],
+  "weekly-flow-operation": ["./playlists/playlistOperationWorker.js", "startPlaylistOperationWorker"],
+  "playlist-retry": ["./downloadJobs/playlistRetryWorker.js", "startPlaylistRetryWorker"],
+  "playlist-reserve-build": ["./flows/flowReserveBuildWorker.js", "startFlowReserveBuildWorker"],
   "playlist-mbid-enrichment": ["./playlistMbidEnrichmentWorker.js", "startPlaylistMbidEnrichmentWorker"],
 };
 
@@ -266,8 +266,8 @@ export async function recoverExitedWorkerJobs(group, pid, logger = console, reas
       logger.warn?.(`[AppRuntime] Could not requeue ${row.queue} job ${row.id}:`, error?.message || error);
     }
   }
-  if (group === "flow") {
-    const { downloadTracker } = await import("./weeklyFlow/weeklyFlowDownloadTracker.js");
+  if (group === "downloads") {
+    const { downloadTracker } = await import("./downloadJobs/downloadTracker.js");
     downloadTracker.resetDownloadingToPending();
   }
 }
@@ -312,25 +312,25 @@ export function startBackgroundWorkers({ logger = console } = {}) {
         else if (isQueueOwnedByGroup(message.queue)) checkQueuedBackgroundWork();
         return;
       }
-      if (message?.type === "flow-client-request") {
-        void backgroundProcessSupervisor.request("flow", message.method, message.args, {
+      if (message?.type === "download-owner-client-request") {
+        void backgroundProcessSupervisor.request("downloads", message.method, message.args, {
           timeoutMs: Math.min(30 * 60 * 1000, Number(message.timeoutMs) || 30000),
         }).then((result) => {
           if (child.connected) child.send({
-            type: "flow-client-response", requestId: message.requestId, result,
+            type: "download-owner-client-response", requestId: message.requestId, result,
           });
         }).catch((error) => {
           if (child.connected) child.send({
-            type: "flow-client-response", requestId: message.requestId,
+            type: "download-owner-client-response", requestId: message.requestId,
             error: error?.message || String(error),
           });
         });
         return;
       }
-      if (message?.type === "cache-invalidate" && message.cache === "flow") {
+      if (message?.type === "cache-invalidate" && message.cache === "playlists") {
         void Promise.all([
           import("../db/helpers/index.js"),
-          import("./weeklyFlow/weeklyFlowPlaylistConfig.js"),
+          import("./playlists/flowPlaylistConfig.js"),
         ]).then(([{ dbOps }, { invalidateFlowPlaylistConfigCache }]) => {
           dbOps.invalidateSettingsCache();
           invalidateFlowPlaylistConfigCache();
@@ -347,10 +347,10 @@ export function startBackgroundWorkers({ logger = console } = {}) {
         });
         return;
       }
-      if (message?.type === "job-finished" && _group === "flow") {
+      if (message?.type === "job-finished" && _group === "downloads") {
         void Promise.all([
           import("../db/helpers/index.js"),
-          import("./weeklyFlow/weeklyFlowPlaylistConfig.js"),
+          import("./playlists/flowPlaylistConfig.js"),
         ]).then(([{ dbOps }, { invalidateFlowPlaylistConfigCache }]) => {
           dbOps.invalidateSettingsCache();
           invalidateFlowPlaylistConfigCache();
@@ -395,10 +395,10 @@ export function startBackgroundWorkers({ logger = console } = {}) {
       return recovery;
     },
   });
-  configureFlowOwnerClient({
+  configureDownloadOwnerClient({
     request: (method, args, options) =>
-      backgroundProcessSupervisor.request("flow", method, args, options),
-    getStatus: () => backgroundProcessSupervisor.getFlowStatus(),
+      backgroundProcessSupervisor.request("downloads", method, args, options),
+    getStatus: () => backgroundProcessSupervisor.getDownloadOwnerStatus(),
   });
   configureHonkerQueueWake((queue) => {
     if (isHonkerShuttingDown()) return;

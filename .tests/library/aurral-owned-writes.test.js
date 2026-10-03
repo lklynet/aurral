@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { createMockHttpServer, setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
-import { joinUnderRoot } from "../../backend/services/playlistDownloadUtils.js";
+import { joinUnderRoot } from "../../backend/services/downloadUtils.js";
 
 const [isolatedState, { db }, { dbOps }, { libraryManager }, libraryStore, managementStore, trackerModule, workerModule, { scanMusicRoot }] =
   await setupIsolatedBackend(
@@ -14,13 +14,13 @@ const [isolatedState, { db }, { dbOps }, { libraryManager }, libraryStore, manag
     "backend/services/libraryManager.js",
     "backend/services/libraryMediaStore.js",
     "backend/services/libraryManagementStore.js",
-    "backend/services/weeklyFlow/weeklyFlowDownloadTracker.js",
-    "backend/services/weeklyFlow/weeklyFlowWorker.js",
+    "backend/services/downloadJobs/downloadTracker.js",
+    "backend/services/downloadJobs/downloadWorker.js",
     "backend/services/libraryFileScanner.js",
   );
 
 const { downloadTracker } = trackerModule;
-const { weeklyFlowWorker } = workerModule;
+const { downloadWorker } = workerModule;
 
 const artistMbid = "11111111-1111-4111-8111-111111111111";
 const albumMbid = "22222222-2222-4222-8222-222222222222";
@@ -82,7 +82,7 @@ test("Aurral writes canonical album state, queues missing tracks, and reports co
   });
   const originalSettings = dbOps.getSettings();
   const originalIsConfigured = (await import("../../backend/services/lidarrClient.js")).lidarrClient.isConfigured;
-  const originalWorkerStart = weeklyFlowWorker.start;
+  const originalWorkerStart = downloadWorker.start;
   dbOps.updateSettings({
     ...originalSettings,
     integrations: {
@@ -99,7 +99,7 @@ test("Aurral writes canonical album state, queues missing tracks, and reports co
   clearMetadataProviderCaches();
   const lidarrClient = (await import("../../backend/services/lidarrClient.js")).lidarrClient;
   lidarrClient.isConfigured = () => false;
-  weeklyFlowWorker.start = async () => {};
+  downloadWorker.start = async () => {};
 
   try {
     const artist = await libraryManager.addArtist(artistMbid, "Aurral Artist");
@@ -254,7 +254,7 @@ test("Aurral writes canonical album state, queues missing tracks, and reports co
     assert.equal(partial.jobIds[0], staleJobId);
     assert.equal(downloadTracker.getJob(partial.jobIds[0]).trackMbid, partialTracks[2]);
     assert.equal(downloadTracker.getJob(staleJobId).status, "pending");
-    const restartedTracker = new trackerModule.WeeklyFlowDownloadTracker();
+    const restartedTracker = new trackerModule.DownloadTracker();
     assert.equal(restartedTracker.getJob(staleJobId).status, "pending");
     assert.equal(restartedTracker.getJob(staleJobId).managedBy, "aurral");
 
@@ -329,7 +329,7 @@ test("Aurral writes canonical album state, queues missing tracks, and reports co
     assert.equal(conflict.availability.available, true);
     assert.equal(downloadTracker.getAll().length, 0);
   } finally {
-    weeklyFlowWorker.start = originalWorkerStart;
+    downloadWorker.start = originalWorkerStart;
     lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
     clearMetadataProviderCaches();

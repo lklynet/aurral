@@ -12,13 +12,13 @@ import {
 const isolatedState = await createIsolatedStateDir("artist-blocklist");
 applyIsolatedBackendEnv(isolatedState);
 
-const [{ db }, discovery, playlistSourceModule] = await Promise.all([
+const [{ db }, discovery, flowTrackSourceModule] = await Promise.all([
   importFromRepo("backend/config/db-sqlite.js"),
   importFromRepo("backend/services/discovery/index.js"),
-  importFromRepo("backend/services/weeklyFlow/weeklyFlowPlaylistSource.js"),
+  importFromRepo("backend/services/flows/flowTrackSource.js"),
 ]);
 
-const { WeeklyFlowPlaylistSource } = playlistSourceModule;
+const { FlowTrackSource } = flowTrackSourceModule;
 
 test.beforeEach(() => resetDatabase(db));
 test.after(async () => cleanupIsolatedState(isolatedState));
@@ -70,7 +70,7 @@ test("flows exclude only hard-blocked artists", async () => {
     action: "less_like_this",
   });
 
-  const source = new WeeklyFlowPlaylistSource();
+  const source = new FlowTrackSource();
 
   source.getReleaseRadarTracks = async () => [
     { artistName: "Blocked Artist", trackName: "Blocked Track" },

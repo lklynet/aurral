@@ -17,23 +17,23 @@ const [
   { plexPlaylistPointerStore },
   { flowPlaylistConfig },
   { PlexPlaybackDestination },
-  { WeeklyFlowPlaylistManager },
+  { PlaylistManager },
 ] = await setupIsolatedBackend(
   "plex-playback-destination",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
   "backend/services/plex/plexConnectionStore.js",
   "backend/services/plex/plexPlaylistPointerStore.js",
-  "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
+  "backend/services/playlists/flowPlaylistConfig.js",
   "backend/services/playback/plexPlaybackDestination.js",
-  "backend/services/weeklyFlow/weeklyFlowPlaylistManager.js",
+  "backend/services/playlists/playlistManager.js",
 );
 
-const weeklyFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
+const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
 
 test.beforeEach(async () => {
   resetDatabase(db);
-  await fs.rm(weeklyFlowRoot, { recursive: true, force: true });
+  await fs.rm(downloadRoot, { recursive: true, force: true });
   dbOps.updateSettings({
     integrations: {},
     onboardingComplete: true,
@@ -47,7 +47,7 @@ test.afterEach(() => mock.restoreAll());
 test.after(() => cleanupIsolatedState(isolatedState));
 
 function makeDestination(config = {}) {
-  const destination = new PlexPlaybackDestination(weeklyFlowRoot);
+  const destination = new PlexPlaybackDestination(downloadRoot);
   destination.updateConfig({
     url: "http://plex.local:32400",
     token: "admin-token",
@@ -139,7 +139,7 @@ test("recovers a managed-user token and retries with the stored client identifie
 test("resolves managed and reused Lidarr paths to private Plex rating keys", async () => {
   const destination = makeDestination({ downloadsPath: "/data", mainLibrarySectionId: "9" });
   const managedPath = path.join(
-    destination.weeklyFlowRoot,
+    destination.downloadRoot,
     "_flows",
     "flow-1",
     "Artist",
@@ -147,12 +147,12 @@ test("resolves managed and reused Lidarr paths to private Plex rating keys", asy
     "Managed.flac",
   );
   const canonicalPath = path.join(
-    destination.playlistLibraryRoot,
+    destination.playlistFilesRoot,
     "Artist",
     "Album",
     "Canonical.flac",
   );
-  const reusedRoot = path.join(weeklyFlowRoot, "..", "lidarr");
+  const reusedRoot = path.join(downloadRoot, "..", "lidarr");
   const reusedPath = path.join(reusedRoot, "Artist", "Reused.flac");
   dbOps.updateSettings({
     ...dbOps.getSettings(),
@@ -186,9 +186,9 @@ test("resolves managed and reused Lidarr paths to private Plex rating keys", asy
 
 test("reuses a Lidarr file linked into the entity folder without a main Plex library", async () => {
   const destination = makeDestination({ downloadsPath: "/data" });
-  const reusedPath = path.join(weeklyFlowRoot, "..", "lidarr", "Artist", "Track.flac");
+  const reusedPath = path.join(downloadRoot, "..", "lidarr", "Artist", "Track.flac");
   const linkedPath = path.join(
-    destination.weeklyFlowRoot,
+    destination.downloadRoot,
     "_flows",
     "flow-1",
     "Artist",
@@ -215,7 +215,7 @@ test("reuses a Lidarr file linked into the entity folder without a main Plex lib
 test("upserts from the entity-owner pointer and stores the returned pointer privately", async () => {
   const destination = makeDestination({ downloadsPath: "/data" });
   const trackPath = path.join(
-    destination.weeklyFlowRoot,
+    destination.downloadRoot,
     "_flows",
     "flow-1",
     "Artist",
@@ -274,7 +274,7 @@ test("deletes the pointed playlist and forgets only that entity-owner state", as
 });
 
 test("forgets an unreachable pointer after Plex configuration is cleared", async () => {
-  const destination = new PlexPlaybackDestination(weeklyFlowRoot);
+  const destination = new PlexPlaybackDestination(downloadRoot);
   plexPlaylistPointerStore.setPointer("flow-1", "global", {
     location: "global",
     ratingKey: "88",
@@ -288,7 +288,7 @@ test("forgets an unreachable pointer after Plex configuration is cleared", async
 test("ensures and scans the Plex library through the adapter", async () => {
   const destination = makeDestination({ downloadsPath: "/downloads" });
   const calls = [];
-  mock.method(PlexClient.prototype, "ensureWeeklyFlowLibrary", async (libraryPath) => {
+  mock.method(PlexClient.prototype, "ensureAurralLibrary", async (libraryPath) => {
     calls.push(["ensure", libraryPath]);
     return { key: "7" };
   });
@@ -332,7 +332,7 @@ test("configures Plex with the canonical root and explicit flow location", async
     return {};
   });
 
-  assert.equal((await client.ensureWeeklyFlowLibrary(root)).key, "7");
+  assert.equal((await client.ensureAurralLibrary(root)).key, "7");
   assert.equal(calls.length, 1);
   assert.equal(
     calls[0].requestPath,
@@ -344,7 +344,7 @@ test("configures Plex with the canonical root and explicit flow location", async
 test("keeps Navidrome and Plex failures isolated when both destinations are configured", async (t) => {
   t.mock.method(console, "warn", () => {});
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Isolation" });
-  const manager = new WeeklyFlowPlaylistManager(weeklyFlowRoot);
+  const manager = new PlaylistManager(downloadRoot);
   const calls = [];
   manager.navidromeDestination.isConfigured = () => true;
   manager.navidromeDestination.ensureLibrary = async () => ({ ok: true });
@@ -373,7 +373,7 @@ test("keeps Navidrome and Plex failures isolated when both destinations are conf
 test("does not publish playlists when a configured library cannot be verified", async (t) => {
   t.mock.method(console, "warn", () => {});
   const playlist = flowPlaylistConfig.createSharedPlaylist({ name: "Blocked setup" });
-  const manager = new WeeklyFlowPlaylistManager(weeklyFlowRoot);
+  const manager = new PlaylistManager(downloadRoot);
   const published = [];
   manager.navidromeDestination.isConfigured = () => true;
   manager.navidromeDestination.ensureLibrary = async () => ({

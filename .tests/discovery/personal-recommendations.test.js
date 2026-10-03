@@ -17,7 +17,7 @@ const [
   { sampleLibraryArtistsForDiscovery },
   { default: discoveryRouter },
   { default: searchRouter },
-  { WeeklyFlowPlaylistSource },
+  { FlowTrackSource },
 ] = await setupIsolatedBackend(
   "personal-recommendations",
   "backend/config/db-sqlite.js",
@@ -28,7 +28,7 @@ const [
   "backend/services/libraryQueryService.js",
   "backend/routes/discovery/index.js",
   "backend/routes/search.js",
-  "backend/services/weeklyFlow/weeklyFlowPlaylistSource.js",
+  "backend/services/flows/flowTrackSource.js",
 );
 
 const mbid = (index) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
@@ -206,7 +206,7 @@ test("tag search and flow plans read the user's own pool", async () => {
   assert.equal(tagged.status, 200);
   assert.ok(tagged.body.recommendations.some((artist) => artist.name === FROM_LIKED.name));
 
-  const source = new WeeklyFlowPlaylistSource();
+  const source = new FlowTrackSource();
   let basedOn = [];
   source.getReleaseRadarTracks = async (_limit, options) => {
     basedOn = options.basedOn;

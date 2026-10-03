@@ -21,7 +21,7 @@ const [
   "flow-library-visibility",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
-  "backend/services/weeklyFlow/weeklyFlowPlaylistConfig.js",
+  "backend/services/playlists/flowPlaylistConfig.js",
   "backend/services/libraryIndexService.js",
   "backend/services/libraryQueryService.js",
 );
