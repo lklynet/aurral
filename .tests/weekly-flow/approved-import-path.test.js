@@ -27,6 +27,7 @@ const [
   playlistDownloadUtils,
   { hasApprovalFollowUps },
   { processOrchestratorJob },
+  { withPlaylistMutationLock },
 ] = await setupIsolatedBackend(
   "approved-import-path",
   "backend/config/db-sqlite.js",
@@ -43,6 +44,7 @@ const [
   "backend/services/playlistDownloadUtils.js",
   "backend/services/weeklyFlow/weeklyFlowBlockedJobReview.js",
   "backend/services/slskdOrchestratorWorker.js",
+  "backend/services/weeklyFlow/weeklyFlowMutationGuards.js",
 );
 
 const {
@@ -241,7 +243,7 @@ test("approving a reviewed download commits it inside the managed playlist libra
   await assert.rejects(fs.access(path.join(playlistManager.libraryRoot, "Reviewed.m3u")));
 });
 
-test("approving a reviewed download responds and releases the playlist lock before publishing the playlist", async (t) => {
+test("approving a reviewed download responds before publishing, and the publish holds off playlist changes but not imports", async (t) => {
   const playlistId = "reviewed-slow-publish";
   flowPlaylistConfig.createSharedPlaylist({
     id: playlistId,
@@ -272,6 +274,8 @@ test("approving a reviewed download responds and releases the playlist lock befo
   });
 
   const approve = fetch(`${baseUrl}/jobs/${jobId}/approve`, { method: "POST" });
+  let changed = false;
+  let playlistChange;
   try {
     await publishEntered;
     assert.equal(downloadTracker.getJob(jobId)?.status, "done");
@@ -290,9 +294,16 @@ test("approving a reviewed download responds and releases the playlist lock befo
     ]);
     assert.equal(response?.status, 200);
     assert.equal((await response.json()).success, true);
+    playlistChange = withPlaylistMutationLock(playlistId, () => {
+      changed = true;
+    });
+    await new Promise(setImmediate);
+    assert.equal(changed, false);
   } finally {
     releasePublish();
   }
+  await playlistChange;
+  assert.equal(changed, true);
 });
 
 test("approving a library track does not wait for another library track's download step", async () => {

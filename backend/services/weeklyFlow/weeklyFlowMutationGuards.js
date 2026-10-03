@@ -134,6 +134,10 @@ export function withDownloadImportLock(ownerIds, operation) {
   return withDownloadLocks(ownerIds, { imports: true }, operation);
 }
 
+export function withDownloadStepLock(ownerIds, operation) {
+  return withDownloadLocks(ownerIds, { steps: true }, operation);
+}
+
 function payloadOwners(payload) {
   const owners = [payload?.playlistId];
   for (const id of [payload?.jobId, ...(payload?.albumGroupJobIds || [])]) {
@@ -146,7 +150,7 @@ function payloadOwners(payload) {
 export async function withDownloadPayloadMutation(payload, operation) {
   while (true) {
     const owners = payloadOwners(resolveTransferredDownloadPayload(payload));
-    const result = await withDownloadLocks(owners, { steps: true }, async () => {
+    const result = await withDownloadStepLock(owners, async () => {
       const current = resolveTransferredDownloadPayload(payload);
       if (!payloadOwners(current).every((owner) => owners.includes(owner))) return { retryLocks: true };
       return { value: await operation(current) };

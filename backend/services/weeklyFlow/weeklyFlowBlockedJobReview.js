@@ -18,6 +18,7 @@ import {
   refreshCompletedPipelinePlaylist,
 } from "../pipelineHelpers.js";
 import { classifyQualityJob } from "../qualityProfileService.js";
+import { withDownloadStepLock } from "./weeklyFlowMutationGuards.js";
 import { logger } from "../logger.js";
 
 const approvalFollowUps = new Set();
@@ -38,7 +39,7 @@ const logFollowUpFailure = (job, playlistId, error) => {
 };
 
 const publishApprovedImport = (job, playlistId) => {
-  const followUp = refreshCompletedPipelinePlaylist(job)
+  const followUp = withDownloadStepLock(playlistId, () => refreshCompletedPipelinePlaylist(job))
     .catch((error) => logFollowUpFailure(job, playlistId, error))
     .finally(() => approvalFollowUps.delete(followUp));
   approvalFollowUps.add(followUp);
