@@ -25,7 +25,7 @@ router.get("/", noCache, async (req, res) => {
     }
 
     if (scope === "tag") {
-      return res.json(await searchTags(q, limit, offset, req.user?.id ?? null));
+      return res.json(await searchTags(q, limit, offset));
     }
 
     return res.json(await searchArtists(q, limit, offset));

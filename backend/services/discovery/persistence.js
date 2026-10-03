@@ -24,10 +24,6 @@ export const EMPTY_CACHE = {
   enrichmentStartedAt: null,
   enrichmentCompletedAt: null,
   enrichmentProgressMessage: null,
-  isUpdating: false,
-  updatePhase: null,
-  updateProgress: null,
-  updateProgressMessage: null,
 };
 
 let discoveryCache = { ...EMPTY_CACHE };
@@ -62,7 +58,6 @@ if (
     enrichmentStartedAt: dbData.enrichmentStartedAt || null,
     enrichmentCompletedAt: dbData.enrichmentCompletedAt || null,
     enrichmentProgressMessage: dbData.enrichmentProgressMessage || null,
-    isUpdating: false,
   };
 }
 
@@ -95,17 +90,66 @@ export function synchronizeDiscoveryCacheFromWorker(update = {}) {
   ]) {
     if (Object.hasOwn(update, key)) discoveryCache[key] = update[key];
   }
-  for (const key of [
-    "isUpdating", "updatePhase", "updateProgress", "updateProgressMessage",
-  ]) {
-    if (Object.hasOwn(update, key)) discoveryCache[key] = update[key];
-  }
-  if (Object.hasOwn(update, "phase")) discoveryCache.updatePhase = update.phase;
-  if (Object.hasOwn(update, "progress")) discoveryCache.updateProgress = update.progress;
-  if (Object.hasOwn(update, "progressMessage")) {
-    discoveryCache.updateProgressMessage = update.progressMessage;
-  }
 }
+
+const REFRESH_TRACKING_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+export const getDiscoveryRefreshState = (metadata = {}, now = Date.now()) => {
+  const requestedAt = Number(metadata?.refreshRequestedAt) || 0;
+  const startedAt = Number(metadata?.refreshStartedAt) || 0;
+  const finishedAt = Number(metadata?.refreshFinishedAt) || 0;
+  const running = startedAt > finishedAt && now - startedAt < REFRESH_TRACKING_WINDOW_MS;
+  return {
+    running,
+    pending: requestedAt > startedAt && now - requestedAt < REFRESH_TRACKING_WINDOW_MS,
+    phase: running ? metadata.refreshPhase || null : null,
+    progress: running && typeof metadata.refreshProgress === "number" ? metadata.refreshProgress : null,
+    message: running ? metadata.refreshMessage || null : null,
+    finishedAt,
+    error: metadata?.refreshError || null,
+  };
+};
+
+const updateRefreshMetadata = (namespace, metadata) =>
+  dbOps.updateDiscoveryCache({ metadata }, namespace);
+
+export const markDiscoveryRefreshRequested = (namespace = null, requestedAt = Date.now()) =>
+  updateRefreshMetadata(namespace, { refreshRequestedAt: requestedAt });
+
+export const markDiscoveryRefreshStarted = (namespace = null, startedAt = Date.now()) =>
+  updateRefreshMetadata(namespace, {
+    refreshStartedAt: startedAt,
+    refreshPhase: null,
+    refreshProgress: null,
+    refreshMessage: null,
+  });
+
+export const markDiscoveryRefreshFinished = (namespace = null, { error = null } = {}) =>
+  updateRefreshMetadata(namespace, {
+    refreshFinishedAt: Date.now(),
+    refreshError: error || null,
+  });
+
+export const markInterruptedDiscoveryRefresh = (
+  error,
+  { namespace = null, clearPending = false } = {},
+) => {
+  const state = getDiscoveryRefreshState(dbOps.getDiscoveryRefreshSource(namespace).metadata);
+  if (!state.running && !(clearPending && state.pending)) return false;
+  if (!state.running) markDiscoveryRefreshStarted(namespace);
+  markDiscoveryRefreshFinished(namespace, { error });
+  return true;
+};
+
+export const saveDiscoveryRefreshProgress = (namespace, phase, message, progress) => {
+  const normalizedProgress = Math.max(0, Math.min(100, Math.round(Number(progress) || 0)));
+  updateRefreshMetadata(namespace, {
+    refreshPhase: phase || null,
+    refreshProgress: normalizedProgress,
+    refreshMessage: message || null,
+  });
+  return normalizedProgress;
+};
 
 export const recordDiscoveryUpdateProgress = (
   phase,
@@ -113,37 +157,15 @@ export const recordDiscoveryUpdateProgress = (
   progress,
   extra = {},
 ) => {
-  const normalizedProgress = Math.max(
-    0,
-    Math.min(100, Math.round(Number(progress) || 0)),
-  );
-  discoveryCache.updatePhase = phase || null;
-  discoveryCache.updateProgress = normalizedProgress;
-  discoveryCache.updateProgressMessage = progressMessage || "";
   websocketService.emitDiscoveryUpdate({
-    phase: discoveryCache.updatePhase,
-    progress: discoveryCache.updateProgress,
-    progressMessage: discoveryCache.updateProgressMessage,
+    phase: phase || null,
+    progress: saveDiscoveryRefreshProgress(null, phase, progressMessage, progress),
+    progressMessage: progressMessage || "",
     isUpdating: true,
     configured: true,
     ...extra,
   });
 };
-
-export const clearDiscoveryUpdateProgress = () => {
-  discoveryCache.updatePhase = null;
-  discoveryCache.updateProgress = null;
-  discoveryCache.updateProgressMessage = null;
-};
-
-export const getDiscoveryUpdateStatus = () => ({
-  updatePhase: discoveryCache.updatePhase || null,
-  updateProgress:
-    typeof discoveryCache.updateProgress === "number"
-      ? discoveryCache.updateProgress
-      : null,
-  updateProgressMessage: discoveryCache.updateProgressMessage || null,
-});
 
 export { discoveryCache };
 

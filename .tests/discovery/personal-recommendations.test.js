@@ -12,10 +12,11 @@ const [
   { db },
   { dbOps, userOps },
   discovery,
-  { getUserDiscovery },
+  { getDiscoveryStatus, getUserDiscovery },
   playEvents,
   { sampleLibraryArtistsForDiscovery },
   { default: discoveryRouter },
+  { default: searchRouter },
   { WeeklyFlowPlaylistSource },
 ] = await setupIsolatedBackend(
   "personal-recommendations",
@@ -26,6 +27,7 @@ const [
   "backend/services/playEventService.js",
   "backend/services/libraryQueryService.js",
   "backend/routes/discovery/index.js",
+  "backend/routes/search.js",
   "backend/services/weeklyFlow/weeklyFlowPlaylistSource.js",
 );
 
@@ -37,6 +39,11 @@ const FROM_LIKED = { name: "From Liked", mbid: mbid(11) };
 const FROM_PLAYED = { name: "From Played", mbid: mbid(12) };
 const FROM_LIBRARY = { name: "From Library", mbid: mbid(13) };
 const FROM_DISLIKED = { name: "From Disliked", mbid: mbid(14) };
+const SHOEGAZE_TOP_ARTISTS = [
+  { name: "Shoegaze Leader", mbid: mbid(21) },
+  FROM_PLAYED,
+  { name: "Shoegaze Third", mbid: mbid(22) },
+];
 
 const similarBySeed = new Map([
   [LIKED.mbid, [FROM_LIKED, BLOCKED, LIBRARY]],
@@ -55,6 +62,14 @@ const lastfmResponse = (url) => {
   const seed = params.get("mbid") || params.get("artist");
   if (params.get("method") === "artist.getTopTags") {
     return { toptags: { tag: ["female vocalists", "shoegaze", "seen live", "dream-pop", "indie"].map((name) => ({ name, count: 100 })) } };
+  }
+  if (params.get("method") === "tag.getTopArtists") {
+    return {
+      topartists: {
+        artist: SHOEGAZE_TOP_ARTISTS.map((artist) => ({ ...artist, image: [] })),
+        "@attr": { total: String(SHOEGAZE_TOP_ARTISTS.length) },
+      },
+    };
   }
   if (params.get("method") === "artist.getSimilar") {
     return {
@@ -131,7 +146,7 @@ test("personal refresh seeds from liked artists, local plays and the library, ne
     assert.equal(artist.tags.includes("female vocalists"), false);
     assert.equal(artist.tags.includes("seen live"), false);
   }
-  assert.equal(body.isUpdating, false);
+  assert.equal(getDiscoveryStatus(alice.id).isUpdating, false);
 });
 
 test("new feedback softens and hides served picks before the next refresh", async () => {
@@ -157,27 +172,34 @@ test("new feedback softens and hides served picks before the next refresh", asyn
   discovery.removeDiscoveryFeedback(alice.id, lessLike.id);
 });
 
-const requestDiscoveryApi = async (userId, path, init = {}) => {
+const requestApi = async (userId, mountPath, router, path, init = {}) => {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
     req.user = { id: userId, role: "user" };
     next();
   });
-  app.use("/api/discover", discoveryRouter);
+  app.use(mountPath, router);
   const server = await new Promise((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
   try {
     const response = await originalFetch(
-      `http://127.0.0.1:${server.address().port}/api/discover${path}`,
+      `http://127.0.0.1:${server.address().port}${mountPath}${path}`,
       { ...init, headers: { "content-type": "application/json" } },
     );
-    return { status: response.status, body: await response.json() };
+    return {
+      status: response.status,
+      cacheControl: response.headers.get("cache-control") || "",
+      body: await response.json(),
+    };
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
 };
+
+const requestDiscoveryApi = (userId, path, init) =>
+  requestApi(userId, "/api/discover", discoveryRouter, path, init);
 
 test("tag search and flow plans read the user's own pool", async () => {
   const tagged = await requestDiscoveryApi(alice.id, "/by-tag?tag=shoegaze");
@@ -192,6 +214,21 @@ test("tag search and flow plans read the user's own pool", async () => {
   };
   await source.buildFlowRunPlan({ ownerUserId: alice.id, discoverPresetId: "release-radar", size: 2 });
   assert.ok(basedOn.some((artist) => artist.name === LIKED.name));
+});
+
+test("tag search lists the tag's artists in Last.fm order without the user's recommendations", async () => {
+  const { status, body } = await requestApi(
+    alice.id,
+    "/api/search",
+    searchRouter,
+    "?scope=tag&q=%23shoegaze",
+  );
+  assert.equal(status, 200);
+  assert.deepEqual(
+    body.items.map((artist) => artist.name),
+    SHOEGAZE_TOP_ARTISTS.map((artist) => artist.name),
+  );
+  assert.equal(body.hasMore, false);
 });
 
 test("discover API shows a match percent that follows the user's ranking, not on trending", async () => {
@@ -230,8 +267,8 @@ test("feedback through the API waits for the next scheduled rebuild", async () =
 test("each user gets their own pool and a missing pool queues one refresh", async () => {
   const { body } = await getUserDiscovery(bob.id, 0);
   assert.equal(body.recommendations.some((artist) => artist.name === FROM_LIKED.name), false);
-  assert.equal(body.isUpdating, true);
-  assert.equal(body.updatePhase, "personalizing");
+  assert.equal(getDiscoveryStatus(bob.id).isUpdating, true);
+  assert.equal(getDiscoveryStatus(bob.id).updatePhase, "queued");
 
   assert.deepEqual(
     discovery.requestUserDiscoveryRefresh(bob.id),
@@ -241,6 +278,32 @@ test("each user gets their own pool and a missing pool queues one refresh", asyn
     "SELECT payload FROM _honker_live WHERE queue = 'discovery-user-refresh'",
   ).all().map((row) => JSON.parse(row.payload));
   assert.deepEqual(queued.map((payload) => payload.userId), [bob.id]);
+});
+
+test("a global refresh keeps each user updating until their own recommendations are rebuilt", async () => {
+  const before = getDiscoveryStatus(alice.id);
+  assert.equal(before.isUpdating, false);
+
+  await discovery.updateDiscoveryCache();
+
+  const afterGlobal = await requestDiscoveryApi(alice.id, "/status");
+  assert.equal(afterGlobal.body.isUpdating, true);
+  assert.equal(afterGlobal.body.updatePhase, "queued");
+  assert.equal(afterGlobal.body.lastUpdated, before.lastUpdated);
+
+  assert.equal((await discovery.updateUserDiscoveryCache(alice.id)).refreshed, true);
+
+  const done = await requestDiscoveryApi(alice.id, "/status");
+  assert.equal(done.body.isUpdating, false);
+  assert.equal(done.body.error, null);
+  assert.ok(Date.parse(done.body.lastUpdated) > Date.parse(before.lastUpdated));
+  assert.equal(getDiscoveryStatus(bob.id).isUpdating, true);
+});
+
+test("the discover payload is never served from the browser cache", async () => {
+  const { status, cacheControl } = await requestDiscoveryApi(alice.id, "");
+  assert.equal(status, 200);
+  assert.doesNotMatch(cacheControl, /max-age=[1-9]/);
 });
 
 test("library seeds sample recent additions and the whole library, not the alphabetical head", () => {

@@ -6,26 +6,6 @@ import { getArtistRecordId } from "../utils/artistTaste";
 import Tooltip from "./Tooltip";
 import RecommendationMeta from "./RecommendationMeta";
 
-function TagRecommendedArtistCover({ artist, artistId, artistImages, isInLibrary, className = "" }) {
-  const coverSrc = artistImages[artistId] || artist.image || artist.imageUrl || "";
-
-  return (
-    <div className={`artist-discover-card__cover artist-discover-card__cover--recommended ${className}`}>
-      <ArtistImage
-        src={coverSrc}
-        mbid={artistId}
-        artistName={artist.name}
-        alt={artist.name}
-        className="artist-discover-card__image"
-        showLoading={false}
-        enableBackendFallback={false}
-        enablePreviewPlayback
-        isInLibrary={isInLibrary}
-      />
-    </div>
-  );
-}
-
 function SearchArtistResults({
   artists,
   type,
@@ -97,7 +77,6 @@ function SearchArtistResults({
     <div className={gridClassName} style={gridStyle}>
       {artists.map((artist, index) => {
         const artistId = getArtistRecordId(artist);
-        const isRecommendedTagResult = type === "tag" && artist.tagResultSource === "recommended";
         const artistTypeLabel = normalizeArtistType(artist);
         const displayArtistTypeLabel =
           type === "recommended" && artistTypeLabel?.toLowerCase() === "artist"
@@ -116,15 +95,7 @@ function SearchArtistResults({
           .filter(Boolean)
           .join(" • ");
 
-        const cover = isRecommendedTagResult ? (
-          <TagRecommendedArtistCover
-            artist={artist}
-            artistId={artistId}
-            artistImages={artistImages}
-            isInLibrary={!!libraryLookup[artistId]}
-            className={isList ? "artist-list-cover" : ""}
-          />
-        ) : (
+        const cover = (
           <div className={`artist-discover-card__cover${isList ? " artist-list-cover" : ""}`}>
             <ArtistImage
               src={artistImages[artistId] || artist.image || artist.imageUrl}
@@ -198,9 +169,7 @@ function SearchArtistResults({
         return (
           <article
             key={artistId || `artist-${index}`}
-            className={`artist-discover-card artist-discover-card--artist${
-              isRecommendedTagResult ? " artist-discover-card--recommended" : ""
-            }`}
+            className="artist-discover-card artist-discover-card--artist"
             onClick={() => openArtist(artist)}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {

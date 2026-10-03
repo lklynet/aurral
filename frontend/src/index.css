@@ -5304,6 +5304,7 @@ textarea {
 }
 
 .artist-discover-hero {
+  --discover-title-size: clamp(2rem, 4vw, 2.75rem);
   position: relative;
   margin-bottom: 2.5rem;
   padding-bottom: 1.75rem;
@@ -5341,7 +5342,7 @@ textarea {
 }
 
 .artist-discover-hero .page-title {
-  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-size: var(--discover-title-size);
   font-weight: 700;
   letter-spacing: -0.03em;
 }
@@ -5360,6 +5361,10 @@ textarea {
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.artist-discover-hero__title-row .artist-discover-hero__updated {
+  translate: 0 calc(var(--discover-title-size) * 0.085);
 }
 
 .artist-discover-hero__updated--refreshing {
@@ -6814,6 +6819,26 @@ textarea {
   gap: 0.5rem 1rem;
 }
 
+.search-page__subtitle-link {
+  border-radius: var(--aurral-radius-sm);
+  color: var(--aurral-text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--aurral-border-strong);
+  text-underline-offset: 0.2em;
+}
+
+.search-page__subtitle-link:hover {
+  color: var(--aurral-text);
+  text-decoration-color: currentColor;
+}
+
+.search-page__subtitle-link:focus-visible {
+  outline: 2px solid var(--aurral-ring);
+  outline-offset: 2px;
+}
+
 .search-page__filters {
   display: flex;
   flex-wrap: wrap;
@@ -7360,43 +7385,6 @@ textarea {
   z-index: 1;
 }
 
-.search-page__tag-legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  margin-left: 0;
-  color: var(--aurral-text-muted);
-  font-size: 0.75rem;
-}
-
-.search-page__tag-legend-ring {
-  display: inline-flex;
-  width: 0.875rem;
-  height: 0.875rem;
-  flex-shrink: 0;
-  padding: 0;
-  border: 2px solid var(--aurral-border-strong);
-  border-radius: var(--aurral-radius-round);
-  background: var(--aurral-surface);
-}
-
-.search-page__tag-legend-ring-core {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--aurral-chrome);
-}
-
-.artist-discover-card__cover--recommended {
-  border: 1px solid var(--aurral-border-strong);
-}
-
-.artist-discover-card__cover--recommended .artist-discover-card__image,
-.artist-discover-card__cover--recommended .artist-image-root,
-.artist-discover-card__cover--recommended .artist-image-media {
-  border-radius: var(--aurral-radius-round);
-}
 
 .search-banner {
   display: flex;

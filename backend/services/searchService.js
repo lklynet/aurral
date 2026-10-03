@@ -1,5 +1,4 @@
 import { getDiscoveryCache } from "./discovery/index.js";
-import { getUserDiscovery } from "./discovery/userDiscovery.js";
 import { getLastfmApiKey, lastfmRequest } from "./apiClients/index.js";
 import { buildImageProxyUrl } from "./imageProxyService.js";
 import { selectBestArtistImage } from "./imageService.js";
@@ -210,16 +209,6 @@ function dedupeTagArtists(artists) {
   return output;
 }
 
-function getTagSourceMap(artists) {
-  const sourceMap = new Map();
-  for (const artist of Array.isArray(artists) ? artists : []) {
-    const key = getTagArtistKey(artist);
-    if (!key || sourceMap.has(key)) continue;
-    sourceMap.set(key, artist?.tagResultSource || "all");
-  }
-  return sourceMap;
-}
-
 function normalizeLastfmTagArtist(artist, tag) {
   let imageUrl = null;
   if (Array.isArray(artist?.image)) {
@@ -250,21 +239,20 @@ function normalizeLastfmTagArtist(artist, tag) {
       genres: [tag],
       inLibrary: false,
       score: 0,
-      tagResultSource: "all",
     },
     tag,
   );
 }
 
-async function fetchMergedLastfmTagArtists(tag, limitInt, offsetInt, recommendedItems) {
+async function fetchLastfmTagArtists(tag, limitInt, offsetInt) {
   const pageSize = 50;
   const requiredCount = offsetInt + limitInt;
-  const supplementalItems = [];
-  const seen = new Set(recommendedItems.map((artist) => getTagArtistKey(artist)).filter(Boolean));
+  const items = [];
+  const seen = new Set();
   let page = 1;
   let exhausted = false;
 
-  while (!exhausted && recommendedItems.length + supplementalItems.length < requiredCount) {
+  while (!exhausted && items.length < requiredCount) {
     const data = await lastfmRequest("tag.getTopArtists", {
       tag,
       limit: pageSize,
@@ -286,7 +274,7 @@ async function fetchMergedLastfmTagArtists(tag, limitInt, offsetInt, recommended
       const key = getTagArtistKey(normalized);
       if (!key || seen.has(key)) continue;
       seen.add(key);
-      supplementalItems.push(normalized);
+      items.push(normalized);
     }
 
     const reportedTotal = Number.parseInt(data?.topartists?.["@attr"]?.total, 10);
@@ -295,13 +283,10 @@ async function fetchMergedLastfmTagArtists(tag, limitInt, offsetInt, recommended
     page += 1;
   }
 
-  return {
-    items: [...recommendedItems, ...supplementalItems],
-    exhausted,
-  };
+  return { items, exhausted };
 }
 
-export async function searchTags(query, limit = 24, offset = 0, userId = null) {
+export async function searchTags(query, limit = 24, offset = 0) {
   const tag = String(query || "")
     .trim()
     .replace(/^#/, "");
@@ -319,33 +304,19 @@ export async function searchTags(query, limit = 24, offset = 0, userId = null) {
   }
 
   const discoveryCache = getDiscoveryCache();
-  const { body: discovery } = await getUserDiscovery(userId, 0);
   const tagLower = getNormalizedText(tag);
-  const recommendedMatches = dedupeTagArtists(
-    discovery.recommendations
-      .filter((artist) => matchesTagSearch(artist, tagLower))
-      .map((artist) =>
-        normalizeTagArtistItem(
-          {
-            ...artist,
-            tagResultSource: "recommended",
-          },
-          tag,
-        ),
-      ),
-  );
 
   if (getLastfmApiKey()) {
-    const merged = await fetchMergedLastfmTagArtists(tag, limitInt, offsetInt, recommendedMatches);
-    const items = merged.items.slice(offsetInt, offsetInt + limitInt);
+    const lastfm = await fetchLastfmTagArtists(tag, limitInt, offsetInt);
+    const items = lastfm.items.slice(offsetInt, offsetInt + limitInt);
     return {
       scope: "tag",
       query: tag,
-      count: merged.exhausted
-        ? merged.items.length
-        : offsetInt + items.length + (merged.items.length > offsetInt + items.length ? 1 : 0),
+      count: lastfm.exhausted
+        ? lastfm.items.length
+        : offsetInt + items.length + (lastfm.items.length > offsetInt + items.length ? 1 : 0),
       offset: offsetInt,
-      hasMore: !merged.exhausted || offsetInt + items.length < merged.items.length,
+      hasMore: !lastfm.exhausted || offsetInt + items.length < lastfm.items.length,
       items,
     };
   }
@@ -361,7 +332,6 @@ export async function searchTags(query, limit = 24, offset = 0, userId = null) {
         : null,
   });
   if (fallbackResult) {
-    const sourceMap = getTagSourceMap(recommendedMatches);
     const fallbackItems = fallbackResult.artists.map((artist) =>
       normalizeTagArtistItem(
         {
@@ -381,12 +351,11 @@ export async function searchTags(query, limit = 24, offset = 0, userId = null) {
           genres: artist.genres || [tag],
           inLibrary: false,
           score: 0,
-          tagResultSource: sourceMap.get(getTagArtistKey(artist)) || "all",
         },
         tag,
       ),
     );
-    const mergedItems = dedupeTagArtists([...recommendedMatches, ...fallbackItems]);
+    const mergedItems = dedupeTagArtists(fallbackItems);
     const items = mergedItems.slice(offsetInt, offsetInt + limitInt);
     return {
       scope: "tag",
@@ -403,20 +372,11 @@ export async function searchTags(query, limit = 24, offset = 0, userId = null) {
   }
 
   const mergedItems = dedupeTagArtists([
-    ...recommendedMatches,
     ...(Array.isArray(discoveryCache.globalTop) ? discoveryCache.globalTop : []),
     ...(Array.isArray(discoveryCache.basedOn) ? discoveryCache.basedOn : []),
   ])
     .filter((artist) => matchesTagSearch(artist, tagLower))
-    .map((artist) =>
-      normalizeTagArtistItem(
-        {
-          ...artist,
-          tagResultSource: artist.tagResultSource === "recommended" ? "recommended" : "all",
-        },
-        tag,
-      ),
-    );
+    .map((artist) => normalizeTagArtistItem(artist, tag));
 
   return {
     scope: "tag",

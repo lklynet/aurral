@@ -17,7 +17,7 @@ import ReloadPrompt from "./components/ReloadPrompt";
 import UpdateIndicator from "./components/UpdateIndicator";
 import SpotifyReconnectNotice from "./components/SpotifyReconnectNotice";
 import { DotLoader } from "./components/DotLoader";
-import { useWebSocketChannel } from "./hooks/useWebSocket";
+import { useDiscoveryStatus } from "./hooks/useDiscoveryStatus";
 import { buildActivityPath, DEFAULT_ACTIVITY_VIEW } from "./navigation/activityNavConfig";
 import { getBootstrapPollIntervalMs } from "./utils/requestScheduling.js";
 
@@ -109,34 +109,24 @@ function AppContent() {
   const [healthIssue, setHealthIssue] = useState(null);
   const [rootFolderConfigured, setRootFolderConfigured] = useState(false);
   const [appVersion, setAppVersion] = useState(null);
-  const discoveryToastShownRef = useRef(false);
   const healthCheckInFlightRef = useRef(false);
   const { isAuthenticated, user, bootstrap, refreshAuth } = useAuth();
   const { showSuccess, showError } = useToast();
 
-  const { isConnected: appSocketConnected } = useWebSocketChannel("discovery", (msg) => {
-    if (msg.type !== "discovery_update") return;
+  const { status: discoveryStatus, isConnected: appSocketConnected } = useDiscoveryStatus({
+    enabled: isAuthenticated,
+  });
 
-    const hasPendingManualRefresh = localStorage.getItem(DISCOVERY_MANUAL_REFRESH_KEY) === "1";
-    if (!hasPendingManualRefresh) return;
-
-    if (msg.phase === "error") {
-      localStorage.removeItem(DISCOVERY_MANUAL_REFRESH_KEY);
-      discoveryToastShownRef.current = false;
-      showError(msg.error ? `Discovery refresh failed: ${msg.error}` : "Discovery refresh failed");
-      return;
-    }
-
-    if (msg.phase === "completed" || Array.isArray(msg.recommendations)) {
-      if (discoveryToastShownRef.current) return;
-      discoveryToastShownRef.current = true;
-      localStorage.removeItem(DISCOVERY_MANUAL_REFRESH_KEY);
+  useEffect(() => {
+    if (!discoveryStatus || discoveryStatus.isUpdating) return;
+    if (localStorage.getItem(DISCOVERY_MANUAL_REFRESH_KEY) !== "1") return;
+    localStorage.removeItem(DISCOVERY_MANUAL_REFRESH_KEY);
+    if (discoveryStatus.error) {
+      showError(`Discovery refresh failed: ${discoveryStatus.error}`);
+    } else {
       showSuccess("Discovery refresh completed. Recommendations are now updated.");
-      setTimeout(() => {
-        discoveryToastShownRef.current = false;
-      }, 1000);
     }
-  }, { enabled: isAuthenticated });
+  }, [discoveryStatus, showError, showSuccess]);
 
   const applyBootstrapHealth = (payload) => {
     setIsHealthy(payload.status === "ok");

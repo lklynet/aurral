@@ -225,7 +225,7 @@ export async function recoverExitedWorkerJobs(group, pid, logger = console, reas
   const workerId = `aurral-${pid}`;
   const database = getHonkerDb();
   const rows = database.query(
-    "SELECT id, queue FROM _honker_live WHERE worker_id = ? AND state = 'processing'",
+    "SELECT id, queue, payload FROM _honker_live WHERE worker_id = ? AND state = 'processing'",
     [workerId],
   );
   for (const row of rows) {
@@ -234,6 +234,17 @@ export async function recoverExitedWorkerJobs(group, pid, logger = console, reas
       if (row.queue === "library-scan") {
         const { restoreLibraryScanAfterWorkerExit } = await import("./libraryScanWorker.js");
         restoreLibraryScanAfterWorkerExit(row.id);
+      }
+      if (row.queue === "discovery-user-refresh") {
+        try {
+          const { markInterruptedUserDiscoveryRefresh } = await import("./discovery/provider.js");
+          const userId = Number(JSON.parse(row.payload || "{}").userId);
+          if (Number.isInteger(userId) && userId > 0) {
+            markInterruptedUserDiscoveryRefresh(userId, reason || "Background worker process exited");
+          }
+        } catch (error) {
+          logger.warn?.("[AppRuntime] Could not update discovery status:", error?.message || error);
+        }
       }
       try {
         const { recordHonkerTaskRunFinished } = await import("./honkerTaskStatus.js");
@@ -364,18 +375,23 @@ export function startBackgroundWorkers({ logger = console } = {}) {
       });
       if (retired) return recovery;
       if (group !== "discovery-refresh") return recovery;
-      void forwardWorkerBroadcast({
-        type: "websocket-broadcast",
-        channel: "discovery",
-        data: {
-          type: "discovery_update",
-          isUpdating: false,
-          phase: "error",
-          progressMessage: "Discovery refresh stopped; queued jobs will retry",
-        },
-      }).catch((error) => {
-        logger.warn?.("[AppRuntime] Failed to report discovery restart:", error?.message || error);
-      });
+      void import("./discovery/persistence.js")
+        .then(({ markInterruptedDiscoveryRefresh }) => {
+          markInterruptedDiscoveryRefresh("Discovery refresh stopped unexpectedly");
+          return forwardWorkerBroadcast({
+            type: "websocket-broadcast",
+            channel: "discovery",
+            data: {
+              type: "discovery_update",
+              isUpdating: false,
+              phase: "error",
+              progressMessage: "Discovery refresh stopped; queued jobs will retry",
+            },
+          });
+        })
+        .catch((error) => {
+          logger.warn?.("[AppRuntime] Failed to report discovery restart:", error?.message || error);
+        });
       return recovery;
     },
   });

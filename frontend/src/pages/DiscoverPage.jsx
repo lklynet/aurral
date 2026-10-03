@@ -34,6 +34,7 @@ import {
   getFallbackGenreSectionId,
   getFallbackGenreFromSectionId,
   DISCOVER_PREVIEW_ITEM_LIMIT,
+  artistMatchesGenre,
   shuffleWithSeed,
   normalizeDiscoverLayout,
   readStoredDiscoverLayout,
@@ -83,6 +84,7 @@ function DiscoverPage() {
     libraryDestination,
     handleRecentReleaseAlbumAction,
     handleDiscoveryFeedback,
+    discoveryStatus,
   } = useDiscoverData();
 
   const {
@@ -136,9 +138,7 @@ function DiscoverPage() {
       const genreArtists = candidatePool.filter((artist) => {
         const artistId = getArtistId(artist);
         if (artistId && usedArtistIds.has(artistId)) return false;
-
-        const artistTags = artist.matchedTags || artist.tags || [];
-        return artistTags.some((tag) => tag.toLowerCase().includes(genre.toLowerCase()));
+        return artistMatchesGenre(artist, genre);
       });
 
       if (genreArtists.length >= 4) {
@@ -172,7 +172,10 @@ function DiscoverPage() {
       (data.globalTop && data.globalTop.length > 0) ||
       (data.topGenres && data.topGenres.length > 0) ||
       (data.fallbackGenres && data.fallbackGenres.length > 0));
-  const isActuallyUpdating = data?.isUpdating && !hasData;
+  const isUpdating = Boolean(discoveryStatus?.isUpdating);
+  const updateProgressMessage = discoveryStatus?.updateProgressMessage || null;
+  const lastUpdated = discoveryStatus?.lastUpdated || data?.lastUpdated || null;
+  const isActuallyUpdating = isUpdating && !hasData;
 
   const {
     recommendations = [],
@@ -181,9 +184,6 @@ function DiscoverPage() {
     basedOn = [],
     provider = "lastfm",
     capabilities,
-    lastUpdated,
-    isUpdating,
-    updateProgressMessage,
     configured = true,
   } = data || {};
   const { data: editorialShelf } = useEditorialShelf();
@@ -791,42 +791,41 @@ function DiscoverPage() {
       if (!sectionAvailability.genreSections) return null;
       return (
         <div key="genreSections">
-          {genreSections.map((section) => (
-            <DiscoverRail
-              key={section.genre}
-              title={
-                section.fallback
-                  ? `Top ${section.genre} Artists`
-                  : `Because You Like ${section.genre}`
-              }
-              mobileTitle={section.genre}
-              onViewAll={() =>
-                navigate(`/search?q=${encodeURIComponent(`#${section.genre}`)}&type=tag`)
-              }
-            >
-              <>
-                {section.artists.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((artist) => (
-                  <div key={`${section.genre}-${artist.id}`} className="artist-discover-shelf-card">
-                    <ArtistCard
-                      artist={artist}
-                      isInLibrary={!!libraryLookup[getArtistId(artist)]}
-                      onNavigate={navigate}
-                      onOpenInLibrary={handleOpenArtistInLibrary}
-                      onFeedback={handleDiscoveryFeedback}
-                      feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
-                    />
+          {genreSections.map((section) => {
+            const viewAllPath = section.fallback
+              ? `/search?q=${encodeURIComponent(`#${section.genre}`)}&type=tag`
+              : `/search?type=recommended&tag=${encodeURIComponent(section.genre)}`;
+            return (
+              <DiscoverRail
+                key={section.genre}
+                title={
+                  section.fallback
+                    ? `Top ${section.genre} Artists`
+                    : `Because You Like ${section.genre}`
+                }
+                mobileTitle={section.genre}
+                onViewAll={() => navigate(viewAllPath)}
+              >
+                <>
+                  {section.artists.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((artist) => (
+                    <div key={`${section.genre}-${artist.id}`} className="artist-discover-shelf-card">
+                      <ArtistCard
+                        artist={artist}
+                        isInLibrary={!!libraryLookup[getArtistId(artist)]}
+                        onNavigate={navigate}
+                        onOpenInLibrary={handleOpenArtistInLibrary}
+                        onFeedback={handleDiscoveryFeedback}
+                        feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
+                      />
+                    </div>
+                  ))}
+                  <div className="artist-discover-shelf-card">
+                    <ViewAllCard onClick={() => navigate(viewAllPath)} />
                   </div>
-                ))}
-                <div className="artist-discover-shelf-card">
-                  <ViewAllCard
-                    onClick={() =>
-                      navigate(`/search?q=${encodeURIComponent(`#${section.genre}`)}&type=tag`)
-                    }
-                  />
-                </div>
-              </>
-            </DiscoverRail>
-          ))}
+                </>
+              </DiscoverRail>
+            );
+          })}
         </div>
       );
     }
@@ -914,6 +913,7 @@ function DiscoverPage() {
                   isUpdating={isUpdating}
                   lastUpdated={lastUpdated}
                   updateProgressMessage={updateProgressMessage}
+                  error={discoveryStatus?.error}
                 />
               </div>
               {heroBasedOn.length > 0 && (

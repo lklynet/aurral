@@ -6,6 +6,9 @@ const getDiscoveryCacheStmt = db.prepare(
 const upsertDiscoveryCacheStmt = db.prepare(
   "INSERT OR REPLACE INTO discovery_cache (key, value, last_updated) VALUES (?, ?, ?)"
 );
+const getDiscoveryCacheUpdatedAtStmt = db.prepare(
+  "SELECT last_updated FROM discovery_cache WHERE key = ?"
+);
 const DISCOVERY_METADATA_FIELDS = [
   "recommendationQuality",
   "isEnriching",
@@ -27,7 +30,30 @@ function pruneDiscoveryUserCache() {
   }
 }
 
+function readUpdatedAt(key) {
+  return getDiscoveryCacheUpdatedAtStmt.get(key)?.last_updated || null;
+}
+
+function readLastUpdated(cacheNamespace, prefix) {
+  return cacheNamespace
+    ? getDiscoveryCacheStmt.get(`${prefix}lastUpdated`)?.value ||
+        readUpdatedAt(`${prefix}recommendations`)
+    : readUpdatedAt(`${prefix}recommendations`) || readUpdatedAt(`${prefix}globalTop`);
+}
+
+function readMetadata(prefix) {
+  return dbHelpers.parseJSON(getDiscoveryCacheStmt.get(`${prefix}metadata`)?.value) || {};
+}
+
 export default function register(dbOps) {
+  dbOps.getDiscoveryRefreshSource = function (cacheNamespace = null) {
+    const prefix = cacheNamespace ? `${cacheNamespace}:` : "";
+    return {
+      metadata: readMetadata(prefix),
+      lastUpdated: readLastUpdated(cacheNamespace, prefix),
+    };
+  };
+
   dbOps.getDiscoveryCache = function (cacheNamespace = null) {
     const prefix = cacheNamespace ? `${cacheNamespace}:` : "";
 
@@ -37,9 +63,7 @@ export default function register(dbOps) {
       if (cached) return cached.value;
     }
 
-    const metadata =
-      dbHelpers.parseJSON(getDiscoveryCacheStmt.get(`${prefix}metadata`)?.value) ||
-      {};
+    const metadata = readMetadata(prefix);
     const recommendationsRow = getDiscoveryCacheStmt.get(`${prefix}recommendations`);
     const recommendations = dbHelpers.parseJSON(recommendationsRow?.value);
     const globalTopRow = getDiscoveryCacheStmt.get(`${prefix}globalTop`);
@@ -61,13 +85,7 @@ export default function register(dbOps) {
     );
     const provider =
       getDiscoveryCacheStmt.get(`${prefix}provider`)?.value || null;
-    const lastUpdated = cacheNamespace
-      ? getDiscoveryCacheStmt.get(`${prefix}lastUpdated`)?.value ||
-        recommendationsRow?.last_updated ||
-        null
-      : recommendationsRow?.last_updated ||
-        globalTopRow?.last_updated ||
-        null;
+    const lastUpdated = readLastUpdated(cacheNamespace, prefix);
 
     const result = {
       recommendations: recommendations || [],
