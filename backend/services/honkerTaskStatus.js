@@ -129,6 +129,10 @@ export const SYSTEM_TASK_LABELS = {
     label: "Inbox Refresh",
     description: "Refreshes release, show, news, and discovery updates.",
   },
+  "stored-data-migration": {
+    label: "Stored Settings Update",
+    description: "Stores older settings, flows, and sign-in data in their current form.",
+  },
   "playlist-startup-migration": {
     label: "Playlist Startup Migration",
     description: "Migrates legacy playlist files and reconciles playlist folders.",

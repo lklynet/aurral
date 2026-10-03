@@ -205,6 +205,11 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       }
       return;
     }
+    case "stored-data-migration": {
+      const { migrateStoredData } = await import("./storedDataMigration.js");
+      migrateStoredData();
+      return;
+    }
     case "lidarr-retry": {
       const { libraryManager } = await import("./libraryManager.js");
       await libraryManager.syncLidarrArtists({ forceRefresh: true });

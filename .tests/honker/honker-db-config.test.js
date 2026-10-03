@@ -110,6 +110,7 @@ test("startup only queues due bootstrap work and a pending migration", () => {
   honkerDb.enqueueHonkerStartupTasks();
   assert.deepEqual(queuedKinds(), [
     "playlist-startup-migration",
+    "stored-data-migration",
     "weekly-flow-startup-check",
     "discovery-bootstrap",
     "library-index-bootstrap",
@@ -120,6 +121,9 @@ test("startup only queues due bootstrap work and a pending migration", () => {
   dbOps.setJSONSetting(honkerDb.PLAYLIST_STARTUP_MIGRATION_SETTING, {
     version: honkerDb.PLAYLIST_STARTUP_MIGRATION_VERSION,
     rootPath: process.env.WEEKLY_FLOW_FOLDER,
+  });
+  dbOps.setJSONSetting(honkerDb.STORED_DATA_MIGRATION_SETTING, {
+    version: honkerDb.STORED_DATA_MIGRATION_VERSION,
   });
   clearQueue();
   honkerDb.enqueueHonkerStartupTasks();

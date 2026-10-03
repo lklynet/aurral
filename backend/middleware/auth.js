@@ -458,7 +458,7 @@ export function issueProxySession(req) {
   return createSession(proxyUser.id, req.ip || null, req.headers["user-agent"] || null);
 }
 
-function migrateLegacyAdmin() {
+export function migrateLegacyAdmin() {
   if (userOps.countUsers() > 0) return;
   const settings = dbOps.getSettings();
   const onboardingComplete = settings.onboardingComplete;

@@ -8,6 +8,8 @@ import { ISOLATED_QUEUE_GROUPS, shouldStartQueueHere } from "./backgroundWorkerQ
 
 export const PLAYLIST_STARTUP_MIGRATION_VERSION = 1;
 export const PLAYLIST_STARTUP_MIGRATION_SETTING = "playlistStartupMigration";
+export const STORED_DATA_MIGRATION_VERSION = 1;
+export const STORED_DATA_MIGRATION_SETTING = "storedDataMigration";
 
 export const HONKER_QUEUE_NAMES = [
   "system-task",
@@ -558,6 +560,10 @@ export function enqueueHonkerStartupTasks() {
       { kind: "playlist-startup-migration" },
       { delaySeconds: 3, priority: 10 },
     );
+  }
+  const storedData = dbOps.getJSONSetting(STORED_DATA_MIGRATION_SETTING);
+  if (storedData?.version !== STORED_DATA_MIGRATION_VERSION) {
+    enqueueIfAbsent({ kind: "stored-data-migration" }, { delaySeconds: 3, priority: 10 });
   }
   enqueueIfAbsent({ kind: "weekly-flow-startup-check" }, { delaySeconds: 5, priority: 5 });
   enqueueIfAbsent({ kind: "discovery-bootstrap" }, { delaySeconds: 15, priority: 5 });
