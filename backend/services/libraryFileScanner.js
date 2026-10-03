@@ -40,7 +40,6 @@ const EXCLUDED_DIRECTORIES = new Set([
   "_flows",
   "_playlists",
   "_staging",
-  "aurral-weekly-flow",
 ]);
 
 export function isLibraryScanExcludedDirectory(name) {

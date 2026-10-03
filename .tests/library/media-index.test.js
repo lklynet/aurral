@@ -370,7 +370,6 @@ test("scanMusicRoot indexes tagged media and ignores Flow output", async () => {
   let filePath;
   try {
     filePath = await createAudioFile(root, "Aurral Fixture/Playback Roadmap/01 First Step.flac");
-    await createAudioFile(root, "aurral-weekly-flow/flow/ignored.flac");
     await createAudioFile(root, "_playlists/ignored.flac");
     await createAudioFile(root, "_staging/ignored.flac");
     await createAudioFile(root, "_fallback/ignored.flac");

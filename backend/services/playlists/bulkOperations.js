@@ -1,5 +1,3 @@
-import { finalizeRetainedPlaylistRelocations } from "./mediaRelocation.js";
-import { downloadWorker } from "../downloadJobs/downloadWorker.js";
 import { db } from "../../config/db-sqlite.js";
 import { dbOps, userOps } from "../../db/helpers/index.js";
 import { getBulkOperation, saveBulkOperation } from "./bulkOperationStore.js";
@@ -105,7 +103,6 @@ export async function processStaticPlaylistBulkOperation(operationId) {
     record.scanScheduled = true;
     persist(record);
   }
-  await finalizeRetainedPlaylistRelocations(record.sourcePlaylistId, { downloadRoot: downloadWorker.downloadRoot });
   record.state = "completed";
   delete record.message;
   persist(record);

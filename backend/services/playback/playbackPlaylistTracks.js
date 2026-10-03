@@ -1,25 +1,11 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import {
   flowPlaylistConfig,
   orderJobsByPlaylistTracks,
 } from "../playlists/flowPlaylistConfig.js";
 import { downloadTracker } from "../downloadJobs/downloadTracker.js";
-import {
-  resolveExistingTrackPath,
-  resolveDownloadRoot,
-} from "../downloadPaths.js";
+import { resolveExistingTrackPath } from "../downloadPaths.js";
 
-async function isFile(filePath) {
-  try {
-    return (await fs.stat(filePath)).isFile();
-  } catch {
-    return false;
-  }
-}
-
-export async function collectPlaybackPlaylistTracks(entityId, options = {}) {
-  const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
+export async function collectPlaybackPlaylistTracks(entityId) {
   const playlist = flowPlaylistConfig.getStaticPlaylist(entityId);
   const referencedJobs = (playlist?.tracks || [])
     .map((track) => (track?.canonicalJobId ? downloadTracker.getJob(track.canonicalJobId) : null))
@@ -38,10 +24,10 @@ export async function collectPlaybackPlaylistTracks(entityId, options = {}) {
   );
   const tracks = [];
   for (const job of orderedJobs) {
-    const resolved = await resolveExistingTrackPath(job.finalPath, downloadRoot);
-    if (!resolved || !(await isFile(resolved.path))) continue;
+    const trackPath = await resolveExistingTrackPath(job.finalPath);
+    if (!trackPath) continue;
     tracks.push({
-      path: resolved.path,
+      path: trackPath,
       title: String(job.trackName || "").trim() || "Unknown Track",
       artist: String(job.artistName || "").trim() || "Unknown Artist",
       ...(job.albumName ? { album: job.albumName } : {}),

@@ -1,7 +1,6 @@
 import fsp from "fs/promises";
 import path from "path";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.js";
-import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.js";
 import { noCache } from "../../../middleware/cache.js";
 import { hasPermission, verifyTokenAuth } from "../../../middleware/auth.js";
 import {
@@ -41,17 +40,8 @@ export function registerStream(router) {
     if (job.status !== "done" || !job.finalPath) {
       return res.status(400).json({ error: "Track is not ready to stream" });
     }
-    const resolved = await resolveExistingTrackPath(
-      job.finalPath,
-      downloadWorker.downloadRoot,
-    );
-    if (!resolved) {
-      return res.status(404).json({ error: "Track file missing" });
-    }
-    const safePath = resolved.path;
-    try {
-      await fsp.access(safePath);
-    } catch {
+    const safePath = await resolveExistingTrackPath(job.finalPath);
+    if (!safePath) {
       return res.status(404).json({ error: "Track file missing" });
     }
     res.sendFile(path.basename(safePath), {

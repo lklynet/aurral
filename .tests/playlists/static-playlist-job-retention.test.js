@@ -113,29 +113,6 @@ test("removal locks include reused files and quality-upgrade album peers", async
   assert.ok(ids.includes(peerOwner.id), "the upgrade peer must be locked before provider work changes");
 });
 
-test("a failed membership commit keeps both media copies and retries retained ownership", async (t) => {
-  const { source, survivor, jobId } = fixture(t);
-  const file = path.join(process.env.DOWNLOAD_FOLDER, "aurral-playlists", source.id, "Retained.flac");
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, "retained audio");
-  downloadTracker.setDone(jobId, file);
-  db.exec("CREATE TRIGGER reject_retained_membership BEFORE INSERT ON settings WHEN NEW.key = 'sharedPlaylists' BEGIN SELECT RAISE(ABORT, 'retained save rejected'); END");
-  const operation = { kind: "shared-playlist-delete-track", playlistId: source.id, jobId };
-  try {
-    await assert.rejects(operations.processPlaylistOperation(operation), /retained save rejected/);
-    assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id).tracks.length, 1);
-    assert.equal(downloadTracker.getJob(jobId).playlistType, source.id);
-    assert.equal(downloadTracker.getJob(jobId).finalPath, file);
-    assert.equal(await fs.readFile(file, "utf8"), "retained audio");
-    const intent = JSON.parse(db.prepare("SELECT value FROM settings WHERE key = ?").get(`playlistMediaRelocation:${jobId}`).value);
-    assert.equal(await fs.readFile(intent.to, "utf8"), "retained audio");
-  } finally { db.exec("DROP TRIGGER reject_retained_membership"); }
-  await operations.processPlaylistOperation(operation);
-  assert.equal(downloadTracker.getJob(jobId).playlistType, survivor.id);
-  assert.equal(await fs.readFile(downloadTracker.getJob(jobId).finalPath, "utf8"), "retained audio");
-  await assert.rejects(fs.access(file), { code: "ENOENT" });
-});
-
 test("whole-playlist deletion resumes external cleanup after membership commits", async (t) => {
   const { source, survivor, jobId } = fixture(t);
   const file = path.join(process.env.DOWNLOAD_FOLDER, "aurral-playlists", source.id, "Completed.flac");

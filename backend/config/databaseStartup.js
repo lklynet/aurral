@@ -2,12 +2,13 @@ import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { SCHEMA_VERSION, createSchema } from "./databaseSchema.js";
-import { upgradeFromAurral2 } from "./aurral2Upgrade.js";
+import { moveAurral2Files, upgradeFromAurral2 } from "./aurral2Upgrade.js";
+import { StartupRefusal } from "./startupRefusal.js";
 
 export const LEGACY_CONTAINER_DATA_DIR = "/app/backend/data";
 const AURRAL_2_SCHEMA_VERSION = 4;
 
-export class StartupRefusal extends Error {}
+export { StartupRefusal };
 
 function refuseOldConfiguration({ dataDir, env, legacyContainerDataDir }) {
   if (env.WEEKLY_FLOW_FOLDER || env.PLAYLIST_FOLDER) {
@@ -103,6 +104,7 @@ export function openAurralDatabase({
       const backupPath = backupPathFor(dbPath, now);
       db.prepare("VACUUM INTO ?").run(backupPath);
       log(`Backed up the Aurral 2 database to ${backupPath}`);
+      moveAurral2Files(db, { dataDir, env, log });
       db.transaction(() => {
         if (Number(readSetting(db, "schemaVersion")) !== AURRAL_2_SCHEMA_VERSION) return;
         upgradeFromAurral2(db, { now });

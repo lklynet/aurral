@@ -6,11 +6,8 @@ import {
   resolveEnvDownloadFolder,
 } from "./downloadFolderConfig.js";
 
-export const PLAYLIST_FILES_DIR = "aurral-weekly-flow";
+export const PLAYLIST_FILES_DIR = "_playlists";
 export const AURRAL_FLOWS_DIR = "_flows";
-const LEGACY_LIBRARY_DIR = "aurral-weekly-flow";
-const PREVIOUS_V2_LIBRARY_DIR = "aurral-playlists";
-const LEGACY_DOCKER_PLAYLIST_ROOT = "/app/downloads";
 
 function defaultPlaylistRoot() {
   return resolveDefaultDownloadRoot();
@@ -35,28 +32,6 @@ export function resolveDownloadRoot(explicitRoot) {
   return defaultPlaylistRoot();
 }
 
-export function remapLegacyPath(finalPath, playlistRoot = resolveDownloadRoot()) {
-  let resolved = path.resolve(String(finalPath || "").trim());
-  const root = path.resolve(playlistRoot);
-  const legacyRoot = path.resolve(LEGACY_DOCKER_PLAYLIST_ROOT);
-  if (resolved === legacyRoot || resolved.startsWith(`${legacyRoot}${path.sep}`)) {
-    resolved = path.resolve(root, path.relative(legacyRoot, resolved));
-  }
-  if (resolved.includes(PREVIOUS_V2_LIBRARY_DIR)) {
-    resolved = path.resolve(
-      root,
-      path.relative(root, resolved).replaceAll(PREVIOUS_V2_LIBRARY_DIR, PLAYLIST_FILES_DIR),
-    );
-  }
-  if (resolved.includes(LEGACY_LIBRARY_DIR)) {
-    resolved = path.resolve(
-      root,
-      path.relative(root, resolved).replaceAll(LEGACY_LIBRARY_DIR, PLAYLIST_FILES_DIR),
-    );
-  }
-  return resolved;
-}
-
 export function buildAurralTrackDestination(
   playlistId,
   artistDir,
@@ -73,21 +48,11 @@ export function isPathInsideRoot(candidatePath, rootPath) {
   return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
-export async function resolveExistingTrackPath(finalPath, playlistRoot = resolveDownloadRoot()) {
-  const direct = path.resolve(String(finalPath || "").trim());
-  const root = path.resolve(playlistRoot);
-  const candidates = [...new Set([direct, remapLegacyPath(direct, root)])];
-
-  for (const candidate of candidates) {
-    try {
-      const stat = await fs.stat(candidate);
-      if (stat.isFile()) {
-        return {
-          path: candidate,
-          migratedFrom: candidate !== direct ? direct : null,
-        };
-      }
-    } catch {}
+export async function resolveExistingTrackPath(finalPath) {
+  const resolved = path.resolve(String(finalPath || "").trim());
+  try {
+    return (await fs.stat(resolved)).isFile() ? resolved : null;
+  } catch {
+    return null;
   }
-  return null;
 }

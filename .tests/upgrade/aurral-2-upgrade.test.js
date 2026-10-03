@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -21,7 +21,11 @@ function fixture(name) {
 
 function upgrade(name) {
   const loaded = fixture(name);
-  const db = openAurralDatabase({ dbPath: loaded.dbPath, dataDir: loaded.dataDir, env: {} });
+  const db = openAurralDatabase({
+    dbPath: loaded.dbPath,
+    dataDir: loaded.dataDir,
+    env: { DOWNLOAD_FOLDER: loaded.downloadRoot },
+  });
   return { ...loaded, db };
 }
 
@@ -66,6 +70,27 @@ for (const name of ["stamped", "upgraded-from-1"]) {
     }
   });
 }
+
+test("playlist artwork moves out of the Aurral 2 folder", () => {
+  const { db, downloadRoot } = upgrade("upgraded-from-1");
+  db.close();
+
+  assert.deepEqual(readdirSync(path.join(downloadRoot, "_playlists")).sort(), ["Discover.jpg", "Mix.jpg"]);
+  assert.equal(readFileSync(path.join(downloadRoot, "_playlists", "Discover.jpg"), "utf8"), "fixture:downloads/aurral-weekly-flow/_playlists/Discover.jpg");
+  assert.equal(existsSync(path.join(downloadRoot, "aurral-weekly-flow")), false);
+});
+
+test("covers cached from the old cover host are cleared", () => {
+  const { db } = upgrade("stamped");
+  try {
+    assert.deepEqual(
+      db.prepare("SELECT image_url FROM images_cache ORDER BY image_url").pluck().all(),
+      ["https://images.example.invalid/kept.jpg"],
+    );
+  } finally {
+    db.close();
+  }
+});
 
 test("a database with Downloads Folder files waiting for review is refused unchanged", () => {
   const { dbPath, dataDir } = fixture("review");

@@ -29,7 +29,7 @@ import { PlexPlaybackDestination } from "../playback/plexPlaybackDestination.js"
 import { JellyfinPlaybackDestination } from "../playback/jellyfinPlaybackDestination.js";
 import { createPlaybackDeletionGuard, removeUnusedPlaybackFiles } from "../playback/playbackFileRetention.js";
 
-const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
+const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
 
 export class PlaylistManager {
@@ -38,8 +38,7 @@ export class PlaylistManager {
     { triggerEnsureOnInit = process.env.NODE_ENV !== "test" } = {},
   ) {
     this.downloadRoot = resolveDownloadRoot(downloadRoot);
-    this.playlistFilesRoot = path.join(this.downloadRoot, PLAYLIST_FILES_DIR);
-    this.libraryRoot = path.join(this.playlistFilesRoot, "_playlists");
+    this.libraryRoot = path.join(this.downloadRoot, PLAYLIST_FILES_DIR);
     this.navidromeDestination = assertPlaybackDestination(
       new NavidromePlaybackDestination(this.downloadRoot),
     );
@@ -75,10 +74,6 @@ export class PlaylistManager {
     return String(str || "")
       .replace(/[<>:"/\\|?*]/g, "_")
       .trim();
-  }
-
-  _getPlaylistLibraryHostPath() {
-    return this.playlistFilesRoot.replace(/\\/g, "/").replace(/\/+$/, "");
   }
 
   _getPlaylistBaseName(playlistName) {
@@ -202,9 +197,7 @@ export class PlaylistManager {
   }
 
   async _createPlaybackSnapshot(entity) {
-    const tracks = await collectPlaybackPlaylistTracks(entity.id, {
-      downloadRoot: this.downloadRoot,
-    });
+    const tracks = await collectPlaybackPlaylistTracks(entity.id);
     return createPlaybackPlaylistSnapshot({
       entityId: entity.id,
       ownerUserId: entity.ownerUserId ?? null,
@@ -333,7 +326,6 @@ export class PlaylistManager {
           await getDownloadClient("ytdlp").cleanupStaging(job.id);
         }
       }
-      const playlistDir = path.join(this.playlistFilesRoot, playlistType);
       try {
         const { relocateSharedFilesBeforePlaylistRemoval } = await import(
           "../downloadJobs/fileReuse.js"
@@ -343,7 +335,6 @@ export class PlaylistManager {
           deletionGuard,
           protectPlayback,
         });
-        await removeUnusedPlaybackFiles(playlistDir, deletionGuard, { protectPlayback });
         await removeUnusedPlaybackFiles(
           path.join(this.downloadRoot, AURRAL_FLOWS_DIR, playlistType), deletionGuard, { protectPlayback },
         );
@@ -454,10 +445,6 @@ export class PlaylistManager {
       throw new Error("Invalid artwork path");
     }
     await writePlaylistArtworkWebpFromBuffer(buffer, webpPath);
-    const legacyPng = path.join(resolved.safeRoot, `${resolved.baseName}.png`);
-    try {
-      await fs.unlink(legacyPng);
-    } catch {}
     await this._setArtworkGenerationSuppressed(resolved.safeRoot, resolved.baseName, false);
     await this._syncNavidromeArtwork(playlistId);
     return webpPath;

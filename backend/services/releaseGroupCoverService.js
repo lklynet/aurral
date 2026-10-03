@@ -11,9 +11,6 @@ import {
 import { getAlbumByMbid, resolveAlbumByArtistAndTitle } from "./providers/brainzmashProvider.js";
 import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.js";
 
-export const LEGACY_COVER_HOST_PATTERN =
-  /https?:\/\/(?:archive\.org|[\w-]+\.ca\.archive\.org)\//i;
-
 const RG_CACHE_PREFIX = "rg:";
 const releaseGroupRefreshRequests = new Map();
 
@@ -42,14 +39,6 @@ const toPublicCoverUrl = (imageUrl) => {
 
 const getCachedUrl = (cacheKey) => {
   const cached = dbOps.getImage(cacheKey);
-  if (
-    cached?.imageUrl &&
-    cached.imageUrl !== "NOT_FOUND" &&
-    LEGACY_COVER_HOST_PATTERN.test(cached.imageUrl)
-  ) {
-    dbOps.deleteImage(cacheKey);
-    return undefined;
-  }
   if (cached?.imageUrl && cached.imageUrl !== "NOT_FOUND") {
     const imageUrl = toPublicCoverUrl(cached.imageUrl);
     if (imageUrl) return imageUrl;

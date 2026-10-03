@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { openAurralDatabase, StartupRefusal } from "../../backend/config/databaseStartup.js";
+import { loadAurral2Fixture } from "../helpers/aurral2Fixture.js";
 
 const roots = [];
 test.after(() => {
@@ -33,13 +34,11 @@ function writeDatabase(dbPath, settings = {}, extraSql = "") {
   db.close();
 }
 
-const stampedSettings = {
-  schemaVersion: "4",
-  aurral3Readiness: JSON.stringify({ version: 1, ready: true, blockers: [] }),
-  "migration:play-album-stats-v2": "1",
-  storedDataMigration: JSON.stringify({ version: 1 }),
-  onboardingComplete: "true",
-};
+function stampedFixture() {
+  const loaded = loadAurral2Fixture("stamped");
+  roots.push(loaded.root);
+  return loaded;
+}
 
 function open(paths, options = {}) {
   return openAurralDatabase({ ...paths, env: {}, ...options });
@@ -68,16 +67,14 @@ test("a fresh install creates schema 5 without a backup", () => {
 });
 
 test("a stamped Aurral 2 database is backed up before it moves to schema 5", () => {
-  const paths = createPaths();
-  writeDatabase(paths.dbPath, stampedSettings);
+  const paths = stampedFixture();
+  const original = readSettings(paths.dbPath);
 
   const db = open(paths, { now: Date.UTC(2026, 9, 3, 12, 30, 5) });
   db.close();
 
   assert.deepEqual(backups(paths), ["aurral-2-backup-20261003T123005.db"]);
-  const backup = readSettings(path.join(paths.dataDir, backups(paths)[0]));
-  assert.equal(backup.schemaVersion, "4");
-  assert.equal(backup["migration:play-album-stats-v2"], "1");
+  assert.deepEqual(readSettings(path.join(paths.dataDir, backups(paths)[0])), original);
   const upgraded = readSettings(paths.dbPath);
   assert.equal(upgraded.schemaVersion, "5");
   assert.equal(upgraded.onboardingComplete, "true");
@@ -91,14 +88,15 @@ test("a stamped Aurral 2 database is backed up before it moves to schema 5", () 
 });
 
 test("a failed upgrade leaves the database at schema 4", () => {
-  const paths = createPaths();
-  writeDatabase(paths.dbPath, stampedSettings, "CREATE TABLE idx_sessions_token (id INTEGER)");
+  const paths = stampedFixture();
+  const db = new Database(paths.dbPath);
+  db.exec("CREATE TRIGGER block_upgrade BEFORE DELETE ON settings BEGIN SELECT RAISE(ABORT, 'blocked'); END");
+  db.close();
+  const original = readSettings(paths.dbPath);
 
-  assert.throws(() => open(paths));
+  assert.throws(() => open(paths), /blocked/);
 
-  const settings = readSettings(paths.dbPath);
-  assert.equal(settings.schemaVersion, "4");
-  assert.equal(settings["migration:play-album-stats-v2"], "1");
+  assert.deepEqual(readSettings(paths.dbPath), original);
 });
 
 for (const [name, settings] of [
