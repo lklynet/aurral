@@ -314,7 +314,7 @@ function buildCallbackUrl(req) {
   return url;
 }
 
-export async function startOidcLogin(req, res) {
+export async function startOidcLogin(req, res, { mode = "login", linkUserId = null, returnUrl = false } = {}) {
   if (!isOidcEnabled()) {
     res.status(404).json({ error: "OIDC is not enabled" });
     return;
@@ -333,6 +333,8 @@ export async function startOidcLogin(req, res) {
     nonce,
     transactionId,
     expiresAt: Date.now() + STATE_TTL_MS,
+    mode,
+    linkUserId,
   });
 
   const parameters = {
@@ -346,7 +348,43 @@ export async function startOidcLogin(req, res) {
 
   const redirectTo = client.buildAuthorizationUrl(oidc, parameters);
   setTransactionCookie(req, res, transactionId);
+  if (returnUrl) {
+    res.json({ authUrl: redirectTo.href });
+    return;
+  }
   res.redirect(302, redirectTo.href);
+}
+
+function linkOidcIdentity(config, claims, linkUserId) {
+  const linkUser = userOps.getUserById(linkUserId);
+  if (!linkUser) {
+    throw Object.assign(new Error("Linking user no longer exists"), { status: 400 });
+  }
+  if (linkUser.status !== "active") {
+    throw Object.assign(new Error("This account has been suspended or disabled"), { status: 403 });
+  }
+  const subject = String(claims.sub || "").trim();
+  if (!subject) {
+    throw Object.assign(new Error("OIDC identity did not include a usable subject"), { status: 400 });
+  }
+  const existing = userIdentityOps.findByProvider("oidc", config.issuer, subject);
+  if (existing && existing.userId !== linkUser.id) {
+    throw Object.assign(new Error("This single sign-on account is already linked to another user"), {
+      status: 409,
+    });
+  }
+  if (!existing) {
+    db.transaction(() => {
+      userIdentityOps.link(linkUser.id, {
+        providerType: "oidc",
+        providerKey: config.issuer,
+        subject,
+        displayName: toDisplayName(claims),
+      });
+      userOps.updateUser(linkUser.id, { needsIdentityMigration: false, allowIdentityAdoption: false });
+    })();
+  }
+  return toResolvedUser(userOps.getUserById(linkUser.id));
 }
 
 export async function handleOidcCallback(req) {
@@ -372,17 +410,22 @@ export async function handleOidcCallback(req) {
   });
 
   const claims = await fetchEffectiveClaims(oidc, tokens, tokens.claims() || {});
-  const user = resolveOidcSessionUser(config, claims);
+  const linked = pending.mode === "link";
+  const user = linked
+    ? linkOidcIdentity(config, claims, pending.linkUserId)
+    : resolveOidcSessionUser(config, claims);
 
   const code = client.randomState();
   prunePendingExchanges();
   pendingExchanges.set(code, {
     expiresAt: Date.now() + EXCHANGE_TTL_MS,
     transactionId,
+    linked,
     user,
   });
   return {
     code,
+    linked,
     user,
   };
 }
@@ -401,8 +444,12 @@ export function exchangeOidcCallback(code, req) {
   }
 
   pendingExchanges.delete(exchangeCode);
+  if (pending.linked) {
+    return { linked: true, user: pending.user };
+  }
   const session = createSession(pending.user.id, req.ip || null, req.headers["user-agent"] || null);
   return {
+    linked: false,
     token: session.token,
     expiresAt: session.expiresAt,
     user: pending.user,

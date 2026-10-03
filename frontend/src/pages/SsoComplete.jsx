@@ -52,7 +52,7 @@ const SsoComplete = () => {
       .then((result) => {
         if (result?.linked) {
           if (!cancelled) {
-            navigate("/settings/account?connected=google", { replace: true });
+            navigate(`/settings/account?connected=${provider}`, { replace: true });
           }
           return null;
         }

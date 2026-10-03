@@ -33,6 +33,7 @@ can change Aurral, Lidarr, files, users, or external services.
 | `POST` | `/api/auth/reauth` | Confirm the current password with `{ "currentPassword": "…" }` before a sensitive account change |
 | `GET` | `/api/auth/oidc/login` | Start an OpenID Connect login |
 | `POST` | `/api/auth/oidc/exchange` | Exchange an OpenID Connect code for a session |
+| `POST` | `/api/auth/oidc/link/start` | Start linking single sign-on to the current user and return the authorization URL |
 | `GET` | `/api/auth/google/login` | Start a Google sign-in |
 | `POST` | `/api/auth/google/exchange` | Exchange a Google sign-in code for a session |
 | `GET` | `/api/auth/google/link` | Start linking a Google account to the current user |

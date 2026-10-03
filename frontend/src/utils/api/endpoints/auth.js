@@ -46,6 +46,8 @@ export const exchangeGoogleCode = (code) => postData("/auth/google/exchange", { 
 
 export const startGoogleLink = () => postData("/auth/google/link/start");
 
+export const startOidcLink = () => postData("/auth/oidc/link/start");
+
 export const reauthApi = (currentPassword) => postData("/auth/reauth", { currentPassword });
 
 export const startPlexLoginPin = (forwardUrl) => postData("/auth/plex/login/pin", { forwardUrl });

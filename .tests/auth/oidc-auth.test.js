@@ -895,3 +895,103 @@ test("OIDC rejects an unrecognized token endpoint auth method instead of silentl
   };
   await assert.rejects(() => startOidcLogin({}, response), /Unsupported OIDC_TOKEN_ENDPOINT_AUTH_METHOD/);
 });
+
+async function createReusableOidcProvider() {
+  let issuer;
+  let nonce;
+  const server = await createMockHttpServer((request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    if (request.url === "/jwks") {
+      response.end(JSON.stringify({ keys: [oidcKey] }));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/token") {
+      response.end(JSON.stringify({
+        access_token: "access-token",
+        token_type: "Bearer",
+        id_token: createIdToken(issuer, nonce),
+      }));
+      return;
+    }
+    response.end(JSON.stringify({
+      issuer,
+      authorization_endpoint: `${issuer}authorize`,
+      token_endpoint: `${issuer}token`,
+      jwks_uri: `${issuer}jwks`,
+    }));
+  });
+  issuer = `${server.url}/`;
+  enableOidcEnv({ OIDC_ISSUER: issuer, OIDC_REDIRECT_URI: `${issuer}callback` });
+  const signIn = async (startOptions) => {
+    const response = {
+      headers: {},
+      redirect(_status, location) {
+        this.location = location;
+      },
+      json(body) {
+        this.location = body.authUrl;
+      },
+      setHeader(name, value) {
+        this.headers[name] = value;
+      },
+    };
+    await startOidcLogin({}, response, startOptions);
+    const redirect = new URL(response.location);
+    nonce = redirect.searchParams.get("nonce");
+    return completeOidcLogin({
+      state: redirect.searchParams.get("state"),
+      cookie: response.headers["Set-Cookie"].split(";", 1)[0],
+    });
+  };
+  return { signIn, close: server.close };
+}
+
+const linkTo = (userId) => ({ mode: "link", linkUserId: userId, returnUrl: true });
+
+test("linking attaches the SSO identity to the signed-in user, and later SSO sign-ins use that account", async () => {
+  completeOnboarding();
+  const user = userOps.createUser("alice", "hash", "user", null);
+  const provider = await createReusableOidcProvider();
+  try {
+    const linkResult = await provider.signIn(linkTo(user.id));
+    assert.equal(linkResult.linked, true);
+    assert.equal(linkResult.token, undefined);
+    assert.equal(linkResult.user.id, user.id);
+    assert.equal(userIdentityOps.countForUser(user.id), 1);
+
+    const loginResult = await provider.signIn();
+    assert.equal(loginResult.linked, false);
+    assert.equal(loginResult.user.id, user.id);
+    assert.equal(getSessionByToken(loginResult.token)?.userId, user.id);
+    assert.equal(userOps.countUsers(), 1);
+  } finally {
+    await provider.close();
+  }
+});
+
+test("linking an SSO identity that another user already has is rejected with 409", async () => {
+  completeOnboarding();
+  const provider = await createReusableOidcProvider();
+  try {
+    const owner = (await provider.signIn()).user;
+    const other = userOps.createUser("bob", "hash", "user", null);
+    await assert.rejects(() => provider.signIn(linkTo(other.id)), (error) => error.status === 409);
+    assert.equal(userIdentityOps.countForUser(other.id), 0);
+    assert.equal(userIdentityOps.countForUser(owner.id), 1);
+  } finally {
+    await provider.close();
+  }
+});
+
+test("a suspended user cannot complete an SSO link", async () => {
+  completeOnboarding();
+  const user = userOps.createUser("carol", "hash", "user", null);
+  userOps.updateUser(user.id, { status: "suspended" });
+  const provider = await createReusableOidcProvider();
+  try {
+    await assert.rejects(() => provider.signIn(linkTo(user.id)), (error) => error.status === 403);
+    assert.equal(userIdentityOps.countForUser(user.id), 0);
+  } finally {
+    await provider.close();
+  }
+});

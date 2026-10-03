@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   getMyIdentities,
   startGoogleLink,
+  startOidcLink,
   unlinkMyIdentity,
 } from "../../../utils/api/endpoints/auth.js";
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.js";
@@ -67,17 +68,17 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
     }
   };
 
-  const handleConnectGoogle = async () => {
+  const connectProvider = async (startLink, label) => {
     const shouldProceed = await promptReauth();
     if (!shouldProceed) return;
     try {
-      const result = await startGoogleLink();
-      if (!result?.authUrl) throw new Error("Google did not return an authorization URL");
+      const result = await startLink();
+      if (!result?.authUrl) throw new Error(`${label} did not return an authorization URL`);
       window.location.assign(result.authUrl);
     } catch (err) {
       showError?.(
         err.response?.data?.message || err.response?.data?.error || err.message ||
-          "Failed to connect Google",
+          `Failed to connect ${label}`,
       );
     }
   };
@@ -86,6 +87,8 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
 
   const hasGoogle = identities.some((identity) => identity.providerType === "google");
   const googleAvailable = !!bootstrap?.googleLoginEnabled;
+  const hasOidc = identities.some((identity) => identity.providerType === "oidc");
+  const oidcAvailable = !!bootstrap?.oidcEnabled;
 
   return (
     <div className={`settings-page__section${className ? ` ${className}` : ""}`}>
@@ -127,8 +130,26 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
         </div>
       )}
 
+      {!loadError && oidcAvailable && !hasOidc && (
+        <>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => connectProvider(startOidcLink, "single sign-on")}
+          >
+            Connect single sign-on
+          </button>
+          <p className="settings-page__hint">
+            When you sign in with single sign-on, your identity provider sets your role.
+          </p>
+        </>
+      )}
       {!loadError && googleAvailable && !hasGoogle && (
-        <button type="button" className="btn btn-secondary" onClick={handleConnectGoogle}>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => connectProvider(startGoogleLink, "Google")}
+        >
           Connect Google
         </button>
       )}

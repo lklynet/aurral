@@ -138,6 +138,17 @@ router.get("/oidc/login", async (req, res) => {
   }
 });
 
+router.post("/oidc/link/start", requireAuth, requireRecentAuth(), async (req, res) => {
+  try {
+    await startOidcLogin(req, res, { mode: "link", linkUserId: req.user.id, returnUrl: true });
+  } catch (error) {
+    logger.error("auth", "OIDC link start failed:", { message: error.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Single sign-on link failed" });
+    }
+  }
+});
+
 router.post("/oidc/exchange", (req, res) => {
   try {
     const result = exchangeOidcCallback(req.body?.code, req);
