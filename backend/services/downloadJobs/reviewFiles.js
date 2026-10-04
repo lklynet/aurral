@@ -29,8 +29,12 @@ export async function discardReviewFile(job) {
         sourcePath: filePath,
         transferId: job.downloadClientId,
         username: job.remoteUsername,
+      }).catch((error) => {
+        logger.warn("downloads", "Could not clean up the slskd transfer of a review file", {
+          jobId: job.id,
+          reason: safeLogDiagnostic(error),
+        });
       });
-      return;
     }
     await fs.rm(filePath, { force: true });
     if (path.basename(path.dirname(filePath)) === String(job.id)) {

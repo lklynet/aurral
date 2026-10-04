@@ -733,7 +733,7 @@ btest("removing a job in review discards its file but leaves a Library file", as
   await access(inLibrary);
 });
 
-btest("denying a yt-dlp review removes its staging folder but leaves a Library file", async (t) => {
+btest("denying a review removes its file and yt-dlp folder but leaves a Library file", async (t) => {
   t.mock.method(downloadWorker, "start", async () => {});
   const stagingRoot = path.join(isolatedState.baseDir, "deny-cleanup");
   dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
@@ -751,6 +751,13 @@ btest("denying a yt-dlp review removes its staging folder but leaves a Library f
 
   const ytdlpJobId = await review((jobId) => path.join(stagingRoot, "ytdlp", jobId, "video-1.mp3"), "ytdlp");
   await assert.rejects(access(path.join(stagingRoot, "ytdlp", ytdlpJobId)));
+
+  t.mock.method(getDownloadClient("slskd"), "getDownloadDirectory", async () => {
+    throw new Error("slskd is unreachable");
+  });
+  const fromSoulseek = path.join(stagingRoot, "slskd", "Artist Name", "01 Correct Track.mp3");
+  await review(fromSoulseek, "slskd");
+  await assert.rejects(access(fromSoulseek));
 
   const { resolveDownloadRoot } = await import("../../backend/services/downloadPaths.js");
   const inLibrary = path.join(resolveDownloadRoot(), "deny-cleanup", "Artist Name - Correct Track.mp3");
