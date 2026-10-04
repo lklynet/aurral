@@ -344,7 +344,7 @@ export class DownloadWorker {
     if (!this.running) return;
     if (this.activeJobs.size > 0) return;
     if (downloadTracker.getNextPending()) return;
-    this.stop();
+    this._requestStop();
   }
 
   async researchMissingTracks(playlistType) {

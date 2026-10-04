@@ -88,3 +88,30 @@ test("startup resumes pending work", async () => {
   assert.equal(starts, 1);
   assert.equal(downloadTracker.getJob(pendingId)?.status, "pending");
 });
+
+test("running out of work leaves downloads the pipeline owns running", async () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Idle worker",
+    tracks: [
+      { artistName: "Artist", trackName: "In Pipeline" },
+      { artistName: "Artist", trackName: "Last Pending" },
+    ],
+  });
+  const inPipelineId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "In Pipeline" },
+    playlist.id,
+  );
+  downloadTracker.setDownloading(inPipelineId);
+  const lastId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Last Pending" },
+    playlist.id,
+  );
+
+  await downloadWorker.start();
+  while (downloadWorker.running) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  assert.equal(downloadTracker.getJob(lastId)?.status, "failed");
+  assert.equal(downloadTracker.getJob(inPipelineId)?.status, "downloading");
+});
