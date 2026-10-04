@@ -99,6 +99,10 @@ export function summarizeAurralAlbum({ tracks = [], jobs = [], sourceConfigured,
       counts.available += 1;
       continue;
     }
+    if (track.monitored === false) {
+      counts.total -= 1;
+      continue;
+    }
     const job = jobs.filter((entry) => jobMatchesTrack(entry, track)).at(-1);
     if (!job || !(job.status in counts)) {
       counts.missing += 1;

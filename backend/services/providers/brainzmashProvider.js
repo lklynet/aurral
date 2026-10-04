@@ -333,19 +333,15 @@ function applyReleaseTypeFilter(albums, releaseTypes = []) {
   });
 }
 
+// Like Lidarr, the official release with the most tracks represents the
+// album; a download of a shorter edition still completes it.
 export function selectAlbumRelease(album) {
   const releases = Array.isArray(album?.releases) ? album.releases : [];
-  return (
-    releases.find(
-      (release) =>
-        String(release?.status || "").toLowerCase() === "official" &&
-        Array.isArray(release?.tracks) &&
-        release.tracks.length > 0,
-    ) ||
-    releases.find((release) => Array.isArray(release?.tracks) && release.tracks.length > 0) ||
-    releases[0] ||
-    null
-  );
+  const withTracks = releases.filter((release) => Array.isArray(release?.tracks) && release.tracks.length > 0);
+  const official = withTracks.filter((release) => String(release?.status || "").toLowerCase() === "official");
+  const mostTracks = (list) => list.reduce((best, release) =>
+    (!best || release.tracks.length > best.tracks.length ? release : best), null);
+  return mostTracks(official) || mostTracks(withTracks) || releases[0] || null;
 }
 
 function storeAlbumReleaseMappings(album) {

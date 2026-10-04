@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
-import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
+import { setupIsolatedBackend, cleanupIsolatedState, createMockHttpServer } from "../helpers/backendTestHarness.js";
 
 const [
   isolatedState,
@@ -18,6 +20,10 @@ const [
   { dbOps },
   { libraryManager },
   { downloadWorker },
+  { finishAlbumGrab },
+  { scanMusicRoot },
+  { resolveDownloadRoot },
+  { clearMetadataProviderCaches },
 ] = await setupIsolatedBackend(
   "aurral-album-lifecycle",
   "backend/services/downloadJobs/downloadTracker.js",
@@ -31,6 +37,10 @@ const [
   "backend/db/helpers/index.js",
   "backend/services/libraryManager.js",
   "backend/services/downloadJobs/downloadWorker.js",
+  "backend/services/albumGrab.js",
+  "backend/services/libraryFileScanner.js",
+  "backend/services/downloadPaths.js",
+  "backend/services/providers/brainzmashProvider.js",
 );
 
 const { downloadTracker, DownloadTracker } = trackerModule;
@@ -490,4 +500,68 @@ test("active downloads list in-flight albums, artists, and tracks so buttons sur
     lidarrClient.request = originalRequest;
     invalidateAllDownloadStatusesCache();
   }
+});
+
+test("an album download of a whole shorter edition completes the album without the other edition's tracks", async (t) => {
+  const artistMbid = "eeeeeeee-eeee-4eee-8eee-000000000001";
+  const albumMbid = "eeeeeeee-eeee-4eee-8eee-000000000002";
+  const recording = (index) => `eeeeeeee-eeee-4eee-8eee-10000000000${index}`;
+  const release = (id, count) => ({ id, status: "Official", tracks: Array.from({ length: count }, (_, index) => ({
+    id: `${id}-${index}`, recordingid: recording(index + 1), trackname: `Edition Song ${index + 1}`,
+    artistid: artistMbid, durationms: 1000, trackposition: index + 1, mediumnumber: 1,
+  })) });
+  const metadata = await createMockHttpServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    if (new URL(request.url, "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
+      response.writeHead(404);
+      response.end("{}");
+      return;
+    }
+    response.end(JSON.stringify({ id: albumMbid, title: "Edition Album", artistid: artistMbid,
+      artists: [{ id: artistMbid, artistname: "Edition Artist" }],
+      releases: [release("standard", 2), release("deluxe", 3)] }));
+  });
+  const originalSettings = dbOps.getSettings();
+  const originalWorkerStart = downloadWorker.start;
+  const originalIsConfigured = lidarrClient.isConfigured;
+  dbOps.updateSettings({ ...originalSettings, integrations: { ...originalSettings.integrations,
+    slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
+    metadata: { ...originalSettings.integrations?.metadata, baseUrl: metadata.url, enableNarrowFallbacks: false } } });
+  clearMetadataProviderCaches();
+  downloadWorker.start = async () => {};
+  lidarrClient.isConfigured = () => false;
+  t.after(async () => {
+    downloadWorker.start = originalWorkerStart;
+    lidarrClient.isConfigured = originalIsConfigured;
+    dbOps.updateSettings(originalSettings);
+    clearMetadataProviderCaches();
+    await metadata.close();
+  });
+
+  const requested = await callRoute("POST /albums/request", {}, { albumMbid, albumName: "Edition Album",
+    artistMbid, artistName: "Edition Artist", managedBy: "aurral" });
+  assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
+  const ids = requested.body.jobIds;
+  assert.equal(ids.length, 3);
+
+  const folder = path.join(isolatedState.baseDir, "edition-download");
+  await fs.mkdir(folder, { recursive: true });
+  const filePaths = [];
+  for (const index of [1, 2]) {
+    const filePath = path.join(folder, `0${index} Edition Song ${index}.flac`);
+    await promisify(execFile)("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
+      "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac", "-metadata", `title=Edition Song ${index}`,
+      "-metadata", "artist=Edition Artist", "-metadata", `track=${index}`, filePath]);
+    filePaths.push(filePath);
+  }
+  await finishAlbumGrab({ jobId: ids[0], albumGrab: true, albumGroupJobIds: ids, source: "slskd",
+    playlistId: "library" }, { filePaths, source: "soulseek" });
+  assert.deepEqual(ids.map((id) => downloadTracker.getJob(id).status), ["done", "done", "cancelled"]);
+
+  await scanMusicRoot({ rootPath: resolveDownloadRoot(), source: "aurral" });
+  invalidateAllDownloadStatusesCache();
+  const status = await callRoute("GET /albums/aurral/:canonicalId/status",
+    { canonicalId: String(requested.body.album.id) });
+  assert.equal(status.body.status, "complete");
+  assert.equal(status.body.counts.total, 2);
 });

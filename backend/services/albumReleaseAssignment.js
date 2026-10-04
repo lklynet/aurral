@@ -24,24 +24,27 @@ function fileEvidence(filePath, parsed) {
 
 function rankAssignment(release, files) {
   const assignment = assignReleaseFiles(release.tracks, files);
+  const filled = new Set(assignment.pairs.map((pair) => pair.trackIndex));
   return {
     release,
     assignment,
     pairs: assignment.pairs.length,
     positions: assignment.pairs.filter((pair) => Number(release.tracks[pair.trackIndex].trackNumber) > 0
       && Number(release.tracks[pair.trackIndex].trackNumber) === Number(files[pair.fileIndex].trackNumber)).length,
+    unfilled: release.tracks.filter((track, index) => track.onRelease && !filled.has(index)).length,
     score: assignment.pairs.reduce((sum, pair) => sum + pair.score, 0),
   };
 }
 
 // Like an import in Lidarr, the files decide which edition arrived: the
 // release that assigns the most files, with the most matching positions,
-// most closely, wins.
+// leaving the fewest of its own tracks unfilled, most closely, wins.
 function assignBestRelease(jobs, files, releases) {
   return candidateReleasesForJobs(jobs, releases)
     .map((release) => rankAssignment(release, files))
     .reduce((best, entry) => (entry.pairs - best.pairs
       || entry.positions - best.positions
+      || best.unfilled - entry.unfilled
       || entry.score - best.score) > 0 ? entry : best);
 }
 
@@ -107,6 +110,10 @@ export async function assignDownloadedAlbumFiles({
     unassignedJobIds: [...unassignedJobIds],
     unreadableCount: (filePaths || []).length - readable.length,
     releaseId: release.id,
+    edition: release.id && release.requestedAll ? {
+      id: release.id,
+      jobIds: jobs.filter((job, index) => release.tracks[index].onRelease).map((job) => job.id),
+    } : null,
     policyVersion: assignment.policyVersion,
   };
 }

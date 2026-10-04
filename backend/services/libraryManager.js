@@ -2230,6 +2230,13 @@ export class LibraryManager {
     });
   }
 
+  unmonitorTracksByMbid(trackMbids = []) {
+    const trackIds = trackMbids.map((mbid) => String(mbid || "").trim()).filter(Boolean)
+      .map((mbid) => trackIdByMbidStmt.get(mbid)?.id).filter(Boolean);
+    for (const trackId of trackIds) setTrackMonitoredStmt.run(0, trackId);
+    if (trackIds.length > 0) invalidateLibraryQueryCache({ persistedGenres: false });
+  }
+
   async monitorAurralTrack({ canonicalTrackId = null, trackMbid = null } = {}) {
     const mbid = String(trackMbid || "").trim();
     const trackId = /^\d+$/.test(String(canonicalTrackId ?? "").trim())

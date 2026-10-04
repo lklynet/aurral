@@ -64,6 +64,7 @@ export function releaseTracksForJobs(release, jobs) {
       ...jobReleaseTrack(job),
       durationMs: track?.durationMs || job.durationMs,
       trackNumber: track ? track.trackNumber : null,
+      onRelease: Boolean(track),
     };
   });
 }
@@ -71,15 +72,22 @@ export function releaseTracksForJobs(release, jobs) {
 // Popular albums have dozens of releases with the same tracklist. Releases
 // that line the requested tracks up the same way fit every folder the same
 // way, so only the first of them is kept.
+// Each candidate also says whether every one of its tracks was requested,
+// so a download that fills it is that whole edition.
 export function candidateReleasesForJobs(jobs, releases = []) {
   const seen = new Set();
   return [
-    { id: null, tracks: jobs.map(jobReleaseTrack), titles: null },
-    ...releases.map((release) => ({
-      id: release.id,
-      tracks: releaseTracksForJobs(release, jobs),
-      titles: release.tracks.map((track) => track.title),
-    })),
+    { id: null, tracks: jobs.map((job) => ({ ...jobReleaseTrack(job), onRelease: true })), titles: null,
+      requestedAll: true },
+    ...releases.map((release) => {
+      const tracks = releaseTracksForJobs(release, jobs);
+      return {
+        id: release.id,
+        tracks,
+        titles: release.tracks.map((track) => track.title),
+        requestedAll: tracks.filter((track) => track.onRelease).length === release.tracks.length,
+      };
+    }),
   ].filter((release) => {
     const key = release.tracks
       .map((track) => `${track.trackNumber ?? ""}:${Math.round(Number(track.durationMs || 0) / 1000)}`)

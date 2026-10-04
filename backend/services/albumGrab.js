@@ -63,6 +63,22 @@ function blockAlbumGrabSource(payload, jobs) {
   }
 }
 
+// Like an import in Lidarr, a download that is a whole edition settles the
+// album on that edition: tracks it does not have stop being wanted instead
+// of being searched one by one.
+async function settleAlbumEdition(payload, edition) {
+  if (!edition) return;
+  const onEdition = new Set(edition.jobIds);
+  if (!edition.jobIds.every((id) => downloadTracker.getJob(id)?.status === "done")) return;
+  const others = albumGrabJobs(payload).filter((job) => !onEdition.has(job.id));
+  if (others.length === 0) return;
+  for (const job of others) downloadTracker.setCancelled(job.id);
+  const { libraryManager } = await import("./libraryManager.js");
+  libraryManager.unmonitorTracksByMbid(others.map((job) => job.trackMbid));
+  recordAlbumGrabPhase(payload,
+    `Downloaded edition has ${onEdition.size} tracks; ${others.length} from another edition are no longer wanted`);
+}
+
 // Tries the next ranked folder or release for the tracks an attempt left
 // unfilled. When the leading track was filled, another unfilled track leads.
 export function continueAlbumGrab(payload, resetFields = {}) {
@@ -162,6 +178,7 @@ export async function finishAlbumGrab(payload, {
       });
     }
   }
+  await settleAlbumEdition(payload, assigned.edition);
   if ((filePaths || []).length > assigned.unreadableCount) {
     blockAlbumGrabSource(payload, albumGrabJobs(payload));
   }
