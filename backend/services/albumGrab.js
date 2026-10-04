@@ -10,7 +10,7 @@ import {
   commitDownloadedFile,
   joinUnderRoot,
   buildTrackFileName,
-  writeAudioMetadata,
+  writeImportedFileMetadata,
 } from "./downloadUtils.js";
 import {
   buildNextCandidatePayload,
@@ -165,8 +165,11 @@ export async function finishAlbumGrab(payload, {
       const placed = { ...job, trackNumber: match.trackNumber || job.trackNumber };
       const finalPath = path.join(destination, buildTrackFileName(placed, ext));
       const committed = await withPipelineCommitLock(peerPayload, async () => {
-        await writeAudioMetadata(match.filePath, buildResolvedJobTrack(placed));
         const committedFinalPath = await commitDownloadedFile(match.filePath, finalPath);
+        await writeImportedFileMetadata(committedFinalPath, buildResolvedJobTrack(placed), {
+          source,
+          jobId: job.id,
+        });
         return finalizePipelineJobSuccess({
           downloadTracker, job, committedFinalPath, album: album || job.albumName,
           quality: match.validation.quality,

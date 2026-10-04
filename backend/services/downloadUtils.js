@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs/promises";
 import { parseFile } from "music-metadata";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
+import { logger, safeLogDiagnostic } from "./logger.js";
 
 const execFileAsync = promisify(execFile);
 const AURRAL_IDENTITY_PREFIX = "AURRAL_IDS=";
@@ -222,6 +223,23 @@ async function rewriteAudioTags(filePath, tags) {
     await fs.rm(taggedPath, { force: true }).catch(() => {});
     const detail = String(error?.stderr || error?.message || error).trim().slice(-500);
     throw new Error(`Failed to write audio metadata: ${detail}`);
+  }
+}
+
+// Tags a file that is already at its final location. Tagging rewrites the whole
+// file, so doing it after the import keeps that I/O on the library disk rather
+// than in the download client's folder, which may be a slow network mount. By
+// then the download is in place and its source is gone, so a failure is logged
+// instead of failing the job, which could not be retried anyway.
+export async function writeImportedFileMetadata(filePath, metadata = {}, { source = "download", jobId = null } = {}) {
+  try {
+    await writeAudioMetadata(filePath, metadata);
+  } catch (error) {
+    logger.warn(source, "Failed to write audio metadata after import", {
+      jobId,
+      filePath,
+      reason: safeLogDiagnostic(error),
+    });
   }
 }
 

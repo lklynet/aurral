@@ -36,7 +36,7 @@ import {
   commitDownloadedFile,
   joinUnderRoot,
   buildTrackFileName,
-  writeAudioMetadata,
+  writeImportedFileMetadata,
 } from "./downloadUtils.js";
 import {
   getPayloadCandidate,
@@ -1289,7 +1289,6 @@ async function handleFinalize(payload, helpers) {
   const inactiveOwner = deferForInactiveOwner(payload, job);
   if (inactiveOwner) return inactiveOwner;
   const committed = await withPipelineCommitLock(payload, async () => {
-    await writeAudioMetadata(sourcePath, resolvedTrack);
     import("./aurralHistoryService.js")
       .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
       .catch((err) => { logger.warn("slskd", "Failed to record track job moving", { jobId: job.id, error: err?.message || String(err) }); });
@@ -1297,6 +1296,10 @@ async function handleFinalize(payload, helpers) {
       sourcePath,
       finalPath,
     );
+    await writeImportedFileMetadata(committedFinalPath, resolvedTrack, {
+      source: "slskd",
+      jobId: job.id,
+    });
     if (slskdRoot) {
       await cleanupEmptyAncestors(path.dirname(sourcePath), slskdRoot).catch(() => {});
     }
