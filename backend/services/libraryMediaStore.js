@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { db, dbHelpers } from "../config/db-sqlite.js";
 import { invalidateLibraryQueryCache } from "./libraryQueryService.js";
+import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 import {
   removeLibrarySearchDocument,
   syncLibrarySearchAlbum,
@@ -485,11 +486,16 @@ export function upsertLibraryTrack({
   let libraryChanged = false;
   const track = db.transaction(() => {
     const existing = db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
+    // "Various Artists" credits a compilation, not a performer, so it never
+    // replaces a track's own artist.
+    const nextArtistName = existing?.artist_name && isVariousArtistsCredit(trackArtistName)
+      ? existing.artist_name
+      : trackArtistName;
     if (
       existing &&
       (trackMbid == null || trackMbid === existing.mbid) &&
       trackTitle === existing.title &&
-      (trackArtistName == null || trackArtistName === existing.artist_name) &&
+      (nextArtistName == null || nextArtistName === existing.artist_name) &&
       (metadataText == null || metadataText === existing.metadata_json)
     ) {
       if (syncSearch) syncLibrarySearchTrack(existing.id);
@@ -504,7 +510,7 @@ export function upsertLibraryTrack({
          artist_name = COALESCE(excluded.artist_name, library_tracks.artist_name),
          metadata_json = COALESCE(excluded.metadata_json, library_tracks.metadata_json),
          updated_at = excluded.updated_at`,
-    ).run(key, trackMbid, trackTitle, trackArtistName, metadataText, monitored ? 1 : 0, timestamp, timestamp);
+    ).run(key, trackMbid, trackTitle, nextArtistName, metadataText, monitored ? 1 : 0, timestamp, timestamp);
     libraryChanged = true;
     const row = db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
     if (syncSearch) syncLibrarySearchTrack(row?.id);

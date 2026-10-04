@@ -169,7 +169,12 @@ test("a compilation keeps Various Artists on the album and matches each track by
   await writeAudioMetadata(filePath, buildResolvedJobTrack(hooked));
   const { common } = await parseFile(filePath);
   assert.deepEqual([common.artist, common.albumartist], ["Blue Swede", "Various Artists"]);
+  const hookedArtist = () => getLibraryForAlbumIds({ ids: [albumId] }).tracks
+    .find((track) => track.title === "Hooked on a Feeling").artistName;
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  const scanned = getLibraryForAlbumIds({ ids: [albumId] }).tracks;
-  assert.equal(scanned.find((track) => track.title === "Hooked on a Feeling").artistName, "Blue Swede");
+  assert.equal(hookedArtist(), "Blue Swede");
+
+  await writeAudioMetadata(filePath, buildResolvedJobTrack({ ...hooked, artistAliases: [] }));
+  await scanMusicRoot({ rootPath: root, source: "aurral", force: true });
+  assert.equal(hookedArtist(), "Blue Swede");
 });
