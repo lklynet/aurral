@@ -151,7 +151,7 @@ function buildMetadataRecord(metadata, filePath, rootPath) {
     albumName,
     trackKey,
     trackMbid,
-    trackArtistName: isVariousArtistsCredit(artistName) ? text(common.artist) || artistName : artistName,
+    trackArtistName: isVariousArtistsCredit(artistName, artistMbid) ? text(common.artist) || artistName : artistName,
     title,
     trackNumber,
     discNumber,

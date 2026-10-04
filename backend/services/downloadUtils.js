@@ -227,7 +227,9 @@ async function rewriteAudioTags(filePath, tags) {
 
 // A compilation's tracks keep their own performer as the artist.
 export async function writeAudioMetadata(filePath, metadata = {}) {
-  const performer = isVariousArtistsCredit(metadata.artistName) ? metadata.artistAliases?.[0] : null;
+  const performer = isVariousArtistsCredit(metadata.artistName, metadata.artistMbid)
+    ? metadata.artistAliases?.[0]
+    : null;
   const tags = [
     ["title", metadata.trackName],
     ["artist", performer || metadata.artistName],

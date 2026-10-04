@@ -174,6 +174,11 @@ test("a compilation keeps Various Artists on the album and matches each track by
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   assert.equal(hookedArtist(), "Blue Swede");
 
+  await writeAudioMetadata(filePath, { ...buildResolvedJobTrack(hooked), artistName: "Verschiedene Interpreten" });
+  assert.equal((await parseFile(filePath)).common.artist, "Blue Swede");
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  assert.equal(hookedArtist(), "Blue Swede");
+
   await writeAudioMetadata(filePath, buildResolvedJobTrack({ ...hooked, artistAliases: [] }));
   await scanMusicRoot({ rootPath: root, source: "aurral", force: true });
   assert.equal(hookedArtist(), "Blue Swede");
