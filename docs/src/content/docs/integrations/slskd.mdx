@@ -36,6 +36,14 @@ slskd can supply missing tracks and upgrades. Aurral reads each downloaded file 
 
 For a track, Aurral searches for the artist and the album first. If that gives too few usable results, it searches for the artist and the track, then the album with the track title, and finally the album title alone. Aurral checks every result against the requested track and checks every downloaded file before it accepts it.
 
+Soulseek matches whole words and splits file names at punctuation, so Aurral replaces punctuation in its queries with spaces. "Sgt. Pepper's" becomes `Sgt Pepper s`.
+
+- A compilation is searched by its album title, without "Various Artists". A track from a compilation is searched with its own artist.
+- A self-titled album is searched as the artist and the year, and an album with a very short title, such as `21`, adds the year.
+- If the first queries find too little, Aurral also tries the album title without edition or soundtrack wording, the other spelling of a volume number (`Vol 2` and `Volume II`), the artist with a wildcard in place of each first letter, and the artist's first alias.
+
+Soulseek hides results for some artist and album names entirely. No query finds those, so another download source has to supply them.
+
 Aurral keeps search results for 15 minutes. Tracks from the same album share one album search instead of each starting their own. Aurral runs no more searches at once than the download worker's concurrency.
 
 ## Albums

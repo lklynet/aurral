@@ -20,6 +20,7 @@ After a download, `postDownloadValidator.js` runs the same matcher on the origin
 - A file without usable identity tags is not imported automatically.
 - A track number that points at another track of the requested album is a conflict only when the file comes from that album. A single, a compilation, or another album has its own numbering.
 - Aurral takes a recording ID only from MusicBrainz release data, never from Last.fm.
+- A "Various Artists" credit is not artist evidence. A compilation's jobs keep "Various Artists" as their artist, so tags and media servers group the album, and name each track's own artist as an alias for matching and searching.
 
 ## Titles and scripts
 

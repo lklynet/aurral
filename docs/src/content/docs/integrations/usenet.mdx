@@ -63,7 +63,11 @@ If NZBGet runs on Windows and reports host paths, mount the parent folder in Aur
 
 ## Behavior
 
-Aurral first asks Prowlarr for a music search with the artist and album, as Lidarr does. Prowlarr sends indexers without music search the artist and album as plain text instead. If that gives too few usable releases, Aurral searches for the artist and album, the artist and track, the album with the track title, and finally the album title alone. Aurral checks every release against the request and every downloaded file before it imports it.
+Aurral searches the way Lidarr does. If an indexer supports music search by artist and album, Aurral sends it one first. Then it searches all indexers for the artist and album as text. For a track, it also searches for the artist and track title, to find singles. That is at most three Prowlarr searches for each request.
+
+Aurral cleans the text first: it drops a leading "The", removes accents, and replaces punctuation with spaces, so `AC/DC` is searched as `AC DC`. A compilation is searched as `VA` with the album title, and then by the title alone.
+
+A release matches when its title contains the artist and the album or track title. A compilation release needs only the album title. A single in another version, such as a remix or a radio edit, does not match the original track. Aurral checks every downloaded file before it imports it.
 
 Aurral watches SABnzbd or NZBGet for as long as the client holds the download, including while it is paused. If the download leaves the client without a history entry, Aurral tries the next release.
 
