@@ -380,6 +380,7 @@ export async function scanMusicRoot({
             trackId: track.id,
             discNumber: record.discNumber,
             trackNumber: record.trackNumber,
+            keepPosition: true,
             syncSearch,
           });
           upsertLibraryMediaFile({

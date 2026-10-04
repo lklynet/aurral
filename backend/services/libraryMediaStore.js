@@ -526,14 +526,23 @@ const touchLibraryAlbum = (albumId) => {
   db.prepare("UPDATE library_albums SET updated_at = ? WHERE id = ?").run(now(), Number(albumId));
 };
 
+// A scan passes keepPosition: a file whose tags number it differently from
+// the release the album was requested with stays at the track's position.
 export function linkLibraryAlbumTrack({
   albumId,
   trackId,
   discNumber = 1,
   trackNumber = 0,
+  keepPosition = false,
   syncSearch = true,
 }) {
   const changed = db.transaction(() => {
+    if (keepPosition && db.prepare(
+      "SELECT 1 FROM library_album_tracks WHERE album_id = ? AND track_id = ? LIMIT 1",
+    ).get(Number(albumId), Number(trackId))) {
+      if (syncSearch) syncLibrarySearchTrack(trackId);
+      return false;
+    }
     const result = db.prepare(
       `INSERT OR IGNORE INTO library_album_tracks
         (album_id, track_id, disc_number, track_number, created_at)

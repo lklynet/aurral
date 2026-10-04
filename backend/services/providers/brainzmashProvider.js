@@ -335,7 +335,8 @@ function applyReleaseTypeFilter(albums, releaseTypes = []) {
 
 // The album is the official tracklist most of its releases share: pressings
 // of the standard edition far outnumber deluxe editions and box sets, which
-// can run to 90 tracks. A tie goes to the longer tracklist.
+// can run to 90 tracks. A tie goes to the longer tracklist, and among its
+// releases a single disc, numbered like CD and digital copies, comes first.
 export function selectAlbumRelease(album) {
   const releases = Array.isArray(album?.releases) ? album.releases : [];
   const withTracks = releases.filter((release) => Array.isArray(release?.tracks) && release.tracks.length > 0);
@@ -346,7 +347,9 @@ export function selectAlbumRelease(album) {
   for (const release of pool) counts.set(release.tracks.length, (counts.get(release.tracks.length) || 0) + 1);
   const [trackCount] = [...counts].sort(([leftCount, left], [rightCount, right]) =>
     right - left || rightCount - leftCount)[0];
-  return pool.find((release) => release.tracks.length === trackCount);
+  const discs = (release) => new Set(release.tracks.map((track) => track.mediumNumber || 1)).size;
+  return pool.filter((release) => release.tracks.length === trackCount)
+    .reduce((best, release) => (discs(release) < discs(best) ? release : best));
 }
 
 function storeAlbumReleaseMappings(album) {

@@ -24,6 +24,7 @@ const [
   { scanMusicRoot },
   { resolveDownloadRoot },
   { clearMetadataProviderCaches },
+  { db },
 ] = await setupIsolatedBackend(
   "aurral-album-lifecycle",
   "backend/services/downloadJobs/downloadTracker.js",
@@ -41,6 +42,7 @@ const [
   "backend/services/libraryFileScanner.js",
   "backend/services/downloadPaths.js",
   "backend/services/providers/brainzmashProvider.js",
+  "backend/config/db-sqlite.js",
 );
 
 const { downloadTracker, DownloadTracker } = trackerModule;
@@ -506,11 +508,13 @@ test("an album asks for its most common edition and a whole shorter edition comp
   const artistMbid = "eeeeeeee-eeee-4eee-8eee-000000000001";
   const albumMbid = "eeeeeeee-eeee-4eee-8eee-000000000002";
   const recording = (index) => `eeeeeeee-eeee-4eee-8eee-10000000000${index}`;
-  const release = (id, count) => ({ id, status: "Official", tracks: Array.from({ length: count }, (_, index) => ({
-    id: `${id}-${index}`, recordingid: recording(index + 1), trackname: `Edition Song ${index + 1}`,
-    artistid: artistMbid, durationms: 1000, trackposition: index + 1, mediumnumber: 1,
-  })) });
-  const releases = [release("standard", 2), release("deluxe", 3), release("deluxe-jp", 3), release("box-set", 4)];
+  const release = (id, count, perDisc = count) => ({ id, status: "Official",
+    tracks: Array.from({ length: count }, (_, index) => ({
+      id: `${id}-${index}`, recordingid: recording(index + 1), trackname: `Edition Song ${index + 1}`,
+      artistid: artistMbid, durationms: 1000, trackposition: (index % perDisc) + 1,
+      mediumnumber: Math.floor(index / perDisc) + 1,
+    })) });
+  const releases = [release("standard", 2), release("deluxe-vinyl", 3, 2), release("deluxe", 3), release("box-set", 4)];
   const metadata = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
     if (new URL(request.url, "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
@@ -543,7 +547,7 @@ test("an album asks for its most common edition and a whole shorter edition comp
     artistMbid, artistName: "Edition Artist", managedBy: "aurral" });
   assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
   const ids = requested.body.jobIds;
-  assert.equal(ids.length, 3);
+  assert.deepEqual(ids.map((id) => downloadTracker.getJob(id).trackNumber), [1, 2, 3]);
 
   const folder = path.join(isolatedState.baseDir, "edition-download");
   await fs.mkdir(folder, { recursive: true });
@@ -552,7 +556,7 @@ test("an album asks for its most common edition and a whole shorter edition comp
     const filePath = path.join(folder, `0${index} Edition Song ${index}.flac`);
     await promisify(execFile)("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
       "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac", "-metadata", `title=Edition Song ${index}`,
-      "-metadata", "artist=Edition Artist", "-metadata", `track=${index}`, filePath]);
+      "-metadata", "artist=Edition Artist", "-metadata", `track=${index}`, "-metadata", `disc=${index}`, filePath]);
     filePaths.push(filePath);
   }
   await finishAlbumGrab({ jobId: ids[0], albumGrab: true, albumGroupJobIds: ids, source: "slskd",
@@ -565,4 +569,6 @@ test("an album asks for its most common edition and a whole shorter edition comp
     { canonicalId: String(requested.body.album.id) });
   assert.equal(status.body.status, "complete");
   assert.equal(status.body.counts.total, 2);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM library_album_tracks WHERE album_id = ?")
+    .get(requested.body.album.id).count, 3);
 });
