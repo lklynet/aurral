@@ -1218,6 +1218,17 @@ const recentMediaFilter = (sourceFilter, availableOnly, alias = "page_media") =>
 const recentMediaOrder = (kind, sourceFilter, availableOnly, direction) => {
   const orderDirection = direction === "desc" ? "ASC" : "DESC";
   const mediaFilter = recentMediaFilter(sourceFilter, availableOnly);
+  if (kind === "artists") {
+    return `COALESCE((
+      SELECT MAX(page_media.created_at)
+      FROM library_albums AS page_album
+      JOIN library_album_tracks AS page_album_track ON page_album_track.album_id = page_album.id
+      JOIN library_media_files AS page_media INDEXED BY idx_library_media_files_track_album_source_available_created
+        ON page_media.track_id = page_album_track.track_id
+      WHERE page_album.artist_id = artist.id
+        AND ${albumMediaCondition("page_media", "page_album_track")}${mediaFilter}
+    ), 0) ${orderDirection}, artist.name COLLATE NOCASE ${direction === "desc" ? "DESC" : "ASC"}`;
+  }
   if (kind === "albums") {
     return `COALESCE((
       SELECT MAX(page_media.created_at)
@@ -2020,10 +2031,9 @@ function buildPageQuery({
 
   const orderDirection = direction === "desc" ? "DESC" : "ASC";
   let orderBy;
-  if (sort === "newest" && (kind === "albums" || kind === "tracks")) {
+  if (sort === "newest") {
     orderBy = recentMediaOrder(kind, sourceFilter, availableOnly, direction);
-    if (kind === "albums") orderBy += ", album.id";
-    else orderBy += ", track.id";
+    orderBy += kind === "albums" ? ", album.id" : kind === "artists" ? ", artist.id" : ", track.id";
   } else if (sort === "artist" && kind !== "artists") {
     orderBy = `artist.name COLLATE NOCASE ${orderDirection}, ${kind === "albums" ? "album.title" : "track.title"} COLLATE NOCASE ${orderDirection}`;
     if (kind === "albums") orderBy += ", album.id";

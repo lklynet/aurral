@@ -690,9 +690,10 @@ test("library newest ordering follows library arrival time", () => {
     title: "Old Album",
     releaseDate: "2020-01-01",
   });
+  const newArtist = upsertLibraryArtist({ identityKey: `${key}:new-artist`, name: "Zed Newest Fixture" });
   const newAlbum = upsertLibraryAlbum({
     identityKey: `${key}:new-album`,
-    artistId: artist.id,
+    artistId: newArtist.id,
     title: "Recently Added",
     releaseDate: "1990-01-01",
   });
@@ -739,6 +740,8 @@ test("library newest ordering follows library arrival time", () => {
       sort: "newest",
     });
     assert.deepEqual(page.items.map((item) => item.title), ["Recently Added", "Old Album"]);
+    const artists = getLibraryPage({ source: "aurral", kind: "artists", page: 1, pageSize: 2, sort: "newest" });
+    assert.deepEqual(artists.items.map((item) => item.name), ["Zed Newest Fixture", "Newest Fixture"]);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path LIKE ?").run(`/tmp/${key}/%`);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?)").run(
@@ -747,7 +750,7 @@ test("library newest ordering follows library arrival time", () => {
     );
     db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(oldTrack.id, newTrack.id);
     db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(oldAlbum.id, newAlbum.id);
-    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(artist.id, newArtist.id);
   }
 });
 

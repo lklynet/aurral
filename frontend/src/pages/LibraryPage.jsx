@@ -1224,18 +1224,19 @@ function LibraryPage() {
     [favoriteIds, getAlbumForTrack, getArtistForAlbum, normalizedQuery, ownedLibraryTracks],
   );
 
+  // "Recently added" keeps the server's order, which already applies the
+  // direction.
   const sortedArtists = useMemo(() => {
+    if (sortMode === "newest") return filteredArtists;
     const items = [...filteredArtists];
     items.sort((left, right) => text(left.name).localeCompare(text(right.name)));
     return sortDirection === "asc" ? items : items.reverse();
-  }, [filteredArtists, sortDirection]);
+  }, [filteredArtists, sortDirection, sortMode]);
 
   const sortedAlbums = useMemo(() => {
+    if (sortMode === "newest") return filteredAlbums;
     const items = [...filteredAlbums];
     items.sort((left, right) => {
-      if (sortMode === "newest") {
-        return text(right.releaseDate).localeCompare(text(left.releaseDate));
-      }
       if (sortMode === "artist") {
         return text(getArtistForAlbum(left)?.name).localeCompare(
           text(getArtistForAlbum(right)?.name),
@@ -1247,6 +1248,7 @@ function LibraryPage() {
   }, [filteredAlbums, getArtistForAlbum, sortDirection, sortMode]);
 
   const sortedTracks = useMemo(() => {
+    if (sortMode === "newest") return filteredTracks;
     const items = [...filteredTracks];
     items.sort((left, right) => {
       if (sortMode === "artist") {
@@ -1267,10 +1269,7 @@ function LibraryPage() {
   }, [sortDirection, visibleGenreStats]);
 
   const homeAlbums = useMemo(
-    () =>
-      [...library.albums]
-        .sort((left, right) => text(right.releaseDate).localeCompare(text(left.releaseDate)))
-        .slice(0, Math.max(2, homeAlbumColumns) * 2),
+    () => library.albums.slice(0, Math.max(2, homeAlbumColumns) * 2),
     [homeAlbumColumns, library.albums],
   );
   const homeGenres = useMemo(
@@ -1823,15 +1822,19 @@ function LibraryPage() {
       ? [
           { value: "name", label: "Name" },
           { value: "artist", label: "Artist" },
-          { value: "newest", label: "Newest" },
+          { value: "newest", label: "Recently added" },
         ]
       : section === "tracks"
         ? [
             { value: "name", label: "Name" },
             { value: "artist", label: "Artist" },
+            { value: "newest", label: "Recently added" },
           ]
         : section === "artists" || section === "album-artists"
-          ? [{ value: "name", label: "Name" }]
+          ? [
+              { value: "name", label: "Name" },
+              { value: "newest", label: "Recently added" },
+            ]
           : section === "genres"
             ? [{ value: "name", label: "Name" }]
             : [];
