@@ -119,6 +119,28 @@ test("searchAlbums puts the album an artist and title search names first", async
   }
 });
 
+test("searchAlbums reports a further page while more results exist", async () => {
+  const server = await createMockHttpServer((request, response) => {
+    const url = new URL(request.url, "http://127.0.0.1");
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify(url.pathname !== "/search/album" ? [] : Array.from({ length: 45 }, (_, index) => ({
+      id: `album-${index}`, title: `Paged Album ${index}`, artistid: "paged",
+      artists: [{ id: "paged", artistname: "Paged Artist" }],
+    })).slice(0, Number(url.searchParams.get("limit")) || undefined)));
+  });
+  const originalSettings = dbOps.getSettings();
+  dbOps.updateSettings({ ...originalSettings, integrations: { ...originalSettings.integrations,
+    metadata: { ...originalSettings.integrations.metadata, baseUrl: server.url, enableNarrowFallbacks: false } } });
+  clearMetadataProviderCaches();
+  try {
+    assert.equal((await searchAlbums("Paged Album", 20, 20)).hasMore, true);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(originalSettings);
+    await server.close();
+  }
+});
+
 test("normalizeAlbumReleaseTypesFilter removes invalid and duplicate release types", () => {
   assert.deepEqual(
     normalizeAlbumReleaseTypesFilter("Album,Live,Album,Invalid"),

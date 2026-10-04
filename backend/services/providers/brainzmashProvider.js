@@ -406,8 +406,9 @@ export async function searchAlbums(
   { artistName = "", limit = 24, offset = 0, releaseTypes = [], sort = "relevance", signal } = {},
 ) {
   // Relevance ranking reorders what the provider returns, so a short list
-  // still looks at enough results to find the album.
-  const requestedLimit = Math.max(limit + offset, MIN_ALBUM_SEARCH_WINDOW);
+  // still looks at enough results to find the album. One more than the page
+  // shows whether another page exists.
+  const requestedLimit = Math.max(limit + offset + 1, MIN_ALBUM_SEARCH_WINDOW);
   let items = [];
 
   try {
