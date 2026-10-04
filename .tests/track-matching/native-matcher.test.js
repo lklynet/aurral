@@ -297,10 +297,12 @@ test("release session requires the requested slot and lets the caller order equa
     compare: (left, right) => right.folderIndex - left.folderIndex }).selected.folder.key, "copy");
 });
 
-test("a Various Artists credit on the request is not an artist conflict", () => {
+test("a Various Artists credit on the request neither conflicts with nor confirms an artist", () => {
   const wanted = { title: "Hooked on a Feeling", artists: ["Various Artists"], durationMs: 173000 };
   const file = { title: "Hooked on a Feeling", artists: ["Blue Swede"], durationMs: 173000 };
   assert.notEqual(verifyDownloadedRecording(wanted, file).decision, "no_match");
   assert.equal(verifyDownloadedRecording({ ...wanted, recordingMbid: "hooked" },
     { ...file, recordingMbid: "hooked" }).decision, "matched");
+  assert.equal(decideRecording(wanted, [{ ...file, artists: ["A Cover Band"] }]).decision, "uncertain");
+  assert.equal(decideRecording({ ...wanted, artistAliases: ["Blue Swede"] }, [file]).decision, "selectable");
 });

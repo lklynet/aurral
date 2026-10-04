@@ -91,6 +91,11 @@ function asNames(value) {
   return value ? [value] : [];
 }
 
+function requestPerformers(request) {
+  return [...asNames(request.artists || request.artist), ...asNames(request.artistAliases)]
+    .filter((name) => !isVariousArtistsCredit(name));
+}
+
 function compareRecording(request, candidate, policy) {
   const contradictions = [];
   if (nonLatinTitleContradiction(request.title, candidate.title)) contradictions.push("title");
@@ -118,8 +123,7 @@ function compareRecording(request, candidate, policy) {
   if (gap != null && gap > policy.maxDurationGapMs) contradictions.push("duration");
 
   const title = similarity(coreMatchTitle(request.title), coreMatchTitle(candidate.title));
-  const requestArtists = [...asNames(request.artists || request.artist), ...asNames(request.artistAliases)]
-    .filter((name) => !isVariousArtistsCredit(name));
+  const requestArtists = requestPerformers(request);
   const candidateArtists = asNames(candidate.artists || candidate.artist);
   const artist = requestArtists.length && candidateArtists.length
     ? Math.max(...requestArtists.flatMap((left) => candidateArtists.map((right) =>
@@ -147,6 +151,9 @@ export function decideRecording(request, candidates, policy = MATCH_POLICY) {
     .sort((left, right) => right.score - left.score || left.index - right.index);
   const best = eligible[0];
   const runnerUp = eligible[1];
+  // A request credited only to "Various Artists" has no performer to check.
+  const performerUnknown = requestPerformers(request).length === 0
+    && asNames(request.artists || request.artist).length > 0;
   let decision = "skip";
   let selectedIndex = null;
   if (best) {
@@ -155,6 +162,7 @@ export function decideRecording(request, candidates, policy = MATCH_POLICY) {
     const singleCandidateNeedsExactDuration = candidates.length === 1
       && !best.evidence.includes("recording-mbid") && best.durationGapMs !== 0;
     decision = strongDuration && !singleCandidateNeedsExactDuration
+      && (!performerUnknown || best.evidence.includes("recording-mbid"))
       && best.score >= policy.selectableScore
       && (!runnerUp || best.score - runnerUp.score >= policy.runnerUpMargin)
       ? "selectable" : "uncertain";
