@@ -6,6 +6,7 @@ import { dbOps } from "../../backend/db/helpers/index.js";
 import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.js";
 import {
   normalizeAlbumReleaseTypesFilter,
+  searchAlbums,
   searchArtists,
 } from "../../backend/services/searchService.js";
 import { libraryManager } from "../../backend/services/libraryManager.js";
@@ -61,6 +62,28 @@ test("searchArtists normalizes BrainzMash artists", async () => {
     assert.deepEqual(result.items[0].genres, ["pop"]);
     assert.equal(result.items[0].imageUrl, "https://images.example/adele.jpg");
     assert.equal(requests, 2);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(originalSettings);
+    await server.close();
+  }
+});
+
+test("searchAlbums names the album's credited artist, not the first one listed", async () => {
+  const server = await createMockHttpServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify(request.url?.startsWith("/search/album") ? [{
+      id: "agaetis", title: "Ágætis byrjun", artistid: "sigur-ros",
+      artists: [{ id: "amiina", artistname: "amiina" }, { id: "sigur-ros", artistname: "Sigur Rós" }],
+    }] : []));
+  });
+  const originalSettings = dbOps.getSettings();
+  dbOps.updateSettings({ ...originalSettings, integrations: { ...originalSettings.integrations,
+    metadata: { ...originalSettings.integrations.metadata, baseUrl: server.url, enableNarrowFallbacks: false } } });
+  clearMetadataProviderCaches();
+  try {
+    const [album] = (await searchAlbums("Agaetis byrjun", 5, 0)).items;
+    assert.deepEqual([album.artistName, album.artistMbid], ["Sigur Rós", "sigur-ros"]);
   } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(originalSettings);

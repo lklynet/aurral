@@ -412,7 +412,8 @@ export async function searchAlbums(
     const source = Array.isArray(data) ? data : [];
     items = source.map((entry, index) => {
       const artists = Array.isArray(entry?.artists) ? entry.artists : [];
-      const primaryArtist = artists[0] ? toNormalizedArtist(artists[0]) : null;
+      const credited = artists.find((artist) => artist?.id && artist.id === entry?.artistid) || artists[0];
+      const primaryArtist = credited ? toNormalizedArtist(credited) : null;
       const coverImage = selectBestAlbumImage(entry?.images);
       return {
         id: entry?.id,
