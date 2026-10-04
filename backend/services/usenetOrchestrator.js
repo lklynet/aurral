@@ -25,7 +25,7 @@ import {
   buildResolvedJobTrack as buildResolvedTrack,
   commitDownloadedFile,
   joinUnderRoot,
-  sanitizePathPart,
+  buildTrackFileName,
   writeAudioMetadata,
 } from "./downloadUtils.js";
 import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.js";
@@ -499,7 +499,7 @@ async function handleUsenetFinalize(payload, helpers) {
   const destination = String(payload.destination || "").trim();
   const ext = path.extname(found.filePath).toLowerCase();
   const finalDir = joinUnderRoot(playlistRoot, destination);
-  const finalName = `${sanitizePathPart(job.trackName, "Unknown Track")}${ext || ".mp3"}`;
+  const finalName = buildTrackFileName(job, ext || ".mp3");
   const finalPath = path.join(finalDir, finalName);
   const inactiveOwner = deferForInactiveOwner(payload, job);
   if (inactiveOwner) return inactiveOwner;

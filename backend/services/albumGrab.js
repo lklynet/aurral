@@ -9,7 +9,7 @@ import {
   buildResolvedJobTrack,
   commitDownloadedFile,
   joinUnderRoot,
-  sanitizePathPart,
+  buildTrackFileName,
   writeAudioMetadata,
 } from "./downloadUtils.js";
 import {
@@ -144,7 +144,7 @@ export async function finishAlbumGrab(payload, {
     try {
       const ext = path.extname(match.filePath).toLowerCase() || ".flac";
       const destination = joinUnderRoot(playlistRoot, peerPayload.destination);
-      const finalPath = path.join(destination, `${sanitizePathPart(job.trackName, "Unknown Track")}${ext}`);
+      const finalPath = path.join(destination, buildTrackFileName(job, ext));
       const committed = await withPipelineCommitLock(peerPayload, async () => {
         await writeAudioMetadata(match.filePath, buildResolvedJobTrack(job));
         const committedFinalPath = await commitDownloadedFile(match.filePath, finalPath);

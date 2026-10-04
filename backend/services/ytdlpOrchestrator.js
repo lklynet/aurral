@@ -16,7 +16,7 @@ import {
   buildResolvedJobTrack as buildResolvedTrack,
   commitDownloadedFile,
   joinUnderRoot,
-  sanitizePathPart,
+  buildTrackFileName,
   writeAudioMetadata,
 } from "./downloadUtils.js";
 import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.js";
@@ -250,7 +250,7 @@ async function handleYtdlpFinalize(payload, helpers) {
   const destination = String(payload.destination || "").trim();
   const ext = path.extname(filePath).toLowerCase();
   const finalDir = joinUnderRoot(playlistRoot, destination);
-  const finalName = `${sanitizePathPart(job.trackName, "Unknown Track")}${ext || ".m4a"}`;
+  const finalName = buildTrackFileName(job, ext || ".m4a");
   const finalPath = path.join(finalDir, finalName);
   const committed = await withPipelineCommitLock(payload, async () => {
     await writeAudioMetadata(filePath, resolvedTrack);

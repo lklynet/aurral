@@ -11,6 +11,7 @@ import { buildAurralTrackDestination, resolveDownloadRoot } from "../downloadPat
 import {
   commitDownloadedFile,
   joinUnderRoot,
+  buildTrackFileName,
   sanitizePathPart,
 } from "../downloadUtils.js";
 import {
@@ -64,7 +65,7 @@ export async function approveBlockedJob(jobId) {
     ephemeral: Boolean(flowPlaylistConfig.getFlow(playlistId)),
   });
   const finalDir = joinUnderRoot(resolveDownloadRoot(), destination);
-  const finalName = `${sanitizePathPart(job.trackName, "Unknown Track")}${ext || ".mp3"}`;
+  const finalName = buildTrackFileName(job, ext || ".mp3");
   const committed = await withPipelineCommitLock(
     {
       jobId: job.id,

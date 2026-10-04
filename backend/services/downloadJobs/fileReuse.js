@@ -157,6 +157,12 @@ function sanitizeSafeSegment(value, fallback = "Unknown") {
   return text;
 }
 
+// Downloads are named "Title" or, with a known album position, "07 - Title".
+function isTrackFileBaseName(baseName, title) {
+  return baseName === title
+    || (baseName.endsWith(` - ${title}`) && /^\d{2,3} - $/.test(baseName.slice(0, -title.length)));
+}
+
 /**
  * Scans local storage directories to locate an existing audio file matching track metadata.
  *
@@ -206,7 +212,7 @@ async function findLocalExistingSource(track, options = {}) {
       for (const file of files) {
         const ext = path.extname(file).toLowerCase();
         const baseName = path.basename(file, ext);
-        if (baseName === expectedBaseName && VALID_AUDIO_EXTENSIONS.has(ext)) {
+        if (isTrackFileBaseName(baseName, expectedBaseName) && VALID_AUDIO_EXTENSIONS.has(ext)) {
           const filePath = path.join(destinationDir, file);
           const resolvedFilePath = path.resolve(filePath);
           if (!isPathInsideRoot(resolvedFilePath, root)) continue;

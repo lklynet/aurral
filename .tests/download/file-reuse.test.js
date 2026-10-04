@@ -170,6 +170,23 @@ test("reuseTrackForPlaylist detects and reuses local audio file from disk withou
   assert.equal(downloadTracker.getJob(result.jobId)?.finalPath, localFilePath);
 });
 
+test("reuseTrackForPlaylist finds a local file named with its album position", async () => {
+  const track = { artistName: "Numbered Artist", trackName: "Second Song", albumName: "Numbered Album" };
+  const albumDir = path.join(downloadRoot, "Numbered Artist", "Numbered Album");
+  await fs.mkdir(albumDir, { recursive: true });
+  await fs.writeFile(path.join(albumDir, "01 - Other Second Song.flac"), "audio");
+  const localFilePath = path.join(albumDir, "02 - Second Song.flac");
+  await fs.writeFile(localFilePath, "audio");
+
+  const result = await reuseTrackForPlaylist(track, "library", {
+    existingFileMode: "reuse",
+    downloadRoot,
+  });
+
+  assert.equal(result.reused, true);
+  assert.equal(result.finalPath, localFilePath);
+});
+
 test("reuseTrackForPlaylist neutralizes path traversal attempts in track metadata and target playlist", async () => {
   const result = await reuseTrackForPlaylist(
     {

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { mkdir, stat } from "node:fs/promises";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
@@ -95,6 +95,9 @@ test("one Soulseek batch fills two sibling jobs", async (t) => {
     assert.equal(job.status, "done");
     assert.ok((await stat(job.finalPath)).isFile());
   }
+  const names = album.ids.map((id) => basename(downloadTracker.getJob(id).finalPath));
+  assert.match(names[0], /^01 - First\b/);
+  assert.match(names[1], /^02 - Second\b/);
   const { getAurralHistoryRequests } = await import("../../backend/services/aurralHistoryService.js");
   const activity = (await getAurralHistoryRequests()).filter((item) => album.ids.includes(item.jobId));
   assert.equal(activity.length, 2);

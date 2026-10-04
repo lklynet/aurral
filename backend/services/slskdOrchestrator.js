@@ -48,7 +48,7 @@ import {
   buildResolvedJobTrack as buildResolvedTrack,
   commitDownloadedFile,
   joinUnderRoot,
-  sanitizePathPart,
+  buildTrackFileName,
   writeAudioMetadata,
 } from "./downloadUtils.js";
 import {
@@ -1345,7 +1345,7 @@ async function handleFinalize(payload) {
   }
   const ext = path.extname(sourcePath).toLowerCase();
   const finalDir = joinUnderRoot(playlistRoot, destination);
-  const finalName = `${sanitizePathPart(job.trackName, "Unknown Track")}${ext || ".mp3"}`;
+  const finalName = buildTrackFileName(job, ext || ".mp3");
   const finalPath = path.join(finalDir, finalName);
   const resolvedTrack = {
     ...buildResolvedTrack(job, payload.track),

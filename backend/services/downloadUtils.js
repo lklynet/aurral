@@ -14,6 +14,14 @@ export function sanitizePathPart(value, fallback = "Unknown") {
   return text || fallback;
 }
 
+// "07 - Title.flac" when the album position is known, so a folder lists in
+// album order and two tracks with one title keep distinct names.
+export function buildTrackFileName(job, ext) {
+  const title = sanitizePathPart(job?.trackName, "Unknown Track");
+  const position = normalizePositiveInteger(job?.trackNumber);
+  return `${position ? `${String(position).padStart(2, "0")} - ` : ""}${title}${ext}`;
+}
+
 export function normalizePositiveInteger(value) {
   if (value == null || !Number.isFinite(Number(value))) return null;
   const normalized = Math.floor(Number(value));
