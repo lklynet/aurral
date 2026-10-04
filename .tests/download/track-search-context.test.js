@@ -20,35 +20,12 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("pickResolvedDurationMs prefers Last.fm only when albums agree", () => {
+test("pickResolvedDurationMs takes a Last.fm length only when no other is known", () => {
   assert.equal(
-    pickResolvedDurationMs({
-      playlistDurationMs: 282973,
-      lastfmDurationMs: 207000,
-      lastfmAlbumName: "Stages: Volume III",
-      albumName: "Stages: Volume III",
-      matchedTrackDurationMs: 282973,
-    }),
-    207000,
-  );
-  assert.equal(
-    pickResolvedDurationMs({
-      playlistDurationMs: 282973,
-      lastfmDurationMs: 207000,
-      lastfmAlbumName: "Other",
-      albumName: "Stages: Volume III",
-    }),
+    pickResolvedDurationMs({ playlistDurationMs: 282973, lastfmDurationMs: 207000 }),
     282973,
   );
-  assert.equal(
-    pickResolvedDurationMs({
-      playlistDurationMs: 282973,
-      lastfmDurationMs: 207000,
-      lastfmAlbumName: "",
-      albumName: "Stages: Volume III",
-    }),
-    282973,
-  );
+  assert.equal(pickResolvedDurationMs({ lastfmDurationMs: 207000 }), 207000);
   assert.equal(
     pickResolvedDurationMs({ lastfmDurationMs: null, matchedTrackDurationMs: 207000 }),
     207000,
@@ -199,7 +176,7 @@ test("resolveTrackSearchContext keeps a job's MusicBrainz release identity witho
   assert.deepEqual(resolved.albumTrackTitles, job.albumTrackTitles);
 });
 
-test("resolveTrackSearchContext does not take a recording ID from Last.fm", async (t) => {
+test("resolveTrackSearchContext takes neither a recording ID nor a length from Last.fm", async (t) => {
   const originalSettings = dbOps.getSettings();
   dbOps.updateSettings({
     ...originalSettings,
@@ -214,14 +191,23 @@ test("resolveTrackSearchContext does not take a recording ID from Last.fm", asyn
     clearMetadataProviderCaches();
     dbOps.updateSettings(originalSettings);
   });
-  t.mock.method(axios, "get", async (url, options) => (options?.params?.method === "track.getInfo"
-    ? { data: { track: { mbid: "stale-lastfm-recording", duration: "200000",
-      artist: { name: "Lastfm Artist" } } } }
-    : { data: {} }));
-  const resolved = await resolveTrackSearchContext({
-    artistName: "Lastfm Artist",
-    trackName: "Lastfm Song",
-    artistMbid: "artist-known",
+  t.mock.method(axios, "get", async (url, options) => {
+    if (options?.params?.method === "track.getInfo") {
+      return { data: { track: { mbid: "stale-lastfm-recording", duration: "233000",
+        artist: { name: "Lastfm Artist" }, album: { title: "Lastfm Album" } } } };
+    }
+    if (new URL(url).pathname === "/album/lastfm-album") {
+      return { data: { id: "lastfm-album", title: "Lastfm Album", artistid: "artist-known",
+        artists: [{ id: "artist-known", artistname: "Lastfm Artist" }],
+        releases: [{ id: "lastfm-release", status: "Official", tracks: [
+          { trackname: "Lastfm Song", trackposition: 8, durationms: 369626, recordingid: "release-recording" },
+        ] }] } };
+    }
+    return { data: {} };
   });
-  assert.equal(resolved.trackMbid, null);
+  const request = { artistName: "Lastfm Artist", trackName: "Lastfm Song", artistMbid: "artist-known" };
+  assert.equal((await resolveTrackSearchContext(request)).trackMbid, null);
+  const fromRelease = await resolveTrackSearchContext({ ...request, albumName: "Lastfm Album",
+    albumMbid: "lastfm-album", durationMs: 369626 });
+  assert.equal(fromRelease.durationMs, 369626);
 });

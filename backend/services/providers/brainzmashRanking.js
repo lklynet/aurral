@@ -142,28 +142,17 @@ function positiveMs(value) {
     : null;
 }
 
+// The length of the matched MusicBrainz release track, then the length the
+// request carried. Last.fm lengths are often a radio edit, so they only fill
+// a gap.
 export function pickResolvedDurationMs({
   playlistDurationMs = null,
   lastfmDurationMs = null,
-  lastfmAlbumName = "",
-  albumName = "",
   matchedTrackDurationMs = null,
 } = {}) {
-  let duration = positiveMs(playlistDurationMs);
-  const lastfm = positiveMs(lastfmDurationMs);
-  const matched = positiveMs(matchedTrackDurationMs);
-  const lastfmAlbumMatches =
-    Boolean(albumName) &&
-    Boolean(lastfmAlbumName) &&
-    scoreTextMatch(lastfmAlbumName, albumName, { extended: true }) >= 85;
-  if (lastfm) {
-    if (!duration) {
-      duration = lastfm;
-    } else if (lastfmAlbumMatches) {
-      duration = lastfm;
-    }
-  }
-  return matched && !lastfmAlbumMatches ? matched : duration || matched;
+  return positiveMs(matchedTrackDurationMs)
+    || positiveMs(playlistDurationMs)
+    || positiveMs(lastfmDurationMs);
 }
 
 export function getYear(value) {

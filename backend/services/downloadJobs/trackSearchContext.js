@@ -374,8 +374,6 @@ export async function resolveTrackSearchContext(track) {
   base.durationMs = pickResolvedDurationMs({
     playlistDurationMs: base.durationMs,
     lastfmDurationMs: lastfmDuration,
-    lastfmAlbumName,
-    albumName: base.albumName,
     matchedTrackDurationMs,
   });
 
