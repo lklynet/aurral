@@ -23,6 +23,8 @@ const [
   playlistManagerModule,
   downloadWorkerModule,
   cancellationModule,
+  { processPipelinePayload },
+  { getDownloadClient },
 ] = await setupIsolatedBackend(
   "download-review-routing",
   "backend/services/downloadJobs/downloadTracker.js",
@@ -35,6 +37,8 @@ const [
   "backend/services/playlists/playlistManager.js",
   "backend/services/downloadJobs/downloadWorker.js",
   "backend/services/downloadJobs/downloadCancellation.js",
+  "backend/services/downloadPipeline.js",
+  "backend/services/download/downloadClientSettings.js",
 );
 
 const { blockPipelineJobForReview, finalizePipelineJobSuccess } = pipelineHelpersModule;
@@ -166,7 +170,7 @@ test("pipeline completion leaves the library scan to playlist completion", async
   );
 });
 
-async function writeOneSecondMp3(filePath, { title = "Correct Track", artist = "Artist Name" } = {}) {
+async function writeOneSecondMp3(filePath, { title = "Correct Track", artist = "Artist Name", seconds = 1 } = {}) {
   await mkdir(path.dirname(filePath), { recursive: true });
   const generated = spawnSync(
     "ffmpeg",
@@ -179,7 +183,7 @@ async function writeOneSecondMp3(filePath, { title = "Correct Track", artist = "
       "-i",
       "anullsrc",
       "-t",
-      "1",
+      String(seconds),
       "-c:a",
       "libmp3lame",
       "-b:a",
@@ -608,4 +612,41 @@ btest("deemix reuses an existing final path instead of creating a duplicate", as
     await rm(path.dirname(targetPath), { recursive: true, force: true });
     await rm(path.dirname(sourcePath), { recursive: true, force: true });
   }
+});
+
+btest("Soulseek tries the other candidates before sending a file to review", async (t) => {
+  dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
+    ...dbOps.getSettings().integrations, slskd: { enabled: true, url: "http://127.0.0.1:9" } } });
+  const root = path.join(isolatedState.baseDir, "slskd-held");
+  const client = getDownloadClient("slskd");
+  t.mock.method(client, "getDownloadDirectory", async () => root);
+  t.mock.method(client, "isCleanupAfterRunsEnabled", () => false);
+  const candidate = (name) => ({ raw: { user: name, file: `Music\\Artist Name\\${name}.mp3`, size: 0 } });
+  const finalize = (payload) => processPipelinePayload({ ...payload, phase: "finalize", source: "slskd" });
+
+  const jobId = addDurationMismatchJob("slskd-held");
+  const held = path.join(root, "Artist Name", "held.mp3");
+  const other = path.join(root, "Artist Name", "other.mp3");
+  await writeOneSecondMp3(held);
+  await writeOneSecondMp3(other);
+  const next = await finalize({ jobId, candidateIndex: 0, candidates: [candidate("held"), candidate("other")] });
+  assert.equal(next.candidateIndex, 1);
+  assert.notEqual(downloadTracker.getJob(jobId).status, "blocked");
+  await finalize(next);
+  assert.equal(downloadTracker.getJob(jobId).status, "blocked");
+  assert.equal(downloadTracker.getJob(jobId).stagingPath, held);
+  await access(held);
+  await assert.rejects(access(other));
+
+  const verifiedJobId = downloadTracker.addJob({ artistName: "Artist Name", trackName: "Correct Track",
+    albumName: "Album Name", durationMs: 1000 }, "slskd-held");
+  downloadTracker.setDownloading(verifiedJobId);
+  const longer = path.join(root, "Artist Name", "longer.mp3");
+  await writeOneSecondMp3(longer, { seconds: 30 });
+  await writeOneSecondMp3(other);
+  const retry = await finalize({ jobId: verifiedJobId, candidateIndex: 0,
+    candidates: [candidate("longer"), candidate("other")] });
+  await finalize(retry);
+  assert.equal(downloadTracker.getJob(verifiedJobId).status, "done");
+  await assert.rejects(access(longer));
 });

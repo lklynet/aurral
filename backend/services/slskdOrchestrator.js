@@ -1222,7 +1222,21 @@ async function handleFinalize(payload, helpers) {
       remoteFile,
       sourcePath,
     });
+    if (validation.blocked && !payload.heldForReview && hasNextCandidate(payload)) {
+      recordPayloadOutcome(job, payload, "held_for_review", validation.reason || "Held for review",
+        { transfer, sourcePath, validation });
+      return buildNextCandidatePayload({
+        ...payload,
+        heldForReview: {
+          sourcePath,
+          reason: validation.reason || "Blocked for review",
+          username: candidate?.raw?.user || null,
+          transferId: readTransferId(transfer) || null,
+        },
+      }, TRANSFER_RESET);
+    }
     if (
+      !payload.heldForReview &&
       blockPipelineJobForReview({
         downloadTracker,
         job,
@@ -1301,7 +1315,48 @@ async function handleFinalize(payload, helpers) {
   return committed.result;
 }
 
+// A file that needs review waits while the remaining candidates are tried.
+// It goes to review only when none of them verifies, and is removed when
+// another file is imported or the job ends.
+async function parkHeldForReview(payload, job) {
+  const held = payload.heldForReview;
+  if (!job || !(await fs.stat(held.sourcePath).catch(() => null))?.isFile()) return false;
+  const parked = blockPipelineJobForReview({
+    downloadTracker,
+    job,
+    validation: { blocked: true, reason: held.reason },
+    sourcePath: held.sourcePath,
+  });
+  if (parked) recordPayloadOutcome(job, payload, "blocked", held.reason, { sourcePath: held.sourcePath });
+  return parked;
+}
+
+async function discardHeldForReview(held) {
+  await cleanupRejectedDownload({
+    sourcePath: held.sourcePath,
+    slskdRoot: resolveLocalPath(await slskdClient.getDownloadDirectory(), getPathMappings("slskd")),
+    playlistRoot: resolveDownloadRoot(),
+    transfer: held.transferId ? { id: held.transferId } : null,
+    username: held.username,
+  });
+}
+
 export async function processSlskdPipelinePayload(payload, helpers) {
+  const held = payload.heldForReview;
+  if (!held?.sourcePath) return processSlskdPhase(payload, helpers);
+  const result = await processSlskdPhase(payload, {
+    ...helpers,
+    failOrTryNextSource: async (failed, job, ...rest) => ((await parkHeldForReview(failed, job))
+      ? null
+      : helpers.failOrTryNextSource(failed, job, ...rest)),
+  });
+  if (result == null && downloadTracker.getJob(payload.jobId)?.status !== "blocked") {
+    await discardHeldForReview(held);
+  }
+  return result;
+}
+
+function processSlskdPhase(payload, helpers) {
   switch (payload.phase) {
     case "search":
       return handleSearch(payload, helpers);
