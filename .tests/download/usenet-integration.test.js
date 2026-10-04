@@ -456,3 +456,44 @@ test("a Usenet compilation grab searches as VA and by its title, never by a trac
     "Guardians of the Galaxy Awesome Mix Vol 1",
   ]);
 });
+
+function admitted(titles, context) {
+  const releases = titles.map((title, index) => ({ title, guid: `guid-${index}`, downloadUrl: `https://nzb.invalid/${index}`,
+    protocol: "usenet", size: 300 * 1024 * 1024, categories: [3010] }));
+  return rankUsenetReleases(releases, context)
+    .filter((entry) => entry.releaseAdmissible)
+    .map((entry) => [entry.raw.release.title, entry.resolvedAlbumName ? "album" : "track"]);
+}
+
+test("Usenet release titles match by their words, not by overall similarity", () => {
+  const lemonade = admitted([
+    "Beyoncé feat. Kendrick Lamar - Lemonade (2016) MP3",
+    "Beyonce - LEMONADE (2016)-NoGroup",
+    "Lemonade Mouth - Original Soundtrack (2011)",
+  ], { artistName: "Beyoncé", albumName: "Lemonade", trackName: "Formation" });
+  assert.deepEqual(lemonade.map(([title]) => title).sort(), [
+    "Beyonce - LEMONADE (2016)-NoGroup",
+    "Beyoncé feat. Kendrick Lamar - Lemonade (2016) MP3",
+  ]);
+
+  const soundtrack = admitted([
+    "VA-Guardians Of The Galaxy Awesome Mix Vol.1-OST-CD-FLAC-2014-CHS",
+    "Guardians Of The Galaxy Awesome Mix Vol. 1-OST-2014-iTS",
+    "Blue Swede - Hooked on a Feeling (1974)",
+  ], { artistName: "Blue Swede", compilation: true, trackName: "Hooked on a Feeling",
+    albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1: Original Motion Picture Soundtrack" });
+  assert.deepEqual(soundtrack.map(([, kind]) => kind), ["album", "album"]);
+});
+
+test("a Usenet single in another version is not offered for the original track", () => {
+  const releases = admitted([
+    "Daft Punk Pharrell Williams Nile Rodgers-Get Lucky Daft Punk Remix -24BIT-WEBFLAC-2013-STASIAUDIO",
+    "Daft Punk Pharrell Williams Nile Rodgers-Get Lucky Radio Edit -24BIT-WEBFLAC-2013-STASIAUDIO",
+    "Daft Punk - Get Lucky (feat. Pharrell Williams) [2013] FLAC",
+    "Daft Punk - Random Access Memories (2013) FLAC",
+  ], { artistName: "Daft Punk", albumName: "Random Access Memories", trackName: "Get Lucky" });
+  assert.deepEqual(releases.map(([title, kind]) => `${kind}: ${title}`).sort(), [
+    "album: Daft Punk - Random Access Memories (2013) FLAC",
+    "track: Daft Punk - Get Lucky (feat. Pharrell Williams) [2013] FLAC",
+  ]);
+});

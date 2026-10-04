@@ -267,8 +267,9 @@ async function handleUsenetSearch(payload, helpers) {
   const compilation = albumGrab && isCompilationJobs([job, ...albumJobs]);
   const indexers = await prowlarrClient.getEnabledUsenetIndexers().catch(() => []);
   const musicIndexers = indexers.filter((indexer) => indexer.musicSearch);
+  const searchContext = { ...resolvedTrack, compilation };
   const queries = payload.searchQueries || buildUsenetSearchQueries(
-    { ...resolvedTrack, compilation },
+    searchContext,
     { musicSearch: musicIndexers.length > 0, albumGrab },
   );
   const runQuery = (query) => (isProwlarrMusicQuery(query)
@@ -280,7 +281,7 @@ async function handleUsenetSearch(payload, helpers) {
   const step = await advanceUsenetSearch(
     { ...payload, searchQueries: queries },
     queries,
-    (results) => hasEnoughCandidates(allowed(results), resolvedTrack, qualityOptions, albumGrab),
+    (results) => hasEnoughCandidates(allowed(results), searchContext, qualityOptions, albumGrab),
     runQuery,
   );
   if (!isPipelinePayloadActive(payload)) return null;
@@ -288,7 +289,7 @@ async function handleUsenetSearch(payload, helpers) {
   const aggregated = allowed(step.aggregated);
   const lastError = step.searchError;
   const queryCount = step.queryCount;
-  const ranked = rankUsenetReleases(aggregated, resolvedTrack);
+  const ranked = rankUsenetReleases(aggregated, searchContext);
   const filteredRanked = deniedSourceGuidSet.size > 0
     ? ranked.filter((entry) => !deniedSourceGuidSet.has(String(entry?.raw?.guid || "").trim().toLowerCase()))
     : ranked;
