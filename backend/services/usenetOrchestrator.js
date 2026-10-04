@@ -229,6 +229,7 @@ async function advanceUsenetSearch(payload, queries, enough, runQuery) {
           error: searchError,
         });
         releases = [];
+        cacheSearchResults("usenet", query, releases);
       }
     }
     mergeSearchResults(aggregated, seen, releases, releaseKey);

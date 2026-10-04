@@ -424,20 +424,26 @@ for (const albumGrab of [false, true]) {
 }
 
 test("a Usenet search runs one Prowlarr query per pipeline step", async (t) => {
-  const search = t.mock.method(prowlarrClient, "search", async () => []);
-  const jobId = downloadTracker.addJob({ artistName: "Step Artist", trackName: "Step Song",
-    albumName: "Step Album", durationMs: 180000 }, "usenet-steps");
-  const helpers = { failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }) };
-  let payload = { phase: "search", source: "usenet", jobId };
-  let steps = 0;
-  while (payload?.phase === "search") {
-    const before = search.mock.callCount();
-    payload = await processUsenetPipelinePayload(payload, helpers);
-    assert.ok(search.mock.callCount() - before <= 1);
-    steps += 1;
+  for (const [name, results, error] of [
+    ["Step", async () => [], "No suitable Usenet search results"],
+    ["Down", async () => { throw new Error("indexer down"); }, "Prowlarr search failed: indexer down"],
+  ]) {
+    const search = t.mock.method(prowlarrClient, "search", results);
+    const jobId = downloadTracker.addJob({ artistName: `${name} Artist`, trackName: `${name} Song`,
+      albumName: `${name} Album`, durationMs: 180000 }, "usenet-steps");
+    const helpers = { failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }) };
+    let payload = { phase: "search", source: "usenet", jobId };
+    let steps = 0;
+    while (payload?.phase === "search" && steps < 20) {
+      const before = search.mock.callCount();
+      payload = await processUsenetPipelinePayload(payload, helpers);
+      assert.ok(search.mock.callCount() - before <= 1);
+      steps += 1;
+    }
+    assert.equal(payload.error, error);
+    assert.equal(steps, search.mock.callCount());
+    search.mock.restore();
   }
-  assert.equal(payload.error, "No suitable Usenet search results");
-  assert.equal(steps, search.mock.callCount());
 });
 
 test("a Usenet compilation grab searches as VA and by its title, never by a track artist", async (t) => {
@@ -483,6 +489,12 @@ test("Usenet release titles match by their words, not by overall similarity", ()
   ], { artistName: "Blue Swede", compilation: true, trackName: "Hooked on a Feeling",
     albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1: Original Motion Picture Soundtrack" });
   assert.deepEqual(soundtrack.map(([, kind]) => kind), ["album", "album"]);
+
+  const bookends = admitted([
+    "Simon and Garfunkel - Bookends (1968) FLAC",
+    "Simon & Garfunkel - Bookends (1968) MP3",
+  ], { artistName: "Simon & Garfunkel", albumName: "Bookends", trackName: "America" });
+  assert.equal(bookends.length, 2);
 });
 
 test("a Usenet single in another version is not offered for the original track", () => {

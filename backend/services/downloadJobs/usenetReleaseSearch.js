@@ -101,6 +101,7 @@ function releaseKey(release) {
 function titleWords(value) {
   return foldDiacritics(String(value || ""))
     .toLowerCase()
+    .replace(/&/gu, " and ")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()
     .split(" ")
