@@ -85,6 +85,11 @@ export async function approveBlockedJob(jobId) {
         job,
         committedFinalPath: committedPath,
         album: job.albumName,
+        onSuccess: async () => {
+          if (job.downloadSource !== "usenet") return;
+          const { cleanupCompletedUsenetDownload } = await import("../usenetOrchestrator.js");
+          await cleanupCompletedUsenetDownload(job);
+        },
       });
       return { committedPath, recorded };
     },

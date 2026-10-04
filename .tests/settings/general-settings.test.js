@@ -110,6 +110,18 @@ test("saving unrelated settings with unchanged playback configuration skips init
   assert.equal(scan.mock.callCount(), 0);
 });
 
+test("NZBGet cleanup defaults on and preserves an explicit opt-out across partial saves", async () => {
+  const { postSettings } = captureSettingsRoutes();
+  const enabled = await postSettings({ integrations: { nzbget: { enabled: true,
+    url: "http://nzbget.local", priority: 5 } } });
+  assert.equal(enabled.statusCode, 200);
+  assert.equal(enabled.body.integrations.nzbget.cleanupCompleted, true);
+  assert.equal(enabled.body.integrations.nzbget.priority, 5);
+  await postSettings({ integrations: { nzbget: { cleanupCompleted: false } } });
+  await postSettings({ integrations: { nzbget: { nzbPriority: 10 } } });
+  assert.equal(dbOps.getSettings().integrations.nzbget.cleanupCompleted, false);
+});
+
 for (const key of ["jellyfin", "navidrome"]) {
   test(`refreshes playback when ${key} settings change or are cleared`, async (t) => {
     const update = t.mock.method(playlistManager, "updateConfig", () => {});

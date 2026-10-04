@@ -283,6 +283,7 @@ export function registerGeneral(router) {
           ? Math.min(900, Math.max(-100, nzbPriority))
           : 0;
         nextNzbget.addPaused = nextNzbget.addPaused === true;
+        nextNzbget.cleanupCompleted = nextNzbget.cleanupCompleted !== false;
         nextNzbget.completedPath =
           typeof nextNzbget.completedPath === "string"
             ? nextNzbget.completedPath.trim()

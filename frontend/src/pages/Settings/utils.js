@@ -144,6 +144,7 @@ export const normalizeSettings = (savedSettings) => {
         ...(savedSettings.integrations?.prowlarr || {}),
       },
       nzbget: {
+        cleanupCompleted: true,
         enabled: false,
         url: "",
         username: "",

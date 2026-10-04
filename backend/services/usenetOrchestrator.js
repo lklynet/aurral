@@ -63,21 +63,33 @@ function getUsenetClientKey(preferredKey = null) {
   return getUsenetClient(preferredKey).key;
 }
 
-// Both clients drop the queue and history entry. SABnzbd also deletes the
-// job's remaining files; NZBGet keeps completed files on disk.
-function removeUsenetItem(payload, jobId) {
+// NZBGet only removes completed files after a successful import. Await
+// cleanup so a release's history remains available if file removal fails.
+async function removeUsenetItem(payload, jobId, options = {}) {
   const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
   for (const [entry, remove] of [
     ["queue", () => client.deleteQueueItem(payload.nzbId)],
-    ["history", () => client.deleteHistoryItem(payload.nzbId)],
+    ["history", () => client.deleteHistoryItem(payload.nzbId, options)],
   ]) {
-    remove().catch((error) => {
+    try {
+      const removed = await remove();
+      if (entry === "history" && removed === false) {
+        throw new Error(`${client.name} did not confirm history removal`);
+      }
+    } catch (error) {
       logger.warn("usenet", `Could not remove the ${client.key} ${entry} item`, {
         jobId,
         reason: error?.message || String(error),
       });
-    });
+    }
   }
+}
+
+export async function cleanupCompletedUsenetDownload(job) {
+  if (job?.downloadSource !== "usenet" || !job.downloadClientId
+    || !["sabnzbd", "nzbget"].includes(job.downloadClient)) return;
+  await removeUsenetItem({ downloadClient: job.downloadClient, nzbId: job.downloadClientId },
+    job.id, { deleteFiles: true });
 }
 
 const RELEASE_RESET = Object.freeze({ nzbId: null, history: null, missingPolls: 0 });
@@ -452,6 +464,7 @@ async function handleUsenetFinalize(payload, helpers) {
   const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
   const historyItem = payload.history || (await client.getHistoryItem(payload.nzbId));
   if (payload.albumGrab === true) {
+    const jobs = albumGrabJobs(payload);
     const filePaths = await collectDownloadedAudioFiles(
       historyItem, payload.downloadClient || payload.manualDownloadClient,
     );
@@ -459,7 +472,12 @@ async function handleUsenetFinalize(payload, helpers) {
       filePaths, source: "usenet", album: candidate?.resolvedAlbumName || job.albumName,
       resetFields: RELEASE_RESET,
     });
-    removeUsenetItem(payload, job.id);
+    if (jobs.length > 0 && jobs.every((entry) =>
+      ["done", "cancelled"].includes(downloadTracker.getJob(entry.id)?.status))) {
+      await removeUsenetItem(payload, job.id, { deleteFiles: true, historyItem });
+    } else if (client.key !== "nzbget") {
+      await removeUsenetItem(payload, job.id);
+    }
     return next;
   }
   const resolvedTrack = {
@@ -519,13 +537,13 @@ async function handleUsenetFinalize(payload, helpers) {
       source: "usenet",
       jobId: job.id,
     });
-    removeUsenetItem(payload, job.id);
     return finalizePipelineJobSuccess({
       downloadTracker,
       job,
       committedFinalPath,
       album: candidate?.resolvedAlbumName || job.albumName,
       quality: found.validation?.quality,
+      onSuccess: () => removeUsenetItem(payload, job.id, { deleteFiles: true, historyItem }),
     });
   });
   if (committed.cancelled) {

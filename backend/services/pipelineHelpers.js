@@ -103,8 +103,8 @@ export async function recordPipelineJobSuccess({
 }) {
   if (job.upgradeForJobId) {
     const { finalizeQualityUpgradeSuccess } = await import("./qualityProfileService.js");
-    if (onSuccess) await onSuccess();
     await finalizeQualityUpgradeSuccess(job, committedFinalPath, quality);
+    if (onSuccess) await onSuccess();
     return false;
   }
   if (downloadTracker.setDone(job.id, committedFinalPath, album) === false) return false;

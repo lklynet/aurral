@@ -5,6 +5,9 @@ import {
   sanitizeNzbName,
 } from "./usenetClientCommon.js";
 import axios from "../../lib/axiosFetch.js";
+import { cleanupNzbgetFiles } from "./nzbgetCleanup.js";
+import { resolveDownloadRoot } from "./downloadPaths.js";
+import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 
 export const nzbgetSettings = Object.freeze({
   key: "nzbget",
@@ -36,6 +39,12 @@ export const nzbgetSettings = Object.freeze({
       section: "Connection",
     }),
     Object.freeze({ key: "category", label: "Category", type: "text", section: "Downloads" }),
+    Object.freeze({
+      key: "cleanupCompleted",
+      label: "Delete unused files after import",
+      type: "toggle",
+      section: "Downloads",
+    }),
     Object.freeze({
       key: "priority",
       label: "Source priority",
@@ -75,6 +84,7 @@ export const nzbgetSettings = Object.freeze({
     username: "",
     password: "",
     category: "aurral",
+    cleanupCompleted: true,
     priority: 20,
     nzbPriority: 0,
     addPaused: false,
@@ -94,6 +104,7 @@ function getSettings(config = null) {
     username: String(nzbget.username || "").trim(),
     password: String(nzbget.password || ""),
     category: String(nzbget.category || "aurral").trim(),
+    cleanupCompleted: nzbget.cleanupCompleted !== false,
     priority: normalizeInteger(nzbget.priority, 20),
     nzbPriority: normalizeInteger(nzbget.nzbPriority, 0),
     addPaused: nzbget.addPaused === true,
@@ -273,7 +284,28 @@ export class NzbgetClient {
     return this.editItem("GroupFinalDelete", nzbId);
   }
 
-  async deleteHistoryItem(nzbId) {
+  async deleteHistoryItem(nzbId, { deleteFiles = false, historyItem = null } = {}) {
+    const id = normalizeInteger(nzbId, 0);
+    if (id <= 0) return false;
+    const settings = this._getSettings();
+    if (deleteFiles && settings.cleanupCompleted) {
+      const item = historyItem || await this.getHistoryItem(id);
+      if (item) {
+        const [directories, history, queue] = await Promise.all([
+          this.getDownloadDirectories(), this.history(true), this.listGroups(),
+        ]);
+        const { lidarrClient } = await import("./lidarrClient.js");
+        await cleanupNzbgetFiles({
+          historyItem: item,
+          directories,
+          category: settings.category,
+          protectedRoots: [resolveDownloadRoot(), ...lidarrClient.getConfiguredRootFolderPaths()
+            .map((root) => resolveLocalPath(root, getPathMappings("lidarr")))],
+          otherItems: [...history, ...queue].filter((entry) =>
+            normalizeInteger(entry.NZBID ?? entry.ID, 0) !== id),
+        });
+      }
+    }
     return this.editItem("HistoryFinalDelete", nzbId);
   }
 
@@ -286,8 +318,12 @@ export class NzbgetClient {
   async getDownloadDirectories() {
     const settings = this._getSettings();
     const config = await this.config().catch(() => []);
+    const categoryEntry = config.find((entry) =>
+      /^Category\d+\.Name$/i.test(entry.Name || "") && entry.Value === settings.category);
     return {
       completedPath: settings.completedPath || "",
+      categoryDestDir: categoryEntry
+        ? readConfigValue(config, categoryEntry.Name.replace(/\.Name$/i, ".DestDir")) : "",
       destDir: readConfigValue(config, "DestDir"),
       interDir: readConfigValue(config, "InterDir"),
       mainDir: readConfigValue(config, "MainDir"),
