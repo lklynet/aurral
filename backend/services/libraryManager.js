@@ -125,6 +125,10 @@ const setTrackMonitoredStmt = db.prepare("UPDATE library_tracks SET monitored = 
 
 const trackIdByMbidStmt = db.prepare("SELECT id FROM library_tracks WHERE mbid = ? ORDER BY id LIMIT 1");
 
+const trackOnOtherAlbumStmt = db.prepare(
+  "SELECT 1 FROM library_album_tracks WHERE track_id = ? AND album_id != ? LIMIT 1",
+);
+
 const setAlbumTracksMonitoredStmt = db.prepare(`
   UPDATE library_tracks SET monitored = ?
   WHERE id IN (SELECT track_id FROM library_album_tracks WHERE album_id = ?)
@@ -2230,9 +2234,14 @@ export class LibraryManager {
     });
   }
 
-  unmonitorTracksByMbid(trackMbids = []) {
+  // Monitoring belongs to the recording, so a track another album also has
+  // stays monitored.
+  unmonitorAlbumOnlyTracks(albumMbid, trackMbids = []) {
+    const album = libraryForAlbum(albumMbid).albums[0];
+    if (!album) return;
     const trackIds = trackMbids.map((mbid) => String(mbid || "").trim()).filter(Boolean)
-      .map((mbid) => trackIdByMbidStmt.get(mbid)?.id).filter(Boolean);
+      .map((mbid) => trackIdByMbidStmt.get(mbid)?.id)
+      .filter((trackId) => trackId && !trackOnOtherAlbumStmt.get(trackId, album.id));
     for (const trackId of trackIds) setTrackMonitoredStmt.run(0, trackId);
     if (trackIds.length > 0) invalidateLibraryQueryCache({ persistedGenres: false });
   }

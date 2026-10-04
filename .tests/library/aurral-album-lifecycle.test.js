@@ -572,3 +572,13 @@ test("an album asks for its most common edition and a whole shorter edition comp
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM library_album_tracks WHERE album_id = ?")
     .get(requested.body.album.id).count, 3);
 });
+
+test("settling an album on an edition leaves a track another album has monitored", () => {
+  const { album, albumMbid, tracks } = createLibraryAlbum({ trackCount: 2 });
+  const single = libraryStore.upsertLibraryAlbum({ identityKey: `release-group:single-of-${albumMbid}`,
+    artistId: album.artist_id, title: "A Single" });
+  libraryStore.linkLibraryAlbumTrack({ albumId: single.id, trackId: tracks[1].id, trackNumber: 1 });
+  libraryManager.unmonitorAlbumOnlyTracks(albumMbid, tracks.map((track) => track.trackMbid));
+  const monitored = (track) => db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(track.id).monitored;
+  assert.deepEqual(tracks.map(monitored), [0, 1]);
+});

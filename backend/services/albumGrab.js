@@ -74,7 +74,7 @@ async function settleAlbumEdition(payload, edition) {
   if (others.length === 0) return;
   for (const job of others) downloadTracker.setCancelled(job.id);
   const { libraryManager } = await import("./libraryManager.js");
-  libraryManager.unmonitorTracksByMbid(others.map((job) => job.trackMbid));
+  libraryManager.unmonitorAlbumOnlyTracks(others[0].albumMbid, others.map((job) => job.trackMbid));
   recordAlbumGrabPhase(payload,
     `Downloaded edition has ${onEdition.size} tracks; ${others.length} from another edition are no longer wanted`);
 }
