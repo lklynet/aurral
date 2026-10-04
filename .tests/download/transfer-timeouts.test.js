@@ -50,6 +50,9 @@ test("a stalled slskd transfer is cancelled and the next candidate is tried", as
   assert.equal(removed.mock.callCount(), 1);
   assert.equal(stalled.phase, "download");
   assert.equal(stalled.candidateIndex, 1);
+
+  queued.state = "Completed, TimedOut";
+  assert.equal((await processPipelinePayload(polling)).phase, "download");
 });
 
 test("a paused Usenet download keeps waiting while the client holds it", async (t) => {

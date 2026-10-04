@@ -161,7 +161,8 @@ function classifyTransferState(state) {
     normalized.includes("cancel") ||
     normalized.includes("abort") ||
     normalized.includes("reject") ||
-    normalized.includes("timeout")
+    normalized.includes("timeout") ||
+    normalized.includes("timedout")
   ) {
     return "failed";
   }
