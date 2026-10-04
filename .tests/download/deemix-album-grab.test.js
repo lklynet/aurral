@@ -11,17 +11,18 @@ import {
 } from "../helpers/backendTestHarness.js";
 
 const execFileAsync = promisify(execFile);
-const [state, { dbOps }, { downloadTracker }, { processDeemixPipelinePayload }] =
+const [state, { dbOps }, { downloadTracker }, { processDeemixPipelinePayload }, { downloadWorker }] =
   await setupIsolatedBackend(
     "deemix-album-grab",
     "backend/db/helpers/index.js",
     "backend/services/downloadJobs/downloadTracker.js",
     "backend/services/deemixOrchestrator.js",
+    "backend/services/downloadJobs/downloadWorker.js",
   );
 
 test.after(async () => cleanupIsolatedState(state));
 
-test("one deemix album queue fills verified siblings and retries only a missing track elsewhere", async () => {
+test("one deemix album queue fills verified siblings and retries only a missing track elsewhere", async (t) => {
   const downloads = join(state.baseDir, "deemix-downloads");
   await mkdir(downloads, { recursive: true });
   const firstPath = join(downloads, "01 First.flac");
@@ -86,7 +87,12 @@ test("one deemix album queue fills verified siblings and retries only a missing 
     assert.equal(queued.phase, "poll");
     const polled = await processDeemixPipelinePayload(queued, helpers);
     assert.equal(polled.phase, "finalize");
+    const start = t.mock.method(downloadWorker, "start", async () => {});
     await processDeemixPipelinePayload(polled, helpers);
+    for (let tick = 0; tick < 100 && start.mock.callCount() === 0; tick += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.equal(start.mock.callCount(), 1);
     assert.equal(added, 1);
     assert.equal(removed, 1);
     assert.equal(downloadTracker.getJob(ids[0]).status, "done");

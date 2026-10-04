@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs/promises";
 import { downloadTracker } from "./downloadTracker.js";
-import { downloadWorker } from "./downloadWorker.js";
+import { startWorkerIfPending } from "./downloadWorker.js";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.js";
 import {
   getActiveDownloadAttemptId,
@@ -119,6 +119,6 @@ export async function denyBlockedJob(jobId) {
       recordTrackJobFailed(job, "Denied by user — will retry"),
     )
     .catch(() => {});
-  downloadWorker.wake();
+  await startWorkerIfPending();
   return { status: 200 };
 }

@@ -650,3 +650,15 @@ btest("Soulseek tries the other candidates before sending a file to review", asy
   assert.equal(downloadTracker.getJob(verifiedJobId).status, "done");
   await assert.rejects(access(longer));
 });
+
+btest("denying a held file starts a stopped worker to search again", async (t) => {
+  const start = t.mock.method(downloadWorker, "start", async () => {});
+  const jobId = addDurationMismatchJob("deny-restart");
+  const staged = path.join(isolatedState.baseDir, "deny-restart", "held.mp3");
+  await writeOneSecondMp3(staged);
+  downloadTracker.setBlocked(jobId, "downloaded file is 99.0s shorter than the requested track", staged);
+  const { denyBlockedJob } = await import("../../backend/services/downloadJobs/blockedJobReview.js");
+  assert.equal((await denyBlockedJob(jobId)).status, 200);
+  assert.equal(downloadTracker.getJob(jobId).status, "pending");
+  assert.equal(start.mock.callCount(), 1);
+});

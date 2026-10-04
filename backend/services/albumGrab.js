@@ -102,10 +102,12 @@ export function releaseAlbumGrabJobs(payload, reason = null, reasons = new Map()
   }
   if (released) {
     recordAlbumGrabPhase(payload, reason || "Album attempt ended; searching for missing tracks");
-    void import("./downloadJobs/downloadWorker.js")
-      .then(({ downloadWorker }) => downloadWorker.wake(0))
-      .catch(() => {});
   }
+  // The worker stops when it runs out of work while an album holds its
+  // tracks, so the tracks the album left pending need it started again.
+  void import("./downloadJobs/downloadWorker.js")
+    .then(({ startWorkerIfPending }) => startWorkerIfPending())
+    .catch(() => {});
 }
 
 export function fallbackAlbumGrabToTracks(payload, reason = null, reasons = new Map()) {
