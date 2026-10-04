@@ -86,6 +86,7 @@ const TRANSFER_RESET = Object.freeze({
 });
 const ALBUM_TRANSFER_RESET = Object.freeze({ ...TRANSFER_RESET, albumTransfers: null });
 const STALLED_TRANSFER_MS = 30 * 60 * 1000;
+const QUEUED_ALBUM_TRANSFER_MS = 10 * 60 * 1000;
 const searchMonitors = createCache(10 * 60, 100);
 const MIN_SEARCH_CANDIDATES = 3;
 const MAX_DOWNLOAD_CANDIDATES = 7;
@@ -1015,6 +1016,18 @@ function trackTransferProgress(payload, progress, now = Date.now()) {
   };
 }
 
+// Every other file of the album finished or failed, and the rest still wait
+// in the uploader's queue. The album cannot finish from this folder soon, so
+// after a while those tracks move on.
+function waitingOnRemoteQueue(transfers) {
+  const queued = (transfer) => /queued/i.test(readTransferState(transfer))
+    && !Number(transfer.bytesTransferred ?? transfer.BytesTransferred);
+  const pending = transfers.filter((transfer) => !transfer
+    || classifyTransferState(readTransferState(transfer)) === "pending");
+  return pending.length > 0 && pending.length < transfers.length
+    && pending.every((transfer) => transfer && queued(transfer));
+}
+
 async function handlePoll(payload, helpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
@@ -1028,9 +1041,10 @@ async function handlePoll(payload, helpers) {
       return { ...payload, phase: "finalize", pollAttempts, albumTransfers: transfers };
     }
     const progress = trackTransferProgress(payload, transfers.map(readTransferProgress).join(","));
-    if (!progress.stalled) {
+    const queuedSince = waitingOnRemoteQueue(transfers) ? Number(payload.queuedSince) || Date.now() : null;
+    if (!progress.stalled && !(queuedSince && Date.now() - queuedSince > QUEUED_ALBUM_TRANSFER_MS)) {
       return { ...payload, phase: "poll", pollAttempts, delaySeconds: POLL_DELAY_SECONDS,
-        lastProgress: progress.lastProgress, lastProgressAt: progress.lastProgressAt };
+        lastProgress: progress.lastProgress, lastProgressAt: progress.lastProgressAt, queuedSince };
     }
     // Keep the files that finished. The album attempt continues for the rest.
     const settled = transfers.map((transfer, index) => transfer || payload.albumTransfers[index]);

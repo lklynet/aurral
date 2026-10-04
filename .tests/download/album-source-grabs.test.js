@@ -146,7 +146,7 @@ test("a partial Usenet album tries the next release for the tracks it missed", a
   }
 });
 
-test("a stalled Soulseek album keeps the files that finished", async (t) => {
+test("a Soulseek album gives up on files left in the uploader's queue and keeps the ones that finished", async (t) => {
   const album = await makeAlbum("soulseek-stalled");
   dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
     slskd: { enabled: true, url: "http://127.0.0.1:9" },
@@ -165,7 +165,11 @@ test("a stalled Soulseek album keeps the files that finished", async (t) => {
     candidate: { raw: { user: "peer", files: remoteFiles } }, albumTransfers: transfers };
   const waiting = await processPipelinePayload(polling);
   assert.equal(waiting.phase, "poll");
-  const stalled = await processPipelinePayload({ ...waiting, lastProgressAt: Date.now() - 60 * 60 * 1000 });
+  transfers[1].placeInQueue = 8;
+  const moving = await processPipelinePayload(waiting);
+  assert.equal(moving.phase, "poll");
+  transfers[1].placeInQueue = 7;
+  const stalled = await processPipelinePayload({ ...moving, queuedSince: Date.now() - 11 * 60 * 1000 });
   assert.equal(stalled.phase, "finalize");
   assert.deepEqual(removed.mock.calls.map((call) => call.arguments[1]), ["stuck"]);
   await processPipelinePayload(stalled);
