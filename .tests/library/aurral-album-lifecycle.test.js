@@ -579,11 +579,22 @@ test("an album asks for its most common edition and a whole shorter edition comp
 });
 
 test("settling an album on an edition leaves a track another album has monitored", () => {
-  const { album, albumMbid, tracks } = createLibraryAlbum({ trackCount: 2 });
-  const single = libraryStore.upsertLibraryAlbum({ identityKey: `release-group:single-of-${albumMbid}`,
-    artistId: album.artist_id, title: "A Single" });
+  const albumMbid = "ffffffff-ffff-4fff-8fff-000000000001";
+  const artist = libraryStore.upsertLibraryArtist({ identityKey: "mbid:ffffffff-ffff-4fff-8fff-000000000002",
+    mbid: "ffffffff-ffff-4fff-8fff-000000000002", name: "Shared Artist" });
+  const albumFor = (identityKey, title, mbid = null) => libraryStore.upsertLibraryAlbum({
+    identityKey, mbid, releaseGroupMbid: mbid, artistId: artist.id, title });
+  const album = albumFor(`release-group:${albumMbid}`, "Shared Album", albumMbid);
+  const single = albumFor("release-group:ffffffff-ffff-4fff-8fff-000000000003", "Shared Single");
+  const tracks = [1, 2].map((index) => libraryStore.upsertLibraryTrack({
+    identityKey: `recording:ffffffff-ffff-4fff-8fff-10000000000${index}`,
+    mbid: `ffffffff-ffff-4fff-8fff-10000000000${index}`, title: `Shared Song ${index}`,
+  }));
+  tracks.forEach((track, index) => libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id,
+    trackNumber: index + 1 }));
   libraryStore.linkLibraryAlbumTrack({ albumId: single.id, trackId: tracks[1].id, trackNumber: 1 });
-  libraryManager.unmonitorAlbumOnlyTracks(albumMbid, tracks.map((track) => track.trackMbid));
+  libraryManager.unmonitorAlbumOnlyTracks(albumMbid, tracks.map((track) => track.mbid));
   const monitored = (track) => db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(track.id).monitored;
   assert.deepEqual(tracks.map(monitored), [0, 1]);
 });
+
