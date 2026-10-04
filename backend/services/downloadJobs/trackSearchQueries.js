@@ -158,11 +158,12 @@ function joinSearchParts(...parts) {
 
 // "Artist Album". A self-titled album is "Artist Year" because "Weezer
 // Weezer" lists every Weezer song; a short title such as "21" takes the year
-// to stay specific.
-function artistAlbumQuery(ctx, artistName = ctx.artistName) {
+// to stay specific. Many folders leave the year out, so a short title is
+// also asked without it.
+function artistAlbumQuery(ctx, artistName = ctx.artistName, { year = true } = {}) {
   if (!artistName || !ctx.albumName) return "";
-  if (ctx.selfTitled) return joinSearchParts(artistName, ctx.releaseYear);
-  return joinSearchParts(artistName, ctx.albumName, ctx.shortAlbum ? ctx.releaseYear : null);
+  if (ctx.selfTitled) return year ? joinSearchParts(artistName, ctx.releaseYear) : "";
+  return joinSearchParts(artistName, ctx.albumName, year && ctx.shortAlbum ? ctx.releaseYear : null);
 }
 
 function albumAloneQueries(ctx) {
@@ -190,13 +191,17 @@ function orderTiers(tiers) {
 
 function releaseFallbackTiers(ctx) {
   const wildcardArtist = bypassBannedArtistTerm(ctx.artistName);
+  const wildcard = wildcardArtist !== ctx.artistName;
   return [
+    { name: "album_without_year", queries: [artistAlbumQuery(ctx, ctx.artistName, { year: false })] },
     { name: "core_album", queries: [ctx.artistName && ctx.coreAlbumName
       ? joinSearchParts(ctx.artistName, ctx.coreAlbumName) : ctx.coreAlbumName] },
     { name: "volume_variant", queries: [ctx.albumVariant
       ? joinSearchParts(ctx.artistName, ctx.albumVariant) : ""] },
-    { name: "wildcard_album", queries: [wildcardArtist !== ctx.artistName
-      ? artistAlbumQuery(ctx, wildcardArtist) : ""] },
+    { name: "wildcard_album", queries: wildcard ? [
+      artistAlbumQuery(ctx, wildcardArtist),
+      artistAlbumQuery(ctx, wildcardArtist, { year: false }),
+    ] : [] },
     { name: "alias_album", queries: [artistAlbumQuery(ctx, ctx.alias)] },
   ];
 }
@@ -204,12 +209,14 @@ function releaseFallbackTiers(ctx) {
 // A whole-release grab needs results that list the album folder, so it
 // searches for the album alone and never for one of its track titles. A
 // compilation is searched without "Various Artists", which folder names
-// rarely contain.
+// rarely contain. A self-titled album falls back to the artist alone, the
+// broadest query, last.
 export function buildAlbumSearchTiers(context) {
   const ctx = readTrackSearchContext(context);
   return orderTiers([
     { name: "base_album", queries: [artistAlbumQuery(ctx) || ctx.albumName] },
     ...releaseFallbackTiers(ctx),
+    { name: "artist_only", queries: [ctx.selfTitled ? ctx.artistName : ""] },
     { name: "album_only", queries: albumAloneQueries(ctx) },
   ]);
 }

@@ -205,13 +205,15 @@ test("Soulseek queries split words at punctuation and leave out Various Artists"
   assert.equal(pepper[0], "The Beatles Sgt Pepper s Lonely Hearts Club Band");
 });
 
-test("Soulseek album queries stay specific for self-titled and short titles", () => {
+test("Soulseek album queries try the year first for self-titled and short titles", () => {
   const weezer = allQueries(buildAlbumSearchTiers({ artistName: "Weezer", albumName: "Weezer", releaseYear: "1994" }));
   assert.equal(weezer[0], "Weezer 1994");
-  assert.ok(weezer.every((query) => !/weezer weezer/i.test(query) && query !== "Weezer"));
+  assert.equal(weezer.at(-1), "Weezer");
+  assert.ok(weezer.every((query) => !/weezer weezer/i.test(query)));
 
   const adele = allQueries(buildAlbumSearchTiers({ artistName: "Adele", albumName: "21", releaseYear: "2011" }));
-  assert.equal(adele[0], "Adele 21 2011");
+  assert.deepEqual(adele.slice(0, 2), ["Adele 21 2011", "Adele 21"]);
+  assert.ok(adele.includes("*dele 21"));
   assert.ok(!adele.includes("21"));
 });
 

@@ -39,7 +39,7 @@ For a track, Aurral searches for the artist and the album first. If that gives t
 Soulseek matches whole words and splits file names at punctuation, so Aurral replaces punctuation in its queries with spaces. "Sgt. Pepper's" becomes `Sgt Pepper s`.
 
 - A compilation is searched by its album title, without "Various Artists". A track from a compilation is searched with its own artist.
-- A self-titled album is searched as the artist and the year, and an album with a very short title, such as `21`, adds the year.
+- A self-titled album is searched as the artist and the year, and an album with a very short title, such as `21`, adds the year. Many folders leave the year out, so a short title is searched again without it, and a self-titled album falls back to the artist alone last.
 - If the first queries find too little, Aurral also tries the album title without edition or soundtrack wording, the other spelling of a volume number (`Vol 2` and `Volume II`), the artist with a wildcard in place of each first letter, and the artist's first alias.
 
 Soulseek hides results for some artist and album names entirely. No query finds those, so another download source has to supply them.
