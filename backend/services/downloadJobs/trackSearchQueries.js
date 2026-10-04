@@ -130,15 +130,18 @@ function readTrackSearchContext(context) {
   const albumName = soulseekQueryText(rawAlbum);
   const coreAlbum = soulseekQueryText(coreAlbumTitle(rawAlbum));
   const albumVariant = soulseekQueryText(volumeVariant(coreAlbumTitle(rawAlbum)));
-  const aliases = compilation ? [] : (context?.artistAliases || [])
+  const aliases = (context?.artistAliases || [])
+    .filter((alias) => !isVariousArtistsCredit(alias))
     .map(soulseekQueryText)
-    .filter((alias) => alias.length >= 4 && !sameWords(alias, artistName));
+    .filter((alias) => alias && !sameWords(alias, artistName));
   return {
     artistName,
+    // A compilation track's job names the track's own artist as an alias.
+    trackArtist: compilation ? aliases[0] || "" : artistName,
     albumName,
     coreAlbumName: sameWords(coreAlbum, albumName) ? "" : coreAlbum,
     albumVariant: sameWords(albumVariant, albumName) ? "" : albumVariant,
-    alias: aliases[0] || "",
+    alias: compilation ? "" : aliases.find((alias) => alias.length >= 4) || "",
     releaseYear: getYear(context?.releaseYear),
     selfTitled: sameWords(artistName, albumName),
     shortAlbum: albumName.length > 0 && albumName.length < 4,
@@ -217,16 +220,16 @@ export function buildTrackSearchTiers(context) {
   const ctx = readTrackSearchContext(context);
   const [track, ...trackVariants] = ctx.trackVariants;
   const strippedTrack = stripVersionSuffix(track);
-  const wildcardArtist = bypassBannedArtistTerm(ctx.artistName);
+  const wildcardArtist = bypassBannedArtistTerm(ctx.trackArtist);
   return orderTiers([
     { name: "base_album", queries: [artistAlbumQuery(ctx)] },
-    { name: "primary_track", queries: ctx.artistName && track ? [
-      joinSearchParts(ctx.artistName, track),
-      joinSearchParts(ctx.artistName, strippedTrack),
-      ...trackVariants.slice(0, 1).map((variant) => joinSearchParts(ctx.artistName, variant)),
+    { name: "primary_track", queries: ctx.trackArtist && track ? [
+      joinSearchParts(ctx.trackArtist, track),
+      joinSearchParts(ctx.trackArtist, strippedTrack),
+      ...trackVariants.slice(0, 1).map((variant) => joinSearchParts(ctx.trackArtist, variant)),
     ] : [] },
     ...releaseFallbackTiers(ctx),
-    { name: "wildcard_track", queries: [wildcardArtist !== ctx.artistName && track
+    { name: "wildcard_track", queries: [wildcardArtist !== ctx.trackArtist && track
       ? joinSearchParts(wildcardArtist, track) : ""] },
     { name: "alias_track", queries: [ctx.alias && track ? joinSearchParts(ctx.alias, track) : ""] },
     { name: "album_track", queries: [ctx.albumName && track ? joinSearchParts(ctx.albumName, track) : ""] },

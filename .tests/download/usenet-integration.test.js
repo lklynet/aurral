@@ -497,3 +497,12 @@ test("a Usenet single in another version is not offered for the original track",
     "track: Daft Punk - Get Lucky (feat. Pharrell Williams) [2013] FLAC",
   ]);
 });
+
+test("a compilation track takes a single by its own artist from Usenet", () => {
+  const context = { artistName: "Various Artists", artistAliases: ["Blue Swede"], trackName: "Hooked on a Feeling",
+    albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1" };
+  assert.deepEqual(admitted([
+    "Blue Swede - Hooked on a Feeling (1974)",
+    "Redbone - Come and Get Your Love (1974)",
+  ], context), [["Blue Swede - Hooked on a Feeling (1974)", "track"]]);
+});

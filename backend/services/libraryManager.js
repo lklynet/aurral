@@ -90,6 +90,7 @@ import {
   getArtistByMbid as getMetadataArtistByMbid,
   selectAlbumRelease,
 } from "./providers/brainzmashProvider.js";
+import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 const LIDARR_RETRY_MS = 60000;
 const LIDARR_MONITOR_OPTIONS = new Set(["none", "existing", "all", "future", "missing", "latest", "first"]);
 const ARTIST_LIST_CACHE_TTL_MS = 15 * 60 * 1000;
@@ -1604,6 +1605,13 @@ export class LibraryManager {
       albumJobs.find((job) => job.requestGroupId)?.requestGroupId ||
       randomUUID();
     const albumTrackTitles = albumTracks.map((track) => track.title).filter(Boolean);
+    const compilation = isVariousArtistsCredit(artist?.name, artist?.mbid);
+    // A compilation track's job keeps the album's "Various Artists" credit,
+    // which tags and media servers group the album by, and matches files by
+    // the track's own artist.
+    const artistAliasesFor = (track) => (compilation
+      ? [track.artistName].filter((name) => name && !isVariousArtistsCredit(name))
+      : artist?.metadata?.aliases || []);
     const requestedTrackIds = Array.isArray(options.trackIds)
       ? new Set(options.trackIds.map(Number))
       : null;
@@ -1712,7 +1720,7 @@ export class LibraryManager {
           trackNumber: relation?.trackNumber || 0,
           albumTrackCount: albumTracks.length,
           albumTrackTitles,
-          artistAliases: artist?.metadata?.aliases || [],
+          artistAliases: artistAliasesFor(track),
           managedBy: "aurral",
           requestGroupId,
           reason: "Aurral album request",
@@ -2445,6 +2453,13 @@ export class LibraryManager {
       providerArtists.find((entry) => String(entry?.id || "").trim().toLowerCase() === artistMbid) ||
       providerArtists[0] ||
       null;
+    // A compilation keeps "Various Artists" on the album and names each
+    // track's own artist.
+    const compilation = isVariousArtistsCredit(artist.name, artist.mbid);
+    const trackArtistNames = new Map(providerArtists.map((entry) =>
+      [String(entry?.id || "").trim().toLowerCase(), String(entry?.name || "").trim()]));
+    const trackArtistName = (track) => (compilation
+      && trackArtistNames.get(String(track.artistId || "").trim().toLowerCase())) || null;
     const resolvedAlbumName = String(metadata?.title || albumName || "").trim();
     if (!resolvedAlbumName) {
       return finishExistingOr({
@@ -2488,7 +2503,7 @@ export class LibraryManager {
           identityKey: buildIdentityKey("recording", track.trackMbid),
           mbid: track.trackMbid,
           title: track.title,
-          artistName: artist.name || providerArtist?.name || null,
+          artistName: trackArtistName(track) || artist.name || providerArtist?.name || null,
           metadata: {
             id: track.trackMbid,
             foreignRecordingId: track.trackMbid,

@@ -224,3 +224,14 @@ test("Soulseek album queries fall back to the artist alias and the other volume 
   assert.ok(queries.includes("Daft Punk Homework Volume II"));
   assert.ok(queries.includes("Thomas Guy Man Homework Vol 2"));
 });
+
+test("a compilation track searches with its own artist, never Various Artists", () => {
+  const queries = allQueries(buildTrackSearchTiers({
+    artistName: "Various Artists",
+    artistAliases: ["Blue Swede"],
+    albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1",
+    trackName: "Hooked on a Feeling",
+  }));
+  assert.equal(queries[0], "Blue Swede Hooked on a Feeling");
+  assert.ok(queries.every((query) => !/various/i.test(query)));
+});

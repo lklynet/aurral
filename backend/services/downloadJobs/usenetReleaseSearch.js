@@ -129,7 +129,7 @@ function withoutCredits(title) {
 
 function readReleaseRequest(context) {
   const compilation = context?.compilation === true || isVariousArtistsCredit(context?.artistName);
-  const artists = compilation ? [] : [context?.artistName, ...(context?.artistAliases || [])]
+  const artists = (compilation ? creditedArtists(context) : [context?.artistName, ...(context?.artistAliases || [])])
     .map((name) => String(name || "").trim())
     .filter(Boolean)
     .flatMap((name) => [name, name.replace(/^the\s+/iu, "")]);
@@ -163,15 +163,15 @@ export function rankUsenetReleases(releases, context, options = {}) {
 
     // Identity gate: the artist (any artist for a compilation) and the album
     // or track title appear in the release title.
-    const hasArtist = request.compilation || request.artists.some((name) => containsPhrase(words, name));
     const hasAlbum = request.albums.some((album) => containsPhrase(words, album));
+    const hasArtist = (request.compilation && hasAlbum)
+      || request.artists.some((name) => containsPhrase(words, name));
     const hasTrack = !hasAlbum && request.tracks.some((track) => containsPhrase(words, track));
     // A single or track release must be the requested version: a remix or
     // radio edit of the track is not downloaded for the original.
     const otherVersion = hasTrack
       && !checkVariantCompatibility({ trackName: request.trackName }, { title }).compatible;
-    const admissible = hasAudioCategory(release) && hasArtist && (hasAlbum || hasTrack)
-      && !(request.compilation && !hasAlbum) && !otherVersion;
+    const admissible = hasAudioCategory(release) && hasArtist && (hasAlbum || hasTrack) && !otherVersion;
     if (!admissible) {
       ranked.push({
         raw,
@@ -254,9 +254,17 @@ export function newznabQueryText(value) {
 // Lidarr's plan: a Newznab music search when an indexer supports it, then
 // one "Artist Album" text search. A track also tries "Artist Title" for a
 // single. A compilation is listed as "VA" or by its title alone.
+// A compilation track's job names the track's own artist as an alias.
+function creditedArtists(context) {
+  return (context?.artistAliases || [])
+    .map((name) => String(name || "").trim())
+    .filter((name) => name && !isVariousArtistsCredit(name));
+}
+
 export function buildUsenetSearchQueries(context, { musicSearch = false, albumGrab = false } = {}) {
   const compilation = context?.compilation === true || isVariousArtistsCredit(context?.artistName);
   const artist = compilation ? "VA" : newznabQueryText(context?.artistName);
+  const trackArtist = compilation ? newznabQueryText(creditedArtists(context)[0]) : artist;
   const album = context?.albumName ? newznabQueryText(coreAlbumTitle(context.albumName)) : "";
   const track = albumGrab ? "" : newznabQueryText(context?.trackName);
   const year = album && artist.toLowerCase() === album.toLowerCase() ? getYear(context?.releaseYear) : null;
@@ -267,7 +275,7 @@ export function buildUsenetSearchQueries(context, { musicSearch = false, albumGr
   }
   if (artist && album) queries.push(join(artist, album, year));
   if (compilation && album) queries.push(album);
-  if (!compilation && artist && track) queries.push(join(artist, track));
+  if (trackArtist && track) queries.push(join(trackArtist, track));
   return [...new Set(queries)];
 }
 
