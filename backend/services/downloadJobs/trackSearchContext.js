@@ -7,6 +7,7 @@ import {
   getAlbumByMbid,
   listArtistAlbums,
   resolveAlbumByArtistAndTitle,
+  selectAlbumRelease,
 } from "../providers/brainzmashProvider.js";
 import {
   artistNamesMatch,
@@ -186,12 +187,7 @@ async function fetchReleaseContext(albumMbid) {
         String(album?.artistId || primaryArtist?.id || "").trim() || null;
       const artistName =
         String(primaryArtist?.name || "").trim() || null;
-      const releases = Array.isArray(album?.releases) ? album.releases : [];
-      const pickedRelease =
-        releases.find((release) => String(release?.status || "").toLowerCase() === "official") ||
-        releases.find((release) => Array.isArray(release?.tracks) && release.tracks.length > 0) ||
-        releases[0] ||
-        null;
+      const pickedRelease = selectAlbumRelease(album);
       if (!pickedRelease) {
         return {
           albumName: String(album?.title || "").trim() || null,

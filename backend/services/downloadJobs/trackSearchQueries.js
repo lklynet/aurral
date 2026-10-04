@@ -180,6 +180,17 @@ function buildAlbumTrackTierQueries(ctx) {
   return uniqueQueries(queries, 3);
 }
 
+// A whole-release grab needs results that list the album folder, so it
+// searches for the album alone and never for one of its track titles.
+export function buildAlbumSearchTiers(context) {
+  const ctx = readTrackSearchContext(context);
+  return [
+    { tier: 0, name: "base_album", queries: buildBaseAlbumTierQueries(ctx) },
+    { tier: 1, name: "wildcard_album", queries: buildWildcardAlbumTierQueries(ctx) },
+    { tier: 2, name: "album_only", queries: buildAlbumOnlyTierQueries(ctx) },
+  ].filter((tier) => tier.queries.length > 0);
+}
+
 export function buildTrackSearchTiers(context) {
   const ctx = readTrackSearchContext(context);
   const tiers = [];

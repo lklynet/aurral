@@ -5,18 +5,35 @@ import {
   parseListingTitle,
   selectReleaseSession,
 } from "./trackMatching/nativeMatcher.js";
+import {
+  getAdvertisedQualityRank,
+  isAdvertisedQualityEligible,
+} from "./qualityProfileModel.js";
+import { candidateReleasesForJobs } from "./albumReleases.js";
 
 const AUDIO_EXTENSIONS = new Set([".flac", ".mp3", ".m4a", ".ogg", ".wav", ".aac", ".opus", ".alac", ".ape", ".wma"]);
+const MAX_FOLDER_CANDIDATES = 3;
 
-function folderFitsRequest(folder, jobs) {
-  const names = jobs.flatMap((job) => [job.artistName, ...(job.artistAliases || [])])
-    .map(normalizeMatchText).filter(Boolean);
+function requestedArtistNames(jobs) {
+  return [...new Set(jobs.flatMap((job) => [job.artistName, ...(job.artistAliases || [])])
+    .map((name) => String(name || "").trim()).filter(Boolean))];
+}
+
+function folderLabels(folder) {
+  return String(folder.directoryPath || "").split(/[\\/]/).map(normalizeMatchText);
+}
+
+function folderArtist(folder, names) {
+  const labels = folderLabels(folder);
+  return names.find((name) => {
+    const key = normalizeMatchText(name);
+    return key && labels.some((label) => ` ${label} `.includes(` ${key} `));
+  }) || null;
+}
+
+function folderNamesAlbum(folder, jobs) {
   const albumName = normalizeMatchText(jobs[0].albumName);
-  return String(folder.directoryPath || "").split(/[\\/]/).some((segment) => {
-    const label = normalizeMatchText(segment);
-    return names.some((name) => ` ${label} `.includes(` ${name} `))
-      || (albumName && label === albumName);
-  });
+  return Boolean(albumName) && folderLabels(folder).includes(albumName);
 }
 
 function groupAlbumDiscFolders(groups) {
@@ -34,9 +51,10 @@ function groupAlbumDiscFolders(groups) {
   return [...albums.values()];
 }
 
-function soulseekFile(item, jobs) {
+// A folder that names the requested artist vouches for the artist of files
+// whose names carry only a title.
+function soulseekFile(item, names, artistFromFolder) {
   const parsed = parseListingTitle(item.file);
-  const names = jobs.flatMap((job) => [job.artistName, ...(job.artistAliases || [])]).filter(Boolean);
   let title = parsed.title || "";
   let artist = null;
   for (const name of names) {
@@ -50,44 +68,92 @@ function soulseekFile(item, jobs) {
   const seconds = Number(item.length);
   return {
     title,
-    artists: artist ? [artist] : [],
+    artists: [artist || artistFromFolder].filter(Boolean),
     durationMs: Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : null,
     trackNumber: parsed.trackNumber,
     raw: item,
   };
 }
 
-export function selectSoulseekAlbumFolder(results, jobs) {
-  if (!Array.isArray(jobs) || jobs.length < 2) return { decision: "skip", selected: null };
+function peerOrder(option) {
+  const raw = option.folder.files[0]?.raw || {};
+  return {
+    freeSlot: Number(raw.slots) > 0 ? 0 : 1,
+    queueLength: Number(raw.queueLength) || 0,
+    speed: Number(raw.speed) || 0,
+  };
+}
+
+// A complete copy comes first, then the best quality in the profile, then
+// the closest fit, then the peer most likely to upload soon.
+function compareFolderOptions(left, right) {
+  const leftPeer = peerOrder(left);
+  const rightPeer = peerOrder(right);
+  return right.assessment.coverage - left.assessment.coverage
+    || left.folder.qualityRank - right.folder.qualityRank
+    || right.assessment.fit - left.assessment.fit
+    || leftPeer.freeSlot - rightPeer.freeSlot
+    || leftPeer.queueLength - rightPeer.queueLength
+    || rightPeer.speed - leftPeer.speed;
+}
+
+export function selectSoulseekAlbumFolder(results, jobs, { releases = [], profile = null } = {}) {
+  if (!Array.isArray(jobs) || jobs.length < 2) {
+    return { decision: "skip", selected: null, candidates: [] };
+  }
   const leader = jobs[0];
-  const tracks = jobs.map((job) => ({
-    title: job.trackName,
-    artists: [job.artistName].filter(Boolean),
-    artistAliases: job.artistAliases || [],
-    durationMs: job.durationMs,
-    recordingMbid: job.trackMbid,
-    trackNumber: job.trackNumber,
-  }));
+  const names = requestedArtistNames(jobs);
+  const qualityAllowed = (item) => !profile
+    || isAdvertisedQualityEligible(item.file, item.bitrate ?? item.bitRate, { profile });
   const groups = groupAlbumDiscFolders(groupSoulseekSearchResults(results, {
     isAudioFile: (filePath) => AUDIO_EXTENSIONS.has(getFileExtension(filePath)),
   }));
-  const folders = groups.filter((group) => folderFitsRequest(group, jobs)).map((group) => ({
-    rawGroup: group,
-    files: group.audioFiles.map((item) => soulseekFile(item, jobs)),
-  }));
-  const result = selectReleaseSession({
-    releases: [{ tracks }], folders,
-    requestedRecordingMbid: leader.trackMbid || null,
+  const folders = groups.flatMap((group) => {
+    const artist = folderArtist(group, names);
+    if (!artist && !folderNamesAlbum(group, jobs)) return [];
+    const audioFiles = group.audioFiles.filter(qualityAllowed);
+    if (audioFiles.length === 0) return [];
+    return [{
+      rawGroup: group,
+      files: audioFiles.map((item) => soulseekFile(item, names, artist)),
+      qualityRank: profile
+        ? Math.max(...audioFiles.map((item) =>
+          getAdvertisedQualityRank(item.file, item.bitrate ?? item.bitRate, profile)))
+        : 0,
+    }];
   });
+  const candidateReleases = candidateReleasesForJobs(jobs, releases);
+  const result = selectReleaseSession({
+    releases: candidateReleases,
+    folders,
+    requestedRecordingMbid: leader.trackMbid || null,
+    compare: compareFolderOptions,
+  });
+  const seenFolders = new Set();
+  const seenUsers = new Set();
+  const candidates = [];
+  for (const option of result.options) {
+    const group = option.folder.rawGroup;
+    const folderKey = `${group.user}\0${group.directoryPath}`;
+    if (seenFolders.has(folderKey) || seenUsers.has(group.user)) continue;
+    seenFolders.add(folderKey);
+    seenUsers.add(group.user);
+    candidates.push({
+      group,
+      files: option.assessment.assignment.pairs.map((pair) => ({
+        ...option.folder.files[pair.fileIndex].raw,
+        jobId: jobs[pair.trackIndex].id,
+      })),
+      coverage: option.assessment.coverage,
+      fit: option.assessment.fit,
+      releaseId: option.release.id,
+    });
+    if (candidates.length >= MAX_FOLDER_CANDIDATES) break;
+  }
   return {
-    decision: result.decision,
-    selected: result.selected ? {
-      group: result.selected.folder.rawGroup,
-      files: result.selected.assessment.assignment.pairs.map((pair) =>
-        result.selected.folder.files[pair.fileIndex].raw),
-      coverage: result.selected.assessment.coverage,
-      fit: result.selected.assessment.fit,
-    } : null,
+    decision: candidates.length > 0 ? "selectable" : "skip",
+    selected: candidates[0] || null,
+    candidates,
     policyVersion: result.policyVersion,
   };
 }

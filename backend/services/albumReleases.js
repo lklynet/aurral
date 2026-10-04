@@ -1,0 +1,72 @@
+import { getAlbumByMbid } from "./providers/brainzmashProvider.js";
+import { normalizeMatchText } from "./trackMatching/nativeMatcher.js";
+
+const MBID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+export function jobReleaseTrack(job) {
+  return {
+    title: job.trackName,
+    artists: [job.artistName].filter(Boolean),
+    artistAliases: job.artistAliases || [],
+    durationMs: job.durationMs,
+    trackNumber: job.trackNumber,
+    recordingMbid: job.trackMbid,
+  };
+}
+
+// Every release of the album's release group, so a download can match the
+// edition it actually is. An unavailable lookup leaves only the tracklist
+// stored on the jobs.
+export async function loadAlbumReleases(albumMbid) {
+  const id = String(albumMbid || "").trim();
+  if (!MBID_PATTERN.test(id)) return [];
+  try {
+    const album = await getAlbumByMbid(id);
+    return (album?.releases || [])
+      .filter((release) => release?.tracks?.length > 0)
+      .map((release) => ({
+        id: release.id,
+        tracks: release.tracks.map((track) => ({
+          title: track.title,
+          durationMs: track.durationMs,
+          trackNumber: track.trackPosition ?? track.trackNumber,
+          recordingMbid: track.recordingId,
+        })),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+// Lines a release up with the requested jobs: each job takes the release
+// track with its recording ID, or else the only track with its title.
+export function releaseTracksForJobs(release, jobs) {
+  const byRecording = new Map();
+  const byTitle = new Map();
+  for (const track of release.tracks) {
+    const recording = String(track.recordingMbid || "").toLowerCase();
+    if (recording) byRecording.set(recording, track);
+    const title = normalizeMatchText(track.title);
+    byTitle.set(title, byTitle.has(title) ? null : track);
+  }
+  return jobs.map((job) => {
+    const track = byRecording.get(String(job.trackMbid || "").toLowerCase())
+      || byTitle.get(normalizeMatchText(job.trackName));
+    return {
+      ...jobReleaseTrack(job),
+      durationMs: track?.durationMs || job.durationMs,
+      trackNumber: track ? track.trackNumber : null,
+    };
+  });
+}
+
+export function candidateReleasesForJobs(jobs, releases = []) {
+  return [
+    { id: null, tracks: jobs.map(jobReleaseTrack), titles: null },
+    ...releases.map((release) => ({
+      id: release.id,
+      tracks: releaseTracksForJobs(release, jobs),
+      titles: release.tracks.map((track) => track.title),
+    })),
+  ];
+}

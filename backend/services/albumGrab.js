@@ -2,6 +2,7 @@ import path from "node:path";
 import { recordAlbumGrabQueued, recordAlbumGrabPhase, recordAlbumTrackState } from "./albumGrabActivity.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { assignDownloadedAlbumFiles } from "./albumReleaseAssignment.js";
+import { loadAlbumReleases } from "./albumReleases.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
 import { resolveDownloadRoot } from "./downloadPaths.js";
 import {
@@ -74,7 +75,8 @@ export async function finishAlbumGrab(payload, { filePaths, source, album = null
   const jobs = albumGrabJobs(payload);
   if (jobs.length === 0) return null;
   recordAlbumGrabQueued(payload, jobs);
-  const assigned = await assignDownloadedAlbumFiles({ jobs, filePaths, source });
+  const releases = await loadAlbumReleases(jobs[0].albumMbid);
+  const assigned = await assignDownloadedAlbumFiles({ jobs, filePaths, source, releases });
   const reasons = new Map(assigned.rejected.map(({ jobId, reason }) =>
     [jobId, `Album file failed verification: ${reason}`]));
   const playlistRoot = resolveDownloadRoot();

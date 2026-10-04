@@ -272,7 +272,7 @@ test("post-download verification requires corroboration and rejects original tag
   }).decision, "matched");
 });
 
-test("release session requires the requested slot and abstains between equal folders", () => {
+test("release session requires the requested slot and lets the caller order equal folders", () => {
   const release = { key: "release", tracks: [
     { title: "First Song", artists: ["The Band"], durationMs: 180000, recordingMbid: "first" },
     { title: "Second Song", artists: ["The Band"], durationMs: 200000, recordingMbid: "second" },
@@ -289,6 +289,10 @@ test("release session requires the requested slot and abstains between equal fol
     requestedRecordingMbid: "second" }).selected?.folder.key, "good");
   assert.equal(selectReleaseSession({ releases: [release], folders: [wrongSlot],
     requestedRecordingMbid: "second" }).decision, "skip");
-  assert.equal(selectReleaseSession({ releases: [release], folders: [good, { ...good, key: "copy" }],
-    requestedRecordingMbid: "second" }).decision, "uncertain");
+  const copies = [good, { ...good, key: "copy" }];
+  assert.equal(selectReleaseSession({ releases: [release], folders: copies,
+    requestedRecordingMbid: "second" }).selected.folder.key, "good");
+  assert.equal(selectReleaseSession({ releases: [release], folders: copies,
+    requestedRecordingMbid: "second",
+    compare: (left, right) => right.folderIndex - left.folderIndex }).selected.folder.key, "copy");
 });

@@ -4,6 +4,7 @@ import { parseFile } from "music-metadata";
 import { assignReleaseFiles, parseListingTitle } from "./trackMatching/nativeMatcher.js";
 import { validateDownloadedTrackFile } from "./trackMatching/postDownloadValidator.js";
 import { buildResolvedJobTrack } from "./downloadUtils.js";
+import { candidateReleasesForJobs } from "./albumReleases.js";
 
 function positiveDurationMs(parsed) {
   const seconds = Number(parsed?.format?.duration);
@@ -21,18 +22,46 @@ function fileEvidence(filePath, parsed) {
   };
 }
 
-function trackEvidence(job) {
+function rankAssignment(release, files) {
+  const assignment = assignReleaseFiles(release.tracks, files);
   return {
-    title: job.trackName,
-    artists: [job.artistName].filter(Boolean),
-    artistAliases: job.artistAliases || [],
-    durationMs: job.durationMs,
-    trackNumber: job.trackNumber,
-    recordingMbid: job.trackMbid,
+    release,
+    assignment,
+    pairs: assignment.pairs.length,
+    positions: assignment.pairs.filter((pair) => Number(release.tracks[pair.trackIndex].trackNumber) > 0
+      && Number(release.tracks[pair.trackIndex].trackNumber) === Number(files[pair.fileIndex].trackNumber)).length,
+    score: assignment.pairs.reduce((sum, pair) => sum + pair.score, 0),
   };
 }
 
-export async function assignDownloadedAlbumFiles({ jobs, filePaths, source, parseAudio = parseFile }) {
+// Like an import in Lidarr, the files decide which edition arrived: the
+// release that assigns the most files, with the most matching positions,
+// most closely, wins.
+function assignBestRelease(jobs, files, releases) {
+  return candidateReleasesForJobs(jobs, releases)
+    .map((release) => rankAssignment(release, files))
+    .reduce((best, entry) => (entry.pairs - best.pairs
+      || entry.positions - best.positions
+      || entry.score - best.score) > 0 ? entry : best);
+}
+
+function requestForRelease(job, release, track) {
+  const request = buildResolvedJobTrack(job);
+  if (!release.titles) return request;
+  return {
+    ...request,
+    trackNumber: track.trackNumber,
+    albumTrackTitles: release.titles,
+  };
+}
+
+export async function assignDownloadedAlbumFiles({
+  jobs,
+  filePaths,
+  source,
+  releases = [],
+  parseAudio = parseFile,
+}) {
   const readable = [];
   const seen = new Set();
   for (const filePath of filePaths || []) {
@@ -48,7 +77,11 @@ export async function assignDownloadedAlbumFiles({ jobs, filePaths, source, pars
       // An unreadable file cannot be imported.
     }
   }
-  const assignment = assignReleaseFiles(jobs.map(trackEvidence), readable.map((entry) => entry.evidence));
+  const { release, assignment } = assignBestRelease(
+    jobs,
+    readable.map((entry) => entry.evidence),
+    releases,
+  );
   const accepted = [];
   const rejected = [];
   const unassignedJobIds = new Set(jobs.map((job) => job.id));
@@ -56,7 +89,7 @@ export async function assignDownloadedAlbumFiles({ jobs, filePaths, source, pars
     const job = jobs[pair.trackIndex];
     const entry = readable[pair.fileIndex];
     const validation = await validateDownloadedTrackFile({
-      request: buildResolvedJobTrack(job),
+      request: requestForRelease(job, release, release.tracks[pair.trackIndex]),
       filePath: entry.filePath,
       source,
       options: { parseFile: parseAudio, strict: true },
@@ -73,6 +106,7 @@ export async function assignDownloadedAlbumFiles({ jobs, filePaths, source, pars
     rejected,
     unassignedJobIds: [...unassignedJobIds],
     unreadableCount: (filePaths || []).length - readable.length,
+    releaseId: release.id,
     policyVersion: assignment.policyVersion,
   };
 }

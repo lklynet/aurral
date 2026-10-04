@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   bypassBannedArtistTerm,
+  buildAlbumSearchTiers,
   buildTrackSearchTiers,
   buildTrackQueryVariants,
   selectRankedMatchAttempts,
@@ -199,4 +200,16 @@ test("pipeline candidates preserve raw user/file identity for diversity selectio
       ["second-user", "B\\Song.flac"],
     ],
   );
+});
+
+test("an album grab searches for the album and never for a track title", () => {
+  const queries = buildAlbumSearchTiers({
+    artistName: "Radiohead",
+    trackName: "Paranoid Android",
+    albumName: "OK Computer",
+    releaseYear: "1997",
+  }).flatMap((tier) => tier.queries);
+  assert.ok(queries.length > 0);
+  assert.ok(queries.every((query) => query.includes("OK Computer")));
+  assert.ok(queries.every((query) => !query.includes("Paranoid Android")));
 });

@@ -13,7 +13,6 @@ export const MATCH_POLICY = Object.freeze({
   runnerUpMargin: 0.05,
   releaseMinCoverage: 0.8,
   releaseFitFloor: 0.8,
-  releaseRunnerUpMargin: 0.05,
 });
 
 export function getMatcherStatus() {
@@ -284,7 +283,15 @@ export function assessRelease(release, folder, policy = MATCH_POLICY) {
   return { decision, coverage, fit, assignment, policyVersion: policy.version };
 }
 
-export function selectReleaseSession({ releases = [], folders = [], requestedRecordingMbid = null }, policy = MATCH_POLICY) {
+// Every folder that fits a release is a usable copy. Equal fits are usually
+// the same rip shared by several people, so the caller's comparison decides
+// which copy to take instead of abstaining.
+export function selectReleaseSession({
+  releases = [],
+  folders = [],
+  requestedRecordingMbid = null,
+  compare = null,
+}, policy = MATCH_POLICY) {
   const options = [];
   for (const [folderIndex, folder] of folders.entries()) {
     for (const [releaseIndex, release] of releases.entries()) {
@@ -301,15 +308,17 @@ export function selectReleaseSession({ releases = [], folders = [], requestedRec
       options.push({ folder, release, folderIndex, releaseIndex, assessment, requestedFileIndex });
     }
   }
-  options.sort((left, right) => right.assessment.fit - left.assessment.fit
+  options.sort((left, right) => (compare ? compare(left, right) : 0)
+    || right.assessment.fit - left.assessment.fit
     || right.assessment.coverage - left.assessment.coverage
     || left.folderIndex - right.folderIndex || left.releaseIndex - right.releaseIndex);
   const best = options[0] || null;
-  const runnerUp = options[1] || null;
-  const decision = !best ? "skip" : runnerUp
-    && best.assessment.fit - runnerUp.assessment.fit < policy.releaseRunnerUpMargin
-    ? "uncertain" : "selectable";
-  return { decision, selected: decision === "selectable" ? best : null, options, policyVersion: policy.version };
+  return {
+    decision: best ? "selectable" : "skip",
+    selected: best,
+    options,
+    policyVersion: policy.version,
+  };
 }
 
 export function isSameAlbumTitle(requested, observed) {

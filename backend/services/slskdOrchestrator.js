@@ -6,6 +6,7 @@ import { logger, safeLogDiagnostic } from "./logger.js";
 import { enqueuePipelineJob, listHonkerJobs } from "./honkerDb.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import {
+  buildAlbumSearchTiers,
   buildTrackSearchTiers,
   selectRankedMatchAttempts,
 } from "./downloadJobs/trackSearchQueries.js";
@@ -33,6 +34,7 @@ import {
   releaseAlbumGrabJobs,
 } from "./albumGrab.js";
 import { selectSoulseekAlbumFolder } from "./albumReleaseSearch.js";
+import { loadAlbumReleases } from "./albumReleases.js";
 import {
   getDownloadSourceNotConfiguredMessage,
   getEnabledDownloadSources,
@@ -100,11 +102,18 @@ function isDeniedSoulseekFile(raw, deniedSourceKeys) {
   return deniedSourceKeys?.has(`${user}\0${file}`) === true;
 }
 
+function selectAlbumFolders(aggregated, searchOptions) {
+  return selectSoulseekAlbumFolder(aggregated.filter((raw) =>
+    !isDeniedSoulseekFile(raw, searchOptions.deniedSourceKeys)
+    && !searchOptions.isUserBlacklisted?.(raw.user)), searchOptions.albumJobs, {
+    releases: searchOptions.albumReleases || [],
+    profile: searchOptions.qualityProfile || getQualityProfile(),
+  });
+}
+
 export function hasSlskdSearchCandidates(aggregated, resolvedTrack, searchOptions) {
   if (searchOptions?.albumJobs) {
-    return selectSoulseekAlbumFolder(aggregated.filter((raw) =>
-      !isDeniedSoulseekFile(raw, searchOptions.deniedSourceKeys)
-      && !searchOptions.isUserBlacklisted?.(raw.user)), searchOptions.albumJobs).decision === "selectable";
+    return selectAlbumFolders(aggregated, searchOptions).decision === "selectable";
   }
   // Node-only pre-filter: no matcher process is spawned during searches.
   // Soulseek folder plausibility is source evidence, not a fuzzy identity
@@ -813,7 +822,10 @@ async function handleSearch(payload) {
     .then(({ recordTrackJobSearching }) => recordTrackJobSearching(job))
     .catch((err) => { logger.warn("slskd", "Failed to record track job searching", { jobId: job.id, error: err?.message || String(err) }); });
   const resolvedTrack = buildResolvedTrack(job, payload.track);
-  const searchTiers = buildSlskdSearchTierGroups(resolvedTrack);
+  const albumJobs = payload.albumGrab === true ? albumGrabJobs(payload) : null;
+  const searchTiers = albumJobs
+    ? buildAlbumSearchTiers(resolvedTrack)
+    : buildSlskdSearchTierGroups(resolvedTrack);
   const currentTier = payload.upgradeForJobId
     ? downloadTracker.getJob(payload.upgradeForJobId)?.qualityTier
     : null;
@@ -829,7 +841,8 @@ async function handleSearch(payload) {
     qualityProfile: getQualityProfile(),
     currentTier,
     upgrade: payload.upgrade === true,
-    albumJobs: payload.albumGrab === true ? albumGrabJobs(payload) : null,
+    albumJobs,
+    albumReleases: albumJobs ? await loadAlbumReleases(job.albumMbid) : [],
   };
   const aggregated = [];
   const seen = new Set();
@@ -867,19 +880,19 @@ async function handleSearch(payload) {
     updateSlskdMetaStmt.run(searchIdRef.value, null, null, null, job.id);
     job.slskdSearchId = searchIdRef.value;
   }
-  if (payload.albumGrab === true) {
-    const selection = selectSoulseekAlbumFolder(aggregated.filter((raw) =>
-      !isDeniedSoulseekFile(raw, deniedSourceKeys)
-      && !searchOptions.isUserBlacklisted?.(raw.user)), searchOptions.albumJobs);
+  if (albumJobs) {
+    const selection = selectAlbumFolders(aggregated, searchOptions);
     if (selection.decision !== "selectable") {
       return failOrTryNextSource(payload, job, "No selectable Soulseek album folder");
     }
     return {
       ...payload, phase: "download", source: "slskd", searchId: searchIdRef.value,
       searchIds: [...new Set(searchIds)], candidateIndex: 0,
-      candidates: [{ raw: { user: selection.selected.group.user,
-        files: selection.selected.files },
-        resolvedAlbumName: job.albumName, score: selection.selected.fit }],
+      candidates: selection.candidates.map((candidate) => ({
+        raw: { user: candidate.group.user, files: candidate.files },
+        resolvedAlbumName: job.albumName,
+        score: candidate.fit,
+      })),
       policyVersion: selection.policyVersion,
     };
   }

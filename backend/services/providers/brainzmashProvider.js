@@ -333,7 +333,7 @@ function applyReleaseTypeFilter(albums, releaseTypes = []) {
   });
 }
 
-function selectedReleaseForAlbum(album) {
+export function selectAlbumRelease(album) {
   const releases = Array.isArray(album?.releases) ? album.releases : [];
   return (
     releases.find(
@@ -370,7 +370,7 @@ export async function getAlbumByMbid(albumMbid, { signal, forceRefresh = false }
 
 export async function getAlbumTracksByAlbumMbid(albumMbid) {
   const album = await getAlbumByMbid(albumMbid);
-  const release = selectedReleaseForAlbum(album);
+  const release = selectAlbumRelease(album);
   return Array.isArray(release?.tracks) ? release.tracks : [];
 }
 

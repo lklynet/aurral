@@ -12,7 +12,7 @@ const releases = readFileSync(new URL("./fixtures/source-releases.jsonl", import
   .trim().split("\n").map((line) => JSON.parse(line));
 const byRelease = new Map(releases.map((release) => [release.release_mbid, release]));
 const byRecording = new Map();
-const diagnostics = { noRequest: 0, noFolder: 0, folderTie: 0, noRequestedFile: 0, examples: [] };
+const diagnostics = { noRequest: 0, noFolder: 0, noRequestedFile: 0, examples: [] };
 for (const release of releases) {
   for (const track of release.tracks) {
     if (!byRecording.has(track.recording_mbid)) byRecording.set(track.recording_mbid, { release, track });
@@ -77,10 +77,6 @@ function decide(item) {
     })
       .sort((left, right) => right.fit.fit - left.fit.fit || left.folder.key.localeCompare(right.folder.key));
     if (!selectable.length) { diagnostics.noFolder += 1; return null; }
-    if (selectable[1] && selectable[0].fit.fit - selectable[1].fit.fit < 0.05) {
-      diagnostics.folderTie += 1;
-      return null;
-    }
     const chosen = selectable[0];
     if (item.flow === "track-with-release") {
       const trackIndex = chosen.release.tracks.findIndex(

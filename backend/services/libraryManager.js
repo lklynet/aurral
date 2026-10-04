@@ -88,6 +88,7 @@ import { runMonitoringRepairSequence } from "./libraryMonitoringRepair.js";
 import {
   getAlbumByMbid as getMetadataAlbumByMbid,
   getArtistByMbid as getMetadataArtistByMbid,
+  selectAlbumRelease,
 } from "./providers/brainzmashProvider.js";
 const LIDARR_RETRY_MS = 60000;
 const LIDARR_MONITOR_OPTIONS = new Set(["none", "existing", "all", "future", "missing", "latest", "first"]);
@@ -2424,16 +2425,7 @@ export class LibraryManager {
       });
     }
 
-    const selectedRelease =
-      metadata?.releases?.find(
-        (release) =>
-          String(release?.status || "").toLowerCase() === "official" &&
-          Array.isArray(release?.tracks) &&
-          release.tracks.length > 0,
-      ) ||
-      metadata?.releases?.find((release) => Array.isArray(release?.tracks) && release.tracks.length > 0) ||
-      metadata?.releases?.[0] ||
-      null;
+    const selectedRelease = selectAlbumRelease(metadata);
     const tracks = (Array.isArray(selectedRelease?.tracks) ? selectedRelease.tracks : [])
       .map((track) => ({
         ...track,

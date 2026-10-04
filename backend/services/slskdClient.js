@@ -198,6 +198,7 @@ function normalizeSearchFile(file, user, response = null, fromLockedList = false
         readProperty(response, "uploadSpeed", "UploadSpeed") ??
         0,
     ),
+    queueLength: Number(readProperty(response, "queueLength", "QueueLength") ?? 0) || 0,
     bitRate,
     bitrate: bitRate,
     length,
