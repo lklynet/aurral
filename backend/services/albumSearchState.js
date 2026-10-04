@@ -37,16 +37,37 @@ const getCommandAlbumIds = (command) => {
   return [];
 };
 
-const isFailedImportEvent = (eventType) => {
-  const type = String(eventType || "").toLowerCase();
-  return type === "albumimportincomplete" || type.includes("incomplete");
-};
+const IMPORTED_EVENTS = new Set(["downloadimported", "trackfileimported", "artistfolderimported"]);
+const FAILED_EVENTS = new Set(["downloadfailed", "albumimportincomplete", "downloadignored"]);
+const FAILED_QUEUE_STATES = new Set([
+  "downloadfailed",
+  "downloadfailedpending",
+  "importblocked",
+  "importfailed",
+]);
 
-const isSuccessfulImportEvent = (eventType) => {
-  const type = String(eventType || "").toLowerCase();
-  if (!type.includes("import")) return false;
-  return !isFailedImportEvent(type);
-};
+// Lidarr history event types. Rename, retag, and delete events describe
+// files already in the library, so they say nothing about a download.
+export function classifyLidarrDownloadEvent(eventType) {
+  const type = String(eventType || "").trim().toLowerCase();
+  if (type === "grabbed") return "grabbed";
+  if (IMPORTED_EVENTS.has(type)) return "imported";
+  if (FAILED_EVENTS.has(type)) return "failed";
+  return null;
+}
+
+export function readLidarrQueueItemStatus(item) {
+  const state = String(item?.trackedDownloadState || "").trim().toLowerCase();
+  const health = String(item?.trackedDownloadStatus || "").trim().toLowerCase();
+  const failed = FAILED_QUEUE_STATES.has(state)
+    || String(item?.status || "").trim().toLowerCase() === "failed"
+    || health === "error"
+    || (health === "warning" && state !== "downloading");
+  if (failed) return { status: "failed" };
+  const size = Number(item?.size || 0);
+  const sizeLeft = Number(item?.sizeleft || 0);
+  return { status: "downloading", progress: size ? Math.round((1 - sizeLeft / size) * 100) : 0 };
+}
 
 export const parseLidarrSearchContext = ({ queue, history, commands } = {}) => {
   const queueItems = normalizeItems(queue);
@@ -103,19 +124,13 @@ export const parseLidarrSearchContext = ({ queue, history, commands } = {}) => {
     if (!Number.isFinite(recordTime) || now - recordTime > RECENT_HISTORY_MS) {
       continue;
     }
-    const eventType = String(record?.eventType || "").toLowerCase();
-    const sourceTitle = String(record?.sourceTitle || "").toLowerCase();
-    const dataString = JSON.stringify(record?.data || {}).toLowerCase();
-    const isGrabbed =
-      eventType.includes("grabbed") ||
-      sourceTitle.includes("grabbed") ||
-      dataString.includes("grabbed");
-    if (isSuccessfulImportEvent(eventType)) {
+    const event = classifyLidarrDownloadEvent(record?.eventType);
+    if (event === "imported") {
       importedAlbumIds.add(albumId);
       activeHistoryAlbumIds.add(albumId);
       continue;
     }
-    if (isGrabbed) {
+    if (event === "grabbed") {
       grabbedAlbumIds.add(albumId);
       activeHistoryAlbumIds.add(albumId);
     }

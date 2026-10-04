@@ -219,7 +219,7 @@ test("failed or stale history verifies albums with one bulk read", async (t) => 
   const normal = await getDownloadStatusesForAlbumIds(["100"], {
     queue: [],
     history: {
-      records: [{ albumId: 100, eventType: "AlbumGrabbed", date: new Date(now).toISOString() }],
+      records: [{ albumId: 100, eventType: "grabbed", date: new Date(now).toISOString() }],
     },
     commands: [],
   });
@@ -237,7 +237,7 @@ test("failed or stale history verifies albums with one bulk read", async (t) => 
         },
         {
           albumId: 102,
-          eventType: "AlbumGrabbed",
+          eventType: "grabbed",
           date: new Date(now - 16 * 60 * 1000).toISOString(),
         },
       ],
@@ -262,4 +262,31 @@ test("failed or stale history verifies albums with one bulk read", async (t) => 
   assert.equal(failedVerification[101].status, "failed");
   assert.equal(failedVerification[102].status, "failed");
   assert.deepEqual(calls, { bulk: 2, detail: 0 });
+});
+
+test("album status reads Lidarr event types rather than words in the history", async (t) => {
+  const now = Date.now();
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getAllAlbums", async () => [{ id: 201, statistics: { trackFileCount: 0 } }]);
+  const at = (minutesAgo) => new Date(now - minutesAgo * 60 * 1000).toISOString();
+  const statuses = await getDownloadStatusesForAlbumIds(["200", "201", "202", "203", "204"], {
+    queue: [
+      { albumId: 202, trackedDownloadState: "importBlocked", trackedDownloadStatus: "warning", size: 10, sizeleft: 0 },
+      { albumId: 203, trackedDownloadState: "downloading", trackedDownloadStatus: "warning", size: 10, sizeleft: 5 },
+    ],
+    history: { records: [
+      { albumId: 200, eventType: "downloadImported", date: at(30) },
+      { albumId: 200, eventType: "trackFileRenamed", date: at(1) },
+      { albumId: 201, eventType: "grabbed", sourceTitle: "Epic Fail - Album [FLAC]",
+        data: { message: "failover indexer" }, date: at(1) },
+      { albumId: 204, eventType: "trackFileRetagged", date: at(1) },
+    ] },
+    commands: [],
+  });
+  assert.equal(statuses[200].status, "added");
+  assert.equal(statuses[201].status, "processing");
+  assert.equal(statuses[202].status, "failed");
+  assert.equal(statuses[203].status, "downloading");
+  assert.equal(statuses[203].progress, 50);
+  assert.equal(statuses[204], undefined);
 });

@@ -3,9 +3,11 @@ import { dbOps } from "../../../db/helpers/index.js";
 import { noCache } from "../../../middleware/cache.js";
 import { requireAuth, requirePermission } from "../../../middleware/requirePermission.js";
 import {
-  parseLidarrSearchContext,
-  resolveAlbumSearchOutcome,
   albumHasTrackFiles,
+  classifyLidarrDownloadEvent,
+  parseLidarrSearchContext,
+  readLidarrQueueItemStatus,
+  resolveAlbumSearchOutcome,
 } from "../../../services/albumSearchState.js";
 import { logger } from "../../../services/logger.js";
 import { getLibraryTrackOwnership } from "../../../services/libraryQueryService.js";
@@ -63,13 +65,12 @@ export const getDownloadStatusesForAlbumIds = async (
       const latestHistoryByAlbumId = new Map();
       for (const h of historyItems) {
         if (h?.albumId == null) continue;
+        const event = classifyLidarrDownloadEvent(h?.eventType);
+        if (!event) continue;
         const historyTime = new Date(h?.date || h?.eventDate || 0).getTime();
         const existing = latestHistoryByAlbumId.get(h.albumId);
         if (!existing || historyTime > existing.historyTime) {
-          latestHistoryByAlbumId.set(h.albumId, {
-            history: h,
-            historyTime,
-          });
+          latestHistoryByAlbumId.set(h.albumId, { event, historyTime });
         }
       }
 
@@ -91,129 +92,30 @@ export const getDownloadStatusesForAlbumIds = async (
         if (!albumId || albumId === "undefined" || albumId === "null") continue;
         const lidarrAlbumId = parseInt(albumId, 10);
         if (isNaN(lidarrAlbumId)) continue;
+        const updatedAt = new Date().toISOString();
 
         const queueItem = queueByAlbumId.get(lidarrAlbumId);
-
         if (queueItem) {
-          const queueStatus = String(queueItem.status || "").toLowerCase();
-          const title = String(queueItem.title || "").toLowerCase();
-          const trackedDownloadState = String(queueItem.trackedDownloadState || "").toLowerCase();
-          const trackedDownloadStatus = String(queueItem.trackedDownloadStatus || "").toLowerCase();
-          const errorMessage = String(queueItem.errorMessage || "").toLowerCase();
-          const statusMessages = Array.isArray(queueItem.statusMessages)
-            ? queueItem.statusMessages.map((m) => String(m || "").toLowerCase()).join(" ")
-            : "";
-
-          const size = Number(queueItem.size || 0);
-          const sizeLeft = Number(queueItem.sizeleft || 0);
-          const hasActiveDownload = size > 0 && sizeLeft < size;
-          const isDownloadingState =
-            hasActiveDownload ||
-            queueStatus.includes("downloading") ||
-            queueStatus.includes("queued") ||
-            queueStatus.includes("processing");
-          const isExplicitFailure =
-            trackedDownloadState === "importfailed" ||
-            trackedDownloadState === "importFailed" ||
-            trackedDownloadState.includes("importfailed") ||
-            queueStatus.includes("failed") ||
-            queueStatus.includes("import fail") ||
-            title.includes("import fail") ||
-            trackedDownloadState.includes("fail") ||
-            trackedDownloadStatus.includes("fail") ||
-            (trackedDownloadStatus === "warning" && !isDownloadingState) ||
-            errorMessage.includes("fail") ||
-            errorMessage.includes("retrying") ||
-            statusMessages.includes("unmatched");
-
-          if (isDownloadingState) {
-            const progress = size ? Math.round((1 - sizeLeft / size) * 100) : 0;
-            statuses[albumId] = {
-              status: "downloading",
-              progress: progress,
-              updatedAt: new Date().toISOString(),
-            };
-          } else if (isExplicitFailure) {
-            statuses[albumId] = {
-              status: "failed",
-              updatedAt: new Date().toISOString(),
-            };
-          } else {
-            const progress = size ? Math.round((1 - sizeLeft / size) * 100) : 0;
-            statuses[albumId] = {
-              status: "downloading",
-              progress: progress,
-              updatedAt: new Date().toISOString(),
-            };
-          }
+          statuses[albumId] = { ...readLidarrQueueItemStatus(queueItem), updatedAt };
           continue;
         }
 
         if (searchingAlbumIds.has(lidarrAlbumId)) {
-          statuses[albumId] = {
-            status: "searching",
-            updatedAt: new Date().toISOString(),
-          };
+          statuses[albumId] = { status: "searching", updatedAt };
           continue;
         }
 
         const historyEntry = latestHistoryByAlbumId.get(lidarrAlbumId);
-        const recentHistory = historyEntry?.history;
-        const historyTime = historyEntry?.historyTime ?? 0;
-
-        if (recentHistory) {
-          const eventType = String(recentHistory.eventType || "").toLowerCase();
-          const data = recentHistory?.data || {};
-          const statusMessages = Array.isArray(data?.statusMessages)
-            ? data.statusMessages.map((m) => String(m || "").toLowerCase()).join(" ")
-            : String(data?.statusMessages?.[0] || "").toLowerCase();
-          const errorMessage = String(data?.errorMessage || "").toLowerCase();
-          const sourceTitle = String(recentHistory?.sourceTitle || "").toLowerCase();
-          if (historyEntry.dataString === undefined) {
-            historyEntry.dataString = JSON.stringify(data).toLowerCase();
-          }
-          const dataString = historyEntry.dataString;
-          const isGrabbed =
-            eventType.includes("grabbed") ||
-            sourceTitle.includes("grabbed") ||
-            dataString.includes("grabbed");
-          const isFailedDownload =
-            eventType.includes("fail") ||
-            statusMessages.includes("fail") ||
-            statusMessages.includes("error") ||
-            errorMessage.includes("fail") ||
-            errorMessage.includes("error") ||
-            sourceTitle.includes("fail") ||
-            dataString.includes("fail");
-          const isFailedImport =
-            eventType === "albumimportincomplete" ||
-            eventType.includes("incomplete") ||
-            statusMessages.includes("fail") ||
-            statusMessages.includes("error") ||
-            statusMessages.includes("incomplete") ||
-            errorMessage.includes("fail") ||
-            errorMessage.includes("error");
-          const isComplete =
-            eventType.includes("import") &&
-            !isFailedImport &&
-            eventType !== "albumimportincomplete";
-          const isStaleGrabbed = isGrabbed && Date.now() - historyTime > STALE_GRABBED_MS;
-          if (isComplete) {
-            statuses[albumId] = {
-              status: "added",
-              updatedAt: new Date().toISOString(),
-            };
-          } else if (isFailedImport || isFailedDownload || isStaleGrabbed) {
+        if (historyEntry) {
+          const staleGrab = historyEntry.event === "grabbed"
+            && Date.now() - historyEntry.historyTime > STALE_GRABBED_MS;
+          if (historyEntry.event === "imported") {
+            statuses[albumId] = { status: "added", updatedAt };
+          } else if (historyEntry.event === "failed" || staleGrab) {
             const album = (await getVerifiedAlbums()).get(String(lidarrAlbumId));
-            statuses[albumId] = {
-              status: albumHasTrackFiles(album) ? "added" : "failed",
-              updatedAt: new Date().toISOString(),
-            };
+            statuses[albumId] = { status: albumHasTrackFiles(album) ? "added" : "failed", updatedAt };
           } else {
-            statuses[albumId] = {
-              status: "processing",
-              updatedAt: new Date().toISOString(),
-            };
+            statuses[albumId] = { status: "processing", updatedAt };
           }
           continue;
         }
