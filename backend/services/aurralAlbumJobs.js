@@ -9,11 +9,15 @@ const normalizeKey = (value) => String(value || "").trim().toLowerCase();
 
 export const isAurralAlbumJob = (job) => job.playlistType === "library" && job.managedBy === "aurral";
 
-export function findAurralAlbumJobs(albumMbid) {
-  const albumKey = normalizeKey(albumMbid);
-  if (!albumKey) return [];
+// An album's jobs carry its release group or, from older versions, the
+// release ID that a scan stored as the album's mbid.
+const albumKeys = (albumMbids) => new Set([albumMbids].flat().map(normalizeKey).filter(Boolean));
+
+export function findAurralAlbumJobs(albumMbids) {
+  const keys = albumKeys(albumMbids);
+  if (keys.size === 0) return [];
   return downloadTracker.getAll().filter(
-    (job) => isAurralAlbumJob(job) && normalizeKey(job.albumMbid) === albumKey,
+    (job) => isAurralAlbumJob(job) && keys.has(normalizeKey(job.albumMbid)),
   );
 }
 
@@ -26,7 +30,7 @@ export function indexAurralAlbumJobs() {
     jobs.push(job);
     jobsByAlbum.set(albumKey, jobs);
   }
-  return (albumMbid) => jobsByAlbum.get(normalizeKey(albumMbid)) || [];
+  return (albumMbids) => [...albumKeys(albumMbids)].flatMap((key) => jobsByAlbum.get(key) || []);
 }
 
 export function jobMatchesTrack(job, track) {

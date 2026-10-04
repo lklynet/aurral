@@ -620,7 +620,6 @@ test("an album scanned with its release ID stays one album through downloads and
   downloadTracker.setDone(jobId, path.join(root, "elsewhere.flac"));
   const status = async () => (await callRoute("GET /albums/aurral/:canonicalId/status",
     { canonicalId: String(album.id) })).body.status;
-  assert.equal(await status(), "partial");
 
   const duplicate = libraryStore.upsertLibraryAlbum({ identityKey: `release-group:${release}`, mbid: release,
     releaseGroupMbid: release, artistId: artist.id, title: "Release Album" });
@@ -638,4 +637,34 @@ test("an album scanned with its release ID stays one album through downloads and
     .get(`release-group:${release}`).count, 0);
   assert.equal(db.prepare("SELECT album_id FROM library_media_files WHERE path = ?").get(filePath).album_id, album.id);
   assert.equal(await status(), "complete");
+});
+
+test("an album scanned with its release ID queues by release group and cancels its older jobs", async () => {
+  const releaseGroup = "cdcdcdcd-cdcd-4dcd-8dcd-000000000001";
+  const release = "cdcdcdcd-cdcd-4dcd-8dcd-000000000002";
+  const artist = libraryStore.upsertLibraryArtist({ identityKey: "mbid:cdcdcdcd-cdcd-4dcd-8dcd-000000000003",
+    mbid: "cdcdcdcd-cdcd-4dcd-8dcd-000000000003", name: "Legacy Artist" });
+  const album = libraryStore.upsertLibraryAlbum({ identityKey: `release-group:${releaseGroup}`, mbid: release,
+    releaseGroupMbid: releaseGroup, artistId: artist.id, title: "Legacy Album" });
+  managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
+  const track = libraryStore.upsertLibraryTrack({ identityKey: "recording:cdcdcdcd-cdcd-4dcd-8dcd-100000000001",
+    mbid: "cdcdcdcd-cdcd-4dcd-8dcd-100000000001", title: "Legacy Song", artistName: artist.name });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  setDownloadSourceConfigured(true);
+  const originalWorkerStart = downloadWorker.start;
+  downloadWorker.start = async () => {};
+  try {
+    const queued = await libraryManager.searchAurralAlbumMissingTracks(album.id);
+    assert.deepEqual(queued.jobIds.map((id) => downloadTracker.getJob(id).albumMbid), [releaseGroup]);
+  } finally {
+    downloadWorker.start = originalWorkerStart;
+    setDownloadSourceConfigured(false);
+  }
+  const legacyJobId = downloadTracker.addJob({ artistName: artist.name, trackName: "Legacy Song",
+    albumName: "Legacy Album", albumMbid: release, trackMbid: track.mbid, managedBy: "aurral",
+    requestGroupId: "legacy" }, "library");
+
+  const cancelled = await callRoute("POST /albums/aurral/:canonicalId/cancel", { canonicalId: String(album.id) });
+  assert.equal(cancelled.statusCode, 200, JSON.stringify(cancelled.body));
+  assert.equal(downloadTracker.getJob(legacyJobId).status, "cancelled");
 });

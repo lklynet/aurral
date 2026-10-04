@@ -26,6 +26,7 @@ const candidateAlbumsStmt = db.prepare(`
     album.id,
     album.title,
     COALESCE(album.mbid, album.release_group_mbid) AS mbid,
+    album.release_group_mbid AS releaseGroupMbid,
     artist.name AS artistName,
     artist.mbid AS artistMbid,
     management.last_missing_search_at AS lastSearchedAt
@@ -72,7 +73,7 @@ function selectDueAlbums(intervalDays) {
   const jobsForAlbum = indexAurralAlbumJobs();
   const candidates = candidateAlbumsStmt.all(dueBefore)
     .map((album) => {
-      const jobs = jobsForAlbum(album.mbid);
+      const jobs = jobsForAlbum([album.releaseGroupMbid, album.mbid]);
       const lastActivityAt = Math.max(Number(album.lastSearchedAt) || 0, ...jobs.map(jobActivityAt));
       return { album, jobs, lastActivityAt };
     })
