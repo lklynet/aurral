@@ -177,3 +177,51 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
   assert.equal(resolved.trackNumber, 1);
   assert.deepEqual(resolved.albumTrackTitles, ["The Concept of Love"]);
 });
+
+test("resolveTrackSearchContext keeps a job's MusicBrainz release identity without lookups", async (t) => {
+  const get = t.mock.method(axios, "get", async () => ({ data: {} }));
+  const job = {
+    artistName: "Radiohead",
+    trackName: "Paranoid Android",
+    albumName: "OK Computer",
+    artistMbid: "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+    albumMbid: "b1392450-e666-3926-a536-22c65f834433",
+    trackMbid: "recording-from-musicbrainz",
+    durationMs: 383000,
+    trackNumber: 2,
+    albumTrackTitles: ["Airbag", "Paranoid Android"],
+    artistAliases: ["Radio Head"],
+  };
+  const resolved = await resolveTrackSearchContext(job);
+  assert.equal(get.mock.callCount(), 0);
+  assert.equal(resolved.trackMbid, job.trackMbid);
+  assert.equal(resolved.trackNumber, 2);
+  assert.deepEqual(resolved.albumTrackTitles, job.albumTrackTitles);
+});
+
+test("resolveTrackSearchContext does not take a recording ID from Last.fm", async (t) => {
+  const originalSettings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      lastfm: { apiKey: "lastfm-key" },
+      metadata: { ...originalSettings.integrations.metadata, baseUrl: "https://brainzmash.example.test" },
+    },
+  });
+  clearMetadataProviderCaches();
+  t.after(() => {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(originalSettings);
+  });
+  t.mock.method(axios, "get", async (url, options) => (options?.params?.method === "track.getInfo"
+    ? { data: { track: { mbid: "stale-lastfm-recording", duration: "200000",
+      artist: { name: "Lastfm Artist" } } } }
+    : { data: {} }));
+  const resolved = await resolveTrackSearchContext({
+    artistName: "Lastfm Artist",
+    trackName: "Lastfm Song",
+    artistMbid: "artist-known",
+  });
+  assert.equal(resolved.trackMbid, null);
+});
