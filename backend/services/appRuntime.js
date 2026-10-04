@@ -49,8 +49,6 @@ const WORKER_STARTS = {
   "discovery-refresh": ["./discoveryRefreshWorker.js", "startDiscoveryRefreshWorker"],
   "discovery-user-refresh": ["./discoveryUserRefreshWorker.js", "startDiscoveryUserRefreshWorker"],
   "weekly-flow-operation": ["./playlists/playlistOperationWorker.js", "startPlaylistOperationWorker"],
-  "playlist-retry": ["./downloadJobs/playlistRetryWorker.js", "startPlaylistRetryWorker"],
-  "playlist-reserve-build": ["./flows/flowReserveBuildWorker.js", "startFlowReserveBuildWorker"],
   "playlist-mbid-enrichment": ["./playlistMbidEnrichmentWorker.js", "startPlaylistMbidEnrichmentWorker"],
 };
 

@@ -737,8 +737,6 @@ export class SlskdClient {
           }
           const firstTransfer = transfers[0] || null;
           return {
-            batchId: null,
-            legacy: true,
             transferId: readId(firstTransfer) || null,
             username: normalizedUsername,
             transfers,

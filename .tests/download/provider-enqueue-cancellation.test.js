@@ -218,7 +218,6 @@ test("slskd cancellation waits for an in-flight enqueue and can retry cleanup", 
   t.mock.method(slskdClient, "enqueueBatch", async () => {
     await gate.wait();
     return {
-      batchId: null,
       transferId: "slskd-race-transfer",
       username: "race-peer",
       transfers: [{ id: "slskd-race-transfer" }],

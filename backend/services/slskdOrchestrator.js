@@ -1096,13 +1096,9 @@ async function handleDownload(payload) {
             size: Number(candidate.raw.size || 0),
           },
         ],
-        options: {
-          externalId: job.id,
-          searchId,
-        },
       });
-      const transfer = result?.legacyTransfer || result?.transfers?.[0] || result;
-      const transferId = readTransferId(transfer);
+      const transfer = result?.transfers?.[0] || null;
+      const transferId = readTransferId(transfer) || String(result?.transferId || "").trim();
       const transferUsername = String(result?.username || transfer?.username || candidate.raw.user).trim();
       if (transferId) {
         downloadTracker.updateDownloadMetadata(job.id, {
@@ -1111,9 +1107,7 @@ async function handleDownload(payload) {
           remoteUsername: transferUsername,
         });
       }
-      updateSlskdMetaStmt.run(null, result.batchId || null, null, null, job.id);
-      job.slskdBatchId = result.batchId || null;
-      return result;
+      return { transferId, username: transferUsername };
     });
   } catch (error) {
     const message = error?.message || String(error);
@@ -1143,13 +1137,7 @@ async function handleDownload(payload) {
   return {
     ...payload,
     phase: "poll",
-    batchId: result.batchId,
-    legacyTransfer: result.legacy
-      ? {
-          id: result.transferId,
-          username: result.username || candidate.raw.user,
-        }
-      : null,
+    legacyTransfer: result.transferId ? { id: result.transferId, username: result.username } : null,
     candidate,
     candidateIndex: index,
     eventOffset,

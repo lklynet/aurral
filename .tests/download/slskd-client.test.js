@@ -527,9 +527,7 @@ test("enqueueBatch uses current slskd download endpoint", async () => {
       username: "peer",
       files: [{ filename: "Artist/Album/Open.flac", size: 123 }],
     });
-    assert.equal(result.legacy, true);
     assert.equal(result.transferId, transferId);
-    assert.equal(result.batchId, null);
     assert.deepEqual(
       calls.map((call) => call.url),
       ["/api/v0/transfers/downloads/peer"],

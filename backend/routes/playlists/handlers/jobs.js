@@ -36,6 +36,7 @@ import {
 import { getLibraryTrackOwnershipBatch } from "../../../services/libraryQueryService.js";
 import { logger, safeLogDiagnostic } from "../../../services/logger.js";
 import { clearAllDownloadJobs } from "../../../services/downloadJobs/downloadCancellationService.js";
+import { wakeDownloadWorker } from "../../../services/downloadJobs/mutationGuards.js";
 import {
   isDownloadOwnerProcess,
   requestDownloadOwner,
@@ -331,7 +332,7 @@ export function registerJobs(router) {
         await pauseStaticPlaylistRetryCycle(playlistId);
       } else {
         await downloadWorker.setRetryCyclePaused(playlistId, false);
-        await downloadWorker.retryIncompletePlaylist(playlistId);
+        await wakeDownloadWorker();
       }
       return res.json({
         success: true,

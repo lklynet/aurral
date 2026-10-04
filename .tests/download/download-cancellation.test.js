@@ -265,7 +265,6 @@ test("static playlist deletion cancels its pipeline before clearing the tracker"
   });
 
   t.mock.method(downloadWorker, "blockPlaylist", async () => {});
-  t.mock.method(downloadWorker, "clearIncompleteRetry", async () => {});
   t.mock.method(downloadWorker, "waitForPlaylistIdle", async () => {});
   t.mock.method(downloadWorker, "unblockPlaylist", async () => {});
   t.mock.method(downloadWorker, "pruneOrphanedJobState", async () => {});
@@ -316,7 +315,6 @@ test("static playlist track replacement cancels dependent quality upgrades", asy
   });
 
   t.mock.method(downloadWorker, "blockPlaylist", async () => {});
-  t.mock.method(downloadWorker, "clearIncompleteRetry", async () => {});
   t.mock.method(downloadWorker, "waitForPlaylistIdle", async () => {});
   t.mock.method(downloadWorker, "unblockPlaylist", async () => {});
   t.mock.method(downloadWorker, "pruneOrphanedJobState", async () => {});
@@ -771,7 +769,6 @@ test("clearing a shown flow or deleting any flow rescans the library", async (t)
   const hidden = flowPlaylistConfig.createFlow({ name: "Hidden Flow", size: 10 });
 
   t.mock.method(downloadWorker, "blockPlaylist", async () => {});
-  t.mock.method(downloadWorker, "clearIncompleteRetry", async () => {});
   t.mock.method(downloadWorker, "waitForPlaylistIdle", async () => {});
   t.mock.method(downloadWorker, "unblockPlaylist", async () => {});
   t.mock.method(downloadWorker, "setRetryCyclePaused", () => {});
@@ -808,7 +805,6 @@ test("rotating a flow shown in the library rescans the library", async (t) => {
   flowPlaylistConfig.updateFlow(flow.id, { showInLibrary: true });
 
   t.mock.method(downloadWorker, "blockPlaylist", async () => {});
-  t.mock.method(downloadWorker, "clearIncompleteRetry", async () => {});
   t.mock.method(downloadWorker, "waitForPlaylistIdle", async () => {});
   t.mock.method(downloadWorker, "unblockPlaylist", async () => {});
   t.mock.method(downloadWorker, "prepareFlowRunPlan", async () => ({}));
