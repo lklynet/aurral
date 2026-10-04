@@ -205,6 +205,26 @@ export function selectRankedUsenetCandidates(ranked, limit = 5) {
   return selected;
 }
 
+const PROWLARR_MUSIC_QUERY = /^\{artist:/iu;
+
+function tokenValue(value) {
+  return String(value || "").replace(/[{}]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// Prowlarr turns {artist:...}{album:...} into a Newznab music search, as
+// Lidarr sends. The plain words after the tokens are what an indexer without
+// music search receives instead.
+export function buildProwlarrMusicQuery(context) {
+  const artist = tokenValue(context?.artistName);
+  const album = tokenValue(readComparableAlbumName(context));
+  if (!artist || !album) return null;
+  return `{artist:${artist}}{album:${album}} ${artist} ${album}`;
+}
+
+export function isProwlarrMusicQuery(query) {
+  return PROWLARR_MUSIC_QUERY.test(String(query || ""));
+}
+
 export function isAudioFile(filePath) {
   const ext = path.extname(String(filePath || "")).toLowerCase();
   return [

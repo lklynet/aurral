@@ -114,6 +114,9 @@ export function fallbackAlbumGrabToTracks(payload, reason = null, reasons = new 
     albumTransfers: null,
     searchId: null,
     searchIds: null,
+    searchQueries: null,
+    searchQueryIndex: 0,
+    activeSearch: null,
     history: null,
   };
 }

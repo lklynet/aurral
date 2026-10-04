@@ -66,6 +66,11 @@ import {
   withPipelineCommitLock,
 } from "./downloadJobs/downloadCancellation.js";
 import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.js";
+import {
+  cacheSearchResults,
+  getCachedSearchResults,
+} from "./downloadJobs/searchResultCache.js";
+import createCache from "./apiClients/simpleCache.js";
 
 import { getQualityProfile } from "./qualityProfileService.js";
 import {
@@ -95,6 +100,12 @@ const TRANSFER_RESET = Object.freeze({
 });
 const ALBUM_TRANSFER_RESET = Object.freeze({ ...TRANSFER_RESET, albumTransfers: null });
 const STALLED_TRANSFER_MS = 30 * 60 * 1000;
+export const SEARCH_RESET = Object.freeze({
+  searchQueries: null,
+  searchQueryIndex: 0,
+  activeSearch: null,
+});
+const searchMonitors = createCache(10 * 60, 100);
 const MIN_SEARCH_CANDIDATES = 3;
 const MAX_DOWNLOAD_CANDIDATES = 7;
 const MAX_TRANSFER_RETRIES_PER_CANDIDATE = 1;
@@ -405,6 +416,7 @@ export function buildNextSourcePayload(payload, failedSource = null, reason = nu
   return {
     ...payload,
     source: next.id,
+    ...SEARCH_RESET,
     phase: "search",
     searchId: null,
     searchIds: [],
@@ -768,71 +780,122 @@ function probeAggregatedResults(aggregated, queryResults, seen) {
   return probe;
 }
 
-async function runSearchQuery(
-  query,
-  searchIdRef,
-  searchIds,
-  resolvedTrack,
-  searchOptions,
-  aggregated,
-  seen,
-  isCancelled = () => false,
-  workContext = {},
-) {
-  const created = await slskdClient.createSearch(query, {
-    shouldCancel: isCancelled,
+function trackSearchWork(payload) {
+  return {
     onSearchCreated: (id) => registerDownloadProviderWork({
-      jobId: workContext.jobId, playlistId: workContext.playlistId,
+      jobId: payload.jobId, playlistId: payload.playlistId,
       provider: "slskd-search", workId: id,
     }),
     onSearchSettled: (id) => clearDownloadProviderWork({ provider: "slskd-search", workId: id }),
-  });
-  const deleteTrackedSearch = async () => {
-    const deleted = await slskdClient.deleteSearch(created.id, { timeout: 20000 }).catch(() => false);
-    if (deleted) clearDownloadProviderWork({ provider: "slskd-search", workId: created.id });
-    return deleted;
   };
-  if (Array.isArray(searchIds)) {
+}
+
+function searchMonitorFor(payload, activeSearch) {
+  let monitor = searchMonitors.get(activeSearch.id);
+  if (!monitor) {
+    monitor = slskdClient.monitorSearch(activeSearch.id, {
+      startedAt: activeSearch.startedAt,
+      onSearchSettled: trackSearchWork(payload).onSearchSettled,
+    });
+    searchMonitors.set(activeSearch.id, monitor);
+  }
+  return monitor;
+}
+
+async function stopSearch(searchId) {
+  const deleted = await slskdClient.deleteSearch(searchId, { timeout: 20000 }).catch(() => false);
+  if (deleted) clearDownloadProviderWork({ provider: "slskd-search", workId: searchId });
+}
+
+const searchResultKey = (result) => `${result.user}\0${result.file}`;
+
+// One step of a search: either one poll of the running slskd search, or the
+// start of the next query. Results of finished queries live in the shared
+// search cache, so a restart only repeats the queries it lost.
+async function advanceSlskdSearch(payload, job, queries, resolvedTrack, searchOptions) {
+  const aggregated = [];
+  const seen = new Set();
+  let index = Number(payload.searchQueryIndex || 0);
+  for (let queryIndex = 0; queryIndex < index; queryIndex += 1) {
+    const cached = getCachedSearchResults("slskd", queries[queryIndex]);
+    if (!cached) {
+      index = queryIndex;
+      break;
+    }
+    mergeSearchResults(aggregated, seen, cached, searchResultKey);
+  }
+  const isCancelled = () => !isPipelinePayloadActive(payload);
+  const enough = (results) => hasSlskdSearchCandidates(results, resolvedTrack, searchOptions);
+  const activeSearch = payload.activeSearch?.query === queries[index] ? payload.activeSearch : null;
+  if (payload.activeSearch && !activeSearch) await stopSearch(payload.activeSearch.id);
+  if (activeSearch) {
+    const result = await searchMonitorFor(payload, activeSearch).poll({
+      shouldCancel: isCancelled,
+      earlyExitWhen: (data) =>
+        enough(probeAggregatedResults(aggregated, slskdClient.flattenSearchResults(data), seen)),
+    });
+    if (isCancelled()) return { cancelled: true };
+    if (!result.done) {
+      return { payload: { ...payload, searchQueryIndex: index,
+        delaySeconds: Math.max(1, Math.ceil(result.waitMs / 1000)) } };
+    }
+    searchMonitors.delete(activeSearch.id);
+    const results = slskdClient.flattenSearchResults(result.data);
+    cacheSearchResults("slskd", activeSearch.query, results);
+    mergeSearchResults(aggregated, seen, results, searchResultKey);
+    index += 1;
+  }
+  const searchIds = [...(payload.searchIds || [])];
+  while (index < queries.length && !enough(aggregated)) {
+    const cached = getCachedSearchResults("slskd", queries[index]);
+    if (cached) {
+      mergeSearchResults(aggregated, seen, cached, searchResultKey);
+      index += 1;
+      continue;
+    }
+    const created = await slskdClient.createSearch(queries[index], {
+      shouldCancel: isCancelled,
+      ...trackSearchWork(payload),
+    });
     searchIds.push(created.id);
+    if (!job.slskdSearchId) {
+      updateSlskdMetaStmt.run(created.id, null, null, null, job.id);
+      job.slskdSearchId = created.id;
+    }
+    if (isCancelled()) {
+      await stopSearch(created.id);
+      return { cancelled: true };
+    }
+    return { payload: {
+      ...payload,
+      searchQueryIndex: index,
+      searchIds,
+      searchId: payload.searchId || created.id,
+      activeSearch: { id: created.id, query: queries[index], startedAt: Date.now() },
+      delaySeconds: 1,
+    } };
   }
-  if (!searchIdRef.value) {
-    searchIdRef.value = created.id;
-  }
-  if (isCancelled()) {
-    await deleteTrackedSearch();
-    return [];
-  }
-  const completed = await slskdClient.waitForSearch(created.id, undefined, {
-    shouldCancel: isCancelled,
-    onSearchSettled: (id) => clearDownloadProviderWork({ provider: "slskd-search", workId: id }),
-    earlyExitWhen: (data) =>
-      hasSlskdSearchCandidates(
-        probeAggregatedResults(aggregated, slskdClient.flattenSearchResults(data), seen),
-        resolvedTrack,
-        searchOptions,
-      ),
-  });
-  if (isCancelled()) return [];
-  const results = slskdClient.flattenSearchResults(completed);
-  return results;
+  return { aggregated, searchIds, queryCount: index };
 }
 
 async function handleSearch(payload) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
-  downloadTracker.setDownloading(job.id);
-  downloadTracker.updateDownloadMetadata(job.id, {
-    downloadSource: "slskd",
-  });
-  import("./aurralHistoryService.js")
-    .then(({ recordTrackJobSearching }) => recordTrackJobSearching(job))
-    .catch((err) => { logger.warn("slskd", "Failed to record track job searching", { jobId: job.id, error: err?.message || String(err) }); });
+  if (!payload.searchQueries) {
+    downloadTracker.setDownloading(job.id);
+    downloadTracker.updateDownloadMetadata(job.id, {
+      downloadSource: "slskd",
+    });
+    import("./aurralHistoryService.js")
+      .then(({ recordTrackJobSearching }) => recordTrackJobSearching(job))
+      .catch((err) => { logger.warn("slskd", "Failed to record track job searching", { jobId: job.id, error: err?.message || String(err) }); });
+  }
   const resolvedTrack = buildResolvedTrack(job, payload.track);
   const albumJobs = payload.albumGrab === true ? albumGrabJobs(payload) : null;
-  const searchTiers = albumJobs
+  const queries = payload.searchQueries || (albumJobs
     ? buildAlbumSearchTiers(resolvedTrack)
-    : buildSlskdSearchTierGroups(resolvedTrack);
+    : buildSlskdSearchTierGroups(resolvedTrack)).flatMap((tier) => tier.queries);
   const currentTier = payload.upgradeForJobId
     ? downloadTracker.getJob(payload.upgradeForJobId)?.qualityTier
     : null;
@@ -851,49 +914,24 @@ async function handleSearch(payload) {
     albumJobs,
     albumReleases: albumJobs ? await loadAlbumReleases(job.albumMbid) : [],
   };
-  const aggregated = [];
-  const seen = new Set();
-  const searchIdRef = { value: null };
-  const searchIds = [];
-  const queries = [];
-  for (const tier of searchTiers) {
-    if (hasSlskdSearchCandidates(aggregated, resolvedTrack, searchOptions)) {
-      break;
-    }
-    for (const query of tier.queries) {
-      if (hasSlskdSearchCandidates(aggregated, resolvedTrack, searchOptions)) {
-        break;
-      }
-      queries.push(query);
-      const results = await runSearchQuery(
-        query,
-        searchIdRef,
-        searchIds,
-        resolvedTrack,
-        searchOptions,
-        aggregated,
-        seen,
-        () => !isPipelinePayloadActive(payload),
-        { jobId: payload.jobId, playlistId: payload.playlistId },
-      );
-      mergeSearchResults(aggregated, seen, results, (result) => `${result.user}\0${result.file}`);
-      if (!isPipelinePayloadActive(payload)) return null;
-      if (hasSlskdSearchCandidates(aggregated, resolvedTrack, searchOptions)) {
-        break;
-      }
-    }
-  }
-  if (searchIdRef.value) {
-    updateSlskdMetaStmt.run(searchIdRef.value, null, null, null, job.id);
-    job.slskdSearchId = searchIdRef.value;
-  }
+  const step = await advanceSlskdSearch(
+    { ...payload, searchQueries: queries },
+    job,
+    queries,
+    resolvedTrack,
+    searchOptions,
+  );
+  if (step.cancelled || !isPipelinePayloadActive(payload)) return null;
+  if (step.payload) return step.payload;
+  const { aggregated, searchIds, queryCount } = step;
+  const searchId = payload.searchId || searchIds[0] || null;
   if (albumJobs) {
     const selection = selectAlbumFolders(aggregated, searchOptions);
     if (selection.decision !== "selectable") {
       return failOrTryNextSource(payload, job, "No selectable Soulseek album folder");
     }
     return {
-      ...payload, phase: "download", source: "slskd", searchId: searchIdRef.value,
+      ...payload, ...SEARCH_RESET, phase: "download", source: "slskd", searchId,
       searchIds: [...new Set(searchIds)], candidateIndex: 0,
       candidates: selection.candidates.map((candidate) => ({
         raw: { user: candidate.group.user, files: candidate.files },
@@ -962,13 +1000,13 @@ async function handleSearch(payload) {
       jobId: job.id,
       artistName: job.artistName,
       trackName: job.trackName,
-      queryCount: queries.length,
+      queryCount,
       rawResultCount: aggregated.length,
       rankedCount: evaluation.evaluations.length,
       eligibleCount: ordered.length,
     });
     return failOrTryNextSource(payload, job, "No suitable slskd search results", {
-      queryCount: queries.length,
+      queryCount,
       rawResultCount: aggregated.length,
       rankedCount: evaluation.evaluations.length,
       eligibleCount: ordered.length,
@@ -976,8 +1014,9 @@ async function handleSearch(payload) {
   }
   return {
     ...payload,
+    ...SEARCH_RESET,
     phase: "download",
-    searchId: searchIdRef.value,
+    searchId,
     searchIds: [...new Set(searchIds)],
     candidates,
     candidateIndex: 0,

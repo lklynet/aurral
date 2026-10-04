@@ -156,8 +156,15 @@ test("Prowlarr client lists enabled Usenet indexers and searches audio releases"
   }
 });
 
+async function searchUntilDone(payload, helpers) {
+  let result = payload;
+  while (result?.phase === "search") result = await processUsenetPipelinePayload(result, helpers);
+  return result;
+}
+
 test("Usenet flow search tries the album-only query after artist-album queries", async () => {
   const queries = [];
+  const types = [];
   const server = await createMockHttpServer((req, res) => {
     const url = new URL(req.url, "http://mock");
     if (url.pathname === "/api/v1/indexer") {
@@ -176,6 +183,7 @@ test("Usenet flow search tries the album-only query after artist-album queries",
     }
     if (url.pathname === "/api/v1/search") {
       queries.push(url.searchParams.get("query"));
+      types.push(url.searchParams.get("type"));
       sendJson(res, 200, []);
       return;
     }
@@ -204,13 +212,15 @@ test("Usenet flow search tries the album-only query after artist-album queries",
       "usenet-album-only-fallback",
     );
 
-    const result = await processUsenetPipelinePayload(
+    const result = await searchUntilDone(
       { phase: "search", source: "usenet", jobId },
       {
         failOrTryNextSource: (_payload, _job, message, details) => ({ message, details }),
       },
     );
 
+    assert.match(queries[0], /^\{artist:Rihanna\}\{album:Good Girl Gone Bad\} /);
+    assert.deepEqual([...new Set(types)], ["music", "search"]);
     const albumOnlyIndex = queries.indexOf("Good Girl Gone Bad");
     const albumTrackIndex = queries.indexOf("Good Girl Gone Bad Umbrella");
     assert.ok(albumOnlyIndex > 0);
@@ -414,7 +424,8 @@ test("Usenet matcher prefers matching audio releases and keeps fallback candidat
 
 for (const albumGrab of [false, true]) {
   test(`Usenet continues past ${albumGrab ? "track-only album-grab" : "denied"} results`, async () => {
-    const jobId = downloadTracker.addJob({ artistName: "The Band", trackName: "First",
+    const artist = albumGrab ? "The Bend" : "The Band";
+    const jobId = downloadTracker.addJob({ artistName: artist, trackName: "First",
       albumName: "Album", durationMs: 180000 }, "usenet-exclusions");
     if (!albumGrab) {
       for (const id of ["first-1", "first-2"]) downloadTracker.recordDeniedSource(jobId, "usenet", id);
@@ -425,11 +436,11 @@ for (const albumGrab of [false, true]) {
     prowlarrClient.search = async () => {
       const first = ++searches === 1;
       return [1, 2].map((index) => ({ guid: `${first ? "first" : "allowed"}-${index}`,
-        title: `The Band - ${first ? "First" : "Album"} FLAC`, protocol: "usenet",
+        title: `${artist} - ${first ? "First" : "Album"} FLAC`, protocol: "usenet",
         downloadUrl: `https://release.invalid/${first}/${index}`, indexerId: index, size: 100000000 }));
     };
     try {
-      const result = await processUsenetPipelinePayload({ phase: "search", source: "usenet", jobId, albumGrab }, {
+      const result = await searchUntilDone({ phase: "search", source: "usenet", jobId, albumGrab }, {
         failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }),
       });
       assert.equal(result.phase, "download");
@@ -441,3 +452,20 @@ for (const albumGrab of [false, true]) {
     }
   });
 }
+
+test("a Usenet search runs one Prowlarr query per pipeline step", async (t) => {
+  const search = t.mock.method(prowlarrClient, "search", async () => []);
+  const jobId = downloadTracker.addJob({ artistName: "Step Artist", trackName: "Step Song",
+    albumName: "Step Album", durationMs: 180000 }, "usenet-steps");
+  const helpers = { failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }) };
+  let payload = { phase: "search", source: "usenet", jobId };
+  let steps = 0;
+  while (payload?.phase === "search") {
+    const before = search.mock.callCount();
+    payload = await processUsenetPipelinePayload(payload, helpers);
+    assert.ok(search.mock.callCount() - before <= 1);
+    steps += 1;
+  }
+  assert.equal(payload.error, "No suitable Usenet search results");
+  assert.equal(steps, search.mock.callCount());
+});

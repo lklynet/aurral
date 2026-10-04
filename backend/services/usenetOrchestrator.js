@@ -4,12 +4,18 @@ import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { prowlarrClient } from "./prowlarrClient.js";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger } from "./logger.js";
-import { buildTrackSearchTiers } from "./downloadJobs/trackSearchQueries.js";
+import { buildAlbumSearchTiers, buildTrackSearchTiers } from "./downloadJobs/trackSearchQueries.js";
 import {
+  buildProwlarrMusicQuery,
   isAudioFile,
+  isProwlarrMusicQuery,
   rankUsenetReleases,
   selectRankedUsenetCandidates,
 } from "./downloadJobs/usenetReleaseSearch.js";
+import {
+  cacheSearchResults,
+  getCachedSearchResults,
+} from "./downloadJobs/searchResultCache.js";
 import {
   selectVerifiedDownloadedFile,
 } from "./trackMatching/index.js";
@@ -184,17 +190,68 @@ async function validateDownloadedRelease(audioFilePaths, candidate, resolvedTrac
   });
 }
 
+const releaseKey = (release) => [release.guid, release.downloadUrl, release.indexerId, release.title]
+  .map((entry) => String(entry || "").trim().toLowerCase())
+  .join("\0");
+
+// One Prowlarr query per pipeline step, so a slow indexer never holds the
+// pipeline for the whole search plan.
+async function advanceUsenetSearch(payload, queries, enough) {
+  const aggregated = [];
+  const seen = new Set();
+  let index = Number(payload.searchQueryIndex || 0);
+  for (let queryIndex = 0; queryIndex < index; queryIndex += 1) {
+    const cached = getCachedSearchResults("usenet", queries[queryIndex]);
+    if (!cached) {
+      index = queryIndex;
+      break;
+    }
+    mergeSearchResults(aggregated, seen, cached, releaseKey);
+  }
+  let searchError = payload.searchError || "";
+  let searched = false;
+  while (index < queries.length && !enough(aggregated)) {
+    if (searched) {
+      return { payload: { ...payload, searchQueryIndex: index, searchError, delaySeconds: 0 } };
+    }
+    const query = queries[index];
+    let releases = getCachedSearchResults("usenet", query);
+    if (!releases) {
+      searched = true;
+      try {
+        releases = await prowlarrClient.search(query, {
+          type: isProwlarrMusicQuery(query) ? "music" : "search",
+        });
+        cacheSearchResults("usenet", query, releases);
+      } catch (error) {
+        searchError = error?.message || String(error);
+        logger.warn("usenet", "Prowlarr search failed", {
+          jobId: payload.jobId,
+          query,
+          error: searchError,
+        });
+        releases = [];
+      }
+    }
+    mergeSearchResults(aggregated, seen, releases, releaseKey);
+    index += 1;
+  }
+  return { aggregated, queryCount: index, searchError };
+}
+
 async function handleUsenetSearch(payload, helpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
-  downloadTracker.setDownloading(job.id);
-  downloadTracker.updateDownloadMetadata(job.id, {
-    downloadSource: "usenet",
-  });
-  import("./aurralHistoryService.js")
-    .then(({ recordTrackJobSearching }) => recordTrackJobSearching(job))
-    .catch((err) => { console.warn(err); });
+  if (!payload.searchQueries) {
+    downloadTracker.setDownloading(job.id);
+    downloadTracker.updateDownloadMetadata(job.id, {
+      downloadSource: "usenet",
+    });
+    import("./aurralHistoryService.js")
+      .then(({ recordTrackJobSearching }) => recordTrackJobSearching(job))
+      .catch((err) => { console.warn(err); });
+  }
 
   const resolvedTrack = {
     ...buildResolvedTrack(job, payload.track),
@@ -207,38 +264,28 @@ async function handleUsenetSearch(payload, helpers) {
       : null,
     upgrade: payload.upgrade === true,
   };
-  const searchTiers = buildTrackSearchTiers(resolvedTrack);
+  const albumGrab = payload.albumGrab === true;
+  const queries = payload.searchQueries || [
+    buildProwlarrMusicQuery(resolvedTrack),
+    ...(albumGrab ? buildAlbumSearchTiers(resolvedTrack) : buildTrackSearchTiers(resolvedTrack))
+      .flatMap((tier) => tier.queries),
+  ].filter(Boolean);
   const deniedSourceGuidSet = deniedAlbumSources(
-    payload.albumGrab === true ? [job, ...albumGrabJobs(payload)] : [job],
+    albumGrab ? [job, ...albumGrabJobs(payload)] : [job],
     "usenet",
   );
-  const aggregated = [];
-  const seen = new Set();
-  const queries = [];
-  let lastError = "";
-  for (const tier of searchTiers) {
-    if (hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions, payload.albumGrab === true)) break;
-    for (const query of tier.queries) {
-      if (hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions, payload.albumGrab === true)) break;
-      queries.push(query);
-      try {
-        const releases = await prowlarrClient.search(query);
-        mergeSearchResults(aggregated, seen, releases.filter((release) =>
-          !deniedSourceGuidSet.has(String(release.guid || "").trim().toLowerCase())), (release) =>
-          [release.guid, release.downloadUrl, release.indexerId, release.title]
-            .map((entry) => String(entry || "").trim().toLowerCase())
-            .join("\0"),
-        );
-      } catch (error) {
-        lastError = error?.message || String(error);
-        logger.warn("slskd", "Prowlarr search failed", {
-          jobId: job.id,
-          query,
-          error: lastError,
-        });
-      }
-    }
-  }
+  const allowed = (releases) => releases.filter((release) =>
+    !deniedSourceGuidSet.has(String(release.guid || "").trim().toLowerCase()));
+  const step = await advanceUsenetSearch(
+    { ...payload, searchQueries: queries },
+    queries,
+    (results) => hasEnoughCandidates(allowed(results), resolvedTrack, qualityOptions, albumGrab),
+  );
+  if (!isPipelinePayloadActive(payload)) return null;
+  if (step.payload) return step.payload;
+  const aggregated = allowed(step.aggregated);
+  const lastError = step.searchError;
+  const queryCount = step.queryCount;
   const ranked = rankUsenetReleases(aggregated, resolvedTrack);
   const filteredRanked = deniedSourceGuidSet.size > 0
     ? ranked.filter((entry) => !deniedSourceGuidSet.has(String(entry?.raw?.guid || "").trim().toLowerCase()))
@@ -264,13 +311,16 @@ async function handleUsenetSearch(payload, helpers) {
         ? `Prowlarr search failed: ${lastError}`
         : "No suitable Usenet search results";
     return helpers.failOrTryNextSource(payload, job, message, {
-      queryCount: queries.length,
+      queryCount,
       rawResultCount: aggregated.length,
       rankedCount: ranked.length,
     });
   }
   return {
     ...payload,
+    searchQueries: null,
+    searchQueryIndex: 0,
+    searchError: null,
     phase: "download",
     source: "usenet",
     candidates,

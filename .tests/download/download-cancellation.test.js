@@ -407,16 +407,25 @@ test("settled slskd searches no longer block playlist cancellation", async (t) =
     playlistId,
   );
   let searchCount = 0;
-  t.mock.method(slskdClient, "createSearch", async () => ({ id: `settled-search-${++searchCount}` }));
-  t.mock.method(slskdClient, "waitForSearch", async () => ({}));
-  t.mock.method(slskdClient, "flattenSearchResults", () => []);
-  t.mock.method(slskdClient, "settleSearch", async () => ({}));
+  t.mock.method(slskdClient, "createSearch", async (_query, options) => {
+    const id = `settled-search-${++searchCount}`;
+    options.onSearchCreated(id);
+    return { id };
+  });
+  t.mock.method(slskdClient, "getSearch", async () => ({ state: "Completed, TimedOut", responses: [] }));
+  t.mock.method(slskdClient, "isCleanupAfterRunsEnabled", () => false);
   t.mock.method(slskdClient, "cleanupAfterRun", async () => ({ cleanedSearchIds: [] }));
 
   try {
-    await processPipelinePayload({ phase: "search", source: "slskd", jobId, playlistId });
+    let payload = { phase: "search", source: "slskd", jobId, playlistId };
+    let sawSearchWork = false;
+    while (payload?.phase === "search") {
+      payload = await processPipelinePayload(payload);
+      sawSearchWork ||= listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length > 0;
+    }
 
     assert.ok(searchCount > 0);
+    assert.ok(sawSearchWork);
     assert.deepEqual(listDownloadProviderWork({ playlistId, provider: "slskd-search" }), []);
   } finally {
     dbOps.updateSettings(originalSettings);

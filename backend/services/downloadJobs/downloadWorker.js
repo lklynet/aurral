@@ -21,7 +21,7 @@ import {
   resolveDownloadRoot,
 } from "../downloadPaths.js";
 import { startSlskdOrchestratorWorker } from "../slskdOrchestratorWorker.js";
-import { withHonkerLock } from "../honkerDb.js";
+import { listHonkerJobs, withHonkerLock } from "../honkerDb.js";
 import { isPlaylistOwnerActive } from "./playlistOwnerStatus.js";
 import {
   getDownloadOwnerStatus,
@@ -37,6 +37,7 @@ import {
 } from "./downloadCancellation.js";
 
 const DEFAULT_CONCURRENCY = 3;
+const SEARCH_SLOT_RECHECK_MS = 2000;
 const MIN_CONCURRENCY = 1;
 const MAX_CONCURRENCY = 3;
 const JOB_COOLDOWN_MS = 750;
@@ -44,6 +45,13 @@ const REUSE_REPAIR_INTERVAL_MS = 30 * 60 * 1000;
 const WORKER_STOPPED_CODE = "WORKER_STOPPED";
 const PLAYLIST_MUTATION_CODE = "PLAYLIST_MUTATION_IN_PROGRESS";
 const RETRY_JOB_REGISTRY_KEY = "weeklyFlowIncompleteRetryJobs";
+// The worker hands a job to the pipeline only while fewer jobs than its
+// concurrency are searching, so a large playlist does not start every
+// provider search at once.
+function countSearchingPipelineJobs() {
+  return listHonkerJobs("slskd-pipeline").filter((entry) => entry.payload?.phase === "search").length;
+}
+
 export class DownloadWorker {
   constructor(downloadRoot = resolveDownloadRoot()) {
     this.downloadRoot = resolveDownloadRoot(downloadRoot);
@@ -647,6 +655,10 @@ export class DownloadWorker {
       if (!this.running) return;
       const { concurrency } = this.getWorkerSettings();
       while (this.activeCount < concurrency) {
+        if (this.activeCount + countSearchingPipelineJobs() >= concurrency) {
+          this._scheduleProcessIn(SEARCH_SLOT_RECHECK_MS);
+          break;
+        }
         const job = this._getNextReadyPendingJob(this.lastDequeuedPlaylistType);
         if (!job) {
           break;

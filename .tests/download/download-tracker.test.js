@@ -417,6 +417,30 @@ test("a started worker keeps its process busy only while downloads are pending",
   }
 });
 
+test("a worker starts no more searches than its concurrency allows", async (t) => {
+  const worker = new DownloadWorker(isolatedState.baseDir);
+  worker.updateWorkerSettings({ concurrency: 1 });
+  const dispatched = t.mock.method(worker, "processJob", async () => {});
+  t.mock.method(worker, "scheduleReuseLinkRepair", () => {});
+  const transaction = honkerDb.getHonkerDb().transaction();
+  transaction.execute("DELETE FROM _honker_live WHERE queue = 'slskd-pipeline'");
+  transaction.commit();
+  honkerDb.enqueuePipelineJob({ phase: "search", source: "slskd", jobId: "already-searching" });
+  const jobId = trackerModule.downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Waiting Song" },
+    "library",
+  );
+  await worker.start();
+  try {
+    assert.equal(dispatched.mock.callCount(), 0);
+    worker.updateWorkerSettings({ concurrency: 2 });
+    worker.processLoop();
+    assert.deepEqual(dispatched.mock.calls.map((call) => call.arguments[0].id), [jobId]);
+  } finally {
+    worker.stop();
+  }
+});
+
 test("persists enriched album context for slskd matching", () => {
   const tracker = new DownloadTracker();
   const jobId = tracker.addJob(

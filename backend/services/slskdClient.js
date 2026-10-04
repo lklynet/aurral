@@ -278,6 +278,133 @@ async function withSearchLock(name, operation, { deadline, signal }) {
   }
 }
 
+// Follows one slskd search a poll at a time. waitForSearch loops over it;
+// the download pipeline polls it once per step so a search never holds the
+// pipeline while Soulseek peers answer.
+class SearchMonitor {
+  constructor(client, searchId, options = {}) {
+    this.client = client;
+    this.searchId = searchId;
+    this.onSearchSettled = options.onSearchSettled;
+    this.cleanupTimeoutMs = options.cleanupTimeoutMs;
+    this.emptyTimeoutMs = Math.max(0, Number(options.emptyTimeoutMs ?? DEFAULT_EMPTY_SEARCH_TIMEOUT_MS));
+    const activeTimeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : DEFAULT_SEARCH_TIMEOUT_MS;
+    const gracePeriodMs = Math.max(0, Number(options.gracePeriodMs ?? DEFAULT_SEARCH_GRACE_PERIOD_MS));
+    this.startedAt = Number(options.startedAt) || Date.now();
+    this.graceStartsAt = this.startedAt + activeTimeoutMs;
+    this.deadline = Math.min(Number(options.deadline) || Infinity, this.graceStartsAt + gracePeriodMs);
+    this.totalFiles = 0;
+    this.hasSeenFiles = false;
+    this.latest = null;
+    this.collected = new Map();
+    this.eligibilityAssessed = false;
+    this.lastEligibility = false;
+  }
+
+  cutoff() {
+    return this.hasSeenFiles ? this.deadline : Math.min(this.deadline, this.startedAt + this.emptyTimeoutMs);
+  }
+
+  async stop() {
+    try {
+      const deleted = await this.client.deleteSearch(this.searchId, {
+        timeout: Math.max(1, Number(this.cleanupTimeoutMs) || 20000),
+      });
+      if (deleted) this.onSearchSettled?.(this.searchId);
+      else logger.warn("slskd", "Could not stop owned search", { searchId: this.searchId });
+    } catch (error) {
+      logger.warn("slskd", "Could not stop owned search", { searchId: this.searchId, reason: error?.message });
+    }
+  }
+
+  async finish(data) {
+    if (isSearchComplete(data) && !this.client.isCleanupAfterRunsEnabled()) {
+      this.onSearchSettled?.(this.searchId);
+    } else {
+      await this.stop();
+    }
+    return { done: true, data };
+  }
+
+  async poll({ earlyExitWhen, shouldCancel, signal } = {}) {
+    const cancelled = () => signal?.aborted || shouldCancel?.();
+    try {
+      if (cancelled()) { await this.stop(); return { done: true, data: null }; }
+      const cutoff = this.cutoff();
+      if (Date.now() >= cutoff) return this.finish(this.latest);
+      let data;
+      try {
+        data = await this.client.getSearch(this.searchId, {
+          timeout: Math.max(1, Math.min(60000, cutoff - Date.now())),
+          signal,
+        });
+      } catch (error) {
+        if (cancelled()) { await this.stop(); return { done: true, data: null }; }
+        if (Date.now() >= cutoff) return this.finish(this.latest);
+        throw error;
+      }
+      if (cancelled()) { await this.stop(); return { done: true, data: null }; }
+      const files = this.client.flattenSearchResults(data);
+      let eligibilityChanged = false;
+      for (const file of files) {
+        const key = `${file.user}\0${file.file}`;
+        const previous = this.collected.get(key);
+        if (!previous || Object.keys(file).some((field) => !Object.is(file[field], previous[field]))) {
+          this.collected.set(key, file);
+          eligibilityChanged = true;
+        }
+      }
+      if (this.collected.size > files.length) {
+        const responses = new Map();
+        for (const file of this.collected.values()) {
+          const response = responses.get(file.user) || { username: file.user, files: [] };
+          response.files.push(file);
+          responses.set(file.user, response);
+        }
+        data = { ...data, responses: [...responses.values()] };
+      }
+      data = { ...data };
+      Object.defineProperty(data, NORMALIZED_SEARCH_RESULTS, { value: [...this.collected.values()] });
+      this.latest = data;
+      const fileCount = Number(data?.fileCount || data?.FileCount || 0);
+      this.totalFiles = Math.max(this.totalFiles, fileCount, files.length);
+      this.hasSeenFiles ||= this.totalFiles > 0;
+      if (earlyExitWhen && (!this.eligibilityAssessed || eligibilityChanged)) {
+        this.lastEligibility = earlyExitWhen(data);
+        this.eligibilityAssessed = true;
+      }
+      if (this.lastEligibility || !isSearchInProgress(data)) {
+        let hydrated = isSearchComplete(data)
+          ? await this.client.hydrateCompletedSearch(this.searchId, data, {
+            deadline: this.deadline, shouldCancel, signal,
+          })
+          : data;
+        if (cancelled()) { await this.stop(); return { done: true, data: null }; }
+        if (hydrated !== data) {
+          for (const file of this.client.flattenSearchResults(hydrated)) {
+            this.collected.set(`${file.user}\0${file.file}`, file);
+          }
+          hydrated = { ...hydrated };
+          Object.defineProperty(hydrated, NORMALIZED_SEARCH_RESULTS, { value: [...this.collected.values()] });
+        }
+        return this.finish(hydrated);
+      }
+      const nextCutoff = this.cutoff();
+      if (Date.now() >= nextCutoff) return this.finish(this.latest);
+      const progress = Math.min(1, this.totalFiles / DEFAULT_FILE_LIMIT);
+      const grace = Date.now() >= this.graceStartsAt;
+      return {
+        done: false,
+        data,
+        waitMs: Math.min((grace ? 1 : calculateQuadraticDelay(progress)) * 1000, nextCutoff - Date.now()),
+      };
+    } catch (error) {
+      await this.stop();
+      throw error;
+    }
+  }
+}
+
 export class SlskdClient {
   constructor(config = null) {
     this.key = "slskd";
@@ -506,103 +633,20 @@ export class SlskdClient {
     return data;
   }
 
+  monitorSearch(searchId, options = {}) {
+    return new SearchMonitor(this, searchId, options);
+  }
+
   async waitForSearch(searchId, timeoutMs = DEFAULT_SEARCH_TIMEOUT_MS, options = {}) {
-    const { earlyExitWhen, shouldCancel, signal: externalSignal, onSearchSettled } = options;
+    const { earlyExitWhen, shouldCancel, signal: externalSignal } = options;
     const control = createSearchCancellation(shouldCancel, externalSignal);
-    const signal = control.signal;
-    const emptyTimeoutMs = Math.max(0, Number(options.emptyTimeoutMs ?? DEFAULT_EMPTY_SEARCH_TIMEOUT_MS));
-    const activeTimeoutMs = Number(timeoutMs) > 0 ? Number(timeoutMs) : DEFAULT_SEARCH_TIMEOUT_MS;
-    const gracePeriodMs = Math.max(0, Number(options.gracePeriodMs ?? DEFAULT_SEARCH_GRACE_PERIOD_MS));
-    const start = Date.now();
-    const deadline = Math.min(Number(options.deadline) || Infinity, start + activeTimeoutMs + gracePeriodMs);
-    let totalFiles = 0;
-    let hasSeenFiles = false;
-    let latest = null;
-    const collected = new Map();
-    let eligibilityAssessed = false;
-    let lastEligibility = false;
-    const stopSearch = async () => {
-      try {
-        const deleted = await this.deleteSearch(searchId, { timeout: Math.max(1, Number(options.cleanupTimeoutMs) || 20000) });
-        if (deleted) onSearchSettled?.(searchId);
-        else logger.warn("slskd", "Could not stop owned search", { searchId });
-      } catch (error) {
-        logger.warn("slskd", "Could not stop owned search", { searchId, reason: error?.message });
-      }
-    };
-    const finish = async (data) => {
-      if (isSearchComplete(data) && !this.isCleanupAfterRunsEnabled()) {
-        onSearchSettled?.(searchId);
-      } else {
-        await stopSearch();
-      }
-      return data;
-    };
+    const monitor = this.monitorSearch(searchId, { ...options, timeoutMs });
     try {
       while (true) {
-        if (signal.aborted || shouldCancel?.()) { await stopSearch(); return null; }
-        const cutoff = hasSeenFiles ? deadline : Math.min(deadline, start + emptyTimeoutMs);
-        if (Date.now() >= cutoff) return await finish(latest);
-        let data;
-        try {
-          data = await this.getSearch(searchId, { timeout: Math.max(1, Math.min(60000, cutoff - Date.now())), signal });
-        } catch (error) {
-          if (signal.aborted || shouldCancel?.()) { await stopSearch(); return null; }
-          if (Date.now() >= cutoff) return await finish(latest);
-          throw error;
-        }
-        if (signal.aborted || shouldCancel?.()) { await stopSearch(); return null; }
-        const files = this.flattenSearchResults(data);
-        let eligibilityChanged = false;
-        for (const file of files) {
-          const key = `${file.user}\0${file.file}`;
-          const previous = collected.get(key);
-          if (!previous || Object.keys(file).some((field) => !Object.is(file[field], previous[field]))) {
-            collected.set(key, file);
-            eligibilityChanged = true;
-          }
-        }
-        if (collected.size > files.length) {
-          const responses = new Map();
-          for (const file of collected.values()) {
-            const response = responses.get(file.user) || { username: file.user, files: [] };
-            response.files.push(file);
-            responses.set(file.user, response);
-          }
-          data = { ...data, responses: [...responses.values()] };
-        }
-        data = { ...data };
-        Object.defineProperty(data, NORMALIZED_SEARCH_RESULTS, { value: [...collected.values()] });
-        latest = data;
-        const fileCount = Number(data?.fileCount || data?.FileCount || 0);
-        totalFiles = Math.max(totalFiles, fileCount, files.length);
-        hasSeenFiles ||= totalFiles > 0;
-        if (earlyExitWhen && (!eligibilityAssessed || eligibilityChanged)) {
-          lastEligibility = earlyExitWhen(data);
-          eligibilityAssessed = true;
-        }
-        if (lastEligibility || !isSearchInProgress(data)) {
-          let hydrated = isSearchComplete(data)
-            ? await this.hydrateCompletedSearch(searchId, data, { deadline, shouldCancel, signal })
-            : data;
-          if (signal.aborted || shouldCancel?.()) { await stopSearch(); return null; }
-          if (hydrated !== data) {
-            for (const file of this.flattenSearchResults(hydrated)) collected.set(`${file.user}\0${file.file}`, file);
-            hydrated = { ...hydrated };
-            Object.defineProperty(hydrated, NORMALIZED_SEARCH_RESULTS, { value: [...collected.values()] });
-          }
-          return await finish(hydrated);
-        }
-        const nextCutoff = hasSeenFiles ? deadline : Math.min(deadline, start + emptyTimeoutMs);
-        if (Date.now() >= nextCutoff) return await finish(latest);
-        const progress = Math.min(1, totalFiles / DEFAULT_FILE_LIMIT);
-        const grace = Date.now() >= start + activeTimeoutMs;
-        const waitMs = Math.min((grace ? 1 : calculateQuadraticDelay(progress)) * 1000, nextCutoff - Date.now());
-        await waitSearchDelay(waitMs, signal);
+        const result = await monitor.poll({ earlyExitWhen, shouldCancel, signal: control.signal });
+        if (result.done) return result.data;
+        await waitSearchDelay(result.waitMs, control.signal);
       }
-    } catch (error) {
-      await stopSearch();
-      throw error;
     } finally {
       control.dispose();
     }
