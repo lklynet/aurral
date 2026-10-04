@@ -182,7 +182,7 @@ export async function finishAlbumGrab(payload, {
     }
   }
   await settleAlbumEdition(payload, assigned.edition);
-  if ((filePaths || []).length > assigned.unreadableCount) {
+  if (assigned.accepted.length === 0 || (filePaths || []).length > assigned.unreadableCount) {
     blockAlbumGrabSource(payload, albumGrabJobs(payload));
   }
   const next = continueAlbumGrab(payload, resetFields);

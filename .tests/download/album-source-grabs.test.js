@@ -208,4 +208,5 @@ test("a Soulseek album's next folder gets its own queue window", async (t) => {
   const next = await processPipelinePayload(giveUp);
   assert.equal(next.candidateIndex, 1);
   assert.equal(next.tailSince ?? null, null);
+  assert.deepEqual(downloadTracker.getJob(album.ids[0]).deniedRemoteSources, [["slskd", `peer\0${album.files[0]}`]]);
 });
