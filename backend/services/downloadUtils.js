@@ -3,6 +3,7 @@ import { promisify } from "util";
 import path from "path";
 import fs from "fs/promises";
 import { parseFile } from "music-metadata";
+import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 
 const execFileAsync = promisify(execFile);
 const AURRAL_IDENTITY_PREFIX = "AURRAL_IDS=";
@@ -224,13 +225,15 @@ async function rewriteAudioTags(filePath, tags) {
   }
 }
 
+// A compilation's tracks keep their own performer as the artist.
 export async function writeAudioMetadata(filePath, metadata = {}) {
+  const performer = isVariousArtistsCredit(metadata.artistName) ? metadata.artistAliases?.[0] : null;
   const tags = [
     ["title", metadata.trackName],
-    ["artist", metadata.artistName],
+    ["artist", performer || metadata.artistName],
     ["album_artist", metadata.artistName],
     ["album", metadata.albumName],
-    ["musicbrainz_artistid", metadata.artistMbid],
+    ["musicbrainz_artistid", performer ? null : metadata.artistMbid],
     ["musicbrainz_albumartistid", metadata.artistMbid],
     ["musicbrainz_albumid", metadata.albumMbid],
     ["musicbrainz_releasegroupid", metadata.albumMbid],

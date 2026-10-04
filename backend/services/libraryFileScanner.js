@@ -20,6 +20,7 @@ import {
 } from "./libraryManagementStore.js";
 import { parseAurralIdentityComment, readCommentIdentity } from "./downloadUtils.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
+import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 
 const AUDIO_EXTENSIONS = new Set([
   ".aac",
@@ -150,6 +151,7 @@ function buildMetadataRecord(metadata, filePath, rootPath) {
     albumName,
     trackKey,
     trackMbid,
+    trackArtistName: isVariousArtistsCredit(artistName) ? text(common.artist) || artistName : artistName,
     title,
     trackNumber,
     discNumber,
@@ -368,7 +370,7 @@ export async function scanMusicRoot({
             identityKey: record.trackKey,
             mbid: record.trackMbid,
             title: record.title,
-            artistName: record.artistName,
+            artistName: record.trackArtistName,
             metadata: record.trackMetadata,
             monitored: source !== "aurral" || downloadedByAurral,
             syncSearch,

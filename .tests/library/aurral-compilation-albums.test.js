@@ -1,5 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { promisify } from "node:util";
+import { parseFile } from "music-metadata";
 
 import {
   cleanupIsolatedState,
@@ -18,7 +23,8 @@ const [
   { clearMetadataProviderCaches },
   { registerAlbums },
   { validateDownloadedTrackFile, POST_DOWNLOAD_DECISIONS },
-  { buildResolvedJobTrack },
+  { buildResolvedJobTrack, writeAudioMetadata },
+  { scanMusicRoot },
 ] = await setupIsolatedBackend(
   "aurral-compilation-albums",
   "backend/config/db-sqlite.js",
@@ -31,6 +37,7 @@ const [
   "backend/routes/library/handlers/albums.js",
   "backend/services/trackMatching/index.js",
   "backend/services/downloadUtils.js",
+  "backend/services/libraryFileScanner.js",
 );
 
 const routes = new Map();
@@ -153,4 +160,16 @@ test("a compilation keeps Various Artists on the album and matches each track by
   });
   assert.equal((await validate("Blue Swede")).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
   assert.equal((await validate("Raspberries")).decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+
+  const root = join(isolatedState.baseDir, "music");
+  const filePath = join(root, "Various Artists", "Awesome Mix", "01 - Hooked on a Feeling.flac");
+  await mkdir(join(root, "Various Artists", "Awesome Mix"), { recursive: true });
+  await promisify(execFile)("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
+    "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac", filePath]);
+  await writeAudioMetadata(filePath, buildResolvedJobTrack(hooked));
+  const { common } = await parseFile(filePath);
+  assert.deepEqual([common.artist, common.albumartist], ["Blue Swede", "Various Artists"]);
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const scanned = getLibraryForAlbumIds({ ids: [albumId] }).tracks;
+  assert.equal(scanned.find((track) => track.title === "Hooked on a Feeling").artistName, "Blue Swede");
 });
