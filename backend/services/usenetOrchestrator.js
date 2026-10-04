@@ -42,7 +42,7 @@ import { albumGrabJobs, deniedAlbumSources, finishAlbumGrab } from "./albumGrab.
 const MIN_USENET_CANDIDATES = 2;
 const MAX_DOWNLOAD_CANDIDATES = 5;
 const POLL_DELAY_SECONDS = 5;
-const MAX_POLL_ATTEMPTS = 720;
+const MAX_MISSING_POLLS = 60;
 
 function getUsenetClient(preferredKey = null) {
   if (["sabnzbd", "nzbget"].includes(preferredKey)) {
@@ -57,27 +57,24 @@ function getUsenetClientKey(preferredKey = null) {
   return getUsenetClient(preferredKey).key;
 }
 
-function getSabnzbdClient() {
-  return getDownloadClient("sabnzbd");
+// Both clients drop the queue and history entry. SABnzbd also deletes the
+// job's remaining files; NZBGet keeps completed files on disk.
+function removeUsenetItem(payload, jobId) {
+  const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
+  for (const [entry, remove] of [
+    ["queue", () => client.deleteQueueItem(payload.nzbId)],
+    ["history", () => client.deleteHistoryItem(payload.nzbId)],
+  ]) {
+    remove().catch((error) => {
+      logger.warn("usenet", `Could not remove the ${client.key} ${entry} item`, {
+        jobId,
+        reason: error?.message || String(error),
+      });
+    });
+  }
 }
 
-function removeSabnzbdItem(nzbId, jobId) {
-  const client = getSabnzbdClient();
-  client.deleteQueueItem(nzbId).catch((error) => {
-    logger.warn("usenet", "Could not remove SABnzbd queue item", {
-      jobId,
-      reason: error?.message || String(error),
-    });
-  });
-  client.deleteHistoryItem(nzbId).catch((error) => {
-    logger.warn("usenet", "Could not remove SABnzbd history item", {
-      jobId,
-      reason: error?.message || String(error),
-    });
-  });
-}
-
-const RELEASE_RESET = Object.freeze({ nzbId: null, history: null });
+const RELEASE_RESET = Object.freeze({ nzbId: null, history: null, missingPolls: 0 });
 
 // A release that failed or held no matching file is blocked for every track
 // it was meant to fill.
@@ -108,10 +105,6 @@ function classifyHistoryStatus(item) {
     return "failed";
   }
   return "pending";
-}
-
-function readQueueStatus(item) {
-  return String(item?.Status || item?.status || "").toUpperCase();
 }
 
 async function findAudioFilesRecursive(root, depth = 0, matches = []) {
@@ -333,7 +326,7 @@ async function handleUsenetDownload(payload, helpers) {
       releaseTitle: release.title,
       error: message,
     });
-    if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, { nzbId: null, history: null });
+    if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, RELEASE_RESET);
     return helpers.failOrTryNextSource(payload, job, message);
   }
   if (submission.cancelled || !isPipelinePayloadActive(payload)) return null;
@@ -355,13 +348,6 @@ async function handleUsenetPoll(payload, helpers) {
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
   const pollAttempts = Number(payload.pollAttempts || 0) + 1;
-  if (pollAttempts > MAX_POLL_ATTEMPTS) {
-    if (getUsenetClientKey(payload.downloadClient || payload.manualDownloadClient) === "sabnzbd") {
-      removeSabnzbdItem(payload.nzbId, job.id);
-    }
-    if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, { nzbId: null, history: null });
-    return helpers.failOrTryNextSource(payload, job, "Usenet polling timed out");
-  }
   const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
   const historyItem = await client.getHistoryItem(payload.nzbId);
   if (historyItem) {
@@ -376,9 +362,7 @@ async function handleUsenetPoll(payload, helpers) {
       };
     }
     if (state === "failed") {
-      if (getUsenetClientKey(payload.downloadClient || payload.manualDownloadClient) === "sabnzbd") {
-        removeSabnzbdItem(payload.nzbId, job.id);
-      }
+      removeUsenetItem(payload, job.id);
       blockRelease(payload, job);
       if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, RELEASE_RESET);
       return helpers.failOrTryNextSource(
@@ -388,21 +372,21 @@ async function handleUsenetPoll(payload, helpers) {
       );
     }
   }
+  // A queued, paused, or slow download keeps waiting like it would in
+  // Lidarr. Only a download that left the client without a history entry
+  // moves on.
   const queueItem = await client.getQueueItem(payload.nzbId);
-  const queueStatus = readQueueStatus(queueItem);
-  if (queueStatus && queueStatus.includes("PAUSED")) {
-    return {
-      ...payload,
-      phase: "poll",
-      delaySeconds: POLL_DELAY_SECONDS,
-      pollAttempts,
-    };
+  const missingPolls = queueItem ? 0 : Number(payload.missingPolls || 0) + 1;
+  if (missingPolls > MAX_MISSING_POLLS) {
+    if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, RELEASE_RESET);
+    return helpers.failOrTryNextSource(payload, job, "The Usenet download left the download client");
   }
   return {
     ...payload,
     phase: "poll",
     delaySeconds: POLL_DELAY_SECONDS,
     pollAttempts,
+    missingPolls,
   };
 }
 
@@ -421,9 +405,7 @@ async function handleUsenetFinalize(payload, helpers) {
       filePaths, source: "usenet", album: candidate?.resolvedAlbumName || job.albumName,
       resetFields: RELEASE_RESET,
     });
-    if (getUsenetClientKey(payload.downloadClient || payload.manualDownloadClient) === "sabnzbd") {
-      removeSabnzbdItem(payload.nzbId, job.id);
-    }
+    removeUsenetItem(payload, job.id);
     return next;
   }
   const resolvedTrack = {
@@ -441,7 +423,7 @@ async function handleUsenetFinalize(payload, helpers) {
     { manualSelection: payload.manualSelection === true },
   );
   if (!isPipelinePayloadActive(payload)) {
-    if (job.downloadClient === "sabnzbd") removeSabnzbdItem(payload.nzbId, job.id);
+    removeUsenetItem(payload, job.id);
     return null;
   }
   if (
@@ -457,11 +439,9 @@ async function handleUsenetFinalize(payload, helpers) {
   if (!found.filePath) {
     const reason = found.validation?.reason
       || "Usenet download completed, but no matching audio file was found";
-    if (getUsenetClientKey(payload.downloadClient || payload.manualDownloadClient) === "sabnzbd") {
-      removeSabnzbdItem(payload.nzbId, job.id);
-    }
+    removeUsenetItem(payload, job.id);
     if (audioFiles.length > 0) blockRelease(payload, job);
-    if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, { nzbId: null, history: null });
+    if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, RELEASE_RESET);
     return helpers.failOrTryNextSource(payload, job, reason);
   }
 
@@ -482,9 +462,7 @@ async function handleUsenetFinalize(payload, helpers) {
       found.filePath,
       finalPath,
     );
-    if (getUsenetClientKey(payload.downloadClient || payload.manualDownloadClient) === "sabnzbd") {
-      removeSabnzbdItem(payload.nzbId, job.id);
-    }
+    removeUsenetItem(payload, job.id);
     return finalizePipelineJobSuccess({
       downloadTracker,
       job,

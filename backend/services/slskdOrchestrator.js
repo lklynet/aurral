@@ -87,11 +87,14 @@ const updateSlskdMetaStmt = db.prepare(`
   WHERE id = ?
 `);
 
-const ALBUM_TRANSFER_RESET = Object.freeze({
-  albumTransfers: null,
+const TRANSFER_RESET = Object.freeze({
   batchId: null,
   legacyTransfer: null,
+  lastProgress: null,
+  lastProgressAt: null,
 });
+const ALBUM_TRANSFER_RESET = Object.freeze({ ...TRANSFER_RESET, albumTransfers: null });
+const STALLED_TRANSFER_MS = 30 * 60 * 1000;
 const MIN_SEARCH_CANDIDATES = 3;
 const MAX_DOWNLOAD_CANDIDATES = 7;
 const MAX_TRANSFER_RETRIES_PER_CANDIDATE = 1;
@@ -145,8 +148,6 @@ export function hasSlskdSearchCandidates(aggregated, resolvedTrack, searchOption
   return eligible.length >= MIN_SEARCH_CANDIDATES;
 }
 
-const _MAX_EMPTY_POLL_ATTEMPTS = 60;
-const MAX_POLL_ATTEMPTS = 600;
 
 async function getWorkerSearchOptions() {
   const profile = getQualityProfile();
@@ -226,11 +227,10 @@ function buildRetrySameCandidatePayload(payload, delaySeconds = 5) {
   const retryCount = getCandidateRetryCount(payload, candidateIndex) + 1;
   return {
     ...withCandidateRetryCount(payload, candidateIndex, retryCount),
+    ...TRANSFER_RESET,
     phase: "download",
     candidate: null,
     pollAttempts: 0,
-    batchId: null,
-    legacyTransfer: null,
     delaySeconds,
   };
 }
@@ -751,7 +751,7 @@ function retrySameCandidateOrNext(payload, job, status, reason, details = {}) {
     return buildRetrySameCandidatePayload(payload, 5);
   }
   if (hasNextCandidate(payload)) {
-    return buildNextCandidatePayload(payload, { batchId: null, legacyTransfer: null });
+    return buildNextCandidatePayload(payload, TRANSFER_RESET);
   }
   return null;
 }
@@ -1118,34 +1118,54 @@ async function handleDownload(payload) {
   };
 }
 
+function readTransferProgress(transfer) {
+  if (!transfer) return "missing";
+  return [
+    readTransferState(transfer),
+    transfer.bytesTransferred ?? transfer.BytesTransferred ?? "",
+    transfer.placeInQueue ?? transfer.PlaceInQueue ?? "",
+  ].join("|");
+}
+
+// A transfer times out only when nothing about it changes for a while, so a
+// slow upload or a moving remote queue keeps going.
+function trackTransferProgress(payload, progress, now = Date.now()) {
+  const changed = progress !== payload.lastProgress;
+  const lastProgressAt = changed || !Number(payload.lastProgressAt)
+    ? now : Number(payload.lastProgressAt);
+  return {
+    lastProgress: progress,
+    lastProgressAt,
+    stalled: now - lastProgressAt > STALLED_TRANSFER_MS,
+  };
+}
+
 async function handlePoll(payload) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
   const pollAttempts = Number(payload.pollAttempts || 0) + 1;
   if (payload.albumGrab === true) {
-    if (pollAttempts > MAX_POLL_ATTEMPTS) {
-      for (const transfer of payload.albumTransfers || []) {
-        const id = readTransferId(transfer);
-        if (id) await slskdClient.deleteTransfer(payload.candidate?.raw?.user, id, { remove: true })
-          .catch((error) => logger.warn("slskd", "Timed-out album transfer cleanup failed", {
-            jobId: job.id, transferId: id, reason: safeLogDiagnostic(error),
-          }));
-      }
-      return continueAlbumGrab(payload, ALBUM_TRANSFER_RESET)
-        || failOrTryNextSource(payload, job, "Soulseek album transfer timed out");
-    }
     const username = payload.candidate?.raw?.user;
     const transfers = await Promise.all((payload.albumTransfers || []).map(async (transfer) =>
       slskdClient.getTransfer(username, readTransferId(transfer)).catch(() => null)));
-    if (transfers.some((transfer) => !transfer || classifyTransferState(readTransferState(transfer)) === "pending")) {
-      return { ...payload, phase: "poll", pollAttempts, delaySeconds: POLL_DELAY_SECONDS };
+    if (!transfers.some((transfer) => !transfer || classifyTransferState(readTransferState(transfer)) === "pending")) {
+      return { ...payload, phase: "finalize", pollAttempts, albumTransfers: transfers };
     }
-    return { ...payload, phase: "finalize", pollAttempts, albumTransfers: transfers };
-  }
-  if (pollAttempts > MAX_POLL_ATTEMPTS) {
-    recordPayloadOutcome(job, payload, "transfer_timeout", "slskd transfer polling timed out");
-    return failOrTryNextSource(payload, job, "slskd transfer polling timed out");
+    const progress = trackTransferProgress(payload, transfers.map(readTransferProgress).join(","));
+    if (!progress.stalled) {
+      return { ...payload, phase: "poll", pollAttempts, delaySeconds: POLL_DELAY_SECONDS,
+        lastProgress: progress.lastProgress, lastProgressAt: progress.lastProgressAt };
+    }
+    for (const transfer of payload.albumTransfers || []) {
+      const id = readTransferId(transfer);
+      if (id) await slskdClient.deleteTransfer(username, id, { remove: true })
+        .catch((error) => logger.warn("slskd", "Stalled album transfer cleanup failed", {
+          jobId: job.id, transferId: id, reason: safeLogDiagnostic(error),
+        }));
+    }
+    return continueAlbumGrab(payload, ALBUM_TRANSFER_RESET)
+      || failOrTryNextSource(payload, job, "Soulseek album transfer stalled");
   }
   const eventSignal = await pollSlskdEventsForCandidate(payload).catch(() => ({
     eventOffset: payload.eventOffset ?? null,
@@ -1165,20 +1185,13 @@ async function handlePoll(payload) {
       candidate,
     };
   }
+  let transfer = null;
   if (payload.legacyTransfer?.id && payload.legacyTransfer?.username) {
-    const transfer = await slskdClient.getTransfer(
+    transfer = await slskdClient.getTransfer(
       payload.legacyTransfer.username,
       payload.legacyTransfer.id,
     );
-    if (!transfer) {
-      return {
-        ...basePayload,
-        phase: "poll",
-        delaySeconds: POLL_DELAY_SECONDS,
-        pollAttempts,
-      };
-    }
-    const state = classifyTransferState(readTransferState(transfer));
+    const state = transfer ? classifyTransferState(readTransferState(transfer)) : "pending";
     if (state === "failed") {
       await cleanupTransferForPayload(basePayload, transfer);
       const nextPayload = retrySameCandidateOrNext(
@@ -1191,29 +1204,38 @@ async function handlePoll(payload) {
       if (nextPayload) return nextPayload;
       return failOrTryNextSource(basePayload, job, "slskd transfer failed");
     }
-    if (state !== "success") {
+    if (state === "success") {
+      const candidate = getPayloadCandidate(basePayload);
       return {
         ...basePayload,
-        phase: "poll",
-        delaySeconds: POLL_DELAY_SECONDS,
+        phase: "finalize",
+        batch: { transfers: [transfer] },
         pollAttempts,
+        candidate,
       };
     }
-    const candidate = getPayloadCandidate(basePayload);
+  }
+  const progress = trackTransferProgress(basePayload, readTransferProgress(transfer));
+  if (!progress.stalled) {
     return {
       ...basePayload,
-      phase: "finalize",
-      batch: { transfers: [transfer] },
+      phase: "poll",
+      delaySeconds: POLL_DELAY_SECONDS,
       pollAttempts,
-      candidate,
+      lastProgress: progress.lastProgress,
+      lastProgressAt: progress.lastProgressAt,
     };
   }
-  return {
-    ...basePayload,
-    phase: "poll",
-    delaySeconds: POLL_DELAY_SECONDS,
-    pollAttempts,
-  };
+  if (transfer) await cleanupTransferForPayload(basePayload, transfer);
+  else if (payload.legacyTransfer?.id) {
+    await slskdClient.deleteTransfer(payload.legacyTransfer.username, payload.legacyTransfer.id,
+      { remove: true }).catch(() => false);
+  }
+  recordPayloadOutcome(job, basePayload, "transfer_timeout", "slskd transfer stalled", { transfer });
+  if (hasNextCandidate(basePayload)) {
+    return buildNextCandidatePayload(basePayload, TRANSFER_RESET);
+  }
+  return failOrTryNextSource(basePayload, job, "slskd transfer stalled");
 }
 
 async function handleFinalize(payload) {
@@ -1356,7 +1378,7 @@ async function handleFinalize(payload) {
       username: candidate?.raw?.user,
     });
     const nextPayload = hasNextCandidate(payload)
-      ? buildNextCandidatePayload(payload, { batchId: null, legacyTransfer: null })
+      ? buildNextCandidatePayload(payload, TRANSFER_RESET)
       : null;    if (nextPayload) return nextPayload;
     return failOrTryNextSource(payload, job, validation.reason || "Download validation failed");
   }
