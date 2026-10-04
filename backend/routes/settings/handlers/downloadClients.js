@@ -93,7 +93,7 @@ export function registerDownloadClients(router) {
   router.get("/prowlarr/indexers", async (_req, res) => {
     try {
       const { prowlarrClient } = await import("../../../services/prowlarrClient.js");
-      const indexers = await prowlarrClient.listUsenetIndexers();
+      const indexers = await prowlarrClient.listUsenetIndexers({ force: true });
       return res.json({ indexers });
     } catch (error) {
       return res.status(500).json({

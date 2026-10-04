@@ -6,6 +6,8 @@ const DEFAULT_MUSIC_CATEGORIES = [3000];
 const DEFAULT_MAX_RESULTS = 60;
 
 let connectionCache = { checkedAt: 0, result: null };
+let indexerCache = { key: null, at: 0, indexers: [] };
+const INDEXER_CACHE_MS = 5 * 60 * 1000;
 
 function normalizePositiveInteger(value, fallback) {
   const parsed = normalizeInteger(value, null);
@@ -124,7 +126,10 @@ function normalizeIndexer(indexer, settings = getSettings()) {
   const id = normalizeInteger(indexer?.id, null);
   const override = id != null ? settings.indexers[String(id)] : null;
   const priority = override?.priority ?? normalizePositiveInteger(indexer?.priority, 25);
+  const musicParams = (indexer?.capabilities?.musicSearchParams || [])
+    .map((param) => String(param || "").toLowerCase());
   return {
+    musicSearch: musicParams.includes("artist") || musicParams.includes("album"),
     id,
     name: String(indexer?.name || indexer?.definitionName || `Indexer ${id}`).trim(),
     protocol: normalizeProtocol(indexer?.protocol),
@@ -302,14 +307,20 @@ export class ProwlarrClient {
     }
   }
 
-  async listUsenetIndexers() {
+  // Every search reads the indexer list, so it is kept for a few minutes.
+  // The settings page asks for a fresh list.
+  async listUsenetIndexers({ force = false } = {}) {
     const settings = getSettings();
     if (!this.isConfigured()) return [];
-    const response = await buildClient().get("/api/v1/indexer");
-    if (response.status !== 200) {
-      throw new Error(`Prowlarr indexer list failed: HTTP ${response.status}`);
+    const key = `${settings.url}\0${settings.apiKey}`;
+    if (force || indexerCache.key !== key || Date.now() - indexerCache.at > INDEXER_CACHE_MS) {
+      const response = await buildClient().get("/api/v1/indexer");
+      if (response.status !== 200) {
+        throw new Error(`Prowlarr indexer list failed: HTTP ${response.status}`);
+      }
+      indexerCache = { key, at: Date.now(), indexers: Array.isArray(response.data) ? response.data : [] };
     }
-    return (Array.isArray(response.data) ? response.data : [])
+    return indexerCache.indexers
       .map((entry) => normalizeIndexer(entry, settings))
       .filter(
         (entry) =>

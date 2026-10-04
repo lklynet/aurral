@@ -4,9 +4,8 @@ import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { prowlarrClient } from "./prowlarrClient.js";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger } from "./logger.js";
-import { buildAlbumSearchTiers, buildTrackSearchTiers } from "./downloadJobs/trackSearchQueries.js";
 import {
-  buildProwlarrMusicQuery,
+  buildUsenetSearchQueries,
   isAudioFile,
   isProwlarrMusicQuery,
   rankUsenetReleases,
@@ -44,6 +43,7 @@ import {
 import { getQualityProfile } from "./qualityProfileService.js";
 import { orderAdvertisedQualityCandidates } from "./qualityProfileModel.js";
 import { albumGrabJobs, deniedAlbumSources, finishAlbumGrab } from "./albumGrab.js";
+import { isCompilationJobs } from "./albumReleases.js";
 
 const MIN_USENET_CANDIDATES = 2;
 const MAX_DOWNLOAD_CANDIDATES = 5;
@@ -196,7 +196,7 @@ const releaseKey = (release) => [release.guid, release.downloadUrl, release.inde
 
 // One Prowlarr query per pipeline step, so a slow indexer never holds the
 // pipeline for the whole search plan.
-async function advanceUsenetSearch(payload, queries, enough) {
+async function advanceUsenetSearch(payload, queries, enough, runQuery) {
   const aggregated = [];
   const seen = new Set();
   let index = Number(payload.searchQueryIndex || 0);
@@ -219,9 +219,7 @@ async function advanceUsenetSearch(payload, queries, enough) {
     if (!releases) {
       searched = true;
       try {
-        releases = await prowlarrClient.search(query, {
-          type: isProwlarrMusicQuery(query) ? "music" : "search",
-        });
+        releases = await runQuery(query);
         cacheSearchResults("usenet", query, releases);
       } catch (error) {
         searchError = error?.message || String(error);
@@ -265,21 +263,25 @@ async function handleUsenetSearch(payload, helpers) {
     upgrade: payload.upgrade === true,
   };
   const albumGrab = payload.albumGrab === true;
-  const queries = payload.searchQueries || [
-    buildProwlarrMusicQuery(resolvedTrack),
-    ...(albumGrab ? buildAlbumSearchTiers(resolvedTrack) : buildTrackSearchTiers(resolvedTrack))
-      .flatMap((tier) => tier.queries),
-  ].filter(Boolean);
-  const deniedSourceGuidSet = deniedAlbumSources(
-    albumGrab ? [job, ...albumGrabJobs(payload)] : [job],
-    "usenet",
+  const albumJobs = albumGrab ? albumGrabJobs(payload) : [];
+  const compilation = albumGrab && isCompilationJobs([job, ...albumJobs]);
+  const indexers = await prowlarrClient.getEnabledUsenetIndexers().catch(() => []);
+  const musicIndexers = indexers.filter((indexer) => indexer.musicSearch);
+  const queries = payload.searchQueries || buildUsenetSearchQueries(
+    { ...resolvedTrack, compilation },
+    { musicSearch: musicIndexers.length > 0, albumGrab },
   );
+  const runQuery = (query) => (isProwlarrMusicQuery(query)
+    ? prowlarrClient.search(query, { type: "music", indexers: musicIndexers })
+    : prowlarrClient.search(query));
+  const deniedSourceGuidSet = deniedAlbumSources([job, ...albumJobs], "usenet");
   const allowed = (releases) => releases.filter((release) =>
     !deniedSourceGuidSet.has(String(release.guid || "").trim().toLowerCase()));
   const step = await advanceUsenetSearch(
     { ...payload, searchQueries: queries },
     queries,
     (results) => hasEnoughCandidates(allowed(results), resolvedTrack, qualityOptions, albumGrab),
+    runQuery,
   );
   if (!isPipelinePayloadActive(payload)) return null;
   if (step.payload) return step.payload;

@@ -8,11 +8,13 @@
 
 import path from "path";
 import {
+  foldDiacritics,
   normalizeReleaseText as normalizeText,
   normalizeTitle,
   scoreTextMatch,
   getYear,
 } from "../providers/brainzmashRanking.js";
+import { coreAlbumTitle, isVariousArtistsCredit } from "../trackMatching/titleText.js";
 
 const AUDIO_CATEGORY_MIN = 3000;
 const AUDIO_CATEGORY_MAX = 3999;
@@ -207,18 +209,38 @@ export function selectRankedUsenetCandidates(ranked, limit = 5) {
 
 const PROWLARR_MUSIC_QUERY = /^\{artist:/iu;
 
-function tokenValue(value) {
-  return String(value || "").replace(/[{}]/g, " ").replace(/\s+/g, " ").trim();
+// Lidarr's query title: no leading "The", no accents, and each run of
+// characters other than letters, digits, and apostrophes becomes a space.
+// "AC/DC Back in Black" found 2 releases on a test indexer set; "AC DC Back
+// in Black" found 75.
+export function newznabQueryText(value) {
+  const text = foldDiacritics(String(value || ""))
+    .replace(/[\u0060\u00B4\u2018\u2019]/gu, "'")
+    .replace(/[^\p{L}\p{N}']+/gu, " ")
+    .replace(/^the\s+/iu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text || String(value || "").trim();
 }
 
-// Prowlarr turns {artist:...}{album:...} into a Newznab music search, as
-// Lidarr sends. The plain words after the tokens are what an indexer without
-// music search receives instead.
-export function buildProwlarrMusicQuery(context) {
-  const artist = tokenValue(context?.artistName);
-  const album = tokenValue(readComparableAlbumName(context));
-  if (!artist || !album) return null;
-  return `{artist:${artist}}{album:${album}} ${artist} ${album}`;
+// Lidarr's plan: a Newznab music search when an indexer supports it, then
+// one "Artist Album" text search. A track also tries "Artist Title" for a
+// single. A compilation is listed as "VA" or by its title alone.
+export function buildUsenetSearchQueries(context, { musicSearch = false, albumGrab = false } = {}) {
+  const compilation = context?.compilation === true || isVariousArtistsCredit(context?.artistName);
+  const artist = compilation ? "VA" : newznabQueryText(context?.artistName);
+  const album = context?.albumName ? newznabQueryText(coreAlbumTitle(context.albumName)) : "";
+  const track = albumGrab ? "" : newznabQueryText(context?.trackName);
+  const year = album && artist.toLowerCase() === album.toLowerCase() ? getYear(context?.releaseYear) : null;
+  const join = (...parts) => parts.filter(Boolean).join(" ");
+  const queries = [];
+  if (musicSearch && !compilation && artist && album) {
+    queries.push(`{artist:${artist}}{album:${album}}${year ? `{year:${year}}` : ""}`);
+  }
+  if (artist && album) queries.push(join(artist, album, year));
+  if (compilation && album) queries.push(album);
+  if (!compilation && artist && track) queries.push(join(artist, track));
+  return [...new Set(queries)];
 }
 
 export function isProwlarrMusicQuery(query) {

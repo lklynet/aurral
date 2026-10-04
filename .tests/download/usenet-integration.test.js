@@ -162,28 +162,22 @@ async function searchUntilDone(payload, helpers) {
   return result;
 }
 
-test("Usenet flow search tries the album title alone last", async () => {
-  const queries = [];
-  const types = [];
+test("Usenet searches like Lidarr: a music search where supported, then cleaned text", async () => {
+  const requests = [];
   const server = await createMockHttpServer((req, res) => {
     const url = new URL(req.url, "http://mock");
     if (url.pathname === "/api/v1/indexer") {
       sendJson(res, 200, [
-        {
-          id: 1,
-          name: "Music One",
-          enable: true,
-          protocol: "usenet",
-          supportsSearch: true,
-          priority: 5,
-          capabilities: { categories: [{ id: 3010 }] },
-        },
+        { id: 1, name: "Music Search", enable: true, protocol: "usenet", supportsSearch: true, priority: 5,
+          capabilities: { categories: [{ id: 3010 }], musicSearchParams: ["q", "artist", "album"] } },
+        { id: 2, name: "Text Only", enable: true, protocol: "usenet", supportsSearch: true, priority: 6,
+          capabilities: { categories: [{ id: 3010 }], musicSearchParams: ["q"] } },
       ]);
       return;
     }
     if (url.pathname === "/api/v1/search") {
-      queries.push(url.searchParams.get("query"));
-      types.push(url.searchParams.get("type"));
+      requests.push({ query: url.searchParams.get("query"), type: url.searchParams.get("type"),
+        indexerIds: url.searchParams.getAll("indexerIds") });
       sendJson(res, 200, []);
       return;
     }
@@ -193,42 +187,23 @@ test("Usenet flow search tries the album title alone last", async () => {
   try {
     dbOps.updateSettings({
       integrations: {
-        prowlarr: {
-          enabled: true,
-          url: server.url,
-          apiKey: "prowlarr-key",
-          categories: [3000],
-        },
+        prowlarr: { enabled: true, url: server.url, apiKey: "prowlarr-key", categories: [3000] },
       },
     });
-    const jobId = downloadTracker.addJob(
-      {
-        artistName: "Rihanna",
-        trackName: "Umbrella",
-        albumName: "Good Girl Gone Bad",
-        releaseYear: "2007",
-        durationMs: 250000,
-      },
-      "usenet-album-only-fallback",
-    );
+    const jobId = downloadTracker.addJob({
+      artistName: "AC/DC", trackName: "Hells Bells", albumName: "Back in Black (Remastered)",
+      releaseYear: "1980", durationMs: 312000,
+    }, "usenet-lidarr-plan");
 
-    const result = await searchUntilDone(
-      { phase: "search", source: "usenet", jobId },
-      {
-        failOrTryNextSource: (_payload, _job, message, details) => ({ message, details }),
-      },
-    );
+    const result = await searchUntilDone({ phase: "search", source: "usenet", jobId },
+      { failOrTryNextSource: (_payload, _job, message, details) => ({ message, details }) });
 
-    assert.match(queries[0], /^\{artist:Rihanna\}\{album:Good Girl Gone Bad\} /);
-    assert.deepEqual([...new Set(types)], ["music", "search"]);
-    const albumOnlyIndex = queries.indexOf("Good Girl Gone Bad");
-    assert.equal(albumOnlyIndex, queries.length - 1);
-    assert.ok(queries.indexOf("Rihanna Umbrella") < albumOnlyIndex);
-    assert.ok(queries.indexOf("Good Girl Gone Bad Umbrella") < albumOnlyIndex);
-    assert.ok(queries.indexOf("Rihanna Good Girl Gone Bad") >= 0);
-    assert.ok(queries.indexOf("Rihanna Good Girl Gone Bad") < albumOnlyIndex);
+    assert.deepEqual(requests, [
+      { query: "{artist:AC DC}{album:Back in Black}", type: "music", indexerIds: ["1"] },
+      { query: "AC DC Back in Black", type: "search", indexerIds: ["1", "2"] },
+      { query: "AC DC Hells Bells", type: "search", indexerIds: ["1", "2"] },
+    ]);
     assert.equal(result.message, "No suitable Usenet search results");
-    assert.equal(result.details.queryCount, queries.length);
   } finally {
     await server.close();
   }
@@ -417,7 +392,8 @@ test("Usenet matcher prefers matching audio releases and keeps fallback candidat
 });
 
 for (const albumGrab of [false, true]) {
-  test(`Usenet continues past ${albumGrab ? "track-only album-grab" : "denied"} results`, async () => {
+  test(`Usenet continues past ${albumGrab ? "track-only album-grab" : "denied"} results`, async (t) => {
+    t.mock.method(prowlarrClient, "getEnabledUsenetIndexers", async () => [{ id: 1, musicSearch: true }]);
     const artist = albumGrab ? "The Bend" : "The Band";
     const jobId = downloadTracker.addJob({ artistName: artist, trackName: "First",
       albumName: "Album", durationMs: 180000 }, "usenet-exclusions");
@@ -462,4 +438,21 @@ test("a Usenet search runs one Prowlarr query per pipeline step", async (t) => {
   }
   assert.equal(payload.error, "No suitable Usenet search results");
   assert.equal(steps, search.mock.callCount());
+});
+
+test("a Usenet compilation grab searches as VA and by its title, never by a track artist", async (t) => {
+  t.mock.method(prowlarrClient, "getEnabledUsenetIndexers", async () => [{ id: 1, musicSearch: true }]);
+  const search = t.mock.method(prowlarrClient, "search", async () => []);
+  const ids = [["Blue Swede", "Hooked on a Feeling"], ["Raspberries", "Go All the Way"]]
+    .map(([artistName, trackName], index) => downloadTracker.addJob({
+      artistName, trackName, trackNumber: index + 1, durationMs: 180000,
+      albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1: Original Motion Picture Soundtrack",
+      albumMbid: "usenet-compilation", requestGroupId: "usenet-compilation",
+    }, "library"));
+  await searchUntilDone({ phase: "search", source: "usenet", jobId: ids[0], albumGrab: true,
+    albumGroupJobIds: ids }, { failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }) });
+  assert.deepEqual(search.mock.calls.map((call) => call.arguments[0]), [
+    "VA Guardians of the Galaxy Awesome Mix Vol 1",
+    "Guardians of the Galaxy Awesome Mix Vol 1",
+  ]);
 });
