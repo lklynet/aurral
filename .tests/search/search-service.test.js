@@ -91,6 +91,34 @@ test("searchAlbums names the album's credited artist, not the first one listed",
   }
 });
 
+test("searchAlbums puts the album an artist and title search names first", async () => {
+  const album = (id, artistname, title, secondarytypes = []) => ({ id, title, secondarytypes,
+    artistid: artistname, artists: [{ id: artistname, artistname }] });
+  const server = await createMockHttpServer((request, response) => {
+    const url = new URL(request.url, "http://127.0.0.1");
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify(url.pathname !== "/search/album" ? [] : [
+      album("tribute", "Royal Philharmonic Orchestra", "Plays Fleetwood Mac's Rumours", ["Compilation"]),
+      album("bundle", "Fleetwood Mac", "Fleetwood Mac / Rumours", ["Compilation"]),
+      album("self-titled", "Fleetwood Mac", "Fleetwood Mac"),
+      album("cello", "Trevor Exter", "Fleetwood Mac Rumours: Solo Cello"),
+      album("rumours", "Fleetwood Mac", "Rumours"),
+    ].slice(0, Number(url.searchParams.get("limit")) || undefined)));
+  });
+  const originalSettings = dbOps.getSettings();
+  dbOps.updateSettings({ ...originalSettings, integrations: { ...originalSettings.integrations,
+    metadata: { ...originalSettings.integrations.metadata, baseUrl: server.url, enableNarrowFallbacks: false } } });
+  clearMetadataProviderCaches();
+  try {
+    const [first] = (await searchAlbums("Fleetwood Mac Rumours", 2, 0)).items;
+    assert.deepEqual([first.artistName, first.title], ["Fleetwood Mac", "Rumours"]);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(originalSettings);
+    await server.close();
+  }
+});
+
 test("normalizeAlbumReleaseTypesFilter removes invalid and duplicate release types", () => {
   assert.deepEqual(
     normalizeAlbumReleaseTypesFilter("Album,Live,Album,Invalid"),

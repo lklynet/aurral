@@ -41,6 +41,7 @@ const METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS = 5_000;
 const METADATA_RATE_LIMIT_MAX_COOLDOWN_MS = 60_000;
 const METADATA_FORBIDDEN_COOLDOWN_MS = 5 * 60_000;
 const METADATA_CACHE_MAX_ENTRIES = 20_000;
+const MIN_ALBUM_SEARCH_WINDOW = 25;
 const METADATA_REQUEST_MIN_INTERVAL_MS = 100;
 const METADATA_REQUEST_TIMEOUT_MS = 8000;
 const METADATA_MAX_QUEUED_REQUESTS = Math.floor(
@@ -404,7 +405,9 @@ export async function searchAlbums(
   query,
   { artistName = "", limit = 24, offset = 0, releaseTypes = [], sort = "relevance", signal } = {},
 ) {
-  const requestedLimit = Math.max(limit + offset, limit);
+  // Relevance ranking reorders what the provider returns, so a short list
+  // still looks at enough results to find the album.
+  const requestedLimit = Math.max(limit + offset, MIN_ALBUM_SEARCH_WINDOW);
   let items = [];
 
   try {
