@@ -225,14 +225,8 @@ test("Usenet flow search tries the album title alone last", async () => {
     assert.equal(albumOnlyIndex, queries.length - 1);
     assert.ok(queries.indexOf("Rihanna Umbrella") < albumOnlyIndex);
     assert.ok(queries.indexOf("Good Girl Gone Bad Umbrella") < albumOnlyIndex);
-    assert.ok(
-      [
-        "Rihanna Good Girl Gone Bad 2007",
-        "Rihanna Good Girl Gone Bad",
-        "*ihanna Good Girl Gone Bad 2007",
-        "*ihanna Good Girl Gone Bad",
-      ].every((query) => queries.indexOf(query) >= 0 && queries.indexOf(query) < albumOnlyIndex),
-    );
+    assert.ok(queries.indexOf("Rihanna Good Girl Gone Bad") >= 0);
+    assert.ok(queries.indexOf("Rihanna Good Girl Gone Bad") < albumOnlyIndex);
     assert.equal(result.message, "No suitable Usenet search results");
     assert.equal(result.details.queryCount, queries.length);
   } finally {

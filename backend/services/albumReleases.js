@@ -1,7 +1,15 @@
 import { getAlbumByMbid } from "./providers/brainzmashProvider.js";
 import { normalizeMatchText } from "./trackMatching/nativeMatcher.js";
+import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 
 const MBID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+// A compilation names each track's artist, or still credits "Various
+// Artists"; its folders and release names carry the album title only.
+export function isCompilationJobs(jobs) {
+  const artists = new Set(jobs.map((job) => normalizeMatchText(job.artistName)).filter(Boolean));
+  return artists.size > 1 || jobs.some((job) => isVariousArtistsCredit(job.artistName));
+}
 
 export function jobReleaseTrack(job) {
   return {

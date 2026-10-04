@@ -95,3 +95,22 @@ test("Soulseek album selection accepts artist-album and compilation folder label
     assert.equal(selectSoulseekAlbumFolder(results, jobs).decision, "selectable", folder);
   }
 });
+
+test("Soulseek album selection fits a compilation folder by its album title", () => {
+  const albumName = "Guardians of the Galaxy: Awesome Mix, Vol. 1: Original Motion Picture Soundtrack";
+  const folder = "Music/VA - Guardians of the Galaxy Awesome Mix Vol. 1 (2014)";
+  const results = [
+    { user: "u", file: `${folder}/01 - Blue Swede - Hooked on a Feeling.flac`, length: 173, size: 100 },
+    { user: "u", file: `${folder}/02 - Raspberries - Go All the Way.flac`, length: 203, size: 100 },
+  ];
+  const tracks = [["Blue Swede", "Hooked on a Feeling", 173000], ["Raspberries", "Go All the Way", 203000]];
+  for (const credit of ["track artists", "Various Artists"]) {
+    const compilationJobs = tracks.map(([artistName, trackName, durationMs], index) => ({
+      id: `job-${index}`, albumName, trackName, durationMs, trackNumber: index + 1,
+      artistName: credit === "Various Artists" ? credit : artistName,
+    }));
+    const selected = selectSoulseekAlbumFolder(results, compilationJobs);
+    assert.equal(selected.decision, "selectable", credit);
+    assert.deepEqual(selected.selected.files.map((file) => file.jobId), ["job-0", "job-1"], credit);
+  }
+});

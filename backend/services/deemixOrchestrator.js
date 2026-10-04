@@ -34,7 +34,7 @@ import {
   deniedAlbumSources,
   finishAlbumGrab,
 } from "./albumGrab.js";
-import { jobReleaseTrack } from "./albumReleases.js";
+import { isCompilationJobs, jobReleaseTrack } from "./albumReleases.js";
 import { assessRelease } from "./trackMatching/nativeMatcher.js";
 import {
   getPayloadCandidate,
@@ -107,7 +107,8 @@ async function searchDeemixAlbum(payload, helpers, job, client) {
   const denied = deniedAlbumSources([job, ...jobs], "deemix");
   const albums = new Map();
   let searchFailed = false;
-  for (const query of buildDeemixAlbumSearchQueries(buildResolvedTrack(job))) {
+  const compilation = isCompilationJobs(jobs);
+  for (const query of buildDeemixAlbumSearchQueries({ ...buildResolvedTrack(job), compilation })) {
     try {
       for (const album of await client.searchAlbums(query, { limit: SEARCH_LIMIT })) {
         if (denied.has(`album:${album.id}`) || !isSameCoreAlbum(album.title, job.albumName)) continue;

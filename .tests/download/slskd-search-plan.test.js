@@ -18,16 +18,12 @@ test("buildSlskdSearchTierGroups uses a short album-first search plan", () => {
   const tiers = buildSlskdSearchTierGroups(fataTrack);
 
   assert.equal(tiers[0]?.name, "base_album");
-  assert.ok(
-    tiers[0].queries.includes(
-      "From Autumn to Ashes The Fiction We Live 2003",
-    ),
-  );
+  assert.deepEqual(tiers[0].queries, ["From Autumn to Ashes The Fiction We Live"]);
   assert.ok(
     tiers.some(
       (tier) =>
         tier.name === "wildcard_album" &&
-        tier.queries.includes("*rom *utumn *o *shes The Fiction We Live"),
+        tier.queries.includes("*rom *utumn to *shes The Fiction We Live"),
     ),
   );
   const wildcardAlbumIndex = tiers.findIndex((tier) => tier.name === "wildcard_album");

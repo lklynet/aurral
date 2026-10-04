@@ -1,6 +1,7 @@
 import { distance } from "fastest-levenshtein";
 import { checkVariantCompatibility } from "./semanticPolicy.js";
 import { foldDiacritics } from "../providers/brainzmashRanking.js";
+import { isVariousArtistsCredit } from "./titleText.js";
 
 export const MATCH_POLICY = Object.freeze({
   version: "aurral-native-3",
@@ -117,7 +118,8 @@ function compareRecording(request, candidate, policy) {
   if (gap != null && gap > policy.maxDurationGapMs) contradictions.push("duration");
 
   const title = similarity(coreMatchTitle(request.title), coreMatchTitle(candidate.title));
-  const requestArtists = [...asNames(request.artists || request.artist), ...asNames(request.artistAliases)];
+  const requestArtists = [...asNames(request.artists || request.artist), ...asNames(request.artistAliases)]
+    .filter((name) => !isVariousArtistsCredit(name));
   const candidateArtists = asNames(candidate.artists || candidate.artist);
   const artist = requestArtists.length && candidateArtists.length
     ? Math.max(...requestArtists.flatMap((left) => candidateArtists.map((right) =>

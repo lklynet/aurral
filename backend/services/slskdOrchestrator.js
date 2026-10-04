@@ -30,7 +30,7 @@ import {
   finishAlbumGrab,
 } from "./albumGrab.js";
 import { selectSoulseekAlbumFolder } from "./albumReleaseSearch.js";
-import { loadAlbumReleases } from "./albumReleases.js";
+import { isCompilationJobs, loadAlbumReleases } from "./albumReleases.js";
 import {
   buildResolvedJobTrack as buildResolvedTrack,
   commitDownloadedFile,
@@ -742,7 +742,7 @@ async function handleSearch(payload, helpers) {
   const resolvedTrack = buildResolvedTrack(job, payload.track);
   const albumJobs = payload.albumGrab === true ? albumGrabJobs(payload) : null;
   const queries = payload.searchQueries || (albumJobs
-    ? buildAlbumSearchTiers(resolvedTrack)
+    ? buildAlbumSearchTiers({ ...resolvedTrack, compilation: isCompilationJobs(albumJobs) })
     : buildSlskdSearchTierGroups(resolvedTrack)).flatMap((tier) => tier.queries);
   const currentTier = payload.upgradeForJobId
     ? downloadTracker.getJob(payload.upgradeForJobId)?.qualityTier

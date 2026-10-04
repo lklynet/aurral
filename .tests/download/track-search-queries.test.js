@@ -43,30 +43,18 @@ test("buildTrackQueryVariants adds stripped and parenthesized variants", () => {
   assert.ok(variants.includes("Never Again"));
 });
 
-test("buildTrackSearchTiers uses a short album-first plan", () => {
-  const tiers = buildTrackSearchTiers({
+test("buildTrackSearchTiers starts with the artist and album and keeps the wildcard fallback", () => {
+  const queries = buildTrackSearchTiers({
     artistName: "Massive Attack",
     trackName: "Teardrop",
     albumName: "Mezzanine",
     releaseYear: "1998",
     artistAliases: ["Massive Attk"],
-  });
+  }).flatMap((tier) => tier.queries);
 
-  assert.equal(tiers[0]?.name, "base_album");
-  assert.ok(tiers[0].queries.includes("Massive Attack Mezzanine 1998"));
-  assert.ok(
-    tiers.some(
-      (tier) =>
-        tier.name === "wildcard_album" &&
-        tier.queries.includes("*assive *ttack Mezzanine 1998"),
-    ),
-  );
-  assert.ok(
-    tiers.some(
-      (tier) =>
-        tier.name === "album_track" && tier.queries.includes("Mezzanine Teardrop"),
-    ),
-  );
+  assert.equal(queries[0], "Massive Attack Mezzanine");
+  assert.ok(queries.includes("*assive *ttack Mezzanine"));
+  assert.ok(queries.includes("Mezzanine Teardrop"));
 });
 
 test("buildTrackSearchTiers searches the album title alone only after every artist query", () => {
@@ -118,19 +106,17 @@ test("buildTrackSearchTiers tries the artist and title right after the artist an
   assert.ok(tiers[1].queries.includes("Massive Attack Teardrop"));
 });
 
-test("buildTrackSearchTiers fallback tier adds a version-suffix-stripped query", () => {
-  const tiers = buildTrackSearchTiers({
+test("buildTrackSearchTiers also asks for the title without its version suffix", () => {
+  const queries = buildTrackSearchTiers({
     artistName: "Milk Inc.",
     trackName: "Never Again - Single Mix",
     albumName: "The Best Of",
     releaseYear: "2007",
     artistAliases: [],
-  });
+  }).flatMap((tier) => tier.queries);
 
-  const primary = tiers.find((tier) => tier.name === "primary_track");
-  assert.ok(primary?.queries.includes("Milk Inc. Never Again - Single Mix"));
-  assert.ok(primary?.queries.includes("Milk Inc. Never Again"));
-  assert.ok(primary?.queries.includes("Milk Inc Never Again"));
+  assert.ok(queries.includes("Milk Inc Never Again Single Mix"));
+  assert.ok(queries.includes("Milk Inc Never Again"));
 });
 
 test("buildTrackSearchTiers asks each query once", () => {
@@ -199,4 +185,42 @@ test("an album grab searches for the album and never for a track title", () => {
   assert.ok(queries.length > 0);
   assert.ok(queries.every((query) => query.includes("OK Computer")));
   assert.ok(queries.every((query) => !query.includes("Paranoid Android")));
+});
+
+const allQueries = (tiers) => tiers.flatMap((tier) => tier.queries);
+
+test("Soulseek queries split words at punctuation and leave out Various Artists", () => {
+  const soundtrack = allQueries(buildAlbumSearchTiers({
+    artistName: "Various Artists",
+    albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1: Original Motion Picture Soundtrack",
+    releaseYear: "2014",
+  }));
+  assert.ok(soundtrack.includes("Guardians of the Galaxy Awesome Mix Vol 1"));
+  assert.ok(soundtrack.every((query) => !/[:.,]/.test(query) && !/various/i.test(query)));
+
+  const pepper = allQueries(buildAlbumSearchTiers({
+    artistName: "The Beatles",
+    albumName: "Sgt. Pepper's Lonely Hearts Club Band",
+  }));
+  assert.equal(pepper[0], "The Beatles Sgt Pepper s Lonely Hearts Club Band");
+});
+
+test("Soulseek album queries stay specific for self-titled and short titles", () => {
+  const weezer = allQueries(buildAlbumSearchTiers({ artistName: "Weezer", albumName: "Weezer", releaseYear: "1994" }));
+  assert.equal(weezer[0], "Weezer 1994");
+  assert.ok(weezer.every((query) => !/weezer weezer/i.test(query) && query !== "Weezer"));
+
+  const adele = allQueries(buildAlbumSearchTiers({ artistName: "Adele", albumName: "21", releaseYear: "2011" }));
+  assert.equal(adele[0], "Adele 21 2011");
+  assert.ok(!adele.includes("21"));
+});
+
+test("Soulseek album queries fall back to the artist alias and the other volume spelling", () => {
+  const queries = allQueries(buildAlbumSearchTiers({
+    artistName: "Daft Punk",
+    albumName: "Homework Vol. 2",
+    artistAliases: ["Thomas & Guy-Man"],
+  }));
+  assert.ok(queries.includes("Daft Punk Homework Volume II"));
+  assert.ok(queries.includes("Thomas Guy Man Homework Vol 2"));
 });

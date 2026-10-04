@@ -155,3 +155,24 @@ test("deemix album grab tries the plain album query when the advanced one finds 
   assert.equal(search.mock.callCount(), 2);
   assert.equal(result.candidates[0].raw.albumId, "42");
 });
+
+test("deemix searches a compilation by its album title alone", async (t) => {
+  const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
+  const client = getDownloadClient("deemix");
+  const search = t.mock.method(client, "searchAlbums", async () => [
+    { id: "mix", title: "Guardians of the Galaxy: Awesome Mix, Vol. 1", url: "https://album.invalid/mix" },
+  ]);
+  t.mock.method(client, "getAlbumTracks", async () => [
+    albumTrack("Hooked on a Feeling", 0, { artist: "Blue Swede" }),
+    albumTrack("Go All the Way", 1, { artist: "Raspberries" }),
+  ]);
+  const ids = [["Blue Swede", "Hooked on a Feeling"], ["Raspberries", "Go All the Way"]]
+    .map(([artistName, trackName], index) => downloadTracker.addJob({
+      artistName, trackName, trackNumber: index + 1, durationMs: 180000,
+      albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1: Original Motion Picture Soundtrack",
+      albumMbid: "deemix-compilation", requestGroupId: "deemix-compilation",
+    }, "library"));
+  const result = await searchWith(client, ids);
+  assert.equal(result.candidates[0].raw.albumId, "mix");
+  assert.ok(search.mock.calls.every((call) => !/Blue Swede|Raspberries/.test(call.arguments[0])));
+});

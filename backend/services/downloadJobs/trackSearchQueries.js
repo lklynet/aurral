@@ -7,6 +7,7 @@
 
 import { getYear } from "../providers/brainzmashRanking.js";
 import { getPathParts } from "../trackMatching/candidateNormalizer.js";
+import { coreAlbumTitle, isVariousArtistsCredit } from "../trackMatching/titleText.js";
 
 export function bypassBannedArtistTerm(name) {
   const trimmed = String(name || "").trim();
@@ -16,7 +17,7 @@ export function bypassBannedArtistTerm(name) {
   return trimmed
     .split(/\s+/)
     .map((word) => {
-      if (!word || word.startsWith("*") || word.length < 2) return word;
+      if (!word || word.startsWith("*") || word.length < 3) return word;
       return `*${word.slice(1)}`;
     })
     .join(" ");
@@ -51,16 +52,6 @@ export function stripVersionSuffix(value) {
     .replace(/\s+/g, " ")
     .trim();
   return stripped || text;
-}
-
-function stripTrailingWordPeriods(value) {
-  const text = String(value || "").trim();
-  const cleaned = text
-    .split(/\s+/)
-    .map((word) => word.replace(/\.+$/, ""))
-    .filter(Boolean)
-    .join(" ");
-  return cleaned || text;
 }
 
 function uniqueQueries(values, limit = 12) {
@@ -101,13 +92,57 @@ export function buildTrackQueryVariants(trackName) {
   return uniqueQueries(variants);
 }
 
+// Soulseek splits file paths into words at every character that is not a
+// letter or digit and matches whole words, so "Pepper's" is found as
+// "Pepper s" and never as "Peppers", and "Film: Part" never matches at all.
+export function soulseekQueryText(value) {
+  return String(value || "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const VOLUME_PATTERN = /\b(vol(?:ume)?\.?)\s*(\d{1,2}|[ivx]{1,4})\b/iu;
+const ROMAN_NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii", "xiii", "xiv", "xv"];
+
+// "Vol. 2" is also written "Volume II"; folders use either.
+function volumeVariant(value) {
+  const match = VOLUME_PATTERN.exec(String(value || ""));
+  if (!match) return "";
+  const number = match[2].toLowerCase();
+  const arabic = /^\d+$/.test(number) ? Number(number) : ROMAN_NUMERALS.indexOf(number) + 1;
+  if (!(arabic >= 1 && arabic <= ROMAN_NUMERALS.length)) return "";
+  const replacement = /^\d+$/.test(number)
+    ? `Volume ${ROMAN_NUMERALS[arabic - 1].toUpperCase()}`
+    : `Vol ${arabic}`;
+  return String(value).replace(match[0], replacement);
+}
+
+function sameWords(left, right) {
+  return Boolean(left) && left.toLowerCase() === String(right || "").toLowerCase();
+}
+
 function readTrackSearchContext(context) {
+  const rawArtist = String(context?.artistName || "").trim();
+  const compilation = context?.compilation === true || isVariousArtistsCredit(rawArtist);
+  const rawAlbum = stripReleaseTypeSuffix(context?.albumName);
+  const artistName = compilation ? "" : soulseekQueryText(rawArtist);
+  const albumName = soulseekQueryText(rawAlbum);
+  const coreAlbum = soulseekQueryText(coreAlbumTitle(rawAlbum));
+  const albumVariant = soulseekQueryText(volumeVariant(coreAlbumTitle(rawAlbum)));
+  const aliases = compilation ? [] : (context?.artistAliases || [])
+    .map(soulseekQueryText)
+    .filter((alias) => alias.length >= 4 && !sameWords(alias, artistName));
   return {
-    artistName: String(context?.artistName || "").trim(),
-    trackName: String(context?.trackName || "").trim(),
-    albumName: stripReleaseTypeSuffix(context?.albumName),
+    artistName,
+    albumName,
+    coreAlbumName: sameWords(coreAlbum, albumName) ? "" : coreAlbum,
+    albumVariant: sameWords(albumVariant, albumName) ? "" : albumVariant,
+    alias: aliases[0] || "",
     releaseYear: getYear(context?.releaseYear),
-    trackVariants: buildTrackQueryVariants(context?.trackName),
+    selfTitled: sameWords(artistName, albumName),
+    shortAlbum: albumName.length > 0 && albumName.length < 4,
+    trackVariants: uniqueQueries(buildTrackQueryVariants(context?.trackName).map(soulseekQueryText)),
   };
 }
 
@@ -118,66 +153,18 @@ function joinSearchParts(...parts) {
     .join(" ");
 }
 
-function buildPrimaryTrackTierQueries(ctx) {
-  const queries = [];
-  const primaryTrack = ctx.trackVariants[0] || ctx.trackName;
-  if (!ctx.artistName || !primaryTrack) return queries;
-  queries.push(joinSearchParts(ctx.artistName, primaryTrack));
-  const strippedTrack = stripVersionSuffix(primaryTrack);
-  if (strippedTrack.toLowerCase() !== primaryTrack.toLowerCase()) {
-    queries.push(joinSearchParts(ctx.artistName, strippedTrack));
-  }
-  const cleanedArtist = stripTrailingWordPeriods(ctx.artistName);
-  if (cleanedArtist.toLowerCase() !== ctx.artistName.toLowerCase()) {
-    queries.push(joinSearchParts(cleanedArtist, strippedTrack));
-  }
-  if (ctx.releaseYear) {
-    queries.push(joinSearchParts(ctx.artistName, primaryTrack, ctx.releaseYear));
-  }
-  return uniqueQueries(queries, 4);
+// "Artist Album". A self-titled album is "Artist Year" because "Weezer
+// Weezer" lists every Weezer song; a short title such as "21" takes the year
+// to stay specific.
+function artistAlbumQuery(ctx, artistName = ctx.artistName) {
+  if (!artistName || !ctx.albumName) return "";
+  if (ctx.selfTitled) return joinSearchParts(artistName, ctx.releaseYear);
+  return joinSearchParts(artistName, ctx.albumName, ctx.shortAlbum ? ctx.releaseYear : null);
 }
 
-function buildBaseAlbumTierQueries(ctx) {
-  const queries = [];
-  if (!ctx.artistName || !ctx.albumName) return queries;
-  if (ctx.releaseYear) {
-    queries.push(joinSearchParts(ctx.artistName, ctx.albumName, ctx.releaseYear));
-  }
-  queries.push(joinSearchParts(ctx.artistName, ctx.albumName));
-  return uniqueQueries(queries, 4);
-}
-
-function buildWildcardAlbumTierQueries(ctx) {
-  const queries = [];
-  if (!ctx.artistName || !ctx.albumName) return queries;
-  const wildcardArtist = bypassBannedArtistTerm(ctx.artistName);
-  if (!wildcardArtist || wildcardArtist === ctx.artistName) return queries;
-  if (ctx.releaseYear) {
-    queries.push(joinSearchParts(wildcardArtist, ctx.albumName, ctx.releaseYear));
-  }
-  queries.push(joinSearchParts(wildcardArtist, ctx.albumName));
-  return uniqueQueries(queries, 3);
-}
-
-function buildAlbumOnlyTierQueries(ctx) {
-  if (!ctx.albumName) return [];
-  return uniqueQueries([ctx.albumName], 1);
-}
-
-function buildAlbumTrackTierQueries(ctx) {
-  const queries = [];
-  const primaryTrack = ctx.trackVariants[0] || ctx.trackName;
-  if (ctx.albumName && primaryTrack) {
-    queries.push(joinSearchParts(ctx.albumName, primaryTrack));
-  }
-  if (!ctx.albumName && ctx.artistName && primaryTrack) {
-    queries.push(joinSearchParts(ctx.artistName, primaryTrack));
-    const wildcardArtist = bypassBannedArtistTerm(ctx.artistName);
-    if (wildcardArtist && wildcardArtist !== ctx.artistName) {
-      queries.push(joinSearchParts(wildcardArtist, primaryTrack));
-    }
-  }
-  return uniqueQueries(queries, 3);
+function albumAloneQueries(ctx) {
+  if (!ctx.albumName || ctx.selfTitled || ctx.shortAlbum) return [];
+  return [ctx.albumName];
 }
 
 // Keeps each query once, in the first tier that asks it, and numbers the
@@ -188,8 +175,8 @@ function orderTiers(tiers) {
     .map((tier) => ({
       ...tier,
       queries: tier.queries.filter((query) => {
-        const key = query.toLowerCase();
-        if (seen.has(key)) return false;
+        const key = String(query || "").toLowerCase();
+        if (!key || seen.has(key)) return false;
         seen.add(key);
         return true;
       }),
@@ -198,14 +185,29 @@ function orderTiers(tiers) {
     .map((tier, index) => ({ tier: index, ...tier }));
 }
 
+function releaseFallbackTiers(ctx) {
+  const wildcardArtist = bypassBannedArtistTerm(ctx.artistName);
+  return [
+    { name: "core_album", queries: [ctx.artistName && ctx.coreAlbumName
+      ? joinSearchParts(ctx.artistName, ctx.coreAlbumName) : ctx.coreAlbumName] },
+    { name: "volume_variant", queries: [ctx.albumVariant
+      ? joinSearchParts(ctx.artistName, ctx.albumVariant) : ""] },
+    { name: "wildcard_album", queries: [wildcardArtist !== ctx.artistName
+      ? artistAlbumQuery(ctx, wildcardArtist) : ""] },
+    { name: "alias_album", queries: [artistAlbumQuery(ctx, ctx.alias)] },
+  ];
+}
+
 // A whole-release grab needs results that list the album folder, so it
-// searches for the album alone and never for one of its track titles.
+// searches for the album alone and never for one of its track titles. A
+// compilation is searched without "Various Artists", which folder names
+// rarely contain.
 export function buildAlbumSearchTiers(context) {
   const ctx = readTrackSearchContext(context);
   return orderTiers([
-    { name: "base_album", queries: buildBaseAlbumTierQueries(ctx) },
-    { name: "wildcard_album", queries: buildWildcardAlbumTierQueries(ctx) },
-    { name: "album_only", queries: buildAlbumOnlyTierQueries(ctx) },
+    { name: "base_album", queries: [artistAlbumQuery(ctx) || ctx.albumName] },
+    ...releaseFallbackTiers(ctx),
+    { name: "album_only", queries: albumAloneQueries(ctx) },
   ]);
 }
 
@@ -213,12 +215,22 @@ export function buildAlbumSearchTiers(context) {
 // The album title alone matches the most unrelated folders, so it is last.
 export function buildTrackSearchTiers(context) {
   const ctx = readTrackSearchContext(context);
+  const [track, ...trackVariants] = ctx.trackVariants;
+  const strippedTrack = stripVersionSuffix(track);
+  const wildcardArtist = bypassBannedArtistTerm(ctx.artistName);
   return orderTiers([
-    { name: "base_album", queries: buildBaseAlbumTierQueries(ctx) },
-    { name: "primary_track", queries: buildPrimaryTrackTierQueries(ctx) },
-    { name: "wildcard_album", queries: buildWildcardAlbumTierQueries(ctx) },
-    { name: "album_track", queries: buildAlbumTrackTierQueries(ctx) },
-    { name: "album_only", queries: buildAlbumOnlyTierQueries(ctx) },
+    { name: "base_album", queries: [artistAlbumQuery(ctx)] },
+    { name: "primary_track", queries: ctx.artistName && track ? [
+      joinSearchParts(ctx.artistName, track),
+      joinSearchParts(ctx.artistName, strippedTrack),
+      ...trackVariants.slice(0, 1).map((variant) => joinSearchParts(ctx.artistName, variant)),
+    ] : [] },
+    ...releaseFallbackTiers(ctx),
+    { name: "wildcard_track", queries: [wildcardArtist !== ctx.artistName && track
+      ? joinSearchParts(wildcardArtist, track) : ""] },
+    { name: "alias_track", queries: [ctx.alias && track ? joinSearchParts(ctx.alias, track) : ""] },
+    { name: "album_track", queries: [ctx.albumName && track ? joinSearchParts(ctx.albumName, track) : ""] },
+    { name: "album_only", queries: albumAloneQueries(ctx) },
   ]);
 }
 

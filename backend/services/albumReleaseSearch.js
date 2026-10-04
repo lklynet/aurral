@@ -9,7 +9,8 @@ import {
   getAdvertisedQualityRank,
   isAdvertisedQualityEligible,
 } from "./qualityProfileModel.js";
-import { candidateReleasesForJobs } from "./albumReleases.js";
+import { candidateReleasesForJobs, isCompilationJobs } from "./albumReleases.js";
+import { coreAlbumTitle } from "./trackMatching/titleText.js";
 
 const AUDIO_EXTENSIONS = new Set([".flac", ".mp3", ".m4a", ".ogg", ".wav", ".aac", ".opus", ".alac", ".ape", ".wma"]);
 const MAX_FOLDER_CANDIDATES = 3;
@@ -32,8 +33,9 @@ function folderArtist(folder, names) {
 }
 
 function folderNamesAlbum(folder, jobs) {
-  const albumName = normalizeMatchText(jobs[0].albumName);
-  return Boolean(albumName) && folderLabels(folder).includes(albumName);
+  const albumName = normalizeMatchText(coreAlbumTitle(jobs[0].albumName));
+  return Boolean(albumName)
+    && folderLabels(folder).some((label) => ` ${label} `.includes(` ${albumName} `));
 }
 
 function groupAlbumDiscFolders(groups) {
@@ -53,7 +55,7 @@ function groupAlbumDiscFolders(groups) {
 
 // A folder that names the requested artist vouches for the artist of files
 // whose names carry only a title.
-function soulseekFile(item, names, artistFromFolder) {
+function soulseekFile(item, names, artistFromFolder, compilation) {
   const parsed = parseListingTitle(item.file);
   let title = parsed.title || "";
   let artist = null;
@@ -65,6 +67,8 @@ function soulseekFile(item, names, artistFromFolder) {
       break;
     }
   }
+  const credited = compilation && !artist ? /^(.+?)\s+[-–—]\s+(.+)$/u.exec(title) : null;
+  if (credited) [, artist, title] = credited;
   const seconds = Number(item.length);
   return {
     title,
@@ -103,19 +107,20 @@ export function selectSoulseekAlbumFolder(results, jobs, { releases = [], profil
   }
   const leader = jobs[0];
   const names = requestedArtistNames(jobs);
+  const compilation = isCompilationJobs(jobs);
   const qualityAllowed = (item) => !profile
     || isAdvertisedQualityEligible(item.file, item.bitrate ?? item.bitRate, { profile });
   const groups = groupAlbumDiscFolders(groupSoulseekSearchResults(results, {
     isAudioFile: (filePath) => AUDIO_EXTENSIONS.has(getFileExtension(filePath)),
   }));
   const folders = groups.flatMap((group) => {
-    const artist = folderArtist(group, names);
+    const artist = compilation ? null : folderArtist(group, names);
     if (!artist && !folderNamesAlbum(group, jobs)) return [];
     const audioFiles = group.audioFiles.filter(qualityAllowed);
     if (audioFiles.length === 0) return [];
     return [{
       rawGroup: group,
-      files: audioFiles.map((item) => soulseekFile(item, names, artist)),
+      files: audioFiles.map((item) => soulseekFile(item, names, artist, compilation)),
       qualityRank: profile
         ? Math.max(...audioFiles.map((item) =>
           getAdvertisedQualityRank(item.file, item.bitrate ?? item.bitRate, profile)))

@@ -7,8 +7,7 @@
 import { normalizeReleaseText } from "../providers/brainzmashRanking.js";
 import { normalizeMatchText } from "../trackMatching/nativeMatcher.js";
 import { stripReleaseTypeSuffix } from "./trackSearchQueries.js";
-
-const EDITION_WORDS = /\b(?:deluxe|edition|remaster(?:ed)?|expanded|anniversary|bonus|special|collector'?s|version|explicit|clean)\b/iu;
+import { coreAlbumTitle } from "../trackMatching/titleText.js";
 
 function quote(value) {
   return String(value || "").replace(/"/g, " ").trim();
@@ -24,14 +23,6 @@ function uniqueQueries(queries) {
   });
 }
 
-// "Album (Deluxe Edition)" and "Album - Single" name the same album as
-// "Album"; "Album (Part 2)" does not.
-export function coreAlbumTitle(value) {
-  return stripReleaseTypeSuffix(String(value || ""))
-    .replace(/\s*[[(]([^\])]*)[\])]/gu, (segment, inner) => (EDITION_WORDS.test(inner) ? " " : segment))
-    .trim();
-}
-
 export function isSameCoreAlbum(left, right) {
   const key = normalizeMatchText(coreAlbumTitle(left));
   return Boolean(key) && key === normalizeMatchText(coreAlbumTitle(right));
@@ -39,11 +30,12 @@ export function isSameCoreAlbum(left, right) {
 
 export function buildDeemixAlbumSearchQueries(context) {
   const albumName = stripReleaseTypeSuffix(context?.albumName);
-  const artistName = String(context?.artistName || "").trim();
+  const coreAlbum = coreAlbumTitle(albumName);
+  const artistName = context?.compilation ? "" : String(context?.artistName || "").trim();
   if (!albumName) return [];
   return uniqueQueries(artistName
     ? [`artist:"${quote(artistName)}" album:"${quote(albumName)}"`, `${artistName} ${albumName}`]
-    : [albumName]);
+    : [`album:"${quote(coreAlbum)}"`, coreAlbum]);
 }
 
 export function buildDeemixSearchQueries(context) {
