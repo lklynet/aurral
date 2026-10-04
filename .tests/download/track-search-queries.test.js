@@ -69,26 +69,18 @@ test("buildTrackSearchTiers uses a short album-first plan", () => {
   );
 });
 
-test("buildTrackSearchTiers adds an album-only query after artist album tiers", () => {
-  const context = {
+test("buildTrackSearchTiers searches the album title alone only after every artist query", () => {
+  const queries = buildTrackSearchTiers({
     artistName: "Rihanna",
     trackName: "Umbrella",
     albumName: "Good Girl Gone Bad",
     releaseYear: "2007",
-  };
-  const tiers = buildTrackSearchTiers(context);
+  }).flatMap((tier) => tier.queries);
 
-  const wildcardAlbumIndex = tiers.findIndex((tier) => tier.name === "wildcard_album");
-  const albumOnlyIndex = tiers.findIndex((tier) => tier.name === "album_only");
-  const albumTrackIndex = tiers.findIndex((tier) => tier.name === "album_track");
-  const primaryTrack = tiers.find((tier) => tier.name === "primary_track");
-
-  assert.deepEqual(tiers[albumOnlyIndex]?.queries, ["Good Girl Gone Bad"]);
-  assert.equal(tiers[albumOnlyIndex]?.tier, 2);
-  assert.ok(wildcardAlbumIndex < albumOnlyIndex);
-  assert.ok(albumOnlyIndex < albumTrackIndex);
-  assert.equal(tiers[albumTrackIndex]?.tier, 3);
-  assert.equal(primaryTrack?.tier, 4);
+  assert.equal(queries.at(-1), "Good Girl Gone Bad");
+  assert.ok(queries.indexOf("Rihanna Good Girl Gone Bad") < queries.indexOf("Rihanna Umbrella"));
+  assert.ok(queries.indexOf("Rihanna Umbrella") < queries.indexOf("*ihanna Good Girl Gone Bad"));
+  assert.ok(queries.indexOf("Good Girl Gone Bad Umbrella") < queries.indexOf("Good Girl Gone Bad"));
 });
 
 test("buildTrackSearchTiers adds album-only search without an artist and skips blank albums", () => {
@@ -112,7 +104,7 @@ test("buildTrackSearchTiers adds album-only search without an artist and skips b
   assert.equal(withoutAlbum.some((tier) => tier.name === "album_only"), false);
 });
 
-test("buildTrackSearchTiers appends an artist + title fallback tier after album tiers", () => {
+test("buildTrackSearchTiers tries the artist and title right after the artist and album", () => {
   const tiers = buildTrackSearchTiers({
     artistName: "Massive Attack",
     trackName: "Teardrop",
@@ -121,10 +113,9 @@ test("buildTrackSearchTiers appends an artist + title fallback tier after album 
     artistAliases: [],
   });
 
-  const last = tiers[tiers.length - 1];
-  assert.equal(last?.name, "primary_track");
-  assert.ok(last.queries.includes("Massive Attack Teardrop"));
-  assert.ok(tiers.findIndex((tier) => tier.name === "album_track") < tiers.length - 1);
+  assert.equal(tiers[0]?.name, "base_album");
+  assert.equal(tiers[1]?.name, "primary_track");
+  assert.ok(tiers[1].queries.includes("Massive Attack Teardrop"));
 });
 
 test("buildTrackSearchTiers fallback tier adds a version-suffix-stripped query", () => {
@@ -142,21 +133,17 @@ test("buildTrackSearchTiers fallback tier adds a version-suffix-stripped query",
   assert.ok(primary?.queries.includes("Milk Inc Never Again"));
 });
 
-test("buildTrackSearchTiers fallback tier skips queries already covered by earlier tiers", () => {
-  const tiers = buildTrackSearchTiers({
+test("buildTrackSearchTiers asks each query once", () => {
+  const queries = buildTrackSearchTiers({
     artistName: "Massive Attack",
     trackName: "Teardrop",
     albumName: "",
     releaseYear: "",
     artistAliases: [],
-  });
+  }).flatMap((tier) => tier.queries);
 
-  const albumTrack = tiers.find((tier) => tier.name === "album_track");
-  assert.ok(albumTrack?.queries.includes("Massive Attack Teardrop"));
-  const primary = tiers.find((tier) => tier.name === "primary_track");
-  if (primary) {
-    assert.ok(!primary.queries.includes("Massive Attack Teardrop"));
-  }
+  assert.ok(queries.includes("Massive Attack Teardrop"));
+  assert.equal(new Set(queries.map((query) => query.toLowerCase())).size, queries.length);
 });
 
 test("selectRankedMatchAttempts spreads early attempts across users before reusing one", () => {

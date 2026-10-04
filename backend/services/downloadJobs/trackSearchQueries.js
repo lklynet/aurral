@@ -180,53 +180,46 @@ function buildAlbumTrackTierQueries(ctx) {
   return uniqueQueries(queries, 3);
 }
 
+// Keeps each query once, in the first tier that asks it, and numbers the
+// remaining tiers in order.
+function orderTiers(tiers) {
+  const seen = new Set();
+  return tiers
+    .map((tier) => ({
+      ...tier,
+      queries: tier.queries.filter((query) => {
+        const key = query.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }),
+    }))
+    .filter((tier) => tier.queries.length > 0)
+    .map((tier, index) => ({ tier: index, ...tier }));
+}
+
 // A whole-release grab needs results that list the album folder, so it
 // searches for the album alone and never for one of its track titles.
 export function buildAlbumSearchTiers(context) {
   const ctx = readTrackSearchContext(context);
-  return [
-    { tier: 0, name: "base_album", queries: buildBaseAlbumTierQueries(ctx) },
-    { tier: 1, name: "wildcard_album", queries: buildWildcardAlbumTierQueries(ctx) },
-    { tier: 2, name: "album_only", queries: buildAlbumOnlyTierQueries(ctx) },
-  ].filter((tier) => tier.queries.length > 0);
+  return orderTiers([
+    { name: "base_album", queries: buildBaseAlbumTierQueries(ctx) },
+    { name: "wildcard_album", queries: buildWildcardAlbumTierQueries(ctx) },
+    { name: "album_only", queries: buildAlbumOnlyTierQueries(ctx) },
+  ]);
 }
 
+// A track search asks for the artist and album, then the artist and title.
+// The album title alone matches the most unrelated folders, so it is last.
 export function buildTrackSearchTiers(context) {
   const ctx = readTrackSearchContext(context);
-  const tiers = [];
-  const baseAlbum = buildBaseAlbumTierQueries(ctx);
-  if (baseAlbum.length > 0) {
-    tiers.push({ tier: 0, name: "base_album", queries: baseAlbum });
-  }
-  const wildcardAlbum = buildWildcardAlbumTierQueries(ctx);
-  if (wildcardAlbum.length > 0) {
-    tiers.push({ tier: 1, name: "wildcard_album", queries: wildcardAlbum });
-  }
-  const albumOnly = buildAlbumOnlyTierQueries(ctx);
-  if (albumOnly.length > 0) {
-    tiers.push({ tier: 2, name: "album_only", queries: albumOnly });
-  }
-  const albumTrack = buildAlbumTrackTierQueries(ctx);
-  if (albumTrack.length > 0) {
-    tiers.push({ tier: albumOnly.length > 0 ? 3 : 2, name: "album_track", queries: albumTrack });
-  }
-  const priorQueries = new Set(
-    tiers.flatMap((tier) => tier.queries.map((query) => query.toLowerCase())),
-  );
-  const primaryTrack = buildPrimaryTrackTierQueries(ctx).filter(
-    (query) => !priorQueries.has(query.toLowerCase()),
-  );
-  if (primaryTrack.length > 0) {
-    let primaryTrackTier = 3;
-    if (albumOnly.length > 0) primaryTrackTier = 4;
-    if (tiers.length === 0) primaryTrackTier = 0;
-    tiers.push({
-      tier: primaryTrackTier,
-      name: "primary_track",
-      queries: primaryTrack,
-    });
-  }
-  return tiers;
+  return orderTiers([
+    { name: "base_album", queries: buildBaseAlbumTierQueries(ctx) },
+    { name: "primary_track", queries: buildPrimaryTrackTierQueries(ctx) },
+    { name: "wildcard_album", queries: buildWildcardAlbumTierQueries(ctx) },
+    { name: "album_track", queries: buildAlbumTrackTierQueries(ctx) },
+    { name: "album_only", queries: buildAlbumOnlyTierQueries(ctx) },
+  ]);
 }
 
 function getDirectoryKey(item) {

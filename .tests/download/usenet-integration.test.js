@@ -162,7 +162,7 @@ async function searchUntilDone(payload, helpers) {
   return result;
 }
 
-test("Usenet flow search tries the album-only query after artist-album queries", async () => {
+test("Usenet flow search tries the album title alone last", async () => {
   const queries = [];
   const types = [];
   const server = await createMockHttpServer((req, res) => {
@@ -222,9 +222,9 @@ test("Usenet flow search tries the album-only query after artist-album queries",
     assert.match(queries[0], /^\{artist:Rihanna\}\{album:Good Girl Gone Bad\} /);
     assert.deepEqual([...new Set(types)], ["music", "search"]);
     const albumOnlyIndex = queries.indexOf("Good Girl Gone Bad");
-    const albumTrackIndex = queries.indexOf("Good Girl Gone Bad Umbrella");
-    assert.ok(albumOnlyIndex > 0);
-    assert.ok(albumTrackIndex > albumOnlyIndex);
+    assert.equal(albumOnlyIndex, queries.length - 1);
+    assert.ok(queries.indexOf("Rihanna Umbrella") < albumOnlyIndex);
+    assert.ok(queries.indexOf("Good Girl Gone Bad Umbrella") < albumOnlyIndex);
     assert.ok(
       [
         "Rihanna Good Girl Gone Bad 2007",
