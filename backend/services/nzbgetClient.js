@@ -224,7 +224,7 @@ export class NzbgetClient {
     addPaused,
     dupeKey = "",
     dupeScore = 0,
-    dupeMode = "SCORE",
+    dupeMode = "FORCE",
     autoCategory = false,
     ppParameters = [],
   }) {
@@ -241,7 +241,7 @@ export class NzbgetClient {
       addPaused ?? settings.addPaused,
       String(dupeKey || ""),
       normalizeInteger(dupeScore, 0),
-      String(dupeMode || "SCORE"),
+      String(dupeMode || "FORCE"),
       autoCategory === true,
       Array.isArray(ppParameters) ? ppParameters : [],
     ]);

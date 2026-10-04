@@ -59,6 +59,8 @@ The **NZBGet** card in **Settings > Download clients** has these fields:
 - **Completed download path**: the folder of finished downloads. Set it only when Aurral cannot find that folder by itself.
 - **Add NZBs paused**: sends jobs to NZBGet paused.
 
+Aurral skips NZBGet's duplicate check for the releases it sends. Upgrading tracks one at a time can grab the same album release more than once, and NZBGet would otherwise delete the repeat as a duplicate.
+
 If NZBGet runs on Windows and reports host paths, mount the parent folder in Aurral. Then add a mapping in **Settings > Download clients > Remote path mappings**, with **Applies to** set to **NZBGet**.
 
 ## Behavior

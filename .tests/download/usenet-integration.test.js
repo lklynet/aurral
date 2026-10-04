@@ -273,6 +273,7 @@ test("NZBGet client uses JSON-RPC append signature and exposes completed paths",
     assert.equal(appendCall.params[1], "https://example.test/file.nzb");
     assert.equal(appendCall.params[2], "aurral");
     assert.equal(appendCall.params[3], 50);
+    assert.equal(appendCall.params[8], "FORCE");
 
     assert.equal((await nzbgetClient.getQueueItem(42)).Status, "DOWNLOADING");
     assert.equal((await nzbgetClient.getHistoryItem(42)).Status, "SUCCESS/ALL");
