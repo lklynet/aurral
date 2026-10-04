@@ -498,4 +498,6 @@ test("Aurral album requests are not checked against Lidarr by library album ID",
   const aurralEntry = entries.find((item) => item.albumName === "Aurral Owned Album");
   assert.notEqual(aurralEntry?.status, "failed");
   assert.doesNotMatch(aurralEntry?.title || "", /Lidarr/);
+  assert.equal(aurralEntry?.source, "aurral");
+  assert.equal(entries.find((item) => item.albumName === "Lidarr Album")?.source, "lidarr");
 });

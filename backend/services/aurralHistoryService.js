@@ -102,6 +102,7 @@ const resolveHistorySource = (kind, metadata = null) => {
   if (kind === "track_download") {
     return resolveTrackDownloadHistorySource(metadata?.downloadSource, metadata?.downloadClient);
   }
+  if (metadata?.managedBy === "aurral") return "aurral";
   return KIND_SOURCE_MAP[kind] || "aurral";
 };
 
