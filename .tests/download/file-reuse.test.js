@@ -185,6 +185,16 @@ test("reuseTrackForPlaylist finds a local file named with its album position", a
 
   assert.equal(result.reused, true);
   assert.equal(result.finalPath, localFilePath);
+
+  const reprise = { artistName: "Numbered Artist", trackName: "Theme", albumName: "Repeated Album", trackNumber: 9 };
+  const repeatedDir = path.join(downloadRoot, "Numbered Artist", "Repeated Album");
+  await fs.mkdir(repeatedDir, { recursive: true });
+  await fs.writeFile(path.join(repeatedDir, "01 - Theme.flac"), "audio");
+  const options = { existingFileMode: "reuse", downloadRoot };
+  assert.equal((await reuseTrackForPlaylist(reprise, "library", options)).reused, false);
+  const reprisePath = path.join(repeatedDir, "09 - Theme.flac");
+  await fs.writeFile(reprisePath, "audio");
+  assert.equal((await reuseTrackForPlaylist(reprise, "library", options)).finalPath, reprisePath);
 });
 
 test("reuseTrackForPlaylist neutralizes path traversal attempts in track metadata and target playlist", async () => {
