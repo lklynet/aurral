@@ -794,7 +794,7 @@ function LibraryPage() {
         trackName: track?.title || "",
         albumName: album?.title || "",
         artistMbid: artist?.mbid || "",
-        albumMbid: album?.mbid || album?.releaseGroupMbid || "",
+        albumMbid: album?.releaseGroupMbid || album?.mbid || "",
         trackMbid: track?.mbid || "",
         releaseYear: yearOf(album?.releaseDate),
         durationMs: trackDurationMs(track),
@@ -953,7 +953,7 @@ function LibraryPage() {
         } else if (removal.kind === "album" && /^\d+$/.test(String(entity.providerId ?? ""))) {
           await deleteAlbumFromLibrary(entity.providerId, deleteFiles);
         } else if (removal.kind === "album") {
-          await deleteLidarrAlbumFromLibrary(entity.mbid || entity.releaseGroupMbid, deleteFiles);
+          await deleteLidarrAlbumFromLibrary(entity.releaseGroupMbid || entity.mbid, deleteFiles);
         } else {
           await deleteTrackFromLibrary(entity.id);
         }
@@ -1019,7 +1019,7 @@ function LibraryPage() {
         trackName: track?.title || track?.trackName || "",
         albumName: album?.title || track?.albumName || "",
         artistMbid: artist?.mbid || track?.artistMbid || "",
-        albumMbid: album?.mbid || album?.releaseGroupMbid || track?.albumMbid || "",
+        albumMbid: album?.releaseGroupMbid || album?.mbid || track?.albumMbid || "",
         trackMbid: track?.mbid || track?.trackMbid || "",
         releaseYear: yearOf(album?.releaseDate),
         durationMs: trackDurationMs(track),
@@ -1419,7 +1419,7 @@ function LibraryPage() {
   const [albumDownloadPending, setAlbumDownloadPending] = useState(false);
   const libraryAlbumDownloading =
     albumDownloadPending ||
-    isAlbumDownloading(libraryAlbum?.mbid || libraryAlbum?.releaseGroupMbid);
+    isAlbumDownloading(libraryAlbum?.releaseGroupMbid || libraryAlbum?.mbid);
   const albumManager = resolveAlbumManager(libraryAlbum);
   const activeManager = libraryDestination.primary;
   const lidarrAlbumId =
@@ -1432,7 +1432,7 @@ function LibraryPage() {
         : null;
   const canDownloadLibraryAlbum = (() => {
     if (!canAddTracks || isPreviewLibrary || !libraryAlbum || !hasMissingAlbumTracks) return false;
-    if (!libraryDestination.ready || !(libraryAlbum.mbid || libraryAlbum.releaseGroupMbid)) return false;
+    if (!libraryDestination.ready || !(libraryAlbum.releaseGroupMbid || libraryAlbum.mbid)) return false;
     if (activeManager === "lidarr") return true;
     if (albumManager === "aurral") return canDownloadAurralAlbum(libraryAlbum, { hasMissingTracks: true });
     return albumManager !== "lidarr";
@@ -1627,7 +1627,7 @@ function LibraryPage() {
         streamFormat: file?.format || null,
         quality: file?.quality || null,
         artistMbid: artist?.mbid || null,
-        albumMbid: album?.mbid || album?.releaseGroupMbid || null,
+        albumMbid: album?.releaseGroupMbid || album?.mbid || null,
         trackMbid: track.mbid || track.trackMbid || null,
         durationMs: Number(track.durationMs || file?.durationMs || 0) || null,
         recordHistory: true,
@@ -1888,7 +1888,7 @@ function LibraryPage() {
         const backgroundDownload =
           !file &&
           (isTrackDownloading({ ...track, artistName: artist?.name || track.artistName }) ||
-            isAlbumDownloading(album?.mbid || album?.releaseGroupMbid));
+            isAlbumDownloading(album?.releaseGroupMbid || album?.mbid));
         const downloadPending =
           TRACK_DOWNLOAD_ACTIVE_STATUSES.has(downloadState?.status) || backgroundDownload;
         const downloadLabel = trackDownloadActionLabel(

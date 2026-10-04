@@ -216,10 +216,10 @@ function mapLibraryAlbum(album, artist, tracks = []) {
     artistId: String(album.artistId),
     artistName: artist?.name || album.albumArtist || null,
     artistMbid: artist?.mbid || null,
-    mbid: album.mbid || album.releaseGroupMbid || null,
+    mbid: album.releaseGroupMbid || album.mbid || null,
     releaseGroupMbid: album.releaseGroupMbid || null,
     foreignAlbumId:
-      album.metadata?.foreignAlbumId || album.mbid || album.releaseGroupMbid || album.identityKey,
+      album.metadata?.foreignAlbumId || album.releaseGroupMbid || album.mbid || album.identityKey,
     albumName: album.title,
     title: album.title,
     path: album.metadata?.path || null,
@@ -1595,13 +1595,13 @@ export class LibraryManager {
     if (!album) {
       return { error: "Album was not found in the library", statusCode: 404 };
     }
-    if (options.monitoringMode && !this._canAcquireMonitoredAlbum(options.artistMbid, album.mbid, options.monitoringMode)) {
+    if (options.monitoringMode && !this._canAcquireMonitoredAlbum(options.artistMbid, album.releaseGroupMbid || album.mbid, options.monitoringMode)) {
       return { status: "skipped" };
     }
 
     const artist = library.artists.find((entry) => entry.id === album.artistId);
     const mappedAlbum = mapLibraryAlbum(album, artist, library.tracks);
-    const albumMbid = album.mbid || album.releaseGroupMbid || null;
+    const albumMbid = album.releaseGroupMbid || album.mbid || null;
     const albumTracks = library.tracks.filter((track) => album.trackIds.includes(track.id));
     let albumJobs = findAurralAlbumJobs(albumMbid);
     const requestGroupId =
@@ -1640,7 +1640,7 @@ export class LibraryManager {
     };
 
     for (const track of missingTracks) {
-      if (options.monitoringMode && !this._canAcquireMonitoredAlbum(options.artistMbid, album.mbid, options.monitoringMode)) {
+      if (options.monitoringMode && !this._canAcquireMonitoredAlbum(options.artistMbid, album.releaseGroupMbid || album.mbid, options.monitoringMode)) {
         return { status: "skipped" };
       }
       const relation = (track.albums || []).find((entry) => entry.albumId === album.id);
@@ -1667,7 +1667,7 @@ export class LibraryManager {
           });
           continue;
         }
-        if (options.monitoringMode && !this._canAcquireMonitoredAlbum(options.artistMbid, album.mbid, options.monitoringMode)) {
+        if (options.monitoringMode && !this._canAcquireMonitoredAlbum(options.artistMbid, album.releaseGroupMbid || album.mbid, options.monitoringMode)) {
           return { status: "skipped" };
         }
         if (!sourceConfigured) {
@@ -2119,7 +2119,7 @@ export class LibraryManager {
       managedBy: "aurral",
       ...summarizeAurralAlbum({
         tracks: tracks.filter((track) => album.trackIds.includes(track.id)),
-        jobs: findAurralAlbumJobs(album.mbid || album.releaseGroupMbid),
+        jobs: findAurralAlbumJobs(album.releaseGroupMbid || album.mbid),
         sourceConfigured,
         sourceMessage: sourceConfigured ? null : getDownloadSourceNotConfiguredMessage(),
       }),
@@ -2139,14 +2139,14 @@ export class LibraryManager {
       const { album, mappedAlbum } = resolved;
       this._setAurralAlbumMonitored(album, monitored);
       if (monitored) {
-        const albumMbid = album.mbid || album.releaseGroupMbid;
+        const albumMbid = album.releaseGroupMbid || album.mbid;
         const result = albumMbid && album.metadata?.trackListComplete !== true
           ? await this._addAurralAlbum(album.artistId, albumMbid, album.title)
           : await this._finishAurralAlbum(album.id);
         if (result?.error) return result;
         return { ...result, monitored: true };
       }
-      const cancellation = await cancelAurralAlbumJobs(album.mbid || album.releaseGroupMbid);
+      const cancellation = await cancelAurralAlbumJobs(album.releaseGroupMbid || album.mbid);
       return {
         ...mappedAlbum,
         monitored: false,
@@ -2225,7 +2225,7 @@ export class LibraryManager {
         queuedJobIds.push(...(result?.jobIds || []));
       } else {
         for (const album of aurralAlbums) {
-          const cancellation = await cancelAurralTrackJobs(album.mbid || album.releaseGroupMbid, track);
+          const cancellation = await cancelAurralTrackJobs(album.releaseGroupMbid || album.mbid, track);
           cancelledJobIds.push(...cancellation.cancelledJobIds);
           cleanupFailed ||= cancellation.cleanupFailed;
         }
@@ -2266,7 +2266,7 @@ export class LibraryManager {
     const resolved = this._resolveAurralAlbum(canonicalId);
     if (resolved.error) return resolved;
     const { album, mappedAlbum } = resolved;
-    const result = await cancelAurralAlbumJobs(album.mbid || album.releaseGroupMbid);
+    const result = await cancelAurralAlbumJobs(album.releaseGroupMbid || album.mbid);
     return {
       canonicalId: mappedAlbum.canonicalId,
       managedBy: "aurral",
@@ -2296,7 +2296,7 @@ export class LibraryManager {
     let committedPaths;
     try {
       committedPaths = await removeLibraryDownloadJobs(tracks, {
-        albumMbid: album.mbid || album.releaseGroupMbid,
+        albumMbid: album.releaseGroupMbid || album.mbid,
       });
     } catch (error) {
       logger.error("library", `[LibraryManager] Failed to cancel album downloads: ${error.message}`);
@@ -2773,7 +2773,7 @@ export class LibraryManager {
       });
     }).immediate();
     invalidateLibraryQueryCache({ persistedGenres: false });
-    await cancelAurralAlbumJobs(album.mbid || album.releaseGroupMbid);
+    await cancelAurralAlbumJobs(album.releaseGroupMbid || album.mbid);
   }
 
   async requestAlbumFromSearch({

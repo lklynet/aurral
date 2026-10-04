@@ -4,10 +4,12 @@ import { parseFile } from "music-metadata";
 import {
   buildFallbackIdentityKey,
   buildIdentityKey,
+  findLibraryAlbumByReleaseMbid,
   getLibraryMediaFile,
   getAvailableLibraryMediaPaths,
   linkLibraryAlbumTrack,
   markLibraryMediaFilesUnavailable,
+  mergeReleaseKeyedLibraryAlbums,
   upsertLibraryAlbum,
   upsertLibraryArtist,
   upsertLibraryMediaFile,
@@ -301,6 +303,7 @@ export async function scanMusicRoot({
 } = {}) {
   const resolvedRoot = path.resolve(String(rootPath || ""));
   await fs.mkdir(resolvedRoot, { recursive: true });
+  mergeReleaseKeyedLibraryAlbums();
   const changed = Array.isArray(changedPaths)
     ? await resolveChangedFiles(resolvedRoot, changedPaths)
     : null;
@@ -354,10 +357,11 @@ export async function scanMusicRoot({
             metadata: record.artistMetadata,
             syncSearch,
           });
+          const releaseAlbum = findLibraryAlbumByReleaseMbid(record.releaseGroupMbid);
           const album = upsertLibraryAlbum({
-            identityKey: record.albumKey,
-            mbid: record.albumMbid,
-            releaseGroupMbid: record.releaseGroupMbid,
+            identityKey: releaseAlbum?.identity_key || record.albumKey,
+            mbid: releaseAlbum?.mbid || record.albumMbid,
+            releaseGroupMbid: releaseAlbum?.release_group_mbid || record.releaseGroupMbid,
             artistId: artist.id,
             title: record.albumName,
             albumArtist: record.albumArtist,

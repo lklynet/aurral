@@ -54,7 +54,7 @@ export const describeAurralAlbumStatus = ({ status, recovery } = {}) => {
 };
 
 export const buildAurralAlbumRetryPayload = ({ album, artist } = {}) => ({
-  albumMbid: album?.mbid || album?.releaseGroupMbid || "",
+  albumMbid: album?.releaseGroupMbid || album?.mbid || "",
   albumName: album?.title || "",
   artistMbid: artist?.mbid || "",
   artistName: artist?.name || "",

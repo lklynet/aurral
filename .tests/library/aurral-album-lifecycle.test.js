@@ -598,3 +598,44 @@ test("settling an album on an edition leaves a track another album has monitored
   assert.deepEqual(tracks.map(monitored), [0, 1]);
 });
 
+test("an album scanned with its release ID stays one album through downloads and scans", async () => {
+  setDownloadSourceConfigured(true);
+  const releaseGroup = "abababab-abab-4bab-8bab-000000000001";
+  const release = "abababab-abab-4bab-8bab-000000000002";
+  const recording = (index) => `abababab-abab-4bab-8bab-10000000000${index}`;
+  const root = path.join(isolatedState.baseDir, "release-keyed");
+  const artist = libraryStore.upsertLibraryArtist({ identityKey: "mbid:abababab-abab-4bab-8bab-000000000003",
+    mbid: "abababab-abab-4bab-8bab-000000000003", name: "Release Artist" });
+  const album = libraryStore.upsertLibraryAlbum({ identityKey: `release-group:${releaseGroup}`, mbid: release,
+    releaseGroupMbid: releaseGroup, artistId: artist.id, title: "Release Album" });
+  managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
+  const tracks = [1, 2].map((index) => libraryStore.upsertLibraryTrack({ identityKey: `recording:${recording(index)}`,
+    mbid: recording(index), title: `Release Song ${index}`, artistName: artist.name }));
+  tracks.forEach((track, index) => libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id,
+    trackNumber: index + 1 }));
+  libraryStore.upsertLibraryMediaFile({ trackId: tracks[0].id, albumId: album.id, source: "aurral",
+    path: path.join(root, "Release Artist", "Release Album", "01 - Release Song 1.flac") });
+  const jobId = downloadTracker.addJob({ artistName: artist.name, trackName: "Release Song 2", albumName: "Release Album",
+    albumMbid: release, trackMbid: recording(2), managedBy: "aurral", requestGroupId: "release-keyed" }, "library");
+  downloadTracker.setDone(jobId, path.join(root, "elsewhere.flac"));
+  const status = async () => (await callRoute("GET /albums/aurral/:canonicalId/status",
+    { canonicalId: String(album.id) })).body.status;
+  assert.equal(await status(), "partial");
+
+  const duplicate = libraryStore.upsertLibraryAlbum({ identityKey: `release-group:${release}`, mbid: release,
+    releaseGroupMbid: release, artistId: artist.id, title: "Release Album" });
+  libraryStore.linkLibraryAlbumTrack({ albumId: duplicate.id, trackId: tracks[1].id, trackNumber: 2 });
+  const filePath = path.join(root, "Release Artist", "Release Album", "02 - Release Song 2.flac");
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await promisify(execFile)("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
+    "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac", "-metadata", "title=Release Song 2",
+    "-metadata", "artist=Release Artist", "-metadata", "album=Release Album",
+    "-metadata", `MUSICBRAINZ_RELEASEGROUPID=${release}`, "-metadata", `MUSICBRAINZ_ALBUMID=${release}`,
+    "-metadata", `MUSICBRAINZ_TRACKID=${recording(2)}`, filePath]);
+  await scanMusicRoot({ rootPath: root, filePaths: [filePath], source: "aurral" });
+  invalidateAllDownloadStatusesCache();
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM library_albums WHERE identity_key = ?")
+    .get(`release-group:${release}`).count, 0);
+  assert.equal(db.prepare("SELECT album_id FROM library_media_files WHERE path = ?").get(filePath).album_id, album.id);
+  assert.equal(await status(), "complete");
+});

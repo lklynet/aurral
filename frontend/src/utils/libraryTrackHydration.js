@@ -24,7 +24,7 @@ export function mergeAlbumMetadataTracks(
   const owned = Array.isArray(ownedTracks) ? ownedTracks : [];
   const metadata = Array.isArray(metadataTracks) ? metadataTracks : [];
   const usedOwned = new Set();
-  const albumMbid = album?.mbid || album?.releaseGroupMbid || null;
+  const albumMbid = album?.releaseGroupMbid || album?.mbid || null;
   const artistName = artist?.name || album?.artistName || album?.albumArtist || "";
   const artistMbid = artist?.mbid || album?.artistMbid || null;
 

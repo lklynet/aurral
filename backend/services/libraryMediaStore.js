@@ -3,6 +3,7 @@ import path from "node:path";
 import { db, dbHelpers } from "../config/db-sqlite.js";
 import { invalidateLibraryQueryCache } from "./libraryQueryService.js";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
+import { clearLibraryManagement } from "./libraryManagementStore.js";
 import {
   removeLibrarySearchDocument,
   syncLibrarySearchAlbum,
@@ -553,6 +554,60 @@ export function linkLibraryAlbumTrack({
     return result.changes > 0;
   })();
   if (changed) invalidateLibraryCache();
+}
+
+// A scan stores a file's release ID in its album's mbid. A release ID used
+// as a release group names that album, not a new one.
+export function findLibraryAlbumByReleaseMbid(mbid) {
+  const releaseMbid = normalizeText(mbid);
+  if (!releaseMbid) return null;
+  return db.prepare(
+    `SELECT * FROM library_albums
+     WHERE mbid = ? AND release_group_mbid IS NOT NULL AND release_group_mbid != mbid
+     ORDER BY id LIMIT 1`,
+  ).get(releaseMbid) || null;
+}
+
+// Downloads once took an album's release ID for its release group, and the
+// scan filed them under a second album keyed by that release ID. Each such
+// album folds into the album the release belongs to.
+export function mergeReleaseKeyedLibraryAlbums() {
+  const pairs = db.prepare(
+    `SELECT duplicate.id AS duplicateId, duplicate.identity_key AS duplicateKey,
+       album.id AS albumId, album.identity_key AS albumKey
+     FROM library_albums AS album
+     JOIN library_albums AS duplicate ON duplicate.identity_key = 'release-group:' || album.mbid
+     WHERE album.mbid IS NOT NULL AND album.release_group_mbid IS NOT NULL
+       AND album.mbid != album.release_group_mbid AND duplicate.id != album.id`,
+  ).all();
+  if (pairs.length === 0) return 0;
+  db.transaction(() => {
+    for (const pair of pairs) {
+      db.prepare(
+        `INSERT OR IGNORE INTO library_album_tracks (album_id, track_id, disc_number, track_number, created_at)
+         SELECT ?, link.track_id, link.disc_number, link.track_number, link.created_at
+         FROM library_album_tracks AS link
+         WHERE link.album_id = ? AND NOT EXISTS (
+           SELECT 1 FROM library_album_tracks AS kept WHERE kept.album_id = ? AND kept.track_id = link.track_id
+         )`,
+      ).run(pair.albumId, pair.duplicateId, pair.albumId);
+      db.prepare("UPDATE library_media_files SET album_id = ? WHERE album_id = ?").run(pair.albumId, pair.duplicateId);
+      db.prepare(
+        `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
+         SELECT user_id, entity_kind, ?, created_at FROM subsonic_stars
+         WHERE entity_kind = 'album' AND entity_key = ?`,
+      ).run(pair.albumKey, pair.duplicateKey);
+      db.prepare("DELETE FROM subsonic_stars WHERE entity_kind = 'album' AND entity_key = ?").run(pair.duplicateKey);
+      db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(pair.duplicateId);
+      clearLibraryManagement("album", pair.duplicateId);
+      db.prepare("DELETE FROM library_albums WHERE id = ?").run(pair.duplicateId);
+      removeLibrarySearchDocument("album", pair.duplicateId);
+      touchLibraryAlbum(pair.albumId);
+    }
+  })();
+  for (const pair of pairs) syncLibrarySearchAlbum(pair.albumId);
+  invalidateLibraryCache();
+  return pairs.length;
 }
 
 export function removeLibraryTrackIfNoAvailableMedia(trackId) {

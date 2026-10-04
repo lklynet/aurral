@@ -644,7 +644,7 @@ const trackFromLibrary = (library, track) => {
     trackName: track?.title,
     albumName: album?.title,
     artistMbid: findArtistForAlbum(library, album)?.mbid,
-    albumMbid: album?.mbid || album?.releaseGroupMbid,
+    albumMbid: album?.releaseGroupMbid || album?.mbid,
     trackMbid: track?.mbid,
     releaseYear: year(album?.releaseDate),
     durationMs: firstFile(track, album?.id, album?.managedBy)?.durationMs,

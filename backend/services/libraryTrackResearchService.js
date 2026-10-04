@@ -70,7 +70,7 @@ export function resolveAurralOwnedTrackJob({ trackId, albumId } = {}) {
       trackName: track?.title,
       albumName: album?.title || null,
       artistMbid: artist?.mbid || null,
-      albumMbid: album?.mbid || album?.releaseGroupMbid || null,
+      albumMbid: album?.releaseGroupMbid || album?.mbid || null,
       trackMbid: track?.mbid || null,
       releaseYear,
       durationMs: sourceFile.durationMs ?? track?.metadata?.durationMs ?? null,
