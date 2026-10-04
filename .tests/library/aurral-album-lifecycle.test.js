@@ -516,7 +516,9 @@ test("an album asks for its most common edition and a whole shorter edition comp
     })) });
   const standard = { id: "standard", status: "Official", tracks: release("standard", 3).tracks.slice(1)
     .map((track, index) => ({ ...track, trackposition: index + 1 })) };
-  const releases = [standard, release("deluxe-vinyl", 3, 2), release("deluxe", 3), release("box-set", 4)];
+  const misprint = { id: "misprint", status: "Official", tracks: release("misprint", 3).tracks.reverse()
+    .map((track, index) => ({ ...track, trackposition: index + 1 })) };
+  const releases = [standard, misprint, release("deluxe-vinyl", 3, 2), release("deluxe", 3), release("box-set", 4)];
   const metadata = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
     if (new URL(request.url, "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
@@ -549,7 +551,8 @@ test("an album asks for its most common edition and a whole shorter edition comp
     artistMbid, artistName: "Edition Artist", managedBy: "aurral" });
   assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
   const ids = requested.body.jobIds;
-  assert.deepEqual(ids.map((id) => downloadTracker.getJob(id).trackNumber), [1, 2, 3]);
+  assert.deepEqual(ids.map((id) => [downloadTracker.getJob(id).trackNumber, downloadTracker.getJob(id).trackName]),
+    [[1, "Edition Song 1"], [2, "Edition Song 2"], [3, "Edition Song 3"]]);
 
   const folder = path.join(isolatedState.baseDir, "edition-download");
   await fs.mkdir(folder, { recursive: true });
