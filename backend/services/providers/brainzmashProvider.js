@@ -333,15 +333,20 @@ function applyReleaseTypeFilter(albums, releaseTypes = []) {
   });
 }
 
-// Like Lidarr, the official release with the most tracks represents the
-// album; a download of a shorter edition still completes it.
+// The album is the official tracklist most of its releases share: pressings
+// of the standard edition far outnumber deluxe editions and box sets, which
+// can run to 90 tracks. A tie goes to the longer tracklist.
 export function selectAlbumRelease(album) {
   const releases = Array.isArray(album?.releases) ? album.releases : [];
   const withTracks = releases.filter((release) => Array.isArray(release?.tracks) && release.tracks.length > 0);
   const official = withTracks.filter((release) => String(release?.status || "").toLowerCase() === "official");
-  const mostTracks = (list) => list.reduce((best, release) =>
-    (!best || release.tracks.length > best.tracks.length ? release : best), null);
-  return mostTracks(official) || mostTracks(withTracks) || releases[0] || null;
+  const pool = official.length > 0 ? official : withTracks;
+  if (pool.length === 0) return releases[0] || null;
+  const counts = new Map();
+  for (const release of pool) counts.set(release.tracks.length, (counts.get(release.tracks.length) || 0) + 1);
+  const [trackCount] = [...counts].sort(([leftCount, left], [rightCount, right]) =>
+    right - left || rightCount - leftCount)[0];
+  return pool.find((release) => release.tracks.length === trackCount);
 }
 
 function storeAlbumReleaseMappings(album) {

@@ -502,7 +502,7 @@ test("active downloads list in-flight albums, artists, and tracks so buttons sur
   }
 });
 
-test("an album download of a whole shorter edition completes the album without the other edition's tracks", async (t) => {
+test("an album asks for its most common edition and a whole shorter edition completes it", async (t) => {
   const artistMbid = "eeeeeeee-eeee-4eee-8eee-000000000001";
   const albumMbid = "eeeeeeee-eeee-4eee-8eee-000000000002";
   const recording = (index) => `eeeeeeee-eeee-4eee-8eee-10000000000${index}`;
@@ -510,6 +510,7 @@ test("an album download of a whole shorter edition completes the album without t
     id: `${id}-${index}`, recordingid: recording(index + 1), trackname: `Edition Song ${index + 1}`,
     artistid: artistMbid, durationms: 1000, trackposition: index + 1, mediumnumber: 1,
   })) });
+  const releases = [release("standard", 2), release("deluxe", 3), release("deluxe-jp", 3), release("box-set", 4)];
   const metadata = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
     if (new URL(request.url, "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
@@ -519,7 +520,7 @@ test("an album download of a whole shorter edition completes the album without t
     }
     response.end(JSON.stringify({ id: albumMbid, title: "Edition Album", artistid: artistMbid,
       artists: [{ id: artistMbid, artistname: "Edition Artist" }],
-      releases: [release("standard", 2), release("deluxe", 3)] }));
+      releases }));
   });
   const originalSettings = dbOps.getSettings();
   const originalWorkerStart = downloadWorker.start;
