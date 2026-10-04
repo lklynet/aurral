@@ -167,7 +167,7 @@ export function rankUsenetReleases(releases, context, options = {}) {
     const hasAlbum = request.albums.some((album) => containsPhrase(words, album));
     const hasArtist = (request.compilation && hasAlbum)
       || request.artists.some((name) => containsPhrase(words, name));
-    const hasTrack = !hasAlbum && request.tracks.some((track) => containsPhrase(words, track));
+    const hasTrack = request.tracks.some((track) => containsPhrase(words, track));
     // A single or track release must be the requested version: a remix or
     // radio edit of the track is not downloaded for the original.
     const otherVersion = hasTrack

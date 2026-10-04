@@ -515,6 +515,12 @@ test("a Usenet single in another version is not offered for the original track",
     "album: Daft Punk - Random Access Memories (2013) FLAC",
     "track: Daft Punk - Get Lucky (feat. Pharrell Williams) [2013] FLAC",
   ]);
+
+  const titleTrack = admitted([
+    "Michael Jackson - Thriller (Radio Edit) [Single] FLAC",
+    "Michael Jackson - Thriller (1982) FLAC",
+  ], { artistName: "Michael Jackson", albumName: "Thriller", trackName: "Thriller" });
+  assert.deepEqual(titleTrack.map(([title]) => title), ["Michael Jackson - Thriller (1982) FLAC"]);
 });
 
 test("a compilation track takes a single by its own artist from Usenet", () => {
