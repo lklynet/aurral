@@ -13,7 +13,7 @@ import {
   normalizeTitle,
   getYear,
 } from "../providers/brainzmashRanking.js";
-import { coreAlbumTitle, isVariousArtistsCredit } from "../trackMatching/titleText.js";
+import { coreAlbumTitle, isVariousArtistsCredit, otherProductMarker } from "../trackMatching/titleText.js";
 import { checkVariantCompatibility } from "../trackMatching/semanticPolicy.js";
 
 const AUDIO_CATEGORY_MIN = 3000;
@@ -172,7 +172,10 @@ export function rankUsenetReleases(releases, context, options = {}) {
     // radio edit of the track is not downloaded for the original.
     const otherVersion = hasTrack
       && !checkVariantCompatibility({ trackName: request.trackName }, { title }).compatible;
-    const admissible = hasAudioCategory(release) && hasArtist && (hasAlbum || hasTrack) && !otherVersion;
+    const otherProduct = otherProductMarker(title,
+      [request.albumName, request.trackName, ...request.artists], { album: hasAlbum });
+    const admissible = hasAudioCategory(release) && hasArtist && (hasAlbum || hasTrack)
+      && !otherVersion && !otherProduct;
     if (!admissible) {
       ranked.push({
         raw,

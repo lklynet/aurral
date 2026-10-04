@@ -69,7 +69,7 @@ Aurral searches the way Lidarr does. If an indexer supports music search by arti
 
 Aurral cleans the text first: it drops a leading "The", removes accents, and replaces punctuation with spaces, so `AC/DC` is searched as `AC DC`. A compilation is searched as `VA` with the album title, and then by the title alone.
 
-A release matches when its title contains the artist and the album or track title. A compilation release needs only the album title. A single in another version, such as a remix or a radio edit, does not match the original track. Aurral checks every downloaded file before it imports it.
+A release matches when its title contains the artist and the album or track title. A compilation release needs only the album title. A single in another version, such as a remix or a radio edit, does not match the original track. A discography, box set, bootleg, tribute, or karaoke release does not match either, and an album does not match a live or greatest-hits release, unless the request names one. Aurral checks every downloaded file before it imports it.
 
 Aurral watches SABnzbd or NZBGet for as long as the client holds the download, including while it is paused. If the download leaves the client without a history entry, Aurral tries the next release.
 

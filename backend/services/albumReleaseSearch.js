@@ -10,7 +10,7 @@ import {
   isAdvertisedQualityEligible,
 } from "./qualityProfileModel.js";
 import { candidateReleasesForJobs, isCompilationJobs } from "./albumReleases.js";
-import { coreAlbumTitle } from "./trackMatching/titleText.js";
+import { coreAlbumTitle, otherProductMarker } from "./trackMatching/titleText.js";
 
 const AUDIO_EXTENSIONS = new Set([".flac", ".mp3", ".m4a", ".ogg", ".wav", ".aac", ".opus", ".alac", ".ape", ".wma"]);
 const MAX_FOLDER_CANDIDATES = 3;
@@ -114,6 +114,8 @@ export function selectSoulseekAlbumFolder(results, jobs, { releases = [], profil
     isAudioFile: (filePath) => AUDIO_EXTENSIONS.has(getFileExtension(filePath)),
   }));
   const folders = groups.flatMap((group) => {
+    const albumFolder = String(group.directoryPath || "").split(/[\\/]/).at(-1);
+    if (otherProductMarker(albumFolder, [leader.albumName, ...names], { album: true })) return [];
     const artist = compilation ? null : folderArtist(group, names);
     if (!artist && !folderNamesAlbum(group, jobs)) return [];
     const audioFiles = group.audioFiles.filter(qualityAllowed);

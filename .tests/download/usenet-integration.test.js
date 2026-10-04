@@ -491,6 +491,12 @@ test("Usenet release titles match by their words, not by overall similarity", ()
     albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1: Original Motion Picture Soundtrack" });
   assert.deepEqual(soundtrack.map(([, kind]) => kind), ["album", "album"]);
 
+  const selfTitled = admitted([
+    "Portishead - Discography 1994-2008 FLAC",
+    "Portishead - Portishead (1997) FLAC",
+  ], { artistName: "Portishead", albumName: "Portishead", trackName: "Humming" });
+  assert.deepEqual(selfTitled.map(([title]) => title), ["Portishead - Portishead (1997) FLAC"]);
+
   const bookends = admitted([
     "Simon and Garfunkel - Bookends (1968) FLAC",
     "Simon & Garfunkel - Bookends (1968) MP3",

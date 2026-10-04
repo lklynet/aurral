@@ -30,3 +30,17 @@ export function coreAlbumTitle(value) {
   const core = kept.join(" ").replace(/\s+/g, " ").trim();
   return core || String(value || "").trim();
 }
+
+const OTHER_PRODUCTS = ["discography", "box set", "boxset", "bootleg", "tribute", "karaoke"];
+const OTHER_ALBUMS = ["live", "anthology", "greatest hits", "best of", "complete albums",
+  "complete studio albums", "complete recordings", "complete works"];
+
+// A release named a discography, box set, bootleg, tribute, or karaoke
+// release, or for an album a live or hits collection, is a different product
+// from the one requested, unless the request names it too.
+export function otherProductMarker(name, requested, { album = false } = {}) {
+  const words = ` ${plainWords(name)} `;
+  const wanted = ` ${requested.map(plainWords).join(" ")} `;
+  return [...OTHER_PRODUCTS, ...(album ? OTHER_ALBUMS : [])]
+    .find((marker) => words.includes(` ${marker} `) && !wanted.includes(` ${marker} `)) || null;
+}

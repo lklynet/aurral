@@ -86,13 +86,16 @@ test("Soulseek album selection combines disc directories into one batch", () => 
   assert.equal(selected.selected.files.length, 2);
 });
 
-test("Soulseek album selection accepts artist-album and compilation folder labels", () => {
-  for (const folder of ["The Band - Album", "Various Artists/Album"]) {
-    const results = [
-      { user: "u", file: `${folder}/01 - First.flac`, length: 200, size: 100 },
-      { user: "u", file: `${folder}/02 - Second.flac`, length: 201, size: 100 },
-    ];
-    assert.equal(selectSoulseekAlbumFolder(results, jobs).decision, "selectable", folder);
+test("Soulseek album selection accepts artist-album and compilation folder labels, not live or bootleg copies", () => {
+  const folderDecision = (folder) => selectSoulseekAlbumFolder([
+    { user: "u", file: `${folder}/01 - First.flac`, length: 200, size: 100 },
+    { user: "u", file: `${folder}/02 - Second.flac`, length: 201, size: 100 },
+  ], jobs).decision;
+  for (const folder of ["The Band - Album", "Various Artists/Album", "The Band - Discography/Album"]) {
+    assert.equal(folderDecision(folder), "selectable", folder);
+  }
+  for (const folder of ["The Band - Album (Live)", "The Band/Album [Bootleg]"]) {
+    assert.notEqual(folderDecision(folder), "selectable", folder);
   }
 });
 
