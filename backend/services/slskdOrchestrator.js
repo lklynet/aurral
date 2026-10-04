@@ -83,6 +83,7 @@ const TRANSFER_RESET = Object.freeze({
   legacyTransfer: null,
   lastProgress: null,
   lastProgressAt: null,
+  queuedSince: null,
 });
 const ALBUM_TRANSFER_RESET = Object.freeze({ ...TRANSFER_RESET, albumTransfers: null });
 const STALLED_TRANSFER_MS = 30 * 60 * 1000;

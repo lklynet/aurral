@@ -176,3 +176,29 @@ test("a Soulseek album gives up on files left in the uploader's queue and keeps 
   assert.equal(downloadTracker.getJob(album.ids[0]).status, "done");
   assert.equal(downloadTracker.getJob(album.ids[1]).status, "pending");
 });
+
+test("a Soulseek album's next folder gets its own queue window", async (t) => {
+  const album = await makeAlbum("soulseek-next-folder");
+  dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
+    slskd: { enabled: true, url: "http://127.0.0.1:9" },
+  } });
+  const client = getDownloadClient("slskd");
+  const transfers = [
+    { id: "failed", username: "peer", filename: album.files[0], state: "Completed, Errored" },
+    { id: "queued", username: "peer", filename: album.files[1], state: "Queued, Remotely", placeInQueue: 4 },
+  ];
+  t.mock.method(client, "getTransfer", async (_, id) => transfers.find((item) => item.id === id));
+  t.mock.method(client, "deleteTransfer", async () => true);
+  t.mock.method(client, "getDownloadDirectory", async () => album.folder);
+  t.mock.method(client, "isCleanupAfterRunsEnabled", () => false);
+  const folder = (user) => ({ raw: { user, files: album.files.map((filePath, index) =>
+    ({ file: filePath, size: 0, jobId: album.ids[index] })) } });
+  const candidates = [folder("peer"), folder("other")];
+  const giveUp = await processPipelinePayload({ ...album.payload, source: "slskd", phase: "poll",
+    candidateIndex: 0, candidates, candidate: candidates[0], albumTransfers: transfers,
+    queuedSince: Date.now() - 11 * 60 * 1000 });
+  assert.equal(giveUp.phase, "finalize");
+  const next = await processPipelinePayload(giveUp);
+  assert.equal(next.candidateIndex, 1);
+  assert.equal(next.queuedSince ?? null, null);
+});
