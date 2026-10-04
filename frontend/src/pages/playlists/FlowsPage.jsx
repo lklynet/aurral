@@ -31,12 +31,10 @@ export default function FlowsPage() {
     usePlaylistStatus();
   const { artworkUrlFor } = usePlaylistArtwork();
   const [creating, setCreating] = useState(false);
-  const canCreate = Object.keys(status?.capabilities?.unavailableSources || {}).length === 0;
 
   const templatesQuery = useQuery({
     queryKey: queryKeys.flowTemplates(user?.id),
     queryFn: ({ signal }) => getFlowTemplates({ signal }),
-    enabled: canCreate,
     staleTime: 5 * 60 * 1000,
   });
   const templates = (templatesQuery.data?.templates || []).filter((template) => template.available);
@@ -126,19 +124,11 @@ export default function FlowsPage() {
       );
     }
     if (flows.length === 0) {
-      return canCreate ? (
+      return (
         <div className="native-library-state">
           <strong>No flows yet</strong>
           <span>A flow builds a fresh playlist on a schedule from a recipe you choose.</span>
           {renderNewFlowMenu("native-library-state__action")}
-        </div>
-      ) : (
-        <div className="native-library-state">
-          <strong>Flows need a Last.fm API key</strong>
-          <span>Add one in Connect settings to build flows.</span>
-          <Link to="/settings/connect" className="native-library-state__action">
-            Open Connect settings
-          </Link>
         </div>
       );
     }
@@ -187,7 +177,7 @@ export default function FlowsPage() {
           <div className="native-library-title">
             <h1 className="page-title">Flows</h1>
           </div>
-          {canCreate && flows.length > 0 ? (
+          {flows.length > 0 ? (
             <div className="native-library-header-actions">
               {renderNewFlowMenu("btn btn-secondary btn-sm")}
             </div>

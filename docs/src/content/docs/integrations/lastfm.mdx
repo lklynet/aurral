@@ -3,9 +3,9 @@ title: Last.fm
 description: Use Last.fm for recommendations, listening history, and scrobbling.
 ---
 
-Last.fm is optional. A Last.fm API key gives Aurral similar artists, tags, and top tracks, which improve recommendations, flows, and the **For you** playlists. Flow **Deep Dive** needs the key.
+Last.fm is optional. Without it, Aurral gets similar and trending artists from ListenBrainz. A Last.fm API key switches recommendations, trending artists, tag search, and flows to Last.fm, which usually finds closer matches. See [ListenBrainz and Last.fm](/using/discover/#listenbrainz-and-lastfm).
 
-Aurral reads artist genres from BrainzMash first. It uses Last.fm tags only for artists that BrainzMash has no genres for, and only the tags that are real genres.
+On artist pages, Aurral reads genres from BrainzMash first. For artists that BrainzMash has no genres for, it uses Last.fm tags, or ListenBrainz tags when there is no key. It keeps only the tags that are real genres.
 
 ## Add the API key
 
@@ -24,7 +24,7 @@ Each user connects their own account while signed in. The instance API key canno
 
 ## Per-user listening history
 
-Each user chooses a history source in **Profile > Listening history**. To read Last.fm history, choose **Last.fm** and enter a Last.fm username. To use only the plays recorded in Aurral, choose **Local only**.
+Each user chooses a history source in **Profile > Listening history**. To read Last.fm history, choose **Last.fm** and enter a Last.fm username. Aurral reads it with the admin's API key, so without a key, choose ListenBrainz or Koito instead. To use only the plays recorded in Aurral, choose **Local only**.
 
 When a user chooses Last.fm, ListenBrainz, or Koito, Aurral combines the provider's history with the plays recorded in Aurral.
 

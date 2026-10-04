@@ -142,8 +142,8 @@ test("mix album pick prefers top track list metadata before track.getInfo", () =
   const ownedTitles = new Set(["owned track"]);
   const ownedAlbums = new Set(["owned album"]);
   const trackList = [
-    { name: "Owned Track", album: { title: "Owned Album" } },
-    { name: "Fresh Track", album: { title: "New Album" } },
+    { name: "Owned Track", albumName: "Owned Album" },
+    { name: "Fresh Track", albumName: "New Album" },
   ];
   const picked = source._pickTrackFromRangesWithOwnedAlbumsUsingListMetadata(
     trackList,
@@ -218,61 +218,41 @@ test("release radar picks a release track from metadata before Last.fm fallbacks
 });
 
 test("release radar does not substitute an unrelated artist top track", async () => {
-  const previousLastfmApiKey = process.env.LASTFM_API_KEY;
-  process.env.LASTFM_API_KEY = "test-key";
   const source = new FlowTrackSource();
   source._getMetadataAlbumTrackList = async () => [];
   source._getLastfmAlbumInfo = async () => null;
   source._getArtistTopTrackList = async () => [
-    { name: "Sober to Death", album: { title: "Twin Fantasy (Face to Face)" } },
+    { name: "Sober to Death", albumName: "Twin Fantasy (Face to Face)" },
   ];
 
-  try {
-    const track = await source._pickTrackFromRelease({
-      artistName: "Car Seat Headrest",
-      albumTitle: "Teen of Denial (Joe's Story)",
-      albumMbid: "album-mbid",
-      artistMbid: "artist-mbid",
-      releaseYear: "2026",
-    });
+  const track = await source._pickTrackFromRelease({
+    artistName: "Car Seat Headrest",
+    albumTitle: "Teen of Denial (Joe's Story)",
+    albumMbid: "album-mbid",
+    artistMbid: "artist-mbid",
+    releaseYear: "2026",
+  });
 
-    assert.equal(track, null);
-  } finally {
-    if (previousLastfmApiKey == null) {
-      delete process.env.LASTFM_API_KEY;
-    } else {
-      process.env.LASTFM_API_KEY = previousLastfmApiKey;
-    }
-  }
+  assert.equal(track, null);
 });
 
 test("release radar accepts artist top track fallback only when the album matches", async () => {
-  const previousLastfmApiKey = process.env.LASTFM_API_KEY;
-  process.env.LASTFM_API_KEY = "test-key";
   const source = new FlowTrackSource();
   source._getMetadataAlbumTrackList = async () => [];
   source._getLastfmAlbumInfo = async () => null;
   source._getArtistTopTrackList = async () => [
-    { name: "Sober to Death", album: { title: "Twin Fantasy (Face to Face)" } },
-    { name: "Joe Gets Kicked", album: { title: "Teen of Denial (Joe's Story)" } },
+    { name: "Sober to Death", albumName: "Twin Fantasy (Face to Face)" },
+    { name: "Joe Gets Kicked", albumName: "Teen of Denial (Joe's Story)" },
   ];
 
-  try {
-    const track = await source._pickTrackFromRelease({
-      artistName: "Car Seat Headrest",
-      albumTitle: "Teen of Denial (Joe's Story)",
-      albumMbid: "album-mbid",
-      artistMbid: "artist-mbid",
-      releaseYear: "2026",
-    });
+  const track = await source._pickTrackFromRelease({
+    artistName: "Car Seat Headrest",
+    albumTitle: "Teen of Denial (Joe's Story)",
+    albumMbid: "album-mbid",
+    artistMbid: "artist-mbid",
+    releaseYear: "2026",
+  });
 
-    assert.equal(track?.trackName, "Joe Gets Kicked");
-    assert.equal(track?.albumName, "Teen of Denial (Joe's Story)");
-  } finally {
-    if (previousLastfmApiKey == null) {
-      delete process.env.LASTFM_API_KEY;
-    } else {
-      process.env.LASTFM_API_KEY = previousLastfmApiKey;
-    }
-  }
+  assert.equal(track?.trackName, "Joe Gets Kicked");
+  assert.equal(track?.albumName, "Teen of Denial (Joe's Story)");
 });

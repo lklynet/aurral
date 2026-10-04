@@ -1,6 +1,5 @@
 import { dbOps } from "../../db/helpers/index.js";
-import { getLastfmApiKey } from "../apiClients/index.js";
-import { getLibraryArtistProjection } from "../libraryQueryService.js";
+import { getMusicDataSourceName } from "../musicDataSource/index.js";
 import {
   enqueueDiscoveryRefreshJob,
   getHonkerDb,
@@ -148,13 +147,8 @@ function hasQueuedDiscoveryRefresh() {
   });
 }
 
-export async function isDiscoveryRefreshConfigured() {
-  const hasLastfm = !!getLastfmApiKey();
-  if (hasLastfm) return true;
-  return getLibraryArtistProjection({ page: 1, pageSize: 1 }).length > 0;
-}
-
 export function discoveryNeedsRefresh(cache = dbOps.getDiscoveryCache()) {
+  if (cache?.provider && cache.provider !== getMusicDataSourceName()) return true;
   const refreshHours = getDiscoveryAutoRefreshHours();
   const staleCutoff = Date.now() - refreshHours * 60 * 60 * 1000;
   const lastUpdatedAt = new Date(cache?.lastUpdated || "").getTime();
@@ -234,9 +228,6 @@ export function scheduleNextDiscoveryRefresh() {
 }
 
 export async function enqueueDiscoveryRefreshIfNeeded(options = {}) {
-  if (!(await isDiscoveryRefreshConfigured())) {
-    return { enqueued: false, reason: "not_configured" };
-  }
   if (!options.force && !discoveryNeedsRefresh()) {
     return { enqueued: false, reason: "fresh" };
   }
@@ -245,31 +236,6 @@ export async function enqueueDiscoveryRefreshIfNeeded(options = {}) {
 
 export async function bootstrapDiscoveryRefresh() {
   recoverDeadDiscoveryRefresh();
-
-  if (!(await isDiscoveryRefreshConfigured())) {
-    console.log("Discovery not configured (no Last.fm API key and no artists). Clearing cache.");
-    try {
-      dbOps.updateDiscoveryCache({
-        recommendations: [],
-        globalTop: [],
-        basedOn: [],
-        topTags: [],
-        topGenres: [],
-        lastUpdated: null,
-      });
-      Object.assign(getDiscoveryCache(), {
-        recommendations: [],
-        globalTop: [],
-        basedOn: [],
-        topTags: [],
-        topGenres: [],
-        lastUpdated: null,
-      });
-    } catch (error) {
-      console.error("Failed to clear discovery cache:", error.message);
-    }
-    return;
-  }
 
   const result = await enqueueDiscoveryRefreshIfNeeded({ reason: "startup" });
   if (result.reason === "fresh") {

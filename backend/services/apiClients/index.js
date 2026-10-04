@@ -22,6 +22,7 @@ export {
   musicbrainzGetCachedArtistMbidByName,
   musicbrainzResolveArtistMbidByName,
   musicbrainzResolveLibraryArtistMbid,
+  musicbrainzSearchArtistsByTag,
 } from "./musicbrainz.js";
 
 export { lastfmRequest, lastfmGetSession, lastfmScrobble } from "./lastfm.js";
@@ -36,6 +37,7 @@ export {
   getDeezerArtistById,
   deezerGetArtistTopTracks,
   deezerGetArtistTopTracksById,
+  deezerGetArtistTopTrackList,
   deezerGetAlbumTracks,
   enrichTracksWithDeezerPreviews,
 } from "./deezer.js";

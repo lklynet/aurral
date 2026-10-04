@@ -23,6 +23,7 @@ import { testNavidromeConnection } from "../../shared/navidromeTest.js";
 import { mergePlexIntegration } from "./plexSettings.js";
 import { getNewsSettings, normalizeNewsFeeds, normalizeNewsGroups } from "../../../services/apiClients/config.js";
 import { normalizeQualityProfile } from "../../../services/qualityProfileModel.js";
+import { getMusicDataSourceName } from "../../../services/musicDataSource/index.js";
 
 function mergeIntegrations(existing, input, keys) {
   const merged = { ...existing, ...input };
@@ -563,7 +564,14 @@ export function registerGeneral(router) {
         };
       }
 
+      const previousMusicDataSource = getMusicDataSourceName();
       dbOps.updateSettings(updatedSettings);
+      if (getMusicDataSourceName() !== previousMusicDataSource) {
+        const { enqueueDiscoveryRefresh } = await import(
+          "../../../services/discovery/refreshScheduler.js"
+        );
+        enqueueDiscoveryRefresh({ reason: "music_data_source_changed", force: true });
+      }
       const { lidarrClient } = await import("../../../services/lidarrClient.js");
       lidarrClient.updateConfig();
       if (didLidarrRootDiscoveryChange(currentSettings, updatedSettings) && lidarrClient.isConfigured()) {

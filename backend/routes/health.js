@@ -36,11 +36,7 @@ import { requireAuth } from "../middleware/requirePermission.js";
 import { getImageProxyCacheSizeBytes } from "../services/imageProxyService.js";
 import { getDownloadSourceStatus } from "../services/downloadSourceService.js";
 import { getMatcherStatus } from "../services/trackMatching/index.js";
-import {
-  DISCOVERY_PROVIDER_LASTFM,
-  DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
-  getDiscoveryCapabilities,
-} from "../services/listenbrainzDiscoveryFallback.js";
+import { getMusicDataSourceName } from "../services/musicDataSource/index.js";
 
 const router = express.Router();
 const STARTED_AT = Date.now();
@@ -356,10 +352,7 @@ router.get("/", noCache, async (req, res) => {
       const artworkLinkCount = dbOps.countImages();
       const nativeImageCacheSizeBytes = await getImageProxyCacheSizeBytes();
       payload.discovery = {
-        provider: getLastfmApiKey()
-          ? DISCOVERY_PROVIDER_LASTFM
-          : DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
-        capabilities: getDiscoveryCapabilities(!!getLastfmApiKey()),
+        provider: getMusicDataSourceName(),
         ...getDiscoveryStatus(currentUser.id),
         recommendationsCount: discoveryCache?.recommendations?.length || 0,
         globalTopCount: discoveryCache?.globalTop?.length || 0,

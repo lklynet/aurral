@@ -7,19 +7,19 @@ Discover is Aurral's home page. It shows personal recommendations, trending arti
 
 ![Aurral Discover page](../../../assets/screenshots/discover.webp)
 
-Aurral recommends artists that fit your taste but are not in your Library yet. It uses your Library, your listening history, and discovery data from Last.fm and other sources.
+Aurral recommends artists that fit your taste but are not in your Library yet. It uses your Library, your listening history, and similar-artist data from ListenBrainz, or from Last.fm when an admin adds a Last.fm API key.
 
 ## What shapes recommendations
 
-Each user gets their own recommendations. Aurral picks a set of seed artists for you and asks Last.fm for artists similar to them. The seeds come from:
+Each user gets their own recommendations. Aurral picks a set of seed artists for you and looks up artists similar to them. The seeds come from:
 
 - Artists you marked **More like this**
 - Your listening history in Aurral, and from Last.fm, ListenBrainz, or Koito
 - A sample of your Library. Recently added artists are always in the sample, and the rest changes on every refresh.
 
-Aurral then ranks the results by how similar they are, how well their Last.fm tags match your seeds, and how many of your seeds point to them. Aurral only uses Last.fm tags that name a genre on MusicBrainz, plus a few broad ones like indie and rap, so tags like "seen live" or "female vocalists" don't show up as genres or count toward matches. Trending artists come from Last.fm and are the same for everyone.
+Aurral then ranks the results by how similar they are, how well their genres match your seeds, and how many of your seeds point to them. Aurral only uses tags that name a genre on MusicBrainz, plus a few broad ones like indie and rap, so tags like "seen live" or "female vocalists" don't show up as genres or count toward matches. Trending artists are the same for everyone.
 
-Each recommendation shows a match percentage. It says how a pick ranks against your other recommendations, from 99% for your top pick down to 55% for the last one. It is not a Last.fm score, and it can change after you give feedback. Trending artists have no percentage.
+Each recommendation shows a match percentage. It says how a pick ranks against your other recommendations, from 99% for your top pick down to 55% for the last one. It is not a ListenBrainz or Last.fm score, and it can change after you give feedback. Trending artists have no percentage.
 
 **More like this** makes the artist a seed and moves artists like it up your list. **Less like this** moves the artist and related picks down, and stops Aurral from using the artist as a seed. Neither one hides an artist.
 
@@ -27,7 +27,11 @@ Each recommendation shows a match percentage. It says how a pick ranks against y
 
 Feedback reorders your list right away. Aurral saves it for the next scheduled rebuild, which uses artists you liked as seeds to bring in new picks. An admin sets the schedule in **Settings > Discover**. A new user sees **Building your personal recommendations** until their first set is ready.
 
-Personal recommendations need a Last.fm API key. Without one, everyone shares the ListenBrainz trending and genre sections.
+## ListenBrainz and Last.fm
+
+Discover works without an account or API key. Aurral finds similar and trending artists on ListenBrainz, genres on MusicBrainz, and the top tracks that flows use on Deezer.
+
+ListenBrainz similar artists lean toward well-known names, so Last.fm usually gives closer matches. When an admin adds a Last.fm API key in **Settings > Connect > Last.fm**, Aurral uses Last.fm for recommendations, trending artists, tag search, and flows. **Settings > Discover** shows which one is in use. When an admin adds or removes the key, Aurral rebuilds everyone's recommendations.
 
 ## Discovery modes
 

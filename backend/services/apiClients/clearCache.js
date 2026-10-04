@@ -4,6 +4,7 @@ import { deezerArtistCache } from "./deezer.js";
 import {
   musicbrainzArtistNameCache,
   musicbrainzReleaseGroupsCache,
+  musicbrainzTagArtistsCache,
 } from "./musicbrainz.js";
 import {
   deezerAlbumCache,
@@ -21,6 +22,7 @@ export function clearApiCaches() {
   deezerArtistCache.flushAll();
   musicbrainzArtistNameCache.flushAll();
   musicbrainzReleaseGroupsCache.flushAll();
+  musicbrainzTagArtistsCache.flushAll();
   deezerAlbumCache.flushAll();
   deezerAlbumTrackCache.flushAll();
   deezerPreviewMatchCache.flushAll();

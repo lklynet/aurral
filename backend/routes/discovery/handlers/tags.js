@@ -1,16 +1,25 @@
-import { getLastfmApiKey, lastfmRequest } from "../../../services/apiClients/index.js";
-import { getDiscoveryCache } from "../../../services/discovery/index.js";
-import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
-import { extractLastfmImageUrl } from "../../artists/shared/transform.js";
+import { dbOps } from "../../../db/helpers/index.js";
 import {
-  DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
-  getFallbackTagNames,
-  searchFallbackGenreArtists,
-} from "../../../services/listenbrainzDiscoveryFallback.js";
-import { logger } from "../../../services/logger.js";
-import { pendingTagRequests, fetchLastfmTopTagNames } from "./utils.js";
-import { getLibraryArtistKeys } from "../../../services/discovery/artistKeys.js";
+  getMusicDataSourceName,
+  getPopularTags,
+  getTagArtists,
+} from "../../../services/musicDataSource/index.js";
+import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
+import { getUserDiscoveryNamespace } from "../../../services/discovery/index.js";
 import { getUserDiscovery } from "../../../services/discovery/userDiscovery.js";
+
+const rankTagSuggestions = (names, prefix) => {
+  const seen = new Set();
+  const groups = [[], [], []];
+  for (const rawName of names) {
+    const name = String(rawName ?? "").trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key) || (prefix && !key.includes(prefix))) continue;
+    seen.add(key);
+    groups[key === prefix ? 0 : key.startsWith(prefix) ? 1 : 2].push(name);
+  }
+  return groups.flat();
+};
 
 export function registerTags(router) {
   router.get("/tags", async (req, res) => {
@@ -19,36 +28,15 @@ export function registerTags(router) {
       const limitInt = Math.min(parseInt(limit) || 10, 20);
       const rawPrefix = String(q).trim();
       const prefix = rawPrefix.toLowerCase();
-      let tagNames = [];
-      if (getLastfmApiKey()) {
-        tagNames = await fetchLastfmTopTagNames();
+      const userGenres =
+        req.user?.id != null
+          ? dbOps.getDiscoveryCache(getUserDiscoveryNamespace(req.user.id)).topGenres || []
+          : [];
+      const suggestions = rankTagSuggestions([...userGenres, ...(await getPopularTags())], prefix);
+      if (prefix.length >= 2 && suggestions[0]?.toLowerCase() !== prefix) {
+        suggestions.unshift(rawPrefix);
       }
-      if (tagNames.length === 0) {
-        const discoveryCache = getDiscoveryCache();
-        const cached = [
-          ...getFallbackTagNames(),
-          ...(discoveryCache.topTags || []),
-          ...(discoveryCache.topGenres || []),
-        ]
-          .map((t) => (t != null ? String(t).trim() : ""))
-          .filter(Boolean);
-        tagNames = [...new Set(cached)];
-      }
-      const seen = new Set();
-      const filtered = tagNames.filter((name) => {
-        const key = name.toLowerCase();
-        if (seen.has(key)) return false;
-        if (prefix && !key.includes(prefix)) return false;
-        seen.add(key);
-        return true;
-      });
-      if (
-        prefix.length >= 2 &&
-        !filtered.some((name) => name.toLowerCase() === prefix)
-      ) {
-        filtered.unshift(rawPrefix);
-      }
-      res.json({ tags: filtered.slice(0, limitInt) });
+      res.json({ tags: suggestions.slice(0, limitInt) });
     } catch (error) {
       res.status(500).json({
         error: "Failed to fetch tag suggestions",
@@ -67,137 +55,44 @@ export function registerTags(router) {
 
       const limitInt = Math.min(parseInt(limit) || 24, 50);
       const offsetInt = parseInt(offset) || 0;
-      const page = Math.floor(offsetInt / limitInt) + 1;
       const includeLibraryFlag =
         includeLibrary === "true" || includeLibrary === "1";
       const scopeValue =
         scope === "all" || includeLibraryFlag ? "all" : "recommended";
-      const cacheKey = `tag:${tag.toLowerCase()}:${limitInt}:${page}:${scopeValue}`;
 
-      let recommendations = [];
       if (scopeValue === "all") {
-        if (getLastfmApiKey()) {
-          try {
-            let data;
-            if (pendingTagRequests.has(cacheKey)) {
-              data = await pendingTagRequests.get(cacheKey);
-            } else {
-              const fetchPromise = lastfmRequest("tag.getTopArtists", {
-                tag,
-                limit: limitInt,
-                page,
-              });
-              pendingTagRequests.set(cacheKey, fetchPromise);
-              try {
-                data = await fetchPromise;
-              } finally {
-                pendingTagRequests.delete(cacheKey);
-              }
-            }
-
-            if (data?.topartists?.artist) {
-              const artists = Array.isArray(data.topartists.artist)
-                ? data.topartists.artist
-                : [data.topartists.artist];
-
-              recommendations = artists
-                .map((artist) => {
-                  const imageUrl = extractLastfmImageUrl(artist.image);
-
-                  return {
-                    id: artist.mbid,
-                    name: artist.name,
-                    sortName: artist.name,
-                    type: "Artist",
-                    tags: [tag],
-                    image: buildImageProxyUrl(imageUrl),
-                  };
-                })
-                .filter((a) => a.id);
-            }
-          } catch (err) {
-            logger.error("discovery", "Last.fm tag search failed", { error: err.message });
-          }
-        } else {
-          const fallbackResult = await searchFallbackGenreArtists({
-            tag,
-            limit: limitInt,
-            offset: offsetInt,
-            existingArtistKeys: includeLibraryFlag
-              ? new Set()
-              : getLibraryArtistKeys().keys,
-          });
-          if (fallbackResult) {
-            return res.json({
-              recommendations: fallbackResult.artists,
-              tag,
-              total: fallbackResult.total,
-              offset: offsetInt,
-              provider: DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
-              fallbackLimited: true,
-            });
-          }
-
-          const discoveryCache = getDiscoveryCache();
-          const tagLower = String(tag).trim().toLowerCase();
-          const pool = [
-            ...(discoveryCache.recommendations || []),
-            ...(discoveryCache.globalTop || []),
-            ...(discoveryCache.fallbackGenres || []).flatMap((section) =>
-              Array.isArray(section?.artists) ? section.artists : [],
-            ),
-          ];
-          const seen = new Set();
-          const matches = pool.filter((artist) => {
-            const key = String(artist?.id || artist?.mbid || artist?.name || "")
-              .trim()
-              .toLowerCase();
-            if (!key || seen.has(key)) return false;
-            const artistTags = [
-              ...(Array.isArray(artist?.tags) ? artist.tags : []),
-              ...(Array.isArray(artist?.genres) ? artist.genres : []),
-            ];
-            const matched = artistTags.some(
-              (entry) =>
-                String(entry || "").trim().toLowerCase() === tagLower,
-            );
-            if (!matched) return false;
-            seen.add(key);
-            return true;
-          });
-          recommendations = matches.slice(offsetInt, offsetInt + limitInt);
-          return res.json({
-            recommendations,
-            tag,
-            total: matches.length,
-            offset: offsetInt,
-            provider: DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
-            fallbackLimited: true,
-            message: "Tag search is limited without Last.fm",
-          });
-        }
-      } else {
-        const { body: discovery } = getUserDiscovery(req.user?.id ?? null, 0);
-        const tagLower = String(tag).trim().toLowerCase();
-        const matches = discovery.recommendations.filter(
-          (artist) => {
-            const tags = Array.isArray(artist.tags) ? artist.tags : [];
-            return tags.some((t) => String(t).toLowerCase() === tagLower);
-          },
-        );
-        recommendations = matches.slice(offsetInt, offsetInt + limitInt);
-        return res.json({
-          recommendations,
-          tag,
-          total: matches.length,
+        const { artists, hasMore } = await getTagArtists(tag, {
+          limit: limitInt,
           offset: offsetInt,
+        });
+        return res.json({
+          recommendations: artists
+            .filter((artist) => artist.mbid)
+            .map((artist) => ({
+              id: artist.mbid,
+              name: artist.name,
+              sortName: artist.name,
+              type: "Artist",
+              tags: [tag],
+              image: buildImageProxyUrl(artist.image),
+            })),
+          tag,
+          total: offsetInt + artists.length + (hasMore ? 1 : 0),
+          offset: offsetInt,
+          provider: getMusicDataSourceName(),
         });
       }
 
+      const { body: discovery } = getUserDiscovery(req.user?.id ?? null, 0);
+      const tagLower = String(tag).trim().toLowerCase();
+      const matches = discovery.recommendations.filter((artist) => {
+        const tags = Array.isArray(artist.tags) ? artist.tags : [];
+        return tags.some((t) => String(t).toLowerCase() === tagLower);
+      });
       res.json({
-        recommendations,
+        recommendations: matches.slice(offsetInt, offsetInt + limitInt),
         tag,
-        total: recommendations.length,
+        total: matches.length,
         offset: offsetInt,
       });
     } catch (error) {
@@ -207,5 +102,4 @@ export function registerTags(router) {
       });
     }
   });
-
 }

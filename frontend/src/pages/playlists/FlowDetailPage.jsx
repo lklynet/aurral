@@ -29,7 +29,6 @@ import {
   buildFlowFromForm,
   buildReleaseRadarFlowFromForm,
   flowToForm,
-  getUnavailableFlowSourceMessage,
   isFlowDirty,
   isScheduleOnlyFlowDirty,
   normalizeMixPercent,
@@ -134,7 +133,6 @@ function FlowDetail({ flow }) {
 
   const stats = getPlaylistStats(flow.id);
   const enabled = flow.enabled === true;
-  const disabledSources = status?.capabilities?.unavailableSources || {};
   const retired = isEditorialFlow(flow);
   const activeTab = retired ? "tracks" : tab;
   const isPresetRecipe = isReleaseRadarFlow(flow);
@@ -170,10 +168,6 @@ function FlowDetail({ flow }) {
     setSavingRecipe(true);
     setRecipeError("");
     try {
-      if (!isPresetRecipe) {
-        const sourceError = getUnavailableFlowSourceMessage(draft, disabledSources);
-        if (sourceError) throw new Error(sourceError);
-      }
       const payload = isReleaseRadarFlow(flow)
         ? buildReleaseRadarFlowFromForm(flow, draft)
         : buildFlowFromForm(draft);
@@ -471,7 +465,6 @@ function FlowDetail({ flow }) {
                   <FlowFormFields
                     {...recipeFieldProps}
                     normalizeMixPercent={normalizeMixPercent}
-                    disabledSources={disabledSources}
                   />
                 )}
               </Suspense>

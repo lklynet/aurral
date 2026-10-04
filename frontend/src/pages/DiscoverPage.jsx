@@ -16,7 +16,6 @@ import { getArtistFeedbackFlags } from "../utils/discoveryFeedback";
 import { getArtistRecordId } from "../utils/artistTaste";
 import NearbyLocationControl from "../components/NearbyLocationControl";
 import ShowCard from "../components/ShowCard";
-import LastfmBanner from "../components/LastfmBanner";
 import { useToast } from "../contexts/ToastContext";
 import { DiscoverRail } from "../components/DiscoverRail";
 import { NewsArticleCard } from "../components/NewsArticleCard";
@@ -27,8 +26,6 @@ import { AlbumCard, ArtistCard, ViewAllCard } from "./DiscoverCards";
 import { useDiscoverLayoutState } from "./useDiscoverLayoutState";
 import {
   DEFAULT_DISCOVER_SECTIONS,
-  getFallbackGenreSectionId,
-  getFallbackGenreFromSectionId,
   DISCOVER_PREVIEW_ITEM_LIMIT,
   artistMatchesGenre,
   shuffleWithSeed,
@@ -104,17 +101,6 @@ function DiscoverPage() {
   });
 
   const genreSections = useMemo(() => {
-    if (Array.isArray(data?.fallbackGenres) && data.fallbackGenres.length > 0) {
-      return data.fallbackGenres
-        .map((section) => ({
-          genre: section.name,
-          artists: Array.isArray(section.artists) ? section.artists : [],
-          fallback: true,
-        }))
-        .filter((section) => section.genre && section.artists.length > 0)
-        .slice(0, 6);
-    }
-
     if (!data?.topGenres || !data?.recommendations) return [];
 
     const sections = [];
@@ -166,8 +152,7 @@ function DiscoverPage() {
     data &&
     ((data.recommendations && data.recommendations.length > 0) ||
       (data.globalTop && data.globalTop.length > 0) ||
-      (data.topGenres && data.topGenres.length > 0) ||
-      (data.fallbackGenres && data.fallbackGenres.length > 0));
+      (data.topGenres && data.topGenres.length > 0));
   const isUpdating = Boolean(discoveryStatus?.isUpdating);
   const updateProgressMessage = discoveryStatus?.updateProgressMessage || null;
   const lastUpdated = discoveryStatus?.lastUpdated || data?.lastUpdated || null;
@@ -178,12 +163,8 @@ function DiscoverPage() {
     globalTop = [],
     topGenres = [],
     basedOn = [],
-    provider = "lastfm",
-    capabilities,
-    configured = true,
   } = data || {};
   const { data: editorialShelf } = useEditorialShelf();
-  const isListenBrainzFallback = provider === "listenbrainz-fallback";
 
   const nearbyShows = nearbyShowsData?.shows || [];
   const nearbyLocationLabel =
@@ -199,11 +180,7 @@ function DiscoverPage() {
       playlists: featuredPlaylists.length > 0,
       recentReleases: recentReleases.length > 0,
       news: newsConfigured,
-      recommended:
-        !isListenBrainzFallback &&
-        (recommendations.length > 0 ||
-          isUpdating ||
-          capabilities?.personalizedRecommendations !== false),
+      recommended: true,
       recommendedShows: ticketmasterConfigured,
       globalTop: globalTop.length > 0,
       genreSections: genreSections.length > 0,
@@ -215,82 +192,9 @@ function DiscoverPage() {
       newsConfigured,
       globalTop,
       genreSections,
-      recommendations,
-      capabilities,
-      isListenBrainzFallback,
-      isUpdating,
       ticketmasterConfigured,
     ],
   );
-
-  const fallbackGenreSections = useMemo(
-    () =>
-      isListenBrainzFallback
-        ? genreSections.map((section) => ({
-            id: getFallbackGenreSectionId(section.genre),
-            label: `Top ${section.genre} Artists`,
-            enabled: true,
-          }))
-        : [],
-    [genreSections, isListenBrainzFallback],
-  );
-
-  const displayDiscoverSections = useMemo(() => {
-    const sectionsById = new Map(discoverSections.map((item) => [item.id, item]));
-    if (!isListenBrainzFallback) {
-      return discoverSections.filter((item) => !getFallbackGenreFromSectionId(item.id));
-    }
-
-    const dynamicGenresById = new Map(
-      fallbackGenreSections.map((section) => [section.id, section]),
-    );
-    const nextSections = [];
-    const seenGenreIds = new Set();
-    let lastGenreIndex = -1;
-
-    for (const item of discoverSections) {
-      if (
-        item.id === "recommended" ||
-        item.id === "recommendedShows" ||
-        item.id === "genreSections"
-      ) {
-        continue;
-      }
-
-      const fallbackGenre = getFallbackGenreFromSectionId(item.id);
-      if (fallbackGenre) {
-        const dynamicSection = dynamicGenresById.get(item.id);
-        if (!dynamicSection || seenGenreIds.has(item.id)) continue;
-        seenGenreIds.add(item.id);
-        lastGenreIndex = nextSections.length;
-        nextSections.push({
-          ...dynamicSection,
-          enabled: item.enabled,
-        });
-        continue;
-      }
-
-      nextSections.push(item);
-    }
-
-    const missingGenreSections = fallbackGenreSections
-      .filter((section) => !seenGenreIds.has(section.id))
-      .map((section) => ({
-        ...section,
-        enabled:
-          sectionsById.get("genreSections")?.enabled ??
-          sectionsById.get(section.id)?.enabled ??
-          section.enabled,
-      }));
-
-    const insertionIndex = lastGenreIndex >= 0 ? lastGenreIndex + 1 : -1;
-    nextSections.splice(
-      insertionIndex === -1 ? nextSections.length : insertionIndex,
-      0,
-      ...missingGenreSections,
-    );
-    return nextSections;
-  }, [discoverSections, fallbackGenreSections, isListenBrainzFallback]);
 
   const heroBasedOn = useMemo(() => {
     if (basedOn && basedOn.length > 0) return basedOn;
@@ -392,7 +296,7 @@ function DiscoverPage() {
   }, [discoverArtistIdsKey]);
 
   const openDiscoverModal = () => {
-    setDraftSections(displayDiscoverSections.map((item) => ({ ...item })));
+    setDraftSections(discoverSections.map((item) => ({ ...item })));
     setShowDiscoverModal(true);
   };
 
@@ -403,52 +307,10 @@ function DiscoverPage() {
   };
 
   const handleDiscoverReset = () => {
-    setDraftSections(
-      isListenBrainzFallback
-        ? displayDiscoverSections.map((item) => ({ ...item, enabled: true }))
-        : DEFAULT_DISCOVER_SECTIONS.map((item) => ({ ...item })),
-    );
+    setDraftSections(DEFAULT_DISCOVER_SECTIONS.map((item) => ({ ...item })));
   };
 
   const renderSection = (id) => {
-    const fallbackGenre = getFallbackGenreFromSectionId(id);
-    if (fallbackGenre) {
-      const section = genreSections.find((item) => item.genre === fallbackGenre);
-      if (!section || section.artists.length === 0) return null;
-      return (
-        <DiscoverRail
-          key={id}
-          title={`Top ${section.genre} Artists`}
-          mobileTitle={section.genre}
-          onViewAll={() =>
-            navigate(`/search?q=${encodeURIComponent(`#${section.genre}`)}&type=tag`)
-          }
-        >
-          <>
-            {section.artists.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((artist) => (
-              <div key={`${section.genre}-${artist.id}`} className="artist-discover-shelf-card">
-                <ArtistCard
-                  artist={artist}
-                  isInLibrary={!!libraryLookup[getArtistId(artist)]}
-                  onNavigate={navigate}
-                  onOpenInLibrary={handleOpenArtistInLibrary}
-                  onFeedback={handleDiscoveryFeedback}
-                  feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
-                />
-              </div>
-            ))}
-            <div className="artist-discover-shelf-card">
-              <ViewAllCard
-                onClick={() =>
-                  navigate(`/search?q=${encodeURIComponent(`#${section.genre}`)}&type=tag`)
-                }
-              />
-            </div>
-          </>
-        </DiscoverRail>
-      );
-    }
-
     if (id === "recentlyAdded") {
       if (!sectionAvailability.recentlyAdded) return null;
       return (
@@ -614,28 +476,16 @@ function DiscoverPage() {
         >
           <div className="discover-recommended-empty">
             <p className="discover-recommended-empty__message">
-              {provider === "lastfm"
-                ? "Not enough listening data yet. Add a few artists you like to get started."
-                : "Connect Last.fm to get recommendations based on what you listen to."}
+              Not enough listening data yet. Add a few artists you like to get started.
             </p>
             <div className="discover-recommended-empty__actions">
-              {provider !== "lastfm" ? (
-                <button
-                  type="button"
-                  onClick={() => navigate("/settings/connect")}
-                  className="btn btn-primary btn-sm"
-                >
-                  Connect Last.fm
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => navigate("/search")}
-                  className="btn btn-primary btn-sm"
-                >
-                  Search Artists
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => navigate("/search")}
+                className="btn btn-primary btn-sm"
+              >
+                Search Artists
+              </button>
               <button
                 type="button"
                 onClick={() => navigate("/library")}
@@ -797,17 +647,11 @@ function DiscoverPage() {
       return (
         <div key="genreSections">
           {genreSections.map((section) => {
-            const viewAllPath = section.fallback
-              ? `/search?q=${encodeURIComponent(`#${section.genre}`)}&type=tag`
-              : `/search?type=recommended&tag=${encodeURIComponent(section.genre)}`;
+            const viewAllPath = `/search?type=recommended&tag=${encodeURIComponent(section.genre)}`;
             return (
               <DiscoverRail
                 key={section.genre}
-                title={
-                  section.fallback
-                    ? `Top ${section.genre} Artists`
-                    : `Because You Like ${section.genre}`
-                }
+                title={`Because You Like ${section.genre}`}
                 mobileTitle={section.genre}
                 onViewAll={() => navigate(viewAllPath)}
               >
@@ -853,11 +697,7 @@ function DiscoverPage() {
     return (
       <div className="artist-loading--discover">
         <DotLoader size="2xl" label={null} className="aurral-dot-loader--discover" />
-        <h2 className="artist-error-title--discover">
-          {isListenBrainzFallback
-            ? "Loading ListenBrainz discovery..."
-            : "Building your recommendations..."}
-        </h2>
+        <h2 className="artist-error-title--discover">Building your recommendations...</h2>
         {updateProgressMessage ? (
           <p className="artist-error-copy--discover">{updateProgressMessage}</p>
         ) : null}
@@ -878,36 +718,8 @@ function DiscoverPage() {
     );
   }
 
-  if (configured === false && !recommendations.length && !globalTop.length && !topGenres.length) {
-    return (
-      <div className="artist-empty-panel--discover-not-configured">
-        <div className="artist-error-icon">
-          <Sparkles className="artist-icon-lg" />
-        </div>
-        <h2 className="artist-error-title">Discovery Not Configured</h2>
-        <p className="artist-empty-message">
-          To see music recommendations, you need at least one of:
-        </p>
-        <ul>
-          <li>
-            <span>•</span>
-            <span>Add artists to your library, or</span>
-          </li>
-          <li>
-            <span>•</span>
-            <span>Configure Last.fm (API key and username) in Settings</span>
-          </li>
-        </ul>
-        <button onClick={() => navigate("/settings/connect")} className="btn btn-primary">
-          Connect Last.fm
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="artist-discover-page">
-      <LastfmBanner />
       <section className="artist-discover-hero">
         <div className="artist-discover-hero__content">
           <div className="artist-discover-hero__header">
@@ -1011,7 +823,7 @@ function DiscoverPage() {
         </div>
       </section>
 
-      {displayDiscoverSections
+      {discoverSections
         .filter((section) => section.enabled)
         .map((section) => renderSection(section.id))}
 

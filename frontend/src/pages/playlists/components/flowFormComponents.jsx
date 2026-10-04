@@ -170,7 +170,6 @@ export function FlowFormFields({
   onDraftChange,
   onClearError,
   normalizeMixPercent,
-  disabledSources = {},
 }) {
   const updateDraft = (updater) => {
     onDraftChange((prev) => updater(prev));
@@ -178,7 +177,6 @@ export function FlowFormFields({
   };
   const normalizedMix = normalizeMixPercent(draft?.mix);
   const totalSize = Math.max(0, Math.round(Number(draft?.size) || 0));
-  const isDeepDiveDisabled = Object.keys(disabledSources || {}).length > 0;
   const { focusEnabled, focusValidationError } = getFocusDraftValidation(
     draft,
     normalizeMixPercent,
@@ -227,25 +225,18 @@ export function FlowFormFields({
           <MixSlider
             mix={draft.mix}
             trackCounts={mixScaled}
-            disabledSources={disabledSources}
             trailingControl={
-              <Tooltip content={
-                  isDeepDiveDisabled
-                    ? "Last.fm API key required. Deep Dive skips the most obvious tracks and pulls tracks ranked 10-25."
-                    : "Deep Dive skips the most obvious tracks and pulls tracks ranked 10-25."
-                }>
+              <Tooltip content="Deep Dive skips the most obvious tracks and pulls tracks ranked 10-25.">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (isDeepDiveDisabled) return;
+                  onClick={() =>
                     updateDraft((prev) => ({
                       ...prev,
                       deepDive: !(prev?.deepDive === true),
-                    }));
-                  }}
-                  className={`flow-page__mix-toggle flow-page__mix-toggle--feature${draft.deepDive === true ? " is-active" : ""}${isDeepDiveDisabled ? " is-disabled" : ""}`}
+                    }))
+                  }
+                  className={`flow-page__mix-toggle flow-page__mix-toggle--feature${draft.deepDive === true ? " is-active" : ""}`}
                   aria-pressed={draft.deepDive === true}
-                  aria-disabled={isDeepDiveDisabled}
                   aria-label={`Deep Dive ${draft.deepDive === true ? "on" : "off"}. Deep Dive pulls tracks ranked 10 through 25 instead of the top 10.`}
                 >
                   <span>Deep Dive</span>
@@ -263,11 +254,6 @@ export function FlowFormFields({
             }
             normalizeMixPercent={normalizeMixPercent}
           />
-          {Object.keys(disabledSources || {}).length > 0 ? (
-            <p className="flow-page__warning-text">
-              Flow generation requires Last.fm for source selection in this version.
-            </p>
-          ) : null}
         </div>
       </div>
 

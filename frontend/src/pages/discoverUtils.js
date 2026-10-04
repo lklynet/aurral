@@ -40,16 +40,6 @@ export const DEFAULT_DISCOVER_SECTIONS = [
   { id: "genreSections", label: "Because You Like", enabled: true },
 ];
 
-export const FALLBACK_GENRE_SECTION_PREFIX = "fallbackGenre:";
-
-export const getFallbackGenreSectionId = (genre) =>
-  `${FALLBACK_GENRE_SECTION_PREFIX}${String(genre || "").trim()}`;
-
-export const getFallbackGenreFromSectionId = (id) =>
-  String(id || "").startsWith(FALLBACK_GENRE_SECTION_PREFIX)
-    ? String(id).slice(FALLBACK_GENRE_SECTION_PREFIX.length)
-    : null;
-
 export const DISCOVER_NEARBY_MODE_KEY = "discoverNearbyMode";
 export const DISCOVER_NEARBY_ZIP_KEY = "discoverNearbyZip";
 export const DISCOVER_NEARBY_COUNTRY_KEY = "discoverNearbyCountry";
@@ -221,14 +211,7 @@ export const normalizeDiscoveryData = (value) => {
     basedOn: Array.isArray(value.basedOn) ? value.basedOn : [],
     topTags: Array.isArray(value.topTags) ? value.topTags : [],
     topGenres: Array.isArray(value.topGenres) ? value.topGenres : [],
-    fallbackGenres: Array.isArray(value.fallbackGenres)
-      ? value.fallbackGenres
-      : [],
-    provider: value.provider || "lastfm",
-    capabilities:
-      value.capabilities && typeof value.capabilities === "object"
-        ? value.capabilities
-        : null,
+    provider: value.provider || null,
     lastUpdated: value.lastUpdated || null,
     recommendationQuality:
       value.recommendationQuality === "initial" ||
@@ -285,24 +268,12 @@ export const normalizeDiscoverLayout = (value) => {
   const defaultsById = new Map(
     DEFAULT_DISCOVER_SECTIONS.map((item) => [item.id, item]),
   );
-  const seenDynamicIds = new Set();
   const normalized = [];
   value.forEach((item) => {
     const id = String(item?.id || "").trim();
     if (!id) return;
     const enabled =
       typeof item?.enabled === "boolean" ? item.enabled : undefined;
-    const fallbackGenre = getFallbackGenreFromSectionId(id);
-    if (fallbackGenre) {
-      if (seenDynamicIds.has(id)) return;
-      seenDynamicIds.add(id);
-      normalized.push({
-        id,
-        label: `Top ${fallbackGenre} Artists`,
-        enabled: enabled ?? true,
-      });
-      return;
-    }
     if (!defaultsById.has(id)) return;
     const base = defaultsById.get(id);
     normalized.push({

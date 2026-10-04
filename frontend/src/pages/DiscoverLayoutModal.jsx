@@ -22,13 +22,6 @@ import { DotLoader } from "../components/DotLoader";
 import { useModalDialog } from "../hooks/useModalDialog.js";
 import TooltipButton from "../components/TooltipButton";
 
-const FALLBACK_GENRE_SECTION_PREFIX = "fallbackGenre:";
-
-const getFallbackGenreFromSectionId = (id) =>
-  String(id || "").startsWith(FALLBACK_GENRE_SECTION_PREFIX)
-    ? String(id).slice(FALLBACK_GENRE_SECTION_PREFIX.length)
-    : null;
-
 function SortableSectionRow({ item, onToggle, showUnavailable }) {
   const {
     attributes,
@@ -181,9 +174,7 @@ export function DiscoverLayoutModal({
                         ),
                       )
                     }
-                    showUnavailable={
-                      !getFallbackGenreFromSectionId(item.id) && !sectionAvailability[item.id]
-                    }
+                    showUnavailable={!sectionAvailability[item.id]}
                   />
                 ))}
               </div>

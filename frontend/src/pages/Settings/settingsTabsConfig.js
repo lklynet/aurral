@@ -242,7 +242,7 @@ const SETTINGS_SEARCH_METADATA = {
     sections: ["Discovery behavior", "Cache status"],
     services: {
       "Last.fm": "recommendations listening history",
-      ListenBrainz: "recommendations discovery fallback",
+      ListenBrainz: "recommendations similar artists discovery",
       "Release Radar": "personalized playlists",
     },
     fields: {
@@ -252,7 +252,7 @@ const SETTINGS_SEARCH_METADATA = {
       "Recommended playlists": "Discover Weekly Trending Mix Library Blend Listening History Release Radar",
       "Refresh discovery": "update recommendations now",
       "Clear artwork cache": "stored artwork links native library image files reset",
-      Provider: "Last.fm ListenBrainz fallback",
+      Provider: "Last.fm ListenBrainz",
       "Last updated": "discovery cache status",
     },
   },

@@ -61,10 +61,13 @@ export function SettingsDiscoverTab({
   const discoveryMode = settings.integrations?.lastfm?.discoveryMode || "balanced";
   const discoveryRecommendationsPerRefresh =
     settings.integrations?.lastfm?.discoveryRecommendationsPerRefresh ?? 200;
-  const discoveryProvider =
-    health?.discovery?.provider === "listenbrainz-fallback" ? "ListenBrainz fallback" : "Last.fm";
-  const isListenBrainzFallback = health?.discovery?.provider === "listenbrainz-fallback";
-  const showLastfmDiscoverBanner = isListenBrainzFallback && !lastfmBannerDismissed;
+  const usesListenBrainz = health?.discovery?.provider === "listenbrainz";
+  const discoveryProvider = usesListenBrainz
+    ? "ListenBrainz"
+    : health?.discovery?.provider === "lastfm"
+      ? "Last.fm"
+      : "—";
+  const showLastfmDiscoverBanner = usesListenBrainz && !lastfmBannerDismissed;
   const { status: discoveryStatus } = useDiscoveryStatus();
   const showProgress = Boolean(discoveryStatus?.isUpdating);
   const refreshBusy = showProgress || requestingDiscoveryRefresh;
@@ -91,11 +94,11 @@ export function SettingsDiscoverTab({
             <div className="settings-page__banner-copy">
               <p className="settings-page__banner-title">Last.fm recommendations</p>
               <p className="settings-page__banner-text">
-                Add a Last.fm API key in{" "}
+                Discover uses ListenBrainz. Add a Last.fm API key in{" "}
                 <Link to="/settings/connect" className="arr-link">
                   Connect
                 </Link>{" "}
-                  for personalized recommendations, tags, and flows.
+                for better recommendations.
               </p>
             </div>
             <button
@@ -145,58 +148,52 @@ export function SettingsDiscoverTab({
             </SettingsSelect>
           </SettingsArrFormGroup>
 
-          {!isListenBrainzFallback ? (
-            <SettingsArrFormGroup
-              label="Discovery mode"
-              labelFor="discover-mode"
-              help={
-                <>
-                  Safer favors familiar recommendations. Balanced mixes familiarity and exploration.
-                  Deeper goes further beyond similar artists.
-                </>
-              }
+          <SettingsArrFormGroup
+            label="Discovery mode"
+            labelFor="discover-mode"
+            help={
+              <>
+                Safer favors familiar recommendations. Balanced mixes familiarity and exploration.
+                Deeper goes further beyond similar artists.
+              </>
+            }
+          >
+            <SettingsSelect
+              id="discover-mode"
+              value={discoveryMode}
+              onChange={(e) => updateLastfmDiscovery({ discoveryMode: e.target.value })}
             >
-              <SettingsSelect
-                id="discover-mode"
-                value={discoveryMode}
-                onChange={(e) => updateLastfmDiscovery({ discoveryMode: e.target.value })}
-              >
-                {DISCOVERY_MODE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </SettingsSelect>
-            </SettingsArrFormGroup>
-          ) : null}
+              {DISCOVERY_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </SettingsSelect>
+          </SettingsArrFormGroup>
 
-          {!isListenBrainzFallback ? (
-            <>
-              <SettingsArrFormGroup
-                label="Recommended artists"
-                labelFor="discover-recommendations"
-                help="Artists generated per refresh."
-              >
-                <SettingsInput
-                  id="discover-recommendations"
-                  type="number"
-                  min={50}
-                  max={500}
-                  step={10}
-                  value={discoveryRecommendationsPerRefresh}
-                  onChange={(e) => {
-                    const raw = Number(e.target.value);
-                    const value = Number.isFinite(raw)
-                      ? Math.max(50, Math.min(500, Math.floor(raw)))
-                      : 200;
-                    updateLastfmDiscovery({
-                      discoveryRecommendationsPerRefresh: value,
-                    });
-                  }}
-                />
-              </SettingsArrFormGroup>
-            </>
-          ) : null}
+          <SettingsArrFormGroup
+            label="Recommended artists"
+            labelFor="discover-recommendations"
+            help="Artists generated per refresh."
+          >
+            <SettingsInput
+              id="discover-recommendations"
+              type="number"
+              min={50}
+              max={500}
+              step={10}
+              value={discoveryRecommendationsPerRefresh}
+              onChange={(e) => {
+                const raw = Number(e.target.value);
+                const value = Number.isFinite(raw)
+                  ? Math.max(50, Math.min(500, Math.floor(raw)))
+                  : 200;
+                updateLastfmDiscovery({
+                  discoveryRecommendationsPerRefresh: value,
+                });
+              }}
+            />
+          </SettingsArrFormGroup>
         </SettingsArrFieldSet>
 
         <SettingsArrFieldSet

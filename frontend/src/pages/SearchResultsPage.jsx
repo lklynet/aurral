@@ -44,7 +44,6 @@ import {
   PAGE_SIZE,
   DEFAULT_ALBUM_SORT,
   ALBUM_PENDING_STATUSES,
-  LASTFM_TAG_BANNER_KEY,
   ALBUM_SORT_OPTIONS,
   ALBUM_RELEASE_TABS,
   UNIFIED_FILTER_OPTIONS,
@@ -69,7 +68,6 @@ import {
   Music,
   Search,
   SlidersHorizontal,
-  X,
 } from "lucide-react";
 import TooltipButton from "../components/TooltipButton";
 import Tooltip from "../components/Tooltip";
@@ -130,7 +128,6 @@ function SearchResultsPage() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [artistImages, setArtistImages] = useState({});
   const [albumCovers, setAlbumCovers] = useState({});
-  const [lastfmConfigured, setLastfmConfigured] = useState(null);
   const [libraryLookup, setLibraryLookup] = useState({});
   const [albumLibraryLookup, setAlbumLibraryLookup] = useState({});
   const [pendingAlbumIds, setPendingAlbumIds] = useState({});
@@ -152,7 +149,6 @@ function SearchResultsPage() {
     const saved = parseInt(localStorage.getItem("libraryGridColumns"), 10);
     return saved >= 2 && saved <= 10 ? saved : 6;
   });
-  const [dismissedTagBanner, setDismissedTagBanner] = useState(false);
   const {
     staticPlaylists,
     setStaticPlaylists,
@@ -166,7 +162,7 @@ function SearchResultsPage() {
   const albumOptionsMenuRef = useRef(null);
   const recommendedToolbarRef = useRef(null);
   const navigate = useDiscoverNavigation();
-  const { hasPermission, bootstrap } = useAuth();
+  const { hasPermission } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
   const { isAlbumDownloading } = useActiveDownloads();
@@ -207,7 +203,6 @@ function SearchResultsPage() {
   }, [normalizedType, recommendedTag, isTagSearch, trimmedQuery, isAlbumSearch, isUnifiedSearch]);
   useDocumentTitle(pageTitle);
   const albumSort = searchParams.get("sort") || DEFAULT_ALBUM_SORT;
-  const showTagBanner = isTagSearch && lastfmConfigured === false && !dismissedTagBanner;
   const { lookup: artistFeedbackLookup, submitFeedback } = useArtistTasteFeedback();
   const canAddAlbum = hasPermission("addAlbum");
   const updateAlbumSort = useCallback(
@@ -251,24 +246,9 @@ function SearchResultsPage() {
   );
 
   useEffect(() => {
-    if (bootstrap) {
-      setLastfmConfigured(!!bootstrap.lastfmConfigured);
-    }
-  }, [bootstrap]);
-
-  useEffect(() => {
     if (!isAlbumSearch) return;
     setAlbumReleaseTab("all");
   }, [trimmedQuery, isAlbumSearch]);
-
-  useEffect(() => {
-    if (!isTagSearch) return;
-    try {
-      setDismissedTagBanner(localStorage.getItem(LASTFM_TAG_BANNER_KEY) === "1");
-    } catch {
-      setDismissedTagBanner(false);
-    }
-  }, [isTagSearch]);
 
   const searchQueryKey = useMemo(() => {
     if (normalizedType === "recommended" || normalizedType === "trending") {
@@ -1264,9 +1244,7 @@ function SearchResultsPage() {
   const localSearchConfigured = unifiedResults?.localSearchConfigured !== false;
 
   const emptyMessage =
-    normalizedType === "recommended" && lastfmConfigured === false
-      ? "Connect a Last.fm API key in Settings → Connect to populate recommendations."
-      : ["recommended", "trending", "tag"].includes(normalizedType)
+    ["recommended", "trending", "tag"].includes(normalizedType)
         ? "Nothing to show here yet."
         : isUnifiedSearch && !localSearchConfigured
           ? "Configure the search server in Settings to search artists, releases, and tracks."
@@ -1278,10 +1256,7 @@ function SearchResultsPage() {
                 ? `We couldn't find any results for tag "${trimmedQuery.replace(/^#/, "")}"`
                 : `We couldn't find any results matching "${trimmedQuery}"`;
 
-  const emptyTitle =
-    normalizedType === "recommended" && lastfmConfigured === false
-      ? "Connect Last.fm"
-      : "No Results Found";
+  const emptyTitle = "No Results Found";
 
   const discoveryCount = recommendedSearchTerm.trim()
     ? discoveryArtists.length
@@ -1323,38 +1298,6 @@ function SearchResultsPage() {
                 Search #{recommendedTag}
               </Link>
             )}
-          </div>
-        )}
-
-        {showTagBanner && (
-          <div className="search-banner">
-            <p className="search-banner__copy">
-              Tag results are limited to the hydrated discovery cache. Add a free Last.fm API key in
-              Settings for broader top-artist matches.
-            </p>
-            <div className="search-banner__actions">
-              <button
-                type="button"
-                className="btn btn-secondary btn--bold btn-min-h"
-                onClick={() => navigate("/settings")}
-              >
-                Open Settings
-              </button>
-              <TooltipButton
-                type="button"
-                className="btn btn-surface btn-icon-square"
-                aria-label="Dismiss Last.fm reminder"
-                title="Dismiss Last.fm reminder"
-                onClick={() => {
-                  setDismissedTagBanner(true);
-                  try {
-                    localStorage.setItem(LASTFM_TAG_BANNER_KEY, "1");
-                  } catch {}
-                }}
-              >
-                <X className="artist-icon-sm" />
-              </TooltipButton>
-            </div>
           </div>
         )}
 
@@ -1609,15 +1552,6 @@ function SearchResultsPage() {
               </div>
               <h2 className="search-empty-panel__title">{emptyTitle}</h2>
               <p className="search-empty-panel__message">{emptyMessage}</p>
-              {normalizedType === "recommended" && lastfmConfigured === false ? (
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => navigate("/settings/connect")}
-                >
-                  Open Last.fm settings
-                </button>
-              ) : null}
             </div>
           ) : (
             <>

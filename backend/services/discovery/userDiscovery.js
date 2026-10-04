@@ -1,16 +1,7 @@
 import { dbOps } from "../../db/helpers/index.js";
-import { getLastfmApiKey } from "../apiClients/index.js";
-import {
-  DISCOVERY_PROVIDER_LASTFM,
-  DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
-  getDiscoveryCapabilities,
-} from "../listenbrainzDiscoveryFallback.js";
+import { getMusicDataSourceName } from "../musicDataSource/index.js";
 import { getDiscoveryAutoRefreshHours, getDiscoveryMode } from "./helpers.js";
-import {
-  filterBlockedArtistsForUser,
-  getBlockedArtistKeys,
-  getDiscoveryFeedback,
-} from "./feedback.js";
+import { getBlockedArtistKeys, getDiscoveryFeedback } from "./feedback.js";
 import { getDiscoveryCache, getDiscoveryRefreshState } from "./persistence.js";
 import { getUserDiscoveryNamespace, requestUserDiscoveryRefresh } from "./provider.js";
 import { serveRecommendations, withArtistRouteId } from "./recommendationPipeline.js";
@@ -86,9 +77,7 @@ const describeActiveRefresh = (global, user) => {
 export function getDiscoveryStatus(userId) {
   const globalSource = dbOps.getDiscoveryRefreshSource();
   const userSource =
-    getLastfmApiKey() && userId != null
-      ? dbOps.getDiscoveryRefreshSource(getUserDiscoveryNamespace(userId))
-      : null;
+    userId != null ? dbOps.getDiscoveryRefreshSource(getUserDiscoveryNamespace(userId)) : null;
   const global = getDiscoveryRefreshState(globalSource.metadata);
   const user = getDiscoveryRefreshState(userSource?.metadata);
   const active = describeActiveRefresh(global, user);
@@ -104,9 +93,8 @@ export function getDiscoveryStatus(userId) {
 }
 
 export function getUserDiscovery(userId, limit = 50, offset = 0) {
-  const hasLastfmKey = !!getLastfmApiKey();
   const globalCache = getDiscoveryCache();
-  const namespace = hasLastfmKey && userId != null ? getUserDiscoveryNamespace(userId) : null;
+  const namespace = userId != null ? getUserDiscoveryNamespace(userId) : null;
   const userCache = namespace ? dbOps.getDiscoveryCache(namespace) : null;
   const hasUserPool = Boolean(userCache?.lastUpdated);
   if (userCache) ensureUserRefresh(userId, userCache);
@@ -131,11 +119,6 @@ export function getUserDiscovery(userId, limit = 50, offset = 0) {
     isVisible,
   });
   const globalTop = (globalCache.globalTop || []).filter(isVisible).map(withArtistRouteId);
-  const fallbackGenres = (Array.isArray(globalCache.fallbackGenres) ? globalCache.fallbackGenres : [])
-    .map((section) => ({
-      ...section,
-      artists: filterBlockedArtistsForUser(feedbackUserId, section?.artists || [], blockedKeys),
-    }));
 
   const limitClamped = Math.max(limit, 1);
   const offsetClamped = Math.max(offset, 0);
@@ -150,7 +133,6 @@ export function getUserDiscovery(userId, limit = 50, offset = 0) {
       basedOn: source.basedOn || [],
       topTags: source.topTags || [],
       topGenres: source.topGenres || [],
-      fallbackGenres,
       lastUpdated: source.lastUpdated || null,
       recommendationQuality: source.recommendationQuality || null,
       isEnriching: source.isEnriching === true,
@@ -159,10 +141,7 @@ export function getUserDiscovery(userId, limit = 50, offset = 0) {
       enrichmentCompletedAt: source.enrichmentCompletedAt || null,
       enrichmentProgressMessage: source.enrichmentProgressMessage || null,
       configured: true,
-      provider: hasLastfmKey
-        ? DISCOVERY_PROVIDER_LASTFM
-        : globalCache.provider || DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
-      capabilities: globalCache.capabilities || getDiscoveryCapabilities(hasLastfmKey),
+      provider: getMusicDataSourceName(),
       discoveryMode,
     },
   };

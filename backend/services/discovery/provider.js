@@ -2,7 +2,6 @@ import { dbOps, userOps } from "../../db/helpers/index.js";
 import {
   lastfmRequest,
   listenbrainzRequest,
-  getLastfmApiKey,
   musicbrainzGetCachedArtistMbidByName,
   musicbrainzResolveArtistMbidByName,
 } from "../apiClients/index.js";
@@ -19,11 +18,7 @@ import {
   rerankRecommendations as rerankRecs,
   selectDiscoverySeeds,
 } from "./recommendationPipeline.js";
-import {
-  buildListenbrainzFallbackDiscovery,
-  getDiscoveryCapabilities,
-  DISCOVERY_PROVIDER_LASTFM,
-} from "../listenbrainzDiscoveryFallback.js";
+import { getMusicDataSourceName, getTrendingArtists } from "../musicDataSource/index.js";
 import { enqueueDiscoveryUserRefreshJob } from "../honkerDb.js";
 import { websocketService } from "../websocketService.js";
 import {
@@ -34,10 +29,8 @@ import {
   getDiscoveryRecommendationPoolLimit,
   getDiscoveryUserRefreshDelaySeconds,
   getDiscoveryNetworkConcurrency,
-  getLastfmFailureRatio,
   getDiscoveryRecommendationSeedLimit,
   createDiscoveryRunId,
-  buildTrendingArtistEntry,
   interleaveLists,
   mapWithConcurrency,
   DISCOVERY_QUALITY_ENRICHED,
@@ -54,7 +47,6 @@ import {
   saveDiscoveryRefreshProgress,
   isGlobalDiscoveryRefreshInProgress,
 } from "./persistence.js";
-import { getLibraryArtistKeys } from "./artistKeys.js";
 import { buildTagProfile, collectSeedTags } from "./tasteProfile.js";
 import { buildRecommendationsFromSeeds } from "./recommendations.js";
 import { getTopPlayedArtists } from "../playEventService.js";
@@ -98,7 +90,7 @@ export const requestUserDiscoveryRefresh = (
   userId,
   { reason = "manual", delaySeconds = getDiscoveryUserRefreshDelaySeconds() } = {},
 ) => {
-  if (userId == null || !getLastfmApiKey()) {
+  if (userId == null) {
     return { enqueued: false, reason: "not_configured" };
   }
   const { metadata } = dbOps.getDiscoveryCache(getUserDiscoveryNamespace(userId));
@@ -123,7 +115,7 @@ const enqueueAllUserDiscoveryRefreshes = (reason) => {
   return queued;
 };
 
-const fetchListenHistoryArtists = async (listenHistoryProfile, discoveryPeriod, lastfmHealth) => {
+const fetchListenHistoryArtists = async (listenHistoryProfile, discoveryPeriod) => {
   const profile = getListenHistoryProfile(listenHistoryProfile);
   if (!hasListenHistoryProfile(profile) || discoveryPeriod === "none") {
     return [];
@@ -169,7 +161,6 @@ const fetchListenHistoryArtists = async (listenHistoryProfile, discoveryPeriod, 
     },
     { timeoutMs: 12000, maxRetries: 2 },
   );
-  if (userTopArtists && !userTopArtists.error) lastfmHealth.success++; else lastfmHealth.failure++;
 
   const artists = userTopArtists?.topartists?.artist;
   if (!artists) return [];
@@ -228,13 +219,8 @@ const resolveRecommendationCandidates = async (recommendations, existingArtistKe
     .slice(0, Math.max(120, perRefresh * 2));
 };
 
-const fetchTrendingArtists = async (existingArtistKeys, lastfmHealth) => {
-  const topData = await lastfmRequest("chart.getTopArtists", { limit: 100 });
-  if (topData && !topData.error) lastfmHealth.success++; else lastfmHealth.failure++;
-  const topArtists = topData?.artists?.artist;
-  const trendingArtists = (Array.isArray(topArtists) ? topArtists : topArtists ? [topArtists] : [])
-    .map(buildTrendingArtistEntry)
-    .filter(Boolean);
+const fetchTrendingArtists = async (existingArtistKeys) => {
+  const trendingArtists = await getTrendingArtists({ limit: 100 });
   const globalTop = mergeResolvedRecommendations(trendingArtists, existingArtistKeys).slice(0, 32);
   await resolveArtistMbids(globalTop);
   return mergeResolvedRecommendations(globalTop, existingArtistKeys)
@@ -255,7 +241,6 @@ const publishGlobalDiscovery = (discoveryData) => {
     isUpdating: false,
     configured: true,
     provider: discoveryData.provider,
-    capabilities: discoveryData.capabilities,
     lastUpdated: discoveryData.lastUpdated,
     phase: "completed",
     progress: 100,
@@ -283,42 +268,16 @@ export const updateDiscoveryCache = async (options = {}) => {
   recordHistory("recordDiscoveryRefreshStarted");
 
   try {
-    if (!getLastfmApiKey()) {
-      logger.info(
-        'discovery',
-        "No Last.fm API key configured. Building ListenBrainz fallback discovery.",
-      );
-      const progressExtra = {
-        provider: "listenbrainz-fallback",
-        capabilities: getDiscoveryCapabilities(false),
-      };
-      recordDiscoveryUpdateProgress(
-        "fetching_trending",
-        "Fetching ListenBrainz trending artists",
-        45,
-        progressExtra,
-      );
-      const fallbackData = await buildListenbrainzFallbackDiscovery({
-        existingArtistKeys: getLibraryArtistKeys().keys,
-        onProgress: ({ phase, progress, progressMessage }) =>
-          recordDiscoveryUpdateProgress(phase, progressMessage, progress, progressExtra),
-      });
-      publishGlobalDiscovery(fallbackData);
-      recordHistory("recordDiscoveryUpdated", {
-        recommendationCount: fallbackData.recommendations?.length || 0,
-        genreCount: fallbackData.topGenres?.length || 0,
-      });
-      return;
-    }
-
-    logger.info('discovery', "Fetching global trending artists from Last.fm...");
-    recordDiscoveryUpdateProgress("fetching_trending", "Fetching global trending artists", 40);
+    const provider = getMusicDataSourceName();
+    logger.info('discovery', `Fetching global trending artists from ${provider}...`);
+    recordDiscoveryUpdateProgress("fetching_trending", "Fetching global trending artists", 40, {
+      provider,
+    });
     const runStartedAt = new Date().toISOString();
     let globalTop = discoveryCache.globalTop || [];
     try {
       globalTop = await fetchTrendingArtists(
         buildExistingArtistKeySet(getLibraryArtistKeyProjection()),
-        { success: 0, failure: 0 },
       );
       logger.info('discovery', `Found ${globalTop.length} trending artists.`);
     } catch (error) {
@@ -336,15 +295,12 @@ export const updateDiscoveryCache = async (options = {}) => {
     }
 
     publishGlobalDiscovery({
-      provider: DISCOVERY_PROVIDER_LASTFM,
-      capabilities: getDiscoveryCapabilities(true),
+      provider,
       recommendations: [],
       globalTop,
       basedOn: [],
       topTags: [],
       topGenres: [],
-      fallbackGenres: [],
-      fallbackGenrePools: {},
       lastUpdated: runStartedAt,
       recommendationQuality: DISCOVERY_QUALITY_ENRICHED,
       isEnriching: false,
@@ -390,12 +346,12 @@ const feedbackArtists = (feedback, action) =>
     .filter((entry) => entry.action === action)
     .map((entry) => ({ mbid: entry.artistId, artistName: entry.artistName }));
 
-const collectUserSeeds = async (user, feedback, lastfmHealth) => {
+const collectUserSeeds = async (user, feedback) => {
   let externalHistory = [];
   const profile = getListenHistoryProfile(user);
   try {
     externalHistory = (
-      await fetchListenHistoryArtists(profile, getLastfmDiscoveryPeriod(), lastfmHealth)
+      await fetchListenHistoryArtists(profile, getLastfmDiscoveryPeriod())
     ).map((artist) => ({ ...artist, source: profile.listenHistoryProvider }));
   } catch (error) {
     logger.error(
@@ -413,7 +369,7 @@ const collectUserSeeds = async (user, feedback, lastfmHealth) => {
     likedArtists: feedbackArtists(feedback, "more_like_this"),
     historyArtists: interleaveLists(externalHistory, localHistory),
     libraryArtists: interleaveLists(library.recent, library.random),
-    limit: getDiscoveryRecommendationSeedLimit(getLastfmFailureRatio(lastfmHealth)),
+    limit: getDiscoveryRecommendationSeedLimit(),
     excludedKeys: buildExistingArtistKeySet([
       ...feedbackArtists(feedback, "less_like_this"),
       ...feedbackArtists(feedback, "block_artist"),
@@ -422,7 +378,7 @@ const collectUserSeeds = async (user, feedback, lastfmHealth) => {
 };
 
 const buildUserRecommendations = async ({ userId, user, existing, startedAt }) => {
-  const lastfmHealth = { success: 0, failure: 0 };
+  const sourceHealth = { success: 0, failure: 0 };
   const feedback = getDiscoveryFeedback(userId);
   const progress = (phase, progressMessage, value) =>
     emitUserDiscoveryUpdate(userId, {
@@ -438,7 +394,7 @@ const buildUserRecommendations = async ({ userId, user, existing, startedAt }) =
     });
 
   progress("collecting_seeds", "Collecting your seed artists", 10);
-  const seeds = await collectUserSeeds(user, feedback, lastfmHealth);
+  const seeds = await collectUserSeeds(user, feedback);
   const blockedArtists = feedbackArtists(feedback, "block_artist");
   const existingArtistKeys = buildExistingArtistKeySet([
     ...getLibraryArtistKeyProjection(),
@@ -449,7 +405,7 @@ const buildUserRecommendations = async ({ userId, user, existing, startedAt }) =
   }
 
   progress("building_genres", "Building your genre and tag profile", 30);
-  const { tagMap, tagWeights } = await collectSeedTags(seeds, lastfmHealth);
+  const { tagMap, tagWeights } = await collectSeedTags(seeds, sourceHealth);
   const { profileTagWeights, topGenres } = buildTagProfile(tagWeights);
 
   progress("generating_recommendations", "Finding similar artists", 50);
@@ -461,7 +417,7 @@ const buildUserRecommendations = async ({ userId, user, existing, startedAt }) =
       ...feedbackArtists(feedback, "less_like_this"),
       ...blockedArtists,
     ]),
-    lastfmHealth,
+    sourceHealth,
     profileTagWeights,
     seedTagMap: tagMap,
     discoveryMode,
@@ -504,7 +460,6 @@ export const updateUserDiscoveryCache = async (userId, options = {}) => {
     dbOps.deleteDiscoveryCacheByPrefix(`${namespace}:`);
     return { skipped: true, reason: "user_missing" };
   }
-  if (!getLastfmApiKey()) return { skipped: true, reason: "not_configured" };
   if (isGlobalDiscoveryRefreshInProgress()) {
     enqueueUserRefreshJob(userId, {
       reason: "global_refresh_in_progress",

@@ -112,23 +112,14 @@ export const buildWeightedTopList = (map, limit) =>
     .slice(0, limit)
     .map(([name]) => name);
 
-export const getLastfmFailureRatio = (health) => {
+export const getSourceFailureRatio = (health) => {
   const total = health.success + health.failure;
   if (total === 0) return 0;
   return health.failure / total;
 };
 
-const shrinkByFailureRatio = (base, failureRatio, shrink05, shrink03) => {
-  if (failureRatio >= 0.5) return Math.min(shrink05, base);
-  if (failureRatio >= 0.3) return Math.min(shrink03, base);
-  return base;
-};
-
-export const getDiscoveryRecommendationSeedLimit = (failureRatio) => {
-  const target = getDiscoveryRecommendationsPerRefresh();
-  const sampleBase = Math.max(32, Math.min(56, Math.ceil(target / 4)));
-  return shrinkByFailureRatio(sampleBase, failureRatio, 16, 32);
-};
+export const getDiscoveryRecommendationSeedLimit = () =>
+  Math.max(32, Math.min(56, Math.ceil(getDiscoveryRecommendationsPerRefresh() / 4)));
 
 export const getSimilarArtistSampling = (failureRatio) => {
   if (failureRatio >= 0.5) {
@@ -229,60 +220,6 @@ export const mapWithConcurrency = async (
   }, options);
   if (firstError) throw firstError;
   return results;
-};
-
-export const pickLastfmImage = (images) => {
-  if (!Array.isArray(images)) return null;
-  const image =
-    images.find((entry) => entry.size === "extralarge") ||
-    images.find((entry) => entry.size === "large") ||
-    images.slice(-1)[0];
-  if (
-    image &&
-    image["#text"] &&
-    !image["#text"].includes("2a96cbd8b46e442fc41c2b86b821562f")
-  ) {
-    return image["#text"];
-  }
-  return null;
-};
-
-export const formatTrendingPopularity = (artist) => {
-  const listeners = parseInt(artist?.listeners || 0, 10) || 0;
-  if (listeners > 0) {
-    return `${new Intl.NumberFormat("en-US", {
-      notation: listeners >= 100000 ? "compact" : "standard",
-      maximumFractionDigits: listeners >= 100000 ? 1 : 0,
-    }).format(listeners)} listeners on Last.fm`;
-  }
-  const playcount = parseInt(artist?.playcount || 0, 10) || 0;
-  if (playcount > 0) {
-    return `${new Intl.NumberFormat("en-US", {
-      notation: playcount >= 100000 ? "compact" : "standard",
-      maximumFractionDigits: playcount >= 100000 ? 1 : 0,
-    }).format(playcount)} plays on Last.fm`;
-  }
-  const rank = parseInt(artist?.["@attr"]?.rank || artist?.rank || 0, 10) || 0;
-  if (rank > 0) {
-    return `Trending #${rank} on Last.fm`;
-  }
-  return "Trending on Last.fm";
-};
-
-export const buildTrendingArtistEntry = (artist) => {
-  const name = String(artist?.name || artist?.["#text"] || "").trim();
-  if (!name) return null;
-  return {
-    id: String(artist?.mbid || "").trim() || null,
-    name,
-    image: pickLastfmImage(artist?.image),
-    type: "Artist",
-    popularityLabel: formatTrendingPopularity(artist),
-    listeners: parseInt(artist?.listeners || 0, 10) || 0,
-    playcount: parseInt(artist?.playcount || 0, 10) || 0,
-    popularityRank:
-      parseInt(artist?.["@attr"]?.rank || artist?.rank || 0, 10) || null,
-  };
 };
 
 export const getSeedTagMapKey = (seed) =>

@@ -328,16 +328,6 @@ export const buildFlowFromForm = (draft) => {
   };
 };
 
-export const getUnavailableFlowSourceMessage = (draft, disabledSources = {}) => {
-  const mix = normalizeMixPercent(draft?.mix);
-  for (const [source, reason] of Object.entries(disabledSources || {})) {
-    if (Number(mix?.[source] || 0) > 0 && reason) {
-      return reason;
-    }
-  }
-  return "";
-};
-
 const normalizeDraftForCompare = (draft) => {
   const normalizeList = (value) =>
     parseListInput(value)
