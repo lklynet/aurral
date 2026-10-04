@@ -20,6 +20,7 @@ import {
 } from "../pipelineHelpers.js";
 import { classifyQualityJob } from "../qualityProfileService.js";
 import { withDownloadStepLock } from "./mutationGuards.js";
+import { discardReviewFile } from "./reviewFiles.js";
 import { logger } from "../logger.js";
 
 const approvalFollowUps = new Set();
@@ -103,10 +104,7 @@ export async function approveBlockedJob(jobId) {
 export async function denyBlockedJob(jobId) {
   const job = getBlockedJob(jobId);
   if (!job) return { status: 404, error: "Blocked job not found" };
-  const sourcePath = String(job.stagingPath || "").trim();
-  if (sourcePath) {
-    await fs.rm(sourcePath, { force: true }).catch(() => {});
-  }
+  await discardReviewFile(job);
   const deniedSourceKey = ["usenet", "ytdlp", "deemix"].includes(job.downloadSource)
     ? String(job.releaseGuid || "").trim()
     : `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`;

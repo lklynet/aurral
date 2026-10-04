@@ -3,11 +3,7 @@ import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger } from "./logger.js";
 import { enqueuePipelineJob, listHonkerJobs } from "./honkerDb.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
-import {
-  discardSlskdHeldFile,
-  processSlskdPipelinePayload,
-  SLSKD_NOT_CONFIGURED_MESSAGE,
-} from "./slskdOrchestrator.js";
+import { processSlskdPipelinePayload, SLSKD_NOT_CONFIGURED_MESSAGE } from "./slskdOrchestrator.js";
 import { processUsenetPipelinePayload } from "./usenetOrchestrator.js";
 import { processYtdlpPipelinePayload } from "./ytdlpOrchestrator.js";
 import { processDeemixPipelinePayload } from "./deemixOrchestrator.js";
@@ -22,6 +18,7 @@ import {
 import { blockPipelineJobForReview, SEARCH_RESET } from "./pipelineHelpers.js";
 import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.js";
 import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.js";
+import { discardReviewFile } from "./downloadJobs/reviewFiles.js";
 
 // Runs one step of a download job: it picks the next enabled source in
 // priority order and hands the step to that source's adapter. Every source
@@ -88,11 +85,13 @@ async function discardHeldForReview(payload) {
   const held = payload?.heldForReview;
   if (!held?.sourcePath) return;
   if (downloadTracker.getJob(payload.jobId)?.stagingPath === held.sourcePath) return;
-  if (held.source === "slskd") {
-    await discardSlskdHeldFile(held);
-    return;
-  }
-  await fs.rm(held.sourcePath, { force: true }).catch(() => {});
+  await discardReviewFile({
+    id: payload.jobId,
+    stagingPath: held.sourcePath,
+    downloadSource: held.source,
+    downloadClientId: held.transferId,
+    remoteUsername: held.username,
+  });
 }
 
 function isSourceConfigured(sourceId) {

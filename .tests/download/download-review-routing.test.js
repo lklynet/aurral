@@ -709,3 +709,51 @@ btest("denying a held file starts a stopped worker to search again", async (t) =
   assert.equal(downloadTracker.getJob(jobId).status, "pending");
   assert.equal(start.mock.callCount(), 1);
 });
+
+async function waitUntilGone(filePath) {
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    if (!(await access(filePath).then(() => true, () => false))) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.fail(`${filePath} was not removed`);
+}
+
+btest("removing a job in review discards its file but leaves a Library file", async () => {
+  const { resolveDownloadRoot } = await import("../../backend/services/downloadPaths.js");
+  const inLibrary = path.join(resolveDownloadRoot(), "review-removal", "Artist Name - Correct Track.mp3");
+  const staged = path.join(isolatedState.baseDir, "review-removal", "held.mp3");
+  for (const filePath of [inLibrary, staged]) {
+    await writeOneSecondMp3(filePath);
+    const jobId = addDurationMismatchJob("review-removal");
+    downloadTracker.setBlocked(jobId, "downloaded file is 99.0s shorter than the requested track", filePath);
+  }
+
+  assert.equal(downloadTracker.clearByPlaylistId("review-removal"), 2);
+  await waitUntilGone(staged);
+  await access(inLibrary);
+});
+
+btest("denying a yt-dlp review removes its staging folder but leaves a Library file", async (t) => {
+  t.mock.method(downloadWorker, "start", async () => {});
+  const stagingRoot = path.join(isolatedState.baseDir, "deny-cleanup");
+  dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
+    ...dbOps.getSettings().integrations, ytdlp: { stagingPath: stagingRoot } } });
+  const { denyBlockedJob } = await import("../../backend/services/downloadJobs/blockedJobReview.js");
+  const review = async (filePath, source) => {
+    const jobId = addDurationMismatchJob("deny-cleanup");
+    await writeOneSecondMp3(typeof filePath === "function" ? filePath(jobId) : filePath);
+    downloadTracker.updateDownloadMetadata(jobId, { downloadSource: source, releaseGuid: `${source}-1` });
+    downloadTracker.setBlocked(jobId, "downloaded file is 99.0s shorter than the requested track",
+      typeof filePath === "function" ? filePath(jobId) : filePath);
+    assert.equal((await denyBlockedJob(jobId)).status, 200);
+    return jobId;
+  };
+
+  const ytdlpJobId = await review((jobId) => path.join(stagingRoot, "ytdlp", jobId, "video-1.mp3"), "ytdlp");
+  await assert.rejects(access(path.join(stagingRoot, "ytdlp", ytdlpJobId)));
+
+  const { resolveDownloadRoot } = await import("../../backend/services/downloadPaths.js");
+  const inLibrary = path.join(resolveDownloadRoot(), "deny-cleanup", "Artist Name - Correct Track.mp3");
+  await review(inLibrary, "deemix");
+  await access(inLibrary);
+});

@@ -1328,13 +1328,13 @@ async function handleFinalize(payload, helpers) {
   return committed.result;
 }
 
-export async function discardSlskdHeldFile(held) {
+export async function discardSlskdDownload({ sourcePath, transferId, username }) {
   await cleanupRejectedDownload({
-    sourcePath: held.sourcePath,
+    sourcePath,
     slskdRoot: resolveLocalPath(await slskdClient.getDownloadDirectory(), getPathMappings("slskd")),
     playlistRoot: resolveDownloadRoot(),
-    transfer: held.transferId ? { id: held.transferId } : null,
-    username: held.username,
+    transfer: transferId ? { id: transferId } : null,
+    username,
   });
 }
 
