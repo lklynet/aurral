@@ -47,13 +47,13 @@ export async function loadAlbumReleases(albumMbid) {
 }
 
 // Lines a release up with the requested jobs: each job takes the release
-// track with its recording ID, or else the only track with its title.
+// track with its recording ID, or else its title, when only one track has it.
 export function releaseTracksForJobs(release, jobs) {
   const byRecording = new Map();
   const byTitle = new Map();
   for (const track of release.tracks) {
     const recording = String(track.recordingMbid || "").toLowerCase();
-    if (recording) byRecording.set(recording, track);
+    if (recording) byRecording.set(recording, byRecording.has(recording) ? null : track);
     const title = normalizeMatchText(track.title);
     byTitle.set(title, byTitle.has(title) ? null : track);
   }

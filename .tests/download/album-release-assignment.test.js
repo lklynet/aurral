@@ -65,6 +65,19 @@ test("album assignment validates files against the edition that arrived", async 
     ] }]);
     assert.equal(result.releaseId, "edition");
     assert.deepEqual(result.accepted.map(({ jobId }) => jobId), ["first", "second"]);
+
+    const themes = ["02 Theme.flac", "06 Theme.flac"].map((name) => join(root, name));
+    for (const filePath of themes) await writeFile(filePath, "fixture");
+    parsed.set(themes[0], tags("Theme", 2, 90)).set(themes[1], tags("Theme", 6, 90));
+    const repeated = await assignDownloadedAlbumFiles({
+      jobs: [1, 5].map((trackNumber) => ({ id: `theme-${trackNumber}`, trackName: "Theme",
+        artistName: "The Band", albumName: "Album", durationMs: 90000, trackNumber, trackMbid: "theme" })),
+      filePaths: themes, source: "soulseek",
+      releases: [{ id: "reprise", tracks: [2, 6].map((trackNumber) => ({
+        title: "Theme", trackNumber, durationMs: 90000, recordingMbid: "theme" })) }],
+      parseAudio: async (filePath) => parsed.get(filePath),
+    });
+    assert.equal(repeated.accepted.length, 2);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
