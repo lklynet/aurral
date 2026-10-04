@@ -19,6 +19,7 @@ import {
   setLibraryManagement,
 } from "./libraryManagementStore.js";
 import { parseAurralIdentityComment, readCommentIdentity } from "./downloadUtils.js";
+import { logger, safeLogDiagnostic } from "./logger.js";
 
 const AUDIO_EXTENSIONS = new Set([
   ".aac",
@@ -316,6 +317,7 @@ export async function scanMusicRoot({
   const seenPaths = new Set();
   const failedPaths = new Set();
   const missingFilePaths = new Set();
+  let firstFailure = null;
   const scanResult = await withLibraryScan(source, resolvedRoot, (scanId) => {
     const run = async () => {
       const files = requestedFiles || walkAudioFiles(resolvedRoot);
@@ -396,8 +398,19 @@ export async function scanMusicRoot({
         } catch (error) {
           result.filesFailed += 1;
           if (error?.code === "ENOENT") missingFilePaths.add(filePath);
-          else failedPaths.add(filePath);
+          else {
+            failedPaths.add(filePath);
+            firstFailure ||= { filePath, reason: safeLogDiagnostic(error) };
+          }
         }
+      }
+      if (firstFailure) {
+        logger.warn("library", "Library scan could not index files", {
+          source,
+          failed: failedPaths.size,
+          example: firstFailure.filePath,
+          reason: firstFailure.reason,
+        });
       }
       if (unseenPaths && result.filesFailed === 0) {
         markLibraryMediaFilesUnavailable(source, unseenPaths);

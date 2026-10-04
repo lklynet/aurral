@@ -18,6 +18,7 @@ test("genre reads retain inheritance, metadata shapes, availability, and updates
   const artist = store.upsertLibraryArtist({
     identityKey: "genre:artist", name: "Genre Artist", metadata: { common: { genre: "Rock" } },
   });
+  store.upsertLibraryArtist({ identityKey: "genre:artist", name: "Genre Artist", metadata: { genres: ["Rock"] } });
   const album = store.upsertLibraryAlbum({
     identityKey: "genre:album", artistId: artist.id, title: "Genre Album",
     metadata: { genre: ["Jazz", "Jazz"] },

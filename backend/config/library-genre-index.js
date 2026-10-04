@@ -1,4 +1,4 @@
-const GENRE_INDEX_VERSION = "1";
+const GENRE_INDEX_VERSION = "2";
 const entities = ["artists", "albums", "tracks"];
 
 function genreValues(kind, id, metadata, entityFrom = "") {
@@ -6,7 +6,7 @@ function genreValues(kind, id, metadata, entityFrom = "") {
   return ["$.genres", "$.genre", "$.common.genre", "$.tags.genre"].map((path) =>
     `SELECT '${kind}', ${id}, TRIM(CAST(genre_value.value AS TEXT))
      FROM ${entityFrom ? `${entityFrom}, ` : ""}json_each(${valid}, '${path}') AS genre_value
-     WHERE TRIM(CAST(genre_value.value AS TEXT)) <> ''`).join(" UNION ALL ");
+     WHERE TRIM(CAST(genre_value.value AS TEXT)) <> ''`).join(" UNION ");
 }
 
 export function initializeLibraryGenreIndex(db) {
