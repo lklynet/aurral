@@ -36,11 +36,14 @@ test("one deemix album queue fills verified siblings and retries only a missing 
     res.setHeader("Content-Type", "application/json");
     if (url.pathname === "/api/connect") {
       res.end(JSON.stringify({ autologin: false, currentUser: { name: "Disposable" } }));
-    } else if (url.pathname === "/api/search") {
-      const title = /Second/i.test(url.searchParams.get("term") || "") ? "Second" : "First";
-      res.end(JSON.stringify({ data: [{ id: title === "First" ? "1" : "2", title,
-        artist: { name: "The Band" }, album: { id: "42", title: "Album" },
-        duration: 1, link: `https://www.deezer.com/track/${title}` }] }));
+    } else if (url.pathname === "/api/search" && url.searchParams.get("type") === "album") {
+      res.end(JSON.stringify({ data: [{ id: "42", title: "Album",
+        artist: { name: "The Band" }, link: "https://www.deezer.com/album/42" }] }));
+    } else if (url.pathname === "/api/getTracklist") {
+      res.end(JSON.stringify({ id: "42", tracks: ["First", "Second"].map((title, index) => ({
+        id: String(index + 1), title, artist: { name: "The Band" }, duration: 1,
+        track_position: index + 1, disk_number: 1,
+      })) }));
     } else if (url.pathname === "/api/addToQueue") {
       added += 1;
       res.end(JSON.stringify({ result: true, data: { obj: { uuid: "album_42_9" } } }));
@@ -101,38 +104,54 @@ test("one deemix album queue fills verified siblings and retries only a missing 
   }
 });
 
-for (const failure of ["wrong-album", "unreadable", "wrong-track"]) {
-  test(`deemix album search continues after ${failure} results`, async () => {
-    const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
-    const client = getDownloadClient("deemix");
-    const original = client.search;
-    const ids = ["First", "Second"].map((trackName, index) => downloadTracker.addJob({
-      artistName: "The Band", albumName: "Album", albumMbid: `album-${failure}`,
-      trackName, trackNumber: index + 1, durationMs: 180000,
-      requestGroupId: `group-${failure}`, albumTrackCount: 2, albumTrackTitles: ["First", "Second"],
-    }, "library"));
-    client.search = async (query) => {
-      const advanced = query.includes("artist:");
-      const title = query.includes("Second") ? "Second" : "First";
-      const result = { id: `${advanced}-${title}`, artist: "The Band", title,
-        albumId: "42", album: "Album", albumUrl: "https://album.invalid/42", durationSec: 180, readable: true };
-      if (advanced) {
-        if (failure === "wrong-album") result.album = "Other Album";
-        if (failure === "unreadable") result.readable = false;
-        if (failure === "wrong-track") result.title = "Unrelated Song";
-      }
-      return [result, { ...result }];
-    };
-    try {
-      const result = await processDeemixPipelinePayload({ phase: "search", source: "deemix", jobId: ids[0],
-        albumGrab: true, albumGroupJobIds: ids }, {
-        failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }),
-      });
-      assert.equal(result.phase, "download");
-      assert.equal(result.candidates[0].raw.albumId, "42");
-      assert.equal(result.candidates[0].raw.matchedJobIds.size, 2);
-    } finally {
-      client.search = original;
-    }
+function albumJobs(group) {
+  return ["First", "Second"].map((trackName, index) => downloadTracker.addJob({
+    artistName: "The Band", albumName: "Album", albumMbid: group,
+    trackName, trackNumber: index + 1, durationMs: 180000,
+    requestGroupId: group, albumTrackCount: 2, albumTrackTitles: ["First", "Second"],
+  }, "library"));
+}
+
+async function searchWith(client, ids) {
+  return processDeemixPipelinePayload({ phase: "search", source: "deemix", jobId: ids[0],
+    albumGrab: true, albumGroupJobIds: ids }, {
+    failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }),
   });
 }
+
+const albumTrack = (title, index, overrides = {}) => ({ id: `${index}`, title, artist: "The Band",
+  durationSec: 180, trackNumber: index + 1, readable: true, ...overrides });
+
+test("deemix album grab picks the album whose tracklist holds the requested tracks", async (t) => {
+  const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
+  const client = getDownloadClient("deemix");
+  const tracklists = {
+    other: ["First", "Second"].map((title, index) => albumTrack(title, index)),
+    wrong: ["Unrelated", "Songs"].map((title, index) => albumTrack(title, index)),
+    locked: ["First", "Second"].map((title, index) => albumTrack(title, index, { readable: false })),
+    deluxe: ["First", "Second", "Bonus"].map((title, index) => albumTrack(title, index)),
+  };
+  t.mock.method(client, "searchAlbums", async () => [
+    { id: "other", title: "Other Album", url: "https://album.invalid/other" },
+    { id: "wrong", title: "Album", url: "https://album.invalid/wrong" },
+    { id: "locked", title: "Album", url: "https://album.invalid/locked" },
+    { id: "deluxe", title: "Album (Deluxe Edition)", url: "https://album.invalid/deluxe" },
+  ]);
+  const tracklist = t.mock.method(client, "getAlbumTracks", async (id) => tracklists[id]);
+  const result = await searchWith(client, albumJobs("deemix-tracklist"));
+  assert.equal(result.phase, "download");
+  assert.deepEqual(result.candidates.map((candidate) => candidate.raw.albumId), ["deluxe"]);
+  assert.ok(!tracklist.mock.calls.some((call) => call.arguments[0] === "other"));
+});
+
+test("deemix album grab tries the plain album query when the advanced one finds nothing", async (t) => {
+  const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
+  const client = getDownloadClient("deemix");
+  const search = t.mock.method(client, "searchAlbums", async (query) => (query.includes("artist:")
+    ? [] : [{ id: "42", title: "Album", url: "https://album.invalid/42" }]));
+  t.mock.method(client, "getAlbumTracks", async () =>
+    ["First", "Second"].map((title, index) => albumTrack(title, index)));
+  const result = await searchWith(client, albumJobs("deemix-plain"));
+  assert.equal(search.mock.callCount(), 2);
+  assert.equal(result.candidates[0].raw.albumId, "42");
+});

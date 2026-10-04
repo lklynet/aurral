@@ -234,6 +234,7 @@ async function handleYtdlpFinalize(payload, helpers) {
     ) {
       return null;
     }
+    downloadTracker.recordDeniedSource(job.id, "ytdlp", candidate?.raw?.id);
     await fs.rm(filePath, { force: true }).catch(() => {});
     await ytdlpClient.cleanupStaging(job.id);
     const reason = validation.reason || "yt-dlp download failed track validation";

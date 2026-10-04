@@ -12,7 +12,12 @@ import {
   sanitizePathPart,
   writeAudioMetadata,
 } from "./downloadUtils.js";
-import { finalizePipelineJobSuccess } from "./pipelineHelpers.js";
+import {
+  buildNextCandidatePayload,
+  finalizePipelineJobSuccess,
+  getPayloadCandidate,
+  hasNextCandidate,
+} from "./pipelineHelpers.js";
 import { isPipelinePayloadActive, withPipelineCommitLock } from "./downloadJobs/downloadCancellation.js";
 import { downloadDestinationForJob } from "./downloadJobs/downloadOwnership.js";
 
@@ -30,6 +35,48 @@ function heldAlbumGrabJobs(payload) {
   return (payload?.albumGroupJobIds || []).filter((id) => id !== payload.jobId)
     .map((id) => downloadTracker.getJob(id))
     .filter((job) => job?.status === "downloading" && !downloadTracker.isSlskdDispatched(job.id));
+}
+
+// The union of every album job's blocked sources, so one album attempt
+// never offers a file or release that failed for any of its tracks.
+export function deniedAlbumSources(jobs, source) {
+  return new Set(jobs.flatMap((job) => (job.deniedRemoteSources || [])
+    .filter((entry) => Array.isArray(entry) && entry[0] === source)
+    .map((entry) => String(entry[1] || "").trim().toLowerCase())));
+}
+
+// Blocks the attempted release for every track it did not fill, so neither
+// the next album attempt nor a per-track search takes it again.
+function blockAlbumGrabSource(payload, jobs) {
+  const candidate = getPayloadCandidate(payload);
+  for (const job of jobs) {
+    if (payload.source === "slskd") {
+      const file = (candidate?.raw?.files || []).find((entry) => entry.jobId === job.id);
+      if (file) {
+        downloadTracker.recordDeniedSource(job.id, "slskd", `${candidate.raw.user}\0${file.file}`);
+      }
+    } else if (payload.source === "usenet" && candidate?.raw?.release?.guid) {
+      downloadTracker.recordDeniedSource(job.id, "usenet", candidate.raw.release.guid);
+    } else if (payload.source === "deemix" && candidate?.raw?.albumId) {
+      downloadTracker.recordDeniedSource(job.id, "deemix", `album:${candidate.raw.albumId}`);
+    }
+  }
+}
+
+// Tries the next ranked folder or release for the tracks an attempt left
+// unfilled. When the leading track was filled, another unfilled track leads.
+export function continueAlbumGrab(payload, resetFields = {}) {
+  const remaining = albumGrabJobs(payload);
+  if (remaining.length < 2 || !hasNextCandidate(payload)) return null;
+  const leaderId = remaining.some((job) => job.id === payload.jobId)
+    ? payload.jobId
+    : remaining[0].id;
+  downloadTracker.markSlskdDispatched(leaderId);
+  return buildNextCandidatePayload({
+    ...payload,
+    jobId: leaderId,
+    albumGroupJobIds: [leaderId, ...remaining.map((job) => job.id).filter((id) => id !== leaderId)],
+  }, resetFields);
 }
 
 export function releaseAlbumGrabJobs(payload, reason = null, reasons = new Map()) {
@@ -71,7 +118,12 @@ export function fallbackAlbumGrabToTracks(payload, reason = null, reasons = new 
   };
 }
 
-export async function finishAlbumGrab(payload, { filePaths, source, album = null } = {}) {
+export async function finishAlbumGrab(payload, {
+  filePaths,
+  source,
+  album = null,
+  resetFields = {},
+} = {}) {
   const jobs = albumGrabJobs(payload);
   if (jobs.length === 0) return null;
   recordAlbumGrabQueued(payload, jobs);
@@ -107,6 +159,11 @@ export async function finishAlbumGrab(payload, { filePaths, source, album = null
       });
     }
   }
+  if ((filePaths || []).length > assigned.unreadableCount) {
+    blockAlbumGrabSource(payload, albumGrabJobs(payload));
+  }
+  const next = continueAlbumGrab(payload, resetFields);
+  if (next) return next;
   const leader = downloadTracker.getJob(payload.jobId);
   if (leader?.status === "done") {
     releaseAlbumGrabJobs(payload, NOT_IN_ALBUM_REASON, reasons);

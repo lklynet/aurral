@@ -100,3 +100,45 @@ test("one Soulseek batch fills two sibling jobs", async (t) => {
   assert.equal(activity.length, 2);
   assert.ok(activity.every((item) => item.downloadMethod === "album" && item.actualDownloadSource === "slskd"));
 });
+
+async function writeTracks(folder, titles) {
+  await mkdir(folder, { recursive: true });
+  for (const title of titles) {
+    await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
+      "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac",
+      "-metadata", `title=${title}`, "-metadata", "artist=The Band", join(folder, `${title}.flac`)]);
+  }
+}
+
+test("a partial Usenet album tries the next release for the tracks it missed", async (t) => {
+  const group = "usenet-next-release";
+  const titles = ["First", "Second", "Third"];
+  const folders = { partial: join(state.baseDir, `${group}-partial`), complete: join(state.baseDir, `${group}-complete`) };
+  await writeTracks(folders.partial, ["First"]);
+  await writeTracks(folders.complete, ["Second", "Third"]);
+  const ids = titles.map((trackName, index) => downloadTracker.addJob({
+    artistName: "The Band", albumName: "Album", albumMbid: group,
+    trackName, trackNumber: index + 1, durationMs: 1000,
+    requestGroupId: group, albumTrackCount: 3, albumTrackTitles: titles,
+  }, "library"));
+  for (const id of ids.slice(1)) downloadTracker.setDownloading(id);
+  const client = getDownloadClient("nzbget");
+  const append = t.mock.method(client, "appendUrl", async ({ url }) => ({ nzbId: url }));
+  t.mock.method(client, "getHistoryItem", async (nzbId) => ({ Status: "SUCCESS",
+    FinalDir: nzbId.endsWith("partial") ? folders.partial : folders.complete }));
+  t.mock.method(client, "deleteQueueItem", async () => true);
+  t.mock.method(client, "deleteHistoryItem", async () => true);
+  const candidates = ["partial", "complete"].map((name) => ({ raw: { release: {
+    title: `The Band - Album ${name}`, guid: `guid-${name}`, downloadUrl: `https://nzb.test/${name}`,
+  } }, score: 10, resolvedAlbumName: "Album" }));
+  const helpers = { failOrTryNextSource: (_, __, reason) => { throw new Error(reason); } };
+  let payload = { source: "usenet", phase: "download", jobId: ids[0], playlistId: "library",
+    playlistGeneration: 0, destination: `The Band/${group}`, albumGrab: true,
+    albumGroupJobIds: ids, candidates, candidateIndex: 0 };
+  while (payload) payload = await processUsenetPipelinePayload(payload, helpers);
+  assert.equal(append.mock.callCount(), 2);
+  for (const id of ids) assert.equal(downloadTracker.getJob(id).status, "done");
+  for (const id of ids.slice(1)) {
+    assert.deepEqual(downloadTracker.getJob(id).deniedRemoteSources, [["usenet", "guid-partial"]]);
+  }
+});

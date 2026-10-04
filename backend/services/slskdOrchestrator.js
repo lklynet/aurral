@@ -29,6 +29,8 @@ import { processYtdlpPipelinePayload } from "./ytdlpOrchestrator.js";
 import { processDeemixPipelinePayload } from "./deemixOrchestrator.js";
 import {
   albumGrabJobs,
+  continueAlbumGrab,
+  deniedAlbumSources,
   fallbackAlbumGrabToTracks,
   finishAlbumGrab,
   releaseAlbumGrabJobs,
@@ -85,6 +87,11 @@ const updateSlskdMetaStmt = db.prepare(`
   WHERE id = ?
 `);
 
+const ALBUM_TRANSFER_RESET = Object.freeze({
+  albumTransfers: null,
+  batchId: null,
+  legacyTransfer: null,
+});
 const MIN_SEARCH_CANDIDATES = 3;
 const MAX_DOWNLOAD_CANDIDATES = 7;
 const MAX_TRANSFER_RETRIES_PER_CANDIDATE = 1;
@@ -830,11 +837,11 @@ async function handleSearch(payload) {
     ? downloadTracker.getJob(payload.upgradeForJobId)?.qualityTier
     : null;
   const deniedSources = Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [];
-  const deniedSourceKeys = new Set(
-    deniedSources
+  const deniedSourceKeys = albumJobs
+    ? deniedAlbumSources([job, ...albumJobs], "slskd")
+    : new Set(deniedSources
       .filter((entry) => Array.isArray(entry) && entry[0] === "slskd")
-      .map((entry) => String(entry[1] || "").trim().toLowerCase()),
-  );
+      .map((entry) => String(entry[1] || "").trim().toLowerCase()));
   const searchOptions = {
     deniedSourceKeys,
     ...(await getWorkerSearchOptions()),
@@ -990,9 +997,12 @@ async function handleDownload(payload) {
     : [];  const index = Number(payload.candidateIndex || 0);
   const candidate = candidates[index];
   if (payload.albumGrab === true) {
-    const files = candidate?.raw?.files || [];
+    const activeJobIds = new Set(albumGrabJobs(payload).map((entry) => entry.id));
+    const files = (candidate?.raw?.files || [])
+      .filter((file) => !file.jobId || activeJobIds.has(file.jobId));
     if (!candidate?.raw?.user || files.length === 0) {
-      return failOrTryNextSource(payload, job, "No Soulseek album files available");
+      return continueAlbumGrab(payload, ALBUM_TRANSFER_RESET)
+        || failOrTryNextSource(payload, job, "No Soulseek album files available");
     }
     let submission;
     try {
@@ -1018,11 +1028,12 @@ async function handleDownload(payload) {
         return transfers;
       });
     } catch (error) {
-      return failOrTryNextSource(payload, job, safeLogDiagnostic(error));
+      return continueAlbumGrab(payload, ALBUM_TRANSFER_RESET)
+        || failOrTryNextSource(payload, job, safeLogDiagnostic(error));
     }
     if (submission.cancelled || !isPipelinePayloadActive(payload)) return null;
-    return { ...payload, phase: "poll", candidate, albumTransfers: submission.result,
-      pollAttempts: 0 };
+    return { ...payload, phase: "poll", candidate: { ...candidate, raw: { ...candidate.raw, files } },
+      albumTransfers: submission.result, pollAttempts: 0 };
   }
   if (!candidate?.raw?.user || !candidate?.raw?.file) {
     return failOrTryNextSource(payload, job, "No download candidate available");
@@ -1121,7 +1132,8 @@ async function handlePoll(payload) {
             jobId: job.id, transferId: id, reason: safeLogDiagnostic(error),
           }));
       }
-      return failOrTryNextSource(payload, job, "Soulseek album transfer timed out");
+      return continueAlbumGrab(payload, ALBUM_TRANSFER_RESET)
+        || failOrTryNextSource(payload, job, "Soulseek album transfer timed out");
     }
     const username = payload.candidate?.raw?.user;
     const transfers = await Promise.all((payload.albumTransfers || []).map(async (transfer) =>
@@ -1224,6 +1236,7 @@ async function handleFinalize(payload) {
     }
     const next = await finishAlbumGrab(payload, {
       filePaths: paths, source: "soulseek", album: job.albumName,
+      resetFields: ALBUM_TRANSFER_RESET,
     });
     if (slskdClient.isCleanupAfterRunsEnabled()) {
       const transfers = (payload.albumTransfers || []).map((transfer) => ({
@@ -1334,6 +1347,7 @@ async function handleFinalize(payload) {
       validation.reason || "Download validation failed",
       { transfer, sourcePath, validation },
     );
+    downloadTracker.recordDeniedSource(job.id, "slskd", `${candidate?.raw?.user}\0${remoteFile}`);
     await cleanupRejectedDownload({
       sourcePath,
       slskdRoot,

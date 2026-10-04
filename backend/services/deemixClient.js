@@ -182,6 +182,27 @@ function normalizeTrack(entry) {
   };
 }
 
+function normalizeAlbum(entry) {
+  const id = String(entry?.id || "").trim();
+  if (!id) return null;
+  return {
+    id,
+    title: String(entry?.title || "").trim(),
+    artist: String(entry?.artist?.name || "").trim(),
+    url: String(entry?.link || "").trim() || `https://www.deezer.com/album/${id}`,
+  };
+}
+
+function normalizeAlbumTrack(entry) {
+  const track = normalizeTrack(entry);
+  if (!track) return null;
+  return {
+    ...track,
+    trackNumber: normalizeInteger(entry?.track_position, 0) || null,
+    discNumber: normalizeInteger(entry?.disk_number, 0) || null,
+  };
+}
+
 export class DeemixClient {
   constructor(config = null) {
     this.key = "deemix";
@@ -302,6 +323,34 @@ export class DeemixClient {
     });
     if (data?.error) throw new Error(`deemix search failed: ${data.error}`);
     return (Array.isArray(data?.data) ? data.data : []).map(normalizeTrack).filter(Boolean);
+  }
+
+  async searchAlbums(query, { limit = 10 } = {}) {
+    const term = String(query || "").trim();
+    if (!term) return [];
+    const settings = this._getSettings();
+    await requireSession(settings);
+    const data = await request(settings, "GET", "/api/search", {
+      params: { term, type: "album", start: 0, nb: Math.min(Math.max(limit, 1), 50) },
+      timeout: 45000,
+    });
+    if (data?.error) throw new Error(`deemix album search failed: ${data.error}`);
+    return (Array.isArray(data?.data) ? data.data : []).map(normalizeAlbum).filter(Boolean);
+  }
+
+  async getAlbumTracks(albumId) {
+    const id = String(albumId || "").trim();
+    if (!id) return [];
+    const settings = this._getSettings();
+    await requireSession(settings);
+    const data = await request(settings, "GET", "/api/getTracklist", {
+      params: { type: "album", id },
+      timeout: 45000,
+    });
+    return (Array.isArray(data?.tracks) ? data.tracks : [])
+      .filter((entry) => entry?.type !== "disc_separator")
+      .map(normalizeAlbumTrack)
+      .filter(Boolean);
   }
 
   async addToQueue(trackUrl, trackId) {
