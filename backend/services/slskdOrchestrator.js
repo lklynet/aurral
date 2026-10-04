@@ -667,11 +667,21 @@ async function advanceSlskdSearch(payload, job, queries, resolvedTrack, searchOp
   const activeSearch = payload.activeSearch?.query === queries[index] ? payload.activeSearch : null;
   if (payload.activeSearch && !activeSearch) await stopSearch(payload.activeSearch.id);
   if (activeSearch) {
-    const result = await searchMonitorFor(payload, activeSearch).poll({
-      shouldCancel: isCancelled,
-      earlyExitWhen: (data) =>
-        enough(probeAggregatedResults(aggregated, slskdClient.flattenSearchResults(data), seen)),
-    });
+    let result;
+    try {
+      result = await searchMonitorFor(payload, activeSearch).poll({
+        shouldCancel: isCancelled,
+        earlyExitWhen: (data) =>
+          enough(probeAggregatedResults(aggregated, slskdClient.flattenSearchResults(data), seen)),
+      });
+    } catch (error) {
+      logger.warn("slskd", "slskd search poll failed; moving to the next query", {
+        jobId: payload.jobId,
+        searchId: activeSearch.id,
+        reason: safeLogDiagnostic(error),
+      });
+      result = { done: true, data: null };
+    }
     if (isCancelled()) return { cancelled: true };
     if (!result.done) {
       return { payload: { ...payload, searchQueryIndex: index,
@@ -1022,15 +1032,17 @@ async function handlePoll(payload, helpers) {
       return { ...payload, phase: "poll", pollAttempts, delaySeconds: POLL_DELAY_SECONDS,
         lastProgress: progress.lastProgress, lastProgressAt: progress.lastProgressAt };
     }
-    for (const transfer of payload.albumTransfers || []) {
+    // Keep the files that finished. The album attempt continues for the rest.
+    const settled = transfers.map((transfer, index) => transfer || payload.albumTransfers[index]);
+    for (const transfer of settled) {
+      if (classifyTransferState(readTransferState(transfer)) !== "pending") continue;
       const id = readTransferId(transfer);
       if (id) await slskdClient.deleteTransfer(username, id, { remove: true })
         .catch((error) => logger.warn("slskd", "Stalled album transfer cleanup failed", {
           jobId: job.id, transferId: id, reason: safeLogDiagnostic(error),
         }));
     }
-    return continueAlbumGrab(payload, ALBUM_TRANSFER_RESET)
-      || helpers.failOrTryNextSource(payload, job, "Soulseek album transfer stalled");
+    return { ...payload, phase: "finalize", pollAttempts, albumTransfers: settled };
   }
   const eventSignal = await pollSlskdEventsForCandidate(payload).catch(() => ({
     eventOffset: payload.eventOffset ?? null,

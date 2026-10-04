@@ -422,11 +422,11 @@ async function handleUsenetPoll(payload, helpers) {
       );
     }
   }
-  // A queued, paused, or slow download keeps waiting like it would in
-  // Lidarr. Only a download that left the client without a history entry
+  // A queued, paused, slow, or post-processing download keeps waiting like it
+  // would in Lidarr. Only a download that left both the queue and the history
   // moves on.
-  const queueItem = await client.getQueueItem(payload.nzbId);
-  const missingPolls = queueItem ? 0 : Number(payload.missingPolls || 0) + 1;
+  const present = Boolean(historyItem) || Boolean(await client.getQueueItem(payload.nzbId));
+  const missingPolls = present ? 0 : Number(payload.missingPolls || 0) + 1;
   if (missingPolls > MAX_MISSING_POLLS) {
     if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, RELEASE_RESET);
     return helpers.failOrTryNextSource(payload, job, "The Usenet download left the download client");

@@ -92,3 +92,14 @@ test("an NZBGet download that failed is removed from the client", async (t) => {
   assert.deepEqual(fromQueue.mock.calls.map((call) => call.arguments[0]), [7]);
   assert.deepEqual(fromHistory.mock.calls.map((call) => call.arguments[0]), [7]);
 });
+
+test("a Usenet download still post-processing in the client keeps waiting", async (t) => {
+  const client = getDownloadClient("sabnzbd");
+  t.mock.method(client, "getHistoryItem", async () => ({ nzo_id: "SAB_1", status: "Extracting" }));
+  t.mock.method(client, "getQueueItem", async () => null);
+  const jobId = addJob();
+  const next = await processUsenetPipelinePayload({ phase: "poll", source: "usenet", jobId,
+    downloadClient: "sabnzbd", nzbId: "SAB_1", missingPolls: 60 }, failSource);
+  assert.equal(next.phase, "poll");
+  assert.equal(next.missingPolls, 0);
+});

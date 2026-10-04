@@ -94,3 +94,24 @@ test("tracks from one album reuse the album search", async (t) => {
   assert.equal(created.mock.callCount(), 1);
   assert.match(secondResult.next.candidates[0].raw.file, /Second\.flac$/);
 });
+
+test("a failed Soulseek poll moves on to the next query", async (t) => {
+  let searchCount = 0;
+  const created = t.mock.method(client, "createSearch", async (query, options) => {
+    const id = `failing-${++searchCount}`;
+    options.onSearchCreated?.(id);
+    return { id, searchText: query };
+  });
+  t.mock.method(client, "getSearch", async () => { throw new Error("slskd restarted"); });
+  t.mock.method(client, "deleteSearch", async () => true);
+  t.mock.method(client, "isCleanupAfterRunsEnabled", () => false);
+  const jobId = downloadTracker.addJob({ artistName: "Failing Band", trackName: "Lost Song",
+    albumName: "Lost Album", durationMs: 200000 }, "library");
+
+  const first = await processPipelinePayload({ phase: "search", source: "slskd", jobId });
+  const second = await processPipelinePayload(first);
+  assert.equal(second.phase, "search");
+  assert.equal(second.searchQueryIndex, 1);
+  assert.notEqual(second.activeSearch.query, first.activeSearch.query);
+  assert.equal(created.mock.callCount(), 2);
+});

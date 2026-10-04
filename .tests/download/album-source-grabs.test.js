@@ -145,3 +145,30 @@ test("a partial Usenet album tries the next release for the tracks it missed", a
     assert.deepEqual(downloadTracker.getJob(id).deniedRemoteSources, [["usenet", "guid-partial"]]);
   }
 });
+
+test("a stalled Soulseek album keeps the files that finished", async (t) => {
+  const album = await makeAlbum("soulseek-stalled");
+  dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
+    slskd: { enabled: true, url: "http://127.0.0.1:9" },
+  } });
+  const client = getDownloadClient("slskd");
+  const transfers = [
+    { id: "done", username: "peer", filename: album.files[0], state: "Completed, Succeeded" },
+    { id: "stuck", username: "peer", filename: album.files[1], state: "Queued, Remotely", placeInQueue: 9 },
+  ];
+  t.mock.method(client, "getTransfer", async (_, id) => transfers.find((item) => item.id === id));
+  const removed = t.mock.method(client, "deleteTransfer", async () => true);
+  t.mock.method(client, "getDownloadDirectory", async () => album.folder);
+  t.mock.method(client, "isCleanupAfterRunsEnabled", () => false);
+  const remoteFiles = album.files.map((filePath, index) => ({ file: filePath, size: 0, jobId: album.ids[index] }));
+  const polling = { ...album.payload, source: "slskd", phase: "poll", candidateIndex: 0,
+    candidate: { raw: { user: "peer", files: remoteFiles } }, albumTransfers: transfers };
+  const waiting = await processPipelinePayload(polling);
+  assert.equal(waiting.phase, "poll");
+  const stalled = await processPipelinePayload({ ...waiting, lastProgressAt: Date.now() - 60 * 60 * 1000 });
+  assert.equal(stalled.phase, "finalize");
+  assert.deepEqual(removed.mock.calls.map((call) => call.arguments[1]), ["stuck"]);
+  await processPipelinePayload(stalled);
+  assert.equal(downloadTracker.getJob(album.ids[0]).status, "done");
+  assert.equal(downloadTracker.getJob(album.ids[1]).status, "pending");
+});

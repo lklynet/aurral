@@ -60,7 +60,11 @@ export function releaseTracksForJobs(release, jobs) {
   });
 }
 
+// Popular albums have dozens of releases with the same tracklist. Releases
+// that line the requested tracks up the same way fit every folder the same
+// way, so only the first of them is kept.
 export function candidateReleasesForJobs(jobs, releases = []) {
+  const seen = new Set();
   return [
     { id: null, tracks: jobs.map(jobReleaseTrack), titles: null },
     ...releases.map((release) => ({
@@ -68,5 +72,12 @@ export function candidateReleasesForJobs(jobs, releases = []) {
       tracks: releaseTracksForJobs(release, jobs),
       titles: release.tracks.map((track) => track.title),
     })),
-  ];
+  ].filter((release) => {
+    const key = release.tracks
+      .map((track) => `${track.trackNumber ?? ""}:${Math.round(Number(track.durationMs || 0) / 1000)}`)
+      .join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
