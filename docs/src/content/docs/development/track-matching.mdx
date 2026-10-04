@@ -18,6 +18,8 @@ After a download, `postDownloadValidator.js` runs the same matcher on the origin
 - Missing evidence does not count as agreement.
 - A file whose original tags match except for the duration goes to review.
 - A file without usable identity tags is not imported automatically.
+- A track number that points at another track of the requested album is a conflict only when the file comes from that album. A single, a compilation, or another album has its own numbering.
+- Aurral takes a recording ID only from MusicBrainz release data, never from Last.fm.
 
 ## Titles and scripts
 
@@ -45,16 +47,25 @@ An Aurral album request keeps one job for each missing track. When Soulseek, Use
 - Soulseek submits one folder batch.
 - deemix submits one album URL.
 
-Aurral assigns the finished files to the reserved jobs and never uses one file twice. Each assigned file must pass its own post-download check before it moves into the Library. A missing, unreadable, contradictory, or failed file leaves its job pending for the per-track fallback. If the attempt ends early, for example because the first job fails or is removed, the reserved jobs also return to per-track search.
+Like a Lidarr import, the attempt matches against every release in the album's release group, not only the release that Aurral stored when you requested the album. Each file is checked against the release whose tracklist fits the downloaded files best, so another edition's numbering does not reject it.
+
+For Soulseek, every folder that fits is a usable copy. Equal fits are usually the same rip shared by several people, so Aurral ranks them by completeness, quality profile tier, fit, free upload slot, queue length, and speed instead of abstaining. A listing without track lengths fits when exact titles sit at their positions. The post-download check still compares the real durations.
+
+Aurral assigns the finished files to the reserved jobs and never uses one file twice. Each assigned file must pass its own post-download check before it moves into the Library. When the attempt leaves two or more tracks unfilled, Aurral tries the next ranked folder or release for them. It blocks the attempted release for every track it did not fill, so neither the next attempt nor a per-track search takes it again. Tracks that remain go through the per-track fallback. If the attempt ends early, for example because the first job is removed, the reserved jobs also return to per-track search.
 
 The release attempt follows the configured source priority. yt-dlp stays a per-track source. Lidarr albums go through Lidarr. Cancellation removes only work that belongs to the album request. Queued pipeline state resumes after a worker restart.
+
+## Pipeline steps
+
+The download pipeline runs one step at a time, and each step holds its owner's download step lock. A step therefore makes one provider call: it starts a search, polls a running search once, runs one Prowlarr query, or moves a download forward. Soulseek and Usenet results stay in a 15-minute cache keyed by query, so a restart repeats only the queries whose results it lost. The download worker hands a job to the pipeline only while fewer jobs than its concurrency are searching.
 
 ## Add a source
 
 1. Declare the evidence that the source provides in `candidateNormalizer.js`.
 2. Map provider results through `buildSourceCandidates()`. Keep provider-specific availability checks in the adapter.
 3. Run the shared post-download validator before you write tags or import files.
-4. For whole-release downloads, pass the finished file paths to `finishAlbumGrab()`, and test partial and failed downloads.
+4. For whole-release downloads, pass the finished file paths and the payload fields to clear for the next candidate to `finishAlbumGrab()`, and test partial and failed downloads.
+5. Keep each pipeline step to one provider call, and block a file or release that fails its checks with `recordDeniedSource()`.
 
 ## Verification
 

@@ -63,9 +63,15 @@ If NZBGet runs on Windows and reports host paths, mount the parent folder in Aur
 
 ## Behavior
 
-Aurral watches SABnzbd or NZBGet until the download finishes. For an Aurral album, one NZB can fill several tracks. For other requests, Aurral imports the checked track into the Downloads Folder.
+Aurral first asks Prowlarr for a music search with the artist and album, as Lidarr does. Prowlarr sends indexers without music search the artist and album as plain text instead. If that gives too few usable releases, Aurral searches for the artist and album, the artist and track, the album with the track title, and finally the album title alone. Aurral checks every release against the request and every downloaded file before it imports it.
 
-When Aurral knows the artist, it searches for the artist and the album first. If that gives too few usable releases, it searches for the album title alone, then for the album and track titles together. Without an artist, Aurral starts with the album title alone. Aurral checks every release against the request and every downloaded file before it imports it.
+Aurral watches SABnzbd or NZBGet for as long as the client holds the download, including while it is paused. If the download leaves the client without a history entry, Aurral tries the next release.
+
+For an Aurral album, one NZB can fill several tracks. If the NZB leaves tracks unfilled, Aurral tries the next release for those tracks before it searches for them one by one. For other requests, Aurral imports the checked track into the Downloads Folder.
+
+A release that fails to download, or that holds no file for the track, is not offered again for that track.
+
+After Aurral imports a download, or the download fails, it removes the item from the client's queue and history. SABnzbd also deletes the files that Aurral did not import. NZBGet keeps completed files on disk, so clear its completed-download folder for Aurral's category yourself.
 
 If a file matches the requested track but its duration is very different, Aurral holds it in **Activity > Queue**. You can preview, approve, or deny it.
 

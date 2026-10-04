@@ -34,7 +34,21 @@ slskd can supply missing tracks and upgrades. Aurral reads each downloaded file 
 
 ## How Aurral searches
 
-When Aurral knows the artist, it searches for the artist and the album first. If that gives too few usable results, it searches for the album title alone, then for the album and track titles together. Without an artist, Aurral starts with the album title alone. Aurral checks every result against the requested track and checks every downloaded file before it accepts it.
+For a track, Aurral searches for the artist and the album first. If that gives too few usable results, it searches for the artist and the track, then the album with the track title, and finally the album title alone. Aurral checks every result against the requested track and checks every downloaded file before it accepts it.
+
+Aurral keeps search results for 15 minutes. Tracks from the same album share one album search instead of each starting their own. Aurral runs no more searches at once than the download worker's concurrency.
+
+## Albums
+
+For an Aurral album, Aurral searches for the album alone and looks for a folder that holds the missing tracks. It compares the folder with every edition of the album in MusicBrainz. When several folders fit, Aurral prefers a complete folder, then the best tier in your quality profile, then the closest match, then a user with a free upload slot, a short queue, and a fast upload. It skips folders in a tier that the quality profile turns off.
+
+Aurral downloads only the files that fill missing tracks. If the folder leaves tracks unfilled, Aurral tries the next ranked folder, from a different user, before it searches for those tracks one by one.
+
+## Transfers
+
+Aurral waits while a transfer makes progress, including while it waits in the user's upload queue. If a transfer's state, progress, and queue position stay the same for 30 minutes, Aurral cancels it and tries the next result.
+
+A file that fails Aurral's checks is not offered again for that track.
 
 ## Fallback
 

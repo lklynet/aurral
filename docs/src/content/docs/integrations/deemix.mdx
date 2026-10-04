@@ -37,7 +37,11 @@ Aurral tries download sources in priority order. It ranks Deezer results by titl
 
 Aurral checks each downloaded file in the same way as files from other sources. It then writes the title, artist, album, album artist, year, and track number into the file.
 
+For an Aurral album, Aurral searches Deezer for the album and checks each matching album's tracklist against the missing tracks. A deluxe or remastered edition counts as the same album. Aurral queues the album whose tracklist covers the most missing tracks.
+
 If an album download finishes with errors, Aurral assigns the finished files to their tracks. The missing and failed tracks continue one by one through the other sources. One file never fills two tracks.
+
+A track that fails Aurral's checks is not offered again for that request.
 
 If a file matches the requested track but its duration is very different, Aurral holds it in **Activity > Queue**. You can preview, approve, or deny it.
 
