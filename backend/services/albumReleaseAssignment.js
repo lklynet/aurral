@@ -98,7 +98,8 @@ export async function assignDownloadedAlbumFiles({
       options: { parseFile: parseAudio, strict: true },
     });
     if (validation.valid) {
-      accepted.push({ jobId: job.id, filePath: entry.filePath, validation });
+      const trackNumber = release.tracks[pair.trackIndex].trackNumber || null;
+      accepted.push({ jobId: job.id, filePath: entry.filePath, trackNumber, validation });
       unassignedJobIds.delete(job.id);
     } else {
       rejected.push({ jobId: job.id, reason: validation.reason || "no match" });

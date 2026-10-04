@@ -160,9 +160,10 @@ export async function finishAlbumGrab(payload, {
     try {
       const ext = path.extname(match.filePath).toLowerCase() || ".flac";
       const destination = joinUnderRoot(playlistRoot, peerPayload.destination);
-      const finalPath = path.join(destination, buildTrackFileName(job, ext));
+      const placed = { ...job, trackNumber: match.trackNumber || job.trackNumber };
+      const finalPath = path.join(destination, buildTrackFileName(placed, ext));
       const committed = await withPipelineCommitLock(peerPayload, async () => {
-        await writeAudioMetadata(match.filePath, buildResolvedJobTrack(job));
+        await writeAudioMetadata(match.filePath, buildResolvedJobTrack(placed));
         const committedFinalPath = await commitDownloadedFile(match.filePath, finalPath);
         return finalizePipelineJobSuccess({
           downloadTracker, job, committedFinalPath, album: album || job.albumName,

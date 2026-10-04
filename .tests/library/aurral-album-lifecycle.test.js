@@ -514,7 +514,9 @@ test("an album asks for its most common edition and a whole shorter edition comp
       artistid: artistMbid, durationms: 1000, trackposition: (index % perDisc) + 1,
       mediumnumber: Math.floor(index / perDisc) + 1,
     })) });
-  const releases = [release("standard", 2), release("deluxe-vinyl", 3, 2), release("deluxe", 3), release("box-set", 4)];
+  const standard = { id: "standard", status: "Official", tracks: release("standard", 3).tracks.slice(1)
+    .map((track, index) => ({ ...track, trackposition: index + 1 })) };
+  const releases = [standard, release("deluxe-vinyl", 3, 2), release("deluxe", 3), release("box-set", 4)];
   const metadata = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
     if (new URL(request.url, "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
@@ -552,16 +554,19 @@ test("an album asks for its most common edition and a whole shorter edition comp
   const folder = path.join(isolatedState.baseDir, "edition-download");
   await fs.mkdir(folder, { recursive: true });
   const filePaths = [];
-  for (const index of [1, 2]) {
-    const filePath = path.join(folder, `0${index} Edition Song ${index}.flac`);
+  for (const [song, position] of [[2, 1], [3, 2]]) {
+    const filePath = path.join(folder, `0${position} Edition Song ${song}.flac`);
     await promisify(execFile)("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
-      "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac", "-metadata", `title=Edition Song ${index}`,
-      "-metadata", "artist=Edition Artist", "-metadata", `track=${index}`, "-metadata", `disc=${index}`, filePath]);
+      "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac", "-metadata", `title=Edition Song ${song}`,
+      "-metadata", "artist=Edition Artist", "-metadata", `track=${position}`, "-metadata", `disc=${position}`,
+      filePath]);
     filePaths.push(filePath);
   }
   await finishAlbumGrab({ jobId: ids[0], albumGrab: true, albumGroupJobIds: ids, source: "slskd",
     playlistId: "library" }, { filePaths, source: "soulseek" });
-  assert.deepEqual(ids.map((id) => downloadTracker.getJob(id).status), ["done", "done", "cancelled"]);
+  assert.deepEqual(ids.map((id) => downloadTracker.getJob(id).status), ["cancelled", "done", "done"]);
+  assert.deepEqual(ids.slice(1).map((id) => path.basename(downloadTracker.getJob(id).finalPath)),
+    ["01 - Edition Song 2.flac", "02 - Edition Song 3.flac"]);
 
   await scanMusicRoot({ rootPath: resolveDownloadRoot(), source: "aurral" });
   invalidateAllDownloadStatusesCache();
