@@ -172,6 +172,16 @@ test("a downloaded file tagged as a different album sibling is conflicted", asyn
   });
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
   assert.ok(outcome.contradictions.includes("sibling-track-index"));
+
+  const secondDisc = await validateDownloadedTrackFile({
+    request: { ...GET_LUCKY, trackNumber: 2, albumTrackTitles: ["Other Song", "Get Lucky"] },
+    filePath: "/staging/Get Lucky.flac",
+    source: "soulseek",
+    options: { parseFile: stubParseFile(stubParsed({
+      title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories", track: 1, disc: 2,
+    })) },
+  });
+  assert.equal(secondDisc.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
 });
 
 test("a copy from a single or compilation verifies under its own track number", async () => {

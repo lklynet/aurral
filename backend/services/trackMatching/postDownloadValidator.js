@@ -249,6 +249,7 @@ export async function validateDownloadedTrackFile({
     recordingMbid: actual.recordingMbid,
     album: actual.album,
     trackNumber: actual.trackNumber,
+    discNumber: actual.discNumber,
   });
   const hasOriginalIdentityTags = Boolean(readTagText(parsed?.common?.title)
     || readTagText(parsed?.common?.artist));

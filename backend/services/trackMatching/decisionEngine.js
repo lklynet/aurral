@@ -65,7 +65,7 @@ function evaluate(request, normalized, providerEvidence) {
       title: request.trackName,
       trackNumber: request.trackNumber,
       albumTrackTitles: request.albumTrackTitles,
-    }, actualTrackNumber);
+    }, actualTrackNumber, candidate.discNumber);
     const contradiction = match.contradictions.length > 0
       || evidence?.folder?.artistContradicted === true
       || evidence?.folder?.ambiguousTitleAlbumArtist === true

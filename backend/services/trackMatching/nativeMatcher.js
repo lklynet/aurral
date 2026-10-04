@@ -338,11 +338,12 @@ export function isSameAlbumTitle(requested, observed) {
 
 // A file from the requested album whose position holds a different track is
 // probably mislabeled. A file from a single, a compilation, or another
-// edition has its own numbering, so its position says nothing.
-export function isSiblingTrackPosition(request, actualTrackNumber) {
+// edition has its own numbering, so its position says nothing, and so does
+// a position on a later disc, which starts again at 1.
+export function isSiblingTrackPosition(request, actualTrackNumber, actualDiscNumber = null) {
   const expected = Number(request.trackNumber || 0);
   const actual = Number(actualTrackNumber || 0);
-  if (!(expected > 0 && actual > 0 && expected !== actual)) return false;
+  if (!(expected > 0 && actual > 0 && expected !== actual) || Number(actualDiscNumber) > 1) return false;
   const siblingTitle = request.albumTrackTitles?.[actual - 1];
   return Boolean(siblingTitle) && normalizeMatchText(siblingTitle) !== normalizeMatchText(request.title);
 }
@@ -350,7 +351,7 @@ export function isSiblingTrackPosition(request, actualTrackNumber) {
 export function verifyDownloadedRecording(request, observed, policy = MATCH_POLICY) {
   const result = compareRecording(request, observed, policy);
   if (isSameAlbumTitle(request.albumName, observed.album)
-    && isSiblingTrackPosition(request, observed.trackNumber)) {
+    && isSiblingTrackPosition(request, observed.trackNumber, observed.discNumber)) {
     result.contradictions.push("sibling-track-index");
   }
   if (observed.fileNameTitle
