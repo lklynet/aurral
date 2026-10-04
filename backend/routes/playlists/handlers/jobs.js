@@ -1,6 +1,6 @@
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.js";
 import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.js";
-import { startSlskdOrchestratorWorker } from "../../../services/slskdOrchestratorWorker.js";
+import { startDownloadPipelineWorker } from "../../../services/downloadPipelineWorker.js";
 import { playlistManager } from "../../../services/playlists/playlistManager.js";
 import {
   flowPlaylistConfig,
@@ -378,7 +378,7 @@ export function registerJobs(router) {
 
   router.post("/worker/start", requireAdmin, async (req, res) => {
     try {
-      startSlskdOrchestratorWorker();
+      startDownloadPipelineWorker();
       await downloadWorker.start();
       res.json({ success: true, message: "Worker started" });
     } catch (error) {

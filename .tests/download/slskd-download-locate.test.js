@@ -5,11 +5,11 @@ import os from "os";
 import path from "path";
 
 import {
-  commitDownloadedFile,
   locateCompletedDownload,
   parseSlskdRemoteFile,
   predictSlskdLocalPathCandidates,
 } from "../../backend/services/slskdOrchestrator.js";
+import { commitDownloadedFile } from "../../backend/services/downloadUtils.js";
 
 test("parseSlskdRemoteFile reads parent folder and basename from remote paths", () => {
   assert.deepEqual(

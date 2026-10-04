@@ -20,7 +20,7 @@ import {
   AURRAL_FLOWS_DIR,
   resolveDownloadRoot,
 } from "../downloadPaths.js";
-import { startSlskdOrchestratorWorker } from "../slskdOrchestratorWorker.js";
+import { startDownloadPipelineWorker } from "../downloadPipelineWorker.js";
 import { listHonkerJobs, withHonkerLock } from "../honkerDb.js";
 import { isPlaylistOwnerActive } from "./playlistOwnerStatus.js";
 import {
@@ -424,7 +424,7 @@ export class DownloadWorker {
 
     this.runGeneration += 1;
     this.running = true;
-    startSlskdOrchestratorWorker();
+    startDownloadPipelineWorker();
     console.log("[DownloadWorker] Starting worker...");
 
     this.processLoop = () => {

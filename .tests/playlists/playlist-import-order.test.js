@@ -810,7 +810,7 @@ test("download pipeline work is deferred while its playlist owner is suspended",
   );
   userOps.updateUser(owner.id, { status: "suspended" });
   const { processPipelinePayload } = await importFromRepo(
-    "backend/services/slskdOrchestrator.js",
+    "backend/services/downloadPipeline.js",
   );
 
   const payload = { phase: "search", source: "slskd", jobId };

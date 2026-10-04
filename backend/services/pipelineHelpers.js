@@ -1,5 +1,11 @@
 import { logger } from "./logger.js";
 
+// Fields of a search in progress; a new search or a download clears them.
+export const SEARCH_RESET = Object.freeze({
+  searchQueries: null,
+  searchQueryIndex: 0,
+  activeSearch: null,
+});
 export function getPayloadCandidate(payload) {
   const candidateIndex = Number(payload?.candidateIndex || 0);
   return (

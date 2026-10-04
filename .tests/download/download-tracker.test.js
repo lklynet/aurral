@@ -17,7 +17,7 @@ const [isolatedState, { db }, { dbOps }, trackerModule, qualityProfileService, w
   "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/qualityProfileService.js",
   "backend/services/downloadJobs/downloadWorker.js",
-  "backend/services/slskdOrchestratorWorker.js",
+  "backend/services/downloadPipelineWorker.js",
   "backend/services/honkerDb.js",
 );
 
@@ -271,7 +271,7 @@ test("album siblings return to individual searches when the leader stops mid-gra
   assert.equal(grab.albumGrab, true);
 
   tracker.setFailed(ids[0], "Stopped by the user");
-  await orchestratorWorker.processOrchestratorJob(grab);
+  await orchestratorWorker.processPipelineJob(grab);
 
   for (const id of ids.slice(1)) {
     const sibling = tracker.getJob(id);

@@ -260,8 +260,8 @@ const pipeline = registerQueue({
   name: "slskd-pipeline",
   visibilityTimeoutS: 1200,
   maxAttempts: 5,
-  workerModule: "./slskdOrchestratorWorker.js",
-  workerStartFn: "startSlskdOrchestratorWorker",
+  workerModule: "./downloadPipelineWorker.js",
+  workerStartFn: "startDownloadPipelineWorker",
   defaultPriorityFn: (payload) =>
     getPipelinePriorityForPhase(payload?.phase) - (payload?.upgrade ? 100 : 0),
 });

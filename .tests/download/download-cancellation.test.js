@@ -392,7 +392,7 @@ test("settled slskd searches no longer block playlist cancellation", async (t) =
   const playlistId = "settled-search-playlist";
   const originalSettings = dbOps.getSettings();
   const { slskdClient } = await importFromRepo("backend/services/slskdClient.js");
-  const { processPipelinePayload } = await importFromRepo("backend/services/slskdOrchestrator.js");
+  const { processPipelinePayload } = await importFromRepo("backend/services/downloadPipeline.js");
   dbOps.updateSettings({
     ...originalSettings,
     integrations: {

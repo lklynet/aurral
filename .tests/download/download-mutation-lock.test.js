@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
-const [state, { dbOps }, { flowPlaylistConfig }, { downloadTracker }, { processOrchestratorJob }, guards, cancellation] = await setupIsolatedBackend(
+const [state, { dbOps }, { flowPlaylistConfig }, { downloadTracker }, { processPipelineJob }, guards, cancellation] = await setupIsolatedBackend(
   "download-mutation-lock", "backend/db/helpers/index.js", "backend/services/playlists/flowPlaylistConfig.js",
-  "backend/services/downloadJobs/downloadTracker.js", "backend/services/slskdOrchestratorWorker.js",
+  "backend/services/downloadJobs/downloadTracker.js", "backend/services/downloadPipelineWorker.js",
   "backend/services/downloadJobs/mutationGuards.js", "backend/services/downloadJobs/downloadCancellation.js",
 );
 test.after(() => cleanupIsolatedState(state));
@@ -16,7 +16,7 @@ test("playlist mutation waits for the active provider stage before changing owne
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, playlist.id);
   const started = deferred();
   const release = deferred();
-  const processing = processOrchestratorJob({ jobId, playlistId: playlist.id, playlistGeneration: 0 }, {
+  const processing = processPipelineJob({ jobId, playlistId: playlist.id, playlistGeneration: 0 }, {
     async processPipelinePayload() { started.resolve(); await release.promise; return null; },
     async continuePipeline() {},
   });
@@ -41,7 +41,7 @@ test("a provider stage can import while a playlist mutation waits for it", { tim
   const started = deferred();
   const release = deferred();
   let imported = null;
-  const processing = processOrchestratorJob({ jobId, playlistId: playlist.id, playlistGeneration: 0 }, {
+  const processing = processPipelineJob({ jobId, playlistId: playlist.id, playlistGeneration: 0 }, {
     async processPipelinePayload(payload) {
       started.resolve();
       await release.promise;
@@ -88,7 +88,7 @@ test("a provider stage that needs another playlist lock fails instead of running
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Stage owner" });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Stage track" }, playlist.id);
   let runs = 0;
-  await assert.rejects(processOrchestratorJob({ jobId, playlistId: playlist.id, playlistGeneration: 0 }, {
+  await assert.rejects(processPipelineJob({ jobId, playlistId: playlist.id, playlistGeneration: 0 }, {
     async processPipelinePayload() {
       runs++;
       if (runs > 1) throw new Error("provider stage ran again");

@@ -9,7 +9,7 @@ const [state, { db }, { dbOps }, { downloadTracker }, { getDownloadClient },
   "backend/db/helpers/index.js",
   "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/download/downloadClientSettings.js",
-  "backend/services/slskdOrchestrator.js",
+  "backend/services/downloadPipeline.js",
   "backend/services/usenetOrchestrator.js",
 );
 

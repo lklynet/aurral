@@ -27,7 +27,7 @@ const [
   "backend/services/downloadJobs/downloadCancellationService.js",
   "backend/services/usenetOrchestrator.js",
   "backend/services/deemixOrchestrator.js",
-  "backend/services/slskdOrchestrator.js",
+  "backend/services/downloadPipeline.js",
   "backend/services/sabnzbdClient.js",
   "backend/services/deemixClient.js",
   "backend/services/slskdClient.js",

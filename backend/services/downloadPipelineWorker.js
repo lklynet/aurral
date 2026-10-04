@@ -6,7 +6,7 @@ import {
   enqueuePendingJobsWithoutBatch,
   failPipelineJob,
   ALBUM_GRAB_ENDED_REASON,
-} from "./slskdOrchestrator.js";
+} from "./downloadPipeline.js";
 import { releaseAlbumGrabJobs } from "./albumGrab.js";
 import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.js";
 import { isAnyDownloadSourceConfigured } from "./downloadSourceService.js";
@@ -15,7 +15,7 @@ import { recordAlbumGrabQueued, recordAlbumGrabPhase } from "./albumGrabActivity
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { withDownloadPayloadMutation } from "./downloadJobs/mutationGuards.js";
 
-async function processLockedOrchestratorJob(payload, dependencies = {}) {
+async function processLockedPipelineJob(payload, dependencies = {}) {
   const processPayload = dependencies.processPipelinePayload || processPipelinePayload;
   const continuePayload = dependencies.continuePipeline || continuePipeline;
   const failPayload = dependencies.failPipelineJob || failPipelineJob;
@@ -43,14 +43,14 @@ async function processLockedOrchestratorJob(payload, dependencies = {}) {
   }
 }
 
-export function processOrchestratorJob(payload, dependencies = {}) {
-  return withDownloadPayloadMutation(payload, (current) => processLockedOrchestratorJob(current, dependencies));
+export function processPipelineJob(payload, dependencies = {}) {
+  return withDownloadPayloadMutation(payload, (current) => processLockedPipelineJob(current, dependencies));
 }
 
 const {
-  start: startSlskdOrchestratorWorker,
-  stop: stopSlskdOrchestratorWorker,
-  isRunning: isSlskdOrchestratorRunning,
+  start: startDownloadPipelineWorker,
+  stop: stopDownloadPipelineWorker,
+  isRunning: isDownloadPipelineWorkerRunning,
 } = createHonkerWorker({
   name: "slskd-pipeline",
   getQueue: getPipelineQueue,
@@ -63,10 +63,10 @@ const {
     enqueuePendingJobsWithoutBatch();
     return true;
   },
-  processJob: processOrchestratorJob,
+  processJob: processPipelineJob,
   onFinalFailure(job, error) {
     const message = error?.message || String(error);
-    console.error("[slskdOrchestratorWorker] pipeline job failed:", {
+    console.error("[downloadPipelineWorker] pipeline job failed:", {
       jobId: job.payload?.jobId || null,
       phase: job.payload?.phase || null,
       candidateIndex: job.payload?.candidateIndex ?? null,
@@ -78,7 +78,7 @@ const {
 });
 
 export {
-  startSlskdOrchestratorWorker,
-  stopSlskdOrchestratorWorker,
-  isSlskdOrchestratorRunning,
+  startDownloadPipelineWorker,
+  stopDownloadPipelineWorker,
+  isDownloadPipelineWorkerRunning,
 };

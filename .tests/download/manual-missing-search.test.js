@@ -13,9 +13,9 @@ const [isolatedState, { db }, { dbOps }, trackerModule, searchService, orchestra
   "backend/db/helpers/index.js",
   "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/manualMissingSearchService.js",
-  "backend/services/slskdOrchestrator.js",
+  "backend/services/downloadPipeline.js",
   "backend/services/qualityProfileService.js",
-  "backend/services/slskdOrchestratorWorker.js",
+  "backend/services/downloadPipelineWorker.js",
   "backend/services/trackMatching/postDownloadValidator.js",
 );
 
@@ -188,7 +188,7 @@ test("manual pipeline failures cannot fall back to another source", () => {
 test("unexpected manual download errors fail once instead of entering worker retry", async () => {
   const failures = [];
   const payload = { jobId: "job-1", source: "ytdlp", manualSelection: true };
-  await orchestratorWorker.processOrchestratorJob(payload, {
+  await orchestratorWorker.processPipelineJob(payload, {
     processPipelinePayload: async () => { throw new Error("selected result failed"); },
     continuePipeline: async () => { throw new Error("must not continue"); },
     failPipelineJob: async (failedPayload, message) => failures.push({ failedPayload, message }),
@@ -198,7 +198,7 @@ test("unexpected manual download errors fail once instead of entering worker ret
   assert.match(failures[0].message, /selected result failed/);
 
   await assert.rejects(
-    orchestratorWorker.processOrchestratorJob(
+    orchestratorWorker.processPipelineJob(
       { jobId: "job-2", source: "ytdlp" },
       { processPipelinePayload: async () => { throw new Error("automatic retry"); } },
     ),

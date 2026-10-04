@@ -14,7 +14,7 @@ const [state, { dbOps }, { downloadTracker }, { getDownloadClient },
   "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/download/downloadClientSettings.js",
   "backend/services/usenetOrchestrator.js",
-  "backend/services/slskdOrchestrator.js",
+  "backend/services/downloadPipeline.js",
 );
 
 test.after(async () => cleanupIsolatedState(state));

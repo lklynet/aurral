@@ -3,7 +3,6 @@ import fs from "fs/promises";
 import { db } from "../config/db-sqlite.js";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
-import { enqueuePipelineJob, listHonkerJobs } from "./honkerDb.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import {
   buildAlbumSearchTiers,
@@ -24,26 +23,14 @@ import {
   buildSlskdRankingHistoryOptions,
   recordSlskdTransferOutcome,
 } from "./slskdTransferHistory.js";
-import { processUsenetPipelinePayload } from "./usenetOrchestrator.js";
-import { processYtdlpPipelinePayload } from "./ytdlpOrchestrator.js";
-import { processDeemixPipelinePayload } from "./deemixOrchestrator.js";
 import {
   albumGrabJobs,
   continueAlbumGrab,
   deniedAlbumSources,
-  fallbackAlbumGrabToTracks,
   finishAlbumGrab,
-  releaseAlbumGrabJobs,
 } from "./albumGrab.js";
 import { selectSoulseekAlbumFolder } from "./albumReleaseSearch.js";
 import { loadAlbumReleases } from "./albumReleases.js";
-import {
-  getDownloadSourceNotConfiguredMessage,
-  getEnabledDownloadSources,
-  ALBUM_GRAB_SOURCE_IDS,
-  getSourceLabel,
-  isAnyDownloadSourceConfigured,
-} from "./downloadSourceService.js";
 import {
   buildResolvedJobTrack as buildResolvedTrack,
   commitDownloadedFile,
@@ -58,6 +45,7 @@ import {
   mergeSearchResults,
   blockPipelineJobForReview,
   finalizePipelineJobSuccess,
+  SEARCH_RESET,
 } from "./pipelineHelpers.js";
 import {
   clearDownloadProviderWork,
@@ -81,8 +69,6 @@ import {
 
 const slskdClient = getDownloadClient("slskd");
 
-export { commitDownloadedFile };
-
 const updateSlskdMetaStmt = db.prepare(`
   UPDATE playlist_download_jobs
   SET slskd_search_id = COALESCE(?, slskd_search_id),
@@ -100,11 +86,6 @@ const TRANSFER_RESET = Object.freeze({
 });
 const ALBUM_TRANSFER_RESET = Object.freeze({ ...TRANSFER_RESET, albumTransfers: null });
 const STALLED_TRANSFER_MS = 30 * 60 * 1000;
-export const SEARCH_RESET = Object.freeze({
-  searchQueries: null,
-  searchQueryIndex: 0,
-  activeSearch: null,
-});
 const searchMonitors = createCache(10 * 60, 100);
 const MIN_SEARCH_CANDIDATES = 3;
 const MAX_DOWNLOAD_CANDIDATES = 7;
@@ -339,149 +320,6 @@ function isPathInside(childPath, rootPath) {
   const child = path.resolve(String(childPath || ""));
   const root = path.resolve(String(rootPath || ""));
   return child === root || child.startsWith(`${root}${path.sep}`);
-}
-
-export function enqueueJobPipeline(jobId) {
-  return downloadTracker.enqueueSlskdPipeline(jobId);
-}
-
-export function enqueuePendingJobsWithoutBatch() {
-  if (!isAnyDownloadSourceConfigured()) return 0;
-  const activePipelineJobIds = new Set(
-    listHonkerJobs("slskd-pipeline")
-      .map((entry) => String(entry.payload?.jobId || "").trim())
-      .filter(Boolean),
-  );
-  let count = 0;
-  for (const job of downloadTracker.getByStatus("pending")) {
-    const hasProviderSearch = job.slskdBatchId || job.slskdSearchId;
-    if (!hasProviderSearch && job.manualReplacementSearch !== true) continue;
-    if (activePipelineJobIds.has(job.id)) continue;
-    downloadTracker.clearSlskdPipelineState(job.id);
-    if (enqueueJobPipeline(job.id)) count += 1;
-  }
-  return count;
-}
-
-async function failJob(job, message) {
-  if (job.upgradeForJobId) {
-    const { finalizeQualityUpgradeFailure } = await import("./qualityProfileService.js");
-    await finalizeQualityUpgradeFailure(job, message);
-    return;
-  }
-  downloadTracker.setFailed(job.id, message);
-  try {
-    const { recordTrackJobFailed } = await import("./aurralHistoryService.js");
-    recordTrackJobFailed(job, message);
-  } catch {}
-  try {
-    const { downloadWorker } = await import("./downloadJobs/downloadWorker.js");
-    downloadWorker.wake(0);
-    await downloadWorker.checkPlaylistComplete(job.playlistId || job.playlistType);
-  } catch (error) {
-    logger.warn("slskd", "Failed to run post-failure playlist checks", {
-      jobId: job.id,
-      error: error?.message || String(error),
-    });
-  }
-}
-
-function isSourceConfigured(sourceId) {
-  return getEnabledDownloadSources().some((source) => source.id === sourceId);
-}
-
-export function buildNextSourcePayload(payload, failedSource = null, reason = null) {
-  if (payload?.manualSelection === true) return null;
-  const allowedSources = Array.isArray(payload?.allowedSources)
-    ? new Set(payload.allowedSources)
-    : null;
-  const sources = getEnabledDownloadSources().filter(
-    (source) => (!allowedSources || allowedSources.has(source.id))
-      && (payload?.albumGrab !== true || ALBUM_GRAB_SOURCE_IDS.includes(source.id)),
-  );
-  if (sources.length === 0) return null;
-  const tried = new Set(Array.isArray(payload?.triedSources) ? payload.triedSources : []);
-  const sourceErrors = Array.isArray(payload?.sourceErrors) ? [...payload.sourceErrors] : [];
-  if (failedSource) {
-    tried.add(failedSource);
-    if (reason) {
-      sourceErrors.push({
-        source: failedSource,
-        message: String(reason || "").trim(),
-      });
-    }
-  }
-  const next = sources.find((source) => !tried.has(source.id));
-  if (!next) return null;
-  return {
-    ...payload,
-    source: next.id,
-    ...SEARCH_RESET,
-    phase: "search",
-    searchId: null,
-    searchIds: [],
-    candidates: [],
-    candidate: null,
-    candidateIndex: 0,
-    candidateRetryCounts: {},
-    pollAttempts: 0,
-    batchId: null,
-    legacyTransfer: null,
-    nzbId: null,
-    history: null,
-    downloadedPath: null,
-    triedSources: [...tried],
-    sourceErrors,
-  };
-}
-
-function summarizeSourceErrors(payload, message) {
-  const errors = Array.isArray(payload?.sourceErrors) ? [...payload.sourceErrors] : [];
-  const source = String(payload?.source || "").trim();
-  if (source && message) {
-    errors.push({ source, message: String(message || "").trim() });
-  }
-  const summary = errors
-    .map((entry) => {
-      const label = getSourceLabel(entry.source);
-      const entryMessage = String(entry.message || "").trim();
-      return entryMessage ? `${label}: ${entryMessage}` : label;
-    })
-    .filter(Boolean)
-    .join("; ");
-  return summary || message;
-}
-
-async function failOrTryNextSource(payload, job, message, logDetails = {}) {
-  const nextPayload = buildNextSourcePayload(payload, payload?.source || "slskd", message);
-  if (nextPayload) {
-    logger.info("slskd", "Trying next download source", {
-      jobId: job?.id,
-      failedSource: payload?.source || "slskd",
-      nextSource: nextPayload.source,
-      reason: message,
-      ...logDetails,
-    });
-    downloadTracker.clearSlskdDispatched(job.id);
-    return nextPayload;
-  }
-  if (payload?.albumGrab === true) {
-    return fallbackAlbumGrabToTracks(payload, summarizeSourceErrors(payload, message));
-  }
-  await failJob(job, summarizeSourceErrors(payload, message));
-  return null;
-}
-
-export async function failPipelineJob(payload, message) {
-  const jobId = payload?.jobId;
-  if (!jobId) return;
-  if (payload.albumGrab === true) releaseAlbumGrabJobs(payload, ALBUM_GRAB_ENDED_REASON);
-  if (!isPipelinePayloadActive(payload)) return;
-  const job = downloadTracker.getJob(jobId);
-  if (!job) return;
-  if (job.status === "downloading" || job.status === "pending") {
-    await failJob(job, message);
-  }
 }
 
 export function parseSlskdRemoteFile(remoteFile) {
@@ -878,7 +716,7 @@ async function advanceSlskdSearch(payload, job, queries, resolvedTrack, searchOp
   return { aggregated, searchIds, queryCount: index };
 }
 
-async function handleSearch(payload) {
+async function handleSearch(payload, helpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
@@ -928,7 +766,7 @@ async function handleSearch(payload) {
   if (albumJobs) {
     const selection = selectAlbumFolders(aggregated, searchOptions);
     if (selection.decision !== "selectable") {
-      return failOrTryNextSource(payload, job, "No selectable Soulseek album folder");
+      return helpers.failOrTryNextSource(payload, job, "No selectable Soulseek album folder");
     }
     return {
       ...payload, ...SEARCH_RESET, phase: "download", source: "slskd", searchId,
@@ -1005,7 +843,7 @@ async function handleSearch(payload) {
       rankedCount: evaluation.evaluations.length,
       eligibleCount: ordered.length,
     });
-    return failOrTryNextSource(payload, job, "No suitable slskd search results", {
+    return helpers.failOrTryNextSource(payload, job, "No suitable slskd search results", {
       queryCount,
       rawResultCount: aggregated.length,
       rankedCount: evaluation.evaluations.length,
@@ -1024,7 +862,7 @@ async function handleSearch(payload) {
   };
 }
 
-async function handleDownload(payload) {
+async function handleDownload(payload, helpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
@@ -1041,7 +879,7 @@ async function handleDownload(payload) {
       .filter((file) => !file.jobId || activeJobIds.has(file.jobId));
     if (!candidate?.raw?.user || files.length === 0) {
       return continueAlbumGrab(payload, ALBUM_TRANSFER_RESET)
-        || failOrTryNextSource(payload, job, "No Soulseek album files available");
+        || helpers.failOrTryNextSource(payload, job, "No Soulseek album files available");
     }
     let submission;
     try {
@@ -1068,14 +906,14 @@ async function handleDownload(payload) {
       });
     } catch (error) {
       return continueAlbumGrab(payload, ALBUM_TRANSFER_RESET)
-        || failOrTryNextSource(payload, job, safeLogDiagnostic(error));
+        || helpers.failOrTryNextSource(payload, job, safeLogDiagnostic(error));
     }
     if (submission.cancelled || !isPipelinePayloadActive(payload)) return null;
     return { ...payload, phase: "poll", candidate: { ...candidate, raw: { ...candidate.raw, files } },
       albumTransfers: submission.result, pollAttempts: 0 };
   }
   if (!candidate?.raw?.user || !candidate?.raw?.file) {
-    return failOrTryNextSource(payload, job, "No download candidate available");
+    return helpers.failOrTryNextSource(payload, job, "No download candidate available");
   }
   const searchId = payload.searchId || null;
   updateSlskdMetaStmt.run(searchId, null, candidate.raw.user, candidate.raw.file, job.id);
@@ -1128,7 +966,7 @@ async function handleDownload(payload) {
         pollAttempts: 0,
       };
     }
-    return failOrTryNextSource(payload, job, message);
+    return helpers.failOrTryNextSource(payload, job, message);
   }
   if (submission.cancelled || !isPipelinePayloadActive(payload)) return null;
   const result = submission.result;
@@ -1167,7 +1005,7 @@ function trackTransferProgress(payload, progress, now = Date.now()) {
   };
 }
 
-async function handlePoll(payload) {
+async function handlePoll(payload, helpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
@@ -1192,7 +1030,7 @@ async function handlePoll(payload) {
         }));
     }
     return continueAlbumGrab(payload, ALBUM_TRANSFER_RESET)
-      || failOrTryNextSource(payload, job, "Soulseek album transfer stalled");
+      || helpers.failOrTryNextSource(payload, job, "Soulseek album transfer stalled");
   }
   const eventSignal = await pollSlskdEventsForCandidate(payload).catch(() => ({
     eventOffset: payload.eventOffset ?? null,
@@ -1229,7 +1067,7 @@ async function handlePoll(payload) {
         { transfer },
       );
       if (nextPayload) return nextPayload;
-      return failOrTryNextSource(basePayload, job, "slskd transfer failed");
+      return helpers.failOrTryNextSource(basePayload, job, "slskd transfer failed");
     }
     if (state === "success") {
       const candidate = getPayloadCandidate(basePayload);
@@ -1262,10 +1100,10 @@ async function handlePoll(payload) {
   if (hasNextCandidate(basePayload)) {
     return buildNextCandidatePayload(basePayload, TRANSFER_RESET);
   }
-  return failOrTryNextSource(basePayload, job, "slskd transfer stalled");
+  return helpers.failOrTryNextSource(basePayload, job, "slskd transfer stalled");
 }
 
-async function handleFinalize(payload) {
+async function handleFinalize(payload, helpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
@@ -1329,7 +1167,7 @@ async function handleFinalize(payload) {
       { transfer },
     );
     if (nextPayload) return nextPayload;
-    return failOrTryNextSource(payload, job, `Downloaded file missing: ${expectedPath}`);
+    return helpers.failOrTryNextSource(payload, job, `Downloaded file missing: ${expectedPath}`);
   }
   const ext = path.extname(sourcePath).toLowerCase();
   const finalDir = joinUnderRoot(playlistRoot, destination);
@@ -1407,7 +1245,7 @@ async function handleFinalize(payload) {
     const nextPayload = hasNextCandidate(payload)
       ? buildNextCandidatePayload(payload, TRANSFER_RESET)
       : null;    if (nextPayload) return nextPayload;
-    return failOrTryNextSource(payload, job, validation.reason || "Download validation failed");
+    return helpers.failOrTryNextSource(payload, job, validation.reason || "Download validation failed");
   }
   const inactiveOwner = deferForInactiveOwner(payload, job);
   if (inactiveOwner) return inactiveOwner;
@@ -1451,85 +1289,17 @@ async function handleFinalize(payload) {
   return committed.result;
 }
 
-export const ALBUM_GRAB_ENDED_REASON = "The album download ended before this track was imported";
-
-export async function processPipelinePayload(payload) {
-  if (!payload || !payload.phase || !payload.jobId) {
-    throw new Error("Invalid pipeline payload");
-  }
-  if (!isPipelinePayloadActive(payload)) return null;
-  const currentJob = downloadTracker.getJob(payload.jobId);
-  const inactiveOwner = deferForInactiveOwner(payload, currentJob);
-  if (inactiveOwner) return inactiveOwner;
-  if (!isAnyDownloadSourceConfigured()) {
-    const job = downloadTracker.getJob(payload.jobId);
-    if (job) {
-      await failJob(job, getDownloadSourceNotConfiguredMessage());
-    }
-    return null;
-  }
-  if (!payload.source) {
-    const nextPayload = buildNextSourcePayload(payload, null, null);
-    if (!nextPayload) {
-      const job = downloadTracker.getJob(payload.jobId);
-      if (job) await failJob(job, getDownloadSourceNotConfiguredMessage());
-      return null;
-    }
-    return processPipelinePayload(nextPayload);
-  }
-  if (payload.source === "usenet") {
-    if (!isSourceConfigured("usenet")) {
-      const job = downloadTracker.getJob(payload.jobId);
-      return job ? failOrTryNextSource(payload, job, "Usenet is not configured") : null;
-    }
-    return processUsenetPipelinePayload(payload, { failOrTryNextSource });
-  }
-  if (payload.source === "deemix") {
-    if (!isSourceConfigured("deemix")) {
-      const job = downloadTracker.getJob(payload.jobId);
-      return job ? failOrTryNextSource(payload, job, "deemix is not configured") : null;
-    }
-    return processDeemixPipelinePayload(payload, { failOrTryNextSource });
-  }
-  if (payload.source === "ytdlp") {
-    if (!isSourceConfigured("ytdlp")) {
-      const job = downloadTracker.getJob(payload.jobId);
-      return job ? failOrTryNextSource(payload, job, "yt-dlp is not configured") : null;
-    }
-    return processYtdlpPipelinePayload(payload, { failOrTryNextSource });
-  }
-  if (payload.source !== "slskd") {
-    const job = downloadTracker.getJob(payload.jobId);
-    return job
-      ? failOrTryNextSource(payload, job, `Unknown download source: ${payload.source}`)
-      : null;
-  }
-  if (!slskdClient.isConfigured() || !isSourceConfigured("slskd")) {
-    const job = downloadTracker.getJob(payload.jobId);
-    return job ? failOrTryNextSource(payload, job, SLSKD_NOT_CONFIGURED_MESSAGE) : null;
-  }
+export async function processSlskdPipelinePayload(payload, helpers) {
   switch (payload.phase) {
     case "search":
-      return handleSearch(payload);
+      return handleSearch(payload, helpers);
     case "download":
-      return handleDownload(payload);
+      return handleDownload(payload, helpers);
     case "poll":
-      return handlePoll(payload);
+      return handlePoll(payload, helpers);
     case "finalize":
-      return handleFinalize(payload);
+      return handleFinalize(payload, helpers);
     default:
       throw new Error(`Unknown pipeline phase: ${payload.phase}`);
   }
-}
-
-export async function continuePipeline(payload) {
-  if (!payload) return;
-  if (!isPipelinePayloadActive(payload)) return;
-  if (payload.delaySeconds) {
-    enqueuePipelineJob(payload, {
-      delaySeconds: Number(payload.delaySeconds),
-    });
-    return;
-  }
-  enqueuePipelineJob(payload, {});
 }

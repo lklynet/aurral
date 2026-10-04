@@ -26,7 +26,7 @@ const [
   libraryStore,
   downloadUtils,
   { hasApprovalFollowUps },
-  { processOrchestratorJob },
+  { processPipelineJob },
   { withPlaylistMutationLock },
 ] = await setupIsolatedBackend(
   "approved-import-path",
@@ -43,7 +43,7 @@ const [
   "backend/services/libraryMediaStore.js",
   "backend/services/downloadUtils.js",
   "backend/services/downloadJobs/blockedJobReview.js",
-  "backend/services/slskdOrchestratorWorker.js",
+  "backend/services/downloadPipelineWorker.js",
   "backend/services/downloadJobs/mutationGuards.js",
 );
 
@@ -321,7 +321,7 @@ test("approving a library track does not wait for another library track's downlo
   downloadTracker.setBlocked(reviewedJobId, "blocked-duration-mismatch", sourcePath);
   const stepStarted = Promise.withResolvers();
   const releaseStep = Promise.withResolvers();
-  const step = processOrchestratorJob({
+  const step = processPipelineJob({
     jobId: searchingJobId,
     playlistId: "library",
     playlistGeneration: downloadTracker.getJob(searchingJobId).playlistGeneration,

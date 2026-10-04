@@ -9,7 +9,7 @@ const [state, { db }, { dbOps }, { downloadTracker }, { getDownloadClient }, dee
     "backend/config/db-sqlite.js", "backend/db/helpers/index.js",
     "backend/services/downloadJobs/downloadTracker.js",
     "backend/services/download/downloadClientSettings.js", "backend/services/deemixOrchestrator.js",
-    "backend/services/ytdlpOrchestrator.js", "backend/services/slskdOrchestrator.js");
+    "backend/services/ytdlpOrchestrator.js", "backend/services/downloadPipeline.js");
 test.beforeEach(() => resetDatabase(db));
 test.after(() => cleanupIsolatedState(state));
 
