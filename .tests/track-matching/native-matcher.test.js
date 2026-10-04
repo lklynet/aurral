@@ -219,6 +219,20 @@ test("release context assigns a numbered file with no title only when position a
   assert.deepEqual(assignReleaseFiles(tracks, files).unassignedTrackIndexes, [1]);
 });
 
+test("a listing without lengths fits when exact titles sit at their positions", () => {
+  const tracks = ["First Song", "Second Song", "Third Song"].map((title, index) => ({
+    title, artists: ["The Band"], durationMs: 180000 + index * 10000, trackNumber: index + 1,
+  }));
+  const files = tracks.map(({ title, trackNumber }) => ({ title, trackNumber }));
+  assert.equal(assessRelease({ tracks }, { files }).decision, "selectable");
+  const shuffled = [
+    { title: "First Song", trackNumber: 2 },
+    { title: "Second Song", trackNumber: 3 },
+    { title: "Third Song", trackNumber: 1 },
+  ];
+  assert.equal(assessRelease({ tracks }, { files: shuffled }).decision, "skip");
+});
+
 test("every three-track file order keeps a one-to-one assignment", () => {
   const tracks = ["Alpha", "Bravo", "Charlie"].map((title, index) => ({
     title, durationMs: 180000 + index * 10000,

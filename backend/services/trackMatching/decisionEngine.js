@@ -1,6 +1,13 @@
 import { buildTrackRequest } from "./trackIdentity.js";
 import { getCapabilities, normalizeCandidate } from "./candidateNormalizer.js";
-import { decideRecording, MATCH_POLICY, normalizeMatchText, parseListingTitle } from "./nativeMatcher.js";
+import {
+  decideRecording,
+  isSameAlbumTitle,
+  isSiblingTrackPosition,
+  MATCH_POLICY,
+  normalizeMatchText,
+  parseListingTitle,
+} from "./nativeMatcher.js";
 
 const DECISION_RANK = { accept: 0, verify: 1, review: 2, reject: 3 };
 
@@ -51,9 +58,14 @@ function evaluate(request, normalized, providerEvidence) {
     const actualTrackNumber = Number(candidate.trackNumber || 0);
     const trackNumberMismatch = expectedTrackNumber > 0 && actualTrackNumber > 0
       && expectedTrackNumber !== actualTrackNumber;
-    const siblingTitle = trackNumberMismatch ? request.albumTrackTitles?.[actualTrackNumber - 1] : null;
-    const siblingConflict = siblingTitle && normalizeMatchText(siblingTitle)
-      !== normalizeMatchText(request.trackName);
+    const fromRequestedAlbum = evidence?.folder
+      ? evidence.folder.albumScore >= 92
+      : isSameAlbumTitle(request.albumName, candidate.album);
+    const siblingConflict = fromRequestedAlbum && isSiblingTrackPosition({
+      title: request.trackName,
+      trackNumber: request.trackNumber,
+      albumTrackTitles: request.albumTrackTitles,
+    }, actualTrackNumber);
     const contradiction = match.contradictions.length > 0
       || evidence?.folder?.artistContradicted === true
       || evidence?.folder?.ambiguousTitleAlbumArtist === true

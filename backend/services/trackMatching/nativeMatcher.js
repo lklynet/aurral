@@ -3,7 +3,7 @@ import { checkVariantCompatibility } from "./semanticPolicy.js";
 import { foldDiacritics } from "../providers/brainzmashRanking.js";
 
 export const MATCH_POLICY = Object.freeze({
-  version: "aurral-native-2",
+  version: "aurral-native-3",
   maxDurationGapMs: 10000,
   selectedDurationGapMs: 2000,
   minTitleSimilarity: 0.7,
@@ -228,16 +228,21 @@ export function assignReleaseFiles(tracks, files, policy = MATCH_POLICY) {
       && Number(track.trackNumber) !== Number(file.trackNumber)) {
       comparison.contradictions.push("duplicate-title-position");
     }
-    const positionOnly = !normalizeMatchText(file.title)
-      && Number(track.trackNumber) > 0
-      && Number(track.trackNumber) === Number(file.trackNumber)
+    const samePosition = Number(track.trackNumber) > 0
+      && Number(track.trackNumber) === Number(file.trackNumber);
+    const positionOnly = samePosition
+      && !normalizeMatchText(file.title)
       && comparison.durationGapMs != null
       && comparison.durationGapMs <= policy.selectedDurationGapMs;
+    const titledPositionWithoutLength = samePosition
+      && comparison.durationGapMs == null
+      && comparison.titleSimilarity === 1;
+    const position = positionOnly || titledPositionWithoutLength;
     return {
       fileIndex,
       ...comparison,
-      score: positionOnly ? Math.max(comparison.score, policy.releaseFitFloor) : comparison.score,
-      evidence: positionOnly ? [...comparison.evidence, "position"] : comparison.evidence,
+      score: position ? Math.max(comparison.score, policy.releaseFitFloor) : comparison.score,
+      evidence: position ? [...comparison.evidence, "position"] : comparison.evidence,
     };
   }).filter((edge) => edge.contradictions.length === 0
     && (edge.evidence.includes("title") || edge.evidence.includes("position"))
@@ -307,14 +312,26 @@ export function selectReleaseSession({ releases = [], folders = [], requestedRec
   return { decision, selected: decision === "selectable" ? best : null, options, policyVersion: policy.version };
 }
 
+export function isSameAlbumTitle(requested, observed) {
+  const left = normalizeMatchText(requested);
+  return Boolean(left) && left === normalizeMatchText(observed);
+}
+
+// A file from the requested album whose position holds a different track is
+// probably mislabeled. A file from a single, a compilation, or another
+// edition has its own numbering, so its position says nothing.
+export function isSiblingTrackPosition(request, actualTrackNumber) {
+  const expected = Number(request.trackNumber || 0);
+  const actual = Number(actualTrackNumber || 0);
+  if (!(expected > 0 && actual > 0 && expected !== actual)) return false;
+  const siblingTitle = request.albumTrackTitles?.[actual - 1];
+  return Boolean(siblingTitle) && normalizeMatchText(siblingTitle) !== normalizeMatchText(request.title);
+}
+
 export function verifyDownloadedRecording(request, observed, policy = MATCH_POLICY) {
   const result = compareRecording(request, observed, policy);
-  const expectedTrackNumber = Number(request.trackNumber || 0);
-  const actualTrackNumber = Number(observed.trackNumber || 0);
-  const siblingTitle = expectedTrackNumber > 0 && actualTrackNumber > 0
-    && expectedTrackNumber !== actualTrackNumber
-    ? request.albumTrackTitles?.[actualTrackNumber - 1] : null;
-  if (siblingTitle && normalizeMatchText(siblingTitle) !== normalizeMatchText(request.title)) {
+  if (isSameAlbumTitle(request.albumName, observed.album)
+    && isSiblingTrackPosition(request, observed.trackNumber)) {
     result.contradictions.push("sibling-track-index");
   }
   if (observed.fileNameTitle

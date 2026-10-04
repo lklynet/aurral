@@ -167,11 +167,29 @@ test("a downloaded file tagged as a different album sibling is conflicted", asyn
     filePath: "/staging/Get Lucky.flac",
     source: "deemix",
     options: { parseFile: stubParseFile(stubParsed({
-      title: "Get Lucky", artist: "Daft Punk", track: 1,
+      title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories", track: 1,
     })) },
   });
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
   assert.ok(outcome.contradictions.includes("sibling-track-index"));
+});
+
+test("a copy from a single or compilation verifies under its own track number", async () => {
+  const request = { ...GET_LUCKY, trackNumber: 8, albumTrackTitles: [
+    "Give Life Back to Music", "The Game of Love", "Giorgio by Moroder", "Within",
+    "Instant Crush", "Lose Yourself to Dance", "Touch", "Get Lucky",
+  ] };
+  for (const [album, track] of [["Get Lucky", 1], ["Now That's What I Call Music! 85", 4]]) {
+    const outcome = await validateDownloadedTrackFile({
+      request,
+      filePath: "/staging/Get Lucky.flac",
+      source: "soulseek",
+      options: { parseFile: stubParseFile(stubParsed({
+        title: "Get Lucky", artist: "Daft Punk", album, track,
+      })) },
+    });
+    assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, album);
+  }
 });
 
 test("filename variants reject a tagged original before import", async () => {

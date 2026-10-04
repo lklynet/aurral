@@ -858,3 +858,24 @@ btest("quality ordering within identity: profile-eligible tier wins", async () =
   });
   assert.ok(ordered[0].candidate.raw.file.endsWith(".m4a"));
 });
+
+btest("a single's own track number does not reject it for an album track request", async () => {
+  const request = {
+    artistName: "Radiohead",
+    trackName: "Paranoid Android",
+    albumName: "OK Computer",
+    durationMs: 383000,
+    trackNumber: 2,
+    albumTrackTitles: ["Airbag", "Paranoid Android", "Subterranean Homesick Alien"],
+  };
+  const single = await evaluate([result({
+    user: "u", file: "Music\\Radiohead\\Paranoid Android (Single)\\01 - Paranoid Android.flac", length: 383,
+  })], request);
+  assert.deepEqual(usableFileNames(single), [
+    "Music\\Radiohead\\Paranoid Android (Single)\\01 - Paranoid Android.flac",
+  ]);
+  const misplaced = await evaluate([result({
+    user: "u", file: "Music\\Radiohead\\OK Computer\\01 - Paranoid Android.flac", length: 383,
+  })], request);
+  assert.deepEqual(usableFileNames(misplaced), []);
+});
