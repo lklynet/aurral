@@ -55,6 +55,31 @@ test("a stalled slskd transfer is cancelled and the next candidate is tried", as
   assert.equal((await processPipelinePayload(polling)).phase, "download");
 });
 
+test("a file in an uploader's queue moves to the next candidate after 10 minutes", async (t) => {
+  dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
+    slskd: { enabled: true, url: "http://127.0.0.1:9" },
+  } });
+  const client = getDownloadClient("slskd");
+  t.mock.method(client, "getEvents", async () => ({ events: [], totalCount: 0 }));
+  t.mock.method(client, "getTransfer", async () => ({ id: "transfer-1", username: "busy",
+    state: "Queued, Remotely", bytesTransferred: 0 }));
+  const removed = t.mock.method(client, "deleteTransfer", async () => true);
+  const jobId = addJob();
+  const polling = { phase: "poll", source: "slskd", jobId, eventOffset: 0,
+    legacyTransfer: { id: "transfer-1", username: "busy" }, candidateIndex: 0,
+    candidates: [{ raw: { user: "busy", file: "a.flac" } }, { raw: { user: "free", file: "b.flac" } }] };
+  const waiting = await processPipelinePayload(polling);
+  const quarterHourAgo = Date.now() - 15 * 60 * 1000;
+
+  const moved = await processPipelinePayload({ ...waiting, lastProgressAt: quarterHourAgo });
+  assert.equal(moved.phase, "download");
+  assert.equal(moved.candidateIndex, 1);
+  assert.equal(removed.mock.callCount(), 1);
+
+  const lastCandidate = await processPipelinePayload({ ...waiting, candidateIndex: 1, lastProgressAt: quarterHourAgo });
+  assert.equal(lastCandidate.phase, "poll");
+});
+
 test("a paused Usenet download keeps waiting while the client holds it", async (t) => {
   const client = getDownloadClient("nzbget");
   t.mock.method(client, "getHistoryItem", async () => null);

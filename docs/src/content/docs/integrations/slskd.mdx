@@ -54,7 +54,7 @@ Aurral downloads only the files that fill missing tracks. If the folder leaves t
 
 ## Transfers
 
-Aurral waits while a transfer makes progress, including while it waits in the user's upload queue. If a transfer's state, progress, and queue position stay the same for 30 minutes, Aurral cancels it and tries the next result. For an album, once every other file has finished or failed, files still waiting in the user's queue get 10 minutes and a file still transferring gets 20; then Aurral imports what finished and tries the next folder for the rest.
+Aurral waits while a transfer makes progress, including while it waits in the user's upload queue. If a transfer's state, progress, and queue position stay the same for 30 minutes, Aurral cancels it and tries the next result. A track that waits 10 minutes in a user's queue without moving goes to the next result if there is one. For an album, once every other file has finished or failed, files still waiting in the user's queue get 10 minutes and a file still transferring gets 20; then Aurral imports what finished and tries the next folder for the rest.
 
 A file that fails Aurral's checks is not offered again for that track.
 
