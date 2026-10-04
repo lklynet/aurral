@@ -218,16 +218,23 @@ function failIfPipelineFallsThrough() {
   assert.fail("blocked download fell through to source retry");
 }
 
-async function assertReviewable(jobId, filePath, source) {
+async function assertReviewable(jobId, source) {
   const job = downloadTracker.getJob(jobId);
   assert.equal(job.status, "blocked");
   assert.equal(job.downloadSource, source);
-  assert.equal(job.stagingPath, filePath);
   assert.equal(job.error, "downloaded file is 99.0s shorter than the requested track");
-  await access(filePath);
+  await access(job.stagingPath);
+  return job.stagingPath;
 }
 
-btest("yt-dlp sends plausible duration mismatches to review", async () => {
+function useOnlySources(t, ...sources) {
+  for (const id of ["slskd", "deemix", "ytdlp", "nzbget", "sabnzbd"]) {
+    t.mock.method(getDownloadClient(id), "isConfigured", () => sources.includes(id));
+  }
+}
+
+btest("yt-dlp sends plausible duration mismatches to review", async (t) => {
+  useOnlySources(t, "ytdlp");
   const jobId = addDurationMismatchJob("ytdlp-review");
   const filePath = path.join(
     process.env.DOWNLOAD_FOLDER,
@@ -243,23 +250,20 @@ btest("yt-dlp sends plausible duration mismatches to review", async () => {
     remoteFilename: "Artist Name - Correct Track",
   });
 
-  const result = await processYtdlpPipelinePayload(
-    {
-      phase: "finalize",
-      source: "ytdlp",
-      jobId,
-      downloadedPath: filePath,
-      destination: "ytdlp-review/Artist Name/Album Name",
-      candidate: {
-        raw: { id: "video-1", title: "Artist Name - Correct Track" },
-      },
-      candidateIndex: 0,
+  const result = await processPipelinePayload({
+    phase: "finalize",
+    source: "ytdlp",
+    jobId,
+    downloadedPath: filePath,
+    destination: "ytdlp-review/Artist Name/Album Name",
+    candidate: {
+      raw: { id: "video-1", title: "Artist Name - Correct Track" },
     },
-    { failOrTryNextSource: failIfPipelineFallsThrough },
-  );
+    candidateIndex: 0,
+  });
 
   assert.equal(result, null);
-  await assertReviewable(jobId, filePath, "ytdlp");
+  await assertReviewable(jobId, "ytdlp");
 });
 
 btest("yt-dlp auto-rejects weak title matches instead of reviewing them", async () => {
@@ -317,7 +321,8 @@ btest("yt-dlp auto-rejects weak title matches instead of reviewing them", async 
   assert.match(sourceFailures[0], /filename-title/);
 });
 
-btest("yt-dlp holds partially-matching identity for review", async () => {
+btest("yt-dlp holds partially-matching identity for review", async (t) => {
+  useOnlySources(t, "ytdlp");
   const jobId = downloadTracker.addJob(
     {
       artistName: "Artist Name",
@@ -336,23 +341,20 @@ btest("yt-dlp holds partially-matching identity for review", async () => {
   );
   await writeOneSecondMp3(filePath, { title: "Correct" });
 
-  const result = await processYtdlpPipelinePayload(
-    {
-      phase: "finalize",
-      source: "ytdlp",
-      jobId,
-      downloadedPath: filePath,
-      destination: "ytdlp-weak-artist-review/Artist Name",
-      candidate: {
-        raw: {
-          id: "video-weak-artist",
-          title: "Correct",
-        },
+  const result = await processPipelinePayload({
+    phase: "finalize",
+    source: "ytdlp",
+    jobId,
+    downloadedPath: filePath,
+    destination: "ytdlp-weak-artist-review/Artist Name",
+    candidate: {
+      raw: {
+        id: "video-weak-artist",
+        title: "Correct",
       },
-      candidateIndex: 0,
     },
-    { failOrTryNextSource: failIfPipelineFallsThrough },
-  );
+    candidateIndex: 0,
+  });
 
   assert.equal(result, null);
   const job = downloadTracker.getJob(jobId);
@@ -361,8 +363,7 @@ btest("yt-dlp holds partially-matching identity for review", async () => {
     job.error,
     "downloaded file has a title that only partly matches the requested track",
   );
-  assert.equal(job.stagingPath, filePath);
-  await access(filePath);
+  await access(job.stagingPath);
 });
 
 btest("Usenet sends its best plausible duration mismatch to review", async () => {
@@ -419,7 +420,7 @@ btest("Usenet sends its best plausible duration mismatch to review", async () =>
     );
 
     assert.equal(result, null);
-    await assertReviewable(jobId, filePath, "usenet");
+    assert.equal(await assertReviewable(jobId, "usenet"), filePath);
   } finally {
     await server.close();
   }
@@ -524,7 +525,7 @@ btest("deemix drops its queue entry before a track goes to review", async () => 
     });
 
     assert.equal(result, null);
-    await assertReviewable(jobId, filePath, "deemix");
+    assert.equal(await assertReviewable(jobId, "deemix"), filePath);
     assert.deepEqual(removed, ["track_1_1"]);
   } finally {
     await server.close();
@@ -617,6 +618,7 @@ btest("deemix reuses an existing final path instead of creating a duplicate", as
 btest("Soulseek tries the other candidates before sending a file to review", async (t) => {
   dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
     ...dbOps.getSettings().integrations, slskd: { enabled: true, url: "http://127.0.0.1:9" } } });
+  useOnlySources(t, "slskd");
   const root = path.join(isolatedState.baseDir, "slskd-held");
   const client = getDownloadClient("slskd");
   t.mock.method(client, "getDownloadDirectory", async () => root);
@@ -649,6 +651,51 @@ btest("Soulseek tries the other candidates before sending a file to review", asy
   await finalize(retry);
   assert.equal(downloadTracker.getJob(verifiedJobId).status, "done");
   await assert.rejects(access(longer));
+});
+
+btest("a yt-dlp file waits for review while the next source is tried", async (t) => {
+  dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
+    ...dbOps.getSettings().integrations, slskd: { enabled: true, url: "http://127.0.0.1:9" } } });
+  useOnlySources(t, "ytdlp", "slskd");
+  t.mock.method(downloadWorker, "start", async () => {});
+  const root = path.join(isolatedState.baseDir, "ytdlp-held-slskd");
+  const client = getDownloadClient("slskd");
+  t.mock.method(client, "getDownloadDirectory", async () => root);
+  t.mock.method(client, "isCleanupAfterRunsEnabled", () => false);
+  const peer = (name) => ({ raw: { user: "peer", file: `Music\\Artist Name\\${name}.mp3`, size: 0 } });
+  const fromYtdlp = async (jobId, seconds) => {
+    const video = path.join(isolatedState.baseDir, "ytdlp-held", "ytdlp", jobId, "video.mp3");
+    await writeOneSecondMp3(video, { seconds });
+    downloadTracker.updateDownloadMetadata(jobId, { downloadSource: "ytdlp", downloadClient: "ytdlp",
+      releaseGuid: "video-held", remoteFilename: "Artist Name - Correct Track" });
+    const next = await processPipelinePayload({ jobId, phase: "finalize", source: "ytdlp", downloadedPath: video,
+      candidate: { raw: { id: "video-held", title: "Artist Name - Correct Track" } }, candidateIndex: 0 });
+    assert.equal(next.source, "slskd");
+    assert.equal(downloadTracker.getJob(jobId).status, "downloading");
+    downloadTracker.updateDownloadMetadata(jobId, { downloadSource: "slskd", downloadClient: "slskd",
+      remoteUsername: "peer", remoteFilename: "Music\\Artist Name\\other.mp3" });
+    return next;
+  };
+
+  const jobId = addDurationMismatchJob("ytdlp-held");
+  const next = await fromYtdlp(jobId, 1);
+  await writeOneSecondMp3(path.join(root, "Artist Name", "other.mp3"));
+  await processPipelinePayload({ ...next, phase: "finalize", candidates: [peer("other")] });
+  const parked = await assertReviewable(jobId, "ytdlp");
+  await assert.rejects(access(path.join(root, "Artist Name", "other.mp3")));
+  const { denyBlockedJob } = await import("../../backend/services/downloadJobs/blockedJobReview.js");
+  await denyBlockedJob(jobId);
+  assert.deepEqual(downloadTracker.getJob(jobId).deniedRemoteSources.at(-1), ["ytdlp", "video-held"]);
+  await assert.rejects(access(parked));
+
+  const verifiedJobId = downloadTracker.addJob({ artistName: "Artist Name", trackName: "Correct Track",
+    albumName: "Album Name", durationMs: 1000 }, "ytdlp-held");
+  downloadTracker.setDownloading(verifiedJobId);
+  const retry = await fromYtdlp(verifiedJobId, 30);
+  await writeOneSecondMp3(path.join(root, "Artist Name", "other.mp3"));
+  await processPipelinePayload({ ...retry, phase: "finalize", candidates: [peer("other")] });
+  assert.equal(downloadTracker.getJob(verifiedJobId).status, "done");
+  await assert.rejects(access(retry.heldForReview.sourcePath));
 });
 
 btest("denying a held file starts a stopped worker to search again", async (t) => {

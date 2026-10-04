@@ -16,7 +16,7 @@ After a download, `postDownloadValidator.js` runs the same matcher on the origin
 
 - A strong title score cannot override a known conflict in the recording ID, version, artist, or duration.
 - Missing evidence does not count as agreement.
-- A file whose original tags match except for the duration goes to review. A Soulseek track first tries its remaining candidates and goes to review only when none of them verifies.
+- A file whose original tags match except for the duration goes to review. A Soulseek or yt-dlp file waits while the job tries its remaining candidates and the other download sources. It goes to review only when none of them verifies, and keeps its own source details, so denying it blocks that file.
 - A file without usable identity tags is not imported automatically.
 - A track number that points at another track of the requested album is a conflict only when the file comes from that album. A single, a compilation, or another album has its own numbering.
 - Aurral takes a recording ID only from MusicBrainz release data, never from Last.fm. The expected length comes from the matched MusicBrainz release track; a Last.fm length, often a radio edit, only fills a missing one.

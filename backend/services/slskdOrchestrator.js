@@ -43,7 +43,7 @@ import {
   hasNextCandidate,
   buildNextCandidatePayload,
   mergeSearchResults,
-  blockPipelineJobForReview,
+  holdForReview,
   finalizePipelineJobSuccess,
   SEARCH_RESET,
 } from "./pipelineHelpers.js";
@@ -1242,36 +1242,22 @@ async function handleFinalize(payload, helpers) {
       remoteFile,
       sourcePath,
     });
-    if (validation.blocked && !payload.heldForReview && hasNextCandidate(payload)) {
+    if (validation.blocked && !payload.heldForReview) {
       recordPayloadOutcome(job, payload, "held_for_review", validation.reason || "Held for review",
         { transfer, sourcePath, validation });
-      return buildNextCandidatePayload({
+      const heldPayload = {
         ...payload,
-        heldForReview: {
+        heldForReview: holdForReview(job, {
+          source: "slskd",
           sourcePath,
-          reason: validation.reason || "Blocked for review",
+          reason: validation.reason,
           username: candidate?.raw?.user || null,
           transferId: readTransferId(transfer) || null,
-        },
-      }, TRANSFER_RESET);
-    }
-    if (
-      !payload.heldForReview &&
-      blockPipelineJobForReview({
-        downloadTracker,
-        job,
-        validation,
-        sourcePath,
-      })
-    ) {
-      recordPayloadOutcome(
-        job,
-        payload,
-        "blocked",
-        validation.reason || "Blocked for review",
-        { transfer, sourcePath, validation },
-      );
-      return null;
+        }),
+      };
+      return hasNextCandidate(payload)
+        ? buildNextCandidatePayload(heldPayload, TRANSFER_RESET)
+        : helpers.failOrTryNextSource(heldPayload, job, heldPayload.heldForReview.reason);
     }
     recordPayloadOutcome(
       job,
@@ -1335,23 +1321,7 @@ async function handleFinalize(payload, helpers) {
   return committed.result;
 }
 
-// A file that needs review waits while the remaining candidates are tried.
-// It goes to review only when none of them verifies, and is removed when
-// another file is imported or the job ends.
-async function parkHeldForReview(payload, job) {
-  const held = payload.heldForReview;
-  if (!job || !(await fs.stat(held.sourcePath).catch(() => null))?.isFile()) return false;
-  const parked = blockPipelineJobForReview({
-    downloadTracker,
-    job,
-    validation: { blocked: true, reason: held.reason },
-    sourcePath: held.sourcePath,
-  });
-  if (parked) recordPayloadOutcome(job, payload, "blocked", held.reason, { sourcePath: held.sourcePath });
-  return parked;
-}
-
-async function discardHeldForReview(held) {
+export async function discardSlskdHeldFile(held) {
   await cleanupRejectedDownload({
     sourcePath: held.sourcePath,
     slskdRoot: resolveLocalPath(await slskdClient.getDownloadDirectory(), getPathMappings("slskd")),
@@ -1361,22 +1331,7 @@ async function discardHeldForReview(held) {
   });
 }
 
-export async function processSlskdPipelinePayload(payload, helpers) {
-  const held = payload.heldForReview;
-  if (!held?.sourcePath) return processSlskdPhase(payload, helpers);
-  const result = await processSlskdPhase(payload, {
-    ...helpers,
-    failOrTryNextSource: async (failed, job, ...rest) => ((await parkHeldForReview(failed, job))
-      ? null
-      : helpers.failOrTryNextSource(failed, job, ...rest)),
-  });
-  if (result == null && downloadTracker.getJob(payload.jobId)?.status !== "blocked") {
-    await discardHeldForReview(held);
-  }
-  return result;
-}
-
-function processSlskdPhase(payload, helpers) {
+export function processSlskdPipelinePayload(payload, helpers) {
   switch (payload.phase) {
     case "search":
       return handleSearch(payload, helpers);

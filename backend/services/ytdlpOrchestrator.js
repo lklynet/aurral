@@ -25,7 +25,7 @@ import {
   hasNextCandidate,
   buildNextCandidatePayload,
   mergeSearchResults,
-  blockPipelineJobForReview,
+  holdForReview,
   finalizePipelineJobSuccess,
 } from "./pipelineHelpers.js";
 import {
@@ -223,16 +223,18 @@ async function handleYtdlpFinalize(payload, helpers) {
     return null;
   }
   if (!validation.valid) {
-    if (
-      validation.blocked &&
-      blockPipelineJobForReview({
-        downloadTracker,
-        job,
-        validation,
-        sourcePath: filePath,
-      })
-    ) {
-      return null;
+    if (validation.blocked && !payload.heldForReview) {
+      const heldPath = path.join(path.dirname(filePath), "..", `${job.id}-held${path.extname(filePath)}`);
+      await fs.rename(filePath, heldPath);
+      await ytdlpClient.cleanupStaging(job.id);
+      const heldPayload = {
+        ...payload,
+        downloadedPath: null,
+        heldForReview: holdForReview(job, { source: "ytdlp", sourcePath: heldPath, reason: validation.reason }),
+      };
+      return hasNextCandidate(payload)
+        ? buildNextCandidatePayload(heldPayload)
+        : helpers.failOrTryNextSource(heldPayload, job, heldPayload.heldForReview.reason);
     }
     downloadTracker.recordDeniedSource(job.id, "ytdlp", candidate?.raw?.id);
     await fs.rm(filePath, { force: true }).catch(() => {});

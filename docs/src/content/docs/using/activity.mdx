@@ -35,7 +35,7 @@ If the release leaves tracks unfilled, Aurral first tries the next ranked folder
 
 ### Review a track
 
-Aurral holds a download for review when the file looks like the requested track but its duration is wrong. It does not try another source at once.
+Aurral holds a download for review when the file looks like the requested track but its duration is wrong. A file from Soulseek or yt-dlp waits while Aurral tries the other results and download sources, and goes to review only if none of them verifies. A file from Usenet or deemix goes to review at once.
 
 Each review row shows the requested track, artist, and album, the path of the downloaded file, the match scores, and the duration. Preview the track, then approve or deny it.
 

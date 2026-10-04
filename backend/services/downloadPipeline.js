@@ -1,8 +1,13 @@
+import fs from "fs/promises";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger } from "./logger.js";
 import { enqueuePipelineJob, listHonkerJobs } from "./honkerDb.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
-import { processSlskdPipelinePayload, SLSKD_NOT_CONFIGURED_MESSAGE } from "./slskdOrchestrator.js";
+import {
+  discardSlskdHeldFile,
+  processSlskdPipelinePayload,
+  SLSKD_NOT_CONFIGURED_MESSAGE,
+} from "./slskdOrchestrator.js";
 import { processUsenetPipelinePayload } from "./usenetOrchestrator.js";
 import { processYtdlpPipelinePayload } from "./ytdlpOrchestrator.js";
 import { processDeemixPipelinePayload } from "./deemixOrchestrator.js";
@@ -14,7 +19,7 @@ import {
   getSourceLabel,
   isAnyDownloadSourceConfigured,
 } from "./downloadSourceService.js";
-import { SEARCH_RESET } from "./pipelineHelpers.js";
+import { blockPipelineJobForReview, SEARCH_RESET } from "./pipelineHelpers.js";
 import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.js";
 import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.js";
 
@@ -62,6 +67,32 @@ async function failJob(job, message) {
       error: error?.message || String(error),
     });
   }
+}
+
+// A held file goes to review only when no source verifies a file. It is
+// removed when another file is imported or the job ends another way.
+async function parkHeldForReview(payload, job) {
+  const held = payload?.heldForReview;
+  if (!job || !held?.sourcePath) return false;
+  if (!(await fs.stat(held.sourcePath).catch(() => null))?.isFile()) return false;
+  downloadTracker.updateDownloadMetadata(job.id, held.metadata || {});
+  return blockPipelineJobForReview({
+    downloadTracker,
+    job,
+    validation: { blocked: true, reason: held.reason },
+    sourcePath: held.sourcePath,
+  });
+}
+
+async function discardHeldForReview(payload) {
+  const held = payload?.heldForReview;
+  if (!held?.sourcePath) return;
+  if (downloadTracker.getJob(payload.jobId)?.stagingPath === held.sourcePath) return;
+  if (held.source === "slskd") {
+    await discardSlskdHeldFile(held);
+    return;
+  }
+  await fs.rm(held.sourcePath, { force: true }).catch(() => {});
 }
 
 function isSourceConfigured(sourceId) {
@@ -146,6 +177,7 @@ async function failOrTryNextSource(payload, job, message, logDetails = {}) {
   if (payload?.albumGrab === true) {
     return fallbackAlbumGrabToTracks(payload, summarizeSourceErrors(payload, message));
   }
+  if (await parkHeldForReview(payload, job)) return null;
   await failJob(job, summarizeSourceErrors(payload, message));
   return null;
 }
@@ -154,12 +186,12 @@ export async function failPipelineJob(payload, message) {
   const jobId = payload?.jobId;
   if (!jobId) return;
   if (payload.albumGrab === true) releaseAlbumGrabJobs(payload, ALBUM_GRAB_ENDED_REASON);
-  if (!isPipelinePayloadActive(payload)) return;
-  const job = downloadTracker.getJob(jobId);
-  if (!job) return;
-  if (job.status === "downloading" || job.status === "pending") {
+  const job = isPipelinePayloadActive(payload) ? downloadTracker.getJob(jobId) : null;
+  if ((job?.status === "downloading" || job?.status === "pending")
+    && !(await parkHeldForReview(payload, job))) {
     await failJob(job, message);
   }
+  await discardHeldForReview(payload);
 }
 
 export const ALBUM_GRAB_ENDED_REASON = "The album download ended before this track was imported";
@@ -168,6 +200,12 @@ export async function processPipelinePayload(payload) {
   if (!payload || !payload.phase || !payload.jobId) {
     throw new Error("Invalid pipeline payload");
   }
+  const nextPayload = await processSourcePayload(payload);
+  if (nextPayload == null) await discardHeldForReview(payload);
+  return nextPayload;
+}
+
+async function processSourcePayload(payload) {
   if (!isPipelinePayloadActive(payload)) return null;
   const currentJob = downloadTracker.getJob(payload.jobId);
   const inactiveOwner = deferForInactiveOwner(payload, currentJob);
@@ -186,7 +224,7 @@ export async function processPipelinePayload(payload) {
       if (job) await failJob(job, getDownloadSourceNotConfiguredMessage());
       return null;
     }
-    return processPipelinePayload(nextPayload);
+    return processSourcePayload(nextPayload);
   }
   if (payload.source === "usenet") {
     if (!isSourceConfigured("usenet")) {

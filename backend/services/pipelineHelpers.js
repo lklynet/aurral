@@ -43,6 +43,28 @@ export function mergeSearchResults(aggregated, seen, items, buildKey) {
   }
 }
 
+const HELD_METADATA_KEYS = [
+  "downloadSource",
+  "downloadClient",
+  "downloadClientId",
+  "releaseGuid",
+  "releaseTitle",
+  "remoteUsername",
+  "remoteFilename",
+];
+
+// A file that needs review waits while the other candidates and sources are
+// tried. It keeps the job's source details so a denial blocks that file.
+export function holdForReview(job, { source, sourcePath, reason, ...details }) {
+  return {
+    ...details,
+    source,
+    sourcePath,
+    reason: reason || "Blocked for review",
+    metadata: Object.fromEntries(HELD_METADATA_KEYS.map((key) => [key, job?.[key] ?? null])),
+  };
+}
+
 export function blockPipelineJobForReview({
   downloadTracker,
   job,
