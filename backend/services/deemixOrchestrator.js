@@ -100,48 +100,49 @@ function readQueueError(queueItem) {
   return "";
 }
 
-// One album search, then each same-titled album's tracklist is checked
-// against the requested tracks before anything is queued.
+// Album searches until one finds a same-titled album whose tracklist holds
+// the requested tracks; nothing is queued before that check.
 async function searchDeemixAlbum(payload, helpers, job, client) {
   const jobs = albumGrabJobs(payload);
   const denied = deniedAlbumSources([job, ...jobs], "deemix");
-  const albums = new Map();
+  const requested = { tracks: jobs.map(jobReleaseTrack) };
+  const checked = new Set();
+  const ranked = [];
   let searchFailed = false;
   const compilation = isCompilationJobs(jobs);
   for (const query of buildDeemixAlbumSearchQueries({ ...buildResolvedTrack(job), compilation })) {
+    let albums = [];
     try {
-      for (const album of await client.searchAlbums(query, { limit: SEARCH_LIMIT })) {
-        if (denied.has(`album:${album.id}`) || !isSameCoreAlbum(album.title, job.albumName)) continue;
-        albums.set(album.id, album);
-      }
+      albums = await client.searchAlbums(query, { limit: SEARCH_LIMIT });
     } catch (error) {
       searchFailed = true;
       logger.warn("deemix", "Album search failed", { jobId: job.id, reason: safeLogDiagnostic(error) });
     }
     if (!isPipelinePayloadActive(payload)) return null;
-    if (albums.size > 0) break;
-  }
-  const requested = { tracks: jobs.map(jobReleaseTrack) };
-  const ranked = [];
-  for (const album of [...albums.values()].slice(0, MAX_ALBUM_CANDIDATES)) {
-    let tracks;
-    try {
-      tracks = await client.getAlbumTracks(album.id);
-    } catch (error) {
-      searchFailed = true;
-      logger.warn("deemix", "Album tracklist failed", { jobId: job.id, reason: safeLogDiagnostic(error) });
-      continue;
+    const fresh = albums.filter((album) => !checked.has(album.id)
+      && !denied.has(`album:${album.id}`) && isSameCoreAlbum(album.title, job.albumName));
+    for (const album of fresh.slice(0, MAX_ALBUM_CANDIDATES)) {
+      checked.add(album.id);
+      let tracks;
+      try {
+        tracks = await client.getAlbumTracks(album.id);
+      } catch (error) {
+        searchFailed = true;
+        logger.warn("deemix", "Album tracklist failed", { jobId: job.id, reason: safeLogDiagnostic(error) });
+        continue;
+      }
+      if (!isPipelinePayloadActive(payload)) return null;
+      const assessment = assessRelease(requested, { files: tracks
+        .filter((track) => track.readable !== false)
+        .map((track) => ({
+          title: track.title,
+          artists: [track.artist].filter(Boolean),
+          durationMs: track.durationSec > 0 ? track.durationSec * 1000 : null,
+          trackNumber: track.trackNumber,
+        })) });
+      if (assessment.decision === "selectable") ranked.push({ album, assessment });
     }
-    if (!isPipelinePayloadActive(payload)) return null;
-    const assessment = assessRelease(requested, { files: tracks
-      .filter((track) => track.readable !== false)
-      .map((track) => ({
-        title: track.title,
-        artists: [track.artist].filter(Boolean),
-        durationMs: track.durationSec > 0 ? track.durationSec * 1000 : null,
-        trackNumber: track.trackNumber,
-      })) });
-    if (assessment.decision === "selectable") ranked.push({ album, assessment });
+    if (ranked.length > 0) break;
   }
   ranked.sort((left, right) => right.assessment.coverage - left.assessment.coverage
     || right.assessment.fit - left.assessment.fit);
@@ -203,7 +204,8 @@ async function handleDeemixSearch(payload, helpers) {
     if (hasEnoughCandidates(aggregated, resolvedTrack)) break;
     try {
       const results = await client.search(query, { limit: SEARCH_LIMIT });
-      mergeSearchResults(aggregated, seen, results.filter((entry) => !deniedIds.has(String(entry.id || "").trim())), (entry) => String(entry.id || "").trim());
+      mergeSearchResults(aggregated, seen, results.filter((entry) => !deniedIds.has(String(entry.id || "").trim())
+        && !deniedIds.has(`album:${entry.albumId}`)), (entry) => String(entry.id || "").trim());
     } catch (error) {
       lastError = safeLogDiagnostic(error);
       logger.warn("deemix", "deemix search failed", {
