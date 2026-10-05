@@ -381,15 +381,24 @@ export function registerDownloads(router) {
       });
       if (alreadyOwned) return res.json({ success: true, alreadyOwned: true, queued: false });
 
+      // With importing on add, a track without a file is downloaded as usual and then imported.
+      let importWhenDownloaded = null;
+      const lidarrImportFlag = (jobId) => {
+        if (!importWhenDownloaded || !jobId) return {};
+        importWhenDownloaded(jobId);
+        return { willImportToLidarr: true };
+      };
       const { lidarrClient } = await import("../../../services/lidarrClient.js");
       if (
         dbOps.getSettings().integrations?.lidarr?.importOnAddToLibrary === true &&
         lidarrClient.isConfigured()
       ) {
-        const [{ findFinishedTrackJob, importTrackToLidarr }, { canAccessJobType }] = await Promise.all([
+        const [lidarrTrackImport, { canAccessJobType }] = await Promise.all([
           import("../../../services/lidarrTrackImport.js"),
           import("../../playlists/handlers/utils.js"),
         ]);
+        const { findFinishedTrackJob, importTrackToLidarr } = lidarrTrackImport;
+        importWhenDownloaded = lidarrTrackImport.importWhenDownloaded;
         const canAccessJob = (job) => canAccessJobType(req.user, job.playlistId || job.playlistType);
         const finishedJob = await findFinishedTrackJob(track, { canAccessJob });
         if (finishedJob) {
@@ -415,9 +424,6 @@ export function registerDownloads(router) {
             });
           }
         }
-        return res.status(409).json({
-          error: "Nothing to import yet: the track hasn't been downloaded",
-        });
       }
 
       const monitoredTrack = await libraryManager.monitorAurralTrack({
@@ -425,12 +431,14 @@ export function registerDownloads(router) {
         trackMbid: track.trackMbid,
       });
       if (monitoredTrack) {
+        monitoredTrack.queuedJobIds.slice(1).forEach(lidarrImportFlag);
         await invalidateActivityRequestsCache();
         return res.status(202).json({
           success: true,
           queued: monitoredTrack.queuedJobIds.length > 0,
           jobId: monitoredTrack.queuedJobIds[0] || null,
           monitored: true,
+          ...lidarrImportFlag(monitoredTrack.queuedJobIds[0]),
         });
       }
 
@@ -460,11 +468,13 @@ export function registerDownloads(router) {
           queued: existingJob.status !== "done",
           jobId: existingJob.id,
           alreadyQueued: true,
+          ...lidarrImportFlag(existingJob.id),
         });
       }
 
       const jobId = downloadTracker.addJob(track, "library");
       if (!jobId) return res.status(400).json({ error: "Track details are incomplete" });
+      const lidarrImport = lidarrImportFlag(jobId);
 
       const { downloadWorker } = await import(
         "../../../services/downloadJobs/downloadWorker.js"
@@ -483,11 +493,18 @@ export function registerDownloads(router) {
           skipHistory: true,
         });
         if (reuse.reused) {
+          // A reused Aurral file is already downloaded, so hand it to Lidarr straight away.
+          if (lidarrImport.willImportToLidarr && !downloadTracker.getJob(jobId)?.externalPath) {
+            import("../../../services/lidarrTrackImport.js")
+              .then(({ importDownloadedTrack }) => importDownloadedTrack(jobId))
+              .catch((error) => logger.warn("library", "Could not import reused track into Lidarr", error.message));
+          }
           return res.status(202).json({
             success: true,
             queued: false,
             reused: true,
             jobId,
+            ...(downloadTracker.getJob(jobId)?.externalPath ? {} : lidarrImport),
           });
         }
       } catch (error) {
@@ -502,7 +519,7 @@ export function registerDownloads(router) {
       recordTrackJobQueued(downloadTracker.getJob(jobId));
       await invalidateActivityRequestsCache();
       await downloadWorker.start();
-      return res.status(202).json({ success: true, queued: true, jobId });
+      return res.status(202).json({ success: true, queued: true, jobId, ...lidarrImport });
     } catch (error) {
       logger.error("library", "Failed to queue track acquisition", error.message);
       return res.status(500).json({

@@ -7,6 +7,7 @@ import { moveJobsToLidarrFile } from "./downloadJobs/fileReuse.js";
 import { remapLegacyPath, resolveDownloadRoot } from "./downloadPaths.js";
 import { getPathMappings, resolveRemotePath } from "./pathMappings.js";
 import { logger } from "./logger.js";
+import { dbOps } from "../db/helpers/index.js";
 
 const DEFAULT_POLL_INTERVAL_MS = 2000;
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
@@ -392,4 +393,33 @@ export async function importTrackToLidarr({ jobId } = {}, options = {}) {
   const request = runImport(job, options).finally(() => inflightImports.delete(key));
   inflightImports.set(key, request);
   return request;
+}
+
+// Library jobs queued by Add to library while importing on add is on. Kept in memory: after a
+// restart the download stays in the Downloads Folder.
+const importWhenDownloadedJobIds = new Set();
+
+export function importWhenDownloaded(jobId) {
+  const id = String(jobId || "").trim();
+  if (id) importWhenDownloadedJobIds.add(id);
+}
+
+/**
+ * Imports a finished download into Lidarr if Add to library asked for it. Never throws:
+ * on failure the file stays where Aurral committed it.
+ */
+export async function importDownloadedTrack(jobId, options = {}) {
+  const id = String(jobId || "").trim();
+  if (!importWhenDownloadedJobIds.delete(id)) return null;
+  if (dbOps.getSettings().integrations?.lidarr?.importOnAddToLibrary !== true) return null;
+  try {
+    return await importTrackToLidarr({ jobId: id }, options);
+  } catch (error) {
+    logger.warn("library", "Could not import downloaded track into Lidarr", {
+      jobId: id,
+      message: error.message,
+      ...(error.rejections?.length ? { rejections: error.rejections } : {}),
+    });
+    return null;
+  }
 }

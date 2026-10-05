@@ -120,6 +120,17 @@ export async function recordPipelineJobSuccess({
 
   if (onSuccess) await onSuccess();
 
+  if (job.playlistType === "library") {
+    import("./lidarrTrackImport.js")
+      .then(({ importDownloadedTrack }) => importDownloadedTrack(job.id))
+      .catch((error) => {
+        logger.warn("library", "Could not start Lidarr import for downloaded track", {
+          jobId: job.id,
+          reason: error?.message || String(error),
+        });
+      });
+  }
+
   import("./aurralHistoryService.js")
     .then(({ recordTrackJobCompleted }) => recordTrackJobCompleted(job))
     .catch((error) => {

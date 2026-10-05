@@ -439,7 +439,7 @@ export function LidarrSettingsSection({
 
         <SettingsArrFormGroup
           label="Import to Lidarr when adding to library"
-          help="Add to library hands downloaded tracks to Lidarr instead of moving them into the Downloads Folder. Tracks that have not been downloaded yet are not added."
+          help="Add to library hands tracks to Lidarr instead of keeping them in the Downloads Folder. Tracks that are not downloaded yet are downloaded first, then imported."
         >
           <PillToggle
             className="settings-toggle"

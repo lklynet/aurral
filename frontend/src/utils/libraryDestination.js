@@ -33,6 +33,7 @@ export const getManagedByLabel = (manager) => {
 export const describeAddTrackResult = (result, trackName) => {
   if (result?.importedToLidarr) return `Imported ${trackName} to Lidarr`;
   if (result?.alreadyOwned) return `${trackName} is already in your library`;
+  if (result?.willImportToLidarr) return `Queued ${trackName}; it goes to Lidarr once downloaded`;
   return result?.queued ? `Queued ${trackName} for your library` : `Added ${trackName} to your library`;
 };
 

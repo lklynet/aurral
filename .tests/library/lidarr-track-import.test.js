@@ -509,16 +509,82 @@ test("Add to library imports a finished flow track into Lidarr when importing on
   assert.equal(downloadTracker.getByPlaylistType("library").length, 0);
 });
 
-test("Add to library does nothing when importing on add is on but no file exists", async () => {
+test("Add to library queues a download for Lidarr when importing on add is on but no file exists", async () => {
   const state = createFakeLidarr({ immediate: true });
   setImportOnAdd(true);
 
   const response = await addTrackToLibrary(addBody);
 
-  assert.equal(response.statusCode, 409);
-  assert.match(response.body.error, /hasn't been downloaded/);
+  assert.equal(response.statusCode, 202);
+  assert.equal(response.body.queued, true);
+  assert.equal(response.body.willImportToLidarr, true);
   assert.equal(state.calls.requests.length, 0);
-  assert.equal(downloadTracker.getByPlaylistType("library").length, 0);
+  assert.equal(downloadTracker.getJob(response.body.jobId).playlistType, "library");
+});
+
+// Simulates the download pipeline finishing a library job.
+async function completeLibraryDownload(state, jobId) {
+  const filePath = path.join(downloadRoot, "Import Artist", "Import Album", "Second Song.flac");
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, "audio");
+  state.sourcePath = filePath;
+  state.remotePath = "/data/aurral/Import Artist/Import Album/Second Song.flac";
+  const { recordPipelineJobSuccess } = await importFromRepo("backend/services/pipelineHelpers.js");
+  await recordPipelineJobSuccess({
+    downloadTracker,
+    job: downloadTracker.getJob(jobId),
+    committedFinalPath: filePath,
+    album: "Import Album",
+  });
+  return filePath;
+}
+
+async function waitFor(check) {
+  for (let attempt = 0; attempt < 100 && !check(); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return check();
+}
+
+test("a track queued by Add to library is imported into Lidarr once it is downloaded", async () => {
+  const state = createFakeLidarr({ immediate: true, candidate: { album: { id: 70 }, tracks: [{ id: 802 }] } });
+  setImportOnAdd(true);
+  const { body } = await addTrackToLibrary({ ...addBody, artistMbid, albumMbid });
+
+  await completeLibraryDownload(state, body.jobId);
+
+  assert.equal(await waitFor(() => Boolean(downloadTracker.getJob(body.jobId).externalPath)), true);
+  const command = state.calls.requests.find((call) => call.endpoint === "/command");
+  assert.equal(command.body.importMode, "move");
+});
+
+test("a finished library download is left alone when importing on add is off", async () => {
+  const state = createFakeLidarr({ immediate: true, candidate: { album: { id: 70 }, tracks: [{ id: 802 }] } });
+  const jobId = downloadTracker.addJob({ ...addBody, artistMbid, albumMbid }, "library");
+
+  const filePath = await completeLibraryDownload(state, jobId);
+
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(state.calls.requests.length, 0);
+  assert.equal(downloadTracker.getJob(jobId).finalPath, filePath);
+});
+
+test("a failed import after download keeps the file in the Downloads Folder", async () => {
+  const state = createFakeLidarr({
+    immediate: true,
+    commandStatus: "failed",
+    candidate: { album: { id: 70 }, tracks: [{ id: 802 }] },
+  });
+  setImportOnAdd(true);
+  const { body } = await addTrackToLibrary({ ...addBody, artistMbid, albumMbid });
+
+  const filePath = await completeLibraryDownload(state, body.jobId);
+
+  assert.equal(await waitFor(() => state.calls.requests.some((call) => call.endpoint === "/command")), true);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(await fs.readFile(filePath, "utf8"), "audio");
+  assert.equal(downloadTracker.getJob(body.jobId).finalPath, filePath);
+  assert.equal(downloadTracker.getJob(body.jobId).externalPath, null);
 });
 
 test("Add to library reports a failed Lidarr import instead of moving the file", async () => {
@@ -546,10 +612,10 @@ test("Add to library only imports finished tracks the user can access", async ()
 
   const response = await addTrackToLibrary(addBody, { id: ownerUserId + 1, role: "user", permissions: {} });
 
-  assert.equal(response.statusCode, 409);
-  assert.equal(state.calls.requests.some((call) => call.endpoint === "/command"), false);
-  assert.equal(downloadTracker.getJob(jobId).externalPath, null);
-  assert.equal(downloadTracker.getByPlaylistType("library").length, 0);
+  // The other user's flow job is never imported directly; Add to library goes through its own library job.
+  assert.equal(response.body.importedToLidarr, undefined);
+  assert.notEqual(response.body.jobId, jobId);
+  assert.equal(downloadTracker.getJob(response.body.jobId).playlistType, "library");
 });
 
 const refreshCommands = (state) =>
