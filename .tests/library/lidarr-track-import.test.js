@@ -483,6 +483,25 @@ test("without an album MBID a same-title album without the track is skipped", as
   assert.deepEqual(command.body.files[0].trackIds, [802]);
 });
 
+test("without a title match the album is still found once Lidarr loads its tracks", async () => {
+  const state = createFakeLidarr({ candidate: { album: null, tracks: [] } });
+  const { getTracksByAlbumId } = lidarrClient;
+  let albumPolls = 0;
+  // The album's tracks are still loading while the single's are already there.
+  lidarrClient.getTracksByAlbumId = async (id) => {
+    if (id === 70 && ++albumPolls <= 3) return [];
+    return getTracksByAlbumId(id);
+  };
+  const { jobId } = await seedFlowJob(state, { albumMbidValue: null, albumName: "Not A Lidarr Title" });
+
+  const result = await importTrackToLidarr({ jobId }, { ...fastOptions, pollIntervalMs: 5, lidarrWaitTimeoutMs: 1000 });
+
+  assert.equal(albumPolls > 3, true);
+  assert.equal(result.lidarrAlbumId, 70);
+  const command = state.calls.requests.find((call) => call.endpoint === "/command" && call.body?.name === "ManualImport");
+  assert.equal(command.body.files[0].albumId, 70);
+});
+
 test("without an album name the Lidarr album containing the track is preferred over a single", async () => {
   const state = createFakeLidarr({ candidate: { album: null, tracks: [] } });
   const { jobId } = await seedFlowJob(state, { albumMbidValue: null, albumName: null });

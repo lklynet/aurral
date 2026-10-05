@@ -183,20 +183,24 @@ async function findArtistAlbum(artist, job, waiter) {
     String(left?.releaseDate || "9999").localeCompare(String(right?.releaseDate || "9999")));
   const albumKey = normalizeText(job.albumName);
   const sameTitle = albumKey ? ranked.filter((album) => normalizeText(album?.title) === albumKey) : [];
-  let match = null;
-  // Same-title albums first, but only one that contains the track; their tracks may still be loading.
-  for (const album of sameTitle) {
-    if (matchAlbumTrack(await waitForAlbumTracks(album.id, waiter), job)) {
-      match = album;
-      break;
+  const ordered = [...sameTitle, ...ranked.filter((album) => !sameTitle.includes(album))];
+  // Tracks of a newly added artist may still be loading, so all albums are rechecked within one
+  // shared wait. A match only wins once every album ahead of it has loaded its tracks; otherwise
+  // it is kept as the answer for when the wait runs out.
+  let fallback = null;
+  const match = await pollUntil(async () => {
+    let earlierLoading = false;
+    for (const album of ordered) {
+      const tracks = await lidarrClient.getTracksByAlbumId(album.id);
+      if (matchAlbumTrack(tracks, job)) {
+        if (!earlierLoading) return album;
+        fallback ||= album;
+        return null;
+      }
+      if (tracks.length === 0) earlierLoading = true;
     }
-  }
-  for (const album of match ? [] : ranked.filter((album) => !sameTitle.includes(album))) {
-    if (matchAlbumTrack(await lidarrClient.getTracksByAlbumId(album.id), job)) {
-      match = album;
-      break;
-    }
-  }
+    return null;
+  }, waiter) || fallback;
   return match ? lidarrClient.getAlbum(match.id).catch(() => match) : null;
 }
 
