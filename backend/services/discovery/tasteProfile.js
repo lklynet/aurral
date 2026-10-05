@@ -26,7 +26,6 @@ export const collectSeedTags = async (seeds, sourceHealth) => {
 
   seeds.forEach((seed, index) => {
     const tags = tagLists[index];
-    if (tags.length === 0) return;
     const tagMapKey = getSeedTagMapKey(seed);
     if (tagMapKey) tagMap.set(tagMapKey, tags.map((tag) => tag.name));
     for (const tag of tags) {

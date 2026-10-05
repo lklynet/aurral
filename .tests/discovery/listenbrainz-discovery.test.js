@@ -65,11 +65,13 @@ const respond = (url) => {
     return json(url.searchParams.get("artist_mbids").split(",").map((artistMbid) => ({
       artist_mbid: artistMbid,
       tag: {
-        artist: [
-          { tag: "seen live", count: 9 },
-          { tag: "shoegaze", count: 4 },
-          { tag: "dream pop", count: 2 },
-        ],
+        artist: artistMbid === LIKED.mbid
+          ? [{ tag: "seen live", count: 9 }]
+          : [
+              { tag: "seen live", count: 9 },
+              { tag: "shoegaze", count: 4 },
+              { tag: "dream pop", count: 2 },
+            ],
       },
     })));
   }
@@ -134,6 +136,12 @@ test("without a Last.fm key each user gets personal recommendations from ListenB
   assert.deepEqual([...body.topGenres].sort(), ["dream pop", "shoegaze"]);
   assert.equal(body.recommendations.some((artist) => artist.tags.includes("seen live")), false);
   assert.equal(requests.some((url) => url.hostname === "ws.audioscrobbler.com"), false);
+  const likedTagLookups = requests.filter(
+    (url) =>
+      url.pathname === "/1/metadata/artist/" &&
+      url.searchParams.get("artist_mbids").split(",").includes(LIKED.mbid),
+  );
+  assert.equal(likedTagLookups.length, 1);
 });
 
 const requestApi = async (mountPath, router, path) => {

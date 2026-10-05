@@ -159,11 +159,10 @@ export async function listenbrainzRequest(
       } catch (error) {
         lastError = error;
         const rateLimitWaitMs = getRateLimitWaitMs(error);
-        if (
-          retryCount < LISTENBRAINZ_MAX_RETRIES &&
-          (rateLimitWaitMs !== null || isRetryable(error))
-        ) {
-          const backoffMs = rateLimitWaitMs ?? 300 * Math.pow(2, retryCount) + retryCount * 200;
+        if (rateLimitWaitMs !== null) listenbrainzLimiter.pauseFor(rateLimitWaitMs);
+        if (retryCount < LISTENBRAINZ_MAX_RETRIES && rateLimitWaitMs !== null) continue;
+        if (retryCount < LISTENBRAINZ_MAX_RETRIES && isRetryable(error)) {
+          const backoffMs = 300 * Math.pow(2, retryCount) + retryCount * 200;
           await new Promise((resolve) => setTimeout(resolve, backoffMs));
           continue;
         }

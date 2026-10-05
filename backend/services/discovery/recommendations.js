@@ -21,8 +21,8 @@ import {
 import { fetchArtistGenreTags, hydrateRecommendationCandidateTags } from "./tasteProfile.js";
 
 const getSeedTags = async (seed, seedTagMap, sourceHealth) => {
-  const cached = normalizeSeedTagList(seedTagMap.get(getSeedTagMapKey(seed)));
-  if (cached.length > 0) return cached;
+  const key = getSeedTagMapKey(seed);
+  if (seedTagMap.has(key)) return normalizeSeedTagList(seedTagMap.get(key));
   const [tags] = await fetchArtistGenreTags([seed], sourceHealth);
   return normalizeSeedTagList(tags.map((tag) => tag.name));
 };

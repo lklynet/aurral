@@ -31,8 +31,20 @@ export default function createRateLimiter(minTime, { maxQueue = Infinity } = {})
       .finally(() => clearTimeout(timer));
   };
 
+  let resumeAt = 0;
+  let resumeTimer = null;
+  const pauseFor = (ms) => {
+    const until = Date.now() + Math.max(0, Number(ms) || 0);
+    if (until <= resumeAt) return;
+    resumeAt = until;
+    queue.pause();
+    clearTimeout(resumeTimer);
+    resumeTimer = setTimeout(() => queue.start(), until - Date.now());
+  };
+
   return {
     schedule,
+    pauseFor,
     wrap(fn) {
       return (...args) => schedule(() => fn(...args));
     },
