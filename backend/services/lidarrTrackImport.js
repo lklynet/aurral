@@ -178,17 +178,23 @@ async function findArtistAlbum(artist, job, waiter) {
     const found = await lidarrClient.getAllAlbums({ artistIds: [artist.id], forceRefresh: true });
     return found.length > 0 ? found : null;
   }, waiter)) || [];
+  const ranked = [...albums].sort((left, right) =>
+    albumTypeRank(left) - albumTypeRank(right) ||
+    String(left?.releaseDate || "9999").localeCompare(String(right?.releaseDate || "9999")));
   const albumKey = normalizeText(job.albumName);
-  let match = albumKey ? albums.find((album) => normalizeText(album?.title) === albumKey) : null;
-  if (!match) {
-    const ranked = [...albums].sort((left, right) =>
-      albumTypeRank(left) - albumTypeRank(right) ||
-      String(left?.releaseDate || "9999").localeCompare(String(right?.releaseDate || "9999")));
-    for (const album of ranked) {
-      if (matchAlbumTrack(await lidarrClient.getTracksByAlbumId(album.id), job)) {
-        match = album;
-        break;
-      }
+  const sameTitle = albumKey ? ranked.filter((album) => normalizeText(album?.title) === albumKey) : [];
+  let match = null;
+  // Same-title albums first, but only one that contains the track; their tracks may still be loading.
+  for (const album of sameTitle) {
+    if (matchAlbumTrack(await waitForAlbumTracks(album.id, waiter), job)) {
+      match = album;
+      break;
+    }
+  }
+  for (const album of match ? [] : ranked.filter((album) => !sameTitle.includes(album))) {
+    if (matchAlbumTrack(await lidarrClient.getTracksByAlbumId(album.id), job)) {
+      match = album;
+      break;
     }
   }
   return match ? lidarrClient.getAlbum(match.id).catch(() => match) : null;

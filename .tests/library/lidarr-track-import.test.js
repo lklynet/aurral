@@ -463,6 +463,26 @@ test("without an album MBID the Lidarr album is found by title", async () => {
   assert.deepEqual(command.body.files[0].trackIds, [802]);
 });
 
+test("without an album MBID a same-title album without the track is skipped", async () => {
+  const state = createFakeLidarr({ candidate: { album: null, tracks: [] } });
+  const decoy = { id: 72, artistId: 7, title: "Import Album", albumType: "Album", releaseDate: "2010-01-01", releases: [] };
+  state.artistAlbums.unshift(decoy);
+  const { getAlbum, getTracksByAlbumId } = lidarrClient;
+  lidarrClient.getAlbum = async (id) => (id === decoy.id ? decoy : getAlbum(id));
+  lidarrClient.getTracksByAlbumId = async (id) =>
+    id === decoy.id
+      ? [{ id: 821, title: "Something Else", foreignRecordingId: "a5555555-5555-4555-8555-555555555555" }]
+      : getTracksByAlbumId(id);
+  const { jobId } = await seedFlowJob(state, { albumMbidValue: null });
+
+  const result = await importTrackToLidarr({ jobId }, fastOptions);
+
+  assert.equal(result.lidarrAlbumId, 70);
+  const command = state.calls.requests.find((call) => call.endpoint === "/command");
+  assert.equal(command.body.files[0].albumId, 70);
+  assert.deepEqual(command.body.files[0].trackIds, [802]);
+});
+
 test("without an album name the Lidarr album containing the track is preferred over a single", async () => {
   const state = createFakeLidarr({ candidate: { album: null, tracks: [] } });
   const { jobId } = await seedFlowJob(state, { albumMbidValue: null, albumName: null });
