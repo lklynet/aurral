@@ -191,15 +191,38 @@ function applyReleaseContext(base, releaseContext) {
   if (releaseContext?.releaseYear && !base.releaseYear) {
     base.releaseYear = releaseContext.releaseYear;
   }
-  const matchedTrack = matchTrackByTitle(
+  const titleMatchedTrack = matchTrackByTitle(
     releaseContext?.tracks,
     base.trackName,
     base.trackNumber,
   );
-  if (matchedTrack?.recordingId) {
-    // The release catalogue is the trusted source for recording identity.
-    // This also replaces legacy Last.fm release-track IDs already stored in jobs.
-    base.trackMbid = matchedTrack.recordingId;
+  const existingTrackMbid = String(base.trackMbid || "").trim().toLowerCase();
+  let identityMatchedTrack = null;
+  if (existingTrackMbid) {
+    identityMatchedTrack = matchTrackByTitle(
+      releaseContext?.identityTracks?.filter(
+        (track) => String(track?.recordingId || "").trim().toLowerCase() === existingTrackMbid,
+      ),
+      base.trackName,
+      base.trackNumber,
+    );
+    if (!identityMatchedTrack) {
+      identityMatchedTrack = matchTrackByTitle(
+        releaseContext?.identityTracks?.filter(
+          (track) => String(track?.id || "").trim().toLowerCase() === existingTrackMbid,
+        ),
+        base.trackName,
+        base.trackNumber,
+      );
+    }
+  }
+  const matchedTrack = identityMatchedTrack || titleMatchedTrack;
+  if (identityMatchedTrack?.recordingId) {
+    // Preserve a recording already present on any edition, or translate a
+    // stored release-track ID through the exact edition that contains it.
+    base.trackMbid = identityMatchedTrack.recordingId;
+  } else if (!existingTrackMbid && titleMatchedTrack?.recordingId) {
+    base.trackMbid = titleMatchedTrack.recordingId;
   } else {
     // Do not carry an unverified legacy ID into recording-ID validation.
     base.trackMbid = null;
@@ -210,11 +233,27 @@ function applyReleaseContext(base, releaseContext) {
         ? Number(matchedTrack.trackNumber)
         : null;
   }
-  base.albumTrackCount = releaseContext?.albumTrackCount ?? null;
-  base.albumTrackTitles = Array.isArray(releaseContext?.albumTrackTitles)
-    ? releaseContext.albumTrackTitles
-    : [];
+  base.albumTrackCount = matchedTrack?.releaseTrackCount ?? releaseContext?.albumTrackCount ?? null;
+  base.albumTrackTitles = Array.isArray(matchedTrack?.releaseTrackTitles)
+    ? matchedTrack.releaseTrackTitles
+    : Array.isArray(releaseContext?.albumTrackTitles)
+      ? releaseContext.albumTrackTitles
+      : [];
   return matchedTrack;
+}
+
+function mapReleaseContextTracks(release) {
+  const source = Array.isArray(release?.tracks) ? release.tracks : [];
+  const releaseTrackTitles = source.map((track) => track.title).filter(Boolean);
+  return source.map((track) => ({
+    id: track.id || null,
+    title: track.title,
+    trackNumber: track.trackPosition || track.trackNumber || null,
+    durationMs: track.durationMs || null,
+    recordingId: track.recordingId || null,
+    releaseTrackCount: source.length || null,
+    releaseTrackTitles,
+  }));
 }
 
 async function fetchReleaseContext(albumMbid) {
@@ -243,14 +282,9 @@ async function fetchReleaseContext(albumMbid) {
           tracks: [],
         };
       }
-      const tracks = Array.isArray(pickedRelease?.tracks)
-        ? pickedRelease.tracks.map((track) => ({
-            title: track.title,
-            trackNumber: track.trackPosition || track.trackNumber || null,
-            durationMs: track.durationMs || null,
-            recordingId: track.recordingId || null,
-          }))
-        : [];
+      const tracks = mapReleaseContextTracks(pickedRelease);
+      const identityTracks = (Array.isArray(album?.releases) ? album.releases : [])
+        .flatMap(mapReleaseContextTracks);
       return {
         albumName: String(album?.title || "").trim() || null,
         artistId,
@@ -259,6 +293,7 @@ async function fetchReleaseContext(albumMbid) {
         albumTrackCount: tracks.length > 0 ? tracks.length : null,
         albumTrackTitles: tracks.map((track) => track.title),
         tracks,
+        identityTracks,
       };
     } catch {
       return null;

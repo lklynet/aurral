@@ -172,7 +172,7 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
   assert.deepEqual(resolved.albumTrackTitles, ["The Concept of Love"]);
 });
 
-test("resolveTrackSearchContext verifies a complete job's MusicBrainz recording identity", async (t) => {
+test("resolveTrackSearchContext preserves a recording from a non-representative edition", async (t) => {
   const originalSettings = dbOps.getSettings();
   dbOps.updateSettings({
     ...originalSettings,
@@ -193,22 +193,40 @@ test("resolveTrackSearchContext verifies a complete job's MusicBrainz recording 
       title: "OK Computer",
       artistid: "a74b1b7f-71a5-4011-9441-d0b5e4122711",
       artists: [{ id: "a74b1b7f-71a5-4011-9441-d0b5e4122711", artistname: "Radiohead" }],
-      releases: [{ id: "ok-computer-release", status: "Official", tracks: [
-        {
-          id: "airbag-release-track",
-          recordingid: "airbag-recording",
-          trackname: "Airbag",
-          trackposition: 1,
-          durationms: 287000,
-        },
-        {
-          id: "release-track-from-musicbrainz",
-          recordingid: "recording-from-musicbrainz",
-          trackname: "Paranoid Android",
-          trackposition: 2,
-          durationms: 383000,
-        },
-      ] }],
+      releases: [
+        { id: "ok-computer-representative", status: "Official", tracks: [
+          {
+            id: "airbag-representative-track",
+            recordingid: "airbag-representative-recording",
+            trackname: "Airbag",
+            trackposition: 1,
+            durationms: 287000,
+          },
+          {
+            id: "paranoid-representative-track",
+            recordingid: "paranoid-representative-recording",
+            trackname: "Paranoid Android",
+            trackposition: 2,
+            durationms: 382000,
+          },
+        ] },
+        { id: "ok-computer-remaster", status: "Official", tracks: [
+          {
+            id: "airbag-remaster-track",
+            recordingid: "airbag-remaster-recording",
+            trackname: "Airbag",
+            trackposition: 1,
+            durationms: 288000,
+          },
+          {
+            id: "release-track-from-musicbrainz",
+            recordingid: "recording-from-musicbrainz",
+            trackname: "Paranoid Android",
+            trackposition: 2,
+            durationms: 383000,
+          },
+        ] },
+      ],
     } };
   });
   const job = {
