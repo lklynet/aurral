@@ -159,18 +159,62 @@ function _flattenReleaseTracks(releaseData) {
   return tracks;
 }
 
-function matchTrackByTitle(tracks, trackName) {
+function matchTrackByTitle(tracks, trackName, trackNumber = null) {
   const safeTrackName = String(trackName || "").trim();
   if (!safeTrackName) return null;
+  const expectedTrackNumber = Number(trackNumber);
   const best =
     [...(Array.isArray(tracks) ? tracks : [])]
       .map((track) => ({
         ...track,
         _score: scoreTextMatchBase(track?.title, safeTrackName, MATCHER_OPTIONS),
       }))
-      .sort((left, right) => right._score - left._score)[0] || null;
+      .sort((left, right) => {
+        const scoreDifference = right._score - left._score;
+        if (scoreDifference !== 0) return scoreDifference;
+        if (!Number.isFinite(expectedTrackNumber) || expectedTrackNumber <= 0) return 0;
+        const leftMatches = Number(left.trackNumber) === expectedTrackNumber ? 1 : 0;
+        const rightMatches = Number(right.trackNumber) === expectedTrackNumber ? 1 : 0;
+        return rightMatches - leftMatches;
+      })[0] || null;
   if (!best || best._score < 82) return null;
   return best;
+}
+
+function applyReleaseContext(base, releaseContext) {
+  if (
+    releaseContext?.artistId &&
+    artistNamesMatch(base.artistName, releaseContext.artistName)
+  ) {
+    base.artistMbid = releaseContext.artistId;
+  }
+  if (releaseContext?.releaseYear && !base.releaseYear) {
+    base.releaseYear = releaseContext.releaseYear;
+  }
+  const matchedTrack = matchTrackByTitle(
+    releaseContext?.tracks,
+    base.trackName,
+    base.trackNumber,
+  );
+  if (matchedTrack?.recordingId) {
+    // The release catalogue is the trusted source for recording identity.
+    // This also replaces legacy Last.fm release-track IDs already stored in jobs.
+    base.trackMbid = matchedTrack.recordingId;
+  } else {
+    // Do not carry an unverified legacy ID into recording-ID validation.
+    base.trackMbid = null;
+  }
+  if (matchedTrack) {
+    base.trackNumber =
+      matchedTrack.trackNumber != null && Number.isFinite(Number(matchedTrack.trackNumber))
+        ? Number(matchedTrack.trackNumber)
+        : null;
+  }
+  base.albumTrackCount = releaseContext?.albumTrackCount ?? null;
+  base.albumTrackTitles = Array.isArray(releaseContext?.albumTrackTitles)
+    ? releaseContext.albumTrackTitles
+    : [];
+  return matchedTrack;
 }
 
 async function fetchReleaseContext(albumMbid) {
@@ -242,10 +286,9 @@ async function fetchLastfmTrackInfo(track) {
 }
 
 
-// A track with its recording, release group, position, length, and release
-// tracklist already came from MusicBrainz, so looking it up again only costs
-// requests. A recording ID is taken only from MusicBrainz release data;
-// Last.fm IDs can be stale, and a recording ID conflict rejects a file.
+// A complete release identity can skip Last.fm and release discovery. Its
+// recording ID is still checked against the cached BrainzMash tracklist so
+// jobs created before that rule can be repaired safely.
 function hasReleaseIdentity(track) {
   return Boolean(track.trackMbid && track.albumMbid)
     && track.durationMs > 0
@@ -276,10 +319,30 @@ export async function resolveTrackSearchContext(track) {
     return base;
   }
   if (hasReleaseIdentity(base)) {
-    if (base.artistAliases.length === 0 && base.artistMbid) {
-      base.artistAliases = await fetchArtistAliases(base.artistMbid);
+    const releaseContext = await fetchReleaseContext(base.albumMbid);
+    if (
+      releaseContext?.albumName &&
+      base.albumName &&
+      !matchesAlbumTitle(releaseContext.albumName, base.albumName)
+    ) {
+      base.albumMbid = null;
+      base.trackMbid = null;
+    } else if (releaseContext) {
+      const matchedTrack = applyReleaseContext(base, releaseContext);
+      if (matchedTrack?.durationMs) base.durationMs = matchedTrack.durationMs;
+      if (base.artistAliases.length === 0 && base.artistMbid) {
+        base.artistAliases = await fetchArtistAliases(base.artistMbid);
+      }
+      return base;
+    } else {
+      // The ID cannot be proven to be a recording while metadata is
+      // unavailable. Title, artist, album, and duration checks still apply.
+      base.trackMbid = null;
+      if (base.artistAliases.length === 0 && base.artistMbid) {
+        base.artistAliases = await fetchArtistAliases(base.artistMbid);
+      }
+      return base;
     }
-    return base;
   }
 
   const lastfmInfo = await fetchLastfmTrackInfo(base);
@@ -341,30 +404,10 @@ export async function resolveTrackSearchContext(track) {
   let matchedTrackDurationMs = null;
   if (base.albumMbid) {
     releaseContext ||= await fetchReleaseContext(base.albumMbid);
-    if (
-      releaseContext?.artistId &&
-      artistNamesMatch(base.artistName, releaseContext.artistName)
-    ) {
-      base.artistMbid = releaseContext.artistId;
-    }
-    if (releaseContext?.releaseYear && !base.releaseYear) {
-      base.releaseYear = releaseContext.releaseYear;
-    }
-    const matchedTrack = matchTrackByTitle(releaseContext?.tracks, base.trackName);
+    const matchedTrack = applyReleaseContext(base, releaseContext);
     if (matchedTrack) {
-      if (!base.trackMbid && matchedTrack.recordingId) {
-        base.trackMbid = matchedTrack.recordingId;
-      }
       matchedTrackDurationMs = matchedTrack.durationMs || null;
-      base.trackNumber =
-        matchedTrack.trackNumber != null && Number.isFinite(Number(matchedTrack.trackNumber))
-          ? Number(matchedTrack.trackNumber)
-          : null;
     }
-    base.albumTrackCount = releaseContext?.albumTrackCount ?? null;
-    base.albumTrackTitles = Array.isArray(releaseContext?.albumTrackTitles)
-      ? releaseContext.albumTrackTitles
-      : [];
   } else {
     base.albumTrackCount = null;
     base.albumTrackTitles = [];
