@@ -397,13 +397,15 @@ export function registerDownloads(router) {
         dbOps.getSettings().integrations?.lidarr?.importOnAddToLibrary === true &&
         lidarrClient.isConfigured()
       ) {
-        const { findFinishedTrackJob, importTrackToLidarr } = await import(
-          "../../../services/lidarrTrackImport.js"
-        );
-        const finishedJob = await findFinishedTrackJob(track);
+        const [{ findFinishedTrackJob, importTrackToLidarr }, { canAccessJobType }] = await Promise.all([
+          import("../../../services/lidarrTrackImport.js"),
+          import("../../playlists/handlers/utils.js"),
+        ]);
+        const canAccessJob = (job) => canAccessJobType(req.user, job.playlistId || job.playlistType);
+        const finishedJob = await findFinishedTrackJob(track, { canAccessJob });
         if (finishedJob) {
           try {
-            const result = await importTrackToLidarr({ jobId: finishedJob.id });
+            const result = await importTrackToLidarr({ jobId: finishedJob.id }, { canAccessJob });
             await invalidateActivityRequestsCache();
             return res.json({
               success: true,

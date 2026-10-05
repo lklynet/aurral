@@ -65,21 +65,23 @@ function finishedTrackJobs({ trackMbid, artistName, trackName } = {}) {
   ];
 }
 
-function findImportableJob(reference = {}) {
+function findImportableJob(reference = {}, canAccessJob = null) {
   const id = String(reference.jobId || "").trim();
-  return id ? downloadTracker.getJob(id) : finishedTrackJobs(reference)[0] || null;
+  if (id) return downloadTracker.getJob(id);
+  return finishedTrackJobs(reference).find((job) => !canAccessJob || canAccessJob(job)) || null;
 }
 
 /**
  * Finds a finished Aurral job for a track whose file is still on disk.
  *
  * @param {{trackMbid?: string, artistName?: string, trackName?: string}} track
- * @param {{downloadRoot?: string}} [options={}]
+ * @param {{downloadRoot?: string, canAccessJob?: function}} [options={}]
  * @returns {Promise<object|null>}
  */
 export async function findFinishedTrackJob(track, options = {}) {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   for (const job of finishedTrackJobs(track)) {
+    if (options.canAccessJob && !options.canAccessJob(job)) continue;
     if (await fileExists(path.resolve(remapLegacyPath(job.finalPath, downloadRoot)))) return job;
   }
   return null;
@@ -231,6 +233,18 @@ async function waitForCommand(command, { pollIntervalMs, timeoutMs }) {
   return current;
 }
 
+async function findManualImportCandidate(remotePath, artistId = null) {
+  const query = new URLSearchParams({
+    folder: remoteDirname(remotePath),
+    ...(artistId ? { artistId: String(artistId) } : {}),
+    filterExistingFiles: "false",
+    replaceExistingFiles: "false",
+  });
+  const candidates = await lidarrClient.request(`/manualimport?${query}`);
+  return (Array.isArray(candidates) ? candidates : [])
+    .find((entry) => pathKey(entry?.path) === pathKey(remotePath)) || null;
+}
+
 async function runImport(job, options) {
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -238,6 +252,12 @@ async function runImport(job, options) {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const localPath = path.resolve(remapLegacyPath(job.finalPath, downloadRoot));
   if (!(await fileExists(localPath))) throw importError(404, "The track's file is missing");
+
+  const remotePath = resolveRemotePath(localPath, getPathMappings("lidarr"));
+  // Check that Lidarr can reach the file before adding anything to Lidarr.
+  if (!(await findManualImportCandidate(remotePath))) {
+    throw importError(422, `Lidarr can't see the file at ${remotePath}. Check the Lidarr path mapping.`);
+  }
 
   const albumMbid = String(job.albumMbid || "").trim();
   const artist = await ensureLidarrArtist(job);
@@ -248,16 +268,7 @@ async function runImport(job, options) {
   const artistId = album.artistId || artist.id;
   const albumTracks = await waitForAlbumTracks(album.id, wait);
 
-  const remotePath = resolveRemotePath(localPath, getPathMappings("lidarr"));
-  const query = new URLSearchParams({
-    folder: remoteDirname(remotePath),
-    artistId: String(artistId),
-    filterExistingFiles: "false",
-    replaceExistingFiles: "false",
-  });
-  const candidates = await lidarrClient.request(`/manualimport?${query}`);
-  const candidate = (Array.isArray(candidates) ? candidates : [])
-    .find((entry) => pathKey(entry?.path) === pathKey(remotePath));
+  const candidate = await findManualImportCandidate(remotePath, artistId);
   if (!candidate) {
     throw importError(422, `Lidarr can't see the file at ${remotePath}. Check the Lidarr path mapping.`);
   }
@@ -323,7 +334,7 @@ async function runImport(job, options) {
  */
 export async function importTrackToLidarr(reference, options = {}) {
   if (!lidarrClient.isConfigured()) throw importError(400, "Lidarr is not configured");
-  const job = findImportableJob(reference);
+  const job = findImportableJob(reference, options.canAccessJob);
   if (!job || options.canAccessJob?.(job) === false) throw importError(404, "Download not found");
   if (job.status !== "done" || !job.finalPath) throw importError(409, "The track hasn't finished downloading");
   if (job.externalPath) throw importError(409, "The track is already in Lidarr");

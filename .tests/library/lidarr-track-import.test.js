@@ -23,6 +23,7 @@ const [
   { dbOps },
   { downloadWorker },
   { registerDownloads },
+  { flowPlaylistConfig },
 ] = await setupIsolatedBackend(
   "lidarr-track-import",
   "backend/config/db-sqlite.js",
@@ -36,6 +37,7 @@ const [
   "backend/db/helpers/index.js",
   "backend/services/downloadJobs/downloadWorker.js",
   "backend/routes/library/handlers/downloads.js",
+  "backend/services/playlists/flowPlaylistConfig.js",
 );
 
 const routes = new Map();
@@ -44,10 +46,10 @@ const route = (method) => (routePath, ...handlers) => {
 };
 registerDownloads({ get: route("GET"), post: route("POST"), put: route("PUT"), delete: route("DELETE") });
 
-async function addTrackToLibrary(body) {
+async function addTrackToLibrary(body, user = { role: "admin", permissions: {} }) {
   const response = { statusCode: 200, body: null };
   await routes.get("POST /downloads/track")(
-    { params: {}, body, query: {}, user: { role: "admin", permissions: {} } },
+    { params: {}, body, query: {}, user },
     {
       status(code) {
         response.statusCode = code;
@@ -230,11 +232,15 @@ test("a flow track Lidarr already matched is moved into Lidarr and the flow foll
 
   const result = await importTrackToLidarr({ jobId }, fastOptions);
 
-  const scan = state.calls.requests.find((call) => call.endpoint.startsWith("/manualimport?"));
-  const query = new URLSearchParams(scan.endpoint.split("?")[1]);
-  assert.equal(query.get("folder"), "/data/aurral/_flows/flow-weekly/Import Artist/Import Album");
-  assert.equal(query.get("artistId"), "7");
-  assert.equal(query.get("filterExistingFiles"), "false");
+  const [precheck, scan] = state.calls.requests
+    .filter((call) => call.endpoint.startsWith("/manualimport?"))
+    .map((call) => new URLSearchParams(call.endpoint.split("?")[1]));
+  for (const query of [precheck, scan]) {
+    assert.equal(query.get("folder"), "/data/aurral/_flows/flow-weekly/Import Artist/Import Album");
+    assert.equal(query.get("filterExistingFiles"), "false");
+  }
+  assert.equal(precheck.has("artistId"), false);
+  assert.equal(scan.get("artistId"), "7");
 
   const command = state.calls.requests.find((call) => call.endpoint === "/command");
   assert.deepEqual(command.body, {
@@ -365,8 +371,10 @@ test("a failed Lidarr import leaves the Aurral file and jobs alone", async () =>
   assert.equal(playlistManager.refreshPlaylist.mock.callCount(), 0);
 });
 
-test("a file Lidarr cannot see reports the path it looked for", async () => {
-  const state = createFakeLidarr();
+test("a file Lidarr cannot see is reported before anything is added to Lidarr", async () => {
+  const state = createFakeLidarr({ albumExists: false });
+  const artist = await lidarrClient.getArtistByMbid();
+  lidarrClient.getArtistByMbid = async () => (state.calls.addArtist.length ? artist : null);
   const { jobId } = await seedFlowJob(state);
   state.remotePath = "/somewhere/else.flac";
 
@@ -375,6 +383,8 @@ test("a file Lidarr cannot see reports the path it looked for", async () => {
     assert.match(error.message, /\/data\/aurral\/_flows\/flow-weekly\/Import Artist\/Import Album\/Second Song\.flac/);
     return true;
   });
+  assert.equal(state.calls.addArtist.length, 0);
+  assert.equal(state.calls.addAlbum.length, 0);
 });
 
 test("double submits for the same track share one import", async () => {
@@ -457,10 +467,18 @@ test("without an album name the Lidarr album containing the track is preferred o
 });
 
 const addBody = { artistName: "Import Artist", trackName: "Second Song", albumName: "Import Album", trackMbid };
+const ownerUserId = 1;
+let flowCount = 0;
+
+async function seedOwnedFlowJob(state) {
+  flowCount += 1;
+  const flow = flowPlaylistConfig.createFlow({ name: `Import Flow ${flowCount}`, ownerUserId });
+  return seedFlowJob(state, { playlistType: flow.id });
+}
 
 test("Add to library leaves a finished track alone while importing on add is off", async () => {
   const state = createFakeLidarr({ immediate: true, candidate: { album: { id: 70 }, tracks: [{ id: 802 }] } });
-  const { jobId } = await seedFlowJob(state);
+  const { jobId } = await seedOwnedFlowJob(state);
   setImportOnAdd(false);
 
   const response = await addTrackToLibrary(addBody);
@@ -473,7 +491,7 @@ test("Add to library leaves a finished track alone while importing on add is off
 
 test("Add to library imports a finished flow track into Lidarr when importing on add is on", async () => {
   const state = createFakeLidarr({ immediate: true, candidate: { album: { id: 70 }, tracks: [{ id: 802 }] } });
-  const { jobId } = await seedFlowJob(state);
+  const { jobId } = await seedOwnedFlowJob(state);
   setImportOnAdd(true);
 
   const response = await addTrackToLibrary(addBody);
@@ -507,7 +525,7 @@ test("Add to library reports a failed Lidarr import instead of moving the file",
     commandStatus: "failed",
     candidate: { album: { id: 70 }, tracks: [{ id: 802 }] },
   });
-  const { jobId, filePath } = await seedFlowJob(state);
+  const { jobId, filePath } = await seedOwnedFlowJob(state);
   setImportOnAdd(true);
 
   const response = await addTrackToLibrary(addBody);
@@ -517,4 +535,17 @@ test("Add to library reports a failed Lidarr import instead of moving the file",
   assert.equal(await fs.readFile(filePath, "utf8"), "audio");
   assert.equal(downloadTracker.getJob(jobId).finalPath, filePath);
   assert.equal(downloadTracker.getByPlaylistType("library").length, 0);
+});
+
+test("Add to library only imports finished tracks the user can access", async () => {
+  const state = createFakeLidarr({ immediate: true, candidate: { album: { id: 70 }, tracks: [{ id: 802 }] } });
+  const { jobId } = await seedOwnedFlowJob(state);
+  setImportOnAdd(true);
+
+  const response = await addTrackToLibrary(addBody, { id: ownerUserId + 1, role: "user", permissions: {} });
+
+  assert.equal(response.body.importedToLidarr, undefined);
+  assert.equal(state.calls.requests.some((call) => call.endpoint === "/command"), false);
+  assert.equal(downloadTracker.getJob(jobId).externalPath, null);
+  assert.equal(downloadTracker.getJob(response.body.jobId).playlistType, "library");
 });
