@@ -65,12 +65,6 @@ function finishedTrackJobs({ trackMbid, artistName, trackName } = {}) {
   ];
 }
 
-function findImportableJob(reference = {}, canAccessJob = null) {
-  const id = String(reference.jobId || "").trim();
-  if (id) return downloadTracker.getJob(id);
-  return finishedTrackJobs(reference).find((job) => !canAccessJob || canAccessJob(job)) || null;
-}
-
 /**
  * Finds a finished Aurral job for a track whose file is still on disk.
  *
@@ -329,12 +323,12 @@ async function runImport(job, options) {
 /**
  * Hands a downloaded Aurral track to Lidarr, which moves the file into its root folder.
  *
- * @param {{jobId?: string, trackMbid?: string, artistName?: string, trackName?: string}} reference
+ * @param {{jobId: string}} reference
  * @param {object} [options={}] - canAccessJob filter plus downloadRoot, pollIntervalMs and timeoutMs overrides.
  */
-export async function importTrackToLidarr(reference, options = {}) {
+export async function importTrackToLidarr({ jobId } = {}, options = {}) {
   if (!lidarrClient.isConfigured()) throw importError(400, "Lidarr is not configured");
-  const job = findImportableJob(reference, options.canAccessJob);
+  const job = downloadTracker.getJob(String(jobId || "").trim());
   if (!job || options.canAccessJob?.(job) === false) throw importError(404, "Download not found");
   if (job.status !== "done" || !job.finalPath) throw importError(409, "The track hasn't finished downloading");
   if (job.externalPath) throw importError(409, "The track is already in Lidarr");

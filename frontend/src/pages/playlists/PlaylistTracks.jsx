@@ -15,7 +15,6 @@ import {
   downloadTrackToLibrary,
   fetchLibraryFavorites,
   getLibraryPage,
-  importTrackToLidarr,
   lookupAlbumsInLibraryBatch,
   lookupArtistInLibrary,
   updateLibraryFavorites,
@@ -25,9 +24,7 @@ import {
   findLibraryAlbumByName,
   findLibraryArtistByName,
 } from "../../utils/libraryTrackNavigation.js";
-import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
-import { useLibraryDestination } from "../../hooks/useLibraryDestination.js";
 import { describeAddTrackResult } from "../../utils/libraryDestination.js";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import { PlaylistTracksPanel } from "./components/playlistTrackComponents.jsx";
@@ -63,15 +60,12 @@ export function PlaylistTracks({
   const bulkActions = usePlaylistBulkActions();
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
-  const { hasPermission } = useAuth();
-  const libraryDestination = useLibraryDestination();
   const [reSearchingTrackIds, setReSearchingTrackIds] = useState({});
   const [manualReplacement, setManualReplacement] = useState(null);
   const [trackInfo, setTrackInfo] = useState(null);
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
   const [playlistMenuError, setPlaylistMenuError] = useState("");
   const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
-  const [lidarrImportSavingKey, setLidarrImportSavingKey] = useState("");
   const [favoriteTrackSavingKey, setFavoriteTrackSavingKey] = useState("");
   const [deletingTrackId, setDeletingTrackId] = useState(null);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
@@ -322,22 +316,6 @@ export function PlaylistTracks({
     if (canonicalId) navigate(`/library/album/${encodeURIComponent(canonicalId)}`);
   };
 
-  const handleImportTrackToLidarr = async (track) => {
-    if (!track?.id || lidarrImportSavingKey) return;
-    setLidarrImportSavingKey(String(track.id));
-    try {
-      await importTrackToLidarr(track.id);
-      showSuccess(`Imported ${track.trackName || "track"} to Lidarr`);
-      await refresh();
-    } catch (err) {
-      const rejections = err?.response?.data?.rejections;
-      const message = errorMessage(err, "Failed to import track to Lidarr");
-      showError(Array.isArray(rejections) && rejections.length ? `${message}: ${rejections.join("; ")}` : message);
-    } finally {
-      setLidarrImportSavingKey("");
-    }
-  };
-
   const handleAddTrackToLibrary = async (track) => {
     const payload = {
       artistName: String(track?.artistName || "").trim(),
@@ -447,11 +425,6 @@ export function PlaylistTracks({
             : (track, target) => saveTrackToPlaylist(track, target, { moveFromPlaylistId: entry.id })
         }
         onAddTrackToLibrary={handleAddTrackToLibrary}
-        onImportTrackToLidarr={
-          libraryDestination.primary === "lidarr" && hasPermission("addAlbum")
-            ? handleImportTrackToLidarr
-            : undefined
-        }
         onViewTrackInfo={(track) =>
           setTrackInfo({
             kind: "track",
@@ -461,7 +434,6 @@ export function PlaylistTracks({
           })
         }
         libraryTrackSavingKey={libraryTrackSavingKey}
-        lidarrImportSavingKey={lidarrImportSavingKey}
         getTrackFavoriteId={getTrackFavoriteId}
         favoriteTrackIds={favoriteTrackIds}
         favoriteTrackSavingKey={favoriteTrackSavingKey}

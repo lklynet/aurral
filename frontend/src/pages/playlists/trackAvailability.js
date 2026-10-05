@@ -20,12 +20,3 @@ export function getTrackSearchAction(track, showTrackAvailability = false) {
 export function shouldShowAddToLibrary(track, onAddToLibrary) {
   return typeof onAddToLibrary === "function" && track?.libraryOwned !== true;
 }
-
-export function shouldShowImportToLidarr(track, onImportToLidarr) {
-  return (
-    typeof onImportToLidarr === "function" &&
-    Boolean(track?.id) &&
-    track.status === "done" &&
-    track.externalFile !== true
-  );
-}

@@ -15,8 +15,7 @@ import { addActiveDownload } from "../../activeDownloads.js";
 
 const buildStreamUrl = (path) => buildAuthenticatedApiUrl(path);
 const SLOW_LIBRARY_REQUEST_TIMEOUT_MS = 90000;
-// Covers the backend's Lidarr album waits plus its 5-minute import command timeout;
-// Add to library can import into Lidarr too.
+// Add to library can import into Lidarr: covers the album waits plus the 5-minute import command timeout.
 const LIDARR_IMPORT_TIMEOUT_MS = 7 * 60 * 1000;
 
 const mergeSignals = (callerSignal, querySignal) => {
@@ -411,13 +410,6 @@ export const downloadTrackToLibrary = async (track) => {
   }
   return result;
 };
-
-export const importTrackToLidarr = (jobId) =>
-  postData(
-    "/library/downloads/track/import-to-lidarr",
-    { jobId },
-    { timeout: LIDARR_IMPORT_TIMEOUT_MS },
-  );
 
 export const reSearchLibraryTrack = (trackId, { albumId } = {}) =>
   refreshActiveDownloadsAfter(postData(`/library/downloads/tracks/${encodeURIComponent(trackId)}/research`, {
