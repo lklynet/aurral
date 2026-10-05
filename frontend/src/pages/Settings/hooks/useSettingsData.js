@@ -98,7 +98,7 @@ const defaultSettings = {
       maxResults: 60,
     },
     nzbget: {
-      cleanupCompleted: true,
+      deleteLeftovers: true,
       enabled: false,
       url: "",
       username: "",

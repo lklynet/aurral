@@ -25,6 +25,12 @@ import { logger } from "../logger.js";
 
 const approvalFollowUps = new Set();
 
+async function removeReviewedDownload(job) {
+  if (job.downloadSource !== "usenet") return;
+  const { removeReviewedUsenetDownload } = await import("../usenetOrchestrator.js");
+  await removeReviewedUsenetDownload(job);
+}
+
 export const hasApprovalFollowUps = () => approvalFollowUps.size > 0;
 
 const getBlockedJob = (jobId) => {
@@ -85,11 +91,6 @@ export async function approveBlockedJob(jobId) {
         job,
         committedFinalPath: committedPath,
         album: job.albumName,
-        onSuccess: async () => {
-          if (job.downloadSource !== "usenet") return;
-          const { cleanupCompletedUsenetDownload } = await import("../usenetOrchestrator.js");
-          await cleanupCompletedUsenetDownload(job);
-        },
       });
       return { committedPath, recorded };
     },
@@ -97,6 +98,7 @@ export async function approveBlockedJob(jobId) {
   if (committed.cancelled) return { status: 409, error: "Download job was removed" };
   if (!committed.result) return { status: 404, error: "Blocked job not found" };
   const { committedPath, recorded } = committed.result;
+  await removeReviewedDownload(job);
   try {
     await classifyQualityJob(downloadTracker.getJob(job.id));
   } catch (error) {
@@ -110,6 +112,7 @@ export async function denyBlockedJob(jobId) {
   const job = getBlockedJob(jobId);
   if (!job) return { status: 404, error: "Blocked job not found" };
   await discardReviewFile(job);
+  await removeReviewedDownload(job);
   const deniedSourceKey = ["usenet", "ytdlp", "deemix"].includes(job.downloadSource)
     ? String(job.releaseGuid || "").trim()
     : `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`;

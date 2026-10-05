@@ -1,70 +1,64 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isPathInsideRoot, resolveDownloadRoot } from "./downloadPaths.js";
+import { lidarrClient } from "./lidarrClient.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 
-const inside = (target, root) => {
-  const relative = path.relative(root, target);
-  return relative === "" || (!relative.startsWith(`..${path.sep}`)
-    && relative !== ".." && !path.isAbsolute(relative));
-};
+const realpathOr = (dir) => fs.realpath(dir).catch(() => dir);
 
-// Cleanup uses the client's job directory, never an inferred common parent
-// of audio files. A category can contain several releases downloading at once.
-export async function cleanupNzbgetFiles({ historyItem, directories, category,
-  protectedRoots = [], otherItems = [] }) {
+// NZBGet cannot delete a finished download, so Aurral removes the folder that
+// NZBGet created for the job. That folder is always a direct child of the
+// completed folder (or of the intermediate folder for a failed job). Anything
+// else is refused, so a misreported path cannot reach a shared folder or a
+// music library.
+export async function removeNzbgetDownloadFolder(historyItem, directories, category) {
   const mappings = getPathMappings("nzbget");
-  const local = (value) => {
+  const toLocal = (value) => {
     const raw = String(value || "").trim();
     if (!raw) return null;
-    const resolved = resolveLocalPath(raw, mappings);
-    // An unmapped Windows path must not become relative to the app directory.
-    if (!path.isAbsolute(raw) && resolved === path.resolve(raw)) return null;
-    return path.resolve(resolved);
+    const local = resolveLocalPath(raw, mappings);
+    // An unmapped Windows path would otherwise land under the app folder.
+    return path.isAbsolute(raw) || local !== path.resolve(raw) ? local : null;
   };
-  const target = local(historyItem?.FinalDir || historyItem?.DestDir);
-  if (!target) throw new Error("NZBGet completed job directory is missing or unmapped");
-  if (historyItem.Category && historyItem.Category !== category) {
-    throw new Error("NZBGet job belongs to another category");
+  const target = toLocal(historyItem?.DestDir);
+  if (!target) throw new Error("NZBGet download folder is missing or unmapped");
+  const finalDir = toLocal(historyItem?.FinalDir);
+  if (finalDir && finalDir !== target) {
+    throw new Error("A post-processing script moved the NZBGet download");
   }
-  const roots = [directories.completedPath, directories.categoryDestDir, directories.destDir]
-    .map(local).filter((root) => root && root !== path.parse(root).root);
-  const reserved = [...roots, local(directories.interDir), local(directories.mainDir),
-    ...roots.map((root) => path.join(root, category)), ...mappings.map((entry) => entry.local)]
-    .filter(Boolean);
-  if (reserved.includes(target) || !roots.some((root) => target !== root && inside(target, root))) {
-    throw new Error("NZBGet cleanup requires a release folder inside the completed directory");
-  }
+
   const stat = await fs.lstat(target).catch((error) => {
     if (error.code === "ENOENT") return null;
     throw error;
   });
   if (!stat) return;
-  if (!stat.isDirectory() || stat.isSymbolicLink()) {
-    throw new Error("NZBGet cleanup target is not a regular directory");
+  if (!stat.isDirectory()) throw new Error("NZBGet download folder is not a directory");
+
+  const roots = [directories.completedPath, directories.categoryDestDir, directories.destDir]
+    .map(toLocal)
+    .filter(Boolean);
+  const parents = await Promise.all(
+    [...roots, ...roots.map((root) => path.join(root, category)), toLocal(directories.interDir)]
+      .filter(Boolean)
+      .map(realpathOr),
+  );
+  const realTarget = path.join(await fs.realpath(path.dirname(target)), path.basename(target));
+  if (!parents.includes(path.dirname(realTarget)) || parents.includes(realTarget)) {
+    throw new Error("NZBGet download folder is not inside NZBGet's download folders");
   }
-  const realTarget = await fs.realpath(target);
-  const realRoots = await Promise.all(roots.map((root) => fs.realpath(root).catch(() => root)));
-  const realReserved = await Promise.all(reserved.map((root) => fs.realpath(root).catch(() => root)));
-  if (realReserved.includes(realTarget)
-    || !realRoots.some((root, index) => realTarget !== root && inside(realTarget, root)
-      && path.resolve(root, path.relative(roots[index], target)) === realTarget)) {
-    throw new Error("NZBGet cleanup directory resolves outside the completed directory");
-  }
-  for (const root of protectedRoots.filter(Boolean)) {
-    const realRoot = await fs.realpath(root).catch(() => path.resolve(root));
-    if (inside(realTarget, realRoot) || inside(realRoot, realTarget)) {
-      throw new Error("NZBGet cleanup directory overlaps a music library");
+
+  const libraries = [
+    resolveDownloadRoot(),
+    ...(lidarrClient.isEnabled()
+      ? lidarrClient.getConfiguredRootFolderPaths()
+        .map((root) => resolveLocalPath(root, getPathMappings("lidarr")))
+      : []),
+  ].filter(Boolean);
+  for (const library of await Promise.all(libraries.map((root) => realpathOr(path.resolve(root))))) {
+    if (library === realTarget || isPathInsideRoot(library, realTarget)
+      || isPathInsideRoot(realTarget, library)) {
+      throw new Error("NZBGet download folder overlaps a music library");
     }
   }
-  for (const item of otherItems) {
-    for (const value of [item.FinalDir, item.DestDir]) {
-      const other = local(value);
-      if (!other) continue;
-      const realOther = await fs.realpath(other).catch(() => other);
-      if (inside(realTarget, realOther) || inside(realOther, realTarget)) {
-        throw new Error("NZBGet completed directory is shared with another download");
-      }
-    }
-  }
-  await fs.rm(target, { recursive: true, force: true });
+  await fs.rm(realTarget, { recursive: true, force: true });
 }
