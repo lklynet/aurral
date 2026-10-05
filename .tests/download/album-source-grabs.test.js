@@ -8,16 +8,20 @@ import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTe
 
 const execFileAsync = promisify(execFile);
 const [state, { dbOps }, { downloadTracker }, { getDownloadClient },
-  { processUsenetPipelinePayload }, { processPipelinePayload }] = await setupIsolatedBackend(
+  { processUsenetPipelinePayload }, { processPipelinePayload }, { downloadWorker }] = await setupIsolatedBackend(
   "album-source-grabs",
   "backend/db/helpers/index.js",
   "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/download/downloadClientSettings.js",
   "backend/services/usenetOrchestrator.js",
   "backend/services/downloadPipeline.js",
+  "backend/services/downloadJobs/downloadWorker.js",
 );
 
-test.after(async () => cleanupIsolatedState(state));
+test.after(async () => {
+  await downloadWorker.stopAndDrain();
+  await cleanupIsolatedState(state);
+});
 
 async function makeAlbum(group) {
   const folder = join(state.baseDir, group);

@@ -921,7 +921,7 @@ test("a targeted local rescan only parses changed files", async () => {
 
     await scanMusicRoot({ rootPath: root, source, metadataReader });
     metadataReads.length = 0;
-    await writeFile(filePaths[0], "changed");
+    await writeFile(filePaths[0], "changed fixture");
     await scanMusicRoot({
       rootPath: root,
       source,

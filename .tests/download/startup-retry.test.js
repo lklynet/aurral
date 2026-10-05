@@ -27,7 +27,7 @@ test.beforeEach(() => {
   downloadTracker.clearAll();
   resetDatabase(db);
   dbOps.updateSettings({
-    integrations: {},
+    integrations: { ytdlp: { enabled: false } },
     onboardingComplete: true,
     flows: [],
     sharedPlaylists: [],
