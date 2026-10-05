@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
+import { parseFile } from "music-metadata";
 
 import {
   setupIsolatedBackend,
@@ -763,4 +764,68 @@ btest("denying a review removes its file and yt-dlp folder but leaves a Library 
   const inLibrary = path.join(resolveDownloadRoot(), "deny-cleanup", "Artist Name - Correct Track.mp3");
   await review(inLibrary, "deemix");
   await access(inLibrary);
+});
+
+// Stands in for a download folder on a slow network mount: ffmpeg fails, as it
+// times out there, on any file in that folder and works everywhere else.
+async function failFfmpegIn(t, folder) {
+  const bin = path.join(isolatedState.baseDir, "slow-mount-bin");
+  const ffmpeg = spawnSync("sh", ["-c", "command -v ffmpeg"], { encoding: "utf8" }).stdout.trim();
+  await mkdir(bin, { recursive: true });
+  await writeFile(path.join(bin, "ffmpeg"), `#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in "${folder}"/*) echo "Connection timed out" >&2; exit 1 ;; esac
+done
+exec "${ffmpeg}" "$@"
+`, { mode: 0o755 });
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${bin}${path.delimiter}${originalPath}`;
+  t.after(() => {
+    process.env.PATH = originalPath;
+  });
+}
+
+btest("a download is tagged after it reaches the Library, so a slow download folder cannot fail it", async (t) => {
+  const slowFolder = path.join(isolatedState.baseDir, "slow-mount");
+  const usenetFile = path.join(slowFolder, "usenet", "Artist Name", "Album Name", "01 Correct Track.mp3");
+  const slskdRoot = path.join(slowFolder, "slskd");
+  const slskdFile = path.join(slskdRoot, "Artist Name", "02 Other Track.mp3");
+  await writeOneSecondMp3(usenetFile);
+  await writeOneSecondMp3(slskdFile, { title: "Other Track" });
+  const server = await createMockHttpServer((req, res) => {
+    req.resume();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: [] }));
+  });
+  t.after(() => server.close());
+  dbOps.updateSettings({ ...dbOps.getSettings(), integrations: { ...dbOps.getSettings().integrations,
+    nzbget: { enabled: true, url: server.url, completedPath: path.join(slowFolder, "usenet") },
+    slskd: { enabled: true, url: "http://127.0.0.1:9" } } });
+  const slskd = getDownloadClient("slskd");
+  t.mock.method(slskd, "getDownloadDirectory", async () => slskdRoot);
+  t.mock.method(slskd, "isCleanupAfterRunsEnabled", () => false);
+  await failFfmpegIn(t, slowFolder);
+  const addJob = (trackName, trackNumber) => {
+    const jobId = downloadTracker.addJob({ artistName: "Artist Name", trackName, albumName: "Album Name",
+      durationMs: 1000, trackNumber }, "slow-mount");
+    downloadTracker.setDownloading(jobId);
+    return jobId;
+  };
+
+  const usenetJobId = addJob("Correct Track", 1);
+  await processUsenetPipelinePayload({ phase: "finalize", source: "usenet", jobId: usenetJobId, nzbId: 1,
+    destination: "slow-mount/Artist Name/Album Name", history: { FinalDir: path.join(slowFolder, "usenet") },
+    candidate: { raw: { guid: "release-1", release: { guid: "release-1", title: "Artist Name - Album Name" } } },
+    candidateIndex: 0 }, { failOrTryNextSource: failIfPipelineFallsThrough });
+  const slskdJobId = addJob("Other Track", 2);
+  await processPipelinePayload({ phase: "finalize", source: "slskd", jobId: slskdJobId, candidateIndex: 0,
+    destination: "slow-mount/Artist Name/Album Name",
+    candidates: [{ raw: { user: "peer", file: "Music\\Artist Name\\02 Other Track.mp3", size: 0 } }] });
+
+  for (const [jobId, trackNumber] of [[usenetJobId, 1], [slskdJobId, 2]]) {
+    const job = downloadTracker.getJob(jobId);
+    assert.equal(job.status, "done", job.error);
+    const { common } = await parseFile(job.finalPath);
+    assert.deepEqual([common.album, common.track.no], ["Album Name", trackNumber]);
+  }
 });

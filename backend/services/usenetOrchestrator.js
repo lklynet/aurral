@@ -25,7 +25,7 @@ import {
   commitDownloadedFile,
   joinUnderRoot,
   buildTrackFileName,
-  writeAudioMetadata,
+  writeImportedFileMetadata,
 } from "./downloadUtils.js";
 import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.js";
 import {
@@ -511,11 +511,14 @@ async function handleUsenetFinalize(payload, helpers) {
     import("./aurralHistoryService.js")
       .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
       .catch((err) => { console.warn(err); });
-    await writeAudioMetadata(found.filePath, resolvedTrack);
     const committedFinalPath = await commitDownloadedFile(
       found.filePath,
       finalPath,
     );
+    await writeImportedFileMetadata(committedFinalPath, resolvedTrack, {
+      source: "usenet",
+      jobId: job.id,
+    });
     removeUsenetItem(payload, job.id);
     return finalizePipelineJobSuccess({
       downloadTracker,
