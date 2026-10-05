@@ -438,7 +438,7 @@ export function LidarrSettingsSection({
         </SettingsArrFormGroup>
 
         <SettingsArrFormGroup
-          label="Import to Lidarr when adding to library"
+          label="Import to Lidarr instead of the Aurral library"
           help="Add to library hands tracks to Lidarr instead of keeping them in the Downloads Folder. Tracks that are not downloaded yet are downloaded first, then imported."
         >
           <PillToggle
