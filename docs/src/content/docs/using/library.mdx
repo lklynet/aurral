@@ -76,6 +76,7 @@ With Lidarr connected, **Download album** sends the album to Lidarr. Lidarr then
 
 - To get the rest of an album, open its Library page and select the download button next to **Add to favorites**. Without Lidarr, Aurral looks up the full track list and downloads what is missing. With Lidarr, Lidarr searches for the album.
 - To get one missing track, select the download button on its row. Aurral downloads the track, even on an album that Lidarr manages.
+- To give Lidarr a track that Aurral already downloaded, select **Import to Lidarr** in its menu on a flow or playlist page. Lidarr moves the file into its root folder and adds the artist and album without monitoring them. If Aurral managed the album, Lidarr takes it over.
 - To stop monitoring an album, open the album's menu and select **Stop monitoring album**. This stops monitoring every track on it.
 - To stop monitoring one track, open its menu on the album page and select **Stop monitoring track**. Use this to keep a file you are happy with from being upgraded. An unmonitored track shows a crossed-out eye. Lidarr cannot monitor single tracks, so tracks whose files come from Lidarr have no track monitoring.
 
@@ -155,5 +156,5 @@ To fix a wrong or missing link, open the artist menu and select **Edit MusicBrai
 
 ## Known limits
 
-- Aurral hands an album to Lidarr only when Lidarr downloads or monitors it. Aurral never takes albums from Lidarr.
+- Aurral hands an album to Lidarr only when Lidarr downloads or monitors it, or when you import one of its tracks to Lidarr. Aurral never takes albums from Lidarr.
 - When Lidarr is connected and **Show available music only** is on, the Library hides albums that Aurral is still downloading until one track finishes. To show them, turn off the setting in **Settings > Lidarr**.

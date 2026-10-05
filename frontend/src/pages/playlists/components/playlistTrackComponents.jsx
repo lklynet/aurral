@@ -3,6 +3,7 @@ import {
   Download,
   ExternalLink,
   Heart,
+  FolderInput,
   Info,
   ListMusic,
   Play,
@@ -29,6 +30,7 @@ import {
   getTrackAvailability,
   getTrackSearchAction,
   shouldShowAddToLibrary,
+  shouldShowImportToLidarr,
 } from "../trackAvailability.js";
 import Tooltip from "../../../components/Tooltip";
 
@@ -114,6 +116,8 @@ function PlaylistTrackKebabMenu({
   onViewInfo,
   onAddToLibrary,
   isAddingToLibrary = false,
+  onImportToLidarr,
+  isImportingToLidarr = false,
   isFavorite = false,
   isFavoritePending = false,
   onToggleFavorite,
@@ -139,6 +143,7 @@ function PlaylistTrackKebabMenu({
   const canAddToLibrary = shouldShowAddToLibrary(track, onAddToLibrary);
   const { isTrackDownloading } = useActiveDownloads();
   const downloading = canAddToLibrary && isTrackDownloading(track);
+  const canImportToLidarr = shouldShowImportToLidarr(track, onImportToLidarr);
   const actionItems = [
     onPlay
       ? {
@@ -164,6 +169,15 @@ function PlaylistTrackKebabMenu({
           icon: downloading ? DownloadingIcon : Plus,
           disabled: isAddingToLibrary || downloading,
           onSelect: () => onAddToLibrary(track),
+        }
+      : null,
+    canImportToLidarr
+      ? {
+          id: "import-lidarr",
+          label: isImportingToLidarr ? "Importing to Lidarr…" : "Import to Lidarr",
+          icon: FolderInput,
+          disabled: isImportingToLidarr,
+          onSelect: () => onImportToLidarr(track),
         }
       : null,
     onToggleFavorite
@@ -368,8 +382,10 @@ export function PlaylistTracksPanel({
   onAddTrackToPlaylist,
   onMoveTrackToPlaylist,
   onAddTrackToLibrary,
+  onImportTrackToLidarr,
   onViewTrackInfo,
   libraryTrackSavingKey = "",
+  lidarrImportSavingKey = "",
   getTrackFavoriteId,
   favoriteTrackIds = new Set(),
   favoriteTrackSavingKey = "",
@@ -571,6 +587,8 @@ export function PlaylistTracksPanel({
           onViewInfo={onViewTrackInfo}
           onAddToLibrary={onAddTrackToLibrary}
           isAddingToLibrary={libraryTrackSavingKey === String(track.id)}
+          onImportToLidarr={onImportTrackToLidarr}
+          isImportingToLidarr={lidarrImportSavingKey === String(track.id)}
           isFavorite={favoriteTrackIds.has(trackFavoriteId)}
           isFavoritePending={favoriteTrackSavingKey === trackFavoriteId}
           onToggleFavorite={trackFavoriteId ? onToggleFavorite : null}

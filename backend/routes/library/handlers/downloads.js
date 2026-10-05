@@ -473,6 +473,46 @@ export function registerDownloads(router) {
     }
   });
 
+  router.post(
+    "/downloads/track/import-to-lidarr",
+    requireAuth,
+    requirePermission("addAlbum"),
+    async (req, res) => {
+      const body = req.body || {};
+      try {
+        const [{ importTrackToLidarr }, { canAccessJobType }] = await Promise.all([
+          import("../../../services/lidarrTrackImport.js"),
+          import("../../playlists/handlers/utils.js"),
+        ]);
+        const result = await importTrackToLidarr(
+          {
+            jobId: body.jobId,
+            trackMbid: body.trackMbid,
+            artistName: body.artistName,
+            trackName: body.trackName,
+          },
+          { canAccessJob: (job) => canAccessJobType(req.user, job.playlistId || job.playlistType) },
+        );
+        await invalidateActivityRequestsCache();
+        return res.json({
+          success: true,
+          lidarrAlbumId: result.lidarrAlbumId,
+          trackFile: result.trackFile,
+          jobsUpdated: result.jobsUpdated,
+        });
+      } catch (error) {
+        const statusCode = error.statusCode || 500;
+        if (statusCode >= 500) {
+          logger.error("library", "Failed to import track into Lidarr", error.message);
+        }
+        return res.status(statusCode).json({
+          error: error.message || "Failed to import track into Lidarr",
+          ...(error.rejections?.length ? { rejections: error.rejections } : {}),
+        });
+      }
+    },
+  );
+
   router.post("/downloads/album", requireAuth, requirePermission("addAlbum"), async (req, res) => {
     try {
       const { albumId } = req.body;

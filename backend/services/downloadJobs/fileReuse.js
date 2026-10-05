@@ -296,10 +296,11 @@ async function findAurralSource(track, options = {}) {
   };
 }
 
-function retargetJobsToPath(oldPath, newPath, downloadRoot, albumName = null) {
+function retargetJobsToPath(oldPath, newPath, downloadRoot, albumName = null, externalPath) {
   const resolvedOld = path.resolve(oldPath);
   const resolvedNew = path.resolve(newPath);
-  if (resolvedOld === resolvedNew) return;
+  const retargeted = [];
+  if (resolvedOld === resolvedNew) return retargeted;
   for (const job of downloadTracker.getAll()) {
     if (job?.status !== "done" || typeof job.finalPath !== "string") continue;
     const current = path.resolve(remapLegacyPath(job.finalPath, downloadRoot));
@@ -308,9 +309,41 @@ function retargetJobsToPath(oldPath, newPath, downloadRoot, albumName = null) {
       job.id,
       resolvedNew,
       albumName || job.albumName || null,
-      job.externalPath || null,
+      externalPath === undefined ? job.externalPath || null : externalPath,
     );
+    retargeted.push(job);
   }
+  return retargeted;
+}
+
+async function refreshChangedPlaylists(playlistTypes) {
+  if (playlistTypes.size === 0) return;
+  const { playlistManager } = await import("../playlists/playlistManager.js");
+  for (const playlistType of playlistTypes) {
+    await playlistManager.refreshPlaylist(playlistType).catch((error) => {
+      console.warn(`[FileReuse] Could not refresh playlist ${safeLogDiagnostic(playlistType)}:`,
+        safeLogDiagnostic(error));
+    });
+  }
+}
+
+/**
+ * Points every completed job that used an Aurral file at the file Lidarr imported from it.
+ *
+ * @param {string} oldPath - Aurral-local path the file had before Lidarr moved it.
+ * @param {string} lidarrPath - Track file path as Lidarr reports it.
+ * @returns {Promise<{moved: number, finalPath: string}>}
+ */
+export async function moveJobsToLidarrFile(oldPath, lidarrPath, options = {}) {
+  const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
+  const finalPath = path.resolve(resolveLocalPath(lidarrPath, getPathMappings("lidarr")));
+  const jobs = retargetJobsToPath(oldPath, finalPath, downloadRoot, options.albumName, lidarrPath);
+  forgetPlaybackRetainedFile(path.resolve(oldPath));
+  await refreshChangedPlaylists(
+    new Set(jobs.map((job) => String(job.playlistType || "")).filter(Boolean)),
+  );
+  scheduleLibraryScanJob({ includeLidarr: true, changedPaths: [path.resolve(oldPath)] });
+  return { moved: jobs.length, finalPath };
 }
 
 export async function adoptFileIntoPlaylist(sourcePath, targetPlaylistType, downloadRoot, options = {}) {
@@ -976,13 +1009,7 @@ export async function moveHandedOverTracksToLidarr(options = {}) {
   }
   if (movedPaths.length === 0) return { moved: 0, deleted: 0 };
 
-  const { playlistManager } = await import("../playlists/playlistManager.js");
-  for (const playlistType of changedPlaylistTypes) {
-    await playlistManager.refreshPlaylist(playlistType).catch((error) => {
-      console.warn(`[FileReuse] Could not refresh playlist ${safeLogDiagnostic(playlistType)}:`,
-        safeLogDiagnostic(error));
-    });
-  }
+  await refreshChangedPlaylists(changedPlaylistTypes);
   const deletionGuard = options.deletionGuard || createPlaybackDeletionGuard({ playlistRoot: downloadRoot });
   let deleted = 0;
   for (const oldPath of movedPaths) {

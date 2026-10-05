@@ -94,9 +94,9 @@ function getAccessibleManualSearchJob(user, jobId, { mode = "missing", playlistI
   return job;
 }
 
-function toPublicJob({ stagingPath: _stagingPath, finalPath, externalPath: _externalPath, ...job }) {
+function toPublicJob({ stagingPath: _stagingPath, finalPath, externalPath, ...job }) {
   const streamFormat = finalPath ? path.extname(finalPath).slice(1).toLowerCase() : "";
-  return { ...job, streamFormat: streamFormat || null };
+  return { ...job, streamFormat: streamFormat || null, externalFile: Boolean(externalPath) };
 }
 
 async function runQualityChecksLocally(playlistIds) {

@@ -2789,6 +2789,12 @@ export class LibraryManager {
     await cancelAurralAlbumJobs(albumJobKeys(album));
   }
 
+  async recordLidarrTrackImport(lidarrArtist, lidarrAlbum) {
+    await this._handAurralAlbumToLidarr(String(lidarrAlbum?.foreignAlbumId || "").trim());
+    recordLidarrOwner(lidarrArtist, lidarrAlbum);
+    invalidateLibraryQueryCache({ persistedGenres: false });
+  }
+
   async requestAlbumFromSearch({
     albumMbid,
     albumName,
