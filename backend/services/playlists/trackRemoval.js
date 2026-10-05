@@ -10,10 +10,36 @@ import { transferDownloadOwnershipInTransaction, replaceAlbumDownloadLeaderInTra
 import { prepareRetainedPlaylistFile, commitRetainedPlaylistRelocationInTransaction } from "./mediaRelocation.js";
 import { removePlaylistFileIfUnshared } from "../downloadJobs/fileReuse.js";
 import { downloadWorker } from "../downloadJobs/downloadWorker.js";
+import { playlistManager } from "./playlistManager.js";
 
 export function getSharedDownloadReferences(jobId, excludedPlaylistId) {
   return flowPlaylistConfig.getStaticPlaylists().filter((playlist) => playlist.id !== excludedPlaylistId &&
     playlist.tracks.some((track) => track.canonicalJobId === jobId));
+}
+
+function playlistsWithMissingDownloads() {
+  dbOps.invalidateSettingsCache();
+  invalidateFlowPlaylistConfigCache();
+  const jobIds = new Set(downloadTracker.getAll().map((job) => job.id));
+  return flowPlaylistConfig.getStaticPlaylists()
+    .map((playlist) => ({
+      playlist,
+      tracks: playlist.tracks.filter((track) => !track.canonicalJobId || jobIds.has(track.canonicalJobId)),
+    }))
+    .filter(({ playlist, tracks }) => tracks.length < playlist.tracks.length);
+}
+
+export async function removePlaylistTracksWithoutDownloads() {
+  const playlistIds = playlistsWithMissingDownloads().map(({ playlist }) => playlist.id);
+  if (!playlistIds.length) return [];
+  const repairedIds = await withPlaylistMutationLock(playlistIds, () =>
+    playlistsWithMissingDownloads()
+      .filter(({ playlist, tracks }) => playlistIds.includes(playlist.id) &&
+        flowPlaylistConfig.updateStaticPlaylist(playlist.id, { tracks }))
+      .map(({ playlist }) => playlist.id));
+  playlistManager.updateConfig(false);
+  for (const playlistId of repairedIds) await playlistManager.refreshPlaylist(playlistId);
+  return repairedIds;
 }
 
 export function captureStaticPlaylistSelection(playlist, jobId) {

@@ -11,6 +11,7 @@ import {
   upsertLibraryArtist,
 } from "./libraryMediaStore.js";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.js";
+import { removePlaylistTracksWithoutDownloads } from "./playlists/trackRemoval.js";
 import { rebuildLibrarySearchIndex } from "./librarySearchIndex.js";
 import { rebuildLibraryGenreStats } from "./libraryQueryService.js";
 import {
@@ -219,6 +220,13 @@ export async function scanConfiguredLibrary({
       }
     }
     artistsResolved = await resolveUnmatchedLibraryArtists();
+    if (!targeted) {
+      await removePlaylistTracksWithoutDownloads().catch((error) => {
+        logger.warn("library", "Could not remove missing tracks from playlists", {
+          message: error?.message || String(error),
+        });
+      });
+    }
   } catch (error) {
     scanFailed = true;
     throw error;

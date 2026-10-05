@@ -17,6 +17,9 @@ import {
   upsertLibraryTrack,
 } from "../../backend/services/libraryMediaStore.js";
 import { dbOps } from "../../backend/db/helpers/index.js";
+import { flowPlaylistConfig } from "../../backend/services/playlists/flowPlaylistConfig.js";
+import { playlistManager } from "../../backend/services/playlists/playlistManager.js";
+import { getPlaylistStatusSnapshot } from "../../backend/services/playlists/playlistStatusSnapshot.js";
 import {
   clearDownloadProviderWork,
   isDownloadJobCancelled,
@@ -104,6 +107,78 @@ test("deletes Aurral-owned track files without Lidarr", async (t) => {
     if (libraryJobId) downloadTracker.removeJob(libraryJobId);
     if (upgradeJobId) downloadTracker.removeJob(upgradeJobId);
     if (differentTrackJobId) downloadTracker.removeJob(differentTrackJobId);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("deleting a library track removes it from playlists that referenced its download", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-playlist-"));
+  const filePath = path.join(root, "Artist", "Single", "01 Track.flac");
+  const identity = `track-delete-playlist-${process.pid}-${Date.now()}`;
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, "single audio");
+
+  const artist = upsertLibraryArtist({ identityKey: `${identity}:artist`, name: "Artist" });
+  const album = upsertLibraryAlbum({
+    identityKey: `${identity}:album`,
+    artistId: artist.id,
+    title: "Single",
+  });
+  const track = upsertLibraryTrack({
+    identityKey: `${identity}:track`,
+    mbid: `${identity}-mbid`,
+    title: "Track",
+    artistName: "Artist",
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "aurral",
+    path: filePath,
+    available: true,
+  });
+  const deletedJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Track", albumName: "Single", trackMbid: `${identity}-mbid` },
+    "library",
+  );
+  downloadTracker.setDone(deletedJobId, filePath, "Single");
+  const keptJobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Other Track" }, "library");
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: `${identity} playlist`,
+    tracks: [
+      { artistName: "Artist", trackName: "Track", albumName: "Single", canonicalJobId: deletedJobId },
+      { artistName: "Artist", trackName: "Other Track", canonicalJobId: keptJobId },
+      { artistName: "Artist", trackName: "Imported Track" },
+    ],
+  });
+  const keptTracks = playlist.tracks.slice(1);
+
+  t.mock.method(lidarrClient, "isConfigured", () => false);
+  const refreshPlaylist = t.mock.method(playlistManager, "refreshPlaylist", async () => {});
+
+  try {
+    assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
+    assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(playlist.id).tracks, keptTracks);
+    const status = getPlaylistStatusSnapshot().sharedPlaylists.find((entry) => entry.id === playlist.id);
+    assert.equal(status.trackCount, 2);
+    assert.equal(
+      status.trackIdentities.some((entry) => entry.startsWith("artist\u0001track\u0001")),
+      false,
+    );
+    assert.deepEqual(refreshPlaylist.mock.calls.map((call) => call.arguments[0]), [playlist.id]);
+  } finally {
+    flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
+    db.prepare(
+      "DELETE FROM library_search_documents WHERE (entity_kind, entity_id) IN ((?, ?), (?, ?), (?, ?))",
+    ).run("artist", artist.id, "album", album.id, "track", track.id);
+    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run("aurral", filePath);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(album.id, track.id);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+    downloadTracker.removeJob(deletedJobId);
+    downloadTracker.removeJob(keptJobId);
     await rm(root, { recursive: true, force: true });
   }
 });

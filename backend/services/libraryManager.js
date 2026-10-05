@@ -41,6 +41,7 @@ import {
 import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.js";
 import { restoreDownloadJobCancellations } from "./downloadJobs/downloadCancellation.js";
 import { removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.js";
+import { removePlaylistTracksWithoutDownloads } from "./playlists/trackRemoval.js";
 import {
   cancelAurralAlbumJobs,
   cancelAurralTrackJobs,
@@ -435,6 +436,13 @@ async function removeLibraryDownloadJobs(tracks, { albumMbids = [] } = {}) {
       committedPaths.add(completedJob.finalPath);
     }
     downloadTracker.removeJob(job.id);
+  }
+  try {
+    await removePlaylistTracksWithoutDownloads();
+  } catch (error) {
+    logger.warn("library", "Could not remove deleted tracks from playlists", {
+      message: error?.message || String(error),
+    });
   }
   return [...committedPaths];
 }
