@@ -455,24 +455,17 @@ export async function importTrackToLidarr({ jobId } = {}, options = {}) {
   return request;
 }
 
-// Library jobs queued by Add to library while importing on add is on. Kept in memory: after a
-// restart the download stays in the Downloads Folder.
-const importWhenDownloadedJobIds = new Set();
-
-export function importWhenDownloaded(jobId) {
-  const id = String(jobId || "").trim();
-  if (id) importWhenDownloadedJobIds.add(id);
-}
-
 /**
- * Imports a finished download into Lidarr if Add to library asked for it. Never throws:
- * on failure the file stays where Aurral committed it.
+ * Imports a finished Aurral library download into Lidarr while "Import to Lidarr instead of the
+ * Aurral library" is on, whatever queued it (Add to library, album grabs, missing-track search).
+ * Never throws: on failure the file stays where Aurral committed it.
  */
 export async function importDownloadedTrack(jobId, options = {}) {
   const id = String(jobId || "").trim();
-  if (!importWhenDownloadedJobIds.delete(id)) return null;
   if (dbOps.getSettings().integrations?.lidarr?.importOnAddToLibrary !== true) return null;
-  if (downloadTracker.getJob(id)?.externalPath) return null;
+  if (!lidarrClient.isConfigured()) return null;
+  const job = downloadTracker.getJob(id);
+  if (job?.playlistType !== "library" || job.status !== "done" || job.externalPath) return null;
   try {
     return await importTrackToLidarr({ jobId: id }, options);
   } catch (error) {

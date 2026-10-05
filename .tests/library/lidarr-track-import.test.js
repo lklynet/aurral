@@ -17,7 +17,7 @@ const [
   { lidarrClient },
   { playlistManager },
   { syncPathMappings },
-  { findFinishedTrackJob, importTrackToLidarr, importWhenDownloaded },
+  { findFinishedTrackJob, importTrackToLidarr },
   libraryStore,
   managementStore,
   { dbOps },
@@ -576,13 +576,15 @@ test("a track queued by Add to library is imported into Lidarr once it is downlo
 
 test("a finished library download is left alone when importing on add is off", async () => {
   const state = createFakeLidarr({ immediate: true, candidate: { album: { id: 70 }, tracks: [{ id: 802 }] } });
+  setImportOnAdd(false);
   const jobId = downloadTracker.addJob({ ...addBody, artistMbid, albumMbid }, "library");
 
   const filePath = await completeLibraryDownload(state, jobId);
 
   await new Promise((resolve) => setTimeout(resolve, 50));
-  assert.equal(state.calls.requests.length, 0);
+  assert.equal(state.calls.requests.some((call) => call.body?.name === "ManualImport"), false);
   assert.equal(downloadTracker.getJob(jobId).finalPath, filePath);
+  assert.equal(downloadTracker.getJob(jobId).externalPath, null);
 });
 
 test("a failed import after download keeps the file in the Downloads Folder", async () => {
@@ -728,13 +730,12 @@ test("an exact Lidarr path wins over a case-only duplicate, and two case-only ma
   await assert.rejects(importTrackToLidarr({ jobId: second.jobId }, fastOptions), /Lidarr can't see the file/);
 });
 
-test("a library job finished by reuse is imported when Add to library marked it", async () => {
+test("a library job finished by reuse is imported while importing on add is on", async () => {
   const state = createFakeLidarr({ immediate: true, candidate: { album: { id: 70 }, tracks: [{ id: 802 }] } });
   await seedFlowJob(state);
   setImportOnAdd(true);
   const track = { artistName: "Import Artist", trackName: "Second Song", albumName: "Import Album", artistMbid, albumMbid, trackMbid };
   const libraryJobId = downloadTracker.addJob(track, "library");
-  importWhenDownloaded(libraryJobId);
   state.sourcePath = path.join(downloadRoot, "Import Artist", "Import Album", "Second Song.flac");
   state.remotePath = "/data/aurral/Import Artist/Import Album/Second Song.flac";
 
@@ -749,6 +750,17 @@ test("a library job finished by reuse is imported when Add to library marked it"
   assert.equal(reuse.reused, true);
   const job = await waitFor(() => downloadTracker.getJob(libraryJobId).externalPath && downloadTracker.getJob(libraryJobId));
   assert.equal(job.externalPath, "/music/Import Artist/Import Album/02 - Second Song.flac");
+});
+
+test("any finished library download is imported while importing on add is on", async () => {
+  const state = createFakeLidarr({ immediate: true, candidate: { album: { id: 70 }, tracks: [{ id: 802 }] } });
+  setImportOnAdd(true);
+  // Queued the way an Aurral album download or missing-track search does, not by Add to library.
+  const jobId = downloadTracker.addJob({ ...addBody, artistMbid, albumMbid, managedBy: "aurral" }, "library");
+
+  await completeLibraryDownload(state, jobId);
+
+  assert.equal(await waitFor(() => Boolean(downloadTracker.getJob(jobId).externalPath)), true);
 });
 
 test("jobs follow an imported file Aurral can't read, with a warning about the path mapping", async (t) => {

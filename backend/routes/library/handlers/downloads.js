@@ -381,13 +381,10 @@ export function registerDownloads(router) {
       });
       if (alreadyOwned) return res.json({ success: true, alreadyOwned: true, queued: false });
 
-      // With importing on add, a track without a file is downloaded as usual and then imported.
-      let importWhenDownloaded = null;
-      const lidarrImportFlag = (jobId) => {
-        if (!importWhenDownloaded || !jobId) return {};
-        importWhenDownloaded(jobId);
-        return { willImportToLidarr: true };
-      };
+      // With importing on add, a track without a file is downloaded as usual; the download
+      // pipeline then imports every finished library job into Lidarr.
+      let importsToLidarr = false;
+      const lidarrImportFlag = (jobId) => (importsToLidarr && jobId ? { willImportToLidarr: true } : {});
       const { lidarrClient } = await import("../../../services/lidarrClient.js");
       if (
         dbOps.getSettings().integrations?.lidarr?.importOnAddToLibrary === true &&
@@ -398,7 +395,7 @@ export function registerDownloads(router) {
           import("../../playlists/handlers/utils.js"),
         ]);
         const { findFinishedTrackJob, importTrackToLidarr } = lidarrTrackImport;
-        importWhenDownloaded = lidarrTrackImport.importWhenDownloaded;
+        importsToLidarr = true;
         const canAccessJob = (job) => canAccessJobType(req.user, job.playlistId || job.playlistType);
         const finishedJob = await findFinishedTrackJob(track, { canAccessJob });
         if (finishedJob) {
@@ -440,17 +437,6 @@ export function registerDownloads(router) {
         trackMbid: track.trackMbid,
       });
       if (monitoredTrack) {
-        monitoredTrack.queuedJobIds.slice(1).forEach(lidarrImportFlag);
-        if (importWhenDownloaded) {
-          // Jobs that finished by reuse before they were marked won't pass the completion hook again.
-          const { importDownloadedTrack } = await import("../../../services/lidarrTrackImport.js");
-          for (const id of monitoredTrack.queuedJobIds) {
-            const job = downloadTracker.getJob(id);
-            if (job?.status !== "done" || job.externalPath) continue;
-            lidarrImportFlag(id);
-            importDownloadedTrack(id).catch(() => {});
-          }
-        }
         await invalidateActivityRequestsCache();
         return res.status(202).json({
           success: true,
