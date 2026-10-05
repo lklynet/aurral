@@ -184,6 +184,36 @@ test("resolves managed and reused Lidarr paths to private Plex rating keys", asy
   );
 });
 
+test("maps an external flows folder through a Plex path mapping", async (t) => {
+  const flowsRoot = path.join(isolatedState.baseDir, "scratch", "flows");
+  dbOps.updateSettings({
+    flowsFolderPath: flowsRoot,
+    pathMappings: [{ source: "plex", remote: "/plexflows", local: flowsRoot }],
+  });
+  t.after(() => dbOps.updateSettings({ flowsFolderPath: "", pathMappings: [] }));
+  const destination = makeDestination({ downloadsPath: "/data" });
+  const ensured = [];
+  mock.method(destination.client, "ensureAurralLibrary", async (...args) => {
+    ensured.push(args);
+    return { key: "7" };
+  });
+  mock.method(destination, "_loadTracks", async () => {});
+  await destination.ensureLibrary();
+  assert.deepEqual(ensured, [["/data", "/plexflows"]]);
+
+  destination._libraryTracks = [
+    { ratingKey: "101", files: ["/plexflows/flow-1/Artist/Album/Track.flac"] },
+  ];
+  destination._mainLibraryTracks = [];
+  const trackPath = path.join(flowsRoot, "flow-1", "Artist", "Album", "Track.flac");
+  assert.deepEqual(
+    await destination._resolveRatingKeys(
+      snapshot({ tracks: [{ path: trackPath, title: "Track", artist: "Artist" }] }),
+    ),
+    ["101"],
+  );
+});
+
 test("reuses a Lidarr file linked into the entity folder without a main Plex library", async () => {
   const destination = makeDestination({ downloadsPath: "/data" });
   const reusedPath = path.join(downloadRoot, "..", "lidarr", "Artist", "Track.flac");

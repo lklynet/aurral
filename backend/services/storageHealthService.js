@@ -524,6 +524,19 @@ async function checkDownloadsSection() {
     );
   }
 
+  const flowsFolder = String(settings.flowsFolderPath || "").trim();
+  if (flowsFolder) {
+    const flowsProbe = await runDirectoryWriteProbe(flowsFolder);
+    steps.push(
+      healthStep("flows-writable", flowsProbe.ok ? "pass" : "fail", "Aurral can write to the flows folder", {
+        detail: flowsProbe.ok ? flowsFolder : flowsProbe.detail,
+        fix: flowsProbe.ok
+          ? undefined
+          : "Check that the flows folder is mounted and writable, or clear it to use the _flows folder inside the Downloads Folder.",
+      }),
+    );
+  }
+
   return buildSection("downloads", "Aurral downloads", steps);
 }
 

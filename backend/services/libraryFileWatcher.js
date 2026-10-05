@@ -1,6 +1,7 @@
 import path from "node:path";
 
-import { resolveDownloadRoot } from "./downloadPaths.js";
+import { getStoredFlowsFolderPath } from "./downloadFolderConfig.js";
+import { isPathInsideRoot, resolveDownloadRoot } from "./downloadPaths.js";
 import { isLibraryScanExcludedDirectory } from "./libraryFileScanner.js";
 import { lidarrClient } from "./lidarrClient.js";
 import { scheduleLibraryScan } from "./libraryScanWorker.js";
@@ -16,7 +17,9 @@ function isIgnoredChange(root, filename) {
     : path.resolve(root, String(filename));
   const relative = path.relative(path.resolve(root), changedPath);
   const firstSegment = relative.split(path.sep).find(Boolean);
-  return isLibraryScanExcludedDirectory(firstSegment);
+  const flowsRoot = getStoredFlowsFolderPath();
+  return isLibraryScanExcludedDirectory(firstSegment)
+    || Boolean(flowsRoot && isPathInsideRoot(changedPath, path.resolve(flowsRoot)));
 }
 
 export function createLibraryFileWatcher({

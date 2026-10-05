@@ -15,12 +15,11 @@ import {
   buildDeemixSearchQueries,
   isSameCoreAlbum,
 } from "./downloadJobs/deemixSearch.js";
-import { resolveDownloadRoot } from "./downloadPaths.js";
+import { resolveDownloadRoot, resolveTrackDestinationDir } from "./downloadPaths.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 import {
   buildResolvedJobTrack as buildResolvedTrack,
   commitDownloadedFile,
-  joinUnderRoot,
   buildTrackFileName,
   writeAudioMetadata,
 } from "./downloadUtils.js";
@@ -460,7 +459,7 @@ async function handleDeemixFinalize(payload, helpers) {
   const playlistRoot = resolveDownloadRoot();
   const destination = String(payload.destination || "").trim();
   const ext = path.extname(filePath).toLowerCase();
-  const finalDir = joinUnderRoot(playlistRoot, destination);
+  const finalDir = resolveTrackDestinationDir(playlistRoot, destination);
   const finalName = buildTrackFileName(job, ext || ".flac");
   const finalPath = path.join(finalDir, finalName);
   const committed = await withPipelineCommitLock(payload, async () => {

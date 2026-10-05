@@ -7,9 +7,9 @@ import { logger } from "../logger.js";
 import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
 import { navidromePlaylistPointerStore } from "../navidrome/navidromePlaylistPointerStore.js";
 import {
-  AURRAL_FLOWS_DIR,
   PLAYLIST_FILES_DIR,
   resolveDownloadRoot,
+  resolveFlowsRoot,
 } from "../downloadPaths.js";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.js";
 import {
@@ -374,7 +374,7 @@ export class NavidromePlaybackDestination {
   async ensureLibrary() {
     try {
       await fs.mkdir(this.libraryRoot, { recursive: true });
-      await fs.mkdir(path.join(this.downloadRoot, AURRAL_FLOWS_DIR), { recursive: true });
+      await fs.mkdir(resolveFlowsRoot(this.downloadRoot), { recursive: true });
       if (this.isConfigured()) {
         await this.client.ensureAurralLibrary(
           this.mediaLibraryRoot.replace(/\\/g, "/").replace(/\/+$/, ""),

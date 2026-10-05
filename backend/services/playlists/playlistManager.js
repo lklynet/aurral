@@ -11,9 +11,10 @@ import {
   writeGeneratedPlaylistArtwork,
 } from "../playlistArtworkGenerator.js";
 import {
-  AURRAL_FLOWS_DIR,
+  isPathInsideRoot,
   PLAYLIST_FILES_DIR,
   resolveDownloadRoot,
+  resolveFlowsRoot,
 } from "../downloadPaths.js";
 import { scheduleLibraryScan } from "../libraryScanWorker.js";
 import { getDownloadClient } from "../download/downloadClientSettings.js";
@@ -344,9 +345,12 @@ export class PlaylistManager {
           protectPlayback,
         });
         await removeUnusedPlaybackFiles(playlistDir, deletionGuard, { protectPlayback });
-        await removeUnusedPlaybackFiles(
-          path.join(this.downloadRoot, AURRAL_FLOWS_DIR, playlistType), deletionGuard, { protectPlayback },
-        );
+        // Only ever clean a single flow's directory inside the flows folder.
+        const flowsRoot = resolveFlowsRoot(this.downloadRoot);
+        const flowDir = path.join(flowsRoot, playlistType);
+        if (isPathInsideRoot(flowDir, flowsRoot)) {
+          await removeUnusedPlaybackFiles(flowDir, deletionGuard, { protectPlayback });
+        }
         console.log(`[PlaylistManager] Cleaned unused files for ${playlistType}`);
       } catch (error) {
         console.warn(

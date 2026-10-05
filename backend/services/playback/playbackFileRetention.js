@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { dbOps } from "../../db/helpers/index.js";
 import { localFileKey } from "./playlistUsage.js";
-import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.js";
+import { isPathInsideRoot, resolveDownloadRoot, resolveFlowsRoot } from "../downloadPaths.js";
 
 const SETTINGS_KEY = "playbackRetainedFiles";
 
@@ -84,8 +84,10 @@ export async function retryPlaybackRetainedFiles() {
   for (const [file, metadata] of files) {
     // Older records have no root; only retry those within the current root.
     const playlistRoot = metadata?.playlistRoot ?? resolveDownloadRoot();
-    if (typeof playlistRoot !== "string" || !path.isAbsolute(playlistRoot)
-      || !isPathInsideRoot(file, playlistRoot) || stillOwned(file)) continue;
+    if (typeof playlistRoot !== "string" || !path.isAbsolute(playlistRoot)) continue;
+    const fileRoot = [playlistRoot, resolveFlowsRoot(playlistRoot)]
+      .find((root) => isPathInsideRoot(file, root));
+    if (!fileRoot || stillOwned(file)) continue;
     const excludeEntityIds = [...new Set((Array.isArray(metadata?.excludeEntityIds)
       ? metadata.excludeEntityIds : []).filter((id) => typeof id === "string" && id.trim()))].sort();
     const guardKey = JSON.stringify([localFileKey(playlistRoot), excludeEntityIds]);
@@ -96,7 +98,7 @@ export async function retryPlaybackRetainedFiles() {
     try {
       const original = await fs.lstat(file);
       if (!original.isFile() || !(await guard.canDelete(file)) || stillOwned(file)) continue;
-      if (!isPathInsideRoot(await fs.realpath(file), await fs.realpath(playlistRoot))) continue;
+      if (!isPathInsideRoot(await fs.realpath(file), await fs.realpath(fileRoot))) continue;
       const current = await fs.lstat(file);
       if (current.ino !== original.ino || current.size !== original.size || current.mtimeMs !== original.mtimeMs) continue;
       await fs.rm(file, { force: true });

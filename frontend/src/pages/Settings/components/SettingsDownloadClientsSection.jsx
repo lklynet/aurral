@@ -271,6 +271,24 @@ export function SettingsDownloadClientsSection({
             }
           />
         </SettingsArrFormGroup>
+        <SettingsArrFormGroup
+          label="Flows folder"
+          labelFor="download-clients-flows-folder"
+          help="Optional. Where flow tracks are stored. Leave empty to use the _flows folder inside the Downloads Folder."
+        >
+          <DownloadFolderField
+            id="download-clients-flows-folder"
+            value={settings.flowsFolderPath || ""}
+            suggestDefault={false}
+            placeholder="Downloads Folder/_flows"
+            onChange={(nextPath) =>
+              updateSettings({
+                ...settings,
+                flowsFolderPath: nextPath,
+              })
+            }
+          />
+        </SettingsArrFormGroup>
       </SettingsArrFieldSet>
 
       <SettingsArrFieldSet legend="Remote path mappings">

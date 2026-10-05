@@ -18,6 +18,8 @@ import {
   isPathInsideRoot,
   remapLegacyPath,
   resolveDownloadRoot,
+  resolveFlowsRoot,
+  resolveTrackDestinationDir,
 } from "./downloadPaths.js";
 import { sanitizePathPart } from "./downloadUtils.js";
 
@@ -134,6 +136,11 @@ async function walkFiles(rootPath, output = []) {
     }
   }
   return output;
+}
+
+function isInsideAurralRoot(destination, rootPath) {
+  return isPathInsideRoot(destination, rootPath)
+    || isPathInsideRoot(destination, resolveFlowsRoot(rootPath));
 }
 
 function safePathPart(value) {
@@ -313,7 +320,7 @@ async function repairCompletedMigrationState(state, rootPath, jobs, logger) {
     if (item?.status !== "complete" || !item.destination) continue;
     const destination = path.resolve(String(item.destination));
     const destinationStat = await fs.stat(destination).catch(() => null);
-    if (!isPathInsideRoot(destination, rootPath) || !destinationStat?.isFile()) {
+    if (!isInsideAurralRoot(destination, rootPath) || !destinationStat?.isFile()) {
       const reason = "completed migration destination is missing";
       retainItem(state, sourcePath, reason, logger);
       result.failed += 1;
@@ -617,12 +624,14 @@ export async function migrateAurralDownloadFolder(options = {}) {
       result.retained += 1;
       continue;
     }
-    const destination = previous.destination || path.resolve(
-      rootPath,
-      buildAurralTrackDestination(playlistId, artistDir, albumDir, { ephemeral: Boolean(flow) }),
+    const destination = previous.destination || path.join(
+      resolveTrackDestinationDir(
+        rootPath,
+        buildAurralTrackDestination(playlistId, artistDir, albumDir, { ephemeral: Boolean(flow) }),
+      ),
       `${trackName}${path.extname(sourcePath).toLowerCase() || ".mp3"}`,
     );
-    if (!isPathInsideRoot(destination, rootPath)) {
+    if (!isInsideAurralRoot(destination, rootPath)) {
       retainItem(state, sourcePath, "destination escaped Aurral root", logger);
       result.retained += 1;
       continue;
@@ -755,7 +764,7 @@ export async function migrateAurralDownloadFolder(options = {}) {
     // Only finish that migration if its destination is still available.
     if (retainedIndexedSource) {
       const destination = path.resolve(item.destination);
-      if (!isPathInsideRoot(destination, rootPath)
+      if (!isInsideAurralRoot(destination, rootPath)
         || !(await fs.stat(destination).catch(() => null))?.isFile()) continue;
     }
     state.items[sourcePath] = { ...item, status: "complete", updatedAt: Date.now() };

@@ -3,7 +3,7 @@ title: Flows
 description: How a flow picks tracks, and the settings that control it.
 ---
 
-A flow is a playlist that Aurral builds again on a schedule. Aurral downloads flow tracks as temporary files under `_flows` in the Downloads Folder. It can publish the flow to Navidrome, Plex, or Jellyfin without adding the files to the Library.
+A flow is a playlist that Aurral builds again on a schedule. Aurral downloads flow tracks as temporary files under `_flows` in the Downloads Folder, or in a separate [flows folder](/getting-started/storage/#optional-flows-folder). It can publish the flow to Navidrome, Plex, or Jellyfin without adding the files to the Library.
 
 ![Aurral flow editor](../../../assets/screenshots/flow-editor.webp)
 
@@ -118,7 +118,7 @@ If a download fails, Aurral replaces the track with a reserve candidate. Only fl
 
 ## Keep flow tracks
 
-- To keep one track in the Library, select **Add to library** in the track menu.
+- To keep one track in the Library, select **Add to library** in the track menu. Aurral moves the file into the Downloads Folder.
 - To save all finished tracks as a static playlist, select **Save as playlist** in the flow menu. Aurral names the new playlist after the flow, with `Static` at the end.
 
 ## Replace a flow track

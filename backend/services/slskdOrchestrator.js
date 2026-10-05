@@ -17,7 +17,7 @@ import {
   usableEvaluationEntries,
   validateDownloadedTrackFile,
 } from "./trackMatching/index.js";
-import { resolveDownloadRoot } from "./downloadPaths.js";
+import { resolveDownloadRoot, resolveTrackDestinationDir } from "./downloadPaths.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 import {
   buildSlskdRankingHistoryOptions,
@@ -34,7 +34,6 @@ import { isCompilationJobs, loadAlbumReleases } from "./albumReleases.js";
 import {
   buildResolvedJobTrack as buildResolvedTrack,
   commitDownloadedFile,
-  joinUnderRoot,
   buildTrackFileName,
   writeImportedFileMetadata,
 } from "./downloadUtils.js";
@@ -1209,7 +1208,7 @@ async function handleFinalize(payload, helpers) {
     return helpers.failOrTryNextSource(payload, job, `Downloaded file missing: ${expectedPath}`);
   }
   const ext = path.extname(sourcePath).toLowerCase();
-  const finalDir = joinUnderRoot(playlistRoot, destination);
+  const finalDir = resolveTrackDestinationDir(playlistRoot, destination);
   const finalName = buildTrackFileName(job, ext || ".mp3");
   const finalPath = path.join(finalDir, finalName);
   const resolvedTrack = {

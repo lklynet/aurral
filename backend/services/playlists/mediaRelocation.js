@@ -6,9 +6,27 @@ import { db } from "../../config/db-sqlite.js";
 import { dbOps } from "../../db/helpers/index.js";
 import { downloadTracker } from "../downloadJobs/downloadTracker.js";
 import { downloadDestinationForJob } from "../downloadJobs/downloadOwnership.js";
-import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.js";
-import { joinUnderRoot } from "../downloadUtils.js";
+import {
+  isPathInsideRoot,
+  resolveDownloadRoot,
+  resolveFlowsRoot,
+  resolveTrackDestinationDir,
+} from "../downloadPaths.js";
 import { createPlaybackDeletionGuard } from "../playback/playbackFileRetention.js";
+
+// Playlist media lives under the downloads root or the (possibly separate) flows folder.
+function isInsideMediaRoot(file, root) {
+  return [root, resolveFlowsRoot(root)].some((mediaRoot) => isPathInsideRoot(file, mediaRoot));
+}
+
+async function isRealPathInsideMediaRoot(file, root) {
+  const real = await fs.realpath(file);
+  for (const mediaRoot of [root, resolveFlowsRoot(root)]) {
+    const realRoot = await fs.realpath(mediaRoot).catch(() => null);
+    if (realRoot && isPathInsideRoot(real, realRoot)) return true;
+  }
+  return false;
+}
 
 async function digest(file) {
   const hash = createHash("sha256");
@@ -24,20 +42,21 @@ export async function prepareRetainedPlaylistFile({ jobId, sourcePlaylistId, tar
   let intent = dbOps.getJSONSetting(key);
   if (!intent || intent.sourcePlaylistId !== sourcePlaylistId) {
     const from = path.resolve(job.finalPath);
-    if (!["_flows", "aurral-weekly-flow", "aurral-playlists"].some((directory) => isPathInsideRoot(from, path.join(root, directory, sourcePlaylistId)))) return { finalPath: job.finalPath };
+    if (!isPathInsideRoot(from, path.join(resolveFlowsRoot(root), sourcePlaylistId))
+      && !["_flows", "aurral-weekly-flow", "aurral-playlists"].some((directory) => isPathInsideRoot(from, path.join(root, directory, sourcePlaylistId)))) return { finalPath: job.finalPath };
     const source = await fs.lstat(from);
-    if (!source.isFile() || !isPathInsideRoot(await fs.realpath(from), await fs.realpath(root))) {
+    if (!source.isFile() || !(await isRealPathInsideMediaRoot(from, root))) {
       throw new Error("Retained media must be a file inside the candidate playlist root");
     }
     const parsed = path.parse(from);
     const destination = downloadDestinationForJob({ ...job, playlistId: targetPlaylistId, playlistType: targetPlaylistId });
-    const to = joinUnderRoot(root, destination, `${parsed.name}-${randomUUID()}${parsed.ext}`);
+    const to = path.join(resolveTrackDestinationDir(root, destination), `${parsed.name}-${randomUUID()}${parsed.ext}`);
     intent = { sourcePlaylistId, from, to, hash: await digest(from), state: "copying" };
     dbOps.setJSONSetting(key, intent);
   }
-  if (!isPathInsideRoot(intent.from, root) || !isPathInsideRoot(intent.to, root)) throw new Error("Retained media is outside the candidate playlist root");
+  if (!isInsideMediaRoot(intent.from, root) || !isInsideMediaRoot(intent.to, root)) throw new Error("Retained media is outside the candidate playlist root");
   await fs.mkdir(path.dirname(intent.to), { recursive: true });
-  if (!isPathInsideRoot(await fs.realpath(path.dirname(intent.to)), await fs.realpath(root))) {
+  if (!(await isRealPathInsideMediaRoot(path.dirname(intent.to), root))) {
     throw new Error("Retained media destination is outside the candidate playlist root");
   }
   const target = await fs.lstat(intent.to).catch((error) => {
@@ -74,14 +93,14 @@ export async function finalizeRetainedPlaylistRelocations(sourcePlaylistId, { do
   for (const row of rows) {
     const intent = JSON.parse(row.value);
     if (intent.sourcePlaylistId !== sourcePlaylistId || intent.state !== "paths-committed") continue;
-    if (!isPathInsideRoot(intent.from, root) || !isPathInsideRoot(intent.to, root)) continue;
+    if (!isInsideMediaRoot(intent.from, root) || !isInsideMediaRoot(intent.to, root)) continue;
     if (db.prepare("SELECT 1 FROM playlist_download_jobs WHERE final_path = ? LIMIT 1").get(intent.from)) continue;
     if (!(await guard.canDelete(intent.from))) continue;
     const old = await fs.lstat(intent.from).catch((error) => {
       if (error.code === "ENOENT") return null;
       throw error;
     });
-    if (old && (!old.isFile() || !isPathInsideRoot(await fs.realpath(intent.from), await fs.realpath(root)))) continue;
+    if (old && (!old.isFile() || !(await isRealPathInsideMediaRoot(intent.from, root)))) continue;
     if (await digest(intent.to) !== intent.hash) throw new Error("Retained media destination changed before cleanup");
     await fs.rm(intent.from, { force: true });
     db.prepare("DELETE FROM settings WHERE key = ?").run(row.key);

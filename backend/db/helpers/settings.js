@@ -7,8 +7,11 @@ import {
 } from "../../services/pathMappings.js";
 import {
   syncDownloadFolderPath,
+  syncFlowsFolderPath,
   validateDownloadFolderPath,
+  validateFlowsFolderPath,
 } from "../../services/downloadFolderConfig.js";
+import { resolveDownloadRoot } from "../../services/downloadPaths.js";
 import { normalizeExistingFileMode } from "../../services/downloadJobs/fileReuseMode.js";
 import { normalizeDateTimeFormat } from "../../config/constants.js";
 import {
@@ -163,6 +166,8 @@ export const dbOps = {
     const downloadFolderPath =
       getSettingStmt.get("downloadFolderPath")?.value || null;
     syncDownloadFolderPath(downloadFolderPath);
+    const flowsFolderPath = getSettingStmt.get("flowsFolderPath")?.value || null;
+    syncFlowsFolderPath(flowsFolderPath);
     const pathMappings = normalizePathMappings(
       dbHelpers.parseJSON(getSettingStmt.get("pathMappings")?.value) || [],
     );
@@ -217,6 +222,7 @@ export const dbOps = {
           : { localNetworkBypass: { enabled: false } },
       rootFolderPath: rootFolderPath || null,
       downloadFolderPath: downloadFolderPath || null,
+      flowsFolderPath,
       pathMappings,
       releaseTypes: releaseTypes || [],
       flows: flows || null,
@@ -346,6 +352,20 @@ export const dbOps = {
           }
           upsertSettingStmt.run("downloadFolderPath", validation.path);
           syncDownloadFolderPath(validation.path);
+        }
+      }
+      if (settings.flowsFolderPath !== undefined) {
+        const normalized = String(settings.flowsFolderPath || "").trim();
+        if (!normalized) {
+          deleteSettingStmt.run("flowsFolderPath");
+          syncFlowsFolderPath(null);
+        } else {
+          const validation = validateFlowsFolderPath(normalized, resolveDownloadRoot());
+          if (!validation.valid) {
+            throw new Error(validation.error);
+          }
+          upsertSettingStmt.run("flowsFolderPath", validation.path);
+          syncFlowsFolderPath(validation.path);
         }
       }
       if (settings.pathMappings !== undefined) {

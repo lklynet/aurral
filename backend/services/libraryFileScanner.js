@@ -21,6 +21,7 @@ import {
   setLibraryManagement,
 } from "./libraryManagementStore.js";
 import { parseAurralIdentityComment, readCommentIdentity } from "./downloadUtils.js";
+import { getStoredFlowsFolderPath } from "./downloadFolderConfig.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 
@@ -180,12 +181,14 @@ function buildMetadataRecord(metadata, filePath, rootPath) {
   };
 }
 
-async function* walkAudioFiles(rootPath) {
+async function* walkAudioFiles(rootPath, flowsRoot = getStoredFlowsFolderPath()) {
   const entries = await fs.readdir(rootPath, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.isDirectory()) {
+      const directory = path.join(rootPath, entry.name);
       if (isLibraryScanExcludedDirectory(entry.name)) continue;
-      yield* walkAudioFiles(path.join(rootPath, entry.name));
+      if (flowsRoot && path.resolve(directory) === path.resolve(flowsRoot)) continue;
+      yield* walkAudioFiles(directory, flowsRoot);
       continue;
     }
     if (entry.isFile() && AUDIO_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {

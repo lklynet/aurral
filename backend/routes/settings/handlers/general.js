@@ -13,6 +13,7 @@ import { resolveDownloadRoot } from "../../../services/downloadPaths.js";
 import {
   resolveYtdlpStagingRoot,
   validateDownloadFolderPath,
+  validateFlowsFolderPath,
   computeLibraryRootOverlaps,
   getOverlapCheckedLidarrRoots,
 } from "../../../services/downloadFolderConfig.js";
@@ -128,6 +129,7 @@ export function registerGeneral(router) {
         integrations,
         rootFolderPath,
         downloadFolderPath,
+        flowsFolderPath,
         pathMappings,
         security,
         playlistArtwork,
@@ -141,6 +143,17 @@ export function registerGeneral(router) {
       }
 
       const currentSettings = dbOps.getSettings();
+      const nextFlowsFolderPath =
+        flowsFolderPath !== undefined ? flowsFolderPath : currentSettings.flowsFolderPath;
+      if (String(nextFlowsFolderPath || "").trim()) {
+        const validation = validateFlowsFolderPath(
+          nextFlowsFolderPath,
+          resolveDownloadRoot(downloadFolderPath),
+        );
+        if (!validation.valid) {
+          return res.status(400).json({ error: `Invalid flows folder: ${validation.error}` });
+        }
+      }
       const localBypassWasEnabled =
         currentSettings?.security?.localNetworkBypass?.enabled === true;
       const lidarrExternalUrl = integrations?.lidarr?.externalUrl;
@@ -490,6 +503,10 @@ export function registerGeneral(router) {
           downloadFolderPath !== undefined
             ? downloadFolderPath
             : currentSettings.downloadFolderPath || null,
+        flowsFolderPath:
+          flowsFolderPath !== undefined
+            ? flowsFolderPath
+            : currentSettings.flowsFolderPath || null,
         pathMappings:
           pathMappings !== undefined
             ? normalizePathMappings(pathMappings)

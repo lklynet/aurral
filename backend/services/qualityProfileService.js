@@ -3,7 +3,7 @@ import path from "path";
 import { parseFile } from "music-metadata";
 import { dbOps } from "../db/helpers/index.js";
 import { indexUnmonitoredJobs } from "./aurralUnmonitoredJobs.js";
-import { resolveDownloadRoot, isPathInsideRoot } from "./downloadPaths.js";
+import { resolveDownloadRoot, isPathInsideRoot, resolveFlowsRoot } from "./downloadPaths.js";
 import { getEnabledDownloadSources } from "./downloadSourceService.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import {
@@ -23,7 +23,9 @@ export function getQualityProfile() {
 
 export function isAurralOwnedPath(filePath) {
   if (!filePath) return false;
-  return isPathInsideRoot(path.resolve(filePath), path.resolve(resolveDownloadRoot()));
+  const downloadRoot = path.resolve(resolveDownloadRoot());
+  return [downloadRoot, resolveFlowsRoot(downloadRoot)]
+    .some((root) => isPathInsideRoot(path.resolve(filePath), root));
 }
 
 export function decorateJobQuality(job, profile = getQualityProfile()) {

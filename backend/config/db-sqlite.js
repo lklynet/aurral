@@ -5,7 +5,7 @@ import { initializeSchemaOnStartup } from "./schema-migration-v2.js";
 import { initializeLibrarySearchIndex } from "./library-search-index.js";
 import { initializeLibraryGenreIndex } from "./library-genre-index.js";
 import { ensureUniqueLidarrArtistIdIndex } from "./lidarr-artist-index.js";
-import { syncDownloadFolderPath } from "../services/downloadFolderConfig.js";
+import { syncDownloadFolderPath, syncFlowsFolderPath } from "../services/downloadFolderConfig.js";
 import { ensureDataDir } from "./data-dir.js";
 
 const DATA_DIR = ensureDataDir();
@@ -1095,5 +1095,8 @@ const existingDownloadFolder = db
   .prepare("SELECT value FROM settings WHERE key = ?")
   .get("downloadFolderPath");
 syncDownloadFolderPath(existingDownloadFolder?.value || null);
+syncFlowsFolderPath(
+  db.prepare("SELECT value FROM settings WHERE key = ?").get("flowsFolderPath")?.value || null,
+);
 
 export { db };

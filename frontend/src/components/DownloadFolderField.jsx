@@ -9,7 +9,9 @@ export default function DownloadFolderField({
   onChange,
   disabled = false,
   autoApplySuggestion = true,
+  suggestDefault = true,
   createOnConfirm = true,
+  placeholder,
   id,
   helperText = "",
 }) {
@@ -28,7 +30,7 @@ export default function DownloadFolderField({
   }, [value]);
 
   useEffect(() => {
-    if (prefilled || String(value || "").trim() || disabled) return;
+    if (!suggestDefault || prefilled || String(value || "").trim() || disabled) return;
     let cancelled = false;
     browseFilesystem()
       .then((result) => {
@@ -48,7 +50,7 @@ export default function DownloadFolderField({
     return () => {
       cancelled = true;
     };
-  }, [autoApplySuggestion, disabled, prefilled, value]);
+  }, [autoApplySuggestion, disabled, prefilled, suggestDefault, value]);
 
   const commitDraft = (nextValue) => {
     const trimmed = String(nextValue ?? draft).trim();
@@ -67,6 +69,7 @@ export default function DownloadFolderField({
             className="download-folder-field__input"
             autoComplete="off"
             spellCheck={false}
+            placeholder={placeholder}
             value={draft}
             disabled={disabled}
             onChange={(e) => setDraft(e.target.value)}

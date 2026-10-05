@@ -249,13 +249,13 @@ export class PlexClient {
     return data?.MediaContainer?.Directory || [];
   }
 
-  async ensureAurralLibrary(libraryPath) {
+  async ensureAurralLibrary(libraryPath, flowsPath = null) {
     if (!this.isConfigured()) return null;
     const name = "Aurral";
     const flowRoot = libraryPath.replace(/\/+$/, "");
     const locations = [
       libraryPath,
-      `${flowRoot}/${AURRAL_FLOWS_DIR}`,
+      flowsPath || `${flowRoot}/${AURRAL_FLOWS_DIR}`,
     ];
     // Also match the legacy "Aurral Flow" name so existing libraries are reused
     // and renamed rather than duplicated.

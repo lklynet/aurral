@@ -17,8 +17,8 @@ import {
   reuseTrackForPlaylist,
 } from "./fileReuse.js";
 import {
-  AURRAL_FLOWS_DIR,
   resolveDownloadRoot,
+  resolveFlowsRoot,
 } from "../downloadPaths.js";
 import { startDownloadPipelineWorker } from "../downloadPipelineWorker.js";
 import { listHonkerJobs, withHonkerLock } from "../honkerDb.js";
@@ -674,7 +674,7 @@ export class DownloadWorker {
             const flowName =
               playlistManager.getPlaylistName(playlistType) || playlistType;
             const flowPath = flowPlaylistConfig.getFlow(playlistType)
-              ? path.join(playlistManager.downloadRoot, AURRAL_FLOWS_DIR, playlistType)
+              ? path.join(resolveFlowsRoot(playlistManager.downloadRoot), playlistType)
               : playlistManager.downloadRoot;
             const { notifyFlowDone } = await import("../notificationService.js");
             notifyFlowDone(

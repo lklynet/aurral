@@ -37,6 +37,7 @@ export const normalizeSettings = (savedSettings) => {
       favoriteAutoKeep: savedSettings.subsonic?.favoriteAutoKeep !== false,
     },
     downloadFolderPath: String(savedSettings.downloadFolderPath || "").trim(),
+    flowsFolderPath: String(savedSettings.flowsFolderPath || "").trim(),
     pathMappings: Array.isArray(savedSettings.pathMappings) ? savedSettings.pathMappings : [],
     playlistArtwork: {
       ...playlistArtwork,

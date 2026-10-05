@@ -11,11 +11,10 @@ import {
   validateDownloadedTrackFile,
 } from "./trackMatching/index.js";
 import { buildYtdlpSearchQueries } from "./downloadJobs/ytdlpSearch.js";
-import { resolveDownloadRoot } from "./downloadPaths.js";
+import { resolveDownloadRoot, resolveTrackDestinationDir } from "./downloadPaths.js";
 import {
   buildResolvedJobTrack as buildResolvedTrack,
   commitDownloadedFile,
-  joinUnderRoot,
   buildTrackFileName,
   writeAudioMetadata,
 } from "./downloadUtils.js";
@@ -251,7 +250,7 @@ async function handleYtdlpFinalize(payload, helpers) {
   const playlistRoot = resolveDownloadRoot();
   const destination = String(payload.destination || "").trim();
   const ext = path.extname(filePath).toLowerCase();
-  const finalDir = joinUnderRoot(playlistRoot, destination);
+  const finalDir = resolveTrackDestinationDir(playlistRoot, destination);
   const finalName = buildTrackFileName(job, ext || ".m4a");
   const finalPath = path.join(finalDir, finalName);
   const committed = await withPipelineCommitLock(payload, async () => {

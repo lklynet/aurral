@@ -14,13 +14,14 @@ For the full mount setup, follow [Filesystem and mounts](/getting-started/storag
 | `/config` | The database, settings, users, sessions, caches, playlist jobs, and the default yt-dlp staging folder. Mount it with `./config:/config`. Do not share it with other applications. |
 | `/data` | The shared media root. Mount the same host folder here in Aurral, Lidarr, your download clients, and your playback servers. |
 | Downloads Folder | Aurral's permanent tracks, temporary flow tracks, and playlist artwork. Set it in **Settings > Download clients > Downloads Folder > Path**, for example `/data/downloads/aurral`. |
+| Flows folder | Optional. Temporary flow tracks, when you want them outside the Downloads Folder. Set it in **Settings > Download clients > Downloads Folder > Flows folder**. Your playback server must scan it too. See [Optional flows folder](/getting-started/storage/#optional-flows-folder). |
 
 yt-dlp writes downloads to `/config/_staging` first. To use another disk, mount it and select it in **Settings > Download clients > yt-dlp > Staging path**. Keep this folder outside every media server library, so that servers do not scan unfinished files.
 
 ## Back up your data
 
 - Back up the `/config` folder.
-- Back up the Downloads Folder. Without Lidarr, it holds all of your music.
+- Back up the Downloads Folder. Without Lidarr, it holds all of your music. A separate flows folder holds only temporary flow tracks and needs no backup.
 - Back up the Compose file and the environment file with your host paths.
 
 ## Library safety
@@ -28,5 +29,5 @@ yt-dlp writes downloads to `/config/_staging` first. To use another disk, mount 
 - Lidarr is optional. Aurral and Lidarr each keep their own folders. The Library shows both without moving files.
 - Aurral never writes into a Lidarr root folder. Changes to Lidarr artists and albums go through Lidarr.
 - Aurral does not move artists, albums, or files between Aurral and Lidarr.
-- Aurral keeps its own media in the Downloads Folder. Flow files use `_flows`. Permanent tracks use `Artist/Album/Track` folders.
+- Aurral keeps its own media in the Downloads Folder. Flow files use `_flows`, or the flows folder if you set one. Permanent tracks use `Artist/Album/Track` folders.
 - The Downloads Folder and a Lidarr root folder can overlap, but it is not recommended. See [Settings warn that roots overlap](/admin/troubleshooting/#settings-warn-that-roots-overlap).

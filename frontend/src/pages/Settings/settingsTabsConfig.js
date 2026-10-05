@@ -136,6 +136,7 @@ const SETTINGS_SEARCH_METADATA = {
       "Search again for missing tracks": "retry failed missing album tracks automatic schedule on off",
       "Search interval": "days between missing track searches",
       Path: "downloads folder media library",
+      "Flows folder": "flow tracks _flows temporary scratch disk",
       "Applies to": "remote path mapping source client all",
       "Remote path": "download client path mapping",
       "Local path": "Aurral path mapping",

@@ -60,7 +60,7 @@ Keep a service's own database or configuration mount separate from the media mou
 
 1. Aurral asks a download client to find the track.
 2. The download client writes the completed file under `/data/downloads/...`.
-3. Aurral checks the file and moves it into the Downloads Folder. Permanent tracks go to `Artist/Album/Track`. Flow tracks go to `_flows/<flow-id>/Artist/Album/Track`.
+3. Aurral checks the file and moves it into the Downloads Folder. Permanent tracks go to `Artist/Album/Track`. Flow tracks go to `_flows/<flow-id>/Artist/Album/Track`, or to `<flow-id>/Artist/Album/Track` in the [flows folder](#optional-flows-folder) if you set one.
 4. Aurral writes playlist artwork and sidecar files under `aurral-weekly-flow/_playlists`. The Library does not include this folder.
 5. Navidrome scans the Downloads Folder and plays the tracks.
 
@@ -191,6 +191,18 @@ Do these checks in order:
 4. **Playback check.** Your playback server has the Downloads Folder in its own filesystem and scans it.
 
 If the API check passes but the file check fails, do not change the API URL. Fix the volume, the permissions, or the path mapping.
+
+## Optional flows folder
+
+By default, flow tracks go to `_flows` in the Downloads Folder. To keep them on another disk, set **Settings > Download clients > Downloads folder > Flows folder**, for example `/scratch/aurral-flows`. The Downloads Folder then holds only permanent tracks.
+
+- The flows folder cannot be the Downloads Folder or a folder that contains it.
+- Mount the flows folder in Aurral and in your playback server. The server must scan it to publish flows:
+  - **Navidrome**: add the flows folder as another music library, at the same path as in Aurral.
+  - **Plex**: Aurral adds the flows folder to the **Aurral** library. If Plex sees a different path, add a remote path mapping for Plex.
+  - **Jellyfin**: add the flows folder to a music library. If Jellyfin sees a different path, add a remote path mapping for Jellyfin.
+- **Add to library** moves the file into the Downloads Folder, also across disks.
+- Aurral does not move existing flow files when you change the setting. The next run of each flow starts fresh in the new folder. Run or reset your flows, then delete the old flow folder yourself.
 
 ## When paths cannot match
 

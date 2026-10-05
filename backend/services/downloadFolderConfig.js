@@ -4,6 +4,7 @@ import { resolveAurralDataDir } from "../config/data-dir.js";
 import { stripTrailingSeparators } from "./textUtils.js";
 
 let storedDownloadFolderPath = null;
+let storedFlowsFolderPath = null;
 
 export function syncDownloadFolderPath(value) {
   const normalized = String(value ?? "").trim();
@@ -12,6 +13,15 @@ export function syncDownloadFolderPath(value) {
 
 export function getStoredDownloadFolderPath() {
   return storedDownloadFolderPath;
+}
+
+export function syncFlowsFolderPath(value) {
+  const normalized = String(value ?? "").trim();
+  storedFlowsFolderPath = normalized || null;
+}
+
+export function getStoredFlowsFolderPath() {
+  return storedFlowsFolderPath;
 }
 
 function resolvePathValue(raw) {
@@ -235,6 +245,20 @@ export function validateDownloadFolderPath(
     };
   }
   return { valid: true, path: resolved };
+}
+
+// Flows may live inside the Downloads Folder (the default _flows layout), but
+// never at or above it: flow resets delete everything under the flows folder.
+export function validateFlowsFolderPath(requestedPath, downloadRoot) {
+  const resolved = normalizeSelectedFolderPath(requestedPath);
+  const relation = resolved ? compareRoots(resolved, path.resolve(downloadRoot)) : "disjoint";
+  if (relation === "equal") {
+    return { valid: false, error: "Flows folder must be different from the Downloads Folder." };
+  }
+  if (relation === "nested-b-in-a") {
+    return { valid: false, error: "Flows folder cannot contain the Downloads Folder." };
+  }
+  return validateDownloadFolderPath(requestedPath, undefined, { create: true });
 }
 
 export function ensureDownloadFolderPath(requestedPath) {

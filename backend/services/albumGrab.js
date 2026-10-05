@@ -4,11 +4,10 @@ import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { assignDownloadedAlbumFiles } from "./albumReleaseAssignment.js";
 import { loadAlbumReleases } from "./albumReleases.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
-import { resolveDownloadRoot } from "./downloadPaths.js";
+import { resolveDownloadRoot, resolveTrackDestinationDir } from "./downloadPaths.js";
 import {
   buildResolvedJobTrack,
   commitDownloadedFile,
-  joinUnderRoot,
   buildTrackFileName,
   writeImportedFileMetadata,
 } from "./downloadUtils.js";
@@ -161,7 +160,7 @@ export async function finishAlbumGrab(payload, {
     if (!isPipelinePayloadActive(peerPayload)) continue;
     try {
       const ext = path.extname(match.filePath).toLowerCase() || ".flac";
-      const destination = joinUnderRoot(playlistRoot, peerPayload.destination);
+      const destination = resolveTrackDestinationDir(playlistRoot, peerPayload.destination);
       const placed = { ...job, trackNumber: match.trackNumber || job.trackNumber };
       const finalPath = path.join(destination, buildTrackFileName(placed, ext));
       const committed = await withPipelineCommitLock(peerPayload, async () => {

@@ -33,6 +33,7 @@ const defaultSettings = {
   },
   rootFolderPath: "",
   downloadFolderPath: "",
+  flowsFolderPath: "",
   pathMappings: [],
   quality: "standard",
   qualityProfile: {

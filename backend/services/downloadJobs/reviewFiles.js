@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
-import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.js";
+import { isPathInsideRoot, resolveDownloadRoot, resolveFlowsRoot } from "../downloadPaths.js";
 import { lidarrClient } from "../lidarrClient.js";
 import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
 import { logger, safeLogDiagnostic } from "../logger.js";
@@ -10,7 +10,7 @@ function isInLibraryFolder(filePath) {
     ? lidarrClient.getConfiguredRootFolderPaths()
       .map((root) => resolveLocalPath(root, getPathMappings("lidarr")))
     : [];
-  return [resolveDownloadRoot(), ...lidarrRoots]
+  return [resolveDownloadRoot(), resolveFlowsRoot(), ...lidarrRoots]
     .filter(Boolean)
     .some((root) => isPathInsideRoot(filePath, path.resolve(root)));
 }

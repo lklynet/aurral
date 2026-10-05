@@ -2,9 +2,11 @@ import fs from "fs/promises";
 import path from "path";
 import {
   getStoredDownloadFolderPath,
+  getStoredFlowsFolderPath,
   resolveDefaultDownloadRoot,
   resolveEnvDownloadFolder,
 } from "./downloadFolderConfig.js";
+import { joinUnderRoot } from "./downloadUtils.js";
 
 export const PLAYLIST_FILES_DIR = "aurral-weekly-flow";
 export const AURRAL_FLOWS_DIR = "_flows";
@@ -33,6 +35,21 @@ export function resolveDownloadRoot(explicitRoot) {
   }
 
   return defaultPlaylistRoot();
+}
+
+export function resolveFlowsRoot(downloadRoot = resolveDownloadRoot()) {
+  const stored = getStoredFlowsFolderPath();
+  return stored ? path.resolve(stored) : path.resolve(downloadRoot, AURRAL_FLOWS_DIR);
+}
+
+// Destinations stay root-relative so queued payloads survive setting changes;
+// a leading _flows segment resolves against the flows folder instead.
+export function resolveTrackDestinationDir(downloadRoot, destination) {
+  const parts = String(destination || "").replace(/\\/g, "/").split("/").filter(Boolean);
+  if (parts[0] === AURRAL_FLOWS_DIR) {
+    return joinUnderRoot(resolveFlowsRoot(downloadRoot), parts.slice(1).join("/"));
+  }
+  return joinUnderRoot(downloadRoot, destination);
 }
 
 export function remapLegacyPath(finalPath, playlistRoot = resolveDownloadRoot()) {

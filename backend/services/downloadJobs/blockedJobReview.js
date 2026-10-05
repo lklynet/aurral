@@ -7,10 +7,13 @@ import {
   getActiveDownloadAttemptId,
   withPipelineCommitLock,
 } from "./downloadCancellation.js";
-import { buildAurralTrackDestination, resolveDownloadRoot } from "../downloadPaths.js";
+import {
+  buildAurralTrackDestination,
+  resolveDownloadRoot,
+  resolveTrackDestinationDir,
+} from "../downloadPaths.js";
 import {
   commitDownloadedFile,
-  joinUnderRoot,
   buildTrackFileName,
   sanitizePathPart,
 } from "../downloadUtils.js";
@@ -65,7 +68,7 @@ export async function approveBlockedJob(jobId) {
   const destination = buildAurralTrackDestination(playlistId, artistDir, albumDir, {
     ephemeral: Boolean(flowPlaylistConfig.getFlow(playlistId)),
   });
-  const finalDir = joinUnderRoot(resolveDownloadRoot(), destination);
+  const finalDir = resolveTrackDestinationDir(resolveDownloadRoot(), destination);
   const finalName = buildTrackFileName(job, ext || ".mp3");
   const committed = await withPipelineCommitLock(
     {
