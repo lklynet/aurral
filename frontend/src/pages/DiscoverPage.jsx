@@ -7,11 +7,7 @@ import {
 import { getMyDiscoverLayout, updateMyDiscoverLayout } from "../utils/api/endpoints/auth.js";
 
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
-import {
-  Music,
-  Sparkles,
-  LayoutTemplate,
-} from "lucide-react";
+import { Sparkles, LayoutTemplate } from "lucide-react";
 import { DotLoader } from "../components/DotLoader";
 import DiscoveryStatusPill from "../components/DiscoveryStatusPill";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -585,62 +581,71 @@ function DiscoverPage() {
           </DiscoverRail>
         );
       }
-      return (
-        <section key="recommended" className="artist-discover-section">
-          <h2 className="artist-section-title--discover discover-recommended-status__title">
-            <span className="artist-section-title--discover-mobile">Recommended</span>
-            <span className="artist-section-title--discover-desktop">Recommended</span>
-          </h2>
-          <div
-            className={`discover-recommended-status${isUpdating ? " discover-recommended-status--loading" : ""}`}
+      if (isUpdating) {
+        return (
+          <DiscoverRail
+            key="recommended"
+            title="Recommended"
+            className="discover-rail--placeholder"
+            afterTitle={
+              <p className="discover-recommended-status" role="status">
+                <DotLoader size="xs" label={null} />
+                {updateProgressMessage || "Building your recommendations"}
+              </p>
+            }
           >
-            {isUpdating ? (
-              <DotLoader size="2xl" label={null} className="discover-recommended-status__loader" />
-            ) : (
-              <div className="discover-recommended-status__icon" aria-hidden="true">
-                <Music className="artist-icon-lg" />
+            {Array.from({ length: DISCOVER_PREVIEW_ITEM_LIMIT }, (_, index) => (
+              <div key={index} className="artist-discover-shelf-card" aria-hidden="true">
+                <div className="discover-skeleton-card">
+                  <div className="discover-skeleton-card__cover" />
+                  <div className="discover-skeleton-card__line" />
+                  <div className="discover-skeleton-card__line discover-skeleton-card__line--short" />
+                </div>
               </div>
-            )}
-            <h3 className="discover-recommended-status__heading">
-              {isUpdating
-                ? "Building your recommendations"
-                : provider === "lastfm"
-                  ? "Not enough listening data yet"
-                  : "Connect Last.fm"}
-            </h3>
-            {isUpdating && updateProgressMessage ? (
-              <p className="discover-recommended-status__message">{updateProgressMessage}</p>
-            ) : null}
-            {!isUpdating ? (
-              <div className="discover-recommended-status__actions">
-                {provider !== "lastfm" ? (
-                  <button
-                    type="button"
-                    onClick={() => navigate("/settings/connect")}
-                    className="btn btn-primary btn--bold btn-min-h"
-                  >
-                    Connect Last.fm
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => navigate("/search")}
-                    className="btn btn-primary btn--bold btn-min-h"
-                  >
-                    Search Artists
-                  </button>
-                )}
+            ))}
+          </DiscoverRail>
+        );
+      }
+      return (
+        <DiscoverRail
+          key="recommended"
+          title="Recommended"
+          className="discover-rail--placeholder"
+        >
+          <div className="discover-recommended-empty">
+            <p className="discover-recommended-empty__message">
+              {provider === "lastfm"
+                ? "Not enough listening data yet. Add a few artists you like to get started."
+                : "Connect Last.fm to get recommendations based on what you listen to."}
+            </p>
+            <div className="discover-recommended-empty__actions">
+              {provider !== "lastfm" ? (
                 <button
                   type="button"
-                  onClick={() => navigate("/library")}
-                  className="btn btn-secondary btn--bold btn-min-h"
+                  onClick={() => navigate("/settings/connect")}
+                  className="btn btn-primary btn-sm"
                 >
-                  Browse Library
+                  Connect Last.fm
                 </button>
-              </div>
-            ) : null}
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => navigate("/search")}
+                  className="btn btn-primary btn-sm"
+                >
+                  Search Artists
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => navigate("/library")}
+                className="btn btn-secondary btn-sm"
+              >
+                Browse Library
+              </button>
+            </div>
           </div>
-        </section>
+        </DiscoverRail>
       );
     }
 

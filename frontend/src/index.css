@@ -5246,61 +5246,93 @@ textarea {
   margin-bottom: 2rem;
 }
 
-.discover-recommended-status__title {
-  margin-bottom: 1rem;
+.discover-rail--placeholder .artist-discover-rail__actions {
+  display: none;
+}
+
+.discover-rail--placeholder .artist-discover-rail__content {
+  overflow: hidden;
 }
 
 .discover-recommended-status {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 1.5rem 0;
-  text-align: left;
-}
-
-.discover-recommended-status--loading {
-  padding: 2.5rem 0;
-}
-
-.discover-recommended-status__icon {
-  display: flex;
-  width: 2.5rem;
-  height: 2.5rem;
+  min-width: 0;
   align-items: center;
-  justify-content: center;
-  margin-bottom: 1rem;
+  gap: 0.5rem;
+  margin: 0 0 0 0.5rem;
+  overflow: hidden;
   color: var(--aurral-text-muted);
+  font-size: 0.875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.discover-skeleton-card {
+  padding: 0.25rem 0.25rem 0.5rem;
+}
+
+.discover-skeleton-card__cover,
+.discover-skeleton-card__line {
   background: var(--aurral-surface-raised);
+  animation: discover-skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+.discover-skeleton-card__cover {
+  width: 100%;
+  aspect-ratio: 1;
+  margin-bottom: 0.625rem;
   border-radius: var(--aurral-radius-round);
 }
 
-.discover-recommended-status__loader {
-  margin-bottom: 1rem;
+.discover-skeleton-card__line {
+  width: 70%;
+  height: 0.75rem;
+  border-radius: var(--aurral-radius-sm);
 }
 
-.discover-recommended-status__heading {
-  margin: 0 0 0.5rem;
-  color: var(--aurral-text);
-  font-size: 1.125rem;
-  font-weight: 600;
-  line-height: 1.3;
+.discover-skeleton-card__line--short {
+  width: 45%;
+  height: 0.625rem;
+  margin-top: 0.5rem;
 }
 
-.discover-recommended-status__message {
-  margin: 0;
-  max-width: 26rem;
-  color: var(--aurral-text-muted);
-  font-size: 0.875rem;
-  line-height: 1.55;
+@keyframes discover-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.45;
+  }
 }
 
-.discover-recommended-status__actions {
+@media (prefers-reduced-motion: reduce) {
+  .discover-skeleton-card__cover,
+  .discover-skeleton-card__line {
+    animation: none;
+  }
+}
+
+.discover-recommended-empty {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  justify-content: flex-start;
-  margin-top: 1.5rem;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  padding-block: 0.25rem;
+}
+
+.discover-recommended-empty__message {
+  margin: 0;
+  color: var(--aurral-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.discover-recommended-empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .artist-discover-hero {
@@ -6059,12 +6091,6 @@ textarea {
   .artist-discover-shelf-card--news,
   .discover-news-rail-status {
     width: min(82vw, 320px);
-  }
-
-  .discover-recommended-status__actions {
-    flex-direction: column;
-    align-items: stretch;
-    width: min(100%, 16rem);
   }
 }
 
