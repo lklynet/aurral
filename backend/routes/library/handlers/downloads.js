@@ -415,6 +415,9 @@ export function registerDownloads(router) {
             });
           }
         }
+        return res.status(409).json({
+          error: "Nothing to import yet: the track hasn't been downloaded",
+        });
       }
 
       const monitoredTrack = await libraryManager.monitorAurralTrack({

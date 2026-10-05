@@ -509,17 +509,16 @@ test("Add to library imports a finished flow track into Lidarr when importing on
   assert.equal(downloadTracker.getByPlaylistType("library").length, 0);
 });
 
-test("Add to library queues a download when importing on add is on but no file exists", async () => {
+test("Add to library does nothing when importing on add is on but no file exists", async () => {
   const state = createFakeLidarr({ immediate: true });
   setImportOnAdd(true);
 
   const response = await addTrackToLibrary(addBody);
 
-  assert.equal(response.statusCode, 202);
-  assert.equal(response.body.queued, true);
-  assert.equal(response.body.importedToLidarr, undefined);
+  assert.equal(response.statusCode, 409);
+  assert.match(response.body.error, /hasn't been downloaded/);
   assert.equal(state.calls.requests.length, 0);
-  assert.equal(downloadTracker.getJob(response.body.jobId).playlistType, "library");
+  assert.equal(downloadTracker.getByPlaylistType("library").length, 0);
 });
 
 test("Add to library reports a failed Lidarr import instead of moving the file", async () => {
@@ -547,10 +546,10 @@ test("Add to library only imports finished tracks the user can access", async ()
 
   const response = await addTrackToLibrary(addBody, { id: ownerUserId + 1, role: "user", permissions: {} });
 
-  assert.equal(response.body.importedToLidarr, undefined);
+  assert.equal(response.statusCode, 409);
   assert.equal(state.calls.requests.some((call) => call.endpoint === "/command"), false);
   assert.equal(downloadTracker.getJob(jobId).externalPath, null);
-  assert.equal(downloadTracker.getJob(response.body.jobId).playlistType, "library");
+  assert.equal(downloadTracker.getByPlaylistType("library").length, 0);
 });
 
 const refreshCommands = (state) =>
