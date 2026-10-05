@@ -107,12 +107,18 @@ export function buildResolvedJobTrack(job, payloadTrack = {}) {
   };
 }
 
+// A Usenet job's remote name is the whole release, so the held file is the
+// only name that identifies the track waiting for review.
 export function resolveBlockedJobSourceFilename(job) {
-  const remote = String(job?.remoteFilename || "").trim();
-  if (remote) return remote;
+  const remote = String(job?.remoteFilename || "").trim() || null;
   const staging = String(job?.stagingPath || "").trim();
-  if (!staging) return null;
-  return path.basename(staging) || null;
+  const staged = staging ? path.basename(staging) || null : null;
+  return job?.downloadSource === "usenet" ? staged || remote : remote || staged;
+}
+
+export function resolveBlockedJobReleaseTitle(job) {
+  if (job?.downloadSource !== "usenet") return null;
+  return String(job?.releaseTitle || "").trim() || null;
 }
 
 export function joinUnderRoot(root, relativePath, fileName = null) {

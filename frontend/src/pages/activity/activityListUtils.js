@@ -101,6 +101,7 @@ const buildRequestChangeSignature = (request) =>
     status: request?.status || null,
     statusLabel: request?.statusLabel || null,
     sourceFilename: request?.sourceFilename || null,
+    releaseTitle: request?.releaseTitle || null,
     href: request?.href || null,
     inQueue: request?.inQueue === true,
     canReSearch: request?.canReSearch === true,

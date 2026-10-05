@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { expandAlbumGrabHistory } from "./albumGrabActivity.js";
 import { dbOps } from "../db/helpers/index.js";
-import { resolveBlockedJobSourceFilename } from "./downloadUtils.js";
+import { resolveBlockedJobReleaseTitle, resolveBlockedJobSourceFilename } from "./downloadUtils.js";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.js";
 import { getLibraryForAlbumReferences } from "./libraryQueryService.js";
 
@@ -925,6 +925,7 @@ export const recordTrackJobActivity = ({
   downloadSource = null,
   downloadClient = null,
   sourceFilename = null,
+  releaseTitle = null,
   albumMbid = null,
   href = null,
 } = {}) => {
@@ -936,6 +937,7 @@ export const recordTrackJobActivity = ({
   const album = String(albumName || "").trim() || null;
   const clientLabel = resolveDownloadClientLabel(downloadSource, downloadClient);
   const filename = String(sourceFilename || "").trim() || null;
+  const release = String(releaseTitle || "").trim() || null;
   return upsertAurralHistory({
     referenceId: id,
     kind: "track_download",
@@ -953,6 +955,7 @@ export const recordTrackJobActivity = ({
       downloadSource: downloadSource || "slskd",
       downloadClient: downloadClient || null,
       ...(filename ? { sourceFilename: filename } : {}),
+      ...(release ? { releaseTitle: release } : {}),
     },
   });
 };
@@ -1032,6 +1035,7 @@ export const recordTrackJobBlocked = (job, message = "Blocked for review") =>
     title: `Review needed for ${job?.trackName || "track"}`,
     subtitle: String(message || "").trim() || `${job?.artistName || "Artist"}`,
     sourceFilename: resolveBlockedJobSourceFilename(job),
+    releaseTitle: resolveBlockedJobReleaseTitle(job),
   });
 
 export const toHistoryRequestItem = (entry, options = {}) => {
@@ -1041,6 +1045,8 @@ export const toHistoryRequestItem = (entry, options = {}) => {
     String(options.sourceFilename || entry.metadata?.sourceFilename || "").trim() || null;
   const trackName =
     String(options.trackName || entry.metadata?.trackName || "").trim() || null;
+  const releaseTitle =
+    String(options.releaseTitle || entry.metadata?.releaseTitle || "").trim() || null;
   const albumName =
     String(options.albumName || entry.metadata?.albumName || "").trim() || null;
   const requester = requesterFromMetadata(entry.metadata);
@@ -1075,6 +1081,7 @@ export const toHistoryRequestItem = (entry, options = {}) => {
       ? { id: requester.userId, username: requester.username || null }
       : null,
     sourceFilename,
+    releaseTitle,
     inQueue:
       entry.status === "processing" ||
       entry.status === "pending" ||
@@ -1159,11 +1166,13 @@ export const getAurralHistoryRequests = async (lidarrClient = null, user = null)
     .map((entry) => {
       const jobId = String(entry.metadata?.jobId || "").trim();
       const job = jobId ? jobsById.get(jobId) : null;
+      const blockedJob = entry.status === "blocked" ? job : null;
       const sourceFilename =
-        entry.metadata?.sourceFilename ||
-        (entry.status === "blocked" && job
-          ? resolveBlockedJobSourceFilename(job)
-          : null);
+        (blockedJob && resolveBlockedJobSourceFilename(blockedJob)) ||
+        entry.metadata?.sourceFilename;
+      const releaseTitle =
+        (blockedJob && resolveBlockedJobReleaseTitle(blockedJob)) ||
+        entry.metadata?.releaseTitle;
       const albumName =
         entry.metadata?.albumName ||
         (entry.status === "blocked" && job?.albumName ? job.albumName : null);
@@ -1180,7 +1189,7 @@ export const getAurralHistoryRequests = async (lidarrClient = null, user = null)
         entry.statusLabel = isReused ? "Reused" : "Downloaded";
       }
       return toHistoryRequestItem(entry, {
-        sourceFilename, albumName, trackName,
+        sourceFilename, releaseTitle, albumName, trackName,
         albumGrab: expanded.manifests.get(entry.metadata?.albumGrabId),
       });
     });

@@ -71,6 +71,7 @@ function getRows(item) {
     ["Completed", formatTimestamp(item.completedAt)],
     ["Requester", requester],
     ["Source file", item.sourceFilename],
+    ["Release", item.releaseTitle],
     ["Details", details],
     ["Track fallback", item.albumGrab?.fallbackReason],
     ["Previous errors", item.previousErrors?.join("; ")],

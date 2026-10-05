@@ -421,6 +421,46 @@ test("blocked track download history falls back to staging basename", async () =
   assert.equal(entry?.sourceFilename, "downloaded-track.mp3");
 });
 
+test("blocked Usenet download history names the held track file and its release", async () => {
+  const release = '[01/41] "Artist-Album-Deluxe_Edition-WEB-FLAC.par2"';
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Song", albumName: "Album" },
+    "playlist-1",
+  );
+  downloadTracker.updateDownloadMetadata(jobId, {
+    downloadSource: "usenet",
+    releaseTitle: release,
+    remoteFilename: release,
+  });
+  downloadTracker.setBlocked(
+    jobId,
+    "blocked-duration-mismatch",
+    "/tmp/usenet/Artist-Album-Deluxe_Edition/05-artist-song.flac",
+  );
+  upsertAurralHistory({
+    referenceId: jobId,
+    kind: "track_download",
+    title: "Review needed for Song",
+    subtitle: "blocked-duration-mismatch",
+    status: "blocked",
+    statusLabel: "Review",
+    metadata: {
+      jobId,
+      trackName: "Song",
+      artistName: "Artist",
+      playlistId: "playlist-1",
+      downloadSource: "usenet",
+      sourceFilename: release,
+    },
+  });
+
+  const entries = await getAurralHistoryRequests();
+  const entry = entries.find((item) => item.jobId === jobId);
+
+  assert.equal(entry?.sourceFilename, "05-artist-song.flac");
+  assert.equal(entry?.releaseTitle, release);
+});
+
 test("cancelled album track downloads show as cancelled, never as failed", async () => {
   const { cancelDownloadJobs } = await importFromRepo(
     "backend/services/downloadJobs/downloadCancellation.js",
