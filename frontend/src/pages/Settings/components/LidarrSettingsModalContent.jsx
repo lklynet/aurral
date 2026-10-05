@@ -438,6 +438,18 @@ export function LidarrSettingsSection({
         </SettingsArrFormGroup>
 
         <SettingsArrFormGroup
+          label="Import to Lidarr when adding to library"
+          help="When a track already has a downloaded file, Add to library hands it to Lidarr instead of moving it into the Downloads Folder."
+        >
+          <PillToggle
+            className="settings-toggle"
+            checked={settings.integrations?.lidarr?.importOnAddToLibrary === true}
+            onChange={(e) => updateLidarr({ importOnAddToLibrary: e.target.checked })}
+            aria-label="Import downloaded tracks to Lidarr when adding them to the library"
+          />
+        </SettingsArrFormGroup>
+
+        <SettingsArrFormGroup
           label="Show available music only"
           help="Hide albums and artists with no downloaded files from the Library. You can still search for and request unmonitored albums. Turn off to browse each artist's full Lidarr discography."
         >

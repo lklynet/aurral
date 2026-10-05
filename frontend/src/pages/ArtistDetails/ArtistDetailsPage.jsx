@@ -29,6 +29,7 @@ import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
 import { Music, X } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
 import { useToast } from "../../contexts/ToastContext";
+import { describeAddTrackResult } from "../../utils/libraryDestination.js";
 import { useAuth } from "../../contexts/AuthContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { useModalDialog } from "../../hooks/useModalDialog.js";
@@ -426,13 +427,7 @@ function ArtistDetailsPage() {
     setLibraryTrackSavingKeys((current) => new Set(current).add(savingKey));
     try {
       const result = await downloadTrack(payload);
-      showSuccess(
-        result?.alreadyOwned
-          ? `${payload.trackName} is already in your library`
-          : result?.queued
-            ? `Queued ${payload.trackName} for your library`
-            : `Added ${payload.trackName} to your library`,
-      );
+      showSuccess(describeAddTrackResult(result, payload.trackName));
     } catch (err) {
       showError(
         err.response?.data?.message ||

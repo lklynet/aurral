@@ -28,6 +28,7 @@ import {
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination.js";
+import { describeAddTrackResult } from "../../utils/libraryDestination.js";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import { PlaylistTracksPanel } from "./components/playlistTrackComponents.jsx";
 import ManualMissingSearchModal from "../activity/ManualMissingSearchModal.jsx";
@@ -359,13 +360,7 @@ export function PlaylistTracks({
     setLibraryTrackSavingKey(String(track?.id || `${payload.artistName}:${payload.trackName}`));
     try {
       const result = await downloadTrackToLibrary(payload);
-      showSuccess(
-        result?.alreadyOwned
-          ? `${payload.trackName} is already in your library`
-          : result?.queued
-            ? `Queued ${payload.trackName} for your library`
-            : `Added ${payload.trackName} to your library`,
-      );
+      showSuccess(describeAddTrackResult(result, payload.trackName));
     } catch (err) {
       showError(errorMessage(err, "Failed to add track to library"));
     } finally {

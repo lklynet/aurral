@@ -160,6 +160,7 @@ const defaultSettings = {
       tagId: null,
       defaultMonitorOption: "none",
       searchOnAdd: false,
+      importOnAddToLibrary: false,
     },
     metadata: {
       provider: "brainzmash",

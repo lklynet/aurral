@@ -122,6 +122,7 @@ export const defaultData = {
         tagId: null,
         defaultMonitorOption: "none",
         searchOnAdd: false,
+        importOnAddToLibrary: false,
         availableOnly: true,
       },
       metadata: {

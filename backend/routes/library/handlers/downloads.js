@@ -42,6 +42,17 @@ const invalidateActivityRequestsCache = () =>
     .then(({ invalidateRequestsCache }) => invalidateRequestsCache())
     .catch(() => {});
 
+function sendLidarrImportError(res, error) {
+  const statusCode = error.statusCode || 500;
+  if (statusCode >= 500) {
+    logger.error("library", "Failed to import track into Lidarr", error.message);
+  }
+  return res.status(statusCode).json({
+    error: error.message || "Failed to import track into Lidarr",
+    ...(error.rejections?.length ? { rejections: error.rejections } : {}),
+  });
+}
+
 export const getDownloadStatusesForAlbumIds = async (
   albumIdArrayInput,
   snapshot = null,
@@ -381,6 +392,33 @@ export function registerDownloads(router) {
       });
       if (alreadyOwned) return res.json({ success: true, alreadyOwned: true, queued: false });
 
+      const { lidarrClient } = await import("../../../services/lidarrClient.js");
+      if (
+        dbOps.getSettings().integrations?.lidarr?.importOnAddToLibrary === true &&
+        lidarrClient.isConfigured()
+      ) {
+        const { findFinishedTrackJob, importTrackToLidarr } = await import(
+          "../../../services/lidarrTrackImport.js"
+        );
+        const finishedJob = await findFinishedTrackJob(track);
+        if (finishedJob) {
+          try {
+            const result = await importTrackToLidarr({ jobId: finishedJob.id });
+            await invalidateActivityRequestsCache();
+            return res.json({
+              success: true,
+              importedToLidarr: true,
+              queued: false,
+              jobId: finishedJob.id,
+              lidarrAlbumId: result.lidarrAlbumId,
+              trackFile: result.trackFile,
+            });
+          } catch (error) {
+            return sendLidarrImportError(res, error);
+          }
+        }
+      }
+
       const monitoredTrack = await libraryManager.monitorAurralTrack({
         canonicalTrackId: body.canonicalTrackId,
         trackMbid: track.trackMbid,
@@ -501,14 +539,7 @@ export function registerDownloads(router) {
           jobsUpdated: result.jobsUpdated,
         });
       } catch (error) {
-        const statusCode = error.statusCode || 500;
-        if (statusCode >= 500) {
-          logger.error("library", "Failed to import track into Lidarr", error.message);
-        }
-        return res.status(statusCode).json({
-          error: error.message || "Failed to import track into Lidarr",
-          ...(error.rejections?.length ? { rejections: error.rejections } : {}),
-        });
+        return sendLidarrImportError(res, error);
       }
     },
   );

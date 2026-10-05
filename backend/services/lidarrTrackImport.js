@@ -49,9 +49,7 @@ async function fileExists(filePath) {
   }
 }
 
-function findImportableJob({ jobId, trackMbid, artistName, trackName } = {}) {
-  const id = String(jobId || "").trim();
-  if (id) return downloadTracker.getJob(id);
+function finishedTrackJobs({ trackMbid, artistName, trackName } = {}) {
   const mbid = String(trackMbid || "").trim();
   const artistKey = normalizeText(artistName);
   const trackKey = normalizeText(trackName);
@@ -61,7 +59,30 @@ function findImportableJob({ jobId, trackMbid, artistName, trackName } = {}) {
       ? job.trackMbid === mbid
       : artistKey && trackKey && normalizeText(job.artistName) === artistKey &&
         normalizeText(job.trackName) === trackKey));
-  return matches.find((job) => job.playlistType === "library") || matches[0] || null;
+  return [
+    ...matches.filter((job) => job.playlistType === "library"),
+    ...matches.filter((job) => job.playlistType !== "library"),
+  ];
+}
+
+function findImportableJob(reference = {}) {
+  const id = String(reference.jobId || "").trim();
+  return id ? downloadTracker.getJob(id) : finishedTrackJobs(reference)[0] || null;
+}
+
+/**
+ * Finds a finished Aurral job for a track whose file is still on disk.
+ *
+ * @param {{trackMbid?: string, artistName?: string, trackName?: string}} track
+ * @param {{downloadRoot?: string}} [options={}]
+ * @returns {Promise<object|null>}
+ */
+export async function findFinishedTrackJob(track, options = {}) {
+  const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
+  for (const job of finishedTrackJobs(track)) {
+    if (await fileExists(path.resolve(remapLegacyPath(job.finalPath, downloadRoot)))) return job;
+  }
+  return null;
 }
 
 function matchAlbumTrack(tracks, job) {

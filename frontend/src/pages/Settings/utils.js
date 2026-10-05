@@ -65,6 +65,7 @@ export const normalizeSettings = (savedSettings) => {
         externalUrl: "",
         apiKey: "",
         searchOnAdd: false,
+        importOnAddToLibrary: false,
         availableOnly: true,
         defaultMonitorOption: "none",
         ...lidarr,

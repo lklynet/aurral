@@ -29,6 +29,12 @@ To apply the quality profile, custom formats, and file naming from Davo's Commun
 
 To stop Aurral from sending requests to Lidarr without removing the connection, turn off **Enabled**. Aurral keeps indexed Lidarr tracks in the Library, and stops watching and scanning the Lidarr root folders. When Lidarr is turned off, not configured, or not reachable, the Lidarr tab says which one applies.
 
+## Import downloaded tracks
+
+**Import to Lidarr** in a flow or playlist track menu hands the track's file to Lidarr. Lidarr adds the artist and album without monitoring or searching, then moves the file into its root folder.
+
+With **Import to Lidarr when adding to library** on in **Settings > Lidarr**, **Add to library** does this for any track that already has a downloaded file. Tracks without a file are downloaded as before. Off by default.
+
 ## Library display
 
 Lidarr knows each artist's whole discography, including albums that you have not downloaded. **Show available music only** in **Settings > Lidarr** decides which albums the Library lists:

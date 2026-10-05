@@ -3,6 +3,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
 import { downloadTrackToLibrary } from "../utils/api/endpoints/library.js";
+import { describeAddTrackResult } from "../utils/libraryDestination.js";
 import {
   addStaticPlaylistTracks,
   createStaticPlaylist,
@@ -109,11 +110,7 @@ export function useTrackSaveActions() {
       setLibraryTrackSavingKey(String(track?.id ?? ""));
       try {
         const result = await downloadTrackToLibrary(payload);
-        showSuccess(
-          result?.alreadyOwned
-            ? `${payload.trackName} is already in your library`
-            : `Queued ${payload.trackName} for your library`,
-        );
+        showSuccess(describeAddTrackResult(result, payload.trackName));
       } catch (error) {
         showError(getApiErrorMessage(error, "Couldn't add the track to your library"));
       } finally {
@@ -130,11 +127,13 @@ export function useTrackSaveActions() {
       setBulkActionLoading(true);
       let queued = 0;
       let owned = 0;
+      let imported = 0;
       let failed = 0;
       for (const payload of payloads) {
         try {
           const result = await downloadTrackToLibrary(payload);
-          if (result?.alreadyOwned) owned += 1;
+          if (result?.importedToLidarr) imported += 1;
+          else if (result?.alreadyOwned) owned += 1;
           else queued += 1;
         } catch {
           failed += 1;
@@ -143,6 +142,7 @@ export function useTrackSaveActions() {
       setBulkActionLoading(false);
       const parts = [];
       if (queued) parts.push(`Queued ${queued} ${queued === 1 ? "track" : "tracks"} for your library`);
+      if (imported) parts.push(`Imported ${imported} ${imported === 1 ? "track" : "tracks"} to Lidarr`);
       if (owned) parts.push(`${owned} already in your library`);
       if (failed) {
         showError(

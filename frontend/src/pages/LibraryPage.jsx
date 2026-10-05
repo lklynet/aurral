@@ -100,6 +100,7 @@ import {
 import {
   canRemoveLibraryAlbum,
   resolveAlbumManager,
+  describeAddTrackResult,
 } from "../utils/libraryDestination.js";
 import { describeAlbumRequestResult } from "../utils/albumAddAction.js";
 import {
@@ -1036,7 +1037,7 @@ function LibraryPage() {
       }));
       try {
         const result = await downloadTrackToLibrary(payload);
-        if (result?.alreadyOwned) {
+        if (result?.alreadyOwned || result?.importedToLidarr) {
           setTrackDownloadStates(({ [key]: _, ...rest }) => rest);
         } else {
           setTrackDownloadStates((current) => ({
@@ -1047,13 +1048,7 @@ function LibraryPage() {
             },
           }));
         }
-        showSuccess(
-          result?.alreadyOwned
-            ? `${payload.trackName} is already in your library`
-            : result?.queued
-              ? `Queued ${payload.trackName} for your library`
-              : `Added ${payload.trackName} to your library`,
-        );
+        showSuccess(describeAddTrackResult(result, payload.trackName));
         return result;
       } catch (requestError) {
         setTrackDownloadStates(({ [key]: _, ...rest }) => rest);

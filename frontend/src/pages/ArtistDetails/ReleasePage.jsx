@@ -29,7 +29,7 @@ import {
   countReleaseTracks,
   describeAlbumRequestResult,
 } from "../../utils/albumAddAction";
-import { buildAlbumRequestPayload } from "../../utils/libraryDestination";
+import { buildAlbumRequestPayload, describeAddTrackResult } from "../../utils/libraryDestination";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
@@ -433,13 +433,7 @@ function ReleasePage() {
       setLibraryTrackSavingKey(savingKey);
       try {
         const result = await downloadTrack(payload);
-        showSuccess(
-          result?.alreadyOwned
-            ? `${payload.trackName} is already in your library`
-            : result?.queued
-              ? `Queued ${payload.trackName} for your library`
-              : `Added ${payload.trackName} to your library`,
-        );
+        showSuccess(describeAddTrackResult(result, payload.trackName));
       } catch (err) {
         showError(
           err.response?.data?.message ||

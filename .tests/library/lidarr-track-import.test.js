@@ -20,6 +20,9 @@ const [
   { importTrackToLidarr },
   libraryStore,
   managementStore,
+  { dbOps },
+  { downloadWorker },
+  { registerDownloads },
 ] = await setupIsolatedBackend(
   "lidarr-track-import",
   "backend/config/db-sqlite.js",
@@ -30,7 +33,51 @@ const [
   "backend/services/lidarrTrackImport.js",
   "backend/services/libraryMediaStore.js",
   "backend/services/libraryManagementStore.js",
+  "backend/db/helpers/index.js",
+  "backend/services/downloadJobs/downloadWorker.js",
+  "backend/routes/library/handlers/downloads.js",
 );
+
+const routes = new Map();
+const route = (method) => (routePath, ...handlers) => {
+  routes.set(`${method} ${routePath}`, handlers.at(-1));
+};
+registerDownloads({ get: route("GET"), post: route("POST"), put: route("PUT"), delete: route("DELETE") });
+
+async function addTrackToLibrary(body) {
+  const response = { statusCode: 200, body: null };
+  await routes.get("POST /downloads/track")(
+    { params: {}, body, query: {}, user: { role: "admin", permissions: {} } },
+    {
+      status(code) {
+        response.statusCode = code;
+        return this;
+      },
+      json(value) {
+        response.body = value;
+        return this;
+      },
+    },
+  );
+  return response;
+}
+
+const useTestPathMappings = () =>
+  syncPathMappings([
+    { source: "lidarr", remote: "/data/aurral", local: downloadRoot },
+    { source: "lidarr", remote: "/music", local: lidarrRoot },
+  ]);
+
+// Reading settings re-syncs path mappings from the database, so save the test mappings too.
+function setImportOnAdd(enabled) {
+  dbOps.updateSettings({
+    integrations: { lidarr: { importOnAddToLibrary: enabled } },
+    pathMappings: [
+      { source: "lidarr", remote: "/data/aurral", local: downloadRoot },
+      { source: "lidarr", remote: "/music", local: lidarrRoot },
+    ],
+  });
+}
 
 const artistMbid = "a1111111-1111-4111-8111-111111111111";
 const albumMbid = "a2222222-2222-4222-8222-222222222222";
@@ -40,7 +87,13 @@ const lidarrRoot = path.join(isolatedState.baseDir, "lidarr-music");
 const originalClient = { ...lidarrClient };
 const fastOptions = { downloadRoot, pollIntervalMs: 0, timeoutMs: 1000 };
 
-function createFakeLidarr({ albumExists = true, candidate = {}, reidentify = null, commandStatus = "completed" } = {}) {
+function createFakeLidarr({
+  albumExists = true,
+  candidate = {},
+  reidentify = null,
+  commandStatus = "completed",
+  immediate = false,
+} = {}) {
   const calls = { requests: [], addArtist: [], addAlbum: [] };
   const artist = { id: 7, artistName: "Import Artist", foreignArtistId: artistMbid };
   const album = {
@@ -59,6 +112,11 @@ function createFakeLidarr({ albumExists = true, candidate = {}, reidentify = nul
   let albumAdded = albumExists;
   const state = { album, tracks, trackFiles, calls, sourcePath: null };
 
+  const finishedCommand = () => ({
+    id: 55,
+    status: commandStatus,
+    message: commandStatus === "failed" ? "Permission denied" : "",
+  });
   lidarrClient.isConfigured = () => true;
   lidarrClient.getArtistByMbid = async () => artist;
   lidarrClient.addArtist = async (...args) => {
@@ -109,11 +167,9 @@ function createFakeLidarr({ albumExists = true, candidate = {}, reidentify = nul
           if (file.trackIds.includes(track.id)) track.trackFileId = 900;
         }
       }
-      return { id: 55, status: "started" };
+      return immediate ? finishedCommand() : { id: 55, status: "started" };
     }
-    if (endpoint === "/command/55") {
-      return { id: 55, status: commandStatus, message: commandStatus === "failed" ? "Permission denied" : "" };
-    }
+    if (endpoint === "/command/55") return finishedCommand();
     throw new Error(`Unexpected Lidarr request ${method} ${endpoint}`);
   };
   return state;
@@ -151,11 +207,9 @@ test.beforeEach(async (t) => {
   downloadTracker.clearAll();
   await fs.rm(downloadRoot, { recursive: true, force: true });
   await fs.rm(lidarrRoot, { recursive: true, force: true });
-  syncPathMappings([
-    { source: "lidarr", remote: "/data/aurral", local: downloadRoot },
-    { source: "lidarr", remote: "/music", local: lidarrRoot },
-  ]);
+  useTestPathMappings();
   t.mock.method(playlistManager, "refreshPlaylist", async () => null);
+  t.mock.method(downloadWorker, "start", async () => null);
 });
 
 test.after(async () => {
@@ -400,4 +454,67 @@ test("without an album name the Lidarr album containing the track is preferred o
     assert.equal(error.statusCode, 422);
     return true;
   });
+});
+
+const addBody = { artistName: "Import Artist", trackName: "Second Song", albumName: "Import Album", trackMbid };
+
+test("Add to library leaves a finished track alone while importing on add is off", async () => {
+  const state = createFakeLidarr({ immediate: true, candidate: { album: { id: 70 }, tracks: [{ id: 802 }] } });
+  const { jobId } = await seedFlowJob(state);
+  setImportOnAdd(false);
+
+  const response = await addTrackToLibrary(addBody);
+
+  assert.equal(response.body.importedToLidarr, undefined);
+  assert.equal(state.calls.requests.some((call) => call.endpoint === "/command"), false);
+  assert.equal(downloadTracker.getJob(jobId).externalPath, null);
+  assert.equal(response.body.reused, true);
+});
+
+test("Add to library imports a finished flow track into Lidarr when importing on add is on", async () => {
+  const state = createFakeLidarr({ immediate: true, candidate: { album: { id: 70 }, tracks: [{ id: 802 }] } });
+  const { jobId } = await seedFlowJob(state);
+  setImportOnAdd(true);
+
+  const response = await addTrackToLibrary(addBody);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.importedToLidarr, true);
+  assert.equal(response.body.jobId, jobId);
+  assert.equal(response.body.lidarrAlbumId, 70);
+  const command = state.calls.requests.find((call) => call.endpoint === "/command");
+  assert.equal(command.body.importMode, "move");
+  assert.equal(downloadTracker.getJob(jobId).externalPath, response.body.trackFile);
+  assert.equal(downloadTracker.getByPlaylistType("library").length, 0);
+});
+
+test("Add to library queues a download when importing on add is on but no file exists", async () => {
+  const state = createFakeLidarr({ immediate: true });
+  setImportOnAdd(true);
+
+  const response = await addTrackToLibrary(addBody);
+
+  assert.equal(response.statusCode, 202);
+  assert.equal(response.body.queued, true);
+  assert.equal(response.body.importedToLidarr, undefined);
+  assert.equal(state.calls.requests.length, 0);
+  assert.equal(downloadTracker.getJob(response.body.jobId).playlistType, "library");
+});
+
+test("Add to library reports a failed Lidarr import instead of moving the file", async () => {
+  const state = createFakeLidarr({
+    immediate: true,
+    commandStatus: "failed",
+    candidate: { album: { id: 70 }, tracks: [{ id: 802 }] },
+  });
+  const { jobId, filePath } = await seedFlowJob(state);
+  setImportOnAdd(true);
+
+  const response = await addTrackToLibrary(addBody);
+
+  assert.equal(response.statusCode, 502);
+  assert.match(response.body.error, /Permission denied/);
+  assert.equal(await fs.readFile(filePath, "utf8"), "audio");
+  assert.equal(downloadTracker.getJob(jobId).finalPath, filePath);
+  assert.equal(downloadTracker.getByPlaylistType("library").length, 0);
 });

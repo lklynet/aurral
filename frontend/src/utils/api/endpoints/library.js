@@ -15,7 +15,8 @@ import { addActiveDownload } from "../../activeDownloads.js";
 
 const buildStreamUrl = (path) => buildAuthenticatedApiUrl(path);
 const SLOW_LIBRARY_REQUEST_TIMEOUT_MS = 90000;
-// Covers the backend's Lidarr album waits plus its 5-minute import command timeout.
+// Covers the backend's Lidarr album waits plus its 5-minute import command timeout;
+// Add to library can import into Lidarr too.
 const LIDARR_IMPORT_TIMEOUT_MS = 7 * 60 * 1000;
 
 const mergeSignals = (callerSignal, querySignal) => {
@@ -394,7 +395,9 @@ export const downloadAlbum = (artistId, albumId, options = {}) =>
   }));
 
 export const downloadTrackToLibrary = async (track) => {
-  const result = await postData("/library/downloads/track", track);
+  const result = await postData("/library/downloads/track", track, {
+    timeout: LIDARR_IMPORT_TIMEOUT_MS,
+  });
   if (result?.queued) {
     markDownloadStarted({
       track: {
