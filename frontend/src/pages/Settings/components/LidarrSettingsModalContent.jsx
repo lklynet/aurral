@@ -439,7 +439,7 @@ export function LidarrSettingsSection({
 
         <SettingsArrFormGroup
           label="Import to Lidarr instead of the Aurral library"
-          help="Add to library hands tracks to Lidarr instead of keeping them in the Downloads Folder. Tracks that are not downloaded yet are downloaded first, then imported."
+          help="Tracks Aurral adds to its library, including album downloads, are imported into Lidarr instead of staying in the Downloads Folder. Add to library downloads missing tracks first, then imports them."
         >
           <PillToggle
             className="settings-toggle"
