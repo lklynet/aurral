@@ -13,6 +13,8 @@ const DEFAULT_POLL_INTERVAL_MS = 2000;
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 // Lidarr can take minutes to load a newly added artist's albums and tracks.
 const LIDARR_WAIT_TIMEOUT_MS = 120 * 1000;
+// A ManualImport still running after the request timeout is followed in the background this long.
+const BACKGROUND_COMMAND_TIMEOUT_MS = 60 * 60 * 1000;
 const FINISHED_COMMAND_STATUSES = new Set(["completed", "failed", "aborted", "cancelled", "orphaned"]);
 const inflightImports = new Map();
 
@@ -51,16 +53,27 @@ async function fileExists(filePath) {
   }
 }
 
-function finishedTrackJobs({ trackMbid, artistName, trackName } = {}) {
+// Without a recording MBID, artist and title alone could pick the same song from another album.
+function albumMatches(job, albumMbid, albumKey) {
+  const jobAlbumMbid = String(job.albumMbid || "").trim();
+  if (albumMbid && jobAlbumMbid) return jobAlbumMbid === albumMbid;
+  const jobAlbumKey = normalizeText(job.albumName);
+  if (albumKey && jobAlbumKey) return jobAlbumKey === albumKey;
+  return true;
+}
+
+function finishedTrackJobs({ trackMbid, artistName, trackName, albumMbid, albumName } = {}) {
   const mbid = String(trackMbid || "").trim();
   const artistKey = normalizeText(artistName);
   const trackKey = normalizeText(trackName);
+  const albumMbidKey = String(albumMbid || "").trim();
+  const albumKey = normalizeText(albumName);
   const matches = downloadTracker.getAll().filter((job) =>
     job?.status === "done" && job.finalPath && !job.externalPath &&
     (mbid
       ? job.trackMbid === mbid
       : artistKey && trackKey && normalizeText(job.artistName) === artistKey &&
-        normalizeText(job.trackName) === trackKey));
+        normalizeText(job.trackName) === trackKey && albumMatches(job, albumMbidKey, albumKey)));
   return [
     ...matches.filter((job) => job.playlistType === "library"),
     ...matches.filter((job) => job.playlistType !== "library"),
@@ -70,7 +83,7 @@ function finishedTrackJobs({ trackMbid, artistName, trackName } = {}) {
 /**
  * Finds a finished Aurral job for a track whose file is still on disk.
  *
- * @param {{trackMbid?: string, artistName?: string, trackName?: string}} track
+ * @param {{trackMbid?: string, artistName?: string, trackName?: string, albumMbid?: string, albumName?: string}} track
  * @param {{downloadRoot?: string, canAccessJob?: function}} [options={}]
  * @returns {Promise<object|null>}
  */
@@ -251,11 +264,12 @@ async function resolveImportItem({ job, candidate, artistId, album, albumTracks 
   return null;
 }
 
+// Resolves to the finished command, or null if it is still running when the time is up.
 async function waitForCommand(command, { pollIntervalMs, timeoutMs }) {
   const deadline = Date.now() + timeoutMs;
   let current = command;
   while (!FINISHED_COMMAND_STATUSES.has(String(current?.status || "").toLowerCase())) {
-    if (Date.now() > deadline) throw importError(504, "Timed out waiting for Lidarr to import the track");
+    if (Date.now() > deadline) return null;
     await sleep(pollIntervalMs);
     current = await lidarrClient.request(`/command/${command.id}`);
   }
@@ -269,9 +283,13 @@ async function findManualImportCandidate(remotePath, artistId = null) {
     filterExistingFiles: "false",
     replaceExistingFiles: "false",
   });
-  const candidates = await lidarrClient.request(`/manualimport?${query}`);
-  return (Array.isArray(candidates) ? candidates : [])
-    .find((entry) => pathKey(entry?.path) === pathKey(remotePath)) || null;
+  const result = await lidarrClient.request(`/manualimport?${query}`);
+  const candidates = Array.isArray(result) ? result : [];
+  const exact = candidates.find((entry) => entry?.path === remotePath);
+  if (exact) return exact;
+  // Only trust a case-insensitive match when it can't be confused with another file.
+  const loose = candidates.filter((entry) => pathKey(entry?.path) === pathKey(remotePath));
+  return loose.length === 1 ? loose[0] : null;
 }
 
 async function runImport(job, options) {
@@ -342,7 +360,32 @@ async function runImport(job, options) {
     importMode: "move",
     replaceExistingFiles: false,
   });
+  const finalize = (finished) => finalizeImport({
+    job, finished, artist, album, resolved, rejections, localPath, downloadRoot,
+  });
   const finished = await waitForCommand(command, { pollIntervalMs, timeoutMs });
+  if (finished) return finalize(finished);
+
+  // Lidarr keeps importing after Aurral stops waiting; follow the file once it finishes.
+  const background = waitForCommand(command, {
+    pollIntervalMs,
+    timeoutMs: options.backgroundTimeoutMs ?? BACKGROUND_COMMAND_TIMEOUT_MS,
+  })
+    .then((done) => {
+      if (!done) throw new Error("Lidarr did not finish the import within an hour");
+      return finalize(done);
+    })
+    .catch((error) => {
+      logger.warn("library", "Lidarr import did not finish", { jobId: job.id, message: error.message });
+    });
+  throw importError(
+    202,
+    `Lidarr is still importing ${job.trackName || "the track"}; Aurral will follow the file when it finishes`,
+    { stillImporting: true, background },
+  );
+}
+
+async function finalizeImport({ job, finished, artist, album, resolved, rejections, localPath, downloadRoot }) {
   if (String(finished?.status || "").toLowerCase() !== "completed") {
     throw importError(502, `Lidarr import ${finished?.status || "failed"}: ${finished?.message || "no details"}`, {
       rejections,
@@ -361,16 +404,31 @@ async function runImport(job, options) {
 
   const { libraryManager } = await import("./libraryManager.js");
   await libraryManager.recordLidarrTrackImport(artist, album);
+  // The file has moved either way, so jobs follow it even when Aurral can't read Lidarr's path.
   const { moved, finalPath } = await moveJobsToLidarrFile(localPath, trackFile.path, {
     downloadRoot,
     albumName: album.title,
   });
+  const localPathReadable = await fileExists(finalPath);
+  if (!localPathReadable) {
+    logger.warn("library", "Aurral can't read the track Lidarr imported. Add a lidarr path mapping.", {
+      remotePath: trackFile.path,
+      localPath: finalPath,
+    });
+  }
   logger.info("library", "Imported track into Lidarr", {
     jobId: job.id,
     lidarrAlbumId: album.id,
     jobsUpdated: moved,
   });
-  return { success: true, lidarrAlbumId: album.id, trackFile: trackFile.path, finalPath, jobsUpdated: moved };
+  return {
+    success: true,
+    lidarrAlbumId: album.id,
+    trackFile: trackFile.path,
+    finalPath,
+    jobsUpdated: moved,
+    localPathReadable,
+  };
 }
 
 /**
@@ -378,7 +436,7 @@ async function runImport(job, options) {
  *
  * @param {{jobId: string}} reference
  * @param {object} [options={}] - canAccessJob filter plus downloadRoot, pollIntervalMs,
- *   lidarrWaitTimeoutMs and timeoutMs overrides.
+ *   lidarrWaitTimeoutMs, timeoutMs and backgroundTimeoutMs overrides.
  */
 export async function importTrackToLidarr({ jobId } = {}, options = {}) {
   if (!lidarrClient.isConfigured()) throw importError(400, "Lidarr is not configured");
@@ -390,8 +448,10 @@ export async function importTrackToLidarr({ jobId } = {}, options = {}) {
   const key = path.resolve(job.finalPath);
   const inflight = inflightImports.get(key);
   if (inflight) return inflight;
-  const request = runImport(job, options).finally(() => inflightImports.delete(key));
+  const request = runImport(job, options);
   inflightImports.set(key, request);
+  // An import Lidarr is still running keeps its key until the background follow-up ends.
+  request.catch((error) => error.background).finally(() => inflightImports.delete(key));
   return request;
 }
 
@@ -412,9 +472,11 @@ export async function importDownloadedTrack(jobId, options = {}) {
   const id = String(jobId || "").trim();
   if (!importWhenDownloadedJobIds.delete(id)) return null;
   if (dbOps.getSettings().integrations?.lidarr?.importOnAddToLibrary !== true) return null;
+  if (downloadTracker.getJob(id)?.externalPath) return null;
   try {
     return await importTrackToLidarr({ jobId: id }, options);
   } catch (error) {
+    if (error.stillImporting) return null;
     logger.warn("library", "Could not import downloaded track into Lidarr", {
       jobId: id,
       message: error.message,

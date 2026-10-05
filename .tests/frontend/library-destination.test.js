@@ -5,6 +5,7 @@ import {
   buildAlbumRequestPayload,
   buildArtistAddPayload,
   canRemoveLibraryAlbum,
+  describeBulkAddTrackResults,
   getAddToManagerLabel,
   getLibraryOwnerConflict,
   getMonitorOptionsForManager,
@@ -110,4 +111,22 @@ test("an album without a recorded manager belongs to Lidarr when Lidarr has its 
   assert.equal(resolveAlbumManager({ managedBy: null, sources: ["lidarr", "aurral"] }), "lidarr");
   assert.equal(resolveAlbumManager({ managedBy: null, sources: ["flow"] }), null);
   assert.equal(resolveAlbumManager(null), null);
+});
+
+test("bulk add counts tracks queued for Lidarr separately", () => {
+  assert.deepEqual(
+    describeBulkAddTrackResults([
+      { queued: true },
+      { queued: true, willImportToLidarr: true },
+      { queued: true, willImportToLidarr: true },
+      { importedToLidarr: true },
+      { alreadyOwned: true },
+    ]),
+    [
+      "Queued 1 track for your library",
+      "Queued 2 tracks for Lidarr",
+      "Imported 1 track to Lidarr",
+      "1 already in your library",
+    ],
+  );
 });

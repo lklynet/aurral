@@ -31,10 +31,27 @@ export const getManagedByLabel = (manager) => {
 };
 
 export const describeAddTrackResult = (result, trackName) => {
+  if (result?.lidarrImportPending) return result.message || `Lidarr is still importing ${trackName}`;
   if (result?.importedToLidarr) return `Imported ${trackName} to Lidarr`;
   if (result?.alreadyOwned) return `${trackName} is already in your library`;
   if (result?.willImportToLidarr) return `Queued ${trackName}; it goes to Lidarr once downloaded`;
   return result?.queued ? `Queued ${trackName} for your library` : `Added ${trackName} to your library`;
+};
+
+const countTracks = (count) => `${count} ${count === 1 ? "track" : "tracks"}`;
+
+export const describeBulkAddTrackResults = (results) => {
+  const count = (predicate) => results.filter(predicate).length;
+  const imported = count((result) => result?.importedToLidarr);
+  const owned = count((result) => !result?.importedToLidarr && result?.alreadyOwned);
+  const forLidarr = count((result) => result?.willImportToLidarr || result?.lidarrImportPending);
+  const queued = results.length - imported - owned - forLidarr;
+  return [
+    queued ? `Queued ${countTracks(queued)} for your library` : null,
+    forLidarr ? `Queued ${countTracks(forLidarr)} for Lidarr` : null,
+    imported ? `Imported ${countTracks(imported)} to Lidarr` : null,
+    owned ? `${owned} already in your library` : null,
+  ].filter(Boolean);
 };
 
 export const resolveLibraryDestination = ({ lidarrConfigured = false } = {}) => ({

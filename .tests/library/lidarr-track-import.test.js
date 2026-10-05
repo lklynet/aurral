@@ -17,13 +17,15 @@ const [
   { lidarrClient },
   { playlistManager },
   { syncPathMappings },
-  { importTrackToLidarr },
+  { findFinishedTrackJob, importTrackToLidarr, importWhenDownloaded },
   libraryStore,
   managementStore,
   { dbOps },
   { downloadWorker },
   { registerDownloads },
   { flowPlaylistConfig },
+  { reuseTrackForPlaylist },
+  { logger },
 ] = await setupIsolatedBackend(
   "lidarr-track-import",
   "backend/config/db-sqlite.js",
@@ -38,6 +40,8 @@ const [
   "backend/services/downloadJobs/downloadWorker.js",
   "backend/routes/library/handlers/downloads.js",
   "backend/services/playlists/flowPlaylistConfig.js",
+  "backend/services/downloadJobs/fileReuse.js",
+  "backend/services/logger.js",
 );
 
 const routes = new Map();
@@ -95,6 +99,8 @@ function createFakeLidarr({
   reidentify = null,
   commandStatus = "completed",
   immediate = false,
+  pendingPolls = 0,
+  extraCandidates = [],
 } = {}) {
   const calls = { requests: [], addArtist: [], addAlbum: [] };
   const artist = { id: 7, artistName: "Import Artist", foreignArtistId: artistMbid };
@@ -143,6 +149,7 @@ function createFakeLidarr({
     if (endpoint.startsWith("/manualimport?")) {
       return [
         { id: 1, path: "/data/aurral/Other/Other.flac", quality: { quality: { id: 6 } } },
+        ...extraCandidates,
         {
           id: 2,
           path: state.remotePath,
@@ -174,7 +181,10 @@ function createFakeLidarr({
       }
       return immediate ? finishedCommand() : { id: 55, status: "started" };
     }
-    if (endpoint === "/command/55") return finishedCommand();
+    if (endpoint === "/command/55") {
+      state.commandPolls = (state.commandPolls || 0) + 1;
+      return state.commandPolls > pendingPolls ? finishedCommand() : { id: 55, status: "started" };
+    }
     throw new Error(`Unexpected Lidarr request ${method} ${endpoint}`);
   };
   return state;
@@ -278,6 +288,12 @@ test("a flow track Lidarr already matched is moved into Lidarr and the flow foll
   }
   const refreshed = playlistManager.refreshPlaylist.mock.calls.map((call) => call.arguments[0]).sort();
   assert.deepEqual(refreshed, ["flow-other", "flow-weekly"]);
+  const scheduledScan = JSON.parse(
+    db.prepare("SELECT value FROM settings WHERE key = 'pendingLibraryScanJob'").get().value,
+  );
+  assert.equal(scheduledScan.includeLidarr, true);
+  assert.ok(scheduledScan.changedPaths.includes(path.resolve(filePath)));
+  assert.ok(scheduledScan.changedPaths.includes(path.resolve(lidarrFile)));
   await assert.rejects(importTrackToLidarr({ jobId }, fastOptions), /already in Lidarr/);
 });
 
@@ -661,4 +677,93 @@ test("an album whose tracks never load is named in the error", async () => {
   );
   assert.equal(refreshCommands(state).length, 1);
   assert.equal(state.calls.requests.some((call) => call.body?.name === "ManualImport"), false);
+});
+
+test("an import Lidarr finishes after the request timeout is followed in the background", async () => {
+  const state = createFakeLidarr({ pendingPolls: 3, candidate: { album: { id: 70 }, tracks: [{ id: 802 }] } });
+  const { jobId } = await seedFlowJob(state);
+  const options = { ...fastOptions, pollIntervalMs: 5, timeoutMs: 0, backgroundTimeoutMs: 1000 };
+
+  const error = await importTrackToLidarr({ jobId }, options).catch((caught) => caught);
+  assert.equal(error.statusCode, 202);
+  assert.equal(error.stillImporting, true);
+  assert.match(error.message, /Lidarr is still importing Second Song/);
+  assert.equal(await importTrackToLidarr({ jobId }, options).catch((caught) => caught), error);
+  assert.equal(downloadTracker.getJob(jobId).externalPath, null);
+
+  await error.background;
+
+  assert.equal(downloadTracker.getJob(jobId).externalPath, "/music/Import Artist/Import Album/02 - Second Song.flac");
+  await assert.rejects(importTrackToLidarr({ jobId }, options), /already in Lidarr/);
+});
+
+test("without a recording MBID only finished tracks from the same album match", async () => {
+  const state = createFakeLidarr();
+  const { jobId } = await seedFlowJob(state, { mbid: null });
+  const track = { artistName: "Import Artist", trackName: "Second Song" };
+  const find = async (extra) => (await findFinishedTrackJob({ ...track, ...extra }, { downloadRoot }))?.id ?? null;
+
+  assert.equal(await find({}), jobId);
+  assert.equal(await find({ albumName: "import album" }), jobId);
+  assert.equal(await find({ albumName: "Other Album" }), null);
+  assert.equal(await find({ albumMbid: "a9999999-9999-4999-8999-999999999999", albumName: "Import Album" }), null);
+});
+
+test("an exact Lidarr path wins over a case-only duplicate, and two case-only matches are ambiguous", async () => {
+  const state = createFakeLidarr({
+    candidate: { album: { id: 70 }, tracks: [{ id: 802 }] },
+    extraCandidates: [{ id: 3, path: "/data/aurral/_flows/flow-weekly/IMPORT ARTIST/Import Album/Second Song.flac" }],
+  });
+  const { jobId } = await seedFlowJob(state);
+  await importTrackToLidarr({ jobId }, fastOptions);
+  const command = state.calls.requests.find((call) => call.endpoint === "/command");
+  assert.equal(command.body.files[0].path, state.remotePath);
+
+  downloadTracker.clearAll();
+  const ambiguous = createFakeLidarr({
+    extraCandidates: [{ id: 3, path: "/data/aurral/_flows/flow-weekly/IMPORT ARTIST/Import Album/Second Song.flac" }],
+  });
+  const second = await seedFlowJob(ambiguous);
+  ambiguous.remotePath = "/data/aurral/_flows/flow-weekly/import artist/Import Album/Second Song.flac";
+  await assert.rejects(importTrackToLidarr({ jobId: second.jobId }, fastOptions), /Lidarr can't see the file/);
+});
+
+test("a library job finished by reuse is imported when Add to library marked it", async () => {
+  const state = createFakeLidarr({ immediate: true, candidate: { album: { id: 70 }, tracks: [{ id: 802 }] } });
+  await seedFlowJob(state);
+  setImportOnAdd(true);
+  const track = { artistName: "Import Artist", trackName: "Second Song", albumName: "Import Album", artistMbid, albumMbid, trackMbid };
+  const libraryJobId = downloadTracker.addJob(track, "library");
+  importWhenDownloaded(libraryJobId);
+  state.sourcePath = path.join(downloadRoot, "Import Artist", "Import Album", "Second Song.flac");
+  state.remotePath = "/data/aurral/Import Artist/Import Album/Second Song.flac";
+
+  const reuse = await reuseTrackForPlaylist(track, "library", {
+    existingFileMode: "reuse",
+    downloadRoot,
+    existingJobId: libraryJobId,
+    targetPlaylistType: "library",
+    skipHistory: true,
+  });
+
+  assert.equal(reuse.reused, true);
+  const job = await waitFor(() => downloadTracker.getJob(libraryJobId).externalPath && downloadTracker.getJob(libraryJobId));
+  assert.equal(job.externalPath, "/music/Import Artist/Import Album/02 - Second Song.flac");
+});
+
+test("jobs follow an imported file Aurral can't read, with a warning about the path mapping", async (t) => {
+  const state = createFakeLidarr({ candidate: { album: { id: 70 }, tracks: [{ id: 802 }] } });
+  const { jobId } = await seedFlowJob(state);
+  syncPathMappings([{ source: "lidarr", remote: "/data/aurral", local: downloadRoot }]);
+  const warn = t.mock.method(logger, "warn");
+
+  const result = await importTrackToLidarr({ jobId }, fastOptions);
+
+  assert.equal(result.localPathReadable, false);
+  assert.equal(downloadTracker.getJob(jobId).finalPath, path.resolve("/music/Import Artist/Import Album/02 - Second Song.flac"));
+  const warning = warn.mock.calls.find((call) => /path mapping/.test(call.arguments[1]));
+  assert.deepEqual(warning.arguments[2], {
+    remotePath: "/music/Import Artist/Import Album/02 - Second Song.flac",
+    localPath: path.resolve("/music/Import Artist/Import Album/02 - Second Song.flac"),
+  });
 });

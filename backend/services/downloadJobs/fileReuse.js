@@ -342,7 +342,7 @@ export async function moveJobsToLidarrFile(oldPath, lidarrPath, options = {}) {
   await refreshChangedPlaylists(
     new Set(jobs.map((job) => String(job.playlistType || "")).filter(Boolean)),
   );
-  scheduleLibraryScanJob({ includeLidarr: true, changedPaths: [path.resolve(oldPath)] });
+  scheduleLibraryScanJob({ includeLidarr: true, changedPaths: [path.resolve(oldPath), finalPath] });
   return { moved: jobs.length, finalPath };
 }
 
@@ -1094,6 +1094,14 @@ export async function reuseTrackForPlaylist(track, playlistType, options = {}) {
     source.albumName || track.albumName || null,
     source.externalPath || null,
   );
+  if (playlistType === "library") {
+    // Same hook as a finished download: imports into Lidarr only if Add to library asked for it.
+    import("../lidarrTrackImport.js")
+      .then(({ importDownloadedTrack }) => importDownloadedTrack(jobId))
+      .catch((error) => {
+        console.warn(`[FileReuse] Could not start Lidarr import for ${jobId}: ${error?.message || error}`);
+      });
+  }
   console.log(
     `[FileReuse] Reused ${source.sourceType} track for ${playlistType}: ${track.artistName} - ${track.trackName}`,
   );

@@ -414,6 +414,15 @@ export function registerDownloads(router) {
               trackFile: result.trackFile,
             });
           } catch (error) {
+            if (error.stillImporting) {
+              return res.status(202).json({
+                success: true,
+                queued: false,
+                lidarrImportPending: true,
+                jobId: finishedJob.id,
+                message: error.message,
+              });
+            }
             const statusCode = error.statusCode || 500;
             if (statusCode >= 500) {
               logger.error("library", "Failed to import track into Lidarr", error.message);
@@ -432,6 +441,16 @@ export function registerDownloads(router) {
       });
       if (monitoredTrack) {
         monitoredTrack.queuedJobIds.slice(1).forEach(lidarrImportFlag);
+        if (importWhenDownloaded) {
+          // Jobs that finished by reuse before they were marked won't pass the completion hook again.
+          const { importDownloadedTrack } = await import("../../../services/lidarrTrackImport.js");
+          for (const id of monitoredTrack.queuedJobIds) {
+            const job = downloadTracker.getJob(id);
+            if (job?.status !== "done" || job.externalPath) continue;
+            lidarrImportFlag(id);
+            importDownloadedTrack(id).catch(() => {});
+          }
+        }
         await invalidateActivityRequestsCache();
         return res.status(202).json({
           success: true,
@@ -442,9 +461,6 @@ export function registerDownloads(router) {
         });
       }
 
-      const { downloadTracker } = await import(
-        "../../../services/downloadJobs/downloadTracker.js"
-      );
       const existingJob = downloadTracker.getAll().find((job) => {
         if (job.playlistType !== "library" || ["failed", "done"].includes(job.status)) {
           return false;
@@ -493,12 +509,6 @@ export function registerDownloads(router) {
           skipHistory: true,
         });
         if (reuse.reused) {
-          // A reused Aurral file is already downloaded, so hand it to Lidarr straight away.
-          if (lidarrImport.willImportToLidarr && !downloadTracker.getJob(jobId)?.externalPath) {
-            import("../../../services/lidarrTrackImport.js")
-              .then(({ importDownloadedTrack }) => importDownloadedTrack(jobId))
-              .catch((error) => logger.warn("library", "Could not import reused track into Lidarr", error.message));
-          }
           return res.status(202).json({
             success: true,
             queued: false,
