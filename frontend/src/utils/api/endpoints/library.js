@@ -15,8 +15,9 @@ import { addActiveDownload } from "../../activeDownloads.js";
 
 const buildStreamUrl = (path) => buildAuthenticatedApiUrl(path);
 const SLOW_LIBRARY_REQUEST_TIMEOUT_MS = 90000;
-// Add to library can import into Lidarr: covers the album waits plus the 5-minute import command timeout.
-const LIDARR_IMPORT_TIMEOUT_MS = 7 * 60 * 1000;
+// Add to library can import into Lidarr: covers the 2-minute album and track waits
+// plus the 5-minute import command timeout.
+const LIDARR_IMPORT_TIMEOUT_MS = 10 * 60 * 1000;
 
 const mergeSignals = (callerSignal, querySignal) => {
   if (callerSignal && querySignal) return AbortSignal.any([callerSignal, querySignal]);

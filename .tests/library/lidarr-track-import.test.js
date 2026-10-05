@@ -87,7 +87,7 @@ const trackMbid = "a3333333-3333-4333-8333-333333333333";
 const downloadRoot = path.join(isolatedState.baseDir, "aurral-downloads");
 const lidarrRoot = path.join(isolatedState.baseDir, "lidarr-music");
 const originalClient = { ...lidarrClient };
-const fastOptions = { downloadRoot, pollIntervalMs: 0, timeoutMs: 1000 };
+const fastOptions = { downloadRoot, pollIntervalMs: 0, timeoutMs: 1000, lidarrWaitTimeoutMs: 50 };
 
 function createFakeLidarr({
   albumExists = true,
@@ -158,6 +158,9 @@ function createFakeLidarr({
     if (endpoint === "/manualimport" && method === "POST") {
       return reidentify ? reidentify(body) : [{ ...body[0], tracks: [] }];
     }
+    if (endpoint === "/command" && method === "POST" && body.name === "RefreshArtist") {
+      return { id: 56, status: "queued" };
+    }
     if (endpoint === "/command" && method === "POST") {
       if (commandStatus === "completed") {
         const file = body.files[0];
@@ -196,7 +199,7 @@ async function seedFlowJob(state, {
     trackMbid: mbid,
     durationMs: 200000,
   }, playlistType);
-  downloadTracker.setDone(jobId, filePath, "Import Album");
+  downloadTracker.setDone(jobId, filePath, albumName);
   state.sourcePath = filePath;
   state.remotePath = `/data/aurral/_flows/${playlistType}/Import Artist/Import Album/Second Song.flac`;
   return { jobId, filePath };
@@ -548,4 +551,49 @@ test("Add to library only imports finished tracks the user can access", async ()
   assert.equal(state.calls.requests.some((call) => call.endpoint === "/command"), false);
   assert.equal(downloadTracker.getJob(jobId).externalPath, null);
   assert.equal(downloadTracker.getJob(response.body.jobId).playlistType, "library");
+});
+
+const refreshCommands = (state) =>
+  state.calls.requests.filter((call) => call.endpoint === "/command" && call.body?.name === "RefreshArtist");
+
+test("the import waits for Lidarr to load a new artist's tracks and nudges a stalled refresh once", async () => {
+  const state = createFakeLidarr({ candidate: { album: null, tracks: [] } });
+  const loaded = [...state.tracks];
+  state.tracks.length = 0;
+  const getTracks = lidarrClient.getTracksByAlbumId;
+  let polls = 0;
+  lidarrClient.getTracksByAlbumId = async (id) => {
+    polls += 1;
+    if (refreshCommands(state).length > 0 && polls > 3 && state.tracks.length === 0) state.tracks.push(...loaded);
+    return getTracks(id);
+  };
+  const { jobId } = await seedFlowJob(state);
+
+  await importTrackToLidarr({ jobId }, { ...fastOptions, pollIntervalMs: 5, lidarrWaitTimeoutMs: 1000 });
+
+  assert.equal(refreshCommands(state).length, 1);
+  assert.deepEqual(refreshCommands(state)[0].body, { name: "RefreshArtist", artistId: 7, artistIds: [7] });
+  const command = state.calls.requests.find((call) => call.endpoint === "/command" && call.body?.name === "ManualImport");
+  assert.deepEqual(command.body.files[0].trackIds, [802]);
+});
+
+test("an album whose tracks never load is named in the error", async () => {
+  const state = createFakeLidarr({
+    candidate: { album: null, tracks: [], rejections: [{ reason: "Couldn't find similar album" }] },
+  });
+  state.album.releaseDate = "2021-05-07T00:00:00Z";
+  state.tracks.length = 0;
+  const { jobId } = await seedFlowJob(state);
+
+  await assert.rejects(
+    importTrackToLidarr({ jobId }, { ...fastOptions, pollIntervalMs: 1, lidarrWaitTimeoutMs: 40 }),
+    (error) => {
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.message, 'No matching track in Lidarr album "Import Album" (2021)');
+      assert.deepEqual(error.rejections, ["Couldn't find similar album"]);
+      return true;
+    },
+  );
+  assert.equal(refreshCommands(state).length, 1);
+  assert.equal(state.calls.requests.some((call) => call.body?.name === "ManualImport"), false);
 });

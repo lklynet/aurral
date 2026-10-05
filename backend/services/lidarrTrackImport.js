@@ -10,7 +10,8 @@ import { logger } from "./logger.js";
 
 const DEFAULT_POLL_INTERVAL_MS = 2000;
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
-const ALBUM_READY_ATTEMPTS = 8;
+// Lidarr can take minutes to load a newly added artist's albums and tracks.
+const LIDARR_WAIT_TIMEOUT_MS = 120 * 1000;
 const FINISHED_COMMAND_STATUSES = new Set(["completed", "failed", "aborted", "cancelled", "orphaned"]);
 const inflightImports = new Map();
 
@@ -114,9 +115,29 @@ async function ensureLidarrArtist(job) {
   }
 }
 
-async function ensureLidarrAlbum(artist, albumMbid, job, wait) {
+/**
+ * Polls until read() returns a value or the budget runs out. Past half the budget it calls
+ * onHalfway once, so a stalled Lidarr artist refresh can be restarted.
+ */
+async function pollUntil(read, { budgetMs, pollIntervalMs, onHalfway }) {
+  const startedAt = Date.now();
+  let nudged = false;
+  while (true) {
+    const value = await read();
+    if (value) return value;
+    const elapsed = Date.now() - startedAt;
+    if (elapsed >= budgetMs) return null;
+    if (!nudged && elapsed >= budgetMs / 2) {
+      nudged = true;
+      await onHalfway?.();
+    }
+    await sleep(pollIntervalMs);
+  }
+}
+
+async function ensureLidarrAlbum(artist, albumMbid, job, waiter) {
   let addError = null;
-  for (let attempt = 1; attempt <= ALBUM_READY_ATTEMPTS; attempt += 1) {
+  const album = await pollUntil(async () => {
     const existing = await lidarrClient.getAlbumByMbid(albumMbid, { forceRefresh: true });
     if (existing?.id) return lidarrClient.getAlbum(existing.id).catch(() => existing);
     try {
@@ -129,20 +150,20 @@ async function ensureLidarrAlbum(artist, albumMbid, job, wait) {
       // Lidarr may still be refreshing a newly added artist, or the refresh added the album first.
       addError = error;
     }
-    await wait();
-  }
+    return null;
+  }, waiter);
+  if (album) return album;
   throw importError(502, `Lidarr could not add the album: ${addError?.message || "album not found"}`);
 }
 
 const albumTypeRank = (album) => (String(album?.albumType || "").toLowerCase() === "album" ? 0 : 1);
 
 // Flow tracks from Last.fm often lack an album MBID; use the albums Lidarr added with the artist.
-async function findArtistAlbum(artist, job, wait) {
-  let albums = [];
-  for (let attempt = 1; attempt <= ALBUM_READY_ATTEMPTS && albums.length === 0; attempt += 1) {
-    albums = await lidarrClient.getAllAlbums({ artistIds: [artist.id], forceRefresh: true });
-    if (albums.length === 0) await wait();
-  }
+async function findArtistAlbum(artist, job, waiter) {
+  const albums = (await pollUntil(async () => {
+    const found = await lidarrClient.getAllAlbums({ artistIds: [artist.id], forceRefresh: true });
+    return found.length > 0 ? found : null;
+  }, waiter)) || [];
   const albumKey = normalizeText(job.albumName);
   let match = albumKey ? albums.find((album) => normalizeText(album?.title) === albumKey) : null;
   if (!match) {
@@ -159,13 +180,11 @@ async function findArtistAlbum(artist, job, wait) {
   return match ? lidarrClient.getAlbum(match.id).catch(() => match) : null;
 }
 
-async function waitForAlbumTracks(albumId, wait) {
-  for (let attempt = 1; attempt <= ALBUM_READY_ATTEMPTS; attempt += 1) {
+async function waitForAlbumTracks(albumId, waiter) {
+  return (await pollUntil(async () => {
     const tracks = await lidarrClient.getTracksByAlbumId(albumId);
-    if (tracks.length > 0) return tracks;
-    await wait();
-  }
-  return [];
+    return tracks.length > 0 ? tracks : null;
+  }, waiter)) || [];
 }
 
 function selectRelease(album) {
@@ -212,8 +231,23 @@ async function resolveImportItem({ job, candidate, artistId, album, albumTracks 
   }
 
   const match = matchAlbumTrack(albumTracks, job);
-  if (!match?.id) return null;
-  return { albumReleaseId: match.albumReleaseId || releaseId, trackIds: [match.id] };
+  if (match?.id) return { albumReleaseId: match.albumReleaseId || releaseId, trackIds: [match.id] };
+
+  const release = (album.releases || []).find((entry) => entry?.id === releaseId);
+  logger.warn("library", "Lidarr import found no matching track", {
+    job: { trackMbid: job.trackMbid, trackName: job.trackName, albumMbid: job.albumMbid, albumName: job.albumName },
+    album: { id: album.id, title: album.title, foreignAlbumId: album.foreignAlbumId, albumType: album.albumType },
+    release: { id: releaseId, trackCount: release?.trackCount ?? null },
+    albumTracks: albumTracks.length,
+    sampleTracks: albumTracks.slice(0, 5).map((track) => [track?.title, track?.foreignRecordingId]),
+    candidate: { albumId: candidate.album?.id ?? null, albumReleaseId: candidate.albumReleaseId ?? null,
+      tracks: ownTrackIds(candidate).length },
+    reidentified: item
+      ? { albumId: item.album?.id ?? null, albumReleaseId: item.albumReleaseId ?? null, tracks: ownTrackIds(item).length }
+      : null,
+    rejections: rejectionText(item?.rejections ?? candidate.rejections),
+  });
+  return null;
 }
 
 async function waitForCommand(command, { pollIntervalMs, timeoutMs }) {
@@ -242,7 +276,6 @@ async function findManualImportCandidate(remotePath, artistId = null) {
 async function runImport(job, options) {
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const wait = () => sleep(pollIntervalMs);
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const localPath = path.resolve(remapLegacyPath(job.finalPath, downloadRoot));
   if (!(await fileExists(localPath))) throw importError(404, "The track's file is missing");
@@ -255,12 +288,28 @@ async function runImport(job, options) {
 
   const albumMbid = String(job.albumMbid || "").trim();
   const artist = await ensureLidarrArtist(job);
+  let refreshSent = false;
+  const waiter = {
+    budgetMs: options.lidarrWaitTimeoutMs ?? LIDARR_WAIT_TIMEOUT_MS,
+    pollIntervalMs,
+    onHalfway: async () => {
+      if (refreshSent) return;
+      refreshSent = true;
+      await lidarrClient.request("/command", "POST", {
+        name: "RefreshArtist",
+        artistId: artist.id,
+        artistIds: [artist.id],
+      }).catch((error) => {
+        logger.warn("library", "Could not ask Lidarr to refresh the artist", { message: error.message });
+      });
+    },
+  };
   const album = albumMbid
-    ? await ensureLidarrAlbum(artist, albumMbid, job, wait)
-    : await findArtistAlbum(artist, job, wait);
+    ? await ensureLidarrAlbum(artist, albumMbid, job, waiter)
+    : await findArtistAlbum(artist, job, waiter);
   if (!album) throw importError(422, "No Lidarr album of this artist contains the track");
   const artistId = album.artistId || artist.id;
-  const albumTracks = await waitForAlbumTracks(album.id, wait);
+  const albumTracks = await waitForAlbumTracks(album.id, waiter);
 
   const candidate = await findManualImportCandidate(remotePath, artistId);
   if (!candidate) {
@@ -269,7 +318,10 @@ async function runImport(job, options) {
   const rejections = rejectionText(candidate.rejections);
   const resolved = await resolveImportItem({ job, candidate, artistId, album, albumTracks });
   if (!resolved) {
-    throw importError(422, "No matching track in the Lidarr album", { rejections });
+    const year = String(album.releaseDate || "").slice(0, 4);
+    throw importError(422, `No matching track in Lidarr album "${album.title}"${year ? ` (${year})` : ""}`, {
+      rejections,
+    });
   }
 
   const command = await lidarrClient.request("/command", "POST", {
@@ -324,7 +376,8 @@ async function runImport(job, options) {
  * Hands a downloaded Aurral track to Lidarr, which moves the file into its root folder.
  *
  * @param {{jobId: string}} reference
- * @param {object} [options={}] - canAccessJob filter plus downloadRoot, pollIntervalMs and timeoutMs overrides.
+ * @param {object} [options={}] - canAccessJob filter plus downloadRoot, pollIntervalMs,
+ *   lidarrWaitTimeoutMs and timeoutMs overrides.
  */
 export async function importTrackToLidarr({ jobId } = {}, options = {}) {
   if (!lidarrClient.isConfigured()) throw importError(400, "Lidarr is not configured");
