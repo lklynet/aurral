@@ -487,7 +487,7 @@ async function handleUsenetFinalize(payload, helpers) {
     { manualSelection: payload.manualSelection === true },
   );
   if (!isPipelinePayloadActive(payload)) {
-    await removeUsenetItem(payload, job.id);
+    await removeUsenetItem(payload, job.id, { deleteFiles: true, historyItem });
     return null;
   }
   if (

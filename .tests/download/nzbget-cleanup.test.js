@@ -51,6 +51,15 @@ test("refuses anything but a direct child of NZBGet's download folders", async (
   }
 });
 
+test("a category with path components cannot widen the allowed folders", async () => {
+  const outside = path.join(state.baseDir, `outside-${sequence}`, "release");
+  await fs.mkdir(outside, { recursive: true });
+  const escape = path.relative(root, path.dirname(outside));
+  await assert.rejects(removeNzbgetDownloadFolder({ DestDir: outside }, { destDir: root }, escape),
+    /not inside NZBGet/);
+  assert.equal(await exists(outside), true);
+});
+
 test("removes a failed download from the intermediate folder", async () => {
   const inter = path.join(state.baseDir, `inter-${sequence}`);
   await fs.mkdir(path.join(inter, "release.#42"), { recursive: true });
@@ -214,6 +223,18 @@ test("an album grab removes the download after importing its songs", async (t) =
     assert.equal(await exists(job.finalPath), true);
   }
   assert.equal(await exists(folder()), false);
+});
+
+test("a download whose request is cancelled while it is checked is removed", async (t) => {
+  const { jobId, payload, deleted } = await pipelineFixture(t);
+  const { cancelDownloadJob } = await import("../../backend/services/downloadJobs/downloadCancellation.js");
+  t.mock.method(getDownloadClient("nzbget"), "getHistoryItem", async () => {
+    cancelDownloadJob(jobId);
+    return payload.history;
+  });
+  assert.equal(await processUsenetPipelinePayload({ ...payload, history: null }), null);
+  assert.equal(await exists(folder()), false);
+  assert.equal(historyDeletes(deleted), 1);
 });
 
 const failAttempt = (jobId) => ({ failOrTryNextSource: (_payload, job, reason) => {

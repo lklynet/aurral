@@ -37,8 +37,12 @@ export async function removeNzbgetDownloadFolder(historyItem, directories, categ
   const roots = [directories.completedPath, directories.categoryDestDir, directories.destDir]
     .map(toLocal)
     .filter(Boolean);
+  // The category is joined onto a path, so only a plain folder name counts.
+  const categoryDirs = category && category !== ".." && path.basename(category) === category
+    ? roots.map((root) => path.join(root, category))
+    : [];
   const parents = await Promise.all(
-    [...roots, ...roots.map((root) => path.join(root, category)), toLocal(directories.interDir)]
+    [...roots, ...categoryDirs, toLocal(directories.interDir)]
       .filter(Boolean)
       .map(realpathOr),
   );
