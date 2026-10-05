@@ -39,12 +39,22 @@ test("a library refresh removes playlist tracks whose downloads no longer exist"
     name: "Untouched",
     tracks: [{ artistName: "Artist", trackName: "Kept", canonicalJobId: keptJobId }],
   });
+  const alsoRepaired = flowPlaylistConfig.createStaticPlaylist({
+    name: "Also repaired",
+    tracks: [{ artistName: "Artist", trackName: "Deleted", canonicalJobId: deletedJobId }],
+  });
   downloadTracker.removeJob(deletedJobId);
-  const refreshPlaylist = t.mock.method(playlistManager, "refreshPlaylist", async () => {});
+  const refreshPlaylist = t.mock.method(playlistManager, "refreshPlaylist", async (playlistId) => {
+    if (playlistId === repaired.id) throw new Error("artwork write failed");
+  });
 
   await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
 
   assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(repaired.id).tracks, repaired.tracks.slice(1));
   assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(untouched.id).tracks, untouched.tracks);
-  assert.deepEqual(refreshPlaylist.mock.calls.map((call) => call.arguments[0]), [repaired.id]);
+  assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(alsoRepaired.id).tracks, []);
+  assert.deepEqual(
+    refreshPlaylist.mock.calls.map((call) => call.arguments[0]),
+    [repaired.id, alsoRepaired.id],
+  );
 });
