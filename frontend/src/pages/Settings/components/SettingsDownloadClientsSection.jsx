@@ -257,7 +257,7 @@ export function SettingsDownloadClientsSection({
         <SettingsArrFormGroup
           label="Path"
           labelFor="download-clients-download-folder"
-          help="Where Aurral keeps the music it adds, including flow tracks. Example: /data/downloads/aurral"
+          help="Where Aurral keeps the music it adds. Flow tracks go here too unless you set a Flows folder. Example: /data/downloads/aurral"
         >
           <DownloadFolderField
             id="download-clients-download-folder"
