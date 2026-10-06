@@ -110,15 +110,19 @@ test("album assignment accepts a file tagged with a recording ID MusicBrainz mer
       { id: "first", trackName: "First", artistName: "The Band", albumName: "Album", durationMs: 200000, trackNumber: 1, trackMbid: first },
       { id: "second", trackName: "Second", artistName: "The Band", albumName: "Album", durationMs: 200000, trackNumber: 2, trackMbid: second },
     ];
-    const result = await assignDownloadedAlbumFiles({
-      jobs, filePaths: paths, source: "soulseek",
+    const assign = (albumJobs) => assignDownloadedAlbumFiles({
+      jobs: albumJobs, filePaths: paths, source: "soulseek",
       releases: [{ id: "release", tracks: [
         { title: "First", trackNumber: 1, durationMs: 200000, recordingMbid: first, recordingMbidAliases: [] },
         { title: "Second", trackNumber: 2, durationMs: 200000, recordingMbid: second, recordingMbidAliases: [mergedSecond] },
       ] }],
       parseAudio: async (filePath) => parsed.get(filePath),
     });
-    assert.deepEqual(result.accepted.map(({ jobId }) => jobId), ["first", "second"]);
+    assert.deepEqual((await assign(jobs)).accepted.map(({ jobId }) => jobId), ["first", "second"]);
+
+    parsed.set(paths[1], tags("Second", 2, second));
+    const oldJobs = [jobs[0], { ...jobs[1], trackMbid: mergedSecond }];
+    assert.deepEqual((await assign(oldJobs)).accepted.map(({ jobId }) => jobId), ["first", "second"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

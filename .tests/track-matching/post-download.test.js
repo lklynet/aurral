@@ -402,6 +402,11 @@ test("a YouTube file's artist comes from the video title when yt-dlp tagged the 
     tags: { title: "Nirvana", artist: "Come as You Are" },
   });
   assert.equal(reversed.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, reversed.reason);
+  const relabeled = await validate({ artistName: "Nirvana", trackName: "Breed", durationMs: 184000 }, {
+    videoTitle: "Nirvana - Breed (Lyrics)", channel: "Lyric Fan",
+    tags: { title: "Polly", artist: "Nirvana" },
+  });
+  assert.notEqual(relabeled.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
   const creditedCover = await validate({ artistName: "AC/DC", trackName: "Let Me Put My Love Into You", durationMs: 256000 }, {
     videoTitle: "Six Feet Under - Let Me Put My Love Into You - AC/DC", channel: "Metal Uploads",
     tags: { title: "Let Me Put My Love Into You - AC/DC", artist: "Six Feet Under" },

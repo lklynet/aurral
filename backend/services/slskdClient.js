@@ -359,12 +359,13 @@ class SearchMonitor {
       if (cancelled()) { await this.stop(); return { done: true, data: null }; }
       // slskd runs a few searches at once and queues the rest. A queued search
       // has not asked anyone yet, so its windows start once it runs.
+      const wasQueued = this.queued;
       this.queued = isSearchQueued(data);
       if (this.queued) {
         if (Date.now() >= Math.min(this.queueLimit, this.hardDeadline)) return this.finish(this.latest);
-        this.startWindows(Date.now());
         return { done: false, data, waitMs: Math.min(2000, Math.max(1, this.queueLimit - Date.now())) };
       }
+      if (wasQueued) this.startWindows(Date.now());
       const files = this.client.flattenSearchResults(data);
       let eligibilityChanged = false;
       for (const file of files) {

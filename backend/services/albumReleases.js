@@ -61,10 +61,19 @@ function recordingAliasMap(releases) {
   return aliases;
 }
 
+// The other IDs of a recording, whether the given ID is its current one or
+// one merged into it.
+function sameRecordingIds(aliases, id) {
+  for (const [current, merged] of aliases) {
+    if (current === id || merged.includes(id)) return [current, ...merged].filter((entry) => entry !== id);
+  }
+  return [];
+}
+
 export async function withRecordingAliases(request, albumMbid) {
   const id = String(request?.trackMbid || request?.recordingMbid || "").trim().toLowerCase();
-  const aliases = id ? recordingAliasMap(await loadAlbumReleases(albumMbid)).get(id) : null;
-  return aliases?.length ? { ...request, recordingMbidAliases: aliases } : request;
+  const aliases = id ? sameRecordingIds(recordingAliasMap(await loadAlbumReleases(albumMbid)), id) : [];
+  return aliases.length ? { ...request, recordingMbidAliases: aliases } : request;
 }
 
 // Lines a release up with the requested jobs: each job takes the release
@@ -99,7 +108,7 @@ export function candidateReleasesForJobs(jobs, releases = []) {
   const seen = new Set();
   const aliases = recordingAliasMap(releases);
   const withAliases = (track) => ({ ...track,
-    recordingMbidAliases: aliases.get(String(track.recordingMbid || "").toLowerCase()) || [] });
+    recordingMbidAliases: sameRecordingIds(aliases, String(track.recordingMbid || "").toLowerCase()) });
   return [
     { id: null, tracks: jobs.map((job) => withAliases({ ...jobReleaseTrack(job), onRelease: true })), titles: null,
       requestedAll: true },

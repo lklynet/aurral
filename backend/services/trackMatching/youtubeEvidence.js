@@ -65,8 +65,9 @@ export function parseYoutubeTitle(title, artistNames, requestedTitle) {
 // yt-dlp tags a file with YouTube's own track and artist when it has them.
 // Otherwise it splits the video title at its first dash, which puts the title
 // of "Title - Artist" in the artist tag, or it names the uploader as the
-// artist. Only then does the artist named in the video title count: in
-// "Six Feet Under - Song - AC/DC" the tag names who performs the cover.
+// artist. Only then does the video title count: YouTube's own track title
+// outranks the uploader's wording, and in "Six Feet Under - Song - AC/DC" the
+// tag names who performs the cover.
 export function readYoutubeFile({ tagTitle, tagArtists = [], videoTitle, channel }, artistNames, requestedTitle) {
   const fromTags = parseYoutubeTitle(tagTitle, artistNames, requestedTitle);
   const fromVideo = videoTitle ? parseYoutubeTitle(videoTitle, artistNames, requestedTitle) : null;
@@ -75,7 +76,10 @@ export function readYoutubeFile({ tagTitle, tagArtists = [], videoTitle, channel
   const credited = tagArtists.map(channelArtistName)
     .filter((name) => upload.channelArtist || !uploader || normalizeMatchText(name) !== uploader)
     .filter((name) => titleSimilarity(requestedTitle, name) < 1);
-  const title = fromVideo && titleSimilarity(requestedTitle, fromVideo.title) > titleSimilarity(requestedTitle, fromTags.title)
+  const tagFromVideoTitle = !videoTitle
+    || normalizeMatchText(videoTitle).includes(normalizeMatchText(tagTitle));
+  const title = fromVideo && tagFromVideoTitle
+    && titleSimilarity(requestedTitle, fromVideo.title) > titleSimilarity(requestedTitle, fromTags.title)
     ? fromVideo.title : fromTags.title;
   return {
     title,
