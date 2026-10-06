@@ -95,6 +95,10 @@ export const SYSTEM_TASK_LABELS = {
     label: "Playlist File Reuse Repair",
     description: "Repairs reusable playlist file links when source files move.",
   },
+  "review-timeout": {
+    label: "Review Timeout",
+    description: "Denies songs held for review longer than the maximum review wait.",
+  },
   "weekly-flow-startup-reuse-repair": {
     label: "Startup Playlist Reuse Repair",
     description: "Checks reusable playlist links after Aurral starts.",

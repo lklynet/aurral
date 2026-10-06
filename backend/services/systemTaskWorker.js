@@ -47,6 +47,11 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       downloadWorker.scheduleReuseLinkRepair(false);
       return;
     }
+    case "review-timeout": {
+      const { denyExpiredReviews } = await import("./downloadJobs/blockedJobReview.js");
+      await denyExpiredReviews();
+      return;
+    }
     case "quality-upgrade-check": {
       const { runQualityUpgradeCheck } = await import("./qualityProfileService.js");
       await runQualityUpgradeCheck({

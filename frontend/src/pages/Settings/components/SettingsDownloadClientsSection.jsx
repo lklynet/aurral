@@ -7,6 +7,7 @@ import DownloadFolderField from "../../../components/DownloadFolderField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import { SettingsAdapterFields } from "./SettingsAdapterFields";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
+import { SettingsInput } from "./SettingsField";
 import { RootOverlapWarning } from "./RootOverlapWarning";
 import { getProviderStatus } from "../utils/integrationStatus";
 import { PATH_MAPPING_SOURCE_OPTIONS, PathMappingModal } from "./PathMappingModal";
@@ -269,6 +270,32 @@ export function SettingsDownloadClientsSection({
                 downloadFolderPath: nextPath,
               })
             }
+          />
+        </SettingsArrFormGroup>
+      </SettingsArrFieldSet>
+
+      <SettingsArrFieldSet legend="Review queue">
+        <SettingsArrFormGroup
+          label="Maximum wait (hours)"
+          labelFor="download-clients-review-timeout"
+          help="Songs held for review longer than this are denied, and Aurral searches for them again. 0 keeps them until you decide."
+        >
+          <SettingsInput
+            id="download-clients-review-timeout"
+            type="number"
+            min={0}
+            max={720}
+            step={1}
+            value={settings.reviewTimeoutHours ?? 0}
+            onChange={(event) => {
+              const raw = Number(event.target.value);
+              updateSettings({
+                ...settings,
+                reviewTimeoutHours: Number.isFinite(raw)
+                  ? Math.max(0, Math.min(720, Math.floor(raw)))
+                  : 0,
+              });
+            }}
           />
         </SettingsArrFormGroup>
       </SettingsArrFieldSet>

@@ -122,6 +122,16 @@ test("NZBGet leftover deletion defaults on and keeps an opt-out across partial s
   assert.equal(dbOps.getSettings().integrations.nzbget.deleteLeftovers, false);
 });
 
+test("the maximum review wait is validated and kept across partial saves", async () => {
+  const { postSettings } = captureSettingsRoutes();
+  for (const invalid of [-1, 1.5, 721, "24"]) {
+    assert.equal((await postSettings({ reviewTimeoutHours: invalid })).statusCode, 400, String(invalid));
+  }
+  assert.equal((await postSettings({ reviewTimeoutHours: 48 })).statusCode, 200);
+  await postSettings({ integrations: { nzbget: { nzbPriority: 10 } } });
+  assert.equal(dbOps.getSettings().reviewTimeoutHours, 48);
+});
+
 for (const key of ["jellyfin", "navidrome"]) {
   test(`refreshes playback when ${key} settings change or are cleared`, async (t) => {
     const update = t.mock.method(playlistManager, "updateConfig", () => {});
