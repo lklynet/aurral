@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { db, dbHelpers } from "../config/db-sqlite.js";
+import { invalidateLibraryManagementCache } from "./libraryManagementStore.js";
 import { invalidateLibraryQueryCache } from "./libraryQueryService.js";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 import { clearLibraryManagement } from "./libraryManagementStore.js";
@@ -140,6 +141,17 @@ function mergeLibraryArtistInto(fallback, resolved, { syncSearch = true } = {}) 
     .run(resolved.id, fallback.id).changes > 0 || changed;
   changed = db.prepare("UPDATE library_albums SET artist_id = ? WHERE artist_id = ?")
     .run(resolved.id, fallback.id).changes > 0 || changed;
+  const copiedManagement = db.prepare(`
+    INSERT OR IGNORE INTO library_management
+      (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at)
+    SELECT entity_kind, ?, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at
+    FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?
+  `).run(resolved.id, fallback.id).changes > 0;
+  const removedManagement = db.prepare(
+    "DELETE FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?",
+  ).run(fallback.id).changes > 0;
+  if (copiedManagement || removedManagement) invalidateLibraryManagementCache();
+  changed = copiedManagement || removedManagement || changed;
   changed = db.prepare("DELETE FROM library_artists WHERE id = ?")
     .run(fallback.id).changes > 0 || changed;
   if (syncSearch) {
