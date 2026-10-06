@@ -282,13 +282,13 @@ function seedSubsonicFavorite(database) {
   const now = Date.now();
   const userId = Number(database.prepare(
     `INSERT INTO users (username, password_hash, role, permissions)
-     VALUES ('benchmark', 'benchmark', 'user', '{"accessFlow":true}')`,
+     VALUES ('benchmark', 'benchmark', 'user', '{"accessPlaylists":true}')`,
   ).run().lastInsertRowid);
   database.prepare(
     `INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
      VALUES (?, 'song', 'benchmark:track:0', ?)`,
   ).run(userId, now);
-  return { id: userId, username: "benchmark", permissions: { accessFlow: true } };
+  return { id: userId, username: "benchmark", permissions: { accessPlaylists: true } };
 }
 
 function collectPageSamples(getPage, invalidate, repeats) {
@@ -401,7 +401,7 @@ import { getLibraryTrackPage } from "./backend/services/libraryQueryService.js";
 const user = {
   id: Number(process.env.AURRAL_BENCHMARK_USER_ID),
   username: "benchmark",
-  permissions: { accessFlow: true },
+  permissions: { accessPlaylists: true },
 };
 const encodedId = (kind, key) => kind + ":" + encodeURIComponent(key);
 const operation = process.env.AURRAL_BENCHMARK_OPERATION;

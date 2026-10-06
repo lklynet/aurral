@@ -21,7 +21,7 @@ export function registerAlbums(router) {
         return res.status(400).json({ error: "artistId parameter is required" });
       }
 
-      if (req.query.readPath === "canonical") {
+      if (req.query.readPath === "records") {
         const { albums } = getLibraryReadModelForArtistReferences({
           source: req.query.source || "all",
           availableOnly: true,
@@ -127,7 +127,7 @@ export function registerAlbums(router) {
             code: album.code || null,
             managedBy: album.managedBy || null,
             sources: album.sources || [],
-            canonicalId: album.canonicalId || null,
+            recordId: album.recordId || null,
             providerId: album.providerId || null,
             availability: album.availability || null,
             conflict: album.conflict || null,
@@ -230,7 +230,7 @@ export function registerAlbums(router) {
           code: error.code || null,
           managedBy: error.managedBy || null,
           sources: error.sources || [],
-          canonicalId: error.canonicalId || null,
+          recordId: error.recordId || null,
           providerId: error.providerId || null,
           availability: error.availability || null,
           conflict: error.conflict || null,
@@ -239,9 +239,9 @@ export function registerAlbums(router) {
     },
   );
 
-  router.get("/albums/aurral/:canonicalId/status", noCache, (req, res) => {
+  router.get("/albums/aurral/:recordId/status", noCache, (req, res) => {
     try {
-      const result = libraryManager.getAurralAlbumStatus(req.params.canonicalId);
+      const result = libraryManager.getAurralAlbumStatus(req.params.recordId);
       if (result?.error) {
         const { error, statusCode, ...details } = result;
         return res.status(statusCode || 500).json({ ...details, error });
@@ -256,13 +256,13 @@ export function registerAlbums(router) {
   });
 
   router.put(
-    "/albums/aurral/:canonicalId",
+    "/albums/aurral/:recordId",
     requireAuth,
     requirePermission("changeMonitoring"),
     async (req, res) => {
       try {
         const result = await libraryManager.setAurralAlbumMonitoring(
-          req.params.canonicalId,
+          req.params.recordId,
           { monitored: req.body?.monitored },
         );
         if (result?.error) {
@@ -280,13 +280,13 @@ export function registerAlbums(router) {
   );
 
   router.delete(
-    "/albums/aurral/:canonicalId",
+    "/albums/aurral/:recordId",
     requireAuth,
     requirePermission("deleteAlbum"),
     async (req, res) => {
       try {
         const result = await libraryManager.deleteAurralAlbum(
-          req.params.canonicalId,
+          req.params.recordId,
           req.query?.deleteFiles === "true",
         );
         if (result?.error) {
@@ -304,12 +304,12 @@ export function registerAlbums(router) {
   );
 
   router.post(
-    "/albums/aurral/:canonicalId/cancel",
+    "/albums/aurral/:recordId/cancel",
     requireAuth,
     requirePermission("addAlbum"),
     async (req, res) => {
       try {
-        const result = await libraryManager.cancelAurralAlbum(req.params.canonicalId);
+        const result = await libraryManager.cancelAurralAlbum(req.params.recordId);
         if (result?.error) {
           const { error, statusCode, ...details } = result;
           return res.status(statusCode || 500).json({ ...details, error });

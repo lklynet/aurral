@@ -57,7 +57,7 @@ async function failJob(job, message) {
   try {
     const { downloadWorker } = await import("./downloadJobs/downloadWorker.js");
     downloadWorker.wake(0);
-    await downloadWorker.checkPlaylistComplete(job.playlistId || job.playlistType);
+    await downloadWorker.checkPlaylistComplete(job.ownerId);
   } catch (error) {
     logger.warn("downloads", "Failed to run post-failure playlist checks", {
       jobId: job.id,

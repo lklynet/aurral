@@ -25,23 +25,23 @@ test.after(() => cleanupIsolatedState(state));
 test("a library refresh removes playlist tracks whose downloads no longer exist", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-scan-playlist-repair-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
   const deletedJobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Deleted" }, "library");
   const keptJobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Kept" }, "library");
   const repaired = flowPlaylistConfig.createStaticPlaylist({
     name: "Repaired",
     tracks: [
-      { artistName: "Artist", trackName: "Deleted", canonicalJobId: deletedJobId },
-      { artistName: "Artist", trackName: "Kept", canonicalJobId: keptJobId },
+      { artistName: "Artist", trackName: "Deleted", jobId: deletedJobId },
+      { artistName: "Artist", trackName: "Kept", jobId: keptJobId },
     ],
   });
   const untouched = flowPlaylistConfig.createStaticPlaylist({
     name: "Untouched",
-    tracks: [{ artistName: "Artist", trackName: "Kept", canonicalJobId: keptJobId }],
+    tracks: [{ artistName: "Artist", trackName: "Kept", jobId: keptJobId }],
   });
   const alsoRepaired = flowPlaylistConfig.createStaticPlaylist({
     name: "Also repaired",
-    tracks: [{ artistName: "Artist", trackName: "Deleted", canonicalJobId: deletedJobId }],
+    tracks: [{ artistName: "Artist", trackName: "Deleted", jobId: deletedJobId }],
   });
   downloadTracker.removeJob(deletedJobId);
   const refreshPlaylist = t.mock.method(playlistManager, "refreshPlaylist", async (playlistId) => {

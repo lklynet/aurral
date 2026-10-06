@@ -68,7 +68,7 @@ test("proxy auth creates a persistent user for a new proxied identity", () => {
   assert.equal(resolved.username, "alice@example.com");
   assert.equal(resolved.role, "user");
   assert.equal(resolved.permissions.addArtist, true);
-  assert.equal(resolved.permissions.accessFlow, false);
+  assert.equal(resolved.permissions.accessPlaylists, false);
   assert.equal(resolved.permissions.accessSettings, false);
 
   const stored = userOps.getUserByUsername("Alice@example.com");

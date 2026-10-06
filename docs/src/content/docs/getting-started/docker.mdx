@@ -69,15 +69,23 @@ Nightly and preview images support `linux/amd64` only. On ARM, use `latest` or a
 
 The [Release Readiness issues](https://github.com/lklynet/aurral/issues?q=is%3Aissue+label%3Arelease-readiness+sort%3Aupdated-desc) track the current nightly. The pinned issue lists the nightly candidate and the changes it includes.
 
-## Prepare for Aurral 3.0
+## Upgrade from Aurral 2
 
-Aurral 3.0 removes support for data and settings from older versions. Before you update to 3.0, open **Settings > System > Aurral 3.0** and check that it shows **Ready for Aurral 3.0**.
+Aurral 3.0 starts only from a database that a recent Aurral 2 release marked as ready. Before you update, run the `2` image tag and open **Settings > System > Aurral 3.0**. When it shows **Ready for Aurral 3.0**, change the image to `latest`.
 
-- Each item under **Blocks the update** names what Aurral still needs to finish. Most items finish on their own in the background after Aurral starts. Select **Check again** to run the remaining tasks.
-- **Files to review** lists older files in the Downloads Folder that Aurral could not move safely, with the reason for each. Move or delete each file yourself, then select **Check again**.
-- **Still in use** lists settings and requests that 3.0 no longer accepts, such as the `WEEKLY_FLOW_FOLDER` variable or a data folder at `/app/backend/data`. They do not block the update, but change them first, or Aurral 3.0 will not start.
+If the database is not ready, Aurral 3.0 stops without changing anything and logs what to do. It also stops when it finds configuration that 3.0 no longer reads:
 
-If you skip from an older 2.x version straight to 3.0, Aurral 3.0 will stop without changing anything. Run the `2` image tag once, wait for the check to pass, then change to `latest`.
+- `WEEKLY_FLOW_FOLDER` or `PLAYLIST_FOLDER` is set. Use `DOWNLOAD_FOLDER` instead.
+- The data folder is mounted at `/app/backend/data`. Mount the same folder at `/config` instead.
+
+Aurral ignores `AUTH_USER` and `AUTH_PASSWORD`. Sign in with an Aurral account and remove both variables.
+
+On its first start, Aurral 3.0 copies the database to `aurral-2-backup-<time>.db` in the data folder, then upgrades it. Aurral 2 cannot read the upgraded database. To go back to Aurral 2, stop Aurral, replace `aurral.db` with the backup, and start the `2` image. Changes made in 3.0 are lost.
+
+Check automations that call Aurral before you update:
+
+- Webhooks send the flow finished event as `notifyFlowDone`.
+- Several API routes and fields have new names. See the [endpoint reference](/api/endpoints/).
 
 ## Test a pull request preview
 

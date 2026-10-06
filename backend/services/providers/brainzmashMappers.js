@@ -217,24 +217,6 @@ export function toNormalizedArtistAlbum(raw) {
   };
 }
 
-export function toLegacyArtist(normalizedArtist) {
-  return {
-    id: normalizedArtist.id,
-    name: normalizedArtist.name,
-    "sort-name": normalizedArtist.sortName,
-    type: normalizedArtist.type,
-    status: normalizedArtist.status,
-    disambiguation: normalizedArtist.disambiguation || "",
-    genres: normalizedArtist.genres,
-    aliases: normalizedArtist.aliases.map((name) => ({ name })),
-    relations: normalizedArtist.links.map((link) => ({
-      type: link.type,
-      url: { resource: link.target },
-    })),
-    overview: normalizedArtist.overview,
-  };
-}
-
 export function toLegacyReleaseGroupSummary(album, artist = null, { score = 0 } = {}) {
   const artistName = artist?.name || album?.artistName || "";
   const artistId = artist?.id || album?.artistId || null;
@@ -263,69 +245,3 @@ export function toLegacyReleaseGroupSummary(album, artist = null, { score = 0 } 
   };
 }
 
-export function toLegacyRelease(release) {
-  return {
-    id: release.id,
-    title: release.title,
-    status: release.status,
-    date: release.releaseDate,
-    media: normalizeArray(release.media).map((medium) => ({
-      format: medium.format,
-      name: medium.name,
-      position: medium.position,
-      tracks: normalizeArray(release.tracks)
-        .filter(
-          (track) =>
-            medium.position == null ||
-            track.mediumNumber == null ||
-            track.mediumNumber === medium.position,
-        )
-        .map((track) => ({
-          id: track.id,
-          title: track.title,
-          length: track.durationMs,
-          position: track.trackPosition || track.trackNumber || 0,
-          number: track.trackNumber != null ? String(track.trackNumber) : null,
-          recording: {
-            id: track.recordingId || track.id,
-            title: track.title,
-            length: track.durationMs,
-          },
-        })),
-    })),
-  };
-}
-
-export function toLegacySearchArtistResult(normalizedArtist, score = 0) {
-  return {
-    id: normalizedArtist.id,
-    name: normalizedArtist.name,
-    "sort-name": normalizedArtist.sortName,
-    type: normalizedArtist.type,
-    disambiguation: normalizedArtist.disambiguation || "",
-    genres: normalizedArtist.genres,
-    score,
-  };
-}
-
-export function toLegacySearchAlbumResult(item) {
-  const normalizedArtistName = normalizeString(item?.artistName) || "Unknown Artist";
-  return {
-    id: item.id,
-    title: item.title,
-    "primary-type": item.type || "Album",
-    "secondary-types": item.secondaryTypes || [],
-    "first-release-date": item.releaseDate || null,
-    score: Number(item?.score || 0),
-    "artist-credit": normalizedArtistName
-      ? [
-          {
-            name: normalizedArtistName,
-            artist: item?.artistId
-              ? { id: item.artistId, name: normalizedArtistName }
-              : { name: normalizedArtistName },
-          },
-        ]
-      : [],
-  };
-}

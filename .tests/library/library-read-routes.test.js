@@ -134,7 +134,7 @@ test("library track reads remove nested filesystem paths", async () => {
     await routes.get("/tracks")(
       {
         query: {
-          readPath: "canonical",
+          readPath: "records",
           releaseGroupMbid: "72222222-2222-4222-8222-222222222222",
         },
       },
@@ -152,7 +152,7 @@ test("library track reads remove nested filesystem paths", async () => {
     assert.equal(body.length, 1);
     assert.equal("path" in body[0], false);
     assert.deepEqual(body[0].quality, { audioFormat: "FLAC", nested: {} });
-    assert.match(body[0].streamPath, /\/library\/canonical-stream\/\d+\/\d+$/);
+    assert.match(body[0].streamPath, /\/library\/records\/stream\/\d+\/\d+$/);
     assert.equal(body[0].streamFormat, "flac");
 
     const userFiles = await getTrackFiles(String(body[0].id), { role: "user", permissions: {} });
@@ -166,7 +166,7 @@ test("library track reads remove nested filesystem paths", async () => {
     await routes.get("/tracks")(
       {
         query: {
-          readPath: "canonical",
+          readPath: "records",
           albumId: "999999999",
           releaseGroupMbid: "72222222-2222-4222-8222-222222222222",
         },
@@ -196,7 +196,7 @@ test("library track reads remove nested filesystem paths", async () => {
     ).get("71111111-1111-4111-8111-111111111111");
     for (const artistId of [artist.id, artist.identityKey, artist.mbid]) {
       await routes.get("/albums")(
-        { query: { readPath: "canonical", artistId } },
+        { query: { readPath: "records", artistId } },
         {
           json(value) {
             body = value;

@@ -123,7 +123,7 @@ export const queryKeys = {
   artistAppearsOn: (mbid) => ["artists", "appears-on", mbid || null],
   activeDownloads: ["downloads", "active"],
   downloadStatus: (ids) => ["library", "download-status", [...ids].sort()],
-  aurralAlbumStatus: (canonicalId) => ["library", "aurral-album-status", String(canonicalId)],
+  aurralAlbumStatus: (recordId) => ["library", "aurral-album-status", String(recordId)],
   searchCatalog: (query, scope, options) => ["search", scope, query, options],
   searchDiscovery: (offset, limit) => ["search", "discovery", offset || 0, limit || null],
   searchUnified: (query, mode, limit) => ["search", "unified", query, mode, limit],

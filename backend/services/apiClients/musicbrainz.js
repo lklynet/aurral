@@ -10,7 +10,6 @@ import {
 import {
   getArtistByMbid as getMetadataArtistByMbid,
   getArtistNameByMbid as getMetadataArtistNameByMbid,
-  legacyMusicbrainzRequest,
   listArtistAlbums as listMetadataArtistAlbums,
   resolveArtistByName as resolveMetadataArtistByName,
   resolveLibraryArtistByName as resolveMetadataLibraryArtistByName,
@@ -41,9 +40,6 @@ const SECONDARY_RELEASE_TYPES = [
 ];
 
 const mbLimiter = createRateLimiter(1000);
-
-export const musicbrainzRequest = async (endpoint, params = {}) =>
-  legacyMusicbrainzRequest(endpoint, params);
 
 export async function musicbrainzGetArtistReleaseGroups(
   mbid,

@@ -21,11 +21,7 @@ function resolvePathValue(raw) {
 }
 
 export function resolveEnvDownloadFolder() {
-  for (const key of ["PLAYLIST_FOLDER", "WEEKLY_FLOW_FOLDER", "DOWNLOAD_FOLDER"]) {
-    const resolved = resolvePathValue(process.env[key]);
-    if (resolved) return resolved;
-  }
-  return null;
+  return resolvePathValue(process.env.DOWNLOAD_FOLDER);
 }
 
 function isWritableDirectory(targetPath) {

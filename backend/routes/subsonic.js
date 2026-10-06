@@ -260,7 +260,7 @@ async function handleSubsonicRequest(req, res) {
         downloadRole: true,
         folder: [1],
         jukeboxRole: false,
-        playlistRole: hasPermission(req.user, "accessFlow"),
+        playlistRole: hasPermission(req.user, "accessPlaylists"),
         podcastRole: false,
         scrobblingEnabled: true,
         settingsRole: isAdmin,

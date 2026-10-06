@@ -659,7 +659,7 @@ export function useArtistDetailsLibrary({
       setRemovingAlbum(albumId);
       if (libraryAlbum.managedBy === "aurral") {
         await deleteAurralAlbumMutation.mutateAsync({
-          id: libraryAlbum.canonicalId || libraryAlbum.id,
+          id: libraryAlbum.recordId || libraryAlbum.id,
           deleteFiles: deleteAlbumFiles,
         });
         deletedAlbumAtRef.current[libraryAlbum.id] = Date.now();

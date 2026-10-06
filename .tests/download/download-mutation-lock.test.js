@@ -11,12 +11,12 @@ test.after(() => cleanupIsolatedState(state));
 const deferred = () => Promise.withResolvers();
 
 test("playlist mutation waits for the active provider stage before changing ownership", async () => {
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Owner" });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, playlist.id);
   const started = deferred();
   const release = deferred();
-  const processing = processPipelineJob({ jobId, playlistId: playlist.id, playlistGeneration: 0 }, {
+  const processing = processPipelineJob({ jobId, ownerId: playlist.id, ownerGeneration: 0 }, {
     async processPipelinePayload() { started.resolve(); await release.promise; return null; },
     async continuePipeline() {},
   });
@@ -35,13 +35,13 @@ test("playlist mutation waits for the active provider stage before changing owne
 });
 
 test("a provider stage can import while a playlist mutation waits for it", { timeout: 2000 }, async () => {
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Import owner" });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Import track" }, playlist.id);
   const started = deferred();
   const release = deferred();
   let imported = null;
-  const processing = processPipelineJob({ jobId, playlistId: playlist.id, playlistGeneration: 0 }, {
+  const processing = processPipelineJob({ jobId, ownerId: playlist.id, ownerGeneration: 0 }, {
     async processPipelinePayload(payload) {
       started.resolve();
       await release.promise;
@@ -59,7 +59,7 @@ test("a provider stage can import while a playlist mutation waits for it", { tim
 });
 
 test("pipeline commit can reuse a live playlist lock", { timeout: 2000 }, async () => {
-  const result = await guards.withPlaylistMutationLock("nested", () => cancellation.withPipelineCommitLock({ playlistId: "nested", playlistGeneration: 0 }, () => "committed"));
+  const result = await guards.withPlaylistMutationLock("nested", () => cancellation.withPipelineCommitLock({ ownerId: "nested", ownerGeneration: 0 }, () => "committed"));
   assert.deepEqual(result, { cancelled: false, result: "committed" });
 });
 
@@ -84,11 +84,11 @@ test("an escaped async context cannot reuse a released lease", async () => {
 });
 
 test("a provider stage that needs another playlist lock fails instead of running again", { timeout: 2000 }, async () => {
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Stage owner" });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Stage track" }, playlist.id);
   let runs = 0;
-  await assert.rejects(processPipelineJob({ jobId, playlistId: playlist.id, playlistGeneration: 0 }, {
+  await assert.rejects(processPipelineJob({ jobId, ownerId: playlist.id, ownerGeneration: 0 }, {
     async processPipelinePayload() {
       runs++;
       if (runs > 1) throw new Error("provider stage ran again");

@@ -130,7 +130,7 @@ export function registerLibraryIndex(router) {
     return res.json(status);
   });
 
-  router.get("/canonical", noCache, (req, res) => {
+  router.get("/records", noCache, (req, res) => {
     try {
       const favoriteKeys = req.user ? getStarredIdentityKeys(req.user) : null;
       const kind = typeof req.query.kind === "string" ? req.query.kind.trim() : "";

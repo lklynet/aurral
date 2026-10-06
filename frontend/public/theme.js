@@ -2,15 +2,11 @@ try {
   const theme = localStorage.getItem("aurralTheme");
   const appearance = localStorage.getItem("aurralThemeAppearance:v1");
   const systemMode = typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  const requestedMode = theme === "light" || theme === "dark"
-    ? theme
-    : appearance === "light" || appearance === "dark"
-      ? appearance
-      : systemMode;
+  const requestedMode = appearance === "light" || appearance === "dark" ? appearance : systemMode;
   const root = document.documentElement;
   let mode = requestedMode;
 
-  if (theme && theme !== "system" && theme !== "light" && theme !== "dark") {
+  if (theme && theme !== "aurral") {
     const storedThemes = JSON.parse(localStorage.getItem("aurralThemes:v1") || "[]");
     const selected = Array.isArray(storedThemes) ? storedThemes.find((item) => item?.id === theme) : null;
     const colors = selected?.variants?.[requestedMode] || selected?.colors;

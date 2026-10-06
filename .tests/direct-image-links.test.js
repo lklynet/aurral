@@ -10,12 +10,6 @@ test("image links return source URLs by default", () => {
   const source = "https://images.example/artist.jpg?size=512&format=webp";
 
   assert.equal(buildImageProxyUrl(source), source);
-  assert.equal(
-    buildStableImageProxyUrl(
-      "/api/image-proxy?src=" + encodeURIComponent(source),
-    ),
-    source,
-  );
 });
 
 test("image retry URLs bypass a cached browser failure without changing the source path", () => {

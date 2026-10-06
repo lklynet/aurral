@@ -1,20 +1,19 @@
 import fsp from "fs/promises";
 import path from "path";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.js";
-import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.js";
 import { noCache } from "../../../middleware/cache.js";
 import { hasPermission, verifyTokenAuth } from "../../../middleware/auth.js";
 import {
   resolveExistingTrackPath,
 } from "../../../services/downloadPaths.js";
-import { canAccessPlaylistType } from "./utils.js";
+import { canAccessPlaylist } from "./utils.js";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.js";
 
 const canAccessJob = (user, job) =>
-  canAccessPlaylistType(user, job.playlistType) ||
+  canAccessPlaylist(user, job.ownerId) ||
   flowPlaylistConfig.getStaticPlaylistsForUser(user).some((playlist) =>
     playlist.tracks?.some(
-      (track) => String(track?.canonicalJobId || "") === String(job.id || ""),
+      (track) => String(track?.jobId || "") === String(job.id || ""),
     ),
   );
 
@@ -25,10 +24,10 @@ export function registerStream(router) {
         .status(401)
         .json({ error: "Unauthorized", message: "Authentication required" });
     }
-    if (req.user && !hasPermission(req.user, "accessFlow")) {
+    if (req.user && !hasPermission(req.user, "accessPlaylists")) {
       return res
         .status(403)
-        .json({ error: "Forbidden", message: "Permission required: accessFlow" });
+        .json({ error: "Forbidden", message: "Permission required: accessPlaylists" });
     }
     const { jobId } = req.params;
     const job = downloadTracker.getJob(jobId);
@@ -41,17 +40,8 @@ export function registerStream(router) {
     if (job.status !== "done" || !job.finalPath) {
       return res.status(400).json({ error: "Track is not ready to stream" });
     }
-    const resolved = await resolveExistingTrackPath(
-      job.finalPath,
-      downloadWorker.downloadRoot,
-    );
-    if (!resolved) {
-      return res.status(404).json({ error: "Track file missing" });
-    }
-    const safePath = resolved.path;
-    try {
-      await fsp.access(safePath);
-    } catch {
+    const safePath = await resolveExistingTrackPath(job.finalPath);
+    if (!safePath) {
       return res.status(404).json({ error: "Track file missing" });
     }
     res.sendFile(path.basename(safePath), {
@@ -66,10 +56,10 @@ export function registerStream(router) {
         .status(401)
         .json({ error: "Unauthorized", message: "Authentication required" });
     }
-    if (req.user && !hasPermission(req.user, "accessFlow")) {
+    if (req.user && !hasPermission(req.user, "accessPlaylists")) {
       return res
         .status(403)
-        .json({ error: "Forbidden", message: "Permission required: accessFlow" });
+        .json({ error: "Forbidden", message: "Permission required: accessPlaylists" });
     }
     const { jobId } = req.params;
     const job = downloadTracker.getJob(jobId);

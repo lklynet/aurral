@@ -58,8 +58,8 @@ function createJob(playlistId, trackName) {
     job,
     payload: {
       jobId,
-      playlistId,
-      playlistGeneration: job.playlistGeneration,
+      ownerId: playlistId,
+      ownerGeneration: job.ownerGeneration,
       track: { artistName: "Race Artist", trackName },
       destination: `cancellation-race/${playlistId}`,
     },
@@ -140,7 +140,7 @@ test("SABnzbd cancellation waits for an in-flight append and can retry cleanup",
       job,
       payload: pipelinePayload,
       runPipeline: () => processUsenetPipelinePayload(pipelinePayload),
-      cancelWork: () => cancellationService.cancelPlaylistDownloadWork(
+      cancelWork: () => cancellationService.cancelOwnerDownloadWork(
         playlistId,
         [downloadTracker.getJob(job.id)],
       ),

@@ -64,11 +64,11 @@ test("recent artists combines both owners with artwork and library identities wh
   const recent = await getRecent();
   assert.deepEqual(recent.map((artist) => artist.managedBy), ["aurral", "lidarr"]);
   assert.equal(recent[0].mbid, mbid);
-  assert.equal(recent[0].canonicalId, String(aurral.id));
+  assert.equal(recent[0].recordId, String(aurral.id));
   assert.deepEqual(recent[0].images, images);
   assert.equal(recent[1].mbid, null);
   assert.equal(recent[1].foreignArtistId, "123@deezer");
-  assert.equal(recent[1].canonicalId, String(lidarr.id));
+  assert.equal(recent[1].recordId, String(lidarr.id));
   assert.deepEqual(recent[1].images, lidarrImages);
 });
 
@@ -84,8 +84,8 @@ test("recent artists selects the newest twenty across the library and includes a
   assert.equal(recent.length, 20);
   assert.deepEqual(recent.map((artist) => artist.artistName),
     Array.from({ length: 20 }, (_, index) => `Artist ${String(index + 1).padStart(2, "0")}`));
-  assert.ok(recent.every((artist) => artist.mbid === null && artist.canonicalId));
-  const artistId = recent[0].canonicalId;
+  assert.ok(recent.every((artist) => artist.mbid === null && artist.recordId));
+  const artistId = recent[0].recordId;
   for (const kind of ["albums", "tracks"]) {
     const page = getLibraryPage({ kind, artistId, availableOnly: true });
     assert.deepEqual(page.items, []);
@@ -117,7 +117,7 @@ test("file scans retain artist identity, artwork and added date while updating f
     });
     assert.equal(scan.filesIndexed, 1);
     const [recent] = await getRecent();
-    assert.equal(recent.canonicalId, String(artist.id));
+    assert.equal(recent.recordId, String(artist.id));
     assert.equal(recent.mbid, mbid);
     assert.equal(recent.added, added);
     assert.deepEqual(recent.images, images);

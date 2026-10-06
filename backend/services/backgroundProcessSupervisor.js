@@ -17,7 +17,7 @@ const JOB_TIMEOUT_MS = Object.freeze({
   "play-events": 15 * 60 * 1000,
   "release-metadata-refresh": 2 * 60 * 60 * 1000,
   "system-task": 2 * 60 * 60 * 1000,
-  "weekly-flow-operation": 2 * 60 * 60 * 1000,
+  "playlist-operation": 2 * 60 * 60 * 1000,
   "slskd-pipeline": 6 * 60 * 60 * 1000,
   "playlist-mbid-enrichment": 2 * 60 * 60 * 1000,
 });

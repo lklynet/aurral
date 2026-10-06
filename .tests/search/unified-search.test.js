@@ -49,9 +49,9 @@ test("searchLocalFromData does not let duplicate artist projections consume resu
     "artist",
     {
       artists: [
-        { canonicalId: "1", id: "provider-1", artistName: "Artist One" },
-        { canonicalId: "1", id: "provider-1", artistName: "Artist One" },
-        { canonicalId: "2", id: "provider-2", artistName: "Artist Two" },
+        { recordId: "1", id: "provider-1", artistName: "Artist One" },
+        { recordId: "1", id: "provider-1", artistName: "Artist One" },
+        { recordId: "2", id: "provider-2", artistName: "Artist Two" },
       ],
     },
     2,

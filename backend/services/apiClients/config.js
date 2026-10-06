@@ -148,14 +148,7 @@ export const getNewsSettings = () => {
   };
 };
 
-export const getMusicBrainzContact = () => {
-  const settings = dbOps.getSettings();
-  return (
-    settings.integrations?.musicbrainz?.email ||
-    process.env.CONTACT_EMAIL ||
-    "user@example.com"
-  );
-};
+export const getMusicBrainzContact = () => process.env.CONTACT_EMAIL || "user@example.com";
 
 export const getMusicbrainzApiBaseUrl = () => {
   return getMetadataBaseUrl();

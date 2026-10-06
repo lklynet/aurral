@@ -56,7 +56,7 @@ export function getPlaylistRunActivity({
   const hintMessage = String(status?.hint?.message || "").trim();
   const currentJob = status?.worker?.currentJob;
   const isCurrentJobForPlaylist =
-    currentJob?.playlistType === playlistId && currentJob?.artistName && currentJob?.trackName;
+    currentJob?.ownerId === playlistId && currentJob?.artistName && currentJob?.trackName;
   const pendingCount = Number(stats?.pending || 0);
   const downloadingCount = Number(stats?.downloading || 0);
   const doneCount = Number(stats?.done || 0);

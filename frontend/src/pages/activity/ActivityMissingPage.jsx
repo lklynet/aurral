@@ -45,7 +45,7 @@ const toPlaylistInfo = (status) => {
       ...entry,
       kind: "flow",
     })),
-    ...(Array.isArray(status?.sharedPlaylists) ? status.sharedPlaylists : []).map((entry) => ({
+    ...(Array.isArray(status?.staticPlaylists) ? status.staticPlaylists : []).map((entry) => ({
       ...entry,
       kind: "playlist",
     })),
@@ -274,11 +274,11 @@ export default function ActivityMissingPage() {
     setActionStates((current) => ({ ...current, [id]: "working" }));
     try {
       if (isMissing) {
-        const playlist = playlistInfo.get(String(job.playlistType));
+        const playlist = playlistInfo.get(String(job.ownerId));
         const reSearch = playlist?.kind === "playlist"
           ? reSearchStaticPlaylistTrack
           : reSearchFlowTrack;
-        await reSearch(job.playlistType, job.id);
+        await reSearch(job.ownerId, job.id);
         queryClient.setQueryData(jobsQueryKey, (current) =>
           (Array.isArray(current) ? current : []).filter((entry) => getMissingJobKey(entry) !== id),
         );
@@ -289,7 +289,7 @@ export default function ActivityMissingPage() {
         });
         showSuccess(`Re-searching ${job.trackName || "track"}`);
       } else {
-        await searchTrackUpgrade(job.playlistType, job.id);
+        await searchTrackUpgrade(job.ownerId, job.id);
         setActionStates((current) => ({ ...current, [id]: "queued" }));
         showSuccess(`Upgrade search queued for ${job.trackName || "track"}`);
       }
@@ -457,7 +457,7 @@ export default function ActivityMissingPage() {
             <MissingJobRow
               key={getMissingJobKey(job)}
               job={job}
-              playlist={playlistInfo.get(String(job.playlistType))}
+              playlist={playlistInfo.get(String(job.ownerId))}
               actionState={actionStates[getMissingJobKey(job)] || (job.upgradeQueued ? "queued" : "")}
               onAction={handleAction}
               onInfo={setInfoJob}

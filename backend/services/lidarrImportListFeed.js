@@ -31,7 +31,7 @@ export const buildLidarrImportListItems = (jobs) => {
 export const buildFlowLidarrImportList = (flowId) => {
   const flow = flowPlaylistConfig.getFlow(flowId);
   if (!flow) return null;
-  const jobs = downloadTracker.getByPlaylistType(flowId);
+  const jobs = downloadTracker.getByOwner(flowId);
   return buildLidarrImportListItems(jobs);
 };
 

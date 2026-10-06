@@ -493,7 +493,7 @@ function SearchResultsPage() {
     const artists = isUnifiedSearch
       ? [
           ...(libraryResults?.artists || []).filter(
-            (artist) => String(artist.id) !== String(artist.canonicalId),
+            (artist) => String(artist.id) !== String(artist.recordId),
           ),
           ...buildSearchArtistResults(unifiedResults, {}),
         ]

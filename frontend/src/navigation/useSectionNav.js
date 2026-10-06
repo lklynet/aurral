@@ -81,7 +81,7 @@ export function useSectionNav() {
         path: buildActivityPath(view.id),
         active: segment === view.id,
       }));
-      if (allowed("accessFlow")) {
+      if (allowed("accessPlaylists")) {
         items.push(
           ...WANTED_VIEWS.map((view) => ({
             id: `wanted-${view.id}`,

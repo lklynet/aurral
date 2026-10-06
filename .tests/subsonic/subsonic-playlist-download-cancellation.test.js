@@ -9,6 +9,7 @@ import {
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
+import { addStaticPlaylistJobs } from "../helpers/staticPlaylistJobs.js";
 
 const [
   isolatedState,
@@ -35,12 +36,7 @@ const [
 const { downloadTracker } = trackerModule;
 const { flowPlaylistConfig, invalidateFlowPlaylistConfigCache } = playlistConfigModule;
 const {
-  activatePlaylistDownloadGeneration,
-  cancelDownloadJob,
-  cancelPlaylistDownloadGeneration,
-  getPlaylistDownloadGeneration,
   isDownloadJobCancelled,
-  isPipelinePayloadActive,
   listDownloadProviderWork,
   registerDownloadProviderWork,
   withPipelineCommitLock,
@@ -82,345 +78,237 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("new Subsonic playlists accept jobs added after creation", async () => {
-  const playlist = await subsonic.createSubsonicPlaylist(user, { name: "Empty Subsonic Playlist" });
-  assert.ok(playlist);
+function createPlaylist(id, name, tracks = []) {
+  flowPlaylistConfig.createStaticPlaylist({ id, name, ownerUserId: user.id, tracks: [] });
+  return addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, id, tracks);
+}
 
-  const jobId = downloadTracker.addJob(
-    { artistName: "Later Artist", trackName: "Later Song" },
-    playlist.id,
+async function writeLibraryFile(...segments) {
+  const finalPath = path.join(playlistManager.downloadRoot, ...segments);
+  await fs.mkdir(path.dirname(finalPath), { recursive: true });
+  await fs.writeFile(finalPath, "disposable audio");
+  return finalPath;
+}
+
+async function holdCommitLock(jobId) {
+  let signalEntered;
+  let release;
+  const entered = new Promise((resolve) => { signalEntered = resolve; });
+  const held = new Promise((resolve) => { release = resolve; });
+  const job = downloadTracker.getJob(jobId);
+  const lock = withPipelineCommitLock(
+    { jobId, ownerId: "library", ownerGeneration: job.ownerGeneration },
+    async () => {
+      signalEntered();
+      await held;
+    },
   );
+  await entered;
+  return { release, lock };
+}
 
-  assert.equal(downloadTracker.getNextPending()?.id, jobId);
-});
+async function withSlskd(handler, operation) {
+  const originalSettings = dbOps.getSettings();
+  const mock = await createMockHttpServer(handler);
+  try {
+    dbOps.updateSettings({
+      ...originalSettings,
+      integrations: {
+        ...(originalSettings.integrations || {}),
+        slskd: { enabled: true, url: mock.url, apiKey: "test-key" },
+      },
+    });
+    return await operation();
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
+}
 
-test("playlist deletion keeps a job available until an in-flight commit releases its lock", async () => {
+test("playlist deletion waits for an in-flight import before deleting the playlist's download", async () => {
   const playlistId = "subsonic-delete-commit-race";
-  flowPlaylistConfig.createStaticPlaylist({
-    id: playlistId,
-    name: "Subsonic Delete Race",
-    ownerUserId: user.id,
-    tracks: [],
-  });
-  activatePlaylistDownloadGeneration(playlistId);
-  const jobId = downloadTracker.addJob(
+  const [jobId] = createPlaylist(playlistId, "Subsonic Delete Race", [
     { artistName: "Commit Artist", trackName: "Committing Song" },
-    playlistId,
-  );
-  const finalPath = path.join(
-    playlistManager.downloadRoot,
-    "Commit Artist",
-    "Commit Album",
-    "Committing Song.flac",
-  );
-
-  let signalLockEntered;
-  let releaseLock;
-  const lockEntered = new Promise((resolve) => {
-    signalLockEntered = resolve;
-  });
-  const lockHeld = new Promise((resolve) => {
-    releaseLock = resolve;
-  });
-  const commitLock = withPipelineCommitLock({ jobId, playlistId, playlistGeneration: downloadTracker.getJob(jobId).playlistGeneration }, async () => {
-    signalLockEntered();
-    await lockHeld;
-  });
-  await lockEntered;
-
+  ]);
+  const commit = await holdCommitLock(jobId);
+  let finalPath;
   try {
     const deletion = subsonic.deleteSubsonicPlaylist(user, playlistId);
-    assert.equal(typeof deletion?.then, "function");
-
-    await fs.mkdir(path.dirname(finalPath), { recursive: true });
-    await fs.writeFile(finalPath, "committed audio");
-    assert.equal(
-      downloadTracker.setDone(jobId, finalPath, "Commit Album"),
-      true,
-    );
-    releaseLock();
-    await commitLock;
+    finalPath = await writeLibraryFile("Commit Artist", "Commit Album", "Committing Song.flac");
+    assert.equal(downloadTracker.setDone(jobId, finalPath, "Commit Album"), true);
+    commit.release();
+    await commit.lock;
     assert.equal(await deletion, true);
   } finally {
-    releaseLock();
-    await commitLock;
+    commit.release();
+    await commit.lock;
   }
 
   assert.equal(downloadTracker.getJob(jobId), null);
   await assert.rejects(fs.access(finalPath), { code: "ENOENT" });
 });
 
-test("Subsonic edits clean an in-flight legacy file before removing its job", async () => {
+test("Subsonic edits wait for an in-flight import before deleting a removed song's download", async () => {
   const playlistId = "subsonic-edit-commit-race";
-  flowPlaylistConfig.createStaticPlaylist({
-    id: playlistId,
-    name: "Subsonic Edit Race",
-    ownerUserId: user.id,
-    tracks: [],
-  });
-  activatePlaylistDownloadGeneration(playlistId);
-  const jobId = downloadTracker.addJob(
+  const [jobId, keptJobId] = createPlaylist(playlistId, "Subsonic Edit Race", [
     { artistName: "Commit Artist", trackName: "Committing Song" },
-    playlistId,
-  );
-  const finalPath = path.join(
-    playlistManager.downloadRoot,
-    "Commit Artist",
-    "Commit Album",
-    "Committing Song.flac",
-  );
-  let signalLockEntered;
-  let releaseLock;
-  const lockEntered = new Promise((resolve) => { signalLockEntered = resolve; });
-  const lockHeld = new Promise((resolve) => { releaseLock = resolve; });
-  const commitLock = withPipelineCommitLock({ jobId, playlistId, playlistGeneration: downloadTracker.getJob(jobId).playlistGeneration }, async () => {
-    signalLockEntered();
-    await lockHeld;
-  });
-  await lockEntered;
-
+    { artistName: "Commit Artist", trackName: "Kept Song" },
+  ]);
+  const commit = await holdCommitLock(jobId);
+  let finalPath;
   try {
     const update = subsonic.updateSubsonicPlaylist(user, {
       playlistId,
       name: "Subsonic Edit Complete",
+      songIndexesToRemove: [0],
     });
-    await fs.mkdir(path.dirname(finalPath), { recursive: true });
-    await fs.writeFile(finalPath, "committed audio");
+    finalPath = await writeLibraryFile("Commit Artist", "Commit Album", "Committing Song.flac");
     assert.equal(downloadTracker.setDone(jobId, finalPath, "Commit Album"), true);
-    releaseLock();
-    await commitLock;
-    assert.equal((await update)?.name, "Subsonic Edit Complete");
+    commit.release();
+    await commit.lock;
+    const updated = await update;
+    assert.equal(updated?.name, "Subsonic Edit Complete");
+    assert.deepEqual(updated.tracks.map((track) => track.jobId), [keptJobId]);
   } finally {
-    releaseLock();
-    await commitLock;
+    commit.release();
+    await commit.lock;
   }
 
   assert.equal(downloadTracker.getJob(jobId), null);
+  assert.equal(downloadTracker.getJob(keptJobId)?.status, "pending");
   await assert.rejects(fs.access(finalPath), { code: "ENOENT" });
 });
 
-test("Subsonic edits remove a file shared only by jobs from the edited playlist", async () => {
-  const playlistId = "subsonic-edit-duplicate-file";
-  flowPlaylistConfig.createStaticPlaylist({
-    id: playlistId,
-    name: "Duplicate File",
-    ownerUserId: user.id,
-    tracks: [],
-  });
-  activatePlaylistDownloadGeneration(playlistId);
-  const finalPath = path.join(playlistManager.downloadRoot, "Duplicate Artist", "Duplicate Song.flac");
-  await fs.mkdir(path.dirname(finalPath), { recursive: true });
-  await fs.writeFile(finalPath, "shared by obsolete jobs");
-  const jobIds = ["First", "Second"].map((trackName) => {
-    const id = downloadTracker.addJob({ artistName: "Duplicate Artist", trackName }, playlistId);
-    downloadTracker.setDone(id, finalPath, "Duplicate Album");
-    return id;
-  });
-
-  assert.ok(await subsonic.updateSubsonicPlaylist(user, { playlistId, name: "Updated" }));
-
-  for (const id of jobIds) assert.equal(downloadTracker.getJob(id), null);
-  await assert.rejects(fs.access(finalPath), { code: "ENOENT" });
-});
-
-test("renaming a Subsonic playlist keeps its library song and file", async () => {
-  const playlistId = "subsonic-edit-retained-canonical-song";
-  const finalPath = path.join(playlistManager.downloadRoot, "Retained Artist", "Retained Song.flac");
-  const jobId = downloadTracker.addJob(
+test("renaming a Subsonic playlist keeps its downloads", async () => {
+  const playlistId = "subsonic-edit-retained-song";
+  const [jobId] = createPlaylist(playlistId, "Before Rename", [
     { artistName: "Retained Artist", trackName: "Retained Song" },
-    playlistId,
-  );
+  ]);
+  const finalPath = await writeLibraryFile("Retained Artist", "Retained Song.flac");
   downloadTracker.setDone(jobId, finalPath, "Retained Album");
-  flowPlaylistConfig.createStaticPlaylist({
-    id: playlistId,
-    name: "Before Rename",
-    ownerUserId: user.id,
-    tracks: [{ artistName: "Retained Artist", trackName: "Retained Song", canonicalJobId: jobId }],
-  });
-  activatePlaylistDownloadGeneration(playlistId);
-  await fs.mkdir(path.dirname(finalPath), { recursive: true });
-  await fs.writeFile(finalPath, "retained audio");
 
   const renamed = await subsonic.updateSubsonicPlaylist(user, { playlistId, name: "After Rename" });
 
-  assert.equal(renamed?.tracks[0]?.canonicalJobId, jobId);
+  assert.equal(renamed?.tracks[0]?.jobId, jobId);
   assert.equal(downloadTracker.getJob(jobId)?.status, "done");
   await fs.access(finalPath);
 });
 
-test("Subsonic deletion preserves a file used by another playlist", async () => {
-  const removedPlaylistId = "subsonic-shared-file-removed";
-  const survivingPlaylistId = "subsonic-shared-file-survivor";
-  for (const [id, name] of [
-    [removedPlaylistId, "Removed playlist"],
-    [survivingPlaylistId, "Surviving playlist"],
-  ]) {
-    flowPlaylistConfig.createStaticPlaylist({ id, name, ownerUserId: user.id, tracks: [] });
-  }
-  const finalPath = path.join(playlistManager.downloadRoot, "Shared Artist", "Shared Album", "Shared Song.flac");
-  await fs.mkdir(path.dirname(finalPath), { recursive: true });
-  await fs.writeFile(finalPath, "shared audio");
-  const removedJobId = downloadTracker.addJob(
+test("Subsonic deletion keeps a downloaded file another Library track uses", async () => {
+  const finalPath = await writeLibraryFile("Shared Artist", "Shared Album", "Shared Song.flac");
+  const [removedJobId] = createPlaylist("subsonic-shared-file-removed", "Removed playlist", [
     { artistName: "Shared Artist", trackName: "Shared Song" },
-    removedPlaylistId,
-  );
-  const survivingJobId = downloadTracker.addJob(
-    { artistName: "Shared Artist", trackName: "Shared Song" },
-    survivingPlaylistId,
-  );
+  ]);
+  const libraryJobId = downloadTracker.addJob({ artistName: "Shared Artist", trackName: "Shared Song (Live)" }, "library");
   downloadTracker.setDone(removedJobId, finalPath, "Shared Album");
-  downloadTracker.setDone(survivingJobId, finalPath, "Shared Album");
+  downloadTracker.setDone(libraryJobId, finalPath, "Shared Album");
 
-  assert.equal(await subsonic.deleteSubsonicPlaylist(user, removedPlaylistId), true);
+  assert.equal(await subsonic.deleteSubsonicPlaylist(user, "subsonic-shared-file-removed"), true);
   assert.equal(downloadTracker.getJob(removedJobId), null);
-  const survivor = downloadTracker.getJob(survivingJobId);
-  assert.ok(survivor);
-  await fs.access(survivor.finalPath);
+  assert.equal(downloadTracker.getJob(libraryJobId)?.finalPath, finalPath);
+  await fs.access(finalPath);
 });
 
-test("Subsonic deletion retains jobs and provider work when cancellation fails", async () => {
+test("Subsonic deletion keeps a song copied into another playlist", async () => {
+  const [jobId] = createPlaylist("subsonic-copy-source", "Copy source", [
+    { artistName: "Copied Artist", trackName: "Copied Song" },
+  ]);
+  const finalPath = await writeLibraryFile("Copied Artist", "Copied Song.flac");
+  downloadTracker.setDone(jobId, finalPath, "Copied Album");
+  const copy = await subsonic.createSubsonicPlaylist(user, {
+    name: "Copy target",
+    songIds: [`shared-song:subsonic-copy-source:${jobId}`],
+  });
+  assert.equal(copy?.tracks[0]?.jobId, jobId);
+
+  assert.equal(await subsonic.deleteSubsonicPlaylist(user, "subsonic-copy-source"), true);
+  assert.equal(downloadTracker.getJob(jobId)?.finalPath, finalPath);
+  await fs.access(finalPath);
+});
+
+test("Subsonic deletion retains its download and provider work when cancellation fails", async () => {
   const playlistId = "subsonic-delete-provider-failure";
-  flowPlaylistConfig.createStaticPlaylist({
-    id: playlistId,
-    name: "Subsonic Provider Failure",
-    ownerUserId: user.id,
-    tracks: [],
-  });
-  activatePlaylistDownloadGeneration(playlistId);
-  const jobId = downloadTracker.addJob(
+  const [jobId] = createPlaylist(playlistId, "Subsonic Provider Failure", [
     { artistName: "Retry Artist", trackName: "Retry Song" },
-    playlistId,
-  );
-  const originalSettings = dbOps.getSettings();
-  let signalRequestReceived;
-  const requestReceived = new Promise((resolve) => {
-    signalRequestReceived = resolve;
+  ]);
+  downloadTracker.setDownloading(jobId);
+  registerDownloadProviderWork({
+    jobId,
+    ownerId: "library",
+    provider: "slskd-search",
+    workId: "subsonic-retry-search",
   });
-  const mock = await createMockHttpServer((request, response) => {
+
+  await withSlskd((request, response) => {
     request.resume();
-    signalRequestReceived();
     response.writeHead(503);
     response.end();
+  }, async () => {
+    await assert.rejects(
+      subsonic.deleteSubsonicPlaylist(user, playlistId),
+      /Could not cancel download provider work/,
+    );
   });
 
-  try {
-    dbOps.updateSettings({
-      ...originalSettings,
-      integrations: {
-        ...(originalSettings.integrations || {}),
-        slskd: { enabled: true, url: mock.url, apiKey: "test-key" },
-      },
-    });
-    registerDownloadProviderWork({
-      jobId,
-      playlistId,
-      provider: "slskd-search",
-      workId: "subsonic-retry-search",
-    });
-
-    const deletion = subsonic.deleteSubsonicPlaylist(user, playlistId);
-    await requestReceived;
-    await assert.rejects(deletion, /Could not cancel download provider work/);
-
-    assert.ok(downloadTracker.getJob(jobId));
-    assert.ok(flowPlaylistConfig.getStaticPlaylist(playlistId));
-    assert.equal(
-      listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length,
-      1,
-    );
-  } finally {
-    dbOps.updateSettings(originalSettings);
-    await mock.close();
-  }
+  assert.equal(downloadTracker.getJob(jobId)?.status, "failed");
+  assert.equal(isDownloadJobCancelled(jobId), false);
+  assert.equal(flowPlaylistConfig.getStaticPlaylist(playlistId)?.tracks[0]?.jobId, jobId);
+  assert.equal(listDownloadProviderWork({ jobIds: [jobId], provider: "slskd-search" }).length, 1);
 });
 
-test("failed Subsonic edit keeps the old playlist and allows later jobs", async () => {
+test("a failed Subsonic edit keeps the old playlist and leaves its downloads recoverable", async () => {
   const playlistId = "subsonic-edit-provider-failure";
-  flowPlaylistConfig.createStaticPlaylist({
-    id: playlistId,
-    name: "Before Failed Edit",
-    ownerUserId: user.id,
-    tracks: [],
-  });
-  activatePlaylistDownloadGeneration(playlistId);
-  const jobId = downloadTracker.addJob(
+  const [pendingJobId, downloadingJobId] = createPlaylist(playlistId, "Before Failed Edit", [
     { artistName: "Retry Artist", trackName: "Retry Song" },
-    playlistId,
-  );
-  const downloadingJobId = downloadTracker.addJob(
     { artistName: "Retry Artist", trackName: "Interrupted Song" },
-    playlistId,
-  );
+  ]);
   downloadTracker.setDownloading(downloadingJobId);
-  const originalSettings = dbOps.getSettings();
+  registerDownloadProviderWork({
+    jobId: downloadingJobId,
+    ownerId: "library",
+    provider: "slskd-search",
+    workId: "subsonic-edit-retry-search",
+  });
   let failCleanup = true;
-  const mock = await createMockHttpServer((request, response) => {
+  const edit = () => subsonic.updateSubsonicPlaylist(user, {
+    playlistId,
+    name: "After Failed Edit",
+    songIndexesToRemove: [0, 1],
+  });
+
+  await withSlskd((request, response) => {
     request.resume();
     response.writeHead(failCleanup ? 503 : 204);
     response.end();
-  });
-
-  try {
-    dbOps.updateSettings({
-      ...originalSettings,
-      integrations: {
-        ...(originalSettings.integrations || {}),
-        slskd: { enabled: true, url: mock.url, apiKey: "test-key" },
-      },
-    });
-    registerDownloadProviderWork({
-      jobId: downloadingJobId,
-      playlistId,
-      provider: "slskd-search",
-      workId: "subsonic-edit-retry-search",
-    });
-
-    await assert.rejects(
-      subsonic.updateSubsonicPlaylist(user, {
-        playlistId,
-        name: "After Failed Edit",
-      }),
-      /Could not cancel download provider work/,
-    );
-    assert.equal(flowPlaylistConfig.getStaticPlaylist(playlistId)?.name, "Before Failed Edit");
-    assert.ok(downloadTracker.getJob(jobId));
-    assert.equal(listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length, 1);
-    assert.equal(downloadTracker.getNextPending()?.id, jobId);
+  }, async () => {
+    await assert.rejects(edit(), /Could not cancel download provider work/);
+    const kept = flowPlaylistConfig.getStaticPlaylist(playlistId);
+    assert.equal(kept?.name, "Before Failed Edit");
+    assert.deepEqual(kept.tracks.map((track) => track.jobId), [pendingJobId, downloadingJobId]);
+    assert.equal(downloadTracker.getJob(pendingJobId)?.status, "pending");
+    assert.equal(isDownloadJobCancelled(pendingJobId), false);
     assert.equal(downloadTracker.getJob(downloadingJobId)?.status, "failed");
-
-    const laterJobId = downloadTracker.addJob(
-      { artistName: "Later Artist", trackName: "Later Song" },
-      playlistId,
-    );
-    assert.equal(downloadTracker.getNextPendingMatching((job) => job.id === laterJobId)?.id, laterJobId);
+    assert.equal(listDownloadProviderWork({ jobIds: [downloadingJobId], provider: "slskd-search" }).length, 1);
 
     failCleanup = false;
-    const retried = await subsonic.updateSubsonicPlaylist(user, {
-      playlistId,
-      name: "After Failed Edit",
-    });
+    const retried = await edit();
     assert.equal(retried?.name, "After Failed Edit");
-    assert.equal(downloadTracker.getJob(jobId), null);
-    assert.equal(listDownloadProviderWork({ playlistId, provider: "slskd-search" }).length, 0);
-  } finally {
-    dbOps.updateSettings(originalSettings);
-    await mock.close();
-  }
+    assert.deepEqual(retried.tracks, []);
+  });
+
+  assert.equal(downloadTracker.getJob(pendingJobId), null);
+  assert.equal(downloadTracker.getJob(downloadingJobId), null);
+  assert.equal(listDownloadProviderWork({ jobIds: [downloadingJobId], provider: "slskd-search" }).length, 0);
 });
 
 test("Subsonic edits wait behind other playlist mutations", async () => {
   const playlistId = "subsonic-edit-global-order";
-  flowPlaylistConfig.createStaticPlaylist({
-    id: playlistId,
-    name: "Before Ordered Edit",
-    ownerUserId: user.id,
-    tracks: [],
-  });
+  createPlaylist(playlistId, "Before Ordered Edit");
   let signalEntered;
   let releaseLock;
   const entered = new Promise((resolve) => { signalEntered = resolve; });
   const held = new Promise((resolve) => { releaseLock = resolve; });
-  const currentMutation = withHonkerLock("weekly-flow-operation", async () => {
+  const currentMutation = withHonkerLock("playlist-operation", async () => {
     signalEntered();
     await held;
   });
@@ -445,73 +333,19 @@ test("Subsonic edits wait behind other playlist mutations", async () => {
   assert.equal(flowPlaylistConfig.getStaticPlaylist(playlistId)?.name, "After Ordered Edit");
 });
 
-test("a rejected Subsonic edit does not leave later jobs cancelled", async (t) => {
+test("a Subsonic edit that cannot be saved leaves removed downloads queued", async (t) => {
   const playlistId = "subsonic-rejected-edit";
-  flowPlaylistConfig.createStaticPlaylist({
-    id: playlistId,
-    name: "Before Rejected Edit",
-    ownerUserId: user.id,
-    tracks: [],
-  });
-  downloadTracker.addJob(
+  const [jobId] = createPlaylist(playlistId, "Before Rejected Edit", [
     { artistName: "Old Artist", trackName: "Old Song" },
-    playlistId,
-  );
+  ]);
   t.mock.method(flowPlaylistConfig, "updateStaticPlaylist", () => null);
 
-  assert.equal(
-    await subsonic.updateSubsonicPlaylist(user, { playlistId, name: "Rejected name" }),
-    null,
+  await assert.rejects(
+    subsonic.updateSubsonicPlaylist(user, { playlistId, name: "Rejected name", songIndexesToRemove: [0] }),
+    /Could not save the playlist/,
   );
-  const laterJobId = downloadTracker.addJob(
-    { artistName: "Later Artist", trackName: "Later Song" },
-    playlistId,
-  );
-  assert.equal(downloadTracker.getNextPendingMatching((job) => job.id === laterJobId)?.id, laterJobId);
-});
-
-test("a failed Subsonic edit does not revive a previously cancelled job", async (t) => {
-  const playlistId = "subsonic-edit-existing-cancellation";
-  flowPlaylistConfig.createStaticPlaylist({
-    id: playlistId,
-    name: "Existing Cancellation",
-    ownerUserId: user.id,
-    tracks: [],
-  });
-  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Old Song" }, playlistId);
-  cancelDownloadJob(jobId);
-  t.mock.method(flowPlaylistConfig, "updateStaticPlaylist", () => null);
-
-  assert.equal(await subsonic.updateSubsonicPlaylist(user, { playlistId, name: "Rejected" }), null);
-  assert.equal(isDownloadJobCancelled(jobId), true);
-});
-
-test("a successful Subsonic edit does not reactivate a playlist awaiting deletion", async () => {
-  const playlistId = "subsonic-edit-queued-delete";
-  flowPlaylistConfig.createStaticPlaylist({
-    id: playlistId,
-    name: "Queued for Deletion",
-    ownerUserId: user.id,
-    tracks: [],
-  });
-  cancelPlaylistDownloadGeneration(playlistId);
-  const cancelledGeneration = getPlaylistDownloadGeneration(playlistId);
-
-  const updated = await subsonic.updateSubsonicPlaylist(user, {
-    playlistId,
-    name: "Edited Before Deletion",
-  });
-  const laterJobId = downloadTracker.addJob(
-    { artistName: "Later Artist", trackName: "Later Song" },
-    playlistId,
-  );
-  const laterJob = downloadTracker.getJob(laterJobId);
-
-  assert.equal(updated?.name, "Edited Before Deletion");
-  assert.equal(getPlaylistDownloadGeneration(playlistId), cancelledGeneration);
-  assert.equal(isPipelinePayloadActive({
-    jobId: laterJobId,
-    playlistId,
-    playlistGeneration: laterJob.playlistGeneration,
-  }), false);
+  t.mock.restoreAll();
+  assert.equal(flowPlaylistConfig.getStaticPlaylist(playlistId)?.tracks[0]?.jobId, jobId);
+  assert.equal(isDownloadJobCancelled(jobId), false);
+  assert.equal(downloadTracker.getNextPendingMatching((job) => job.id === jobId)?.id, jobId);
 });

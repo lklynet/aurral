@@ -27,7 +27,7 @@ test.beforeEach(() => {
     integrations: {},
     onboardingComplete: true,
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
     playlistArtwork: { style: "aurral" },
   });
 });
@@ -37,7 +37,7 @@ test.after(async () => {
 });
 
 function makeManager({ prefixOwnerUsername } = {}) {
-  const manager = new PlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
+  const manager = new PlaylistManager(process.env.DOWNLOAD_FOLDER);
   if (prefixOwnerUsername !== undefined) {
     manager.navidromeDestination.updateConfig({ prefixOwnerUsername });
   }
@@ -69,7 +69,7 @@ test("the Navidrome adapter keeps an unowned flow name bare", () => {
     displayName: "Weekend Vibes",
   });
   assert.equal(names.current, "Weekend Vibes");
-  assert.deepEqual(names.legacy, ["[A] Weekend Vibes", "Aurral Weekend Vibes"]);
+  assert.deepEqual(names.legacy, []);
 });
 
 test("the Navidrome adapter prefixes an owned flow name when enabled", () => {
@@ -80,11 +80,7 @@ test("the Navidrome adapter prefixes an owned flow name when enabled", () => {
     displayName: "Weekend Vibes",
   });
   assert.equal(names.current, "jody - Weekend Vibes");
-  assert.deepEqual(names.legacy, [
-    "Weekend Vibes",
-    "[A] Weekend Vibes",
-    "Aurral Weekend Vibes",
-  ]);
+  assert.deepEqual(names.legacy, ["Weekend Vibes"]);
 });
 
 test("the Navidrome adapter prefixes an owned static playlist name when enabled", () => {
@@ -97,11 +93,7 @@ test("the Navidrome adapter prefixes an owned static playlist name when enabled"
     displayName: "80s Anthems",
   });
   assert.equal(names.current, "jody - 80s Anthems");
-  assert.deepEqual(names.legacy, [
-    "80s Anthems",
-    "[AS] 80s Anthems",
-    "Aurral Shared 80s Anthems",
-  ]);
+  assert.deepEqual(names.legacy, ["80s Anthems"]);
   flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
 });
 
@@ -115,11 +107,7 @@ test("the Navidrome adapter keeps owned flow names bare when the toggle is off",
     displayName: "Weekend Vibes",
   });
   assert.equal(flow.current, "Weekend Vibes");
-  assert.deepEqual(flow.legacy, [
-    "[A] Weekend Vibes",
-    "Aurral Weekend Vibes",
-    "jody - Weekend Vibes",
-  ]);
+  assert.deepEqual(flow.legacy, ["jody - Weekend Vibes"]);
 
   const shared = manager.navidromeDestination.getPlaylistNames({
     entityId: playlist.id,
@@ -127,11 +115,7 @@ test("the Navidrome adapter keeps owned flow names bare when the toggle is off",
     displayName: "80s Anthems",
   });
   assert.equal(shared.current, "80s Anthems");
-  assert.deepEqual(shared.legacy, [
-    "[AS] 80s Anthems",
-    "Aurral Shared 80s Anthems",
-    "jody - 80s Anthems",
-  ]);
+  assert.deepEqual(shared.legacy, ["jody - 80s Anthems"]);
   flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
 });
 

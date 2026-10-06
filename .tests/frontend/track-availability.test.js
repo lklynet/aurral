@@ -10,7 +10,7 @@ import {
 test("availability counts playable completed tracks, including tracks reused from another playlist", () => {
   const tracks = [
     { status: "done", streamUrl: "/stream/1" },
-    { status: "done", streamUrl: "/stream/2", playlistType: "another-playlist" },
+    { status: "done", streamUrl: "/stream/2", ownerId: "another-playlist" },
     { status: "done" },
     { status: "downloading" },
     { status: "pending" },

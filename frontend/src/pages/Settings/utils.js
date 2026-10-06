@@ -1,20 +1,11 @@
 import { allReleaseTypes } from "./constants";
 import { normalizeDateTimeFormat } from "../../utils/dateTime.js";
 
-export const LEGACY_METADATA_BASE_URL = "https://brainzmash.kell.ly";
 export const DEFAULT_METADATA_BASE_URL = "https://lidarrapi.brainzmash.cc";
-
-export const normalizeMetadataBaseUrl = (baseUrl) => {
-  const trimmed = String(baseUrl || "")
-    .trim()
-    .replace(/\/+$/, "");
-  return trimmed === LEGACY_METADATA_BASE_URL ? DEFAULT_METADATA_BASE_URL : trimmed;
-};
 
 export const normalizeSettings = (savedSettings) => {
   const lidarr = savedSettings.integrations?.lidarr || {};
   const lastfm = savedSettings.integrations?.lastfm || {};
-  const legacyMusicbrainz = savedSettings.integrations?.musicbrainz || {};
   const metadata = savedSettings.integrations?.metadata || {};
   const news = savedSettings.integrations?.news || {};
   const parsedAutoRefreshHours = parseInt(lastfm.discoveryAutoRefreshHours, 10);
@@ -26,10 +17,7 @@ export const normalizeSettings = (savedSettings) => {
     ? Math.min(500, Math.max(50, parsedRecommendationsPerRefresh))
     : 200;
   const playlistArtwork = savedSettings.playlistArtwork || {};
-  const playlistArtworkStyle =
-    playlistArtwork.style === "aurral" || lastfm.discoverFlowArtworkStyle === "aurral"
-      ? "aurral"
-      : "photo";
+  const playlistArtworkStyle = playlistArtwork.style === "aurral" ? "aurral" : "photo";
   return {
     ...savedSettings,
     dateTimeFormat: normalizeDateTimeFormat(savedSettings.dateTimeFormat),
@@ -187,27 +175,17 @@ export const normalizeSettings = (savedSettings) => {
       },
       metadata: {
         provider: "brainzmash",
-        baseUrl: normalizeMetadataBaseUrl(
-          metadata.baseUrl ||
-            String(legacyMusicbrainz.customUrl || "")
-              .trim()
-              .replace(/\/ws\/2\/?$/, "") ||
-            DEFAULT_METADATA_BASE_URL,
-        ),
+        baseUrl: DEFAULT_METADATA_BASE_URL,
         userAgentSuffix: "",
         enableNarrowFallbacks: true,
         ...metadata,
       },
-      general: {
-        authUser: "",
-        authPassword: "",
-        ...(savedSettings.integrations?.general || {}),
-      },
+      general: savedSettings.integrations?.general || {},
       gotify: {
         url: "",
         token: "",
         notifyDiscoveryUpdated: false,
-        notifyWeeklyFlowDone: false,
+        notifyFlowDone: false,
         notifyRequestMade: false,
         notifyRequestAvailable: false,
         ...(savedSettings.integrations?.gotify || {}),
@@ -215,7 +193,7 @@ export const normalizeSettings = (savedSettings) => {
       webhooks: savedSettings.integrations?.webhooks || [],
       webhookEvents: {
         notifyDiscoveryUpdated: false,
-        notifyWeeklyFlowDone: false,
+        notifyFlowDone: false,
         notifyRequestMade: false,
         notifyRequestAvailable: false,
         ...(savedSettings.integrations?.webhookEvents || {}),

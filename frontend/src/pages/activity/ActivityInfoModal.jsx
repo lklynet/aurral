@@ -52,7 +52,7 @@ const formatQualityState = (state) => {
 
 function getRows(item) {
   const requester = item.requestedBy?.username || item.requestedBy?.id;
-  const operation = item.playlistName || item.playlistId || item.playlistType;
+  const operation = item.playlistName || item.playlistId;
   const details = item.error || item.subtitle;
   const id = item.jobId || item.id;
   return [

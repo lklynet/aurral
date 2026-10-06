@@ -1,6 +1,6 @@
 const normalizeName = (value) => String(value || "").trim().toLocaleLowerCase();
 
-export const libraryRecordId = (entry) => entry?.canonicalId ?? entry?.id ?? null;
+export const libraryRecordId = (entry) => entry?.recordId ?? entry?.id ?? null;
 
 export function findLibraryArtistByName(artists, artistName) {
   const target = normalizeName(artistName);

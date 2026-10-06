@@ -50,7 +50,7 @@ const recentPeerRowsStmt = db.prepare(`
 
 const activePeerRowsStmt = db.prepare(`
   SELECT LOWER(remote_username) AS user_key, remote_username AS username, COUNT(*) AS active
-  FROM playlist_download_jobs
+  FROM download_jobs
   WHERE status = 'downloading'
     AND remote_username IS NOT NULL
     AND TRIM(remote_username) != ''

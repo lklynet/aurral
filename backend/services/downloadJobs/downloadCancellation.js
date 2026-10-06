@@ -19,101 +19,103 @@ export function setActiveDownloadAttemptId(jobId, id) {
   saveAttemptStmt.run(`activeDownloadAttempt:${jobId}`, JSON.stringify(id));
 }
 
-const playlistCancellationStmt = db.prepare(
-  `SELECT generation, state FROM weekly_flow_download_cancellations WHERE playlist_id = ?`,
+const ownerCancellationStmt = db.prepare(
+  `SELECT generation, state FROM download_owner_cancellations WHERE owner_id = ?`,
 );
-const insertActivePlaylistStmt = db.prepare(
-  `INSERT INTO weekly_flow_download_cancellations (playlist_id, generation, state, changed_at)
+const insertActiveOwnerStmt = db.prepare(
+  `INSERT INTO download_owner_cancellations (owner_id, generation, state, changed_at)
    VALUES (?, 0, 'active', ?)`,
 );
-const activateExistingPlaylistStmt = db.prepare(
-  `UPDATE weekly_flow_download_cancellations
+const activateExistingOwnerStmt = db.prepare(
+  `UPDATE download_owner_cancellations
    SET generation = generation + 1, state = 'active', changed_at = ?
-   WHERE playlist_id = ?`,
+   WHERE owner_id = ?`,
 );
-const touchActivePlaylistStmt = db.prepare(
-  `UPDATE weekly_flow_download_cancellations
+const touchActiveOwnerStmt = db.prepare(
+  `UPDATE download_owner_cancellations
    SET state = 'active', changed_at = ?
-   WHERE playlist_id = ?`,
+   WHERE owner_id = ?`,
 );
-const cancelNewPlaylistStmt = db.prepare(
-  `INSERT INTO weekly_flow_download_cancellations (playlist_id, generation, state, changed_at)
+const cancelNewOwnerStmt = db.prepare(
+  `INSERT INTO download_owner_cancellations (owner_id, generation, state, changed_at)
    VALUES (?, 0, 'cancelled', ?)`,
 );
-const cancelExistingPlaylistStmt = db.prepare(
-  `UPDATE weekly_flow_download_cancellations
+const cancelExistingOwnerStmt = db.prepare(
+  `UPDATE download_owner_cancellations
    SET state = 'cancelled', changed_at = ?
-   WHERE playlist_id = ?`,
+   WHERE owner_id = ?`,
 );
 const jobCancellationStmt = db.prepare(
-  `SELECT 1 FROM weekly_flow_download_job_cancellations WHERE job_id = ?`,
+  `SELECT 1 FROM download_job_cancellations WHERE job_id = ?`,
 );
 const cancelJobStmt = db.prepare(
-  `INSERT OR IGNORE INTO weekly_flow_download_job_cancellations (job_id, cancelled_at)
+  `INSERT OR IGNORE INTO download_job_cancellations (job_id, cancelled_at)
    VALUES (?, ?)`,
 );
 const restoreJobStmt = db.prepare(
-  `DELETE FROM weekly_flow_download_job_cancellations WHERE job_id = ?`,
+  `DELETE FROM download_job_cancellations WHERE job_id = ?`,
 );
 
 const providerWorkInsertStmt = db.prepare(
-  `INSERT OR IGNORE INTO weekly_flow_download_provider_work
-   (job_id, playlist_id, provider, work_id, username, created_at)
+  `INSERT OR IGNORE INTO download_provider_work
+   (job_id, owner_id, provider, work_id, username, created_at)
    VALUES (?, ?, ?, ?, ?, ?)`,
 );
 const providerWorkDeleteStmt = db.prepare(
-  `DELETE FROM weekly_flow_download_provider_work
+  `DELETE FROM download_provider_work
    WHERE provider = ? AND work_id = ?`,
 );
+
+const jobOwnerStmt = db.prepare("SELECT owner_id, owner_generation FROM download_jobs WHERE id = ?");
 
 function normalizeId(value) {
   return String(value || "").trim();
 }
 
-function readPlaylistCancellation(playlistId) {
-  const safePlaylistId = normalizeId(playlistId);
-  if (!safePlaylistId) return null;
-  return playlistCancellationStmt.get(safePlaylistId) || null;
+function readOwnerCancellation(ownerId) {
+  const safeOwnerId = normalizeId(ownerId);
+  if (!safeOwnerId) return null;
+  return ownerCancellationStmt.get(safeOwnerId) || null;
 }
 
-export function getPlaylistDownloadGeneration(playlistId) {
-  return Number(readPlaylistCancellation(playlistId)?.generation || 0);
+export function getOwnerDownloadGeneration(ownerId) {
+  return Number(readOwnerCancellation(ownerId)?.generation || 0);
 }
 
-export function activatePlaylistDownloadGeneration(playlistId) {
-  const safePlaylistId = normalizeId(playlistId);
-  if (!safePlaylistId) return 0;
+export function activateOwnerDownloadGeneration(ownerId) {
+  const safeOwnerId = normalizeId(ownerId);
+  if (!safeOwnerId) return 0;
   const now = Date.now();
   const activate = db.transaction(() => {
-    const current = readPlaylistCancellation(safePlaylistId);
+    const current = readOwnerCancellation(safeOwnerId);
     if (!current) {
-      insertActivePlaylistStmt.run(safePlaylistId, now);
+      insertActiveOwnerStmt.run(safeOwnerId, now);
       return 0;
     }
     if (current.state === "cancelled") {
-      activateExistingPlaylistStmt.run(now, safePlaylistId);
+      activateExistingOwnerStmt.run(now, safeOwnerId);
     } else {
-      touchActivePlaylistStmt.run(now, safePlaylistId);
+      touchActiveOwnerStmt.run(now, safeOwnerId);
     }
-    return getPlaylistDownloadGeneration(safePlaylistId);
+    return getOwnerDownloadGeneration(safeOwnerId);
   });
   return activate();
 }
 
-export function cancelPlaylistDownloadGeneration(playlistId) {
-  const safePlaylistId = normalizeId(playlistId);
-  if (!safePlaylistId) return 0;
+export function cancelOwnerDownloadGeneration(ownerId) {
+  const safeOwnerId = normalizeId(ownerId);
+  if (!safeOwnerId) return 0;
   const now = Date.now();
   const cancel = db.transaction(() => {
-    const current = readPlaylistCancellation(safePlaylistId);
+    const current = readOwnerCancellation(safeOwnerId);
     if (!current) {
-      cancelNewPlaylistStmt.run(safePlaylistId, now);
+      cancelNewOwnerStmt.run(safeOwnerId, now);
       return 0;
     }
     if (current.state !== "cancelled") {
-      cancelExistingPlaylistStmt.run(now, safePlaylistId);
+      cancelExistingOwnerStmt.run(now, safeOwnerId);
     }
-    return getPlaylistDownloadGeneration(safePlaylistId);
+    return getOwnerDownloadGeneration(safeOwnerId);
   });
   return cancel();
 }
@@ -140,16 +142,16 @@ export function cancelDownloadJobs(jobIds = []) {
   return cancel();
 }
 
-export function restorePlaylistDownloadWork(playlistId, jobIds = []) {
-  const safePlaylistId = normalizeId(playlistId);
-  if (!safePlaylistId) return false;
+export function restoreOwnerDownloadWork(ownerId, jobIds = []) {
+  const safeOwnerId = normalizeId(ownerId);
+  if (!safeOwnerId) return false;
   const safeJobIds = [...new Set(jobIds.map(normalizeId).filter(Boolean))];
   db.transaction(() => {
     const now = Date.now();
-    if (!readPlaylistCancellation(safePlaylistId)) {
-      insertActivePlaylistStmt.run(safePlaylistId, now);
+    if (!readOwnerCancellation(safeOwnerId)) {
+      insertActiveOwnerStmt.run(safeOwnerId, now);
     } else {
-      touchActivePlaylistStmt.run(now, safePlaylistId);
+      touchActiveOwnerStmt.run(now, safeOwnerId);
     }
     for (const jobId of safeJobIds) restoreJobStmt.run(jobId);
   })();
@@ -169,20 +171,20 @@ export function restoreDownloadJobCancellations(jobIds = []) {
 
 export function registerDownloadProviderWork({
   jobId,
-  playlistId,
+  ownerId,
   provider,
   workId,
   username = "",
 } = {}) {
   const safeJobId = normalizeId(jobId);
-  const safePlaylistId = normalizeId(playlistId);
+  const safeOwnerId = normalizeId(ownerId);
   const safeProvider = normalizeId(provider);
   const safeWorkId = normalizeId(workId);
   const safeUsername = normalizeId(username);
   if (!safeJobId || !safeProvider || !safeWorkId) return false;
   providerWorkInsertStmt.run(
     safeJobId,
-    safePlaylistId,
+    safeOwnerId,
     safeProvider,
     safeWorkId,
     safeUsername,
@@ -193,13 +195,13 @@ export function registerDownloadProviderWork({
 
 export function listDownloadProviderWork({
   jobIds = [],
-  playlistId = null,
+  ownerId = null,
   provider = null,
 } = {}) {
   const safeJobIds = [...new Set(
     (Array.isArray(jobIds) ? jobIds : []).map(normalizeId).filter(Boolean),
   )];
-  const safePlaylistId = normalizeId(playlistId);
+  const safeOwnerId = normalizeId(ownerId);
   const safeProvider = normalizeId(provider);
   const clauses = [];
   const params = [];
@@ -208,9 +210,9 @@ export function listDownloadProviderWork({
     params.push(safeProvider);
   }
   const scope = [];
-  if (safePlaylistId) {
-    scope.push("playlist_id = ?");
-    params.push(safePlaylistId);
+  if (safeOwnerId) {
+    scope.push("owner_id = ?");
+    params.push(safeOwnerId);
   }
   if (safeJobIds.length > 0) {
     scope.push(`job_id IN (${safeJobIds.map(() => "?").join(", ")})`);
@@ -219,8 +221,8 @@ export function listDownloadProviderWork({
   if (scope.length === 0) return [];
   clauses.push(`(${scope.join(" OR ")})`);
   return db.prepare(
-    `SELECT job_id, playlist_id, provider, work_id, username, created_at
-     FROM weekly_flow_download_provider_work
+    `SELECT job_id, owner_id, provider, work_id, username, created_at
+     FROM download_provider_work
      WHERE ${clauses.join(" AND ")}
      ORDER BY created_at, work_id`,
   ).all(...params);
@@ -243,30 +245,30 @@ export function isPipelinePayloadActive(payload = {}) {
   if (jobId && isDownloadJobCancelled(jobId)) return false;
   if (payload.downloadAttemptId !== undefined && getActiveDownloadAttemptId(jobId) !== (payload.downloadAttemptId || null)) return false;
   if (jobId) {
-    const owner = db.prepare("SELECT playlist_id, playlist_type, playlist_generation FROM playlist_download_jobs WHERE id = ?").get(jobId);
-    if (owner && payload.playlistId && ((owner.playlist_id || owner.playlist_type) !== payload.playlistId ||
-        Number(owner.playlist_generation || 0) !== Number(payload.playlistGeneration || 0))) return false;
+    const owner = jobOwnerStmt.get(jobId);
+    if (owner && payload.ownerId && (owner.owner_id !== payload.ownerId ||
+        Number(owner.owner_generation || 0) !== Number(payload.ownerGeneration || 0))) return false;
   }
 
-  const playlistId = normalizeId(payload.playlistId);
-  if (!playlistId) return true;
-  const current = readPlaylistCancellation(playlistId);
+  const ownerId = normalizeId(payload.ownerId);
+  if (!ownerId) return true;
+  const current = readOwnerCancellation(ownerId);
   if (!current) {
-    return Number(payload.playlistGeneration || 0) === 0;
+    return Number(payload.ownerGeneration || 0) === 0;
   }
   if (current.state === "cancelled") return false;
-  return Number(payload.playlistGeneration || 0) === Number(current.generation || 0);
+  return Number(payload.ownerGeneration || 0) === Number(current.generation || 0);
 }
 
 export async function withPipelineCommitLock(payload, operation) {
   if (!isPipelinePayloadActive(payload)) return { cancelled: true, result: null };
-  const playlistId = normalizeId(payload.playlistId);
-  if (!playlistId) {
+  const ownerId = normalizeId(payload.ownerId);
+  if (!ownerId) {
     return { cancelled: false, result: await operation() };
   }
   const { withDownloadImportLock } = await import("./mutationGuards.js");
   return withDownloadImportLock(
-    playlistId,
+    ownerId,
     async () => {
       if (!isPipelinePayloadActive(payload)) {
         return { cancelled: true, result: null };

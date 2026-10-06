@@ -74,8 +74,8 @@ export async function enqueueImportedPlaylist({
     lastSyncTrackCount: tracks.length,
   });
   const result = await playlistOperationQueue.enqueuePayload({
-    kind: "shared-playlist-create",
-    label: "shared-playlist:create",
+    kind: "static-playlist-create",
+    label: "static-playlist:create",
     playlistId: safePlaylistId,
     name,
     sourceName,

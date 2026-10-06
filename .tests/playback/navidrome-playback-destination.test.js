@@ -27,7 +27,7 @@ const [
   "backend/services/playback/navidromePlaybackDestination.js",
 );
 
-const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+const downloadRoot = process.env.DOWNLOAD_FOLDER;
 
 function createClient({ configured = true, playlists = [], songs = {} } = {}) {
   const currentPlaylists = playlists.map((playlist) => ({ ...playlist }));
@@ -401,15 +401,15 @@ test("serializes concurrent publishes before creating a native playlist", async 
 test("adopts an imported M3U playlist and keeps its ID across rename and delete", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Imported" });
   const client = createClient({
-    playlists: [{ id: "imported-id", name: "[AS] Imported" }],
+    playlists: [{ id: "imported-id", name: "Imported" }],
     songs: { Song: { id: "song-1" } },
   });
   const destination = new NavidromePlaybackDestination(downloadRoot, { client });
   await fs.mkdir(destination.libraryRoot, { recursive: true });
-  const legacyPath = path.join(destination.libraryRoot, "[AS] Imported.m3u");
-  await fs.writeFile(legacyPath, "legacy");
+  const importPath = path.join(destination.libraryRoot, "Imported.m3u");
+  await fs.writeFile(importPath, "imported");
   await destination.ensureLibrary();
-  await assert.doesNotReject(fs.access(legacyPath));
+  await assert.doesNotReject(fs.access(importPath));
   const updatePlaylist = client.updatePlaylist.bind(client);
   let releaseUpdate;
   let signalUpdate;
@@ -433,12 +433,12 @@ test("adopts an imported M3U playlist and keeps its ID across rename and delete"
   );
   await updateStarted;
   assert.equal(
-    await fs.readFile(legacyPath, "utf8"),
-    "legacy",
+    await fs.readFile(importPath, "utf8"),
+    "imported",
   );
   releaseUpdate();
   await migrating;
-  await assert.rejects(fs.access(legacyPath));
+  await assert.rejects(fs.access(importPath));
   client.updatePlaylist = updatePlaylist;
   await destination.publishPlaylist(
     createPlaybackPlaylistSnapshot({
@@ -1268,43 +1268,6 @@ test("keeps a stored pointer while deleting local files when Navidrome is unconf
     navidromePlaylistPointerStore.getPointer(flow.id, "global").playlistId,
     "saved-id",
   );
-});
-
-test("publishing adopts one legacy playlist and removes the other legacy copies", async () => {
-  const flow = flowPlaylistConfig.createFlow({ name: "Road Trip" });
-  const client = createClient({
-    playlists: [
-      { id: "bracketed", name: "[A] Road Trip" },
-      { id: "prefixed", name: "Aurral Road Trip" },
-    ],
-    songs: { Song: { id: "song-1" } },
-  });
-  const destination = new NavidromePlaybackDestination(downloadRoot, { client });
-  await fs.mkdir(destination.libraryRoot, { recursive: true });
-  for (const name of ["[A] Road Trip", "Aurral Road Trip"]) {
-    await fs.writeFile(path.join(destination.libraryRoot, `${name}.m3u`), "legacy");
-    await fs.writeFile(path.join(destination.libraryRoot, `${name}.webp`), "legacy artwork");
-  }
-
-  assert.deepEqual(
-    await destination.publishPlaylist(
-      createPlaybackPlaylistSnapshot({
-        entityId: flow.id,
-        displayName: flow.name,
-        tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
-      }),
-    ),
-    { ok: true },
-  );
-
-  for (const name of ["[A] Road Trip", "Aurral Road Trip"]) {
-    await assert.rejects(fs.access(path.join(destination.libraryRoot, `${name}.m3u`)));
-    await assert.rejects(fs.access(path.join(destination.libraryRoot, `${name}.webp`)));
-  }
-  assert.deepEqual(client.calls.updated, [
-    { id: "bracketed", name: "Road Trip", songIds: ["song-1"] },
-  ]);
-  assert.deepEqual(client.calls.deleted, ["prefixed"]);
 });
 
 test("requests configured scans and treats an unconfigured destination as a no-op", async () => {

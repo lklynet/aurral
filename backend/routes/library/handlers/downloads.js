@@ -289,7 +289,7 @@ export const getActiveLibraryDownloads = async () => {
   const artists = new Set();
   const tracks = [];
   for (const job of downloadTracker.getAll()) {
-    if (job.playlistType !== "library" || !ACTIVE_LIBRARY_JOB_STATUSES.has(job.status)) continue;
+    if (job.ownerId !== "library" || job.upgradeForJobId || !ACTIVE_LIBRARY_JOB_STATUSES.has(job.status)) continue;
     tracks.push({
       mbid: job.trackMbid || null,
       artistName: job.artistName,
@@ -374,6 +374,16 @@ export function registerDownloads(router) {
     }
 
     try {
+      const requestedJobs = downloadTracker.getAll().filter((job) => {
+        if (job.ownerId !== "library" || job.upgradeForJobId) return false;
+        if (track.trackMbid) return job.trackMbid === track.trackMbid;
+        return (
+          job.artistName?.toLocaleLowerCase() === track.artistName.toLocaleLowerCase() &&
+          job.trackName?.toLocaleLowerCase() === track.trackName.toLocaleLowerCase()
+        );
+      });
+      for (const job of requestedJobs) downloadTracker.setQueuedForPlaylist(job.id, false);
+
       const alreadyOwned = getLibraryTrackOwnership({
         trackMbid: track.trackMbid,
         artistName: track.artistName,
@@ -382,7 +392,7 @@ export function registerDownloads(router) {
       if (alreadyOwned) return res.json({ success: true, alreadyOwned: true, queued: false });
 
       const monitoredTrack = await libraryManager.monitorAurralTrack({
-        canonicalTrackId: body.canonicalTrackId,
+        trackRecordId: body.trackRecordId,
         trackMbid: track.trackMbid,
       });
       if (monitoredTrack) {
@@ -395,19 +405,7 @@ export function registerDownloads(router) {
         });
       }
 
-      const { downloadTracker } = await import(
-        "../../../services/downloadJobs/downloadTracker.js"
-      );
-      const existingJob = downloadTracker.getAll().find((job) => {
-        if (job.playlistType !== "library" || ["failed", "done"].includes(job.status)) {
-          return false;
-        }
-        if (track.trackMbid) return job.trackMbid === track.trackMbid;
-        return (
-          job.artistName?.toLocaleLowerCase() === track.artistName.toLocaleLowerCase() &&
-          job.trackName?.toLocaleLowerCase() === track.trackName.toLocaleLowerCase()
-        );
-      });
+      const existingJob = requestedJobs.find((job) => !["failed", "done"].includes(job.status));
       if (existingJob) {
         if (existingJob.status !== "done") {
           const { recordTrackJobQueued } = await import(
@@ -440,7 +438,7 @@ export function registerDownloads(router) {
           ),
           downloadRoot: downloadWorker.downloadRoot,
           existingJobId: jobId,
-          targetPlaylistType: "library",
+          targetOwnerId: "library",
           skipHistory: true,
         });
         if (reuse.reused) {

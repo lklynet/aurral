@@ -259,12 +259,12 @@ export function PlaylistTracks({
       navigate(`/artist/${track.artistMbid}`, { state: { artistName: track.artistName } });
       return;
     }
-    let canonicalId = null;
+    let recordId = null;
     try {
       const lookup = await lookupArtistInLibrary(track.artistMbid);
-      canonicalId = lookup?.artist?.canonicalId || null;
+      recordId = lookup?.artist?.recordId || null;
     } catch {}
-    if (!canonicalId && track.artistName) {
+    if (!recordId && track.artistName) {
       try {
         const page = await getLibraryPage({
           kind: "artists",
@@ -274,10 +274,10 @@ export function PlaylistTracks({
           // Resolve for navigation even if nothing is available yet.
           availableOnly: false,
         });
-        canonicalId = libraryRecordId(findLibraryArtistByName(page?.items, track.artistName));
+        recordId = libraryRecordId(findLibraryArtistByName(page?.items, track.artistName));
       } catch {}
     }
-    if (canonicalId) navigate(`/library/artist/${encodeURIComponent(canonicalId)}`);
+    if (recordId) navigate(`/library/artist/${encodeURIComponent(recordId)}`);
   };
 
   const handleNavigateAlbum = async (track) => {
@@ -292,12 +292,12 @@ export function PlaylistTracks({
       });
       return;
     }
-    let canonicalId = null;
+    let recordId = null;
     try {
       const lookup = await lookupAlbumsInLibraryBatch([track.albumMbid]);
-      canonicalId = lookup?.[track.albumMbid]?.canonicalAlbumId || null;
+      recordId = lookup?.[track.albumMbid]?.albumRecordId || null;
     } catch {}
-    if (!canonicalId && track.albumName) {
+    if (!recordId && track.albumName) {
       try {
         const page = await getLibraryPage({
           kind: "albums",
@@ -307,12 +307,12 @@ export function PlaylistTracks({
           // Resolve for navigation even if nothing is available yet.
           availableOnly: false,
         });
-        canonicalId = libraryRecordId(
+        recordId = libraryRecordId(
           findLibraryAlbumByName(page?.items, track.albumName, track.artistName),
         );
       } catch {}
     }
-    if (canonicalId) navigate(`/library/album/${encodeURIComponent(canonicalId)}`);
+    if (recordId) navigate(`/library/album/${encodeURIComponent(recordId)}`);
   };
 
   const handleAddTrackToLibrary = async (track) => {

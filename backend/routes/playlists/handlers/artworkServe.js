@@ -1,7 +1,7 @@
 import path from "path";
 import { playlistManager } from "../../../services/playlists/playlistManager.js";
 import { hasPermission, verifyTokenAuth } from "../../../middleware/auth.js";
-import { canAccessPlaylistType } from "./utils.js";
+import { canAccessPlaylist } from "./utils.js";
 
 export function registerArtworkServe(router) {
   router.get("/artwork/:playlistId", async (req, res) => {
@@ -10,14 +10,14 @@ export function registerArtworkServe(router) {
         .status(401)
         .json({ error: "Unauthorized", message: "Authentication required" });
     }
-    if (req.user && !hasPermission(req.user, "accessFlow")) {
+    if (req.user && !hasPermission(req.user, "accessPlaylists")) {
       return res
         .status(403)
-        .json({ error: "Forbidden", message: "Permission required: accessFlow" });
+        .json({ error: "Forbidden", message: "Permission required: accessPlaylists" });
     }
 
     const { playlistId } = req.params;
-    if (!canAccessPlaylistType(req.user, playlistId)) {
+    if (!canAccessPlaylist(req.user, playlistId)) {
       return res.status(404).json({ error: "Playlist artwork not found" });
     }
     const artwork = await playlistManager.resolveArtworkFile(playlistId);

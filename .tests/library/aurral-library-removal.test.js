@@ -44,7 +44,7 @@ registerAlbums(router);
 registerArtists(router);
 
 const removeAlbum = (album, deleteFiles) =>
-  callRoute("DELETE /albums/aurral/:canonicalId", { canonicalId: String(album.id) }, deleteFiles);
+  callRoute("DELETE /albums/aurral/:recordId", { recordId: String(album.id) }, deleteFiles);
 const removeArtist = (artist, deleteFiles) =>
   callRoute("DELETE /artists/:mbid", { mbid: artist.mbid }, deleteFiles);
 
@@ -163,7 +163,7 @@ function registerSlskdSearch(jobId) {
   const workId = `search-removal-${jobId}`;
   cancellation.registerDownloadProviderWork({
     jobId,
-    playlistId: "library",
+    ownerId: "library",
     provider: "slskd-search",
     workId,
   });
@@ -213,7 +213,7 @@ test("removing an Aurral album with files deletes only its own unshared files", 
   downloadTracker.setDone(libraryJob, tracks[0].filePath, album.title);
   const playlistJob = downloadTracker.addJob(
     { artistName: artist.name, trackName: tracks[1].title, trackMbid: tracks[1].trackMbid },
-    "shared-playlist",
+    "static-playlist",
   );
   downloadTracker.setDone(playlistJob, tracks[1].filePath, album.title);
 

@@ -149,8 +149,8 @@ export function ArtistDetailsLibraryAlbums({
     const hasFiles =
       (libraryAlbum.statistics?.sizeOnDisk ?? 0) > 0 ||
       (libraryAlbum.statistics?.trackFileCount ?? 0) > 0;
-    if (libraryAlbum.canonicalId && hasFiles) {
-      navigate(`/library/album/${encodeURIComponent(libraryAlbum.canonicalId)}`);
+    if (libraryAlbum.recordId && hasFiles) {
+      navigate(`/library/album/${encodeURIComponent(libraryAlbum.recordId)}`);
       return;
     }
     const rgId = libraryAlbum.mbid || libraryAlbum.foreignAlbumId;

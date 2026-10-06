@@ -60,7 +60,7 @@ test("tests the selected webhook without saving settings", async ({ page }) => {
           webhooks: [webhook],
           webhookEvents: {
             notifyDiscoveryUpdated: false,
-            notifyWeeklyFlowDone: false,
+            notifyFlowDone: false,
             notifyRequestMade: false,
             notifyRequestAvailable: false,
           },

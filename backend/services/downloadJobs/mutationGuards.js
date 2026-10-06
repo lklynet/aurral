@@ -8,10 +8,10 @@ import { resolveTransferredDownloadPayload } from "./downloadOwnership.js";
 
 const downloadLeases = new AsyncLocalStorage();
 
-const normalizePlaylistTypes = (playlistTypes) => [
+const normalizeOwnerIds = (ownerIds) => [
   ...new Set(
-    (Array.isArray(playlistTypes) ? playlistTypes : [playlistTypes])
-      .map((playlistType) => String(playlistType || "").trim())
+    (Array.isArray(ownerIds) ? ownerIds : [ownerIds])
+      .map((ownerId) => String(ownerId || "").trim())
       .filter(Boolean),
   ),
 ];
@@ -42,7 +42,7 @@ function runWithLease(lease, operation) {
 }
 
 async function withDownloadLocks(ownerIds, { steps = false, imports = false }, operation) {
-  const owners = normalizePlaylistTypes(ownerIds);
+  const owners = normalizeOwnerIds(ownerIds);
   const current = downloadLeases.getStore();
   if (current?.active) {
     if (!owners.every((owner) => current.owners.has(owner))) {
@@ -63,28 +63,28 @@ async function withDownloadLocks(ownerIds, { steps = false, imports = false }, o
   return steps ? withOwnerLocks("download-step", owners, lockImports) : lockImports();
 }
 
-export async function beginPlaylistMutation(playlistTypes, { clearPending = true } = {}) {
-  const types = normalizePlaylistTypes(playlistTypes);
+export async function beginPlaylistMutation(ownerIds, { clearPending = true } = {}) {
+  const types = normalizeOwnerIds(ownerIds);
   const blocked = [];
   try {
-    for (const playlistType of types) {
-      await downloadWorker.blockPlaylist(playlistType);
-      blocked.push(playlistType);
+    for (const ownerId of types) {
+      await downloadWorker.blockPlaylist(ownerId);
+      blocked.push(ownerId);
       if (clearPending) {
-        if (isDownloadOwnerProcess()) downloadTracker.clearPendingByPlaylistType(playlistType);
-        else await requestDownloadOwner("clearPendingByPlaylist", [playlistType]);
+        if (isDownloadOwnerProcess()) downloadTracker.clearPendingByOwner(ownerId);
+        else await requestDownloadOwner("clearPendingByOwner", [ownerId]);
       }
     }
     await Promise.all(
-      types.map((playlistType) => downloadWorker.waitForPlaylistIdle(playlistType)),
+      types.map((ownerId) => downloadWorker.waitForPlaylistIdle(ownerId)),
     );
   } catch (error) {
-    for (const playlistType of blocked) {
+    for (const ownerId of blocked) {
       try {
-        await downloadWorker.unblockPlaylist(playlistType);
+        await downloadWorker.unblockPlaylist(ownerId);
       } catch (unblockError) {
         logger.warn("playlists", "Could not unblock playlist after mutation setup failed", {
-          playlistId: playlistType,
+          ownerId,
           reason: unblockError?.message || String(unblockError),
         });
       }
@@ -93,9 +93,9 @@ export async function beginPlaylistMutation(playlistTypes, { clearPending = true
   }
   return async () => {
     let firstError = null;
-    for (const playlistType of types) {
+    for (const ownerId of types) {
       try {
-        await downloadWorker.unblockPlaylist(playlistType);
+        await downloadWorker.unblockPlaylist(ownerId);
       } catch (error) {
         firstError ??= error;
       }
@@ -109,8 +109,8 @@ export async function beginPlaylistMutation(playlistTypes, { clearPending = true
   };
 }
 
-export async function withPlaylistMutation(playlistTypes, operation, options = {}) {
-  const types = normalizePlaylistTypes(playlistTypes);
+export async function withPlaylistMutation(ownerIds, operation, options = {}) {
+  const types = normalizeOwnerIds(ownerIds);
   return withPlaylistMutationLock(types, async () => {
     if (typeof options.beforeMutation === "function") {
       const preflight = await options.beforeMutation();
@@ -125,8 +125,8 @@ export async function withPlaylistMutation(playlistTypes, operation, options = {
   });
 }
 
-export function withPlaylistMutationLock(playlistTypes, operation) {
-  return withDownloadLocks(playlistTypes, { steps: true, imports: true }, operation);
+export function withPlaylistMutationLock(ownerIds, operation) {
+  return withDownloadLocks(ownerIds, { steps: true, imports: true }, operation);
 }
 
 export function withDownloadImportLock(ownerIds, operation) {
@@ -138,12 +138,12 @@ export function withDownloadStepLock(ownerIds, operation) {
 }
 
 function payloadOwners(payload) {
-  const owners = [payload?.playlistId];
+  const owners = [payload?.ownerId];
   for (const id of [payload?.jobId, ...(payload?.albumGroupJobIds || [])]) {
     const job = downloadTracker.getJob(id);
-    if (job) owners.push(job.playlistId || job.playlistType);
+    if (job) owners.push(job.ownerId);
   }
-  return normalizePlaylistTypes(owners);
+  return normalizeOwnerIds(owners);
 }
 
 export async function withDownloadPayloadMutation(payload, operation) {

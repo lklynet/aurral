@@ -949,7 +949,7 @@ function LibraryPage() {
         if (removal.kind === "artist") {
           await deleteArtistFromLibrary(entity.mbid, deleteFiles);
         } else if (removal.kind === "album" && resolveAlbumManager(entity) === "aurral") {
-          await deleteAurralAlbumFromLibrary(entity.canonicalId || entity.id, deleteFiles);
+          await deleteAurralAlbumFromLibrary(entity.recordId || entity.id, deleteFiles);
         } else if (removal.kind === "album" && /^\d+$/.test(String(entity.providerId ?? ""))) {
           await deleteAlbumFromLibrary(entity.providerId, deleteFiles);
         } else if (removal.kind === "album") {
@@ -1023,7 +1023,7 @@ function LibraryPage() {
         trackMbid: track?.mbid || track?.trackMbid || "",
         releaseYear: yearOf(album?.releaseDate),
         durationMs: trackDurationMs(track),
-        canonicalTrackId: /^\d+$/.test(String(track?.id ?? "")) ? String(track.id) : null,
+        trackRecordId: /^\d+$/.test(String(track?.id ?? "")) ? String(track.id) : null,
       };
       if (!payload.artistName || !payload.trackName) {
         showError("Track details are incomplete");
@@ -1621,7 +1621,7 @@ function LibraryPage() {
           file?.previewUrl ||
           (file && album
             ? buildAuthenticatedApiUrl(
-                `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`,
+                `/library/records/stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`,
               )
             : ""),
         streamFormat: file?.format || null,

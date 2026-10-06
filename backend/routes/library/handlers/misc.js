@@ -28,9 +28,8 @@ const libraryAlbumLookup = (albums, reference) => {
 
 const libraryAlbumResult = (album, ownedTrackMbids = []) => ({
   inLibrary: true,
-  canonicalInLibrary: true,
-  canonicalAlbumId: String(album.canonicalId ?? album.id),
-  canonicalArtistId: String(album.artistId),
+  albumRecordId: String(album.recordId ?? album.id),
+  artistRecordId: String(album.artistId),
   libraryAlbumId: String(album.providerId ?? album.id),
   libraryArtistId: String(album.providerArtistId ?? album.artistId),
   status:
@@ -60,7 +59,7 @@ const ownedLidarrTrackMbids = (tracks) =>
 const toLibraryArtist = (artist) => ({
   ...artist,
   id: artist.providerId ?? artist.id,
-  canonicalId: String(artist.canonicalId ?? artist.id),
+  recordId: String(artist.recordId ?? artist.id),
   foreignArtistId: artist.foreignArtistId || artist.mbid,
   added: artist.addedAt,
 });
@@ -69,7 +68,7 @@ const toLibraryAlbum = (album) => ({
   ...album,
   id: album.providerId ?? album.id,
   artistId: album.providerArtistId ?? album.artistId,
-  canonicalId: String(album.canonicalId ?? album.id),
+  recordId: String(album.recordId ?? album.id),
   foreignAlbumId: album.foreignAlbumId || album.mbid,
   title: album.albumName,
   albumType: "Album",
@@ -82,7 +81,7 @@ export async function getArtistLibraryLookup(mbid) {
     mbids: [mbid],
   });
   const artist = artists.find((candidate) => candidate.mbid === mbid);
-  const libraryArtistId = artist ? String(artist.canonicalId ?? artist.id) : null;
+  const libraryArtistId = artist ? String(artist.recordId ?? artist.id) : null;
   const aurralArtist = getLibraryArtistProjection({ reference: mbid })
     .find((candidate) => candidate.mbid === mbid && candidate.managedBy === "aurral");
   if (aurralArtist) {
@@ -90,7 +89,6 @@ export async function getArtistLibraryLookup(mbid) {
       exists: true,
       artist: toLibraryArtist(aurralArtist),
       albums: albums.filter((album) => album.artistMbid === mbid).map(toLibraryAlbum),
-      canonical: true,
       libraryArtistId,
     };
   }
@@ -124,7 +122,6 @@ export async function getArtistLibraryLookup(mbid) {
       exists: true,
       artist: toLibraryArtist(libraryManager.mapLidarrArtist(lidarrArtist)),
       albums: lidarrAlbums,
-      canonical: true,
       libraryArtistId,
     };
   }
@@ -133,7 +130,6 @@ export async function getArtistLibraryLookup(mbid) {
       exists: true,
       artist: toLibraryArtist(artist),
       albums: albums.filter((album) => album.artistMbid === mbid).map(toLibraryAlbum),
-      canonical: true,
       libraryArtistId,
     };
   }
@@ -141,7 +137,6 @@ export async function getArtistLibraryLookup(mbid) {
     exists: false,
     artist: null,
     albums: [],
-    canonical: true,
     libraryArtistId,
   };
 }
@@ -305,7 +300,6 @@ export function registerMisc(router) {
 
         results[foreignAlbumId] = {
           inLibrary: true,
-          canonicalInLibrary: false,
           libraryAlbumId: album.id !== undefined && album.id !== null ? String(album.id) : null,
           libraryArtistId:
             album.artistId !== undefined && album.artistId !== null ? String(album.artistId) : null,

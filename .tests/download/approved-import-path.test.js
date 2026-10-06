@@ -10,6 +10,7 @@ import {
   createMockHttpServer,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
+import { addStaticPlaylistJobs } from "../helpers/staticPlaylistJobs.js";
 
 const [
   isolatedState,
@@ -17,7 +18,7 @@ const [
   { dbOps },
   { downloadTracker },
   cancellationModule,
-  { flowPlaylistConfig },
+  { flowPlaylistConfig, invalidateFlowPlaylistConfigCache },
   { playlistManager },
   { downloadWorker },
   { queueQualityUpgrade },
@@ -48,9 +49,9 @@ const [
 );
 
 const {
-  activatePlaylistDownloadGeneration,
-  cancelPlaylistDownloadGeneration,
-  getPlaylistDownloadGeneration,
+  activateOwnerDownloadGeneration,
+  cancelOwnerDownloadGeneration,
+  getOwnerDownloadGeneration,
   isPipelinePayloadActive,
   withPipelineCommitLock,
   clearDownloadProviderWork,
@@ -101,6 +102,7 @@ test.afterEach(waitForApprovalFollowUps);
 
 test.beforeEach(async () => {
   await resetDatabase(db);
+  invalidateFlowPlaylistConfigCache();
   downloadTracker.clearAll();
   await fs.mkdir(process.env.DOWNLOAD_FOLDER, { recursive: true });
   dbOps.updateSettings({
@@ -148,13 +150,10 @@ test("playlist jobs annotate tracks that are already in the library", async () =
     path: "/library/Owned Artist/Owned Album/Owned Track.flac",
     available: true,
   });
-  downloadTracker.addJobs(
-    [
-      { artistName: "Owned Artist", trackName: "Owned Track", trackMbid: "owned-mbid" },
-      { artistName: "Missing Artist", trackName: "Missing Track", trackMbid: "missing-mbid" },
-    ],
-    playlistId,
-  );
+  addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, playlistId, [
+    { artistName: "Owned Artist", trackName: "Owned Track", trackMbid: "owned-mbid" },
+    { artistName: "Missing Artist", trackName: "Missing Track", trackMbid: "missing-mbid" },
+  ]);
 
   const response = await fetch(`${baseUrl}/jobs/${playlistId}`);
   const payload = await response.json();
@@ -172,10 +171,9 @@ test("playlist jobs annotate tracks that are already in the library", async () =
 test("playlist job file paths are only returned to admins", async (t) => {
   const playlistId = "job-file-paths";
   flowPlaylistConfig.createStaticPlaylist({ id: playlistId, name: "File paths", tracks: [] });
-  const [jobId] = downloadTracker.addJobs(
-    [{ artistName: "Path Artist", trackName: "Path Track" }],
-    playlistId,
-  );
+  const [jobId] = addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, playlistId, [
+    { artistName: "Path Artist", trackName: "Path Track" },
+  ]);
   const finalPath = path.join(process.env.DOWNLOAD_FOLDER, "Path Artist", "Path Track.FLAC");
   downloadTracker.setDownloading(jobId, path.join(process.env.DOWNLOAD_FOLDER, "staging.flac"));
   downloadTracker.setDone(jobId, finalPath, "Path Album");
@@ -195,7 +193,7 @@ test("playlist job file paths are only returned to admins", async (t) => {
   assert.equal(adminResponse.status, 200);
   assert.deepEqual(await adminResponse.json(), { paths: [finalPath] });
 
-  requestUser = { id: 1, role: "user", permissions: { accessFlow: true } };
+  requestUser = { id: 1, role: "user", permissions: { accessPlaylists: true } };
   const userResponse = await fetch(`${baseUrl}/jobs/${jobId}/files`);
   assert.equal(userResponse.status, 403);
   assert.equal(JSON.stringify(await userResponse.json()).includes(finalPath), false);
@@ -280,7 +278,7 @@ test("approving a reviewed download responds before publishing, and the publish 
     await publishEntered;
     assert.equal(downloadTracker.getJob(jobId)?.status, "done");
     const pipelineCommit = withPipelineCommitLock(
-      { jobId, playlistId, playlistGeneration: downloadTracker.getJob(jobId).playlistGeneration },
+      { jobId, ownerId: playlistId, ownerGeneration: downloadTracker.getJob(jobId).ownerGeneration },
       async () => "committed",
     );
     const state = await Promise.race([
@@ -323,8 +321,8 @@ test("approving a library track does not wait for another library track's downlo
   const releaseStep = Promise.withResolvers();
   const step = processPipelineJob({
     jobId: searchingJobId,
-    playlistId: "library",
-    playlistGeneration: downloadTracker.getJob(searchingJobId).playlistGeneration,
+    ownerId: "library",
+    ownerGeneration: downloadTracker.getJob(searchingJobId).ownerGeneration,
   }, {
     async processPipelinePayload() {
       stepStarted.resolve();
@@ -366,18 +364,11 @@ test("a track committed while an approved review is publishing still reaches the
   await fs.mkdir(path.dirname(pipelinePath), { recursive: true });
   await fs.writeFile(sourcePath, "reviewed audio");
   await fs.writeFile(pipelinePath, "pipeline audio");
-  const reviewedJobId = downloadTracker.addJob(
+  const [reviewedJobId, pipelineJobId] = addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, playlistId, [
     { artistName: "Artist", trackName: "Reviewed", albumName: "Album" },
-    playlistId,
-  );
-  const pipelineJobId = downloadTracker.addJob(
     { artistName: "Artist", trackName: "Pipeline", albumName: "Album" },
-    playlistId,
-  );
-  downloadTracker.addJob(
     { artistName: "Artist", trackName: "Still pending", albumName: "Album" },
-    playlistId,
-  );
+  ]);
   downloadTracker.setBlocked(reviewedJobId, "blocked-duration-mismatch", sourcePath);
 
   let enterPublish;
@@ -427,9 +418,9 @@ test("approval cannot commit an orphaned job into a recreated playlist", async (
     name: "Reviewed stale generation",
     tracks: [],
   });
-  activatePlaylistDownloadGeneration(playlistId);
-  cancelPlaylistDownloadGeneration(playlistId);
-  const cancelledGeneration = getPlaylistDownloadGeneration(playlistId);
+  activateOwnerDownloadGeneration(playlistId);
+  cancelOwnerDownloadGeneration(playlistId);
+  const cancelledGeneration = getOwnerDownloadGeneration(playlistId);
 
   const sourcePath = path.join(isolatedState.baseDir, "review", "Stale Track.flac");
   await fs.mkdir(path.dirname(sourcePath), { recursive: true });
@@ -441,7 +432,7 @@ test("approval cannot commit an orphaned job into a recreated playlist", async (
   downloadTracker.setBlocked(jobId, "blocked-duration-mismatch", sourcePath);
 
   assert.equal(
-    activatePlaylistDownloadGeneration(playlistId),
+    activateOwnerDownloadGeneration(playlistId),
     cancelledGeneration + 1,
   );
 
@@ -468,8 +459,8 @@ test("clearing all jobs waits for an in-flight playlist import to finish", async
   );
   const payload = {
     jobId,
-    playlistId,
-    playlistGeneration: downloadTracker.getJob(jobId).playlistGeneration,
+    ownerId: playlistId,
+    ownerGeneration: downloadTracker.getJob(jobId).ownerGeneration,
   };
   const sourcePath = path.join(isolatedState.baseDir, "clear-all-race", "Track.flac");
   const finalPath = path.join(process.env.DOWNLOAD_FOLDER, "clear-all-race", "Track.flac");
@@ -549,7 +540,7 @@ test("failed clear-all leaves jobs stopped and visible so provider cleanup can b
   );
   registerDownloadProviderWork({
     jobId,
-    playlistId,
+    ownerId: playlistId,
     provider: "slskd-search",
     workId: "clear-all-retry-search",
   });
@@ -570,7 +561,7 @@ test("failed clear-all leaves jobs stopped and visible so provider cleanup can b
     assert.equal(stoppedJob.status, "failed");
     assert.match(stoppedJob.error, /provider cancellation pending/i);
     assert.equal(
-      isPipelinePayloadActive({ jobId, playlistId, playlistGeneration: 0 }),
+      isPipelinePayloadActive({ jobId, ownerId: playlistId, ownerGeneration: 0 }),
       false,
     );
     assert.equal(listDownloadProviderWork({ jobIds: [jobId] }).length, 1);
@@ -748,45 +739,21 @@ test("search all stays within the requesting user's playlist access", async () =
     ownerUserId: 8,
     tracks: [{ artistName: "Artist", trackName: "Private", albumName: "Album" }],
   });
-  const jobId = downloadTracker.addJob(
-    { artistName: "Artist", trackName: "Missing", albumName: "Album" },
-    ownedPlaylistId,
-  );
-  const otherJobId = downloadTracker.addJob(
-    { artistName: "Artist", trackName: "Private", albumName: "Album" },
-    otherPlaylistId,
-  );
+  const link = (playlistId, track) =>
+    addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, playlistId, [track])[0];
+  const jobId = link(ownedPlaylistId, { artistName: "Artist", trackName: "Missing", albumName: "Album" });
+  const otherJobId = link(otherPlaylistId, { artistName: "Artist", trackName: "Private", albumName: "Album" });
   downloadTracker.setFailed(jobId, "No source");
   downloadTracker.setFailed(otherJobId, "No source");
 
-  const ownedPath = path.join(
-    process.env.DOWNLOAD_FOLDER,
-    "aurral-weekly-flow",
-    ownedPlaylistId,
-    "Artist",
-    "Album",
-    "Owned.mp3",
-  );
-  const otherPath = path.join(
-    process.env.DOWNLOAD_FOLDER,
-    "aurral-weekly-flow",
-    otherPlaylistId,
-    "Artist",
-    "Album",
-    "Private.mp3",
-  );
+  const ownedPath = path.join(process.env.DOWNLOAD_FOLDER, "Artist", "Album", "Owned.mp3");
+  const otherPath = path.join(process.env.DOWNLOAD_FOLDER, "Artist", "Album", "Private.mp3");
   await fs.mkdir(path.dirname(ownedPath), { recursive: true });
   await fs.mkdir(path.dirname(otherPath), { recursive: true });
   await fs.writeFile(ownedPath, "audio");
   await fs.writeFile(otherPath, "audio");
-  const ownedUpgradeId = downloadTracker.addJob(
-    { artistName: "Artist", trackName: "Owned", albumName: "Album" },
-    ownedPlaylistId,
-  );
-  const otherUpgradeId = downloadTracker.addJob(
-    { artistName: "Artist", trackName: "Private", albumName: "Album" },
-    otherPlaylistId,
-  );
+  const ownedUpgradeId = link(ownedPlaylistId, { artistName: "Artist", trackName: "Owned", albumName: "Album" });
+  const otherUpgradeId = link(otherPlaylistId, { artistName: "Artist", trackName: "Private Done", albumName: "Album" });
   downloadTracker.setDone(ownedUpgradeId, ownedPath, "Album");
   downloadTracker.setDone(otherUpgradeId, otherPath, "Album");
   downloadTracker.updateQuality(ownedUpgradeId, { tier: "mp3-128", format: "mp3" });
@@ -844,6 +811,7 @@ test("wanted covers every library job regardless of playlist access", async () =
   const missingJobId = downloadTracker.addJob(
     { artistName: "Library Artist", trackName: "Library Missing", albumName: "Album" },
     "library",
+    { queuedForPlaylist: true },
   );
   downloadTracker.setFailed(missingJobId, "No source");
   const lowQualityPath = path.join(
@@ -885,12 +853,13 @@ test("wanted covers every library job regardless of playlist access", async () =
 
     downloadTracker.setFailed(missingJobId, "Still no source");
     const research = await processPlaylistOperation({
-      kind: "shared-playlist-research-track",
+      kind: "static-playlist-research-track",
       playlistId: "library",
       jobId: missingJobId,
     });
     assert.equal(research.success, true);
     assert.equal(downloadTracker.getJob(missingJobId)?.status, "pending");
+    assert.equal(downloadTracker.getJob(missingJobId)?.queuedForPlaylist, false);
 
     const upgradeResponse = await fetch(
       `${baseUrl}/quality-upgrades/library/${lowQualityJobId}`,

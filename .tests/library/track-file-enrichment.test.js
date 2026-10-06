@@ -25,7 +25,7 @@ test("buildPlaybackQueueFromLibrary uses indexed files without Lidarr reads", ()
     title: "Track",
     artist: "Artist",
     album: "Album",
-    streamPath: "/library/canonical-stream/603/7",
+    streamPath: "/library/records/stream/603/7",
     streamFormat: "flac",
     quality: null,
     trackNumber: 4,

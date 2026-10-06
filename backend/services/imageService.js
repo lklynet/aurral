@@ -5,7 +5,6 @@ import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.js";
 import {
   fetchDeezerArtistImageUrl,
   fetchReleaseGroupCoverUrl,
-  LEGACY_COVER_HOST_PATTERN,
 } from "./releaseGroupCoverService.js";
 
 const MAX_NEGATIVE_CACHE = 1000;
@@ -162,14 +161,6 @@ const addToPendingRequests = (mbid, promise) => {
 
 const getCachedUrl = (cacheKey) => {
   const cached = dbOps.getImage(cacheKey);
-  if (
-    cached?.imageUrl &&
-    cached.imageUrl !== "NOT_FOUND" &&
-    LEGACY_COVER_HOST_PATTERN.test(cached.imageUrl)
-  ) {
-    dbOps.deleteImage(cacheKey);
-    return undefined;
-  }
   if (cached?.imageUrl && cached.imageUrl !== "NOT_FOUND") {
     const imageUrl = buildStableImageProxyUrl(cached.imageUrl);
     if (imageUrl) return imageUrl;
@@ -273,8 +264,7 @@ export const getArtistImage = async (
     !forceRefresh &&
     cachedImage &&
     cachedImage.imageUrl &&
-    cachedImage.imageUrl !== "NOT_FOUND" &&
-    !LEGACY_COVER_HOST_PATTERN.test(cachedImage.imageUrl)
+    cachedImage.imageUrl !== "NOT_FOUND"
   ) {
     const cachedUrl = buildStableImageProxyUrl(cachedImage.imageUrl);
     const images = buildCachedArtistImagePayload(cachedUrl, cachedImage.images);

@@ -55,12 +55,11 @@ export function scheduleReleaseMetadataRefresh({ delaySeconds = 0 } = {}) {
   const normalizedDelay = Math.max(0, Number(delaySeconds) || 0);
   const requestedRunAt = Math.floor(Date.now() / 1000) + normalizedDelay;
   const queueName = getSystemTaskQueueName(TASK_KIND);
-  const active = [queueName, "system-task"].flatMap((name) => {
-    findActiveHonkerJob(name, (payload) => payload?.kind === TASK_KIND,
-      { recoverExpired: true, payloadKind: TASK_KIND });
-    return listHonkerJobs(name).map((job) => ({ ...job, queue: name }));
-  }).filter((job) => job.payload?.kind === TASK_KIND &&
-    (job.state === "pending" || job.state === "processing"));
+  findActiveHonkerJob(queueName, (payload) => payload?.kind === TASK_KIND,
+    { recoverExpired: true, payloadKind: TASK_KIND });
+  const active = listHonkerJobs(queueName).map((job) => ({ ...job, queue: queueName }))
+    .filter((job) => job.payload?.kind === TASK_KIND &&
+      (job.state === "pending" || job.state === "processing"));
   const [pending, ...duplicates] = active
     .filter((job) => job.state === "pending")
     .sort((a, b) => Number(a.run_at || 0) - Number(b.run_at || 0));

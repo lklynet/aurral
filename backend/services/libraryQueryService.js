@@ -132,7 +132,7 @@ function buildLibraryFromRows(rows) {
     const trackMetadata = parseJson(row.track_metadata_json);
     const artist = createEntity(artists, row.artist_id, {
       id: row.artist_id,
-      canonicalId: String(row.artist_id),
+      recordId: String(row.artist_id),
       identityKey: row.artist_identity_key,
       mbid: row.artist_mbid,
       name: row.artist_name,
@@ -152,7 +152,7 @@ function buildLibraryFromRows(rows) {
     artist.monitorMode = artistManagement.get(row.artist_id)?.monitorMode ?? null;
     const album = createEntity(albums, row.album_id, {
       id: row.album_id,
-      canonicalId: String(row.album_id),
+      recordId: String(row.album_id),
       identityKey: row.album_identity_key,
       mbid: row.album_mbid,
       releaseGroupMbid: row.album_release_group_mbid,
@@ -176,7 +176,7 @@ function buildLibraryFromRows(rows) {
     album.monitorMode = albumManagement.get(row.album_id)?.monitorMode ?? null;
     const track = createEntity(tracks, row.track_id, {
       id: row.track_id,
-      canonicalId: String(row.track_id),
+      recordId: String(row.track_id),
       identityKey: row.track_identity_key,
       mbid: row.track_mbid,
       title: row.track_title,
@@ -316,7 +316,7 @@ const libraryArtistProjection = (row) => {
   const management = getManagedByMap("artist").get(Number(row.id)) || null;
   return {
     id: String(row.id),
-    canonicalId: String(row.id),
+    recordId: String(row.id),
     providerId,
     lidarrManaged: metadata.librarySource === "lidarr",
     managedBy: management?.managedBy ?? null,
@@ -522,7 +522,7 @@ const libraryDateAlbumProjection = (row) => {
   const availableTrackCount = Number(row.available_track_count || 0);
   return {
     id: String(row.id),
-    canonicalId: String(row.id),
+    recordId: String(row.id),
     providerId: metadata.id == null ? null : String(metadata.id),
     artistId: String(row.artist_id),
     providerArtistId: artistMetadata.id == null ? null : String(artistMetadata.id),
@@ -1426,7 +1426,7 @@ export function getLibraryArtistPage({
       const metadata = parseJson(row.artist_metadata_json);
       return [row.artist_id, {
         id: row.artist_id,
-        canonicalId: String(row.artist_id),
+        recordId: String(row.artist_id),
         identityKey: row.artist_identity_key,
         mbid: row.artist_mbid,
         name: row.artist_name,
@@ -1485,7 +1485,7 @@ export function getLibraryArtistPage({
     const sources = parseSources(row.sources);
     return [row.artist_id, {
       id: row.artist_id,
-      canonicalId: String(row.artist_id),
+      recordId: String(row.artist_id),
       identityKey: row.artist_identity_key,
       mbid: row.artist_mbid,
       name: row.artist_name,

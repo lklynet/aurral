@@ -28,7 +28,6 @@ test("an isolated metadata request does not delay unrelated system tasks", { tim
   const ready = new Map();
   const finished = new Map();
   const broadcasts = [];
-  const startedJobs = new Set();
   function launch(group) {
     let resolveReady;
     const started = new Promise((resolve) => { resolveReady = resolve; });
@@ -39,7 +38,6 @@ test("an isolated metadata request does not delay unrelated system tasks", { tim
     children.push(child);
     child.on("message", (message) => {
       if (message.type === "ready") resolveReady();
-      if (message.type === "job-started") startedJobs.add(message.jobId);
       if (message.type === "job-finished") finished.get(message.jobId)?.();
       if (message.type === "websocket-broadcast") broadcasts.push(message);
     });
@@ -61,21 +59,10 @@ test("an isolated metadata request does not delay unrelated system tasks", { tim
     await taskDone;
     assert.equal(honker.getSystemTaskQueue().getJob(taskId), null);
     assert.equal(honker.getReleaseMetadataQueue().getJob(metadataId)?.state, "processing");
-    const events = honker.getHonkerDb().updateEvents();
-    const legacyId = honker.getSystemTaskQueue().enqueue({ kind: "release-metadata-refresh" });
-    const legacyDone = waitFinished(legacyId);
-    downloads.send({ type: "queue-wake" });
-    try {
-      while (honker.getSystemTaskQueue().getJob(legacyId)?.state !== "processing" ||
-        honker.getSystemTaskQueue().getJob(legacyId)?.attempts !== 0) await events.next();
-      assert.equal(startedJobs.has(legacyId), false, "lease waits must not start the execution watchdog");
-    } finally { events.close(); }
     release();
     await metadataDone;
     assert.equal(honker.getReleaseMetadataQueue().getJob(metadataId), null);
-    await legacyDone;
-    assert.equal(honker.getSystemTaskQueue().getJob(legacyId), null);
-    assert.equal(broadcasts.filter((message) => message.data?.type === "release_metadata_refreshed").length, 2);
+    assert.equal(broadcasts.filter((message) => message.data?.type === "release_metadata_refreshed").length, 1);
     assert.equal(db.prepare("SELECT status FROM honker_task_runs WHERE job_id = ? ORDER BY id DESC LIMIT 1").get(metadataId)?.status, "completed");
   } finally {
     release();

@@ -8,6 +8,7 @@ import {
   cleanupIsolatedState,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
+import { addStaticPlaylistJobs } from "../helpers/staticPlaylistJobs.js";
 
 const [
   isolatedState,
@@ -23,7 +24,7 @@ const [
   "backend/services/playback/playbackPlaylistTracks.js",
 );
 
-const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+const downloadRoot = process.env.DOWNLOAD_FOLDER;
 
 test.beforeEach(async () => {
   await resetDatabase(db);
@@ -49,8 +50,11 @@ test("preserves static playlist track order", async () => {
   await fs.writeFile(secondPath, "two");
   await fs.writeFile(firstPath, "one");
 
-  const secondJobId = downloadTracker.addJob(playlist.tracks[0], playlist.id);
-  const firstJobId = downloadTracker.addJob(playlist.tracks[1], playlist.id);
+  const [firstJobId, secondJobId] = addStaticPlaylistJobs(
+    { downloadTracker, flowPlaylistConfig },
+    playlist.id,
+    [playlist.tracks[1], playlist.tracks[0]],
+  );
   downloadTracker.setDone(secondJobId, secondPath, "Album");
   downloadTracker.setDone(firstJobId, firstPath, "Album");
 
@@ -66,7 +70,7 @@ test("keeps completed tracks after metadata correction", async () => {
   const trackPath = path.join(downloadRoot, "music", "track.flac");
   await fs.mkdir(path.dirname(trackPath), { recursive: true });
   await fs.writeFile(trackPath, "audio");
-  const jobId = downloadTracker.addJob(playlist.tracks[0], playlist.id);
+  const [jobId] = addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, playlist.id, [playlist.tracks[0]]);
   downloadTracker.updateMetadata(jobId, {
     artistName: "Resolved artist",
     trackName: "Resolved track",
@@ -85,7 +89,7 @@ test("normalizes empty migrated names", async () => {
   const trackPath = path.join(downloadRoot, "music", "migrated.flac");
   await fs.mkdir(path.dirname(trackPath), { recursive: true });
   await fs.writeFile(trackPath, "audio");
-  const jobId = downloadTracker.addJob(playlist.tracks[0], playlist.id);
+  const [jobId] = addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, playlist.id, [playlist.tracks[0]]);
   downloadTracker.setDone(jobId, trackPath);
   downloadTracker.updateMetadata(jobId, { artistName: "", trackName: " " });
 

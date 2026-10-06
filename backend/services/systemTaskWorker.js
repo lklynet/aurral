@@ -4,22 +4,13 @@ import {
   getInboxTaskQueue,
   getMaintenanceTaskQueue,
   getSystemTaskQueue,
-  PLAYLIST_STARTUP_MIGRATION_SETTING,
-  PLAYLIST_STARTUP_MIGRATION_VERSION,
 } from "./honkerDb.js";
 import { cleanExpiredSessions } from "../config/session-helpers.js";
-import { dbOps } from "../db/helpers/index.js";
-import { resolveDownloadRoot } from "./downloadPaths.js";
-
-async function refreshUpgradeReadiness() {
-  const { checkUpgradeReadiness } = await import("./upgradeReadiness.js");
-  checkUpgradeReadiness();
-}
 
 export async function processSystemTask(payload = {}, job = null, context = {}) {
   const kind = String(payload?.kind || "").trim();
   switch (kind) {
-    case "weekly-flow-refresh": {
+    case "flow-refresh": {
       const { runScheduledFlowRefresh } = await import("./flows/flowScheduler.js");
       await runScheduledFlowRefresh();
       return;
@@ -42,7 +33,7 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
     case "session-cleanup":
       cleanExpiredSessions();
       return;
-    case "weekly-flow-reuse-repair": {
+    case "file-reuse-repair": {
       const { downloadWorker } = await import("./downloadJobs/downloadWorker.js");
       downloadWorker.scheduleReuseLinkRepair(false);
       return;
@@ -51,7 +42,6 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       const { runQualityUpgradeCheck } = await import("./qualityProfileService.js");
       await runQualityUpgradeCheck({
         force: payload.force === true,
-        playlistId: payload.playlistId || null,
         limit: payload.limit,
       });
       return;
@@ -63,7 +53,7 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       await reclassifyQualityJobs({ enqueue: getQualityProfile().automaticUpgrades });
       return;
     }
-    case "weekly-flow-startup-reuse-repair": {
+    case "startup-file-reuse-repair": {
       const { downloadWorker } = await import("./downloadJobs/downloadWorker.js");
       downloadWorker.scheduleReuseLinkRepair(true);
       return;
@@ -97,7 +87,7 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       if (!hasCompletedLibraryScan()) scheduleLibraryScan();
       return;
     }
-    case "weekly-flow-startup-check": {
+    case "flow-startup-check": {
       const { startWorkerIfPending } = await import("./downloadJobs/downloadWorker.js");
       await startWorkerIfPending();
       return;
@@ -133,105 +123,6 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       await refreshNewsFeeds();
       return;
     }
-    case "playlist-startup-migration": {
-      const [
-        migrationModule,
-        { ensurePlaylistFilesystemLayout },
-        trackerModule,
-        { repairYtdlpMetadata },
-      ] = await Promise.all([
-        import("./aurralDownloadFolderMigration.js"),
-        import("./playlistFilesystemMigration.js"),
-        import("./downloadJobs/downloadTracker.js"),
-        import("./downloadUtils.js"),
-      ]);
-      const { migrateAurralDownloadFolder } = migrationModule;
-      const layout = ensurePlaylistFilesystemLayout();
-      let result = {
-        migrated: 0,
-        flowMigrated: 0,
-        removed: 0,
-        retained: 0,
-        failed: 0,
-      };
-      try {
-        result = await migrateAurralDownloadFolder();
-      } catch (error) {
-        console.error(`[Playlists] Aurral download folder migration failed: ${error.message}`);
-        throw error;
-      }
-      const flowMigrated = result.flowMigrated || 0;
-      const permanentMigrated = (result.migrated || 0) - flowMigrated;
-      if (result.migrated > 0 || result.removed > 0) {
-        console.log(
-          `[Playlists] Migrated ${permanentMigrated} permanent track(s) and ${flowMigrated} flow track(s), and removed ${result.removed} unkept flow file(s)`,
-        );
-      }
-      if (result.repaired > 0) {
-        console.log(`[Playlists] Repaired ${result.repaired} migrated tracker path(s)`);
-      }
-      if (result.retained > 0 || result.failed > 0) {
-        console.warn(
-          `[Playlists] Retained ${result.retained} item(s) and failed ${result.failed} migration item(s) for review`,
-        );
-      }
-      if (result.status === "blocked" || result.failed > 0) {
-        throw new Error("Playlist filesystem migration requires review before playlist rebuild");
-      }
-      const metadataRepair = await repairYtdlpMetadata(
-        trackerModule.downloadTracker.getAll(),
-      );
-      if (metadataRepair.repaired > 0) {
-        console.log(
-          `[Playlists] Added metadata to ${metadataRepair.repaired} yt-dlp track(s)`,
-        );
-      }
-      if (metadataRepair.failed > 0) {
-        console.warn(
-          `[Playlists] Could not add metadata to ${metadataRepair.failed} yt-dlp track(s)`,
-        );
-      }
-      if (
-        layout.sidecarsMoved > 0 ||
-        result.migrated > 0 ||
-        result.removed > 0 ||
-        metadataRepair.repaired > 0
-      ) {
-        const { playlistManager } = await import("./playlists/playlistManager.js");
-        playlistManager.updateConfig(false);
-        await playlistManager.ensurePlaylists();
-      }
-      if (metadataRepair.failed === 0) {
-        dbOps.setJSONSetting(PLAYLIST_STARTUP_MIGRATION_SETTING, {
-          version: PLAYLIST_STARTUP_MIGRATION_VERSION,
-          rootPath: resolveDownloadRoot(),
-          completedAt: Date.now(),
-        });
-      }
-      await refreshUpgradeReadiness();
-      return;
-    }
-    case "stored-data-migration": {
-      const { migrateStoredData } = await import("./storedDataMigration.js");
-      migrateStoredData();
-      await refreshUpgradeReadiness();
-      return;
-    }
-    case "upgrade-readiness-check": {
-      await refreshUpgradeReadiness();
-      return;
-    }
-    case "identity-marker-migration": {
-      const { migrateIdentityMarkers } = await import("./identityMarkerMigration.js");
-      const result = await migrateIdentityMarkers();
-      if (result.moved > 0 || result.failed > 0) {
-        console.log(
-          `[Library] Moved the identity marker to the grouping tag in ${result.moved} file(s); ${result.failed} file(s) failed`,
-        );
-      }
-      await refreshUpgradeReadiness();
-      return;
-    }
     case "lidarr-retry": {
       const { libraryManager } = await import("./libraryManager.js");
       await libraryManager.syncLidarrArtists({ forceRefresh: true });
@@ -251,8 +142,6 @@ const {
   isRunning: isSystemTaskWorkerRunning,
 } = createHonkerWorker({
   name: "system-task",
-  interruptible: (payload) => payload?.kind === "release-metadata-refresh",
-  prepareJob: prepareSystemTask,
   getQueue: getSystemTaskQueue,
   processJob: processSystemTask,
   idlePollS: 10,

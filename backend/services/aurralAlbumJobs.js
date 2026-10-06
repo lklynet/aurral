@@ -7,7 +7,8 @@ export const ACTIVE_JOB_STATUSES = new Set(["pending", "downloading", "cancel_re
 
 const normalizeKey = (value) => String(value || "").trim().toLowerCase();
 
-export const isAurralAlbumJob = (job) => job.playlistType === "library" && job.managedBy === "aurral";
+export const isAurralAlbumJob = (job) =>
+  job.ownerId === "library" && !job.upgradeForJobId && job.managedBy === "aurral";
 
 // An album's jobs carry its release group or, from older versions, the
 // release ID that a scan stored as the album's mbid.
@@ -171,7 +172,8 @@ export async function cancelAurralAlbumJobs(albumMbid) {
 export async function cancelLibraryTrackJobs(track) {
   return cancelActiveAurralJobs(
     downloadTracker.getAll().filter((job) =>
-      job.playlistType === "library" &&
+      job.ownerId === "library" &&
+      !job.upgradeForJobId &&
       ACTIVE_JOB_STATUSES.has(job.status) &&
       jobMatchesTrack(job, track) &&
       (Boolean(job.trackMbid) || normalizeKey(job.artistName) === normalizeKey(track.artistName))),

@@ -147,8 +147,8 @@ test("deleting a library track removes it from playlists that referenced its dow
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: `${identity} playlist`,
     tracks: [
-      { artistName: "Artist", trackName: "Track", albumName: "Single", canonicalJobId: deletedJobId },
-      { artistName: "Artist", trackName: "Other Track", canonicalJobId: keptJobId },
+      { artistName: "Artist", trackName: "Track", albumName: "Single", jobId: deletedJobId },
+      { artistName: "Artist", trackName: "Other Track", jobId: keptJobId },
       { artistName: "Artist", trackName: "Imported Track" },
     ],
   });
@@ -160,7 +160,7 @@ test("deleting a library track removes it from playlists that referenced its dow
   try {
     assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
     assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(playlist.id).tracks, keptTracks);
-    const status = getPlaylistStatusSnapshot().sharedPlaylists.find((entry) => entry.id === playlist.id);
+    const status = getPlaylistStatusSnapshot().staticPlaylists.find((entry) => entry.id === playlist.id);
     assert.equal(status.trackCount, 2);
     assert.equal(
       status.trackIdentities.some((entry) => entry.startsWith("artist\u0001track\u0001")),
@@ -275,8 +275,8 @@ test("deletes a library file committed while track removal waits for its lock", 
   const job = downloadTracker.getJob(jobId);
   const payload = {
     jobId,
-    playlistId: "library",
-    playlistGeneration: job.playlistGeneration,
+    ownerId: "library",
+    ownerGeneration: job.ownerGeneration,
   };
   let signalCommitEntered;
   let releaseCommit;
@@ -455,7 +455,7 @@ test("keeps a library job and track when provider cancellation fails, then retri
   );
   registerDownloadProviderWork({
     jobId,
-    playlistId: "library",
+    ownerId: "library",
     provider: "slskd-search",
     workId: searchId,
   });

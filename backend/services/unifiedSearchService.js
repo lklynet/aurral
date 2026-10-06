@@ -121,7 +121,7 @@ function addArtistToIndex(index, artist, target = "library") {
 function dedupeSearchArtists(artists) {
   const seen = new Set();
   return (Array.isArray(artists) ? artists : []).filter((artist) => {
-    const stableField = ["canonicalId", "id", "mbid", "foreignArtistId", "artistMbid", "identityKey"]
+    const stableField = ["recordId", "id", "mbid", "foreignArtistId", "artistMbid", "identityKey"]
       .find((field) => String(artist?.[field] ?? "").trim());
     if (!stableField) return true;
     const key = `${stableField}:${String(artist[stableField]).trim()}`;
@@ -555,8 +555,8 @@ export function searchLocalFromData(
         type: "artist",
         source: "library",
         id: mbid,
-        canonicalId: artist?.canonicalId || null,
-        key: `library-artist:${artist?.canonicalId || mbid}`,
+        recordId: artist?.recordId || null,
+        key: `library-artist:${artist?.recordId || mbid}`,
         name,
         sortName: name,
         inLibrary: true,
@@ -572,7 +572,7 @@ export function searchLocalFromData(
     .map((album) => {
       const title = String(album?.title || "").trim();
       const artistName = String(album?.artistName || "").trim();
-      if (!title || !album?.canonicalId) return null;
+      if (!title || !album?.recordId) return null;
       const score = Math.max(
         scorePlaylistContentMatch(query, title),
         scorePlaylistContentMatch(query, artistName),
@@ -582,8 +582,8 @@ export function searchLocalFromData(
         type: "album",
         source: "library",
         id: album.releaseGroupMbid || null,
-        canonicalId: album.canonicalId,
-        key: `library-album:${album.canonicalId}`,
+        recordId: album.recordId,
+        key: `library-album:${album.recordId}`,
         title,
         artistName: artistName || "Unknown Artist",
         artistMbid: album.artistMbid || null,
@@ -618,7 +618,7 @@ export function searchLocalFromData(
         artistName: artistName || "Unknown Artist",
         albumTitle: albumTitle || null,
         albumMbid: track.albumMbid || null,
-        albumCanonicalId: track.albumCanonicalId || null,
+        albumRecordId: track.albumRecordId || null,
         streamPath: track.streamPath || null,
         inLibrary: true,
         score,
@@ -660,7 +660,7 @@ function searchLocalLibrary(query, limit, context) {
   const describeAlbum = (album) => {
     const artist = artistsById.get(String(album.artistId));
     return {
-      canonicalId: String(album.id),
+      recordId: String(album.id),
       title: album.title,
       artistName: artist?.name || album.albumArtist || "",
       artistMbid: artist?.mbid || null,
@@ -680,9 +680,9 @@ function searchLocalLibrary(query, limit, context) {
       artistName: albumDetails?.artistName || track.artistName,
       albumTitle: albumDetails?.title || null,
       albumMbid: albumDetails?.releaseGroupMbid || null,
-      albumCanonicalId: albumDetails?.canonicalId || null,
+      albumRecordId: albumDetails?.recordId || null,
       streamPath: album
-        ? `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`
+        ? `/library/records/stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`
         : null,
     };
   });

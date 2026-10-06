@@ -155,7 +155,7 @@ export function useTrackSaveActions() {
     [showError, showSuccess],
   );
 
-  const canUsePlaylists = hasPermission("accessFlow");
+  const canUsePlaylists = hasPermission("accessPlaylists");
   const canAddToLibrary = hasPermission("addAlbum");
   return {
     playlists: staticPlaylists,

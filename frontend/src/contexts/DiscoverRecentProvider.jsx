@@ -13,7 +13,7 @@ import {
   shouldTrackDiscoverPath,
 } from "../utils/discoverRecentNavigation";
 
-const DISCOVER_HOME_PATHS = new Set(["/", "/discover"]);
+const DISCOVER_HOME_PATHS = new Set(["/"]);
 const DISCOVER_RECENT_PAGES_KEY = "aurral.discover.recentPages";
 const DISCOVER_FLOW_ACTIVE_KEY = "aurral.discover.flowActive";
 const DISCOVER_RECENT_PAGES_LIMIT = 5;
@@ -44,7 +44,6 @@ function isDiscoverExitPath(pathname) {
   if (pathname.startsWith("/shows")) return true;
   if (pathname.startsWith("/playlists")) return true;
   if (pathname.startsWith("/activity")) return true;
-  if (pathname.startsWith("/history")) return true;
   if (pathname.startsWith("/settings")) return true;
   if (pathname === "/profile") return true;
   return false;
@@ -99,9 +98,6 @@ function normalizeDiscoverPath(path) {
   if (artistPath) return artistPath;
   let normalizedPathname = pathname;
   if (normalizedPathname === "/shows") normalizedPathname = "/shows/all";
-  if (normalizedPathname === "/history") {
-    normalizedPathname = "/activity/history";
-  }
   if (normalizedPathname === "/activity") {
     normalizedPathname = "/activity/queue";
   }

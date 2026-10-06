@@ -123,17 +123,6 @@ router.post("/complete", async (req, res) => {
     const current = dbOps.getSettings();
     const integrations = {
       ...(current.integrations || defaultData.settings.integrations || {}),
-      general: {
-        ...(current.integrations?.general || {}),
-        authUser:
-          authUser != null
-            ? String(authUser).trim()
-            : current.integrations?.general?.authUser || "admin",
-        authPassword:
-          authPassword != null
-            ? String(authPassword)
-            : current.integrations?.general?.authPassword || "",
-      },
     };
 
     if (connectLidarr) {
@@ -180,18 +169,15 @@ router.post("/complete", async (req, res) => {
 
     dbOps.updateSettings(nextSettings);
 
-    const authUserFinal = integrations?.general?.authUser || "admin";
-    const authPasswordFinal = integrations?.general?.authPassword || "";
-    if (authPasswordFinal && userOps.getAllUsers().length === 0) {
-      const hash = hashPassword(authPasswordFinal);
+    if (authPassword && userOps.countUsers() === 0) {
       userOps.createUser(
-        authUserFinal,
-        hash,
+        String(authUser || "").trim() || "admin",
+        hashPassword(String(authPassword)),
         "admin",
         null,
         true,
         true,
-        authPasswordFinal,
+        String(authPassword),
       );
     }
 

@@ -12,7 +12,6 @@ export {
   getMetadataProviderHealthSnapshot,
 } from "./config.js";
 
-export { musicbrainzRequest } from "./musicbrainz.js";
 export {
   musicbrainzGetArtistReleaseGroups,
   musicbrainzGetArtistAppearsOnReleaseGroups,

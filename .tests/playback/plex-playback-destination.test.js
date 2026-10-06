@@ -29,7 +29,7 @@ const [
   "backend/services/playlists/playlistManager.js",
 );
 
-const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+const downloadRoot = process.env.DOWNLOAD_FOLDER;
 
 test.beforeEach(async () => {
   resetDatabase(db);
@@ -38,7 +38,7 @@ test.beforeEach(async () => {
     integrations: {},
     onboardingComplete: true,
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
     playlistArtwork: { style: "aurral" },
   });
 });

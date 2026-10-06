@@ -29,7 +29,7 @@ import { PlexPlaybackDestination } from "../playback/plexPlaybackDestination.js"
 import { JellyfinPlaybackDestination } from "../playback/jellyfinPlaybackDestination.js";
 import { createPlaybackDeletionGuard, removeUnusedPlaybackFiles } from "../playback/playbackFileRetention.js";
 
-const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
+const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
 
 export class PlaylistManager {
@@ -38,8 +38,7 @@ export class PlaylistManager {
     { triggerEnsureOnInit = process.env.NODE_ENV !== "test" } = {},
   ) {
     this.downloadRoot = resolveDownloadRoot(downloadRoot);
-    this.playlistFilesRoot = path.join(this.downloadRoot, PLAYLIST_FILES_DIR);
-    this.libraryRoot = path.join(this.playlistFilesRoot, "_playlists");
+    this.libraryRoot = path.join(this.downloadRoot, PLAYLIST_FILES_DIR);
     this.navidromeDestination = assertPlaybackDestination(
       new NavidromePlaybackDestination(this.downloadRoot),
     );
@@ -77,10 +76,6 @@ export class PlaylistManager {
       .trim();
   }
 
-  _getPlaylistLibraryHostPath() {
-    return this.playlistFilesRoot.replace(/\\/g, "/").replace(/\/+$/, "");
-  }
-
   _getPlaylistBaseName(playlistName) {
     return this._sanitize(playlistName);
   }
@@ -101,39 +96,59 @@ export class PlaylistManager {
     return this.ensurePlaylists();
   }
 
-  async refreshPlaylist(playlistType) {
-    const key = String(playlistType || "");
+  async refreshPlaylist(playlistId) {
+    const key = String(playlistId || "");
     const current = this._refreshInFlight.get(key);
     if (current) {
       current.followUp ??= current.task
         .catch(() => {})
-        .then(() => this.refreshPlaylist(playlistType));
+        .then(() => this.refreshPlaylist(playlistId));
       return current.followUp;
     }
     const entry = { followUp: null };
-    entry.task = this._refreshPlaylistInternal(playlistType).finally(() => {
+    entry.task = this._refreshPlaylistInternal(playlistId).finally(() => {
       this._refreshInFlight.delete(key);
     });
     this._refreshInFlight.set(key, entry);
     return entry.task;
   }
 
-  async _refreshPlaylistInternal(playlistType) {
-    const flow = flowPlaylistConfig.getFlow(playlistType);
+  async _refreshPlaylistInternal(playlistId) {
+    const flow = flowPlaylistConfig.getFlow(playlistId);
     if (flow) {
       if (!flow.enabled) return null;
       return this._publishPlaylist(flow, "Flow");
     }
-    const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(playlistType);
+    const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(playlistId);
     if (!staticPlaylist) return null;
     return this._publishPlaylist(staticPlaylist, "Playlist");
+  }
+
+  playlistIdsForJobs(jobs) {
+    const ids = new Set();
+    const staticPlaylists = flowPlaylistConfig.getStaticPlaylists();
+    for (const job of jobs) {
+      if (!job) continue;
+      const owner = job.ownerId;
+      if (flowPlaylistConfig.getFlow(owner)) ids.add(owner);
+      for (const playlist of staticPlaylists) {
+        if (playlist.tracks.some((track) => track.jobId === job.id)) ids.add(playlist.id);
+      }
+    }
+    return [...ids];
+  }
+
+  async refreshPlaylistsForJobs(jobs) {
+    for (const playlistId of this.playlistIdsForJobs(jobs)) {
+      await this.refreshPlaylist(playlistId);
+    }
   }
 
   scheduleScanLibrary(force = false) {
     return scheduleLibraryScan({ force, includeLidarr: false });
   }
 
-  async _ensureFlowArtwork(playlistType, playlistName, artworkKind) {
+  async _ensureFlowArtwork(playlistId, playlistName, artworkKind) {
     await fs.mkdir(this.libraryRoot, { recursive: true });
     const baseName = this._getPlaylistBaseName(playlistName);
     const style = getPlaylistArtworkStyle();
@@ -142,8 +157,8 @@ export class PlaylistManager {
     const safeRoot = path.resolve(this.libraryRoot);
     const suppressed = await this._isArtworkGenerationSuppressed(safeRoot, baseName);
     if (suppressed) return;
-    const artworkContext = this.getArtworkContextForPlaylistId(playlistType);
-    const existing = await this.resolveArtworkFile(playlistType);
+    const artworkContext = this.getArtworkContextForPlaylistId(playlistId);
+    const existing = await this.resolveArtworkFile(playlistId);
     let shouldGenerate = !existing;
     const existingStat = existing ? await fs.stat(existing.safePath).catch(() => null) : null;
     const existingIdentity = existingStat
@@ -202,9 +217,7 @@ export class PlaylistManager {
   }
 
   async _createPlaybackSnapshot(entity) {
-    const tracks = await collectPlaybackPlaylistTracks(entity.id, {
-      downloadRoot: this.downloadRoot,
-    });
+    const tracks = await collectPlaybackPlaylistTracks(entity.id);
     return createPlaybackPlaylistSnapshot({
       entityId: entity.id,
       ownerUserId: entity.ownerUserId ?? null,
@@ -313,10 +326,10 @@ export class PlaylistManager {
     return results.length ? results : null;
   }
 
-  async weeklyReset(playlistTypes = null, { protectPlayback = true } = {}) {
+  async clearFlowFiles(flowIds = null, { protectPlayback = true } = {}) {
     const targets =
-      playlistTypes && playlistTypes.length
-        ? playlistTypes
+      flowIds && flowIds.length
+        ? flowIds
         : flowPlaylistConfig.getFlows().map((flow) => flow.id);
     const fallbackDir = path.join(this.downloadRoot, "_fallback");
     const deletionGuard = protectPlayback
@@ -326,50 +339,48 @@ export class PlaylistManager {
       await removeUnusedPlaybackFiles(fallbackDir, deletionGuard, { protectPlayback });
     } catch {}
 
-    for (const playlistType of targets) {
-      const jobs = downloadTracker.getByPlaylistId(playlistType);
+    for (const flowId of targets) {
+      const jobs = downloadTracker.getAllForOwner(flowId);
       for (const job of jobs) {
         if (job.downloadClient === "ytdlp") {
           await getDownloadClient("ytdlp").cleanupStaging(job.id);
         }
       }
-      const playlistDir = path.join(this.playlistFilesRoot, playlistType);
       try {
         const { relocateSharedFilesBeforePlaylistRemoval } = await import(
           "../downloadJobs/fileReuse.js"
         );
-        await relocateSharedFilesBeforePlaylistRemoval(playlistType, {
+        await relocateSharedFilesBeforePlaylistRemoval(flowId, {
           downloadRoot: this.downloadRoot,
           deletionGuard,
           protectPlayback,
         });
-        await removeUnusedPlaybackFiles(playlistDir, deletionGuard, { protectPlayback });
         await removeUnusedPlaybackFiles(
-          path.join(this.downloadRoot, AURRAL_FLOWS_DIR, playlistType), deletionGuard, { protectPlayback },
+          path.join(this.downloadRoot, AURRAL_FLOWS_DIR, flowId), deletionGuard, { protectPlayback },
         );
-        console.log(`[PlaylistManager] Cleaned unused files for ${playlistType}`);
+        console.log(`[PlaylistManager] Cleaned unused files for ${flowId}`);
       } catch (error) {
         console.warn(
-          `[PlaylistManager] Failed to delete files for ${playlistType}:`,
+          `[PlaylistManager] Failed to delete files for ${flowId}:`,
           error.message,
         );
       }
-      downloadTracker.clearByPlaylistId(playlistType);
+      downloadTracker.clearAllForOwner(flowId);
       const { repairJobsUnderRemovedPlaylistDir } = await import("../downloadJobs/fileReuse.js");
       const { downloadWorker } = await import("../downloadJobs/downloadWorker.js");
       const { existingFileMode } = downloadWorker.getWorkerSettings();
-      await repairJobsUnderRemovedPlaylistDir(playlistType, {
+      await repairJobsUnderRemovedPlaylistDir(flowId, {
         existingFileMode,
         downloadRoot: this.downloadRoot,
       });
     }
   }
 
-  getPlaylistName(playlistType) {
+  getPlaylistName(playlistId) {
     const entity =
-      flowPlaylistConfig.getFlow(playlistType)
-      || flowPlaylistConfig.getStaticPlaylist(playlistType);
-    if (!entity) return playlistType;
+      flowPlaylistConfig.getFlow(playlistId)
+      || flowPlaylistConfig.getStaticPlaylist(playlistId);
+    if (!entity) return playlistId;
     return this.navidromeDestination.getPlaylistName({
       entityId: entity.id,
       ownerUserId: entity.ownerUserId ?? null,
@@ -454,10 +465,6 @@ export class PlaylistManager {
       throw new Error("Invalid artwork path");
     }
     await writePlaylistArtworkWebpFromBuffer(buffer, webpPath);
-    const legacyPng = path.join(resolved.safeRoot, `${resolved.baseName}.png`);
-    try {
-      await fs.unlink(legacyPng);
-    } catch {}
     await this._setArtworkGenerationSuppressed(resolved.safeRoot, resolved.baseName, false);
     await this._syncNavidromeArtwork(playlistId);
     return webpPath;

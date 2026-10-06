@@ -170,7 +170,7 @@ export const ArtistCard = memo(
       prevProps.artist.name === nextProps.artist.name &&
       prevProps.artist.navigateTo === nextProps.artist.navigateTo &&
       prevProps.artist.libraryPath === nextProps.artist.libraryPath &&
-      prevProps.artist.canonicalId === nextProps.artist.canonicalId &&
+      prevProps.artist.recordId === nextProps.artist.recordId &&
       prevProps.artist.subtitle === nextProps.artist.subtitle &&
       getRecommendationReason(prevProps.artist) === getRecommendationReason(nextProps.artist) &&
       prevProps.artist.matchPercent === nextProps.artist.matchPercent &&

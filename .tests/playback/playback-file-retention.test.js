@@ -17,12 +17,12 @@ const [state, { db }, { dbOps }, retention, { playlistManager }, { downloadTrack
   "backend/services/playlists/flowPlaylistConfig.js",
 );
 const { createPlaybackDeletionGuard, removeUnusedPlaybackFiles, isPlaybackRetainedFile, retryPlaybackRetainedFiles } = retention;
-const root = process.env.WEEKLY_FLOW_FOLDER;
+const root = process.env.DOWNLOAD_FOLDER;
 
 test.beforeEach(async () => {
   resetDatabase(db);
   downloadTracker.clearAll();
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [], onboardingComplete: true, downloadFolderPath: root });
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [], onboardingComplete: true, downloadFolderPath: root });
   await fs.rm(root, { recursive: true, force: true });
 });
 test.after(async () => { db.close(); await cleanupIsolatedState(state); });
@@ -116,7 +116,6 @@ test("configuration changes invalidate deletion permission within a batch", asyn
 test("flow reset retains external files at the same path and clears outgoing jobs", async (t) => {
   const saved = await makeFile("_flows/flow/saved.flac");
   const unused = await makeFile("_flows/flow/unused.flac");
-  const legacy = await makeFile("aurral-weekly-flow/flow/legacy.flac");
   const id = downloadTracker.addJob({ artistName: "Artist", trackName: "Saved" }, "flow");
   downloadTracker.setDone(id, saved);
   let calls = 0;
@@ -124,20 +123,19 @@ test("flow reset retains external files at the same path and clears outgoing job
     assert.equal(operation, "getReferencedPaths");
     assert.deepEqual(options.excludeEntityIds, ["flow"]);
     calls += 1;
-    return [{ destination: "Jellyfin", ok: true, paths: [saved, legacy] }];
+    return [{ destination: "Jellyfin", ok: true, paths: [saved] }];
   });
-  await playlistManager.weeklyReset(["flow"]);
+  await playlistManager.clearFlowFiles(["flow"]);
   await fs.access(saved);
-  await fs.access(legacy);
   await assert.rejects(fs.access(unused), { code: "ENOENT" });
-  assert.equal(downloadTracker.getByPlaylistType("flow").length, 0);
+  assert.equal(downloadTracker.getByOwner("flow").length, 0);
   assert.equal(calls, 1);
 });
 
 test("explicit manual reset deletes externally referenced files without contacting services", async (t) => {
   const saved = await makeFile("_flows/flow/saved.flac");
   t.mock.method(playlistManager.destinationRegistry, "run", async () => { assert.fail("manual deletion queried playback"); });
-  await playlistManager.weeklyReset(["flow"], { protectPlayback: false });
+  await playlistManager.clearFlowFiles(["flow"], { protectPlayback: false });
   await assert.rejects(fs.access(saved), { code: "ENOENT" });
 });
 
@@ -231,10 +229,10 @@ test("automatic cleanup keeps a shared file in place; explicit deletion preserve
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Saved" }, other.id);
   downloadTracker.setDone(jobId, file);
   t.mock.method(playlistManager.destinationRegistry, "run", async () => [{ destination: "Jellyfin", ok: true, paths: [file] }]);
-  await playlistManager.weeklyReset([flow.id]);
+  await playlistManager.clearFlowFiles([flow.id]);
   assert.equal(downloadTracker.getAll().find((job) => job.id === jobId).finalPath, file);
   await fs.access(file);
-  await playlistManager.weeklyReset([flow.id], { protectPlayback: false });
+  await playlistManager.clearFlowFiles([flow.id], { protectPlayback: false });
   const moved = downloadTracker.getAll().find((job) => job.id === jobId).finalPath;
   assert.notEqual(moved, file);
   await fs.access(moved);
@@ -255,74 +253,6 @@ test("quality upgrades preserve the old file when another playback playlist uses
   await fs.access(oldFile);
   assert.equal(isPlaybackRetainedFile(oldFile), true);
 });
-
-test("startup migration leaves an externally referenced orphan at its original path", async (t) => {
-  const { migrateAurralDownloadFolder } = await import("../../backend/services/aurralDownloadFolderMigration.js");
-  const flow = flowPlaylistConfig.createFlow({ name: "Migration source", enabled: true });
-  const file = await makeFile(`aurral-weekly-flow/${flow.id}/Artist/Album/Saved.flac`);
-  t.mock.method(playlistManager.destinationRegistry, "run", async () => [{ destination: "Jellyfin", ok: true, paths: [file] }]);
-  const options = { root, indexDestination: async () => {}, logger: { info() {}, warn() {}, error() {} } };
-  const result = await migrateAurralDownloadFolder(options);
-  assert.equal(result.removed, 0);
-  assert.equal(isPlaybackRetainedFile(file), true);
-  await fs.access(file);
-  await migrateAurralDownloadFolder(options);
-  await fs.access(file);
-});
-
-for (const mode of ["completed-flow", "shared-direct", "shared-batch", "shared-batch-without-job"]) {
-  for (const usage of ["referenced", "unavailable", "unused"]) {
-    test(`indexed migration checks ${mode} sources when playback usage is ${usage}`, async (t) => {
-      const { migrateAurralDownloadFolder } = await import("../../backend/services/aurralDownloadFolderMigration.js");
-      const isFlow = mode === "completed-flow";
-      const playlist = isFlow
-        ? flowPlaylistConfig.createFlow({ name: `${mode}-${usage}`, enabled: true })
-        : flowPlaylistConfig.createStaticPlaylist({ name: `${mode}-${usage}` });
-      const source = await makeFile(`aurral-weekly-flow/${playlist.id}/Artist/Album/Saved.flac`);
-      const destinationPath = isFlow
-        ? path.join(root, "_flows", playlist.id, "Artist/Album/Saved.flac")
-        : path.join(root, "Artist/Album/Saved.flac");
-      let jobId;
-      if (mode !== "shared-batch-without-job") {
-        jobId = downloadTracker.addJob({ artistName: "Artist", albumName: "Album", trackName: "Saved" }, playlist.id);
-        downloadTracker.setDone(jobId, source);
-      }
-      let currentUsage = usage;
-      const checks = t.mock.method(playlistManager.destinationRegistry, "run", async (_operation, { excludeEntityIds }) => {
-        assert.deepEqual(excludeEntityIds, [playlist.id]);
-        return currentUsage === "unavailable" ? [{ ok: false }] : [{ ok: true, paths: currentUsage === "referenced" ? [source] : [] }];
-      });
-      const options = {
-        root, logger: { warn() {} },
-        metadataReader: async () => ({ common: { albumartist: "Artist", album: "Album", title: "Saved" } }),
-        ...(mode === "shared-direct" ? { indexDestination: async () => {} } : {}),
-      };
-      const first = await migrateAurralDownloadFolder(options);
-      assert.equal(first.failed, 0);
-      assert.equal(checks.mock.callCount(), 1);
-      assert.equal(await fs.readFile(destinationPath, "utf8"), "audio");
-      if (jobId) assert.equal(downloadTracker.getJob(jobId).finalPath, destinationPath);
-      if (usage === "unused") {
-        assert.equal(first.migrated, 1);
-        await assert.rejects(fs.access(source), { code: "ENOENT" });
-        return;
-      }
-      assert.equal(first.retained, 1);
-      assert.equal(first.migrated, 0);
-      assert.equal(isPlaybackRetainedFile(source), true);
-      assert.equal(await fs.readFile(source, "utf8"), "audio");
-      await migrateAurralDownloadFolder(options);
-      await fs.access(source);
-      currentUsage = "unused";
-      await retryPlaybackRetainedFiles();
-      await assert.rejects(fs.access(source), { code: "ENOENT" });
-      assert.equal(isPlaybackRetainedFile(source), false);
-      await fs.access(destinationPath);
-      const final = await migrateAurralDownloadFolder(options);
-      assert.equal(final.status, "complete");
-    });
-  }
-}
 
 test("Jellyfin excludes legacy outgoing pointers but keeps pointers from other servers separate", async () => {
   const { JellyfinPlaybackDestination } = await import("../../backend/services/playback/jellyfinPlaybackDestination.js");
@@ -377,7 +307,7 @@ for (const changeBeforeReset of [false, true]) {
     t.mock.method(playlistManager.destinationRegistry, "run", async () =>
       unavailable ? [{ ok: false }] : [{ ok: true, paths: [] }]);
     if (changeBeforeReset) dbOps.updateSettings({ downloadFolderPath: newRoot });
-    await playlistManager.weeklyReset(["old-root"]);
+    await playlistManager.clearFlowFiles(["old-root"]);
     if (!changeBeforeReset) dbOps.updateSettings({ downloadFolderPath: newRoot });
     await retryPlaybackRetainedFiles();
     await fs.access(file);
@@ -411,16 +341,16 @@ test("explicit reset removes symbolic links without touching their targets; auto
   await fs.mkdir(target, { recursive: true });
   const targetFile = path.join(target, "saved.flac");
   await fs.writeFile(targetFile, "external audio");
-  const links = ["_flows/linked/link", "aurral-weekly-flow/linked/link", "_fallback/link"];
+  const links = ["_flows/linked/link", "_fallback/link"];
   for (const relative of links) {
     const link = path.join(root, relative);
     await fs.mkdir(path.dirname(link), { recursive: true });
     await fs.symlink(target, link, process.platform === "win32" ? "junction" : "dir");
   }
   t.mock.method(playlistManager.destinationRegistry, "run", async () => { assert.fail("symbolic link cleanup queried playback"); });
-  await playlistManager.weeklyReset(["linked"]);
+  await playlistManager.clearFlowFiles(["linked"]);
   for (const relative of links) assert.equal((await fs.lstat(path.join(root, relative))).isSymbolicLink(), true);
-  await playlistManager.weeklyReset(["linked"], { protectPlayback: false });
+  await playlistManager.clearFlowFiles(["linked"], { protectPlayback: false });
   for (const relative of links) await assert.rejects(fs.lstat(path.dirname(path.join(root, relative))), { code: "ENOENT" });
   assert.equal(await fs.readFile(targetFile, "utf8"), "external audio");
 });

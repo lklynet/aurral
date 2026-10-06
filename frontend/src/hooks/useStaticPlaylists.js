@@ -12,14 +12,14 @@ export function useStaticPlaylists() {
     queryFn: ({ signal }) => getPlaylistStatus({ signal, bypassCache: true }),
     staleTime: 4_000,
   });
-  const staticPlaylists = Array.isArray(query.data?.sharedPlaylists)
-    ? query.data.sharedPlaylists
+  const staticPlaylists = Array.isArray(query.data?.staticPlaylists)
+    ? query.data.staticPlaylists
     : [];
   const { refetch } = query;
   const setStaticPlaylists = useCallback((next) => {
     queryClient.setQueryData(queryKeys.playlistStatus, (current) => ({
       ...(current || {}),
-      sharedPlaylists: typeof next === "function" ? next(current?.sharedPlaylists || []) : next,
+      staticPlaylists: typeof next === "function" ? next(current?.staticPlaylists || []) : next,
     }));
   }, []);
 
@@ -27,7 +27,7 @@ export function useStaticPlaylists() {
     setPlaylistsError("");
     try {
       const { data } = await refetch({ throwOnError: true });
-      const playlists = Array.isArray(data?.sharedPlaylists) ? data.sharedPlaylists : [];
+      const playlists = Array.isArray(data?.staticPlaylists) ? data.staticPlaylists : [];
       return playlists;
     } catch (err) {
       const message =

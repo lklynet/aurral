@@ -1,5 +1,5 @@
 import { PlaylistBulkActionsProvider } from "./pages/playlists/usePlaylistBulkActions.js";
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from "react-router";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router";
 import { useState, useEffect, Suspense, lazy, useRef } from "react";
 import Layout from "./components/Layout";
 import { checkHealthLive, getBootstrapStatus } from "./utils/api/endpoints/auth.js";
@@ -20,15 +20,6 @@ import { DotLoader } from "./components/DotLoader";
 import { useDiscoveryStatus } from "./hooks/useDiscoveryStatus";
 import { buildActivityPath, DEFAULT_ACTIVITY_VIEW } from "./navigation/activityNavConfig";
 import { getBootstrapPollIntervalMs } from "./utils/requestScheduling.js";
-
-function LegacyHistoryRedirect() {
-  return <Navigate to="/activity/history" replace />;
-}
-
-function ActivitySourceRedirect() {
-  const { view } = useParams();
-  return <Navigate to={buildActivityPath(view)} replace />;
-}
 
 function ActivityRootRedirect() {
   return <Navigate to={buildActivityPath(DEFAULT_ACTIVITY_VIEW)} replace />;
@@ -256,14 +247,13 @@ function AppContent() {
                       <Route path="/shows" element={<Navigate to="/shows/all" replace />} />
                       <Route path="/shows/:filter" element={<ShowsPage />} />
                       <Route path="/search" element={<SearchResultsPage />} />
-                      <Route path="/discover" element={<Navigate to="/" replace />} />
                       <Route path="/discover/playlists/deezer/:playlistId" element={<EditorialPlaylistDetailPage />} />
                       <Route path="/discover/playlists" element={<DiscoverPlaylistsPage />} />
                       <Route path="/discover/news" element={<NewsPage />} />
                       <Route
                         path="/library/playlists"
                         element={
-                          <PermissionRoute permission="accessFlow">
+                          <PermissionRoute permission="accessPlaylists">
                             <PlaylistsPage />
                           </PermissionRoute>
                         }
@@ -271,7 +261,7 @@ function AppContent() {
                       <Route
                         path="/library/playlists/:playlistId"
                         element={
-                          <PermissionRoute permission="accessFlow">
+                          <PermissionRoute permission="accessPlaylists">
                             <PlaylistDetailPage />
                           </PermissionRoute>
                         }
@@ -282,7 +272,7 @@ function AppContent() {
                       <Route
                         path="/flows"
                         element={
-                          <PermissionRoute permission="accessFlow">
+                          <PermissionRoute permission="accessPlaylists">
                             <FlowsPage />
                           </PermissionRoute>
                         }
@@ -290,7 +280,7 @@ function AppContent() {
                       <Route
                         path="/flows/:flowId"
                         element={
-                          <PermissionRoute permission="accessFlow">
+                          <PermissionRoute permission="accessPlaylists">
                             <FlowDetailPage />
                           </PermissionRoute>
                         }
@@ -298,19 +288,13 @@ function AppContent() {
                       <Route
                         path="/playlists"
                         element={
-                          <PermissionRoute permission="accessFlow">
+                          <PermissionRoute permission="accessPlaylists">
                             <PlaylistRedirect />
                           </PermissionRoute>
                         }
                       />
-                      <Route path="/flow" element={<Navigate to="/flows" replace />} />
-                      <Route path="/downloads" element={<Navigate to="/activity/queue" replace />} />
-                      <Route path="/requests" element={<Navigate to="/activity/queue" replace />} />
-                      <Route path="/history" element={<Navigate to="/activity/history" replace />} />
-                      <Route path="/history/:legacyTab" element={<LegacyHistoryRedirect />} />
                       <Route path="/activity" element={<ActivityRootRedirect />} />
                       <Route path="/activity/:view" element={<ActivityPage />} />
-                      <Route path="/activity/:view/:source" element={<ActivitySourceRedirect />} />
                       <Route
                         path="/artist/:mbid/albums"
                         element={<ArtistReleaseListPage mode="releases" />}
@@ -331,6 +315,7 @@ function AppContent() {
                       />
                       <Route path="/profile" element={<ProfilePage />} />
                       <Route path="/blocklist" element={<BlocklistPage />} />
+                      <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                   </Suspense>
                 </Layout>

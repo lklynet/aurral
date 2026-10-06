@@ -224,17 +224,17 @@ function DiscoverPage() {
 
   const handleOpenArtistInLibrary = useCallback(
     async (artist) => {
-      if (artist.canonicalId) {
-        navigate(`/library/artist/${encodeURIComponent(artist.canonicalId)}`);
+      if (artist.recordId) {
+        navigate(`/library/artist/${encodeURIComponent(artist.recordId)}`);
         return true;
       }
       const artistId = getArtistId(artist);
       if (!artistId) return;
       try {
         const lookup = await lookupArtistInLibrary(artistId);
-        const canonicalId = lookup?.libraryArtistId;
-        if (!canonicalId) throw new Error("Library artist was not found");
-        navigate(`/library/artist/${encodeURIComponent(canonicalId)}`);
+        const recordId = lookup?.libraryArtistId;
+        if (!recordId) throw new Error("Library artist was not found");
+        navigate(`/library/artist/${encodeURIComponent(recordId)}`);
         return true;
       } catch (requestError) {
         showError(requestError?.message || "Failed to open artist in library");
@@ -327,8 +327,8 @@ function DiscoverPage() {
                     onOpenInLibrary={handleOpenArtistInLibrary}
                     artist={{
                       id: artistId,
-                      canonicalId: artist.canonicalId || artist.id,
-                      libraryPath: artistId ? null : `/library/artist/${encodeURIComponent(artist.canonicalId || artist.id)}`,
+                      recordId: artist.recordId || artist.id,
+                      libraryPath: artistId ? null : `/library/artist/${encodeURIComponent(artist.recordId || artist.id)}`,
                       name: artist.artistName,
                       image: getLibraryArtistImage(artist),
                       type: "Artist",

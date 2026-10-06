@@ -16,7 +16,7 @@ function createLibrary({ albumMonitored = true, pendingDownload = false } = {}) 
   };
   const track = (entry, index) => ({
     id: entry.id,
-    canonicalId: String(entry.id),
+    recordId: String(entry.id),
     identityKey: `recording:${entry.id}`,
     mbid: null,
     title: entry.title,
@@ -76,7 +76,7 @@ async function fixture(page, library) {
     const json = (body, status = 200) => route.fulfill({ status, json: body });
     if (path === "/health/bootstrap") return json({ authRequired: false, onboardingRequired: false });
     if (path === "/health") return json({ lidarrConfigured: false });
-    if (path === "/library/canonical") return json(library.page());
+    if (path === "/library/records") return json(library.page());
     const trackWrite = path.match(/^\/library\/tracks\/aurral\/(\d+)$/);
     if (trackWrite && request.method() === "PUT") {
       const { monitored } = request.postDataJSON();
@@ -85,7 +85,7 @@ async function fixture(page, library) {
       entry.monitored = monitored;
       const cancelledJobIds = !monitored && library.pendingDownload && !entry.available ? ["fixture-job"] : [];
       if (cancelledJobIds.length) library.pendingDownload = false;
-      return json({ canonicalId: String(entry.id), monitored, cancelledJobIds, queuedJobIds: [], cleanupFailed: false });
+      return json({ recordId: String(entry.id), monitored, cancelledJobIds, queuedJobIds: [], cleanupFailed: false });
     }
     if (path === "/requests") {
       return json(library.pendingDownload

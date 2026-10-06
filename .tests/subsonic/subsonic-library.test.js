@@ -307,7 +307,7 @@ test("favorite reads preserve shared relationships, media filters, and user isol
   star.run(first.id, "album", "favorite:guest-album", 2000);
   star.run(second.id, "song", "favorite:no-media", 3000);
   const starsBefore = db.prepare("SELECT * FROM subsonic_stars ORDER BY user_id, entity_kind, entity_key").all();
-  const jobsBefore = db.prepare("SELECT COUNT(*) AS count FROM playlist_download_jobs").get();
+  const jobsBefore = db.prepare("SELECT COUNT(*) AS count FROM download_jobs").get();
 
   try {
     const result = subsonic.getStarredWithLibrary(first, { availableOnly: true });
@@ -339,7 +339,7 @@ test("favorite reads preserve shared relationships, media filters, and user isol
     }), { artists: [], albums: [], tracks: [] });
     assert.deepEqual(getLibrary({ favoriteKeys: [] }), { artists: [], albums: [], tracks: [] });
     assert.deepEqual(db.prepare("SELECT * FROM subsonic_stars ORDER BY user_id, entity_kind, entity_key").all(), starsBefore);
-    assert.deepEqual(db.prepare("SELECT COUNT(*) AS count FROM playlist_download_jobs").get(), jobsBefore);
+    assert.deepEqual(db.prepare("SELECT COUNT(*) AS count FROM download_jobs").get(), jobsBefore);
   } finally {
     db.prepare("DELETE FROM users WHERE id IN (?, ?)").run(first.id, second.id);
     db.prepare("DELETE FROM library_media_files WHERE id = ?").run(scoped.id);

@@ -19,7 +19,7 @@ import {
   playbackOperationSuccess,
 } from "./playbackDestination.js";
 
-const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
+const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
 const PLAYLIST_FILE_EXTENSIONS = [".m3u", ".nsp"];
 const SONG_LOOKUP_BATCH_SIZE = 5;
@@ -68,9 +68,8 @@ export class NavidromePlaybackDestination {
     this.key = "navidrome";
     this.name = "Navidrome";
     this.downloadRoot = resolveDownloadRoot(downloadRoot);
-    this.playlistFilesRoot = path.join(this.downloadRoot, PLAYLIST_FILES_DIR);
     this.mediaLibraryRoot = this.downloadRoot;
-    this.libraryRoot = path.join(this.playlistFilesRoot, "_playlists");
+    this.libraryRoot = path.join(this.downloadRoot, PLAYLIST_FILES_DIR);
     this.client = client;
     this._prefixOwnerUsername = true;
     this._connectionKey = JSON.stringify({ url: "", username: "", password: "" });
@@ -126,18 +125,14 @@ export class NavidromePlaybackDestination {
     return String(value || "").replace(/[<>:"/\\|?*]/g, "_").trim();
   }
 
-  getPlaylistNames({ entityId, ownerUserId = null, displayName } = {}) {
+  getPlaylistNames({ ownerUserId = null, displayName } = {}) {
     const name = String(displayName || "").trim();
     const owner = ownerUserId == null ? null : userOps.getUserById(ownerUserId);
     const prefixed = owner?.username ? `${owner.username} - ${name}` : name;
     const current = this._prefixOwnerUsername ? prefixed : name;
-    const shared = Boolean(flowPlaylistConfig.getStaticPlaylist(entityId));
-    const legacy = shared
-      ? [name, `[AS] ${name}`, `Aurral Shared ${name}`, prefixed]
-      : [name, `[A] ${name}`, `Aurral ${name}`, prefixed];
     return {
       current,
-      legacy: [...new Set(legacy)].filter((candidate) => candidate !== current),
+      legacy: [...new Set([name, prefixed])].filter((candidate) => candidate !== current),
     };
   }
 
@@ -241,9 +236,7 @@ export class NavidromePlaybackDestination {
       const artworkPath = path.join(this.libraryRoot, `${this._sanitize(current)}${extension}`);
       const data = await fs.readFile(artworkPath).catch(() => null);
       if (!data) continue;
-      const contentType = extension === ".png"
-        ? "image/png"
-        : extension === ".jpg" ? "image/jpeg" : "image/webp";
+      const contentType = extension === ".jpg" ? "image/jpeg" : "image/webp";
       try {
         await this.client.uploadPlaylistArtwork(
           playlistId,

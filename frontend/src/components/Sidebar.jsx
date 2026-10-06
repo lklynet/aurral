@@ -41,7 +41,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
   const stageBackdropVariant = showStageBackdrop
     ? resolveSidebarStageBackdropVariant()
     : null;
-  const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
+  const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessPlaylists;
   const canAccessSettings = user?.role === "admin" || !!user?.permissions?.accessSettings;
   const { hasReview: hasReviewAlert } = useDownloadWorkerActivity({
     enabled: hasFlowAccess,
@@ -75,7 +75,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
   const isOnWanted = location.pathname.startsWith("/activity/missing");
   const isOnActivity =
     !isOnWanted &&
-    (location.pathname.startsWith("/activity") || location.pathname.startsWith("/history"));
+    location.pathname.startsWith("/activity");
 
   const settingsTabs = useMemo(() => {
     if (!canAccessSettings) return [];
@@ -105,13 +105,6 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
 
   const activeActivityView = useMemo(() => {
     if (!isOnActivity) return null;
-    if (location.pathname.startsWith("/history")) {
-      const legacySegment = location.pathname.replace(/^\/history\/?/, "").split("/")[0];
-      if (legacySegment === "queue" || legacySegment === "history") {
-        return legacySegment;
-      }
-      return "history";
-    }
     const segment = location.pathname.replace(/^\/activity\/?/, "").split("/")[0];
     return segment || DEFAULT_ACTIVITY_VIEW;
   }, [isOnActivity, location.pathname]);
@@ -158,7 +151,6 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
       if (item.section === "news") return isOnNews;
       if (item.section === "activity") return isOnActivity;
       if (item.section === "wanted") return isOnWanted;
-      if (item.path === "/discover" && location.pathname === "/") return true;
       return location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
     },
     [isDiscoverSectionActive, isOnActivity, isOnLibrary, isOnNews, isOnShows, isOnWanted, location.pathname],
@@ -170,7 +162,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
     );
     const items = [
       {
-        path: "/discover",
+        path: "/",
         label: "Discover",
         icon: Sparkles,
         section: "discover",
@@ -208,7 +200,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
         path: "/flows",
         label: "Flows",
         icon: AudioWaveform,
-        permission: "accessFlow",
+        permission: "accessPlaylists",
       },
       {
         path: buildActivityPath(DEFAULT_ACTIVITY_VIEW),
@@ -224,7 +216,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
         icon: AlertTriangle,
         section: "wanted",
         subnav: WANTED_VIEWS,
-        permission: "accessFlow",
+        permission: "accessPlaylists",
       },
       { path: "/blocklist", label: "Blocklist", icon: Ban },
     ];

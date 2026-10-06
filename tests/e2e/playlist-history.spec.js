@@ -7,7 +7,7 @@ test("static playlist opens from Playlists and its scrobble setting persists", a
   await openApp(page);
 
   const playlistName = `E2E history ${Date.now()}`;
-  const createResponse = await apiRequest(page, "/api/playlists/shared-playlists", {
+  const createResponse = await apiRequest(page, "/api/playlists/static-playlists", {
     method: "POST",
     body: { name: playlistName },
   });
@@ -33,7 +33,7 @@ test("static playlist opens from Playlists and its scrobble setting persists", a
 
     const statusResponse = await apiRequest(page, "/api/playlists/status");
     expect(statusResponse.ok).toBe(true);
-    expect(statusResponse.body.sharedPlaylists.find((playlist) => playlist.id === playlistId).recordHistory).toBe(false);
+    expect(statusResponse.body.staticPlaylists.find((playlist) => playlist.id === playlistId).recordHistory).toBe(false);
 
     await page.reload();
     await openMenu();
@@ -45,7 +45,7 @@ test("static playlist opens from Playlists and its scrobble setting persists", a
   } finally {
     const deleteResponse = await apiRequest(
       page,
-      `/api/playlists/shared-playlists/${encodeURIComponent(playlistId)}`,
+      `/api/playlists/static-playlists/${encodeURIComponent(playlistId)}`,
       { method: "DELETE" },
     );
     expect([200, 404]).toContain(deleteResponse.status);
@@ -53,7 +53,7 @@ test("static playlist opens from Playlists and its scrobble setting persists", a
       .poll(
         async () => {
           const response = await apiRequest(page, "/api/playlists/status");
-          return response.body?.sharedPlaylists?.some((playlist) => playlist.id === playlistId) || false;
+          return response.body?.staticPlaylists?.some((playlist) => playlist.id === playlistId) || false;
         },
         { timeout: 15_000 },
       )

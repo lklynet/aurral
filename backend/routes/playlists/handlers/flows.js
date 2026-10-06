@@ -1,4 +1,5 @@
 import fsp from "fs/promises";
+import path from "path";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.js";
 import { playlistManager } from "../../../services/playlists/playlistManager.js";
 import {
@@ -7,15 +8,12 @@ import {
   isRetiredFlow,
 } from "../../../services/playlists/flowPlaylistConfig.js";
 import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.js";
-import {
-  remapLegacyPath,
-} from "../../../services/downloadPaths.js";
-import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.js";
 import { schedulePlaylistMbidEnrichment } from "../../../services/playlistMbidEnrichmentService.js";
 import {
   buildLidarrImportListItems,
 } from "../../../services/lidarrImportListFeed.js";
 import { withPlaylistMutationLock } from "../../../services/downloadJobs/mutationGuards.js";
+import { findLibraryJob } from "../../../services/playlists/staticPlaylistJobs.js";
 import {
   DEFAULT_LIMIT,
   validateFlowPayload,
@@ -25,10 +23,11 @@ import {
   getAccessibleFlow,
   queueFlowSideEffect,
   enqueueResearchTrack,
+  LIBRARY_OWNER,
 } from "./utils.js";
 import {
-  markPlaylistDownloadWorkCancelled,
-  restoreMarkedPlaylistDownloadWork,
+  markOwnerDownloadWorkCancelled,
+  restoreMarkedOwnerDownloadWork,
 } from "../../../services/downloadJobs/downloadCancellationService.js";
 import { logger } from "../../../services/logger.js";
 import {
@@ -233,8 +232,8 @@ export function registerFlows(router) {
       if (!getAccessibleFlow(req.user, flowId)) {
         return res.status(404).json({ error: "Flow not found" });
       }
-      const jobs = downloadTracker.getByPlaylistId(flowId);
-      const cancellation = markPlaylistDownloadWorkCancelled(flowId, jobs);
+      const jobs = downloadTracker.getAllForOwner(flowId);
+      const cancellation = markOwnerDownloadWorkCancelled(flowId, jobs);
       const mutation = markFlowMutationToken(flowId);
       let deleted;
       try {
@@ -246,7 +245,7 @@ export function registerFlows(router) {
           token: mutation.token,
         });
       } catch (error) {
-        restoreMarkedPlaylistDownloadWork(flowId, cancellation);
+        restoreMarkedOwnerDownloadWork(flowId, cancellation);
         restoreFlowMutationToken(mutation);
         throw error;
       }
@@ -298,8 +297,8 @@ export function registerFlows(router) {
         queueFlowSideEffect("enable-flow-refresh", "enable", flowId);
       } else {
         const wasEnabled = flow.enabled === true;
-        const jobs = downloadTracker.getByPlaylistId(flowId);
-        const cancellation = markPlaylistDownloadWorkCancelled(flowId, jobs);
+        const jobs = downloadTracker.getAllForOwner(flowId);
+        const cancellation = markOwnerDownloadWorkCancelled(flowId, jobs);
         flowPlaylistConfig.setEnabled(flowId, false);
         const mutation = markFlowMutationToken(flowId);
 
@@ -317,7 +316,7 @@ export function registerFlows(router) {
           if (!isFlowMutationTokenCurrent(mutation)) throw error;
           flowPlaylistConfig.setEnabled(flowId, wasEnabled);
           if (wasEnabled) flowPlaylistConfig.scheduleNextRun(flowId);
-          restoreMarkedPlaylistDownloadWork(flowId, cancellation);
+          restoreMarkedOwnerDownloadWork(flowId, cancellation);
           restoreFlowMutationToken(mutation);
           try {
             await playlistManager.ensureSmartPlaylists();
@@ -348,6 +347,7 @@ export function registerFlows(router) {
 
   router.post("/flows/:flowId/static-playlist", async (req, res) => {
     let playlist = null;
+    const createdJobIds = [];
     try {
       const { flowId } = req.params;
       const flow = getAccessibleFlow(req.user, flowId);
@@ -356,7 +356,7 @@ export function registerFlows(router) {
       }
 
       const requestedName = String(req.body?.name || "").trim();
-      const flowJobs = downloadTracker.getByPlaylistType(flowId);
+      const flowJobs = downloadTracker.getByOwner(flowId);
       const completedJobs = flowJobs.filter(
         (job) => job?.status === "done" && typeof job?.finalPath === "string",
       );
@@ -395,35 +395,25 @@ export function registerFlows(router) {
         ownerUserId: flow.ownerUserId ?? req.user.id,
       });
 
-      for (const job of uniqueCompletedJobs) {
-        const safeSourcePath = remapLegacyPath(
-          job.finalPath,
-          downloadWorker.downloadRoot,
-        );
+      const linkedTracks = [];
+      for (const [index, job] of uniqueCompletedJobs.entries()) {
+        const libraryJob = findLibraryJob(tracks[index]);
+        if (libraryJob && libraryJob.status !== "failed") {
+          linkedTracks.push({ ...tracks[index], jobId: libraryJob.id });
+          continue;
+        }
+        const safeSourcePath = path.resolve(job.finalPath);
         const stat = await fsp.stat(safeSourcePath);
         if (!stat.isFile()) {
           throw new Error(`Track file is missing: ${job.finalPath}`);
         }
-
-        const jobId = downloadTracker.addJob(
-          {
-            artistName: job.artistName,
-            trackName: job.trackName,
-            albumName: job.albumName || null,
-            artistMbid: job.artistMbid || null,
-            albumMbid: job.albumMbid || null,
-            trackMbid: job.trackMbid || null,
-            releaseYear: job.releaseYear || null,
-            durationMs: job.durationMs || null,
-            artistAliases: job.artistAliases || [],
-            reason: job.reason || null,
-          },
-          playlist.id,
-        );
-        if (jobId) {
-          downloadTracker.setDone(jobId, safeSourcePath, job.albumName || null);
-        }
+        const jobId = downloadTracker.addJob(tracks[index], LIBRARY_OWNER, { queuedForPlaylist: true });
+        if (!jobId) continue;
+        createdJobIds.push(jobId);
+        downloadTracker.setDone(jobId, safeSourcePath, job.albumName || null);
+        linkedTracks.push({ ...tracks[index], jobId });
       }
+      playlist = flowPlaylistConfig.updateStaticPlaylist(playlist.id, { tracks: linkedTracks });
 
       playlistManager.updateConfig(false);
       await playlistManager.ensureSmartPlaylists();
@@ -439,9 +429,9 @@ export function registerFlows(router) {
         trackCount: uniqueCompletedJobs.length,
       });
     } catch (error) {
+      for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
       if (playlist?.id) {
         try {
-          await playlistManager.weeklyReset([playlist.id]);
           flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
           await playlistManager.ensureSmartPlaylists();
         } catch {}
@@ -483,7 +473,7 @@ export function registerFlows(router) {
     }
     res.json({
       token: ensured.lidarrFeedToken,
-      itemCount: buildLidarrImportListItems(downloadTracker.getByPlaylistType(flowId)).length,
+      itemCount: buildLidarrImportListItems(downloadTracker.getByOwner(flowId)).length,
     });
   });
 }

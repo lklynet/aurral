@@ -68,28 +68,6 @@ test("password and Subsonic authentication reject inactive users", () => {
   assert.equal(auth.resolveSubsonicTokenUser("inactive-user", token, salt), null);
 });
 
-test("Basic authentication cannot restore legacy admin access for an inactive database user", () => {
-  const password = "legacy-password";
-  dbOps.updateSettings({
-    onboardingComplete: true,
-    integrations: {
-      general: { authUser: "configured-admin", authPassword: password },
-    },
-  });
-  const user = userOps.createUser(
-    "configured-admin",
-    bcrypt.hashSync(password, 4),
-    "admin",
-  );
-  userOps.updateUser(user.id, { status: "suspended" });
-  const basic = Buffer.from(`configured-admin:${password}`).toString("base64");
-
-  assert.equal(
-    auth.resolveRequestUser({ headers: { authorization: `Basic ${basic}` } }),
-    null,
-  );
-});
-
 test("trusted-local bypass rejects an inactive sole administrator", () => {
   const user = userOps.createUser("local-admin", bcrypt.hashSync("password123", 4), "admin");
   userOps.updateUser(user.id, { status: "disabled" });

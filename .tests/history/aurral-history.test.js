@@ -30,7 +30,7 @@ const { lidarrClient } = await importFromRepo("backend/services/lidarrClient.js"
 test.beforeEach(() => {
   resetDatabase(db);
   const transaction = getHonkerDb().transaction();
-  transaction.execute("DELETE FROM _honker_live WHERE queue = ?", ["weekly-flow-operation"]);
+  transaction.execute("DELETE FROM _honker_live WHERE queue = ?", ["playlist-operation"]);
   transaction.commit();
   downloadTracker.clearAll();
 });
@@ -286,8 +286,8 @@ test("pending tracker jobs without history appear in activity immediately", asyn
 });
 
 test("pending playlist imports appear in activity before the worker starts", async () => {
-  const operationId = getHonkerDb().queue("weekly-flow-operation").enqueue({
-    kind: "shared-playlist-create",
+  const operationId = getHonkerDb().queue("playlist-operation").enqueue({
+    kind: "static-playlist-create",
     playlistId: "pending-playlist",
     name: "Pending Playlist",
     sourceName: "ListenBrainz",

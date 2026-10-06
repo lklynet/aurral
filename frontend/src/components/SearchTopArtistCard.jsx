@@ -101,8 +101,7 @@ function getBackdropSrc(item, artistImages, albumCovers) {
 }
 
 function SearchTopArtistCard({
-  item,
-  artist: legacyArtist,
+  item: result,
   artistImages,
   albumCovers = {},
   libraryLookup,
@@ -110,7 +109,6 @@ function SearchTopArtistCard({
   query = "",
   previewTracks = [],
 }) {
-  const result = item || legacyArtist;
   const label = getPrimaryLabel(result);
   const backdropSrc = result ? getBackdropSrc(result, artistImages, albumCovers) : "";
   if (!result || !label) return null;

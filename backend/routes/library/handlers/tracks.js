@@ -76,13 +76,13 @@ export function registerTracks(router) {
   );
 
   router.put(
-    "/tracks/aurral/:canonicalId",
+    "/tracks/aurral/:recordId",
     requireAuth,
     requirePermission("changeMonitoring"),
     async (req, res) => {
       try {
         const result = await libraryManager.setAurralTrackMonitoring(
-          req.params.canonicalId,
+          req.params.recordId,
           { monitored: req.body?.monitored },
         );
         if (result?.error) {
@@ -124,7 +124,7 @@ export function registerTracks(router) {
     try {
       const { albumId, releaseGroupMbid } = req.query;
 
-      if (req.query.readPath === "canonical") {
+      if (req.query.readPath === "records") {
         let readModel = albumId
           ? getLibraryReadModelForAlbumReferences({
               source: req.query.source || "all",
@@ -158,7 +158,7 @@ export function registerTracks(router) {
           ? findLibraryTracksForAlbum(tracks, album.id).map((track) => ({
               ...stripFilesystemPaths(track),
               streamPath: track.hasFile
-                ? `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`
+                ? `/library/records/stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`
                 : null,
             }))
           : [];
@@ -272,7 +272,7 @@ export function registerTracks(router) {
     }
   });
 
-  router.get("/canonical-stream/:albumId/:trackId", noCache, async (req, res) => {
+  router.get("/records/stream/:albumId/:trackId", noCache, async (req, res) => {
     if (!verifyTokenAuth(req)) {
       return res.status(401).json({ error: "Unauthorized" });
     }

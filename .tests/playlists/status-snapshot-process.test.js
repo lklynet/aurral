@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
+import { addStaticPlaylistJobs } from "../helpers/staticPlaylistJobs.js";
 
 const [state, { db }, { dbOps }, { flowPlaylistConfig }, { downloadTracker }, { getPlaylistStatusSnapshot }] =
   await setupIsolatedBackend(
@@ -31,45 +32,48 @@ function writeFromAnotherProcess(sql, parameters) {
 }
 
 test("production snapshots refresh persisted membership and access changes without IPC", () => {
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Original", ownerUserId: 1 });
-  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Original track" }, playlist.id);
+  const [jobId] = addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, playlist.id, [
+    { artistName: "Artist", trackName: "Original track" },
+  ]);
   const previousMode = process.env.NODE_ENV;
   process.env.NODE_ENV = "development";
   try {
     const read = () => getPlaylistStatusSnapshot({ user: { id: 1, role: "user" } });
-    const first = read().sharedPlaylists.find((entry) => entry.id === playlist.id);
+    const first = read().staticPlaylists.find((entry) => entry.id === playlist.id);
     assert.equal(first.name, "Original");
     assert.equal(first.trackEntries.length, 1);
-    assert.deepEqual(read().sharedPlaylists, read().sharedPlaylists);
+    assert.deepEqual(read().staticPlaylists, read().staticPlaylists);
     first.trackEntries[0].identity = "caller mutation";
     first.trackIdentities.push("caller mutation");
-    assert.equal(read().sharedPlaylists[0].trackIdentities.length, 1);
-    assert.notEqual(read().sharedPlaylists[0].trackEntries[0].identity, "caller mutation");
+    assert.equal(read().staticPlaylists[0].trackIdentities.length, 1);
+    assert.notEqual(read().staticPlaylists[0].trackEntries[0].identity, "caller mutation");
 
-    writeFromAnotherProcess("UPDATE playlist_download_jobs SET track_name = ?, status = ? WHERE id = ?", ["Changed track", "failed", jobId]);
+    writeFromAnotherProcess("UPDATE download_jobs SET track_name = ?, status = ? WHERE id = ?", ["Changed track", "failed", jobId]);
     const updated = read();
-    assert.notEqual(updated.sharedPlaylists[0].trackIdentities[0], first.trackIdentities[0]);
-    assert.equal(updated.sharedPlaylistStats[playlist.id].failed, 1);
+    assert.notEqual(updated.staticPlaylists[0].trackIdentities[0], first.trackIdentities[0]);
+    assert.equal(updated.staticPlaylistStats[playlist.id].failed, 1);
 
-    const stored = JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'sharedPlaylists'").get().value);
+    const stored = JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'staticPlaylists'").get().value);
     stored[0].name = "Renamed elsewhere";
-    stored[0].tracks = [{ artistName: "Manual artist", trackName: "Manual track" }];
-    writeFromAnotherProcess("UPDATE settings SET value = ? WHERE key = ?", [JSON.stringify(stored), "sharedPlaylists"]);
-    const renamed = read().sharedPlaylists[0];
+    stored[0].tracks.push({ artistName: "Manual artist", trackName: "Manual track" });
+    writeFromAnotherProcess("UPDATE settings SET value = ? WHERE key = ?", [JSON.stringify(stored), "staticPlaylists"]);
+    const renamed = read().staticPlaylists[0];
     assert.equal(renamed.name, "Renamed elsewhere");
-    assert.equal(renamed.trackIdentities.length, 2);
+    assert.ok(renamed.trackIdentities.some((identity) => identity.includes("manual track")));
+    assert.equal(renamed.trackEntries.length, 1);
 
-    writeFromAnotherProcess("DELETE FROM playlist_download_jobs WHERE id = ?", [jobId]);
-    assert.equal(read().sharedPlaylists[0].trackIdentities.length, 1);
-    assert.deepEqual(read().sharedPlaylists[0].trackEntries, []);
+    writeFromAnotherProcess("DELETE FROM download_jobs WHERE id = ?", [jobId]);
+    assert.equal(read().staticPlaylists[0].trackIdentities.some((identity) => identity.includes("changed track")), false);
+    assert.deepEqual(read().staticPlaylists[0].trackEntries, []);
 
     stored[0].ownerUserId = 2;
-    writeFromAnotherProcess("UPDATE settings SET value = ? WHERE key = ?", [JSON.stringify(stored), "sharedPlaylists"]);
-    assert.deepEqual(read().sharedPlaylists, []);
+    writeFromAnotherProcess("UPDATE settings SET value = ? WHERE key = ?", [JSON.stringify(stored), "staticPlaylists"]);
+    assert.deepEqual(read().staticPlaylists, []);
 
-    writeFromAnotherProcess("UPDATE settings SET value = ? WHERE key = ?", ["[]", "sharedPlaylists"]);
-    assert.deepEqual(getPlaylistStatusSnapshot().sharedPlaylists, []);
+    writeFromAnotherProcess("UPDATE settings SET value = ? WHERE key = ?", ["[]", "staticPlaylists"]);
+    assert.deepEqual(getPlaylistStatusSnapshot().staticPlaylists, []);
   } finally {
     process.env.NODE_ENV = previousMode;
   }

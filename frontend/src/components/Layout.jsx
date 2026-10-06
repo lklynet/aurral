@@ -158,7 +158,7 @@ function Layout({ children, headerActions }) {
         path: "/flows",
         label: "Flows",
         icon: Workflow,
-        permission: "accessFlow",
+        permission: "accessPlaylists",
       },
       ...(bootstrap?.ticketmasterConfigured
         ? [{ path: "/shows/all", label: "Shows", icon: Ticket }]

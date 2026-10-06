@@ -17,7 +17,7 @@ registerStream(router);
 registerArtworkServe(router);
 
 router.use(requireAuth);
-router.use(requirePermission("accessFlow"));
+router.use(requirePermission("accessPlaylists"));
 
 registerArtworkManagement(router);
 registerFlows(router);

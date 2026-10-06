@@ -25,7 +25,7 @@ test("only the owning process supervises isolated queues", () => {
   assert.equal(isQueueOwnedByGroup("system-task", "downloads"), true);
   assert.equal(isQueueOwnedByGroup("release-metadata-refresh", "release-metadata"), true);
   assert.equal(isQueueOwnedByGroup("release-metadata-refresh", "downloads"), false);
-  assert.equal(isQueueOwnedByGroup("weekly-flow-operation", "downloads"), true);
+  assert.equal(isQueueOwnedByGroup("playlist-operation", "downloads"), true);
   assert.equal(isQueueOwnedByGroup("slskd-pipeline", "downloads"), true);
   assert.equal(isQueueOwnedByGroup("system-task"), false);
   assert.equal(isQueueOwnedByGroup("system-task", "library"), false);
@@ -43,7 +43,7 @@ test("only the owning process supervises isolated queues", () => {
     assert.equal(shouldStartQueueHere("discovery-refresh"), false);
     process.env.AURRAL_BACKGROUND_WORKER_GROUP = "downloads";
     assert.equal(shouldStartQueueHere("system-task"), true);
-    assert.equal(shouldStartQueueHere("weekly-flow-operation"), true);
+    assert.equal(shouldStartQueueHere("playlist-operation"), true);
     assert.equal(shouldStartQueueHere("library-scan"), false);
   } finally {
     if (previousNodeEnv === undefined) delete process.env.NODE_ENV;

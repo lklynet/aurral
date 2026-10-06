@@ -31,7 +31,7 @@ test.after(async () => {
 
 test("getHonkerQueueDepth counts claimable pending jobs", () => {
   honkerDb.getPlaylistOperationQueue().enqueue({ kind: "noop-test" });
-  const depth = honkerDb.getHonkerQueueDepth("weekly-flow-operation");
+  const depth = honkerDb.getHonkerQueueDepth("playlist-operation");
   assert.equal(depth, 1);
 });
 
@@ -186,7 +186,7 @@ test("task status marks long-running jobs as stale", async () => {
 test("clearStaleHonkerJobs removes long-running processing jobs", async () => {
   const { db } = await importFromRepo("backend/config/db-sqlite.js");
   const queue = honkerDb.getSystemTaskQueue();
-  const jobId = queue.enqueue({ kind: "playlist-startup-migration" });
+  const jobId = queue.enqueue({ kind: "news-refresh" });
   const job = queue.claimOne(honkerDb.getWorkerId());
   assert.equal(job?.id, jobId);
 
@@ -210,8 +210,8 @@ test("clearStaleHonkerJobs removes long-running processing jobs", async () => {
   ).run(
     jobId,
     "system-task",
-    "Playlist Startup Migration",
-    JSON.stringify({ kind: "playlist-startup-migration" }),
+    "News Refresh",
+    JSON.stringify({ kind: "news-refresh" }),
     honkerDb.getWorkerId(),
     0,
     twoHoursAgo,

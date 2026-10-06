@@ -59,7 +59,7 @@ export const AuthProvider = ({ children }) => {
             role: "admin",
             permissions: {
               accessSettings: true,
-              accessFlow: true,
+              accessPlaylists: true,
               addArtist: true,
               addAlbum: true,
               changeMonitoring: true,

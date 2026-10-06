@@ -9,14 +9,14 @@ import { dbOps } from "../../db/helpers/index.js";
 import { db } from "../../config/db-sqlite.js";
 import {
   cancelDownloadJobs,
-  cancelPlaylistDownloadGeneration,
+  cancelOwnerDownloadGeneration,
   clearDownloadProviderWork,
-  getPlaylistDownloadGeneration,
+  getOwnerDownloadGeneration,
   isDownloadJobCancelled,
   isPipelinePayloadActive,
   listDownloadProviderWork,
   restoreDownloadJobCancellations,
-  restorePlaylistDownloadWork,
+  restoreOwnerDownloadWork,
 } from "./downloadCancellation.js";
 
 const PIPELINE_QUEUE = "slskd-pipeline";
@@ -27,15 +27,15 @@ function captureCancellationWork(key, jobs, payloads) {
   dbOps.setJSONSetting(key, { jobs: unique([...previous.jobs, ...jobs]), payloads: unique([...previous.payloads, ...payloads]) });
 }
 
-function readCancellationWork(jobs, playlistId = null) {
+function readCancellationWork(jobs, ownerId = null) {
   const keys = jobs.map((job) => `downloadCancellationWork:${job.id}`);
-  if (playlistId) keys.push(`playlistCancellationWork:${playlistId}`);
+  if (ownerId) keys.push(`ownerCancellationWork:${ownerId}`);
   return keys.map((key) => dbOps.getJSONSetting(key)).filter(Boolean);
 }
 
-function clearCancellationWork(jobs, playlistId = null) {
+function clearCancellationWork(jobs, ownerId = null) {
   const keys = jobs.map((job) => `downloadCancellationWork:${job.id}`);
-  if (playlistId) keys.push(`playlistCancellationWork:${playlistId}`);
+  if (ownerId) keys.push(`ownerCancellationWork:${ownerId}`);
   for (const key of keys) db.prepare("DELETE FROM settings WHERE key = ?").run(key);
 }
 
@@ -43,10 +43,10 @@ function normalizeId(value) {
   return String(value || "").trim();
 }
 
-function payloadBelongsToPlaylist(payload, playlistId, jobIds) {
+function payloadBelongsToOwner(payload, ownerId, jobIds) {
   const safeJobId = normalizeId(payload?.jobId);
   return (
-    normalizeId(payload?.playlistId) === playlistId ||
+    normalizeId(payload?.ownerId) === ownerId ||
     (safeJobId && jobIds.has(safeJobId))
   );
 }
@@ -306,10 +306,10 @@ async function cancelProviderWork(payloads, jobs, providerWork = []) {
   return { slskd, deemix, sabnzbd, nzbget, ytdlp };
 }
 
-function cancelPipelineRows(playlistId, jobs) {
+function cancelPipelineRows(ownerId, jobs) {
   const jobIds = new Set(jobs.map((job) => normalizeId(job?.id)).filter(Boolean));
   const rows = listHonkerJobs(PIPELINE_QUEUE).filter(({ payload }) =>
-    payloadBelongsToPlaylist(payload, playlistId, jobIds),
+    payloadBelongsToOwner(payload, ownerId, jobIds),
   );
   const queue = getHonkerQueueByName(PIPELINE_QUEUE);
   const payloads = [];
@@ -350,9 +350,9 @@ function cancelPipelineRowsForJobs(jobs) {
   return { rows, payloads, cancelled };
 }
 
-async function withPlaylistCancellationLocks(playlistIds, operation) {
+async function withOwnerCancellationLocks(ownerIds, operation) {
   const { withPlaylistMutationLock } = await import("./mutationGuards.js");
-  return withPlaylistMutationLock(playlistIds, operation);
+  return withPlaylistMutationLock(ownerIds, operation);
 }
 
 function refreshJobs(jobs) {
@@ -374,30 +374,30 @@ export function markDownloadWorkCancelledForJobs(jobs = []) {
   return normalizedJobs;
 }
 
-export function markPlaylistDownloadWorkCancelled(playlistId, jobs = []) {
-  const safePlaylistId = normalizeId(playlistId);
-  if (!safePlaylistId) {
+export function markOwnerDownloadWorkCancelled(ownerId, jobs = []) {
+  const safeOwnerId = normalizeId(ownerId);
+  if (!safeOwnerId) {
     return { generation: 0, jobs: [], wasActive: false, jobsToRestore: [] };
   }
   const normalizedJobs = Array.isArray(jobs) ? jobs.filter((job) => job?.id) : [];
-  captureCancellationWork(`playlistCancellationWork:${safePlaylistId}`, normalizedJobs,
-    listHonkerJobs(PIPELINE_QUEUE).filter((row) => payloadBelongsToPlaylist(row.payload, safePlaylistId, new Set(normalizedJobs.map((job) => job.id)))).map((row) => row.payload));
-  const generationBeforeCancellation = getPlaylistDownloadGeneration(safePlaylistId);
+  captureCancellationWork(`ownerCancellationWork:${safeOwnerId}`, normalizedJobs,
+    listHonkerJobs(PIPELINE_QUEUE).filter((row) => payloadBelongsToOwner(row.payload, safeOwnerId, new Set(normalizedJobs.map((job) => job.id)))).map((row) => row.payload));
+  const generationBeforeCancellation = getOwnerDownloadGeneration(safeOwnerId);
   const wasActive = isPipelinePayloadActive({
-    playlistId: safePlaylistId,
-    playlistGeneration: generationBeforeCancellation,
+    ownerId: safeOwnerId,
+    ownerGeneration: generationBeforeCancellation,
   });
   const jobsToRestore = normalizedJobs
     .filter((job) => !isDownloadJobCancelled(job.id))
     .map((job) => job.id);
-  const generation = cancelPlaylistDownloadGeneration(safePlaylistId);
+  const generation = cancelOwnerDownloadGeneration(safeOwnerId);
   cancelDownloadJobs(normalizedJobs.map((job) => job.id));
   return { generation, jobs: normalizedJobs, wasActive, jobsToRestore };
 }
 
-export function restoreMarkedPlaylistDownloadWork(playlistId, cancellation) {
+export function restoreMarkedOwnerDownloadWork(ownerId, cancellation) {
   if (cancellation?.wasActive) {
-    return restorePlaylistDownloadWork(playlistId, cancellation.jobsToRestore);
+    return restoreOwnerDownloadWork(ownerId, cancellation.jobsToRestore);
   }
   return restoreDownloadJobCancellations(cancellation?.jobsToRestore) > 0;
 }
@@ -408,8 +408,8 @@ export async function cancelDownloadWorkForJobs(jobs = [], { lock = true } = {})
     : [];
   const normalizedJobs = markDownloadWorkCancelledForJobs(normalizedInput);
   const pipeline = cancelPipelineRowsForJobs(normalizedJobs);
-  const playlistIds = normalizedJobs
-    .map((job) => normalizeId(job?.playlistId || job?.playlistType))
+  const ownerIds = normalizedJobs
+    .map((job) => normalizeId(job?.ownerId))
     .filter(Boolean);
   const cancel = () => {
     const currentJobs = refreshJobs(normalizedJobs);
@@ -422,7 +422,7 @@ export async function cancelDownloadWorkForJobs(jobs = [], { lock = true } = {})
       [...currentJobs, ...captured.flatMap((work) => work.jobs)], providerWork);
   };
   const providers = lock
-    ? await withPlaylistCancellationLocks(playlistIds, cancel)
+    ? await withOwnerCancellationLocks(ownerIds, cancel)
     : await cancel();
   clearCancellationWork(normalizedJobs);
   return {
@@ -434,11 +434,11 @@ export async function cancelDownloadWorkForJobs(jobs = [], { lock = true } = {})
 export async function clearAllDownloadJobs(downloadTracker) {
   const jobs = downloadTracker.getAll();
   if (jobs.length === 0) return 0;
-  const playlistIds = jobs.map((job) => normalizeId(job?.playlistId || job?.playlistType));
+  const ownerIds = jobs.map((job) => normalizeId(job?.ownerId));
   try {
     await cancelDownloadWorkForJobs(jobs);
   } catch (error) {
-    await withPlaylistCancellationLocks(playlistIds, () => {
+    await withOwnerCancellationLocks(ownerIds, () => {
       for (const job of jobs) {
         downloadTracker.setFailed(
           job.id,
@@ -448,7 +448,7 @@ export async function clearAllDownloadJobs(downloadTracker) {
     });
     throw error;
   }
-  return withPlaylistCancellationLocks(playlistIds, () => {
+  return withOwnerCancellationLocks(ownerIds, () => {
     let cleared = 0;
     for (const job of jobs) {
       if (downloadTracker.removeJob(job.id)) cleared += 1;
@@ -457,26 +457,26 @@ export async function clearAllDownloadJobs(downloadTracker) {
   });
 }
 
-export async function cancelPlaylistDownloadWork(playlistId, jobs = [], { lock = true } = {}) {
-  const cancellation = markPlaylistDownloadWorkCancelled(playlistId, jobs);
-  const safePlaylistId = normalizeId(playlistId);
-  if (!safePlaylistId) return { cancelled: 0, generation: 0 };
+export async function cancelOwnerDownloadWork(ownerId, jobs = [], { lock = true } = {}) {
+  const cancellation = markOwnerDownloadWorkCancelled(ownerId, jobs);
+  const safeOwnerId = normalizeId(ownerId);
+  if (!safeOwnerId) return { cancelled: 0, generation: 0 };
   const { generation, jobs: normalizedJobs } = cancellation;
-  const activePipeline = cancelPipelineRows(safePlaylistId, normalizedJobs);
+  const activePipeline = cancelPipelineRows(safeOwnerId, normalizedJobs);
   const cancel = () => {
     const currentJobs = refreshJobs(normalizedJobs);
-    const captured = readCancellationWork(normalizedJobs, safePlaylistId);
+    const captured = readCancellationWork(normalizedJobs, safeOwnerId);
     const providerWork = listDownloadProviderWork({
-      playlistId: safePlaylistId,
+      ownerId: safeOwnerId,
       provider: "slskd-search",
     });
     return cancelProviderWork([...activePipeline.payloads, ...captured.flatMap((work) => work.payloads)],
       [...currentJobs, ...captured.flatMap((work) => work.jobs)], providerWork);
   };
   const providers = lock
-    ? await withPlaylistCancellationLocks([safePlaylistId], cancel)
+    ? await withOwnerCancellationLocks([safeOwnerId], cancel)
     : await cancel();
-  clearCancellationWork(normalizedJobs, safePlaylistId);
+  clearCancellationWork(normalizedJobs, safeOwnerId);
   return {
     generation,
     cancelled: activePipeline.cancelled,

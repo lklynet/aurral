@@ -1,6 +1,6 @@
 import express from "express";
 import { playlistManager } from "../../../services/playlists/playlistManager.js";
-import { canAccessPlaylistType } from "./utils.js";
+import { canAccessPlaylist } from "./utils.js";
 
 const artworkUploadParser = express.raw({
   limit: "8mb",
@@ -13,7 +13,7 @@ const artworkUploadParser = express.raw({
 export function registerArtworkManagement(router) {
   router.put("/artwork/:playlistId", artworkUploadParser, async (req, res) => {
     const { playlistId } = req.params;
-    if (!canAccessPlaylistType(req.user, playlistId)) {
+    if (!canAccessPlaylist(req.user, playlistId)) {
       return res.status(404).json({ error: "Playlist not found" });
     }
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
@@ -35,7 +35,7 @@ export function registerArtworkManagement(router) {
 
   router.delete("/artwork/:playlistId", async (req, res) => {
     const { playlistId } = req.params;
-    if (!canAccessPlaylistType(req.user, playlistId)) {
+    if (!canAccessPlaylist(req.user, playlistId)) {
       return res.status(404).json({ error: "Playlist not found" });
     }
     try {
@@ -51,7 +51,7 @@ export function registerArtworkManagement(router) {
 
   router.post("/artwork/:playlistId/generate", async (req, res) => {
     const { playlistId } = req.params;
-    if (!canAccessPlaylistType(req.user, playlistId)) {
+    if (!canAccessPlaylist(req.user, playlistId)) {
       return res.status(404).json({ error: "Playlist not found" });
     }
     try {

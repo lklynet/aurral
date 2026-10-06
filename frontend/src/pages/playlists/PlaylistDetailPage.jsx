@@ -42,7 +42,7 @@ function updateCachedPlaylist(playlistId, changes) {
     current
       ? {
           ...current,
-          sharedPlaylists: current.sharedPlaylists.map((playlist) =>
+          staticPlaylists: current.staticPlaylists.map((playlist) =>
             playlist.id === playlistId ? { ...playlist, ...changes } : playlist,
           ),
         }

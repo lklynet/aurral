@@ -8,7 +8,7 @@ import {
 } from "../helpers/backendTestHarness.js";
 
 const [isolatedState, { db }, { dbOps }, libraryStore] = await setupIsolatedBackend(
-  "canonical-available-only-route",
+  "library-available-only-route",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
   "backend/services/libraryMediaStore.js",
@@ -40,7 +40,7 @@ function getRoute(path) {
 
 function callLibraryPage(query) {
   let body;
-  getRoute("GET /canonical")(
+  getRoute("GET /records")(
     { query },
     {
       status() {

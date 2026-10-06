@@ -10,6 +10,7 @@ import {
   tracksShareMembership,
 } from "./playlists/flowPlaylistConfig.js";
 import { dbOps } from "../db/helpers/index.js";
+import { getStaticPlaylistJobs } from "./playlists/staticPlaylistJobs.js";
 
 const PLAYLIST_MBID_ENRICHMENT_DELAY_SECONDS = 20;
 const ARTIST_MBID_RECONCILIATION_KEY = "playlistArtistMbidReconciliationVersion";
@@ -196,7 +197,7 @@ export function schedulePlaylistMbidEnrichmentForMissingPlaylists({
       ARTIST_MBID_RECONCILIATION_VERSION;
   const jobIds = [];
   for (const playlist of flowPlaylistConfig.getStaticPlaylists()) {
-    const jobs = downloadTracker.getByPlaylistType(playlist.id);
+    const jobs = getStaticPlaylistJobs(playlist);
     const hasMissingConfig = hasMissingPlaylistMbids(playlist);
     const hasMissingJobs = (Array.isArray(playlist?.tracks) ? playlist.tracks : []).some((track) =>
       hasMissingJobMbid(track, jobs),
@@ -237,7 +238,7 @@ export async function enrichStaticPlaylistMbids(
   const snapshotPlaylist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
   if (!snapshotPlaylist) return { missing: true, changed: false };
 
-  const snapshotJobs = downloadTracker.getByPlaylistType(safePlaylistId);
+  const snapshotJobs = getStaticPlaylistJobs(snapshotPlaylist);
   const snapshotTracks = Array.isArray(snapshotPlaylist.tracks) ? snapshotPlaylist.tracks : [];
   const tracksExamined = snapshotTracks.length;
   let tracksResolved = 0;
@@ -295,7 +296,7 @@ export async function enrichStaticPlaylistMbids(
       // updateStaticPlaylist already busts cache, but bust again for the full enrichment context
       import("./unifiedSearchService.js").then(({ clearSearchContextCache }) => clearSearchContextCache()).catch(() => {});
 
-      const jobs = downloadTracker.getByPlaylistType(safePlaylistId);
+      const jobs = getStaticPlaylistJobs(updatedPlaylist);
       let jobsUpdated = 0;
       const updatedJobIds = new Set();
       for (const track of nextTracks) {

@@ -79,7 +79,7 @@ test("one deemix album queue fills verified siblings and retries only a missing 
       throw new Error(`unexpected source fallback: ${reason}`);
     } };
     const initial = { phase: "search", source: "deemix", jobId: ids[0],
-      playlistId: "library", playlistGeneration: 0, destination: "The Band/Album",
+      ownerId: "library", ownerGeneration: 0, destination: "The Band/Album",
       albumGrab: true, albumGroupJobIds: ids };
     const searched = await processDeemixPipelinePayload(initial, helpers);
     assert.equal(searched.phase, "download");

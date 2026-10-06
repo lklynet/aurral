@@ -1,5 +1,10 @@
 import { cleanupBulkOperations, getBulkOperation } from "../../../services/playlists/bulkOperationStore.js";
-import { captureStaticPlaylistSelection, getSharedDownloadReferences } from "../../../services/playlists/trackRemoval.js";
+import {
+  captureStaticPlaylistSelection,
+  getReleasedUnfinishedJobs,
+  getStaticPlaylistJobIds,
+  staticPlaylistReferencesJob,
+} from "../../../services/playlists/staticPlaylistJobs.js";
 import { randomUUID } from "crypto";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.js";
 import {
@@ -12,15 +17,17 @@ import {
   getAccessibleStaticPlaylist,
 } from "./utils.js";
 import { normalizeImportSource } from "../../../services/playlists/flowPlaylistConfig.js";
-import {
-  markDownloadWorkCancelledForJobs,
-  markPlaylistDownloadWorkCancelled,
-  restoreMarkedPlaylistDownloadWork,
-} from "../../../services/downloadJobs/downloadCancellationService.js";
+import { markDownloadWorkCancelledForJobs } from "../../../services/downloadJobs/downloadCancellationService.js";
 import {
   isDownloadJobCancelled,
   restoreDownloadJobCancellations,
 } from "../../../services/downloadJobs/downloadCancellation.js";
+
+function cancelReleasedDownloads(playlist, jobIds) {
+  const jobs = getReleasedUnfinishedJobs(playlist, jobIds).filter((job) => !isDownloadJobCancelled(job.id));
+  markDownloadWorkCancelledForJobs(jobs);
+  return jobs;
+}
 
 async function createOrImportStaticPlaylist(req, res, { requireTracks, label }) {
   const {
@@ -51,7 +58,7 @@ async function createOrImportStaticPlaylist(req, res, { requireTracks, label }) 
 
   const playlistId = randomUUID();
   const result = await playlistOperationQueue.enqueuePayload({
-    kind: "shared-playlist-create",
+    kind: "static-playlist-create",
     label,
     playlistId,
     name: safeName,
@@ -102,12 +109,12 @@ async function enqueueBulkAction(req, res, action) {
 
 export function registerStaticPlaylists(router) {
   for (const [path, action] of [["track-removals", "remove"], ["track-moves", "move"]]) {
-    router.post(`/shared-playlists/:playlistId/${path}`, async (req, res) => {
+    router.post(`/static-playlists/:playlistId/${path}`, async (req, res) => {
       try { return await enqueueBulkAction(req, res, action); }
       catch (error) { return res.status(500).json({ error: "Failed to queue playlist action", message: error.message }); }
     });
   }
-  router.get("/shared-playlists/:playlistId/operations/:operationId", (req, res) => {
+  router.get("/static-playlists/:playlistId/operations/:operationId", (req, res) => {
     try {
       cleanupBulkOperations();
       const record = getBulkOperation(req.params.operationId);
@@ -120,11 +127,11 @@ export function registerStaticPlaylists(router) {
         message: record.message || null });
     } catch (error) { return res.status(500).json({ error: "Failed to read playlist operation", message: error.message }); }
   });
-  router.post("/shared-playlists", async (req, res) => {
+  router.post("/static-playlists", async (req, res) => {
     try {
       return await createOrImportStaticPlaylist(req, res, {
         requireTracks: false,
-        label: "shared-playlist:create",
+        label: "static-playlist:create",
       });
     } catch (error) {
       if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
@@ -140,11 +147,11 @@ export function registerStaticPlaylists(router) {
     }
   });
 
-  router.post("/shared-playlists/import", async (req, res) => {
+  router.post("/static-playlists/import", async (req, res) => {
     try {
       return await createOrImportStaticPlaylist(req, res, {
         requireTracks: true,
-        label: "shared-playlist:import",
+        label: "static-playlist:import",
       });
     } catch (error) {
       if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
@@ -160,7 +167,7 @@ export function registerStaticPlaylists(router) {
     }
   });
 
-  router.post("/shared-playlists/:playlistId/tracks", async (req, res) => {
+  router.post("/static-playlists/:playlistId/tracks", async (req, res) => {
     try {
       const { playlistId } = req.params;
       const playlist = getAccessibleStaticPlaylist(req.user, playlistId);
@@ -183,8 +190,8 @@ export function registerStaticPlaylists(router) {
       }
 
       const result = await playlistOperationQueue.enqueuePayload({
-        kind: "shared-playlist-append-tracks",
-        label: `shared-playlist:${playlistId}:tracks:add`,
+        kind: "static-playlist-append-tracks",
+        label: `static-playlist:${playlistId}:tracks:add`,
         playlistId,
         tracks: normalizedTracks,
       });
@@ -203,7 +210,7 @@ export function registerStaticPlaylists(router) {
     }
   });
 
-  router.put("/shared-playlists/:playlistId/track-availability", (req, res) => {
+  router.put("/static-playlists/:playlistId/track-availability", (req, res) => {
     const { playlistId } = req.params;
     if (!getAccessibleStaticPlaylist(req.user, playlistId)) {
       return res.status(404).json({ error: "Playlist not found" });
@@ -217,7 +224,7 @@ export function registerStaticPlaylists(router) {
     return res.json({ success: true, showTrackAvailability: playlist.showTrackAvailability });
   });
 
-  router.put("/shared-playlists/:playlistId/record-history", (req, res) => {
+  router.put("/static-playlists/:playlistId/record-history", (req, res) => {
     const { playlistId } = req.params;
     if (!getAccessibleStaticPlaylist(req.user, playlistId)) {
       return res.status(404).json({ error: "Playlist not found" });
@@ -231,7 +238,7 @@ export function registerStaticPlaylists(router) {
     return res.json({ success: true, recordHistory: playlist.recordHistory });
   });
 
-  router.put("/shared-playlists/:playlistId", async (req, res) => {
+  router.put("/static-playlists/:playlistId", async (req, res) => {
     try {
       const { playlistId } = req.params;
       const { name, tracks } = req.body || {};
@@ -287,8 +294,8 @@ export function registerStaticPlaylists(router) {
       }
 
       const result = await playlistOperationQueue.enqueuePayload({
-        kind: "shared-playlist-update",
-        label: `shared-playlist:${playlistId}:update`,
+        kind: "static-playlist-update",
+        label: `static-playlist:${playlistId}:update`,
         playlistId,
         name: safeName,
         tracks: normalizedTracks,
@@ -318,7 +325,7 @@ export function registerStaticPlaylists(router) {
   });
 
   router.delete(
-    "/shared-playlists/:playlistId/tracks/:jobId",
+    "/static-playlists/:playlistId/tracks/:jobId",
     async (req, res) => {
       try {
         const { playlistId, jobId } = req.params;
@@ -326,30 +333,20 @@ export function registerStaticPlaylists(router) {
         if (!playlist) {
           return res.status(404).json({ error: "Playlist not found" });
         }
-        const job = downloadTracker.getJob(jobId);
-        const playlistReferencesJob = playlist.tracks?.some(
-          (track) => String(track?.canonicalJobId || "") === String(jobId || ""),
-        );
-        if (!job || (job.playlistType !== playlistId && !playlistReferencesJob)) {
+        if (!downloadTracker.getJob(jobId) || !staticPlaylistReferencesJob(playlist, jobId)) {
           return res.status(404).json({ error: "Track not found" });
         }
-        const shouldCancelJob = !playlistReferencesJob && getSharedDownloadReferences(job.id, playlistId).length === 0;
-        const wasJobCancelled = isDownloadJobCancelled(job.id);
-        if (shouldCancelJob) {
-          markDownloadWorkCancelledForJobs([job]);
-        }
+        const cancelledJobs = cancelReleasedDownloads(playlist, [jobId]);
         let result;
         try {
           result = await playlistOperationQueue.enqueuePayload({
-            kind: "shared-playlist-delete-track",
-            label: `shared-playlist:${playlistId}:track:${jobId}:delete`,
+            kind: "static-playlist-delete-track",
+            label: `static-playlist:${playlistId}:track:${jobId}:delete`,
             playlistId,
             jobId,
           });
         } catch (error) {
-          if (shouldCancelJob && !wasJobCancelled) {
-            restoreDownloadJobCancellations([job.id]);
-          }
+          restoreDownloadJobCancellations(cancelledJobs.map((job) => job.id));
           throw error;
         }
 
@@ -370,7 +367,7 @@ export function registerStaticPlaylists(router) {
   );
 
   router.post(
-    "/shared-playlists/:playlistId/tracks/:jobId/research",
+    "/static-playlists/:playlistId/tracks/:jobId/research",
     async (req, res) => {
       try {
         const { playlistId, jobId } = req.params;
@@ -379,7 +376,7 @@ export function registerStaticPlaylists(router) {
           res,
           playlistId,
           jobId,
-          "shared-playlist",
+          "static-playlist",
         );
       } catch (error) {
         res.status(500).json({
@@ -390,26 +387,24 @@ export function registerStaticPlaylists(router) {
     },
   );
 
-  router.delete("/shared-playlists/:playlistId", async (req, res) => {
+  router.delete("/static-playlists/:playlistId", async (req, res) => {
     try {
       const { playlistId } = req.params;
       const exists = getAccessibleStaticPlaylist(req.user, playlistId);
       if (!exists) {
         return res.status(404).json({ error: "Playlist not found" });
       }
-      const ownedJobs = downloadTracker.getByPlaylistId(playlistId);
-      const retainsDownloads = ownedJobs.some((job) => getSharedDownloadReferences(job.id, playlistId).length > 0);
-      const cancellation = retainsDownloads ? null : markPlaylistDownloadWorkCancelled(playlistId, ownedJobs);
+      const cancelledJobs = cancelReleasedDownloads(exists, getStaticPlaylistJobIds(exists));
 
       let deleted;
       try {
         deleted = await playlistOperationQueue.enqueuePayload({
-          kind: "shared-playlist-delete",
-          label: `shared-playlist:${playlistId}:delete`,
+          kind: "static-playlist-delete",
+          label: `static-playlist:${playlistId}:delete`,
           playlistId,
         });
       } catch (error) {
-        if (cancellation) restoreMarkedPlaylistDownloadWork(playlistId, cancellation);
+        restoreDownloadJobCancellations(cancelledJobs.map((job) => job.id));
         throw error;
       }
       return res.json({

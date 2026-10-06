@@ -156,7 +156,7 @@ export async function createManualMissingSearch({
   if (!sourceOption) throw new Error("That download client is not currently available");
   const query = buildQuery(job);
   if (!query) throw new Error("This track has no searchable artist or title");
-  const rawResults = (await searchSource(sourceOption.source, query, { jobId: job.id, playlistId })).slice(0, MAX_RESULTS);
+  const rawResults = (await searchSource(sourceOption.source, query, { jobId: job.id, ownerId: job.ownerId })).slice(0, MAX_RESULTS);
   return storeManualMissingSearch({
     jobId: job.id,
     actorId,

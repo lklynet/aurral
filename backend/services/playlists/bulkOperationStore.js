@@ -12,7 +12,7 @@ export function getBulkOperation(operationId) {
   const row = getStmt.get(`${PREFIX}${operationId}`);
   if (!row) return null;
   const record = JSON.parse(row.value);
-  if (!["completed", "failed"].includes(record.state) && !getHonkerDb().query("SELECT state FROM _honker_live WHERE id = ? AND queue = 'weekly-flow-operation'", [record.operationId]).length) {
+  if (!["completed", "failed"].includes(record.state) && !getHonkerDb().query("SELECT state FROM _honker_live WHERE id = ? AND queue = 'playlist-operation'", [record.operationId]).length) {
     record.state = "failed";
     record.message = "The operation stopped before completion. Review the playlist before retrying.";
     record.updatedAt = Date.now();
@@ -30,7 +30,7 @@ export function enqueueBulkOperation(record) {
   const queue = getPlaylistOperationQueue();
   const tx = getHonkerDb().transaction();
   try {
-    const operationId = queue.enqueueTx(tx, { kind: "shared-playlist-bulk", label: `shared-playlist:${record.action}` });
+    const operationId = queue.enqueueTx(tx, { kind: "static-playlist-bulk", label: `static-playlist:${record.action}` });
     const now = Date.now();
     const result = { ...record, operationId, state: "queued", outcomes: [], synchronization: {}, createdAt: now, updatedAt: now };
     tx.execute("INSERT INTO settings (key, value) VALUES (?, ?)", [`${PREFIX}${operationId}`, JSON.stringify(result)]);

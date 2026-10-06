@@ -20,7 +20,7 @@ import {
   getLibraryManagementEntry,
   setLibraryManagement,
 } from "./libraryManagementStore.js";
-import { parseAurralIdentityComment, readCommentIdentity } from "./downloadUtils.js";
+import { parseAurralIdentityMarker } from "./downloadUtils.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 
@@ -44,7 +44,6 @@ const EXCLUDED_DIRECTORIES = new Set([
   "_flows",
   "_playlists",
   "_staging",
-  "aurral-weekly-flow",
 ]);
 
 export function isLibraryScanExcludedDirectory(name) {
@@ -65,14 +64,8 @@ const normalizeMbid = (value) => text(first(value)) || null;
 
 const normalizeMetadata = (metadata) => metadata?.common || {};
 
-const readEmbeddedAurralIdentity = (metadata) => {
-  const common = normalizeMetadata(metadata);
-  return Object.assign(
-    {},
-    readCommentIdentity(metadata) || {},
-    parseAurralIdentityComment(common.grouping) || {},
-  );
-};
+const readEmbeddedAurralIdentity = (metadata) =>
+  parseAurralIdentityMarker(normalizeMetadata(metadata).grouping) || {};
 
 const applyMetadataEnrichment = (metadata, enrichment = null) => {
   const common = { ...normalizeMetadata(metadata) };

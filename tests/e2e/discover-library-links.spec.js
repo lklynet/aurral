@@ -6,7 +6,7 @@ const linkedMbid = "10adbe5e-a2c0-4bf3-8249-2b4cbf6e6ca8";
 requireCredentials();
 
 async function findUntaggedArtist(page) {
-  const response = await apiRequest(page, "/api/library/canonical?kind=artists&pageSize=100");
+  const response = await apiRequest(page, "/api/library/records?kind=artists&pageSize=100");
   expect(response.ok).toBe(true);
   const artist = (response.body?.items || []).find((item) => !item.mbid && item.providerId == null);
   expect(artist, "The candidate library needs an untagged Aurral artist such as the playback fixture").toBeTruthy();
@@ -27,7 +27,7 @@ test("library and Discover artist pages link to each other", async ({ page }) =>
 
   let linked = null;
   try {
-    linked = await apiRequest(page, `/api/library/canonical/artists/${artist.id}/mbid`, {
+    linked = await apiRequest(page, `/api/library/records/artists/${artist.id}/mbid`, {
       method: "PUT",
       body: { mbid: linkedMbid },
     });
@@ -49,7 +49,7 @@ test("library and Discover artist pages link to each other", async ({ page }) =>
     await expect(page).toHaveURL(new RegExp(`/artist/${linkedMbid}$`));
   } finally {
     if (linked?.ok && linked.body?.merged === false) {
-      const restored = await apiRequest(page, `/api/library/canonical/artists/${artist.id}/mbid`, {
+      const restored = await apiRequest(page, `/api/library/records/artists/${artist.id}/mbid`, {
         method: "PUT",
         body: { mbid: null },
       });

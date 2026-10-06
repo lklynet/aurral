@@ -14,7 +14,7 @@ const PERMANENT_ERROR_CODES = new Set([
 let currentLabel = null;
 
 const isPlaylistImport = (payload) =>
-  payload?.kind === "shared-playlist-create" &&
+  payload?.kind === "static-playlist-create" &&
   payload?.importSource != null;
 
 const importContext = (payload, job) => ({
@@ -31,10 +31,10 @@ function syncWorkerState() {
 }
 
 const worker = createHonkerWorker({
-  name: "weekly-flow-operation",
+  name: "playlist-operation",
   getQueue: getPlaylistOperationQueue,
   async processJob(payload, job) {
-    if (payload.kind !== "shared-playlist-bulk") return processPlaylistOperation(payload);
+    if (payload.kind !== "static-playlist-bulk") return processPlaylistOperation(payload);
     const record = getBulkOperation(job.id);
     if (!record || ["completed", "failed"].includes(record.state)) return;
     saveBulkOperation({ ...record, state: "running", updatedAt: Date.now() });
@@ -68,7 +68,7 @@ const worker = createHonkerWorker({
   onJobError(error, job) {
     currentLabel = null;
     syncWorkerState();
-    if (job.payload.kind === "shared-playlist-bulk") {
+    if (job.payload.kind === "static-playlist-bulk") {
       const record = getBulkOperation(job.id);
       if (record && record.state !== "completed") {
         saveBulkOperation({ ...record, state: "queued", message: error.message, updatedAt: Date.now() });
@@ -76,7 +76,7 @@ const worker = createHonkerWorker({
     }
   },
   onFinalFailure(job, error) {
-    if (job.payload.kind !== "shared-playlist-bulk") return;
+    if (job.payload.kind !== "static-playlist-bulk") return;
     const record = getBulkOperation(job.id);
     if (record && record.state !== "completed") {
       saveBulkOperation({ ...record, state: "failed", message: error.message, updatedAt: Date.now() });

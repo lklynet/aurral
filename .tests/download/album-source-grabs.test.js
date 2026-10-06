@@ -43,7 +43,7 @@ async function makeAlbum(group) {
   downloadTracker.setDownloading(ids[1]);
   return { folder, files, ids, payload: {
     source: "usenet", phase: "download", jobId: ids[0],
-    playlistId: "library", playlistGeneration: 0,
+    ownerId: "library", ownerGeneration: 0,
     destination: `The Band/${group}`, albumGrab: true, albumGroupJobIds: ids,
   } };
 }
@@ -139,8 +139,8 @@ test("a partial Usenet album tries the next release for the tracks it missed", a
     title: `The Band - Album ${name}`, guid: `guid-${name}`, downloadUrl: `https://nzb.test/${name}`,
   } }, score: 10, resolvedAlbumName: "Album" }));
   const helpers = { failOrTryNextSource: (_, __, reason) => { throw new Error(reason); } };
-  let payload = { source: "usenet", phase: "download", jobId: ids[0], playlistId: "library",
-    playlistGeneration: 0, destination: `The Band/${group}`, albumGrab: true,
+  let payload = { source: "usenet", phase: "download", jobId: ids[0], ownerId: "library",
+    ownerGeneration: 0, destination: `The Band/${group}`, albumGrab: true,
     albumGroupJobIds: ids, candidates, candidateIndex: 0 };
   while (payload) payload = await processUsenetPipelinePayload(payload, helpers);
   assert.equal(append.mock.callCount(), 2);

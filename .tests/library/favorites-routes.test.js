@@ -10,7 +10,7 @@ import {
 
 const [isolatedState, { db }, { userOps }, libraryService, libraryStore] =
   await setupIsolatedBackend(
-    "canonical-favorites-route",
+    "library-favorites-route",
     "backend/config/db-sqlite.js",
     "backend/db/helpers/index.js",
     "backend/services/subsonicLibraryService.js",
@@ -185,7 +185,7 @@ test("native favorites include the library favorite subset", () => {
 
 test("library pages return bounded collection responses", () => {
   const response = responseFor();
-  getRoute("GET /canonical")(
+  getRoute("GET /records")(
     { user, query: { kind: "tracks", page: "1", pageSize: "1", availableOnly: "false" } },
     response,
   );
@@ -198,7 +198,7 @@ test("library pages return bounded collection responses", () => {
   assert.equal(response.body.items.length, 1);
   assert.equal(response.body.items[0].artistName, "Favorite Artist");
   assert.equal(
-    String(response.body.items[0].canonicalId),
+    String(response.body.items[0].recordId),
     String(response.body.items[0].id),
   );
   assert.equal(response.body.items[0].providerId, null);
@@ -212,21 +212,21 @@ test("library pages return bounded collection responses", () => {
   assert.equal(response.body.items[0].files[0].path, undefined);
 
   const availableResponse = responseFor();
-  getRoute("GET /canonical")(
+  getRoute("GET /records")(
     { user, query: { kind: "albums", page: "1", pageSize: "1", availableOnly: "true" } },
     availableResponse,
   );
   assert.equal(availableResponse.body.items[0].trackCount, 2);
   assert.equal(availableResponse.body.items[0].availableTrackCount, 1);
   assert.equal(
-    String(availableResponse.body.items[0].canonicalId),
+    String(availableResponse.body.items[0].recordId),
     String(availableResponse.body.items[0].id),
   );
   assert.equal(availableResponse.body.items[0].source, "aurral");
   assert.equal(availableResponse.body.items[0].available, true);
 
   const artistResponse = responseFor();
-  getRoute("GET /canonical")(
+  getRoute("GET /records")(
     { user, query: { kind: "artists", page: "1", pageSize: "1" } },
     artistResponse,
   );
@@ -235,13 +235,13 @@ test("library pages return bounded collection responses", () => {
 
 test("library track responses expose additive ownership fields", () => {
   const response = responseFor();
-  getRoute("GET /canonical")(
+  getRoute("GET /records")(
     { user, query: { kind: "tracks", page: "1", pageSize: "1", availableOnly: "false" } },
     response,
   );
 
   const track = response.body.items[0];
-  assert.equal(String(track.canonicalId), String(track.id));
+  assert.equal(String(track.recordId), String(track.id));
   assert.equal(track.providerId, null);
   assert.equal(track.source, "aurral");
   assert.equal(track.available, true);
@@ -251,7 +251,7 @@ test("library track responses expose additive ownership fields", () => {
 
 test("library rejects unbounded requests", () => {
   const response = responseFor();
-  getRoute("GET /canonical")({ user, query: { kind: "tracks" } }, response);
+  getRoute("GET /records")({ user, query: { kind: "tracks" } }, response);
 
   assert.equal(response.statusCode, 400);
   assert.equal(response.body.error, "kind and pageSize (1-100) are required");
@@ -271,7 +271,7 @@ test("native favorites rejects unknown targets without changing stars", () => {
 
 test("library pages filter, count, and paginate in the read query", () => {
   const response = responseFor();
-  getRoute("GET /canonical")(
+  getRoute("GET /records")(
     {
       query: {
         kind: "albums",

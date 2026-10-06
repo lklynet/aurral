@@ -38,17 +38,17 @@ const getBlockedJob = (jobId) => {
   return job?.status === "blocked" ? job : null;
 };
 
-const logFollowUpFailure = (job, playlistId, error) => {
+const logFollowUpFailure = (job, ownerId, error) => {
   logger.warn("downloads", "Approved track was imported but playlist follow-up failed", {
     jobId: job.id,
-    playlistId,
+    ownerId,
     reason: error?.message || String(error),
   });
 };
 
-const publishApprovedImport = (job, playlistId) => {
-  const followUp = withDownloadStepLock(playlistId, () => refreshCompletedPipelinePlaylist(job))
-    .catch((error) => logFollowUpFailure(job, playlistId, error))
+const publishApprovedImport = (job, ownerId) => {
+  const followUp = withDownloadStepLock(ownerId, () => refreshCompletedPipelinePlaylist(job))
+    .catch((error) => logFollowUpFailure(job, ownerId, error))
     .finally(() => approvalFollowUps.delete(followUp));
   approvalFollowUps.add(followUp);
 };
@@ -67,17 +67,17 @@ export async function approveBlockedJob(jobId) {
   const ext = path.extname(sourcePath).toLowerCase();
   const albumDir = sanitizePathPart(job.albumName, "Unknown Album");
   const artistDir = sanitizePathPart(job.artistName, "Unknown Artist");
-  const playlistId = job.playlistId || job.playlistType;
-  const destination = buildAurralTrackDestination(playlistId, artistDir, albumDir, {
-    ephemeral: Boolean(flowPlaylistConfig.getFlow(playlistId)),
+  const ownerId = job.ownerId;
+  const destination = buildAurralTrackDestination(ownerId, artistDir, albumDir, {
+    ephemeral: Boolean(flowPlaylistConfig.getFlow(ownerId)),
   });
   const finalDir = joinUnderRoot(resolveDownloadRoot(), destination);
   const finalName = buildTrackFileName(job, ext || ".mp3");
   const committed = await withPipelineCommitLock(
     {
       jobId: job.id,
-      playlistId,
-      playlistGeneration: job.playlistGeneration,
+      ownerId,
+      ownerGeneration: job.ownerGeneration,
       downloadAttemptId,
     },
     async () => {
@@ -102,9 +102,9 @@ export async function approveBlockedJob(jobId) {
   try {
     await classifyQualityJob(downloadTracker.getJob(job.id));
   } catch (error) {
-    logFollowUpFailure(job, playlistId, error);
+    logFollowUpFailure(job, ownerId, error);
   }
-  if (recorded) publishApprovedImport(job, playlistId);
+  if (recorded) publishApprovedImport(job, ownerId);
   return { status: 200, path: committedPath };
 }
 

@@ -38,9 +38,9 @@ The body can use these placeholders:
 | `$flowPath` | The media path. For a flow, `_flows/<flow-id>`. For a static playlist, the Downloads Folder. |
 | `$albumName`, `$artistName` | The requested album and its artist |
 | `$username`, `$userId` | The user who requested the album |
-| `$event` | The event name |
+| `$event` | The event name: `notifyDiscoveryUpdated`, `notifyFlowDone`, `notifyRequestMade`, or `notifyRequestAvailable` |
 
-The album, user, and event placeholders apply to request events.
+The album and user placeholders apply to request events.
 
 Under **Notification events** in the same tab, turn on the events that your webhooks send.
 

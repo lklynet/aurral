@@ -6,6 +6,7 @@ import {
   cleanupIsolatedState,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
+import { addStaticPlaylistJobs } from "../helpers/staticPlaylistJobs.js";
 
 const [
   isolatedState,
@@ -37,7 +38,7 @@ test.beforeEach(() => {
     integrations: {},
     onboardingComplete: true,
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
   });
 });
 
@@ -55,13 +56,9 @@ test("enrichStaticPlaylistMbids fills missing playlist and job MBIDs", async () 
       },
     ],
   });
-  const jobId = downloadTracker.addJob(
-    {
-      artistName: "Refused",
-      trackName: "New Noise",
-    },
-    playlist.id,
-  );
+  const [jobId] = addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, playlist.id, [
+    { artistName: "Refused", trackName: "New Noise" },
+  ]);
 
   const result = await enrichStaticPlaylistMbids(playlist.id, {
     resolveTrackContext: (track) => ({
@@ -102,10 +99,9 @@ test("enrichStaticPlaylistMbids rescans the library after updating a downloaded 
     name: "Downloaded",
     tracks: [{ artistName: "Refused", trackName: "New Noise" }],
   });
-  const jobId = downloadTracker.addJob(
+  const [jobId] = addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, playlist.id, [
     { artistName: "Refused", trackName: "New Noise" },
-    playlist.id,
-  );
+  ]);
   downloadTracker.setDone(jobId, "/library/Refused/New Noise.flac");
   const scheduleScanLibrary = t.mock.method(
     playlistManager,

@@ -219,7 +219,7 @@ test("a track in a Lidarr album is unmonitored by Aurral without calling Lidarr"
 test("downloading a missing track in a Lidarr album leaves the download to the track route", async () => {
   const { tracks } = await createAlbum({ managedBy: "lidarr", tracks: ["missing"] });
 
-  const result = await libraryManager.monitorAurralTrack({ canonicalTrackId: tracks[0].id });
+  const result = await libraryManager.monitorAurralTrack({ trackRecordId: tracks[0].id });
 
   assert.equal(result, null);
   assert.equal(trackMonitored(tracks[0].id), 1);

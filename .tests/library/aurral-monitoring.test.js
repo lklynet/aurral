@@ -178,7 +178,7 @@ async function runQueuedMonitoringTasks() {
 function queuedAlbumMbids() {
   return [...new Set(
     downloadTracker.getAll()
-      .filter((job) => job.playlistType === "library" && job.managedBy === "aurral")
+      .filter((job) => job.ownerId === "library" && job.managedBy === "aurral")
       .map((job) => job.albumMbid),
   )].sort();
 }
@@ -482,11 +482,11 @@ test("concurrent album disable and enable leaves the last choice active", async 
   await runQueuedMonitoringTasks();
   const album = db.prepare("SELECT id FROM library_albums WHERE mbid = ?").get(releases.firstAlbum.id);
   const [disabled, enabled] = await Promise.all([
-    callRoute("PUT /albums/aurral/:canonicalId", {
-      params: { canonicalId: String(album.id) }, body: { monitored: false },
+    callRoute("PUT /albums/aurral/:recordId", {
+      params: { recordId: String(album.id) }, body: { monitored: false },
     }),
-    callRoute("PUT /albums/aurral/:canonicalId", {
-      params: { canonicalId: String(album.id) }, body: { monitored: true },
+    callRoute("PUT /albums/aurral/:recordId", {
+      params: { recordId: String(album.id) }, body: { monitored: true },
     }),
   ]);
   assert.equal(disabled.statusCode, 200);
@@ -505,8 +505,8 @@ test("an album override survives artist monitoring changes and unmonitoring keep
   downloadTracker.setDone(finishedJob.id, "/aurral/Monitor Artist/Latest EP/01.flac", "Latest EP");
   const album = db.prepare("SELECT id FROM library_albums WHERE mbid = ?").get(releases.latestEp.id);
 
-  const unmonitored = await callRoute("PUT /albums/aurral/:canonicalId", {
-    params: { canonicalId: String(album.id) },
+  const unmonitored = await callRoute("PUT /albums/aurral/:recordId", {
+    params: { recordId: String(album.id) },
     body: { monitored: false },
   });
   assert.equal(unmonitored.statusCode, 200);
@@ -530,8 +530,8 @@ test("an album override survives artist monitoring changes and unmonitoring keep
     "unmonitored",
   );
 
-  const remonitored = await callRoute("PUT /albums/aurral/:canonicalId", {
-    params: { canonicalId: String(album.id) },
+  const remonitored = await callRoute("PUT /albums/aurral/:recordId", {
+    params: { recordId: String(album.id) },
     body: { monitored: true },
   });
   assert.equal(remonitored.statusCode, 200);
@@ -539,8 +539,8 @@ test("an album override survives artist monitoring changes and unmonitoring keep
   assert.equal(downloadTracker.getJob(activeJob.id).status, "pending");
   assert.equal(albumJobs().length, 2);
 
-  const invalid = await callRoute("PUT /albums/aurral/:canonicalId", {
-    params: { canonicalId: String(album.id) },
+  const invalid = await callRoute("PUT /albums/aurral/:recordId", {
+    params: { recordId: String(album.id) },
     body: { monitored: "yes" },
   });
   assert.equal(invalid.statusCode, 400);

@@ -6,10 +6,9 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, honkerDb, { dbOps }] = await setupIsolatedBackend(
+const [isolatedState, honkerDb] = await setupIsolatedBackend(
   "honker-db-config",
   "backend/services/honkerDb.js",
-  "backend/db/helpers/index.js",
 );
 
 test.after(async () => {
@@ -24,14 +23,14 @@ test("schedule bootstrap skips stale runs without postponing recently due work",
   const tx = honkerDb.getHonkerDb().transaction();
   tx.execute(
     "UPDATE _honker_scheduler_tasks SET next_fire_at = ?, priority = ? WHERE name = ?",
-    [now - 3 * 60 * 60, 99, "weekly-flow-refresh"],
+    [now - 3 * 60 * 60, 99, "flow-refresh"],
   );
   tx.commit();
 
   honkerDb.bootstrapHonkerSchedules();
 
   const rows = scheduler.list();
-  const flowRefresh = rows.find((row) => row.name === "weekly-flow-refresh");
+  const flowRefresh = rows.find((row) => row.name === "flow-refresh");
   const enrichment = rows.find(
     (row) => row.name === "playlist-mbid-enrichment-sweep",
   );
@@ -43,7 +42,7 @@ test("schedule bootstrap skips stale runs without postponing recently due work",
   const recentTx = honkerDb.getHonkerDb().transaction();
   recentTx.execute(
     "UPDATE _honker_scheduler_tasks SET next_fire_at = ? WHERE name = ?",
-    [recentlyDue, "weekly-flow-refresh"],
+    [recentlyDue, "flow-refresh"],
   );
   recentTx.commit();
 
@@ -51,7 +50,7 @@ test("schedule bootstrap skips stale runs without postponing recently due work",
 
   const preserved = scheduler
     .list()
-    .find((row) => row.name === "weekly-flow-refresh");
+    .find((row) => row.name === "flow-refresh");
   assert.equal(preserved?.next_fire_at, recentlyDue);
   assert.equal(enrichment?.max_attempts, 4);
   assert.equal(rows.length, honkerDb.SCHEDULED_SYSTEM_TASKS.length);
@@ -68,7 +67,7 @@ test("queue registry survives a Honker database close and reopen", () => {
 test("independent system tasks use isolated queues", () => {
   assert.equal(honkerDb.getSystemTaskQueueName("inbox-refresh"), "system-task-inbox");
   assert.equal(honkerDb.getSystemTaskQueueName("news-refresh"), "system-task-maintenance");
-  assert.equal(honkerDb.getSystemTaskQueueName("weekly-flow-refresh"), "system-task-maintenance");
+  assert.equal(honkerDb.getSystemTaskQueueName("flow-refresh"), "system-task-maintenance");
   assert.equal(honkerDb.getSystemTaskQueueName("import-list-sync"), "system-task");
   for (const task of honkerDb.SCHEDULED_SYSTEM_TASKS) {
     if (task.queue.startsWith("system-task")) {
@@ -93,51 +92,23 @@ test("Honker uses a low-CPU watcher cadence by default", () => {
   }
 });
 
-test("startup only queues due bootstrap work and a pending migration", () => {
+test("startup queues each bootstrap task once", () => {
   const db = honkerDb.getHonkerDb();
-  const clearQueue = () => {
-    const tx = db.transaction();
-    tx.execute("DELETE FROM _honker_live");
-    tx.commit();
-  };
-  const queuedKinds = () =>
-    db
-      .query("SELECT payload FROM _honker_live ORDER BY id")
-      .map((row) => JSON.parse(row.payload).kind);
+  const tx = db.transaction();
+  tx.execute("DELETE FROM _honker_live");
+  tx.commit();
 
-  clearQueue();
   honkerDb.enqueueHonkerStartupTasks();
   honkerDb.enqueueHonkerStartupTasks();
-  assert.deepEqual(queuedKinds(), [
-    "playlist-startup-migration",
-    "stored-data-migration",
-    "identity-marker-migration",
-    "weekly-flow-startup-check",
-    "upgrade-readiness-check",
-    "discovery-bootstrap",
-    "library-index-bootstrap",
-    "release-metadata-refresh",
-    "news-refresh",
-  ]);
-
-  dbOps.setJSONSetting(honkerDb.PLAYLIST_STARTUP_MIGRATION_SETTING, {
-    version: honkerDb.PLAYLIST_STARTUP_MIGRATION_VERSION,
-    rootPath: process.env.WEEKLY_FLOW_FOLDER,
-  });
-  dbOps.setJSONSetting(honkerDb.STORED_DATA_MIGRATION_SETTING, {
-    version: honkerDb.STORED_DATA_MIGRATION_VERSION,
-  });
-  dbOps.setJSONSetting(honkerDb.IDENTITY_MARKER_MIGRATION_SETTING, {
-    version: honkerDb.IDENTITY_MARKER_MIGRATION_VERSION,
-  });
-  clearQueue();
-  honkerDb.enqueueHonkerStartupTasks();
-  assert.deepEqual(queuedKinds(), [
-    "weekly-flow-startup-check",
-    "upgrade-readiness-check",
-    "discovery-bootstrap",
-    "library-index-bootstrap",
-    "release-metadata-refresh",
-    "news-refresh",
-  ]);
+  assert.deepEqual(
+    db.query("SELECT payload FROM _honker_live ORDER BY id").map((row) => JSON.parse(row.payload).kind),
+    [
+      "flow-startup-check",
+      "discovery-bootstrap",
+      "library-index-bootstrap",
+      "release-metadata-refresh",
+      "news-refresh",
+    ],
+  );
 });
+

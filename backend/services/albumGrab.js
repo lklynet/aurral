@@ -156,8 +156,8 @@ export async function finishAlbumGrab(payload, {
   for (const match of assigned.accepted) {
     const job = downloadTracker.getJob(match.jobId);
     if (!job || !["pending", "downloading"].includes(job.status)) continue;
-    const peerPayload = { ...payload, jobId: job.id, playlistId: job.playlistId || job.playlistType,
-      playlistGeneration: job.playlistGeneration, destination: downloadDestinationForJob(job) };
+    const peerPayload = { ...payload, jobId: job.id, ownerId: job.ownerId,
+      ownerGeneration: job.ownerGeneration, destination: downloadDestinationForJob(job) };
     if (!isPipelinePayloadActive(peerPayload)) continue;
     try {
       const ext = path.extname(match.filePath).toLowerCase() || ".flac";

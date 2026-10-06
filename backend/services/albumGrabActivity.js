@@ -12,10 +12,10 @@ export function getAlbumGrabActivity(jobId) {
 export function recordAlbumGrabQueued(payload, jobs) {
   if (payload?.albumGrab !== true || !Array.isArray(payload.albumGroupJobIds)) return;
   const leader = jobs.find((job) => job.id === payload.jobId);
-  if (!leader || leader.managedBy !== "aurral" || leader.playlistType !== "library"
+  if (!leader || leader.managedBy !== "aurral" || leader.ownerId !== "library"
     || !leader.requestGroupId || !leader.albumMbid) return;
   const members = payload.albumGroupJobIds.map((id) => jobs.find((job) => job.id === id))
-    .filter((job) => job && job.managedBy === "aurral" && job.playlistType === "library" && job.requestGroupId === leader.requestGroupId && job.albumMbid === leader.albumMbid);
+    .filter((job) => job && job.managedBy === "aurral" && job.ownerId === "library" && !job.upgradeForJobId && job.requestGroupId === leader.requestGroupId && job.albumMbid === leader.albumMbid);
   if (members.length < 2) return;
   try {
     const previous = getAlbumGrabActivity(leader.id);

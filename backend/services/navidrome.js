@@ -4,9 +4,7 @@ import crypto from "crypto";
 import { logger } from "./logger.js";
 import { requirePlaylistPath, isAbsoluteMediaPath } from "./playback/playlistUsage.js";
 
-const LEGACY_LIBRARY_DIR = "aurral-weekly-flow";
 const PLAYLIST_LIBRARY_NAME = "Aurral Playlists";
-const LEGACY_LIBRARY_NAMES = new Set(["Aurral Weekly Flow"]);
 const PLAYLIST_SONG_BATCH_SIZE = 50;
 const NAVIDROME_SONG_PAGE_SIZE = 1_000;
 const NAVIDROME_RATE_LIMIT_RETRIES = 2;
@@ -26,11 +24,6 @@ function normalizeLibraryPath(value) {
     .trim()
     .replace(/\\/g, "/")
     .replace(/\/+$/, "");
-}
-
-function isLegacyPlaylistLibraryPath(value) {
-  const libraryPath = normalizeLibraryPath(value);
-  return libraryPath.endsWith(`/${LEGACY_LIBRARY_DIR}`) || libraryPath === LEGACY_LIBRARY_DIR;
 }
 
 export class NavidromeClient {
@@ -551,7 +544,7 @@ export class NavidromeClient {
         return byPath;
       }
 
-      const byName = list.find((lib) => lib.name === name || LEGACY_LIBRARY_NAMES.has(lib.name));
+      const byName = list.find((lib) => lib.name === name);
       if (byName) {
         if (normalizeLibraryPath(byName.path) !== normalizedPath) {
           return updateAndVerify({
@@ -561,15 +554,6 @@ export class NavidromeClient {
           });
         }
         return byName;
-      }
-
-      const legacy = list.find((lib) => isLegacyPlaylistLibraryPath(lib.path));
-      if (legacy) {
-        return updateAndVerify({
-          ...legacy,
-          name,
-          path: normalizedPath,
-        });
       }
 
       const created = await this.createLibrary(name, normalizedPath);

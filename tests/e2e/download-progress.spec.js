@@ -19,7 +19,7 @@ test("a downloading album keeps its loading state across a page reload", async (
   expect(await lookupAlbum(), `${release.title} is already in the library; use a fresh candidate database`)
     .toBeFalsy();
 
-  let canonicalAlbumId = null;
+  let albumRecordId = null;
   try {
     await page.goto(`/artist/${artist.mbid}/release/${release.mbid}`);
     await expect(page.getByRole("heading", { name: release.title, level: 1 })).toBeVisible({ timeout: 30_000 });
@@ -28,7 +28,7 @@ test("a downloading album keeps its loading state across a page reload", async (
     const downloading = page.getByRole("button", { name: "Downloading", exact: true });
     await expect(downloading).toBeVisible({ timeout: 30_000 });
     await expect(downloading).toBeDisabled();
-    canonicalAlbumId = (await lookupAlbum())?.canonicalAlbumId || null;
+    albumRecordId = (await lookupAlbum())?.albumRecordId || null;
     expect((await apiRequest(page, "/api/library/downloads/active")).body?.albums).toContain(release.mbid);
     await expect(page.getByRole("button", { name: /^Downloading / }).first()).toBeVisible();
 
@@ -39,10 +39,10 @@ test("a downloading album keeps its loading state across a page reload", async (
     await expect(page.getByRole("button", { name: /^Downloading / }).first()).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("album-downloading-after-reload.png") });
   } finally {
-    canonicalAlbumId ||= (await lookupAlbum())?.canonicalAlbumId || null;
-    if (canonicalAlbumId) {
-      await apiRequest(page, `/api/library/albums/aurral/${canonicalAlbumId}/cancel`, { method: "POST" });
-      await apiRequest(page, `/api/library/albums/aurral/${canonicalAlbumId}?deleteFiles=true`, {
+    albumRecordId ||= (await lookupAlbum())?.albumRecordId || null;
+    if (albumRecordId) {
+      await apiRequest(page, `/api/library/albums/aurral/${albumRecordId}/cancel`, { method: "POST" });
+      await apiRequest(page, `/api/library/albums/aurral/${albumRecordId}?deleteFiles=true`, {
         method: "DELETE",
       });
     }

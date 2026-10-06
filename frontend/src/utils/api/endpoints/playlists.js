@@ -108,7 +108,7 @@ export const convertFlowToStaticPlaylist = (flowId, payload = {}) =>
   );
 
 export const createStaticPlaylist = (payload) =>
-  postData("/playlists/shared-playlists", payload);
+  postData("/playlists/static-playlists", payload);
 
 export const setFlowEnabled = (flowId, enabled) =>
   putData(`/playlists/flows/${flowId}/enabled`, {
@@ -117,41 +117,41 @@ export const setFlowEnabled = (flowId, enabled) =>
 
 export const importStaticPlaylist = (payload) =>
   postData(
-    "/playlists/shared-playlists/import",
+    "/playlists/static-playlists/import",
     payload,
   );
 
 export const updateStaticPlaylist = (playlistId, payload) =>
   putData(
-    `/playlists/shared-playlists/${playlistId}`,
+    `/playlists/static-playlists/${playlistId}`,
     payload,
   );
 
 export const setPlaylistTrackAvailability = (playlistId, enabled) =>
-  putData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/track-availability`, { enabled });
+  putData(`/playlists/static-playlists/${encodeURIComponent(playlistId)}/track-availability`, { enabled });
 
 export const setPlaylistRecordHistory = (playlistId, enabled) =>
-  putData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/record-history`, { enabled });
+  putData(`/playlists/static-playlists/${encodeURIComponent(playlistId)}/record-history`, { enabled });
 
 export const addStaticPlaylistTracks = (playlistId, payload) =>
   postData(
-    `/playlists/shared-playlists/${playlistId}/tracks`,
+    `/playlists/static-playlists/${playlistId}/tracks`,
     payload,
   );
 
 export const deleteStaticPlaylist = (playlistId) =>
   deleteData(
-    `/playlists/shared-playlists/${playlistId}`,
+    `/playlists/static-playlists/${playlistId}`,
   );
 
 export const deleteStaticPlaylistTrack = (playlistId, jobId) =>
   deleteData(
-    `/playlists/shared-playlists/${playlistId}/tracks/${jobId}`,
+    `/playlists/static-playlists/${playlistId}/tracks/${jobId}`,
   );
 
 export const reSearchStaticPlaylistTrack = (playlistId, jobId) =>
   postData(
-    `/playlists/shared-playlists/${playlistId}/tracks/${jobId}/research`,
+    `/playlists/static-playlists/${playlistId}/tracks/${jobId}/research`,
   );
 
 export const reSearchFlowTrack = (playlistId, jobId) =>
@@ -228,7 +228,7 @@ export const importYoutubeMusicPlaylist = (payload) =>
   postData("/playlists/import/youtube-music", payload, { timeout: 5 * 60 * 1000 });
 
 export const syncStaticPlaylistImport = (playlistId) =>
-  postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/sync`, undefined, {
+  postData(`/playlists/static-playlists/${encodeURIComponent(playlistId)}/sync`, undefined, {
     timeout: 5 * 60 * 1000,
   });
 
@@ -236,10 +236,10 @@ export const getFlowLidarrImportListUrl = (flowId) =>
   getData(`/playlists/flows/${encodeURIComponent(flowId)}/lidarr-import-list`);
 
 export const removeStaticPlaylistTracks = (playlistId, jobIds) =>
-  postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/track-removals`, { jobIds });
+  postData(`/playlists/static-playlists/${encodeURIComponent(playlistId)}/track-removals`, { jobIds });
 
 export const moveStaticPlaylistTracks = (playlistId, jobIds, target) =>
-  postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/track-moves`, { jobIds, target });
+  postData(`/playlists/static-playlists/${encodeURIComponent(playlistId)}/track-moves`, { jobIds, target });
 
 export const getStaticPlaylistOperation = (playlistId, operationId, options) =>
-  getData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/operations/${encodeURIComponent(operationId)}`, options);
+  getData(`/playlists/static-playlists/${encodeURIComponent(playlistId)}/operations/${encodeURIComponent(operationId)}`, options);

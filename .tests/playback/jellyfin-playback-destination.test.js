@@ -17,7 +17,7 @@ const [isolatedState, { db }, { dbOps, userOps }, { jellyfinPlaylistPointerStore
     "backend/services/playback/jellyfinPlaybackDestination.js",
   );
 
-const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+const downloadRoot = process.env.DOWNLOAD_FOLDER;
 const userId = "jellyfin-user";
 
 test.beforeEach(async () => {
@@ -329,72 +329,6 @@ test("does not publish when no Jellyfin username matches", async () => {
   assert.equal(result.ok, false);
   assert.equal(result.error.code, "JELLYFIN_USER_NOT_FOUND");
   assert.deepEqual(calls, []);
-});
-
-test("removes the legacy public playlist before publishing privately", async () => {
-  const calls = [];
-  const owner = userOps.createUser("ambi", "hash", "user");
-  const destination = new JellyfinPlaybackDestination(downloadRoot, {
-    client: makeClient(calls),
-  });
-
-  jellyfinPlaylistPointerStore.setPointer("flow-jellyfin", userId, {
-    playlistId: "legacy-public-playlist",
-    title: "Discover Weekly",
-    serverUrl: "http://jellyfin.local",
-  });
-
-  const originalMappings = process.env.PATH_MAPPINGS;
-  process.env.PATH_MAPPINGS = "jellyfin|/downloads|/media";
-
-  try {
-    const result = await destination.publishPlaylist(
-      snapshot({ ownerUserId: owner.id }),
-    );
-
-    assert.equal(result.ok, true);
-    assert.deepEqual(calls[0], {
-      operation: "delete",
-      playlistId: "legacy-public-playlist",
-    });
-    assert.equal(calls[1].operation, "create");
-    assert.equal(
-      jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId),
-      null,
-    );
-  } finally {
-    if (originalMappings == null) delete process.env.PATH_MAPPINGS;
-    else process.env.PATH_MAPPINGS = originalMappings;
-  }
-});
-
-test("removes the legacy playlist during owner-scoped deletion", async () => {
-  const calls = [];
-  const owner = userOps.createUser("ambi", "hash", "user");
-  const destination = new JellyfinPlaybackDestination(downloadRoot, {
-    client: makeClient(calls),
-  });
-
-  jellyfinPlaylistPointerStore.setPointer("flow-jellyfin", userId, {
-    playlistId: "legacy-public-playlist",
-    title: "Discover Weekly",
-    serverUrl: "http://jellyfin.local",
-  });
-
-  const result = await destination.deletePlaylist({
-    entityId: "flow-jellyfin",
-    ownerUserId: owner.id,
-  });
-
-  assert.equal(result.ok, true);
-  assert.deepEqual(calls[0], {
-    operation: "delete",
-    playlistId: "legacy-public-playlist",
-  });
-  assert.equal(
-    jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId),
-    null,
-  );
 });
 
 test("does not reuse a playlist belonging to a different Jellyfin user", async () => {

@@ -397,7 +397,6 @@ function readStoredValue(key) {
 
 export function getThemeSettings() {
   const storedTheme = readStoredValue(THEME_STORAGE_KEY);
-  if (THEME_APPEARANCES.includes(storedTheme)) return { themeId: DEFAULT_THEME_ID, appearance: storedTheme };
   const themeId = getThemeDefinition(storedTheme) ? storedTheme : DEFAULT_THEME_ID;
   const storedAppearance = readStoredValue(THEME_APPEARANCE_STORAGE_KEY);
   return { themeId, appearance: isThemeMode(storedAppearance) ? storedAppearance : "system" };
@@ -405,13 +404,8 @@ export function getThemeSettings() {
 
 function writeThemeSettings(themeId, appearance) {
   try {
-    if (themeId === DEFAULT_THEME_ID && THEME_APPEARANCES.includes(appearance)) {
-      globalThis.localStorage?.setItem(THEME_STORAGE_KEY, appearance);
-      globalThis.localStorage?.removeItem(THEME_APPEARANCE_STORAGE_KEY);
-    } else {
-      globalThis.localStorage?.setItem(THEME_STORAGE_KEY, themeId);
-      globalThis.localStorage?.setItem(THEME_APPEARANCE_STORAGE_KEY, appearance);
-    }
+    globalThis.localStorage?.setItem(THEME_STORAGE_KEY, themeId);
+    globalThis.localStorage?.setItem(THEME_APPEARANCE_STORAGE_KEY, appearance);
   } catch {}
 }
 

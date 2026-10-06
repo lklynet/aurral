@@ -55,7 +55,7 @@ export function registerEditorial(router) {
   router.post(
     "/editorial/:playlistId/library",
     requireAuth,
-    requirePermission("accessFlow"),
+    requirePermission("accessPlaylists"),
     async (req, res) => {
       try {
         res.json(await addEditorialPlaylistToLibrary(req.user, req.params.playlistId));

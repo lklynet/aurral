@@ -318,7 +318,7 @@ test("startup markers prevent duplicate bootstrap jobs on restart", () => {
     .query("SELECT payload FROM _honker_live WHERE queue = 'system-task'")
     .map((row) => JSON.parse(row.payload).kind);
 
-  assert.equal(kinds.filter((kind) => kind === "weekly-flow-startup-check").length, 1);
+  assert.equal(kinds.filter((kind) => kind === "flow-startup-check").length, 1);
   assert.equal(kinds.filter((kind) => kind === "discovery-bootstrap").length, 1);
   assert.equal(kinds.filter((kind) => kind === "library-index-bootstrap").length, 1);
 });

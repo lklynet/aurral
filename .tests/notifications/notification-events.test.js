@@ -365,10 +365,10 @@ test("notifyFlowDone uses display name and track library path placeholders", asy
         gotify: {
           url: baseUrl,
           token: "test-token",
-          notifyWeeklyFlowDone: true,
+          notifyFlowDone: true,
         },
         webhookEvents: {
-          notifyWeeklyFlowDone: true,
+          notifyFlowDone: true,
         },
         webhooks: [
           {

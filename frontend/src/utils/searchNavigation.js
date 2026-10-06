@@ -143,14 +143,14 @@ export function getReleaseNavigationTarget(item) {
 
 function getLibraryResultPath(item) {
   if (item?.source !== "library") return null;
-  if (item.type === "artist" && item.canonicalId) {
-    return `/library/artist/${encodeURIComponent(item.canonicalId)}`;
+  if (item.type === "artist" && item.recordId) {
+    return `/library/artist/${encodeURIComponent(item.recordId)}`;
   }
-  if (item.type === "album" && item.canonicalId) {
-    return `/library/album/${encodeURIComponent(item.canonicalId)}`;
+  if (item.type === "album" && item.recordId) {
+    return `/library/album/${encodeURIComponent(item.recordId)}`;
   }
-  if (item.type === "track" && item.albumCanonicalId) {
-    return `/library/album/${encodeURIComponent(item.albumCanonicalId)}`;
+  if (item.type === "track" && item.albumRecordId) {
+    return `/library/album/${encodeURIComponent(item.albumRecordId)}`;
   }
   return null;
 }

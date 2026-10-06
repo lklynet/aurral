@@ -34,14 +34,15 @@ import { recordTrackJobQueued } from "./aurralHistoryService.js";
 import { selectCanonicalFile } from "./canonicalFileSelector.js";
 import { logger } from "./logger.js";
 import { withHonkerLock } from "./honkerDb.js";
-import { removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.js";
-import { withPlaylistMutationLock } from "./downloadJobs/mutationGuards.js";
-import {
-  isDownloadJobCancelled,
-  restoreDownloadJobCancellations,
-} from "./downloadJobs/downloadCancellation.js";
 import { processPlaylistOperation } from "./playlists/playlistOperations.js";
-import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.js";
+import {
+  commitStaticPlaylistTracks,
+  discardCreatedJobs,
+  findLibraryJob,
+  getStaticPlaylistJobs,
+  staticPlaylistReferencesJob,
+  withStaticPlaylistRelease,
+} from "./playlists/staticPlaylistJobs.js";
 
 const idFor = (kind, key) =>
   `${kind}:${encodeURIComponent(String(key)).replaceAll("%3A", ":")}`;
@@ -105,7 +106,7 @@ const entityGenres = (entity) => {
 };
 
 const visibleFlows = (user) =>
-  user && hasPermission(user, "accessFlow") ? flowPlaylistConfig.getFlowsForUser(user) : [];
+  user && hasPermission(user, "accessPlaylists") ? flowPlaylistConfig.getFlowsForUser(user) : [];
 
 const findAlbumForTrack = (library, track) => {
   const relation = track?.albums?.[0];
@@ -349,22 +350,16 @@ function toPlaylistSong(
 
 function playlistJobs(playlist) {
   if (!playlist) return [];
-  const referencedJobs = (playlist.tracks || [])
-    .map((track) => (track?.canonicalJobId ? downloadTracker.getJob(track.canonicalJobId) : null))
-    .filter(Boolean);
-  const jobs = [...referencedJobs, ...downloadTracker.getByPlaylistType(playlist.id)];
-  const uniqueJobs = jobs.filter(
-    (job, index, values) => values.findIndex((candidate) => candidate.id === job.id) === index,
-  );
-  return orderJobsByPlaylistTracks(uniqueJobs, playlist.tracks);
+  return flowPlaylistConfig.getFlow(playlist.id)
+    ? orderJobsByPlaylistTracks(downloadTracker.getByOwner(playlist.id), playlist.tracks)
+    : getStaticPlaylistJobs(playlist);
 }
 
 function playlistOwnsJob(playlist, job) {
   if (!playlist || !job) return false;
-  if (String(job.playlistType || "") === String(playlist.id || "")) return true;
-  return (playlist.tracks || []).some(
-    (track) => String(track?.canonicalJobId || "") === String(job.id || ""),
-  );
+  return flowPlaylistConfig.getFlow(playlist.id)
+    ? job.ownerId === playlist.id && !job.upgradeForJobId
+    : staticPlaylistReferencesJob(playlist, job.id);
 }
 
 function playlistJobFromId(user, value) {
@@ -683,22 +678,10 @@ const resolveSubsonicTrack = (user, value) => {
 
 const favoriteAutoKeepEnabled = () => dbOps.getSettings()?.subsonic?.favoriteAutoKeep !== false;
 
-const findLibraryJob = (track) => {
-  const jobs = downloadTracker
-    .getAll()
-    .filter((job) => job.playlistType === "library" && isSameTrack(job, track));
-  return (
-    jobs.find((job) => job.status === "pending" || job.status === "downloading") ||
-    jobs.find((job) => job.status === "done") ||
-    jobs.find((job) => job.status === "failed") ||
-    null
-  );
-};
-
 const findReusableLibrarySource = (track) =>
   downloadTracker.getAll().find(
     (job) =>
-      job?.playlistType !== "library" &&
+      job?.ownerId !== "library" &&
       job?.status === "done" &&
       typeof job.finalPath === "string" &&
       existsSync(job.finalPath) &&
@@ -766,9 +749,10 @@ const libraryStarRows = (user, rows) => {
   });
 };
 
-const ensureLibraryJob = (track, createdJobIds = null) => {
+const ensureLibraryJob = (track, createdJobIds = null, { forPlaylist = false } = {}) => {
   const existing = findLibraryJob(track);
   if (existing) {
+    if (!forPlaylist) downloadTracker.setQueuedForPlaylist(existing.id, false);
     if (existing.status === "failed") {
       downloadTracker.setPending(existing.id, "Requested again", { asRetryCycle: true });
     }
@@ -801,6 +785,7 @@ const ensureLibraryJob = (track, createdJobIds = null) => {
     );
     return jobId;
   }
+  if (forPlaylist) downloadTracker.setQueuedForPlaylist(jobId, true);
   recordTrackJobQueued(downloadTracker.getJob(jobId));
   downloadWorker.start().catch((error) => {
     logger.error("subsonic", "Could not start download for a playlist track", {
@@ -811,15 +796,10 @@ const ensureLibraryJob = (track, createdJobIds = null) => {
   return jobId;
 };
 
-const toLibraryPlaylistTrack = (track, canonicalJobId) => ({
+const toLibraryPlaylistTrack = (track, jobId) => ({
   ...track,
-  canonicalJobId: String(canonicalJobId || "").trim() || null,
+  jobId: String(jobId || "").trim() || null,
 });
-
-const cancelLegacyPlaylistJobs = async (jobs) => {
-  if (jobs.length === 0) return;
-  await cancelDownloadWorkForJobs(jobs);
-};
 
 const refreshSubsonicPlaylist = (playlistId) => {
   playlistManager.updateConfig(false);
@@ -845,12 +825,12 @@ const linkPlaylistTracksToLibrary = (tracks, createdJobIds = null) => {
   for (const track of Array.isArray(tracks) ? tracks : []) {
     const candidate = normalizePlaylistTrack(track);
     if (!candidate) continue;
-    const existingJob = candidate.canonicalJobId
-      ? downloadTracker.getJob(candidate.canonicalJobId)
+    const existingJob = candidate.jobId
+      ? downloadTracker.getJob(candidate.jobId)
       : null;
     const jobId = existingJob && isSameTrack(existingJob, candidate)
       ? existingJob.id
-      : ensureLibraryJob(candidate, createdJobIds);
+      : ensureLibraryJob(candidate, createdJobIds, { forPlaylist: true });
     if (!jobId) return null;
     normalized.push(toLibraryPlaylistTrack(candidate, jobId));
   }
@@ -862,72 +842,28 @@ const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {
   const createdJobIds = [];
   const libraryTracks = linkPlaylistTracksToLibrary(tracks, createdJobIds);
   if (!libraryTracks) {
-    for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
+    discardCreatedJobs(createdJobIds);
     return null;
   }
-  const legacyJobs = downloadTracker.getByPlaylistId(playlist.id);
-  const retainedJobIds = new Set(
-    libraryTracks.map((track) => String(track.canonicalJobId || "").trim()).filter(Boolean),
-  );
-  const jobsToRemove = legacyJobs.filter((job) => !retainedJobIds.has(job.id));
-  const legacyJobIds = jobsToRemove.map((job) => job.id);
-  const activeJobsToRemove = jobsToRemove.filter((job) => !isDownloadJobCancelled(job.id));
-  const restoreLegacyJobs = () => {
-    restoreDownloadJobCancellations(activeJobsToRemove.map((job) => job.id));
-    for (const job of activeJobsToRemove) {
-      if (downloadTracker.getJob(job.id)?.status === "downloading") {
-        downloadTracker.setFailed(job.id, "Playlist edit failed during download cancellation");
-      }
-    }
-  };
   let updated;
   try {
-    await cancelLegacyPlaylistJobs(jobsToRemove);
-    updated = await withPlaylistMutationLock(playlist.id, async () => {
-      const replacement = flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
-        ...updates,
+    updated = await withStaticPlaylistRelease([playlist.id], async () => {
+      if (!flowPlaylistConfig.getStaticPlaylist(playlist.id)) return null;
+      const result = await commitStaticPlaylistTracks({
+        playlistId: playlist.id,
         tracks: libraryTracks,
+        updates,
+        deleteFiles: true,
+        requireAll: true,
       });
-      if (!replacement) return null;
-      for (const job of jobsToRemove) {
-        const current = downloadTracker.getJob(job.id);
-        if (!current) continue;
-        if (current.status === "done" && current.finalPath && current.managedBy === "aurral" && !current.externalPath) {
-          try {
-            const removal = await removePlaylistFileIfUnshared(current.finalPath, playlist.id, {
-              downloadRoot: playlistManager.downloadRoot,
-              excludeJobIds: legacyJobIds,
-              deleteIfUnshared: true,
-            });
-            if (removal.action !== "deleted" && removal.action !== "relocated") {
-              logger.warn("subsonic", "Retaining legacy playlist job with an unremoved file", {
-                playlistId: playlist.id,
-                jobId: current.id,
-                action: removal.action,
-              });
-              continue;
-            }
-          } catch (error) {
-            logger.warn("subsonic", "Retaining legacy playlist job after file cleanup failed", {
-              playlistId: playlist.id,
-              jobId: current.id,
-              reason: error?.message || String(error),
-            });
-            continue;
-          }
-        }
-        downloadTracker.removeJob(current.id);
-      }
-      return replacement;
+      return result.playlist;
     });
   } catch (error) {
-    for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
-    restoreLegacyJobs();
+    discardCreatedJobs(createdJobIds);
     throw error;
   }
   if (!updated) {
-    for (const jobId of createdJobIds) downloadTracker.removeJob(jobId);
-    restoreLegacyJobs();
+    discardCreatedJobs(createdJobIds);
     return null;
   }
   refreshSubsonicPlaylist(playlist.id);
@@ -935,7 +871,7 @@ const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {
 };
 
 export async function createSubsonicPlaylist(user, { name, songIds = [] } = {}) {
-  if (!hasPermission(user, "accessFlow")) return null;
+  if (!hasPermission(user, "accessPlaylists")) return null;
   const safeName = String(name || "").trim();
   if (!safeName) return null;
   const resolved = songIds.map((id) => resolveSubsonicTrack(user, id));
@@ -964,12 +900,12 @@ export async function updateSubsonicPlaylist(
   user,
   { playlistId, name, comment, songIdsToAdd = [], songIndexesToRemove = [] } = {},
 ) {
-  return withHonkerLock("weekly-flow-operation", async () => {
+  return withHonkerLock("playlist-operation", async () => {
     const playlist = flowPlaylistConfig.getStaticPlaylistForUser(
       user,
       normalizeStaticPlaylistId(playlistId),
     );
-    if (!playlist || !hasPermission(user, "accessFlow")) return null;
+    if (!playlist || !hasPermission(user, "accessPlaylists")) return null;
     const resolvedAdds = songIdsToAdd.map((id) => resolveSubsonicTrack(user, id));
     if (resolvedAdds.some((entry) => !entry)) return null;
     const removals = new Set(songIndexesToRemove);
@@ -990,9 +926,9 @@ export async function deleteSubsonicPlaylist(user, playlistId) {
     user,
     normalizeStaticPlaylistId(playlistId),
   );
-  if (!playlist || !hasPermission(user, "accessFlow")) return false;
+  if (!playlist || !hasPermission(user, "accessPlaylists")) return false;
   return processPlaylistOperation({
-    kind: "shared-playlist-delete",
+    kind: "static-playlist-delete",
     playlistId: playlist.id,
   });
 }

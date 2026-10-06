@@ -38,8 +38,8 @@ test("runLidarrLibraryAccessTest passes when a track file is readable", async ()
   await fs.mkdir(albumDir, { recursive: true });
   await fs.writeFile(trackPath, "audio");
 
-  const previousFlowRoot = process.env.WEEKLY_FLOW_FOLDER;
-  process.env.WEEKLY_FLOW_FOLDER = rootDir;
+  const previousDownloadRoot = process.env.DOWNLOAD_FOLDER;
+  process.env.DOWNLOAD_FOLDER = rootDir;
   const result = await runLidarrLibraryAccessTest(
     createMockLidarrClient({
       rootPath: rootDir,
@@ -76,10 +76,10 @@ test("runLidarrLibraryAccessTest passes when a track file is readable", async ()
     }),
   );
 
-  if (previousFlowRoot === undefined) {
-    delete process.env.WEEKLY_FLOW_FOLDER;
+  if (previousDownloadRoot === undefined) {
+    delete process.env.DOWNLOAD_FOLDER;
   } else {
-    process.env.WEEKLY_FLOW_FOLDER = previousFlowRoot;
+    process.env.DOWNLOAD_FOLDER = previousDownloadRoot;
   }
   await fs.rm(rootDir, { recursive: true, force: true });
 

@@ -272,8 +272,8 @@ function ReleasePage() {
   ]
     .filter(Boolean)
     .join(" · ");
-  const libraryPath = libraryInfo?.canonicalAlbumId
-    ? `/library/album/${encodeURIComponent(libraryInfo.canonicalAlbumId)}`
+  const libraryPath = libraryInfo?.albumRecordId
+    ? `/library/album/${encodeURIComponent(libraryInfo.albumRecordId)}`
     : `/library/albums?query=${encodeURIComponent(releaseTitle)}`;
 
   useEffect(() => {
@@ -594,7 +594,7 @@ function ReleasePage() {
                 disabled={requestingAlbum || albumDownloading}
               />
             ) : null}
-            {libraryInfo?.canonicalInLibrary ? (
+            {libraryInfo?.albumRecordId ? (
               <CrossViewLink view="library" to={libraryPath} />
             ) : libraryDisplay.label ? (
               <Tooltip content={libraryDisplay.label}>

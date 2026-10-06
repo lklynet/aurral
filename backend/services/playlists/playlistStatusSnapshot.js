@@ -6,8 +6,9 @@ import { getPlaylistOperationWorkerStatus } from "./playlistOperationWorker.js";
 import { getDownloadClient } from "../download/downloadClientSettings.js";
 import { dbOps, userOps } from "../../db/helpers/index.js";
 import { db } from "../../config/db-sqlite.js";
+import { getStaticPlaylistJobs } from "./staticPlaylistJobs.js";
 
-const playlistSettingsStmt = db.prepare("SELECT key, value FROM settings WHERE key IN ('flows', 'sharedPlaylists') ORDER BY key");
+const playlistSettingsStmt = db.prepare("SELECT key, value FROM settings WHERE key IN ('flows', 'staticPlaylists') ORDER BY key");
 const membershipCache = new Map();
 const MEMBERSHIP_CACHE_LIMIT = 128;
 let cachedSettings = null;
@@ -34,7 +35,7 @@ function refreshMembershipCache() {
 function getMembershipSummary(playlist) {
   let summary = membershipCache.get(playlist.id);
   if (!summary) {
-    const jobs = downloadTracker.getByPlaylistType(playlist.id);
+    const jobs = getStaticPlaylistJobs(playlist);
     summary = {
       trackIdentities: collectPlaylistTrackIdentities(playlist, jobs),
       trackEntries: collectPlaylistTrackEntries(jobs),
@@ -67,6 +68,15 @@ function formatNextRunMessage(flows) {
   if (diff < hourMs) return `Next update ${rtf.format(Math.ceil(diff / minuteMs), "minute")}`;
   if (diff < dayMs) return `Next update ${rtf.format(Math.ceil(diff / hourMs), "hour")}`;
   return `Next update ${rtf.format(Math.ceil(diff / dayMs), "day")}`;
+}
+
+function countJobStatuses(jobs) {
+  const stats = { total: 0, pending: 0, downloading: 0, blocked: 0, done: 0, failed: 0 };
+  for (const job of jobs) {
+    if (Object.hasOwn(stats, job.status) && job.status !== "total") stats[job.status] += 1;
+  }
+  stats.total = stats.pending + stats.downloading + stats.blocked + stats.done + stats.failed;
+  return stats;
 }
 
 function aggregateStats(statsByType, ids) {
@@ -163,10 +173,13 @@ export function getPlaylistStatusSnapshot({
     : flowPlaylistConfig.getStaticPlaylists();
   const flowIds = flows.map((flow) => flow.id);
   const staticPlaylistIds = rawStaticPlaylists.map((playlist) => playlist.id);
-  const scopedStats = downloadTracker.getStatsByPlaylistType([
-    ...flowIds,
-    ...staticPlaylistIds,
-  ]);
+  const scopedStats = {
+    ...downloadTracker.getStatsByOwner(flowIds),
+    ...Object.fromEntries(rawStaticPlaylists.map((playlist) => [
+      playlist.id,
+      countJobStatuses(getStaticPlaylistJobs(playlist)),
+    ])),
+  };
   const staticPlaylists = rawStaticPlaylists.map((playlist) => {
     const playlistStats = scopedStats?.[playlist.id];
     const jobTotal =
@@ -209,7 +222,7 @@ export function getPlaylistStatusSnapshot({
     ownerUsername: ownerMap.get(Number(playlist?.ownerUserId)) || null,
   }));
   const stats = aggregateStats(scopedStats, flowIds);
-  const sharedStats = aggregateStats(scopedStats, staticPlaylistIds);
+  const staticPlaylistTotals = aggregateStats(scopedStats, staticPlaylistIds);
   const nextRunMessage = formatNextRunMessage(flowsWithOwners);
   const operationQueue = playlistOperationQueue.getStatus();
   const operationWorker = workerStatus?.operationWorker || getPlaylistOperationWorkerStatus();
@@ -251,10 +264,7 @@ export function getPlaylistStatusSnapshot({
   for (const playlistId of staticPlaylistIds) {
     staticPlaylistStats[playlistId] = scopedStats[playlistId] || aggregateStats({}, []);
   }
-  const retryCyclePausedByPlaylist = downloadWorker.getRetryCyclePausedMap([
-    ...flowIds,
-    ...staticPlaylistIds,
-  ]);
+  const retryCyclePausedByPlaylist = downloadWorker.getRetryCyclePausedMap(flowIds);
   return {
     worker: {
       ...workerStatus,
@@ -263,10 +273,10 @@ export function getPlaylistStatusSnapshot({
     slskd: getDownloadClient("slskd").getStatus(),
     stats,
     flowStats,
-    sharedStats,
-    sharedPlaylistStats: staticPlaylistStats,
+    staticPlaylistTotals,
+    staticPlaylistStats: staticPlaylistStats,
     flows: flowsWithOwners,
-    sharedPlaylists: staticPlaylistsWithOwners,
+    staticPlaylists: staticPlaylistsWithOwners,
     retryCyclePausedByPlaylist,
     operationQueue,
     operationWorker,

@@ -48,7 +48,7 @@ const WORKER_STARTS = {
   "slskd-pipeline": ["./downloadPipelineWorker.js", "startDownloadPipelineWorker"],
   "discovery-refresh": ["./discoveryRefreshWorker.js", "startDiscoveryRefreshWorker"],
   "discovery-user-refresh": ["./discoveryUserRefreshWorker.js", "startDiscoveryUserRefreshWorker"],
-  "weekly-flow-operation": ["./playlists/playlistOperationWorker.js", "startPlaylistOperationWorker"],
+  "playlist-operation": ["./playlists/playlistOperationWorker.js", "startPlaylistOperationWorker"],
   "playlist-mbid-enrichment": ["./playlistMbidEnrichmentWorker.js", "startPlaylistMbidEnrichmentWorker"],
 };
 

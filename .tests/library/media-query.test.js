@@ -620,8 +620,8 @@ test("album-reference reads preserve identity keys and album-specific ownership"
       availableOnly: false,
       references: [ownedAlbum.identity_key, missingAlbum.identity_key],
     });
-    const owned = readModel.albums.find((album) => album.canonicalId === ownedAlbum.id);
-    const missing = readModel.albums.find((album) => album.canonicalId === missingAlbum.id);
+    const owned = readModel.albums.find((album) => album.recordId === ownedAlbum.id);
+    const missing = readModel.albums.find((album) => album.recordId === missingAlbum.id);
     assert.equal(owned?.identityKey, ownedAlbum.identity_key);
     assert.equal(missing?.identityKey, missingAlbum.identity_key);
     assert.equal(owned?.statistics.trackFileCount, 1);

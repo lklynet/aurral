@@ -49,7 +49,7 @@ function ActivityPage() {
   const location = useLocation();
   const { view: viewParam } = useParams();
   const { user } = useAuth();
-  const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
+  const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessPlaylists;
   const [localError, setLocalError] = useState(null);
   const [visibleCount, setVisibleCount] = useState(ACTIVITY_PAGE_SIZE);
   const [reSearchingAlbumIds, setReSearchingAlbumIds] = useState({});

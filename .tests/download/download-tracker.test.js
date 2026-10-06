@@ -337,15 +337,15 @@ test("a web-side tracker reads job changes made by the flow owner", () => {
   const flowConnection = new Database(isolatedState.dbPath);
   try {
     flowConnection.prepare(
-      "UPDATE playlist_download_jobs SET status = 'done' WHERE id = ?",
+      "UPDATE download_jobs SET status = 'done' WHERE id = ?",
     ).run(id);
     const previousEnv = process.env.NODE_ENV;
     try {
       process.env.NODE_ENV = "production";
       assert.equal(tracker.getJob(id)?.status, "done");
       assert.equal(tracker.getStats().done, 1);
-      assert.equal(tracker.getStatsByPlaylistType(["playlist"]).playlist.done, 1);
-      assert.deepEqual(tracker.getByPlaylistType("playlist").map((job) => job.id), [id]);
+      assert.equal(tracker.getStatsByOwner(["playlist"]).playlist.done, 1);
+      assert.deepEqual(tracker.getByOwner("playlist").map((job) => job.id), [id]);
     } finally {
       process.env.NODE_ENV = previousEnv;
     }
@@ -475,9 +475,9 @@ test("returns complete playlist job lists unless a caller explicitly limits them
 
   tracker.addJobs(tracks, "large-static-playlist");
 
-  assert.equal(tracker.getByPlaylistType("large-static-playlist").length, 650);
+  assert.equal(tracker.getByOwner("large-static-playlist").length, 650);
   assert.equal(
-    tracker.getByPlaylistType("large-static-playlist", 500).length,
+    tracker.getByOwner("large-static-playlist", 500).length,
     500,
   );
 });

@@ -323,7 +323,7 @@ test("Aurral writes library album state, queues missing tracks, and reports conf
     assert.equal(conflict.statusCode, 409);
     assert.equal(conflict.code, "album_owner_conflict");
     assert.equal(conflict.managedBy, "lidarr");
-    assert.equal(conflict.canonicalId, String(conflictAlbum.id));
+    assert.equal(conflict.recordId, String(conflictAlbum.id));
     assert.equal(conflict.providerId, "lidarr-album-42");
     assert.deepEqual(conflict.sources, ["lidarr"]);
     assert.equal(conflict.availability.available, true);

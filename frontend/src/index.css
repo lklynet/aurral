@@ -10413,12 +10413,6 @@ button.native-library-genre-row:focus-visible {
   }
 }
 
-.settings-page__code-input--inner {
-  min-height: 6rem;
-  border-radius: 0;
-  background: transparent;
-}
-
 .settings-page__mono-input {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.8125rem;

@@ -84,11 +84,11 @@ test("theme preferences persist explicit themes and clear the system override", 
 
   setThemeSelection("aurral", "light");
   assert.equal(attributes.get("data-theme"), "light");
-  assert.equal(stored.get(THEME_STORAGE_KEY), "light");
+  assert.deepEqual(getThemeSettings(), { themeId: "aurral", appearance: "light" });
 
   setThemeSelection("aurral", "system");
   assert.equal(attributes.has("data-theme"), false);
-  assert.equal(stored.get(THEME_STORAGE_KEY), "system");
+  assert.deepEqual(getThemeSettings(), { themeId: "aurral", appearance: "system" });
 });
 
 test("temporary theme previews change the page without changing saved selection", () => {

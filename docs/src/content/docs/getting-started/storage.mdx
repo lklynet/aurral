@@ -61,7 +61,7 @@ Keep a service's own database or configuration mount separate from the media mou
 1. Aurral asks a download client to find the track.
 2. The download client writes the completed file under `/data/downloads/...`.
 3. Aurral checks the file and moves it into the Downloads Folder. Permanent tracks go to `Artist/Album/Track`. Flow tracks go to `_flows/<flow-id>/Artist/Album/Track`.
-4. Aurral writes playlist artwork and sidecar files under `aurral-weekly-flow/_playlists`. The Library does not include this folder.
+4. Aurral writes playlist artwork and sidecar files under `_playlists`. The Library does not include this folder.
 5. Navidrome scans the Downloads Folder and plays the tracks.
 
 If Aurral writes `/data/downloads/aurral/track.flac` but Navidrome sees the same host folder as `/downloads/track.flac`, Navidrome cannot find the track. The API connection still works, but the playlist stays empty or the tracks do not play. Use the same container paths, or follow [When paths cannot match](#when-paths-cannot-match).
@@ -91,7 +91,7 @@ Choose one folder on the Docker host as the media root. The example uses `/srv/m
     \-- aurral/                     # Aurral Downloads Folder
         |-- Artist/Album/track      # permanent tracks
         |-- _flows/flow-id/...      # temporary flow tracks
-        \-- aurral-weekly-flow/     # playlist sidecar files and artwork
+        \-- _playlists/             # playlist sidecar files and artwork
 ```
 
 Use the same host folder in every media mount:
@@ -227,7 +227,7 @@ Mount the Downloads Folder at the same absolute path in Aurral and Navidrome. Au
 **Plex Aurral Library path** is separate from **Remote path mappings**.
 
 1. Open **Settings > Playback > Plex**.
-2. Set **Plex Aurral Library path** to the Downloads Folder path as Plex sees it. Do not add `/aurral-weekly-flow`.
+2. Set **Plex Aurral Library path** to the Downloads Folder path as Plex sees it. Do not add `/_playlists`.
 3. Wait for the setting to save, then select **Sync to Plex now**.
 
 Example:

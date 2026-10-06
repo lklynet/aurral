@@ -5,12 +5,13 @@ import {
   cleanupIsolatedState,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
+import { addStaticPlaylistJobs } from "../helpers/staticPlaylistJobs.js";
 
 const [
   isolatedState,
   { db },
   { dbOps },
-  { flowPlaylistConfig },
+  { flowPlaylistConfig, invalidateFlowPlaylistConfigCache },
   { registerFlows },
   { registerStaticPlaylists },
   { playlistOperationQueue },
@@ -32,9 +33,8 @@ const [
   "backend/services/downloadJobs/downloadCancellation.js",
 );
 const {
-  activatePlaylistDownloadGeneration,
+  activateOwnerDownloadGeneration,
   cancelDownloadJob,
-  cancelPlaylistDownloadGeneration,
   isDownloadJobCancelled,
   isPipelinePayloadActive,
 } = cancellation;
@@ -84,7 +84,8 @@ const createFlow = ({ enabled = false, name } = {}) => {
 
 test.beforeEach(() => {
   resetDatabase(db);
-  dbOps.updateSettings({ integrations: {}, onboardingComplete: true, flows: [], sharedPlaylists: [] });
+  invalidateFlowPlaylistConfigCache();
+  dbOps.updateSettings({ integrations: {}, onboardingComplete: true, flows: [], staticPlaylists: [] });
   downloadTracker.clearAll();
 });
 
@@ -96,9 +97,9 @@ test("a failed flow-delete enqueue restores active download work", async (t) => 
   const user = { id: 1, role: "user" };
   const flow = createFlow({ name: "Delete queue rollback" });
   const tokenScope = `flow:${flow.id}:mutation`;
-  const tokenKey = `weeklyFlowOperationTokens:${encodeURIComponent(tokenScope)}`;
+  const tokenKey = `playlistOperationTokens:${encodeURIComponent(tokenScope)}`;
   dbOps.setJSONSetting(tokenKey, "previous-delete-token");
-  const generation = activatePlaylistDownloadGeneration(flow.id);
+  const generation = activateOwnerDownloadGeneration(flow.id);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, flow.id);
   t.mock.method(playlistOperationQueue, "enqueuePayload", async () => {
     throw new Error("queue unavailable");
@@ -110,7 +111,7 @@ test("a failed flow-delete enqueue restores active download work", async (t) => 
   assert.equal(response.statusCode, 500);
   assert.ok(flowPlaylistConfig.getFlow(flow.id));
   assert.equal(isDownloadJobCancelled(jobId), false);
-  assert.equal(isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }), true);
+  assert.equal(isPipelinePayloadActive({ jobId, ownerId: flow.id, ownerGeneration: generation }), true);
   assert.equal(dbOps.getJSONSetting(tokenKey), "previous-delete-token");
 });
 
@@ -118,9 +119,9 @@ test("a failed flow-disable enqueue restores enabled state and active downloads"
   const user = { id: 1, role: "user" };
   const flow = createFlow({ name: "Disable queue rollback", enabled: true });
   const tokenScope = `flow:${flow.id}:mutation`;
-  const tokenKey = `weeklyFlowOperationTokens:${encodeURIComponent(tokenScope)}`;
+  const tokenKey = `playlistOperationTokens:${encodeURIComponent(tokenScope)}`;
   dbOps.setJSONSetting(tokenKey, "previous-disable-token");
-  const generation = activatePlaylistDownloadGeneration(flow.id);
+  const generation = activateOwnerDownloadGeneration(flow.id);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, flow.id);
   let ensureCalls = 0;
   t.mock.method(playlistManager, "ensureSmartPlaylists", async () => { ensureCalls += 1; });
@@ -138,7 +139,7 @@ test("a failed flow-disable enqueue restores enabled state and active downloads"
   assert.equal(response.statusCode, 500);
   assert.equal(flowPlaylistConfig.getFlow(flow.id).enabled, true);
   assert.equal(isDownloadJobCancelled(jobId), false);
-  assert.equal(isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }), true);
+  assert.equal(isPipelinePayloadActive({ jobId, ownerId: flow.id, ownerGeneration: generation }), true);
   assert.equal(dbOps.getJSONSetting(tokenKey), "previous-disable-token");
   assert.equal(ensureCalls, 2);
 });
@@ -146,7 +147,7 @@ test("a failed flow-disable enqueue restores enabled state and active downloads"
 test("a failed flow disable does not undo a later disable", async (t) => {
   const user = { id: 1, role: "user" };
   const flow = createFlow({ name: "Overlapping flow disables", enabled: true });
-  const generation = activatePlaylistDownloadGeneration(flow.id);
+  const generation = activateOwnerDownloadGeneration(flow.id);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, flow.id);
   let signalFirstEnsure;
   let failFirstEnsure;
@@ -181,13 +182,13 @@ test("a failed flow disable does not undo a later disable", async (t) => {
   assert.equal(secondResponse.statusCode, 200);
   assert.equal(flowPlaylistConfig.getFlow(flow.id).enabled, false);
   assert.equal(isDownloadJobCancelled(jobId), true);
-  assert.equal(isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }), false);
+  assert.equal(isPipelinePayloadActive({ jobId, ownerId: flow.id, ownerGeneration: generation }), false);
 });
 
 test("a successful flow disable reports the accepted cleanup operation", async (t) => {
   const user = { id: 1, role: "user" };
   const flow = createFlow({ name: "Queued flow disable", enabled: true });
-  const generation = activatePlaylistDownloadGeneration(flow.id);
+  const generation = activateOwnerDownloadGeneration(flow.id);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, flow.id);
   t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
   let queuedPayload;
@@ -209,7 +210,7 @@ test("a successful flow disable reports the accepted cleanup operation", async (
   assert.equal(queuedPayload.kind, "disable-flow-cleanup");
   assert.equal(flowPlaylistConfig.getFlow(flow.id).enabled, false);
   assert.equal(isDownloadJobCancelled(jobId), true);
-  assert.equal(isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }), false);
+  assert.equal(isPipelinePayloadActive({ jobId, ownerId: flow.id, ownerGeneration: generation }), false);
 });
 
 test("flow settings updates wait for in-progress playlist mutations", async (t) => {
@@ -257,14 +258,15 @@ test("a failed shared-track delete enqueue clears only its new job-cancellation 
     ownerUserId: user.id,
     tracks: [],
   });
-  const generation = activatePlaylistDownloadGeneration(playlist.id);
-  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, playlist.id);
+  const [jobId] = addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, playlist.id, [
+    { artistName: "Artist", trackName: "Song" },
+  ]);
   t.mock.method(playlistOperationQueue, "enqueuePayload", async () => {
     throw new Error("queue unavailable");
   });
   const response = createResponse();
 
-  await staticPlaylistHandlers.get("/shared-playlists/:playlistId/tracks/:jobId")({
+  await staticPlaylistHandlers.get("/static-playlists/:playlistId/tracks/:jobId")({
     params: { playlistId: playlist.id, jobId },
     user,
   }, response);
@@ -272,32 +274,35 @@ test("a failed shared-track delete enqueue clears only its new job-cancellation 
   assert.equal(response.statusCode, 500);
   assert.ok(downloadTracker.getJob(jobId));
   assert.equal(isDownloadJobCancelled(jobId), false);
-  assert.equal(isPipelinePayloadActive({ jobId, playlistId: playlist.id, playlistGeneration: generation }), true);
+  assert.equal(isPipelinePayloadActive({ jobId, ownerId: "library", ownerGeneration: 0 }), true);
 });
 
-test("a failed static playlist delete does not reactivate previously cancelled work", async (t) => {
+test("a failed static playlist delete restores only the downloads it cancelled", async (t) => {
   const user = { id: 1, role: "user" };
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Already cancelled playlist",
     ownerUserId: user.id,
     tracks: [],
   });
-  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, playlist.id);
-  cancelPlaylistDownloadGeneration(playlist.id);
+  const [cancelledJobId, activeJobId] = addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, playlist.id, [
+    { artistName: "Artist", trackName: "Cancelled" },
+    { artistName: "Artist", trackName: "Active" },
+  ]);
+  cancelDownloadJob(cancelledJobId);
   t.mock.method(playlistOperationQueue, "enqueuePayload", async () => {
     throw new Error("queue unavailable");
   });
   const response = createResponse();
 
-  await staticPlaylistHandlers.get("/shared-playlists/:playlistId")({
+  await staticPlaylistHandlers.get("/static-playlists/:playlistId")({
     params: { playlistId: playlist.id },
     user,
   }, response);
 
   assert.equal(response.statusCode, 500);
   assert.ok(flowPlaylistConfig.getStaticPlaylist(playlist.id));
-  assert.equal(isDownloadJobCancelled(jobId), false);
-  assert.equal(isPipelinePayloadActive({ jobId, playlistId: playlist.id, playlistGeneration: 0 }), false);
+  assert.equal(isDownloadJobCancelled(cancelledJobId), true);
+  assert.equal(isDownloadJobCancelled(activeJobId), false);
 });
 
 test("a failed track-delete enqueue preserves an existing job-cancellation marker", async (t) => {
@@ -307,14 +312,16 @@ test("a failed track-delete enqueue preserves an existing job-cancellation marke
     ownerUserId: user.id,
     tracks: [],
   });
-  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, playlist.id);
+  const [jobId] = addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, playlist.id, [
+    { artistName: "Artist", trackName: "Song" },
+  ]);
   cancelDownloadJob(jobId);
   t.mock.method(playlistOperationQueue, "enqueuePayload", async () => {
     throw new Error("queue unavailable");
   });
   const response = createResponse();
 
-  await staticPlaylistHandlers.get("/shared-playlists/:playlistId/tracks/:jobId")({
+  await staticPlaylistHandlers.get("/static-playlists/:playlistId/tracks/:jobId")({
     params: { playlistId: playlist.id, jobId },
     user,
   }, response);

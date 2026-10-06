@@ -10,7 +10,7 @@ export default function SpotifyReconnectNotice() {
   const { isAuthenticated, user, hasPermission } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
-  const canImport = isAuthenticated && hasPermission("accessFlow");
+  const canImport = isAuthenticated && hasPermission("accessPlaylists");
   const noticeKey = `${NOTICE_KEY_PREFIX}${user?.id ?? "local"}`;
 
   useEffect(() => {

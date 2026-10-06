@@ -39,7 +39,7 @@ test.beforeEach(() => {
     integrations: {},
     onboardingComplete: true,
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
   });
 });
 
@@ -48,7 +48,7 @@ test.after(async () => {
 });
 
 test("removing and readding a library membership renews its incarnation", () => {
-  const track = { artistName: "Artist", trackName: "Track", canonicalJobId: "canonical-job" };
+  const track = { artistName: "Artist", trackName: "Track", jobId: "canonical-job" };
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Membership", tracks: [track] });
   const first = playlist.tracks[0].membershipId;
   assert.ok(first);

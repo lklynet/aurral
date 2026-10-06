@@ -17,18 +17,18 @@ test("bulk acceptance commits its queue job and durable progress together", () =
   assert.deepEqual(persisted.selections, [{ jobId: "one" }]);
   const claimed = honker.getPlaylistOperationQueue().claimOne("bulk-test");
   assert.equal(claimed.id, result.operationId);
-  assert.equal(claimed.payload.kind, "shared-playlist-bulk");
+  assert.equal(claimed.payload.kind, "static-playlist-bulk");
   store.saveBulkOperation({ ...persisted, state: "completed", outcomes: [{ jobId: "one", status: "removed" }] });
   claimed.ack();
   assert.equal(store.getBulkOperation(result.operationId).state, "completed");
 });
 
 test("failed progress persistence rolls back queue acceptance", () => {
-  const before = honker.getHonkerQueueDepth("weekly-flow-operation");
+  const before = honker.getHonkerQueueDepth("playlist-operation");
   db.exec("CREATE TRIGGER reject_bulk_result BEFORE INSERT ON settings WHEN NEW.key LIKE 'playlistBulkOperation:%' BEGIN SELECT RAISE(ABORT, 'fixture persistence failure'); END");
   try {
     assert.throws(() => store.enqueueBulkOperation({ ownerUserId: 1, sourcePlaylistId: "source", selections: [] }), /fixture persistence failure/);
-    assert.equal(honker.getHonkerQueueDepth("weekly-flow-operation"), before);
+    assert.equal(honker.getHonkerQueueDepth("playlist-operation"), before);
   } finally {
     db.exec("DROP TRIGGER reject_bulk_result");
   }

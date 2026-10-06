@@ -7,8 +7,6 @@ import {
 } from "../../../utils/api/endpoints/artists.js";
 import {
   lookupArtistInLibrary,
-  getLibraryAlbums,
-  getLibraryArtist,
   readLibraryLookupCache,
 } from "../../../utils/api/endpoints/library.js";
 import { getAppSettings } from "../../../utils/api/endpoints/settings.js";
@@ -276,36 +274,8 @@ export function useArtistDetailsStream(
         setExistsInLibrary(lookup.exists);
         if (!lookup.exists || !lookup.artist) return;
 
-        const fullArtist = lookup.canonical
-          ? lookup.artist
-          : await getLibraryArtist(
-              lookup.artist.mbid || lookup.artist.foreignArtistId,
-              { bypassCache },
-            ).catch((err) => {
-              console.error("Failed to fetch full artist details:", err);
-              return lookup.artist;
-            });
-        if (!isCurrentRequest()) return;
-
-        setLibraryArtist(fullArtist);
-
-        if (lookup.canonical) {
-          setLibraryAlbums(Array.isArray(lookup.albums) ? lookup.albums : []);
-          return;
-        }
-
-        const artistId = fullArtist.id || lookup.artist.id;
-        if (!artistId) return;
-
-        const albums = await getLibraryAlbums(artistId, {
-          bypassCache,
-          managedBy: fullArtist.managedBy || lookup.artist.managedBy || null,
-        }).catch((err) => {
-          console.error("Failed to fetch library albums:", err);
-          return [];
-        });
-        if (!isCurrentRequest()) return;
-        setLibraryAlbums(albums);
+        setLibraryArtist(lookup.artist);
+        setLibraryAlbums(Array.isArray(lookup.albums) ? lookup.albums : []);
       } catch {
       } finally {
         if (isCurrentRequest()) {

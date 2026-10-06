@@ -30,7 +30,7 @@ test.beforeEach(() => {
     integrations: { ytdlp: { enabled: false } },
     onboardingComplete: true,
     flows: [],
-    sharedPlaylists: [],
+    staticPlaylists: [],
   });
 });
 

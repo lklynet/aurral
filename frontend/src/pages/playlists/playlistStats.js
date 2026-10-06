@@ -95,7 +95,7 @@ export const getPlaylistStateFromStats = (stats) => {
 
 export const getCombinedActivityStats = (status) => {
   const flow = status?.stats || EMPTY_PLAYLIST_STATS;
-  const shared = status?.sharedStats || EMPTY_PLAYLIST_STATS;
+  const shared = status?.staticPlaylistTotals || EMPTY_PLAYLIST_STATS;
   const pending = statCount(flow.pending) + statCount(shared.pending);
   const downloading = statCount(flow.downloading) + statCount(shared.downloading);
   const blocked = statCount(flow.blocked) + statCount(shared.blocked);

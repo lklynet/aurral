@@ -1,4 +1,4 @@
-# Legacy storage and API names
+# Storage and API names
 
 Status: Accepted
 
@@ -6,42 +6,43 @@ Status: Accepted
 
 Aurral started with one weekly flow that owned its tracks. Today the Library owns every track. A static playlist is a fixed or synced list of references to Library tracks, and a flow is a playlist that Aurral rebuilds on a schedule from temporary files. Flows and static playlists are the two kinds of playlist.
 
-The code kept the old names long after the model changed. `weeklyFlow` modules ran every download, `sharedPlaylist` meant static playlist, and "canonical library" meant the only library there is. New contributors went looking for systems that no longer exist.
+Aurral 2 kept the old names long after the model changed. `weeklyFlow` modules ran every download, `sharedPlaylist` meant static playlist, and "canonical library" meant the only library there is. New contributors went looking for systems that no longer exist.
 
 ## Decision
 
-Code uses names that match the current model:
+Code, stored data, queued work, and public APIs use names that match the current model. Aurral 2 renamed the code. The schema 5 migration in Aurral 3.0 renamed what Aurral stores and serves, as [0005](0005-aurral-3-upgrade.md) describes.
 
-- `backend/services/downloadJobs` runs download jobs for the Library, static playlists, flows, and upgrades.
-- `backend/services/flows` builds and schedules flows.
-- `backend/services/playlists` stores flows and static playlists and runs playlist operations.
-- `backend/routes/playlists` serves `/api/playlists`.
-- `frontend/src/pages/playlists` holds the flow and static playlist pages.
-
-Stored data, queued work, and public APIs keep their old names. Renaming them needs a migration, and an older build would then lose sight of the data after a downgrade. The table below lists each old name and what it holds now. Rename one only together with a migration and a plan for existing clients.
-
-| Name | Where | Holds |
+| Aurral 2 name | Aurral 3 name | Holds |
 | --- | --- | --- |
-| `playlist_download_jobs` | SQLite table | Every download job |
-| `playlist_id`, `playlistId` | Job column and field | The owner, which is `library`, a flow ID, or a static playlist ID |
-| `playlist_type`, `playlistType` | Job column and field | The owner again, or `quality-upgrade` for an upgrade job |
-| `weekly_flow_download_cancellations`, `weekly_flow_download_job_cancellations`, `weekly_flow_download_provider_work` | SQLite tables | Download cancellation state |
-| `sharedPlaylists` | Settings key and `/api/playlists/status` field | Static playlists |
-| `sharedPlaylistStats` | `/api/playlists/status` field | Download counts for each static playlist |
-| `canonicalJobId` | Static playlist track field | The Library job that the track references |
-| `canonicalId`, `canonicalArtistId`, `canonicalAlbumId`, `canonicalTrackId`, `albumCanonicalId` | Library API fields | Library record IDs |
-| `canonical`, `canonicalInLibrary` | Library lookup responses | Whether the answer came from the Library index rather than a live Lidarr read |
-| `/api/library/canonical`, `readPath=canonical`, `/api/library/canonical-stream` | Library API | Library pages, reads, and streams |
-| `/api/playlists/shared-playlists` | Playlist API | Static playlist routes |
-| `/api/weekly-flow`, `weekly-flow` channel | API redirect and WebSocket | Older names for `/api/playlists` and the `playlists` channel |
-| `shared`, `shared-song` | Subsonic IDs | Static playlists and their songs |
-| `weekly-flow-operation` | Honker queue | Playlist and flow operations |
-| `weekly-flow-refresh`, `weekly-flow-reuse-repair`, `weekly-flow-startup-check`, `weekly-flow-startup-reuse-repair` | Honker system tasks | Flow scheduling and file reuse repair |
-| `shared-playlist-*` | Queued operation kinds | Static playlist operations |
-| `weeklyFlowIncompleteRetryJobs`, `weeklyFlowOperationTokens` | Settings keys | Retry and operation token registries |
-| `accessFlow` | User permission | Access to flows and static playlists |
-| `notifyWeeklyFlowDone` | Notification setting and webhook event | The flow finished notification |
-| `aurral-weekly-flow/` | Downloads Folder | Playlist artwork and sidecar files |
-| `WEEKLY_FLOW_FOLDER`, `PLAYLIST_FOLDER` | Environment variables | Older names for `DOWNLOAD_FOLDER`, read before it |
+| `playlist_download_jobs` | `download_jobs` | Every download job |
+| `playlist_id`, `playlistId` on a job | `owner_id`, `ownerId` | The Library or the flow that owns the job |
+| `playlist_generation`, `playlistGeneration` | `owner_generation`, `ownerGeneration` | The owner's download generation |
+| `playlist_type`, `playlistType` | removed | `upgrade_for_job_id` marks an upgrade job |
+| `weekly_flow_download_cancellations` | `download_owner_cancellations` | Download generation of each owner |
+| `weekly_flow_download_job_cancellations` | `download_job_cancellations` | Cancelled jobs |
+| `weekly_flow_download_provider_work` | `download_provider_work` | Provider work to cancel |
+| `sharedPlaylists` settings key and status field | `staticPlaylists` | Static playlists |
+| `sharedPlaylistStats`, `sharedStats` status fields | `staticPlaylistStats`, `staticPlaylistTotals` | Download counts of static playlists |
+| `canonicalJobId` on a static playlist track | `jobId` | The Library job that the track references |
+| `/api/playlists/shared-playlists` | `/api/playlists/static-playlists` | Static playlist routes |
+| `shared-playlist-*` operation kinds | `static-playlist-*` | Static playlist operations |
+| `reset-playlists` operation with `playlistTypes` | `reset-flows` with `flowIds` | Flow resets |
+| `weekly-flow-operation` queue | `playlist-operation` | Playlist and flow operations |
+| `weekly-flow-refresh`, `weekly-flow-startup-check` tasks | `flow-refresh`, `flow-startup-check` | Flow scheduling |
+| `weekly-flow-reuse-repair`, `weekly-flow-startup-reuse-repair` tasks | `file-reuse-repair`, `startup-file-reuse-repair` | File reuse repair |
+| `weeklyFlowIncompleteRetryJobs`, `weeklyFlowOperationTokens` settings | `incompleteRetryJobs`, `playlistOperationTokens` | Retry and operation token registries |
+| `accessFlow` permission | `accessPlaylists` | Access to flows and static playlists |
+| `notifyWeeklyFlowDone` setting and webhook event | `notifyFlowDone` | The flow finished notification |
+| `canonicalId`, `canonicalArtistId`, `canonicalAlbumId`, `canonicalTrackId`, `albumCanonicalId` | `recordId`, `artistRecordId`, `albumRecordId`, `trackRecordId` | Library record IDs |
+| `/api/library/canonical`, `readPath=canonical` | `/api/library/records`, `readPath=records` | Library pages and reads |
+| `/api/library/canonical-stream` | `/api/library/records/stream` | Library streams |
+| `aurral-weekly-flow/_playlists` | `_playlists` | Playlist artwork and sidecar files |
 
-Migration code that reads older settings, such as `weeklyFlows` and `weeklyFlowWorker`, keeps those names because it describes data from older versions.
+Aurral 3.0 removed the `/api/weekly-flow` redirect, the `weekly-flow` WebSocket channel, the `canonical` lookup flags, and the `WEEKLY_FLOW_FOLDER` and `PLAYLIST_FOLDER` variables.
+
+## Names that keep their old spelling
+
+- **Subsonic playlist IDs `shared` and `shared-song`.** Clients such as Feishin store them with pinned playlists and stars. Renaming them would throw away client state for IDs that nobody sees.
+- **The `flow` media source.** It is accurate.
+
+Rename one of these only together with a migration and a plan for existing clients.

@@ -1,9 +1,7 @@
 import { randomBytes, randomUUID } from "crypto";
 import { dbOps } from "../../db/helpers/index.js";
-import { downloadTracker } from "../downloadJobs/downloadTracker.js";
 import { getDiscoverPlaylistPreset } from "../../config/discoverPlaylistPresets.js";
 
-const LEGACY_TYPES = ["discover", "mix", "trending"];
 export const isRetiredFlow = (flow) => flow?.type === "editorial";
 export const IMPORT_SOURCE_PROVIDERS = new Set([
   "spotify-playlist",
@@ -86,21 +84,6 @@ export const resolveYearRangeUpdate = (current, updates = {}) => {
     else yearFrom = null;
   }
   return { yearFrom, yearTo };
-};
-
-export const normalizeWeightMap = (value) => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const out = {};
-  for (const [key, rawValue] of Object.entries(value)) {
-    const name = String(key || "").trim();
-    if (!name) continue;
-    const parsed = Number(rawValue);
-    if (!Number.isFinite(parsed)) continue;
-    const rounded = Math.round(parsed);
-    if (rounded <= 0) continue;
-    out[name] = rounded;
-  }
-  return out;
 };
 
 const getFlowEntryName = (value) => {
@@ -243,18 +226,8 @@ const normalizeFlow = (flow) => {
   const name = String(flow?.name || "").trim();
   const size = clampSize(flow?.size);
   const mix = normalizeMix(flow?.mix);
-  const normalizedTagsArray = normalizeStringArray(flow?.tags);
-  const normalizedRelatedArray = normalizeStringArray(flow?.relatedArtists);
-  const legacyTags = normalizeWeightMap(flow?.tags);
-  const legacyRelatedArtists = normalizeWeightMap(flow?.relatedArtists);
-  const tags =
-    normalizedTagsArray.length > 0
-      ? normalizedTagsArray
-      : Object.keys(legacyTags);
-  const relatedArtists =
-    normalizedRelatedArray.length > 0
-      ? normalizedRelatedArray
-      : Object.keys(legacyRelatedArtists);
+  const tags = normalizeStringArray(flow?.tags);
+  const relatedArtists = normalizeStringArray(flow?.relatedArtists);
   const { yearFrom, yearTo } = normalizeYearRange(flow?.yearFrom, flow?.yearTo);
   return {
     id: flow?.id || randomUUID(),
@@ -317,7 +290,7 @@ export const normalizePlaylistTrack = (track) => {
     ? track.artistAliases.map((entry) => String(entry || "").trim()).filter(Boolean)
     : [];
   const reason = String(track.reason ?? "").trim();
-  const canonicalJobId = String(track.canonicalJobId ?? track.libraryJobId ?? "").trim();
+  const jobId = String(track.jobId ?? track.libraryJobId ?? "").trim();
   const membershipId = String(track.membershipId || "").trim();
   return {
     artistName,
@@ -330,7 +303,7 @@ export const normalizePlaylistTrack = (track) => {
     durationMs,
     artistAliases,
     reason: reason || null,
-    ...(canonicalJobId ? { canonicalJobId } : {}),
+    ...(jobId ? { jobId } : {}),
     ...(membershipId ? { membershipId } : {}),
   };
 };
@@ -409,38 +382,6 @@ export const dedupePlaylistTracks = (tracks) => {
     uniqueTracks.push(normalizedTrack);
   }
   return uniqueTracks;
-};
-
-export const rebuildStaticPlaylistTracksFromJobs = (configTracks, jobs) => {
-  const jobList = Array.isArray(jobs) ? jobs : [];
-  const unmatchedJobIds = new Set(jobList.map((job) => job.id));
-  const remainingTracks = [];
-  for (const track of dedupePlaylistTracks(configTracks)) {
-    const match = jobList.find(
-      (job) => unmatchedJobIds.has(job.id) && tracksShareMembership(job, track),
-    );
-    if (!match) continue;
-    unmatchedJobIds.delete(match.id);
-    remainingTracks.push(track);
-  }
-  for (const job of sortJobsByCreatedAt(jobList)) {
-    if (!unmatchedJobIds.has(job.id)) continue;
-    unmatchedJobIds.delete(job.id);
-    const track = normalizePlaylistTrack({
-      artistName: job?.artistName,
-      trackName: job?.trackName,
-      albumName: job?.albumName || null,
-      artistMbid: job?.artistMbid || null,
-      albumMbid: job?.albumMbid || null,
-      trackMbid: job?.trackMbid || null,
-      releaseYear: job?.releaseYear || null,
-      durationMs: job?.durationMs || null,
-      artistAliases: job?.artistAliases || [],
-      reason: job?.reason || null,
-    });
-    if (track) remainingTracks.push(track);
-  }
-  return remainingTracks;
 };
 
 export const filterMissingPlaylistTracks = (existingTracks, incomingTracks) => {
@@ -531,44 +472,8 @@ const getStoredFlows = () => {
     return cachedFlows;
   }
   flowsCachedAt = Date.now();
-  const settings = dbOps.getSettings();
-  const stored = settings.flows;
-  if (Array.isArray(stored) && stored.length > 0) {
-    const idMap = new Map();
-    let needsSave = false;
-    const nextFlows = stored.map((flow) => {
-      const currentId = flow?.id;
-      if (LEGACY_TYPES.includes(currentId)) {
-        const mapped = idMap.get(currentId) || randomUUID();
-        idMap.set(currentId, mapped);
-        needsSave = true;
-        return normalizeFlow({ ...flow, id: mapped });
-      }
-      if (!Array.isArray(flow?.scheduleDays)) needsSave = true;
-      if (normalizeScheduleTime(flow?.scheduleTime) !== flow?.scheduleTime) {
-        needsSave = true;
-      }
-      return normalizeFlow(flow);
-    });
-    if (idMap.size > 0 || needsSave) {
-      dbOps.updateSettings({
-        ...settings,
-        flows: nextFlows,
-      });
-      downloadTracker.migratePlaylistTypes(idMap);
-    }
-    cachedFlows = nextFlows;
-    return cachedFlows;
-  }
-  if (Array.isArray(stored)) {
-    cachedFlows = [];
-    return cachedFlows;
-  }
-  dbOps.updateSettings({
-    ...settings,
-    flows: [],
-  });
-  cachedFlows = [];
+  const stored = dbOps.getSettings().flows;
+  cachedFlows = Array.isArray(stored) ? stored.map((flow) => normalizeFlow(flow)) : [];
   return cachedFlows;
 };
 
@@ -588,7 +493,7 @@ const getStoredStaticPlaylists = () => {
   }
   staticPlaylistsCachedAt = Date.now();
   const settings = dbOps.getSettings();
-  const stored = settings.sharedPlaylists;
+  const stored = settings.staticPlaylists;
   if (Array.isArray(stored)) {
     const next = stored.map(normalizeStaticPlaylist);
     const needsSave =
@@ -597,7 +502,7 @@ const getStoredStaticPlaylists = () => {
     if (needsSave) {
       dbOps.updateSettings({
         ...settings,
-        sharedPlaylists: next,
+        staticPlaylists: next,
       });
     }
     cachedStaticPlaylists = next;
@@ -605,7 +510,7 @@ const getStoredStaticPlaylists = () => {
   }
   dbOps.updateSettings({
     ...settings,
-    sharedPlaylists: [],
+    staticPlaylists: [],
   });
   cachedStaticPlaylists = [];
   return cachedStaticPlaylists;
@@ -616,7 +521,7 @@ const setStaticPlaylists = (playlists) => {
   staticPlaylistsCachedAt = Date.now();
   const current = dbOps.getSettings();
   try {
-    dbOps.updateSettings({ ...current, sharedPlaylists: playlists });
+    dbOps.updateSettings({ ...current, staticPlaylists: playlists });
   } catch (error) {
     dbOps.invalidateSettingsCache();
     invalidateFlowPlaylistConfigCache();
@@ -693,10 +598,6 @@ export const flowPlaylistConfig = {
 
   getFlows() {
     return getStoredFlows();
-  },
-
-  saveNormalizedFlows() {
-    setFlows(getStoredFlows());
   },
 
   getFlowsForUser(user) {
@@ -1020,7 +921,7 @@ export const flowPlaylistConfig = {
           ? normalizeImportSource(updates.importSource)
           : current.importSource,
       tracks: Array.isArray(updates?.tracks) ? dedupePlaylistTracks(updates.tracks).map((track) => {
-        const previous = current.tracks.find((entry) => entry.canonicalJobId === track.canonicalJobId && tracksShareMembership(entry, track));
+        const previous = current.tracks.find((entry) => entry.jobId === track.jobId && tracksShareMembership(entry, track));
         return { ...track, membershipId: previous?.membershipId || randomUUID() };
       }) : current.tracks,
       importedAt: current.importedAt,

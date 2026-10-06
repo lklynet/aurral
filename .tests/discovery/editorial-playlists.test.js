@@ -107,7 +107,7 @@ const captureEnqueues = (t) => {
 
 test.beforeEach(() => {
   resetDatabase(db);
-  dbOps.updateSettings({ integrations: {}, onboardingComplete: true, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({ integrations: {}, onboardingComplete: true, flows: [], staticPlaylists: [] });
   invalidateFlowPlaylistConfigCache();
 });
 
@@ -336,7 +336,7 @@ test("retired Last.fm editorial flows keep their tracks and never run again", as
 
   assert.equal(plan.mock.callCount(), 0);
   assert.deepEqual(
-    downloadTracker.getByPlaylistId("metal-mayhem").map((job) => job.trackName),
+    downloadTracker.getAllForOwner("metal-mayhem").map((job) => job.trackName),
     ["Old Song"],
   );
 });

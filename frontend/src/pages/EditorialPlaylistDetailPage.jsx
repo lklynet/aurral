@@ -164,7 +164,7 @@ export default function EditorialPlaylistDetailPage() {
   }
 
   const inLibrary = Boolean(playlist.libraryPlaylistId);
-  const canAdd = hasPermission("accessFlow");
+  const canAdd = hasPermission("accessPlaylists");
   const addLabel = inLibrary ? "Open synced playlist" : "Add synced playlist";
   const showArtwork = Boolean(playlist.artworkUrl) && !failedArtwork;
 

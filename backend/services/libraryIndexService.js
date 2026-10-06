@@ -11,7 +11,7 @@ import {
   upsertLibraryArtist,
 } from "./libraryMediaStore.js";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.js";
-import { removePlaylistTracksWithoutDownloads } from "./playlists/trackRemoval.js";
+import { removePlaylistTracksWithoutDownloads } from "./playlists/staticPlaylistJobs.js";
 import { rebuildLibrarySearchIndex } from "./librarySearchIndex.js";
 import { rebuildLibraryGenreStats } from "./libraryQueryService.js";
 import {
@@ -26,7 +26,7 @@ function getAurralJobMetadataByPath() {
     .prepare(
       `SELECT final_path, artist_name, album_name, track_name,
         artist_mbid, album_mbid, track_mbid, release_year, track_number
-       FROM playlist_download_jobs
+       FROM download_jobs
        WHERE status = 'done' AND final_path IS NOT NULL
        ORDER BY completed_at DESC, created_at DESC`,
     )
@@ -59,11 +59,11 @@ function getLibraryFlowPaths() {
   const rows = db
     .prepare(
       `SELECT DISTINCT final_path
-       FROM playlist_download_jobs
+       FROM download_jobs
        WHERE status = 'done' AND final_path IS NOT NULL
-         AND (playlist_id IN (${placeholders}) OR playlist_type IN (${placeholders}))`,
+         AND owner_id IN (${placeholders})`,
     )
-    .all(...flowIds, ...flowIds);
+    .all(...flowIds);
   return [...new Set(rows.map((row) => path.resolve(String(row.final_path))))];
 }
 

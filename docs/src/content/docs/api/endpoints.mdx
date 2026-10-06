@@ -60,8 +60,7 @@ credential.
 
 The WebSocket accepts `subscribe`, `unsubscribe`, and `ping` JSON messages.
 Subscriptions use the `status`, `downloads`, `discovery`, `library`, and
-`playlists` channels. `weekly-flow` is an older name for `playlists`. The
-`library` channel sends a `library_scan_completed` message after Aurral
+`playlists` channels. The `library` channel sends a `library_scan_completed` message after Aurral
 refreshes the Library.
 
 For local password authentication, connect with the session token as
@@ -86,29 +85,29 @@ WebSocket connections.
 | `PUT` | `/api/library/artists/:mbid` | Update artist monitoring |
 | `DELETE` | `/api/library/artists/:mbid?manager=aurral\|lidarr` | Delete an artist from Lidarr and Aurral, or from one manager with `manager`. Returns `503` and deletes nothing when Lidarr cannot be reached |
 | `POST` | `/api/library/artists/:mbid/refresh` | Refresh an artist in Lidarr |
-| `PUT` | `/api/library/canonical/artists/:id/mbid` | Set a library artist's MusicBrainz ID with `{ "mbid": "…" }`, or clear it with `{ "mbid": null }` |
+| `PUT` | `/api/library/records/artists/:id/mbid` | Set a library artist's MusicBrainz ID with `{ "mbid": "…" }`, or clear it with `{ "mbid": null }` |
 | `GET` | `/api/library/albums?artistId=:id&managedBy=aurral\|lidarr` | List an artist's albums. Send the artist's `managedBy` so a Lidarr ID is never read as an Aurral ID |
 | `GET` | `/api/library/albums/:id` | Get an album |
 | `POST` | `/api/library/albums` | Add an album |
 | `POST` | `/api/library/albums/request` | Request an album from search data |
 | `PUT` | `/api/library/albums/:id` | Update an album |
 | `DELETE` | `/api/library/albums/:id` | Delete an album |
-| `PUT` | `/api/library/albums/aurral/:canonicalId` | Monitor or stop monitoring an Aurral-managed album and all of its tracks with `{ "monitored": true \| false }`. Monitoring returns `409` while Lidarr is connected |
-| `GET` | `/api/library/albums/aurral/:canonicalId/status` | Get the download status of an Aurral-managed album |
-| `POST` | `/api/library/albums/aurral/:canonicalId/cancel` | Cancel queued and active downloads for an Aurral-managed album |
-| `DELETE` | `/api/library/albums/aurral/:canonicalId?deleteFiles=true\|false` | Remove an Aurral-managed album |
+| `PUT` | `/api/library/albums/aurral/:recordId` | Monitor or stop monitoring an Aurral-managed album and all of its tracks with `{ "monitored": true \| false }`. Monitoring returns `409` while Lidarr is connected |
+| `GET` | `/api/library/albums/aurral/:recordId/status` | Get the download status of an Aurral-managed album |
+| `POST` | `/api/library/albums/aurral/:recordId/cancel` | Cancel queued and active downloads for an Aurral-managed album |
+| `DELETE` | `/api/library/albums/aurral/:recordId?deleteFiles=true\|false` | Remove an Aurral-managed album |
 | `GET` | `/api/library/tracks` | List album tracks |
 | `DELETE` | `/api/library/tracks/:id` | Delete a library track file and prune Library records when no media remains |
-| `PUT` | `/api/library/tracks/aurral/:canonicalId` | Monitor or stop monitoring a track with `{ "monitored": true \| false }`. In a Lidarr album, this controls only Aurral's own download and upgrades of the track |
+| `PUT` | `/api/library/tracks/aurral/:recordId` | Monitor or stop monitoring a track with `{ "monitored": true \| false }`. In a Lidarr album, this controls only Aurral's own download and upgrades of the track |
 | `POST` | `/api/library/refresh` | Queue a library scan. `mode` is `quick`, the default, or `full` to read every file again |
 | `GET` | `/api/library/refresh` | Read the ID and status of the scheduled library scan |
 | `GET` | `/api/library/refresh/:jobId` | Read the status of a library scan |
-| `GET` | `/api/library/canonical` | Read one page of Library items. Requires a supported `kind`, and `pageSize` from 1 to 100 |
+| `GET` | `/api/library/records` | Read one page of Library items. Requires a supported `kind`, and `pageSize` from 1 to 100 |
 | `GET` | `/api/library/favorites` | Read the current user's library favorites |
 | `POST` | `/api/library/favorites` | Add or remove a library favorite. Requires a user session |
 | `GET` | `/api/library/playback-queue` | Build one page of a playback queue. Optional `page`, and `pageSize` from 1 to 100 |
 | `GET` | `/api/library/stream/:songId` | Stream a library song |
-| `GET` | `/api/library/canonical-stream/:albumId/:trackId` | Stream a Library track |
+| `GET` | `/api/library/records/stream/:albumId/:trackId` | Stream a Library track |
 | `GET` | `/api/library/file-stream/:albumId/:trackId` | Stream an album track file |
 | `GET` | `/api/library/rootfolder` | List Lidarr root-folder paths |
 | `GET` | `/api/library/lookup/:mbid` | Check whether an artist is in the library |
@@ -117,7 +116,7 @@ WebSocket connections.
 | `GET` | `/api/library/recent` | List 20 recently added artists |
 | `GET` | `/api/library/recent-releases` | List recent missing releases |
 | `GET` | `/api/library/downloads` | List download jobs |
-| `GET` | `/api/library/downloads/status` | Get the statuses for the required `albumIds` query. Use `aurral:<canonicalId>` for Aurral albums |
+| `GET` | `/api/library/downloads/status` | Get the statuses for the required `albumIds` query. Use `aurral:<recordId>` for Aurral albums |
 | `GET` | `/api/library/downloads/status/all` | Get all download statuses |
 | `POST` | `/api/library/downloads/track` | Download or request a track |
 | `POST` | `/api/library/downloads/album` | Monitor an album and optionally run the configured search |
@@ -129,7 +128,7 @@ them otherwise. The artist and album add routes accept an optional `managedBy`
 value. A value other than the active manager returns `409` with
 `library_manager_unavailable`.
 
-Aurral album routes take the Library album ID, `canonicalId`, not a Lidarr album ID. They
+Aurral album routes take the Library album ID, `recordId`, not a Lidarr album ID. They
 return `409` with the current manager when Lidarr manages the album. An album
 status is one of `complete`, `downloading`, `queued`, `blocked`, `cancelled`,
 `failed`, `partial`, or `missing`. It includes per-track `counts` and, when
@@ -155,7 +154,7 @@ artist metadata is unavailable, the route returns `503` with
 accepts the same `monitorOption`. For Lidarr, `none` adds the artist without
 monitoring, and leaving it out uses the Lidarr default.
 
-`DELETE /api/library/albums/aurral/:canonicalId` and
+`DELETE /api/library/albums/aurral/:recordId` and
 `DELETE /api/library/artists/:mbid` for an Aurral-managed artist cancel
 unfinished downloads first. They return `409` with `download_cancellation_failed`
 when a download client does not confirm the cancellation, and album removal
@@ -171,7 +170,7 @@ the remaining tracks continue through per-track fallback. Lidarr-managed
 albums keep Lidarr acquisition behavior.
 
 `POST /api/library/downloads/track` requires an authenticated user with the
-`addAlbum` permission. When `canonicalTrackId` or `trackMbid` names a track in
+`addAlbum` permission. When `trackRecordId` or `trackMbid` names a track in
 an Aurral-managed album, the request monitors that track, queues it with its
 album, and responds with `monitored: true`.
 
@@ -261,10 +260,7 @@ no feed could be refreshed.
 
 ## Playlists and flows
 
-The prefix is `/api/playlists`. The older `/api/weekly-flow` prefix
-redirects to it with status `308`.
-
-The routes call a static playlist a shared playlist.
+The prefix is `/api/playlists`.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -290,19 +286,21 @@ The routes call a static playlist a shared playlist.
 | `POST` | `/api/playlists/artwork/:playlistId/generate` | Generate playlist artwork |
 | `GET` | `/api/playlists/stream/:jobId` | Stream a playlist track |
 | `GET` | `/api/playlists/staging-stream/:jobId` | Stream a staged track |
-| `POST` | `/api/playlists/shared-playlists` | Create a static playlist |
-| `POST` | `/api/playlists/shared-playlists/import` | Import a static playlist |
-| `PUT` | `/api/playlists/shared-playlists/:playlistId` | Update a static playlist |
-| `PUT` | `/api/playlists/shared-playlists/:playlistId/record-history` | Enable or disable listening history for a static playlist |
-| `PUT` | `/api/playlists/shared-playlists/:playlistId/track-availability` | Show or hide track availability for a static playlist, with `{ "enabled": true \| false }` |
-| `DELETE` | `/api/playlists/shared-playlists/:playlistId` | Delete a static playlist |
-| `POST` | `/api/playlists/shared-playlists/:playlistId/tracks` | Add a static playlist track |
-| `DELETE` | `/api/playlists/shared-playlists/:playlistId/tracks/:jobId` | Delete a static playlist track |
-| `POST` | `/api/playlists/shared-playlists/:playlistId/tracks/:jobId/research` | Research a static playlist track |
+| `POST` | `/api/playlists/static-playlists` | Create a static playlist |
+| `POST` | `/api/playlists/static-playlists/import` | Import a static playlist |
+| `PUT` | `/api/playlists/static-playlists/:playlistId` | Update a static playlist |
+| `PUT` | `/api/playlists/static-playlists/:playlistId/record-history` | Enable or disable listening history for a static playlist |
+| `PUT` | `/api/playlists/static-playlists/:playlistId/track-availability` | Show or hide track availability for a static playlist, with `{ "enabled": true \| false }` |
+| `DELETE` | `/api/playlists/static-playlists/:playlistId` | Delete a static playlist |
+| `POST` | `/api/playlists/static-playlists/:playlistId/tracks` | Add a static playlist track |
+| `DELETE` | `/api/playlists/static-playlists/:playlistId/tracks/:jobId` | Delete a static playlist track |
+| `POST` | `/api/playlists/static-playlists/:playlistId/tracks/:jobId/research` | Research a static playlist track |
+| `POST` | `/api/playlists/static-playlists/:playlistId/track-removals` | Queue the removal of several tracks with `{ "jobIds": […] }` |
+| `POST` | `/api/playlists/static-playlists/:playlistId/track-moves` | Queue moving several tracks with `{ "jobIds": […], "target": { "playlistId": "…" } }`, or `{ "name": "…" }` for a new playlist |
+| `GET` | `/api/playlists/static-playlists/:playlistId/operations/:operationId` | Read the state and per-track outcomes of a queued removal or move |
 | `POST` | `/api/playlists/quality-upgrades/:playlistId/:jobId` | Search for a track upgrade |
 | `POST` | `/api/playlists/quality-upgrades` | Search for upgrades for every cutoff-unmet track in Wanted |
-| `POST` | `/api/playlists/shared-playlists/:playlistId/sync` | Sync a static playlist |
-| `PUT` | `/api/playlists/playlists/:playlistId/retry-cycle` | Pause or resume retries for a static playlist |
+| `POST` | `/api/playlists/static-playlists/:playlistId/sync` | Sync a static playlist |
 | `POST` | `/api/playlists/jobs/:jobId/approve` | Approve a download held for review |
 | `POST` | `/api/playlists/jobs/:jobId/deny` | Deny a download held for review |
 | `DELETE` | `/api/playlists/jobs/completed` | Delete completed jobs |
@@ -311,11 +309,8 @@ The routes call a static playlist a shared playlist.
 | `PUT` | `/api/playlists/worker/settings` | Update worker settings |
 | `POST` | `/api/playlists/worker/start` | Start the worker |
 | `POST` | `/api/playlists/worker/stop` | Stop the worker |
-| `POST` | `/api/playlists/reset` | Reset selected flow playlists |
+| `POST` | `/api/playlists/reset` | Clear the files of the flows in `flowIds`, or of every flow |
 | `POST` | `/api/playlists/playlist/:playlistType/create` | Ensure configured smart-playlist files exist |
-
-The repeated `playlists` segment in
-`/api/playlists/playlists/:playlistId/retry-cycle` is the current route.
 
 ### Spotify import
 
@@ -465,10 +460,9 @@ setup, Aurral does not require a credential for these routes.
 | --- | --- | --- |
 | `GET` | `/api/filesystem/browse` | Browse server directories |
 | `POST` | `/api/filesystem/ensure` | Create or validate a server directory |
-| `GET` | `/api/image-proxy` | Resolve a legacy proxied image URL through the native image cache |
 | `GET` | `/api/image-proxy/:cacheKey` | Fetch a cached native-library image |
 
-Image-proxy routes are public. Before onboarding, filesystem routes do not
+The image-proxy route is public. Before onboarding, filesystem routes do not
 require authentication. After onboarding, Aurral requires an administrator
 credential for filesystem routes. Aurral accepts the instance API key. Do not
 expose an Aurral server directly to the public internet. Some `/api` routes do

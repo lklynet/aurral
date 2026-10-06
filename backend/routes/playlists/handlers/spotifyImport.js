@@ -211,7 +211,7 @@ export function registerSpotifyImport(router) {
     }
   });
 
-  router.post("/shared-playlists/:playlistId/sync", async (req, res) => {
+  router.post("/static-playlists/:playlistId/sync", async (req, res) => {
     try {
       const playlist = getAccessibleStaticPlaylist(req.user, req.params.playlistId);
       if (!playlist) {

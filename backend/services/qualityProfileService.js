@@ -163,7 +163,8 @@ export async function queueQualityUpgrade(job) {
   return "queued";
 }
 
-export async function runQualityUpgradeCheck({ force = false, playlistId = null, limit = 25 } = {}) {
+export async function runQualityUpgradeCheck({ force = false, jobIds = null, limit = 25 } = {}) {
+  const allowedJobIds = jobIds ? new Set(jobIds) : null;
   const profile = getQualityProfile();
   if (!force && !profile.automaticUpgrades) return 0;
   const dueBefore = Date.now() - profile.intervalDays * DAY_MS;
@@ -173,7 +174,7 @@ export async function runQualityUpgradeCheck({ force = false, playlistId = null,
   for (const job of downloadTracker.getAll()) {
     if (queued >= limit) break;
     if (job.status !== "done" || !job.finalPath || job.upgradeForJobId) continue;
-    if (playlistId && job.playlistType !== playlistId) continue;
+    if (allowedJobIds && !allowedJobIds.has(job.id)) continue;
     const filePath = path.resolve(job.finalPath);
     if (seen.has(filePath)) continue;
     seen.add(filePath);
@@ -197,14 +198,13 @@ export async function finalizeQualityUpgradeSuccess(upgradeJob, finalPath, quali
   const oldPath = original.finalPath;
   const originalDetails = {
     trackName: original.trackName,
-    playlistType: original.playlistType,
+    ownerId: original.ownerId,
     qualityTier: original.qualityTier,
   };
   const changed = downloadTracker.replaceFinalPath(oldPath, finalPath, quality);
   downloadTracker.removeJob(upgradeJob.id);
-  const playlistIds = [...new Set(changed.map((job) => job.playlistType).filter(Boolean))];
   const { playlistManager } = await import("./playlists/playlistManager.js");
-  for (const playlistId of playlistIds) await playlistManager.refreshPlaylist(playlistId);
+  await playlistManager.refreshPlaylistsForJobs(changed);
   playlistManager.scheduleScanLibrary();
   if (oldPath !== finalPath && isAurralOwnedPath(oldPath)) {
     const { createPlaybackDeletionGuard } = await import("./playback/playbackFileRetention.js");
@@ -219,7 +219,7 @@ export async function finalizeQualityUpgradeSuccess(upgradeJob, finalPath, quali
     artistName: original.artistName,
     albumName: original.albumName,
     albumMbid: original.albumMbid,
-    playlistId: originalDetails.playlistType,
+    playlistId: originalDetails.ownerId,
     title: upgradeJob.manualReplacementSearch
       ? `Re-searched ${originalDetails.trackName}`
       : `Upgraded ${originalDetails.trackName}`,
@@ -248,7 +248,7 @@ export async function finalizeQualityUpgradeFailure(upgradeJob, message) {
     artistName: original.artistName,
     albumName: original.albumName,
     albumMbid: original.albumMbid,
-    playlistId: original.playlistType,
+    playlistId: original.ownerId,
     title: upgradeJob.manualReplacementSearch
       ? `No replacement found for ${original.trackName}`
       : `No upgrade found for ${original.trackName}`,

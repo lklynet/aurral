@@ -124,13 +124,13 @@ Flow tracks are temporary. They live under `_flows` and are not part of the Libr
 
 When a Subsonic client favorites a flow track, Aurral adds it to the Library. To turn this off, open **Settings > System > Subsonic** and turn off **Favorite Flow tracks**.
 
-Aurral stores static playlist membership in its own database. Deleting a static playlist does not delete Library tracks.
+Static playlists list Library tracks. Deleting a static playlist removes only the tracks that the playlist downloaded and that nothing else uses. See [Remove a playlist or track](/using/playlists/#remove-a-playlist-or-track).
 
 ## How the Library finds new files
 
 Aurral keeps the Library in its own database. It scans the Downloads Folder and the saved Lidarr root folders on local disk. A scan reads the artist, album, and track tags, the MusicBrainz IDs, and the audio files. A scan does not ask Lidarr for artist, album, or track data.
 
-When a file changes in a watched folder, Aurral scans the changed file or folder. It skips files whose size and modification time did not change. It waits a moment for a move or rename to finish. It ignores `_playlists`, `_staging`, `_fallback`, `_flows`, `aurral-weekly-flow`, and hidden folders.
+When a file changes in a watched folder, Aurral scans the changed file or folder. It skips files whose size and modification time did not change. It waits a moment for a move or rename to finish. It ignores `_playlists`, `_staging`, `_fallback`, `_flows`, and hidden folders.
 
 On a new installation, Aurral scans the whole library once. After that, it scans only what changes. It does not run scheduled full scans.
 

@@ -231,8 +231,8 @@ test("cancelling an Aurral album stops active work, cleans staging, and keeps fi
 
   try {
     const cancelled = await callRoute(
-      "POST /albums/aurral/:canonicalId/cancel",
-      { canonicalId: String(album.id) },
+      "POST /albums/aurral/:recordId/cancel",
+      { recordId: String(album.id) },
     );
     assert.equal(cancelled.statusCode, 200);
     assert.deepEqual(cancelled.body.cancelledJobIds.sort(), [downloadingJob, pendingJob].sort());
@@ -244,8 +244,8 @@ test("cancelling an Aurral album stops active work, cleans staging, and keeps fi
     assert.equal(downloadTracker.getNextPending(), null);
 
     const repeated = await callRoute(
-      "POST /albums/aurral/:canonicalId/cancel",
-      { canonicalId: String(album.id) },
+      "POST /albums/aurral/:recordId/cancel",
+      { recordId: String(album.id) },
     );
     assert.equal(repeated.statusCode, 200);
     assert.deepEqual(repeated.body.cancelledJobIds, []);
@@ -260,13 +260,13 @@ test("album cancellation rejects unknown, malformed, and Lidarr-managed albums",
   const { album: lidarrAlbum, jobFor } = createLibraryAlbum({ managedBy: "lidarr", availableTracks: 1 });
   const lidarrJob = jobFor(1);
 
-  const missing = await callRoute("POST /albums/aurral/:canonicalId/cancel", { canonicalId: "999999" });
+  const missing = await callRoute("POST /albums/aurral/:recordId/cancel", { recordId: "999999" });
   assert.equal(missing.statusCode, 404);
-  const malformed = await callRoute("POST /albums/aurral/:canonicalId/cancel", { canonicalId: "12abc" });
+  const malformed = await callRoute("POST /albums/aurral/:recordId/cancel", { recordId: "12abc" });
   assert.equal(malformed.statusCode, 400);
   const conflict = await callRoute(
-    "POST /albums/aurral/:canonicalId/cancel",
-    { canonicalId: String(lidarrAlbum.id) },
+    "POST /albums/aurral/:recordId/cancel",
+    { recordId: String(lidarrAlbum.id) },
   );
   assert.equal(conflict.statusCode, 409);
   assert.equal(conflict.body.code, "album_owner_conflict");
@@ -284,8 +284,8 @@ test("album cancellation waits on provider cleanup without reviving the job", as
   });
 
   const cancelled = await callRoute(
-    "POST /albums/aurral/:canonicalId/cancel",
-    { canonicalId: String(album.id) },
+    "POST /albums/aurral/:recordId/cancel",
+    { recordId: String(album.id) },
   );
   assert.equal(cancelled.statusCode, 200);
   assert.equal(cancelled.body.cleanupFailed, true);
@@ -351,8 +351,8 @@ test("album status aggregates library availability and per-track jobs", async ()
       });
 
       const response = await callRoute(
-        "GET /albums/aurral/:canonicalId/status",
-        { canonicalId: String(album.id) },
+        "GET /albums/aurral/:recordId/status",
+        { recordId: String(album.id) },
       );
       assert.equal(response.statusCode, 200, scenario.name);
       assert.equal(response.body.status, scenario.status, scenario.name);
@@ -574,8 +574,8 @@ test("an album asks for its most common edition and a whole shorter edition comp
 
   await scanMusicRoot({ rootPath: resolveDownloadRoot(), source: "aurral" });
   invalidateAllDownloadStatusesCache();
-  const status = await callRoute("GET /albums/aurral/:canonicalId/status",
-    { canonicalId: String(requested.body.album.id) });
+  const status = await callRoute("GET /albums/aurral/:recordId/status",
+    { recordId: String(requested.body.album.id) });
   assert.equal(status.body.status, "complete");
   assert.equal(status.body.counts.total, 2);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM library_album_tracks WHERE album_id = ?")
@@ -622,8 +622,8 @@ test("an album scanned with its release ID stays one album through downloads and
   const jobId = downloadTracker.addJob({ artistName: artist.name, trackName: "Release Song 2", albumName: "Release Album",
     albumMbid: release, trackMbid: recording(2), managedBy: "aurral", requestGroupId: "release-keyed" }, "library");
   downloadTracker.setDone(jobId, path.join(root, "elsewhere.flac"));
-  const status = async () => (await callRoute("GET /albums/aurral/:canonicalId/status",
-    { canonicalId: String(album.id) })).body.status;
+  const status = async () => (await callRoute("GET /albums/aurral/:recordId/status",
+    { recordId: String(album.id) })).body.status;
 
   const duplicate = libraryStore.upsertLibraryAlbum({ identityKey: `release-group:${release}`, mbid: release,
     releaseGroupMbid: release, artistId: artist.id, title: "Release Album" });
@@ -668,7 +668,7 @@ test("an album scanned with its release ID queues by release group and cancels i
     albumName: "Legacy Album", albumMbid: release, trackMbid: track.mbid, managedBy: "aurral",
     requestGroupId: "legacy" }, "library");
 
-  const cancelled = await callRoute("POST /albums/aurral/:canonicalId/cancel", { canonicalId: String(album.id) });
+  const cancelled = await callRoute("POST /albums/aurral/:recordId/cancel", { recordId: String(album.id) });
   assert.equal(cancelled.statusCode, 200, JSON.stringify(cancelled.body));
   assert.equal(downloadTracker.getJob(legacyJobId).status, "cancelled");
 });

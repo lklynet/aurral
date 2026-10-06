@@ -15,7 +15,7 @@ export function registerArtists(router) {
     try {
       const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10000, 1), 10000);
       const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
-      if (req.query.readPath === "canonical") {
+      if (req.query.readPath === "records") {
         const { artists } = getLibraryReadModelForArtistPage({
           source: req.query.source || "all",
           limit,
@@ -196,7 +196,7 @@ export function registerArtists(router) {
   });
 
   router.put(
-    "/canonical/artists/:id/mbid",
+    "/records/artists/:id/mbid",
     requireAuth,
     requirePermission("addArtist"),
     async (req, res) => {

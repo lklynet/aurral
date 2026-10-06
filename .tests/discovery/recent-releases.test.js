@@ -91,7 +91,7 @@ test("recent missing releases can exclude future releases for Release Radar", as
 
   try {
     const releases = await getRecentMissingReleases(10, {
-      artists: [{ canonicalId: artist.id }],
+      artists: [{ recordId: artist.id }],
       includeFuture: false,
       now: "2026-06-15T12:00:00Z",
     });
@@ -133,7 +133,7 @@ test("recent missing releases can be scoped to library artists", async () => {
 
   try {
     const releases = await getRecentMissingReleases(10, {
-      artists: [{ canonicalId: includedArtist.id }],
+      artists: [{ recordId: includedArtist.id }],
       now: "2026-06-15T12:00:00Z",
     });
 

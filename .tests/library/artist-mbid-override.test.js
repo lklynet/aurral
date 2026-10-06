@@ -123,7 +123,7 @@ function updateMbid(artistId, mbid) {
     post() {},
     delete() {},
     put(routePath, ...handlers) {
-      if (routePath === "/canonical/artists/:id/mbid") handler = handlers.at(-1);
+      if (routePath === "/records/artists/:id/mbid") handler = handlers.at(-1);
     },
   });
   const response = {

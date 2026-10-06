@@ -1,5 +1,4 @@
 import { useNavigate } from "react-router";
-import { SettingsSelect } from "../pages/Settings/components/SettingsField";
 
 export function PageSectionMobileNav({
   basePath,
@@ -16,8 +15,8 @@ export function PageSectionMobileNav({
       <label htmlFor={selectId} className="page-section-mobile-nav__label">
         {label}
       </label>
-      <SettingsSelect
-        legacyStyle
+      <select
+        className="artist-modal-select"
         id={selectId}
         value={activeId}
         onChange={(event) =>
@@ -33,7 +32,7 @@ export function PageSectionMobileNav({
             {section.label}
           </option>
         ))}
-      </SettingsSelect>
+      </select>
     </div>
   );
 }

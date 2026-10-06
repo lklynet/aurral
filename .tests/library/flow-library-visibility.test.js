@@ -30,7 +30,7 @@ let root;
 
 test.beforeEach(async () => {
   resetDatabase(db);
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({ integrations: {}, flows: [], staticPlaylists: [] });
   root = await mkdtemp(path.join(tmpdir(), "aurral-flow-library-"));
 });
 
@@ -71,15 +71,14 @@ let jobCounter = 0;
 function addDoneJob(playlistId, filePath, trackName) {
   jobCounter += 1;
   db.prepare(
-    `INSERT INTO playlist_download_jobs
-      (id, artist_name, track_name, album_name, playlist_id, playlist_type, status, final_path, created_at, completed_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'done', ?, ?, ?)`,
+    `INSERT INTO download_jobs
+      (id, artist_name, track_name, album_name, owner_id, status, final_path, created_at, completed_at)
+     VALUES (?, ?, ?, ?, ?, 'done', ?, ?, ?)`,
   ).run(
     `job-${jobCounter}`,
     "Flow Artist",
     trackName,
     "Flow Album",
-    playlistId,
     playlistId,
     filePath,
     Date.now(),
@@ -110,7 +109,7 @@ async function listFiles(dir) {
 
 test("flow tracks join the library only while their flow opts in", async () => {
   const flow = createFlow("Visible Flow", false);
-  const filePath = await writeTrack(`aurral-weekly-flow/${flow.id}/Flow Artist - Opt In.wav`);
+  const filePath = await writeTrack(`_flows/${flow.id}/Flow Artist - Opt In.wav`);
   addDoneJob(flow.id, filePath, "Opt In");
   const filesBefore = await listFiles(root);
 
@@ -131,15 +130,15 @@ test("flow tracks join the library only while their flow opts in", async () => {
 
 test("tracks that leave an included flow leave the library", async () => {
   const flow = createFlow("Rotating Flow", true);
-  const kept = await writeTrack(`aurral-weekly-flow/${flow.id}/Flow Artist - Kept.wav`);
-  const rotated = await writeTrack(`aurral-weekly-flow/${flow.id}/Flow Artist - Rotated.wav`);
+  const kept = await writeTrack(`_flows/${flow.id}/Flow Artist - Kept.wav`);
+  const rotated = await writeTrack(`_flows/${flow.id}/Flow Artist - Rotated.wav`);
   addDoneJob(flow.id, kept, "Kept");
   const rotatedJob = addDoneJob(flow.id, rotated, "Rotated");
 
   await scan();
   assert.deepEqual(libraryTrackTitles(), ["Kept", "Rotated"]);
 
-  db.prepare("DELETE FROM playlist_download_jobs WHERE id = ?").run(rotatedJob);
+  db.prepare("DELETE FROM download_jobs WHERE id = ?").run(rotatedJob);
   await rm(rotated);
   await scan();
   assert.deepEqual(getLibrary({ availableOnly: false }).tracks.map((t) => t.title), ["Kept"]);
@@ -152,7 +151,7 @@ test("tracks that leave an included flow leave the library", async () => {
 test("a file shared with an excluded flow stays while any included flow owns it", async () => {
   const included = createFlow("Included Flow", true);
   const excluded = createFlow("Excluded Flow", false);
-  const shared = await writeTrack("aurral-weekly-flow/_flows/Flow Artist - Shared.wav");
+  const shared = await writeTrack(`_flows/${included.id}/Flow Artist - Shared.wav`);
   addDoneJob(included.id, shared, "Shared");
   addDoneJob(excluded.id, shared, "Shared");
 
@@ -163,7 +162,7 @@ test("a file shared with an excluded flow stays while any included flow owns it"
 test("a flow track already in the music library appears once", async () => {
   const flow = createFlow("Duplicate Flow", true);
   const owned = await writeTrack("Flow Artist/Flow Album/Flow Artist - Twice.wav");
-  const flowCopy = await writeTrack(`aurral-weekly-flow/${flow.id}/Flow Artist - Twice.wav`);
+  const flowCopy = await writeTrack(`_flows/${flow.id}/Flow Artist - Twice.wav`);
   addDoneJob("library", owned, "Twice");
   addDoneJob(flow.id, flowCopy, "Twice");
 
@@ -177,7 +176,7 @@ test("a flow track already in the music library appears once", async () => {
 
 test("a missing flow file leaves the library once its flow stops including it", async () => {
   const flow = createFlow("Missing File Flow", true);
-  const filePath = await writeTrack(`aurral-weekly-flow/${flow.id}/Flow Artist - Gone.wav`);
+  const filePath = await writeTrack(`_flows/${flow.id}/Flow Artist - Gone.wav`);
   addDoneJob(flow.id, filePath, "Gone");
 
   await scan();
@@ -191,7 +190,7 @@ test("a missing flow file leaves the library once its flow stops including it", 
 
 test("flow tracks outside a new download root leave the library", async () => {
   const flow = createFlow("Moved Root Flow", true);
-  const filePath = await writeTrack(`aurral-weekly-flow/${flow.id}/Flow Artist - Old Root.wav`);
+  const filePath = await writeTrack(`_flows/${flow.id}/Flow Artist - Old Root.wav`);
   addDoneJob(flow.id, filePath, "Old Root");
   await scan();
   assert.deepEqual(libraryTrackTitles(), ["Old Root"]);

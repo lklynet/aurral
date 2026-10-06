@@ -10,6 +10,7 @@ import {
   setupIsolatedBackend,
   startServerProcess,
 } from "../helpers/backendTestHarness.js";
+import { addStaticPlaylistJobs } from "../helpers/staticPlaylistJobs.js";
 
 const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidarrLibrary }, { flowPlaylistConfig }, { downloadTracker }, { downloadWorker }, { updateStaticPlaylist }, { resolveArtworkUrl, createSubsonicPlaylist, star }, { warmImageProxy }, { playlistManager }] =
   await setupIsolatedBackend(
@@ -93,11 +94,10 @@ async function waitFor(check, timeoutMs = 5000) {
 test.before(async () => {
   resetDatabase(db);
   dbOps.updateSettings({
-    integrations: { general: { authUser: "alice", authPassword: "password123" } },
     security: { localNetworkBypass: { enabled: false } },
     onboardingComplete: true,
   });
-  const alice = userOps.createUser("alice", hashPassword("password123"), "admin");
+  const alice = userOps.createUser("alice", hashPassword("password123"), "admin", null, true, false, "password123");
 
   fixtureRoot = await mkdtemp(path.join(isolatedState.baseDir, ".media-"));
   fixturePath = path.join(fixtureRoot, "Canonical Artist", "Canonical Album", "01 Canonical Song.flac");
@@ -169,13 +169,13 @@ test.before(async () => {
       durationMs: 1000,
     }],
   });
-  const sharedJobId = downloadTracker.addJob({
+  const [sharedJobId] = addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, staticPlaylist.id, [{
     artistName: "Flow Artist",
     albumName: "Flow Album",
     albumMbid: "shared-album-mbid",
     trackName: "Flow Song",
     durationMs: 1000,
-  }, staticPlaylist.id);
+  }]);
   downloadTracker.setDone(sharedJobId, fixturePath);
   libraryFavoritePlaylist = flowPlaylistConfig.createStaticPlaylist({
     name: "Canonical Favorite Playlist",
@@ -187,7 +187,7 @@ test.before(async () => {
       durationMs: 10_000,
     }],
   });
-  libraryFavoriteJobId = downloadTracker.addJob({
+  [libraryFavoriteJobId] = addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, libraryFavoritePlaylist.id, [{
     artistName: "Canonical Artist",
     artistMbid: "11111111-1111-4111-8111-111111111111",
     albumName: "Canonical Album",
@@ -195,7 +195,7 @@ test.before(async () => {
     trackName: "Canonical Song",
     trackMbid: "55555555-5555-4555-8555-555555555555",
     durationMs: 10_000,
-  }, libraryFavoritePlaylist.id);
+  }]);
   downloadTracker.setDone(libraryFavoriteJobId, fixturePath, "Canonical Album");
   const syncedFavoriteTrack = {
     artistName: "Synced Favorite Artist",
@@ -216,16 +216,18 @@ test.before(async () => {
     },
   });
   syncedFavoriteSourcePath = path.join(
-    process.env.WEEKLY_FLOW_FOLDER,
-    "aurral-weekly-flow",
-    syncedFavoritePlaylist.id,
+    process.env.DOWNLOAD_FOLDER,
     syncedFavoriteTrack.artistName,
     syncedFavoriteTrack.albumName,
     `${syncedFavoriteTrack.trackName}.flac`,
   );
   await mkdir(path.dirname(syncedFavoriteSourcePath), { recursive: true });
   await writeFile(syncedFavoriteSourcePath, "synced favorite");
-  syncedFavoriteSourceJobId = downloadTracker.addJob(syncedFavoriteTrack, syncedFavoritePlaylist.id);
+  [syncedFavoriteSourceJobId] = addStaticPlaylistJobs(
+    { downloadTracker, flowPlaylistConfig },
+    syncedFavoritePlaylist.id,
+    [syncedFavoriteTrack],
+  );
   downloadTracker.setDone(syncedFavoriteSourceJobId, syncedFavoriteSourcePath, syncedFavoriteTrack.albumName);
   const favoriteFlow = flowPlaylistConfig.createFlow({ name: "Favorite Toggle Flow", size: 1 });
   const favoritePath = path.join(fixtureRoot, "Favorite Artist", "Favorite Album", "Favorite Song.flac");
@@ -260,7 +262,7 @@ test.before(async () => {
 test.after(async () => {
   await aurral?.stop();
   if (syncedFavoritePlaylist) {
-    downloadTracker.clearByPlaylistType(syncedFavoritePlaylist.id);
+    downloadTracker.removeJob(syncedFavoriteSourceJobId);
     flowPlaylistConfig.deleteStaticPlaylist(syncedFavoritePlaylist.id);
   }
   await rm(syncedFavoriteSourcePath, { force: true }).catch(() => {});
@@ -523,16 +525,18 @@ test("exposes owned static playlists and keeps their entries playable", async ()
   assert.equal(artwork.response.status, 200);
   assert.equal(artwork.body, "shared-artwork");
 
-  const pendingJobId = downloadTracker.addJob({
+  const originalTracks = flowPlaylistConfig.getStaticPlaylist(staticPlaylist.id).tracks;
+  const [pendingJobId] = addStaticPlaylistJobs({ downloadTracker, flowPlaylistConfig }, staticPlaylist.id, [{
     artistName: "Pending Artist",
     albumName: "Pending Album",
     trackName: "Pending Song",
     durationMs: 1000,
-  }, staticPlaylist.id);
+  }]);
   try {
     const refreshed = responseJson(await request("getPlaylist", { id: shared.id })).playlist;
     assert.equal(refreshed.entry.some((entry) => entry.title === "Pending Song"), false);
   } finally {
+    flowPlaylistConfig.updateStaticPlaylist(staticPlaylist.id, { tracks: originalTracks });
     downloadTracker.removeJob(pendingJobId);
   }
 
@@ -589,7 +593,7 @@ test("creates durable Subsonic playlists around one promoted library job", async
   assert.equal(first.name, "Subsonic Keep One");
   const jobIdFromSong = (songId) =>
     decodeURIComponent(songId.slice("shared-song:".length)).split(":").at(-1);
-  const canonicalJobId = jobIdFromSong(first.entry[0].id);
+  const jobId = jobIdFromSong(first.entry[0].id);
 
   const secondCreate = responseJson(await request("createPlaylist", {
     name: "Subsonic Keep Two",
@@ -602,11 +606,11 @@ test("creates durable Subsonic playlists around one promoted library job", async
   const secondAurralPlaylistId = decodeURIComponent(
     secondCreate.playlist.id.slice("shared:".length),
   );
-  assert.equal(jobIdFromSong(second.entry[0].id), canonicalJobId);
+  assert.equal(jobIdFromSong(second.entry[0].id), jobId);
 
   await waitFor(() => db.prepare(
-    "SELECT status FROM playlist_download_jobs WHERE id = ?",
-  ).get(canonicalJobId)?.status === "done");
+    "SELECT status FROM download_jobs WHERE id = ?",
+  ).get(jobId)?.status === "done");
   const firstReady = await waitFor(async () => {
     const result = responseJson(await request("getPlaylist", { id: first.id }));
     return result.playlist?.entry?.[0];
@@ -617,7 +621,7 @@ test("creates durable Subsonic playlists around one promoted library job", async
   assert.equal(stream.body, "0123456789");
 
   const libraryJobs = db.prepare(
-    "SELECT id, final_path AS finalPath FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ?",
+    "SELECT id, final_path AS finalPath FROM download_jobs WHERE owner_id = ? AND track_name = ?",
   ).all("library", "Flow Song");
   assert.equal(libraryJobs.length, 1);
 
@@ -628,10 +632,10 @@ test("creates durable Subsonic playlists around one promoted library job", async
   assert.equal(aurralJobsResponse.status, 200);
   const aurralJobs = await aurralJobsResponse.json();
   assert.equal(aurralJobs.length, 1);
-  assert.equal(aurralJobs[0].id, canonicalJobId);
-  assert.equal(aurralJobs[0].playlistType, aurralPlaylistId);
+  assert.equal(aurralJobs[0].id, jobId);
+  assert.equal(aurralJobs[0].playlistId, aurralPlaylistId);
   assert.equal(
-    (await apiFetch(`/api/playlists/stream/${encodeURIComponent(canonicalJobId)}`)).status,
+    (await apiFetch(`/api/playlists/stream/${encodeURIComponent(jobId)}`)).status,
     200,
   );
 
@@ -643,7 +647,7 @@ test("creates durable Subsonic playlists around one promoted library job", async
   const secondEntry = responseJson(await request("getPlaylist", { id: second.id })).playlist.entry[0];
   assert.equal((await request("stream", { id: secondEntry.id })).response.status, 200);
   const removeLibraryTrackResponse = await apiFetch(
-    `/api/playlists/shared-playlists/${encodeURIComponent(secondAurralPlaylistId)}/tracks/${encodeURIComponent(canonicalJobId)}`,
+    `/api/playlists/static-playlists/${encodeURIComponent(secondAurralPlaylistId)}/tracks/${encodeURIComponent(jobId)}`,
     { method: "DELETE" },
   );
   assert.equal(removeLibraryTrackResponse.status, 200);
@@ -661,14 +665,20 @@ test("creates durable Subsonic playlists around one promoted library job", async
 });
 
 test("failed Subsonic playlist creation rolls back its playlist and jobs", async () => {
-  const librarySong = responseJson(await request("search3", { query: "Canonical Song" })).searchResult3.song[0];
+  const flow = flowPlaylistConfig.getFlows().find((entry) => entry.name === "Favorite Toggle Flow");
+  const flowJob = downloadTracker.getByOwner(flow.id)[0];
+  const songId = `flow-song:${encodeURIComponent(`${flow.id}:${flowJob.id}`)}`;
+  const libraryJob = () => db.prepare(
+    "SELECT id FROM download_jobs WHERE owner_id = ? AND track_name = ? LIMIT 1",
+  ).get("library", flowJob.trackName);
+  assert.equal(libraryJob(), undefined);
   const user = userOps.getUserByUsername("alice");
   const originalUpdate = flowPlaylistConfig.updateStaticPlaylist;
   flowPlaylistConfig.updateStaticPlaylist = () => null;
   try {
-    assert.equal(
-      await createSubsonicPlaylist(user, { name: "Failed Subsonic Playlist", songIds: [librarySong.id] }),
-      null,
+    await assert.rejects(
+      createSubsonicPlaylist(user, { name: "Failed Subsonic Playlist", songIds: [songId] }),
+      /Could not save the playlist/,
     );
     assert.equal(
       flowPlaylistConfig.getStaticPlaylistsForUser(user).some(
@@ -676,12 +686,7 @@ test("failed Subsonic playlist creation rolls back its playlist and jobs", async
       ),
       false,
     );
-    assert.equal(
-      db.prepare(
-        "SELECT id FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
-      ).get("library", "Canonical Song"),
-      undefined,
-    );
+    assert.equal(libraryJob(), undefined);
   } finally {
     flowPlaylistConfig.updateStaticPlaylist = originalUpdate;
   }
@@ -730,7 +735,7 @@ test("favorites can keep Flow tracks and respect the auto-keep setting", async (
   assert.equal(responseJson(await request("star", { id: entry.id })).status, "ok");
   assert.equal(
     Boolean(db.prepare(
-      "SELECT 1 FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
+      "SELECT 1 FROM download_jobs WHERE owner_id = ? AND track_name = ? LIMIT 1",
     ).get("library", "Favorite Song")),
     false,
   );
@@ -745,7 +750,7 @@ test("favorites can keep Flow tracks and respect the auto-keep setting", async (
   assert.equal(responseJson(await request("unstar", { id: entry.id })).status, "ok");
   assert.equal(responseJson(await request("star", { id: entry.id })).status, "ok");
   const autoKeepJob = db.prepare(
-    "SELECT id FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
+    "SELECT id FROM download_jobs WHERE owner_id = ? AND track_name = ? LIMIT 1",
   ).get("library", "Favorite Song");
   assert.ok(autoKeepJob);
   downloadTracker.removeJob(autoKeepJob.id);
@@ -760,7 +765,7 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
   const playlist = syncedFavoritePlaylist;
   const track = playlist.tracks[0];
   const sourcePath = syncedFavoriteSourcePath;
-  const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+  const downloadRoot = process.env.DOWNLOAD_FOLDER;
   const originalStart = downloadWorker.start;
   let libraryJobId;
   try {
@@ -769,7 +774,7 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
     assert.equal(star(userOps.getUserByUsername("alice"), songId), true);
 
     const libraryJob = db.prepare(
-      "SELECT id, status, final_path AS finalPath FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
+      "SELECT id, status, final_path AS finalPath FROM download_jobs WHERE owner_id = ? AND track_name = ? LIMIT 1",
     ).get("library", track.trackName);
     assert.ok(libraryJob);
     assert.equal(libraryJob.status, "done");
@@ -789,13 +794,12 @@ test("favoriting a synced playlist track keeps it when the source removes it", a
     });
 
     const updatedLibraryJob = db.prepare(
-      "SELECT final_path AS finalPath FROM playlist_download_jobs WHERE id = ?",
+      "SELECT final_path AS finalPath FROM download_jobs WHERE id = ?",
     ).get(libraryJobId);
-    await stat(updatedLibraryJob.finalPath);
-    await assert.rejects(stat(sourcePath));
+    assert.equal(updatedLibraryJob.finalPath, sourcePath);
+    await stat(sourcePath);
   } finally {
     downloadWorker.start = originalStart;
-    downloadTracker.clearByPlaylistType(playlist.id);
     if (libraryJobId) downloadTracker.removeJob(libraryJobId);
     await rm(path.join(downloadRoot, track.artistName), { recursive: true, force: true });
     flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
@@ -817,7 +821,7 @@ test("playlist favorites resolve to the owned library track", async () => {
     })).artist.album[0];
     librarySongId = responseJson(await request("getAlbum", { id: album.id })).album.song[0].id;
     const page = await (await apiFetch(
-      "/api/library/canonical?kind=tracks&page=1&pageSize=100&availableOnly=true",
+      "/api/library/records?kind=tracks&page=1&pageSize=100&availableOnly=true",
     )).json();
     assert.equal(page.items.find((track) => track.title === "Canonical Song").userFavorite, true);
 
@@ -898,13 +902,13 @@ test("streams library files through the authenticated native route", async () =>
   const { token } = await login.json();
   const headers = { Authorization: `Bearer ${token}` };
   const canonical = await fetch(
-    `http://127.0.0.1:${aurral.port}/api/library/canonical?source=lidarr&availableOnly=true&kind=tracks&page=1&pageSize=100`,
+    `http://127.0.0.1:${aurral.port}/api/library/records?source=lidarr&availableOnly=true&kind=tracks&page=1&pageSize=100`,
     { headers },
   );
   const library = await canonical.json();
   const albumId = library.tracks[0].albums[0].albumId;
   const tracks = await fetch(
-    `http://127.0.0.1:${aurral.port}/api/library/tracks?readPath=canonical&source=lidarr&albumId=${albumId}`,
+    `http://127.0.0.1:${aurral.port}/api/library/tracks?readPath=records&source=lidarr&albumId=${albumId}`,
     { headers },
   );
   const track = (await tracks.json())[0];

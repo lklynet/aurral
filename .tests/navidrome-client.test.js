@@ -440,7 +440,7 @@ test("waits for and verifies a Navidrome library update", async () => {
   client._nativeRequest = async (method, requestPath, body) => {
     calls.push({ method, requestPath, body });
     if (method === "GET") {
-      return [{ id: "aurral-library", name: "Aurral Weekly Flow", path: libraryPath }];
+      return [{ id: "aurral-library", name: "Aurral Playlists", path: libraryPath }];
     }
     if (method === "PUT") {
       libraryPath = body.path;

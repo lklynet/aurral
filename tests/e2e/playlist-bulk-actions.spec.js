@@ -4,10 +4,10 @@ import { openApp } from "./helpers.js";
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
 test("one bulk request reports partial completion against its original playlist", async ({ page }) => {
-  const tracks = [1, 2].map((id) => ({ id: `bulk-${id}`, artistName: "Disposable artist", trackName: `Bulk track ${id}`, status: "pending", playlistType: "bulk-source" }));
+  const tracks = [1, 2].map((id) => ({ id: `bulk-${id}`, artistName: "Disposable artist", trackName: `Bulk track ${id}`, status: "pending", ownerId: "library", playlistId: "bulk-source" }));
   const source = { id: "bulk-source", name: "Disposable bulk source", tracks, trackCount: 2 };
   const target = { id: "bulk-target", name: "Disposable bulk target", tracks: [], trackCount: 0 };
-  const status = { flows: [], sharedPlaylists: [source, target], worker: {}, capabilities: { unavailableSources: {} } };
+  const status = { flows: [], staticPlaylists: [source, target], worker: {}, capabilities: { unavailableSources: {} } };
   const submissions = [];
   let resultReads = 0;
   await page.route("**/api/**", (route) => (new URL(route.request().url()).pathname.startsWith("/api/")
