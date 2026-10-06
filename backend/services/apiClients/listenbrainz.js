@@ -83,7 +83,7 @@ export const listenbrainzSubmit = async ({ token, baseUrl = LISTENBRAINZ_API, ev
           submission_client: "Aurral",
           duration_ms: event.durationMs || undefined,
           recording_mbid: event.trackMbid || undefined,
-          release_mbid: event.albumMbid || undefined,
+          release_group_mbid: event.albumMbid || undefined,
           artist_mbids: event.artistMbid ? [event.artistMbid] : undefined,
         },
       },

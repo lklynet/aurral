@@ -60,6 +60,7 @@ function clientMeta(definition, config) {
 }
 
 const QUALITY_PROFILE_MODAL = "quality-profile";
+const ADD_CLIENT_MODAL = "add-client";
 
 export function SettingsDownloadClientsSection({
   settings,
@@ -95,6 +96,12 @@ export function SettingsDownloadClientsSection({
   const clientDefinitions = downloadClientSettings
     ? Object.values(downloadClientSettings)
     : [];
+  const enabledClientDefinitions = clientDefinitions.filter((definition) =>
+    isClientEnabled(definition, integrations[definition.key] || {}),
+  );
+  const availableClientDefinitions = clientDefinitions.filter(
+    (definition) => !isClientEnabled(definition, integrations[definition.key] || {}),
+  );
   const activeClient = downloadClientSettings?.[activeModal] || null;
 
   const updateIntegration = (key, patch) => {
@@ -109,6 +116,11 @@ export function SettingsDownloadClientsSection({
         },
       },
     });
+  };
+
+  const addClient = (definition) => {
+    updateIntegration(definition.key, { enabled: true });
+    setActiveModal(definition.key);
   };
 
   const updatePathMappings = (nextMappings) => {
@@ -214,7 +226,7 @@ export function SettingsDownloadClientsSection({
       <div className="settings-page__section">
         <div className="settings-page__integration-card-grid">
           {clientDefinitions.length > 0 ? (
-            clientDefinitions.map((definition) => {
+            enabledClientDefinitions.map((definition) => {
               const config = integrations[definition.key] || {};
               return (
                 <IntegrationCard
@@ -222,7 +234,7 @@ export function SettingsDownloadClientsSection({
                   title={definition.label}
                   subtitle={definition.subtitle}
                   status={getProviderStatus(
-                    isClientEnabled(definition, config),
+                    true,
                     isClientConfigured(definition, config, health),
                   )}
                   meta={clientMeta(definition, config)}
@@ -237,6 +249,16 @@ export function SettingsDownloadClientsSection({
                 : "Download client settings are unavailable. Refresh the page to retry."}
             </div>
           )}
+          {availableClientDefinitions.length > 0 ? (
+            <button
+              type="button"
+              className="download-client-add"
+              aria-label="Add download client"
+              onClick={() => setActiveModal(ADD_CLIENT_MODAL)}
+            >
+              <Plus aria-hidden />
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -384,6 +406,40 @@ export function SettingsDownloadClientsSection({
           onClose={closeMappingModal}
           onSave={saveMapping}
         />
+      ) : null}
+
+      {activeModal === ADD_CLIENT_MODAL ? (
+        <SettingsIntegrationModal
+          title="Add download client"
+          wide={false}
+          onClose={() => setActiveModal(null)}
+        >
+          <div className="download-client-picker">
+            <p className="download-client-picker__intro">
+              Choose a client to add and configure.
+            </p>
+            <div className="download-client-picker__list">
+              {availableClientDefinitions.map((definition) => (
+                <button
+                  key={definition.key}
+                  type="button"
+                  className="download-client-picker__option"
+                  onClick={() => addClient(definition)}
+                >
+                  <span className="download-client-picker__copy">
+                    <span className="download-client-picker__name">{definition.label}</span>
+                    {definition.subtitle ? (
+                      <span className="download-client-picker__subtitle">
+                        {definition.subtitle}
+                      </span>
+                    ) : null}
+                  </span>
+                  <Plus className="artist-icon-sm" aria-hidden />
+                </button>
+              ))}
+            </div>
+          </div>
+        </SettingsIntegrationModal>
       ) : null}
 
       {activeModal === QUALITY_PROFILE_MODAL && (
