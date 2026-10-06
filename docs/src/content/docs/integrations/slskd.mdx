@@ -44,19 +44,21 @@ Soulseek matches whole words and splits file names at punctuation, so Aurral rep
 
 Soulseek hides results for some artist and album names entirely. No query finds those, so another download source has to supply them.
 
-Aurral keeps search results for 15 minutes. Tracks from the same album share one album search instead of each starting their own. Aurral runs no more searches at once than the download worker's concurrency.
+Aurral keeps search results for 15 minutes. Tracks from the same album share one album search instead of each starting their own. Aurral runs no more searches at once than the download worker's concurrency. slskd itself sends only a few searches at a time and queues the rest, so a search's time starts when slskd sends it, after at most 5 minutes in its queue.
 
 ## Albums
 
 For an Aurral album, Aurral searches for the album alone and looks for a folder that holds the missing tracks. It compares the folder with every edition of the album in MusicBrainz. When several folders fit, Aurral prefers a complete folder, then the best tier in your quality profile, then the closest match, then a user with a free upload slot, a short queue, and a fast upload. It skips folders in a tier that the quality profile turns off, and folders named as a live, bootleg, box set, or greatest-hits release unless the album is one.
 
-Aurral downloads only the files that fill missing tracks. If the folder leaves tracks unfilled, Aurral tries the next ranked folder, from a different user, before it searches for those tracks one by one.
+Aurral downloads only the files that fill missing tracks. Afterwards it removes the files it did not import, and the folders its imports emptied, from slskd's download folder. If the folder leaves tracks unfilled, Aurral tries the next ranked folder, from a different user, before it searches for those tracks one by one.
 
 ## Transfers
 
-Aurral waits while a transfer makes progress, including while it waits in the user's upload queue. If a transfer's state, progress, and queue position stay the same for 30 minutes, Aurral cancels it and tries the next result. A track that waits 10 minutes in a user's queue without moving goes to the next result if there is one. For an album, once every other file has finished or failed, files still waiting in the user's queue get 10 minutes and a file still transferring gets 20; then Aurral imports what finished and tries the next folder for the rest.
+Aurral waits while a transfer makes progress, including while its place in the user's upload queue moves. If no bytes arrive and the queue position stays the same for 30 minutes, Aurral cancels the transfer and tries the next result. A track that waits 10 minutes in a user's queue without moving goes to the next result if there is one, and so does an album whose files all wait 10 minutes without any of them starting. For an album, once every other file has finished or failed, files still waiting in the user's queue get 10 minutes and a file still transferring gets 20; then Aurral imports what finished and tries the next folder for the rest.
 
 A file that fails Aurral's checks is not offered again for that track.
+
+A user who rejects a transfer, for example because they ban users who share nothing, is not retried for that file. A user who banned Aurral is skipped in later searches until they upload to it again. Failed files in an album download count against the user who shared the folder, so a user who failed several files is ranked lower or skipped later. Many users ban peers without shares, so sharing a folder in slskd makes more uploads succeed.
 
 ## Fallback
 

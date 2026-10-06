@@ -340,12 +340,21 @@ function tally(releases, key) {
   return counts;
 }
 
-function runningOrder(release) {
+function tracksInOrder(release) {
   return [...release.tracks]
     .sort((left, right) => (left.mediumNumber || 1) - (right.mediumNumber || 1)
-      || (left.trackNumber || 0) - (right.trackNumber || 0))
-    .map((track) => getNormalizedText(track.title))
-    .join("\n");
+      || (left.trackNumber || 0) - (right.trackNumber || 0));
+}
+
+function runningOrder(release) {
+  return tracksInOrder(release).map((track) => getNormalizedText(track.title)).join("\n");
+}
+
+function median(values) {
+  const sorted = values.filter((value) => Number(value) > 0).sort((left, right) => left - right);
+  if (sorted.length === 0) return null;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
 }
 
 // The album is the official tracklist most of its releases share: pressings
@@ -365,10 +374,21 @@ export function selectAlbumRelease(album) {
   const orders = new Map(sameCount.map((release) => [release, runningOrder(release)]));
   const orderCounts = tally(sameCount, (release) => orders.get(release));
   const discs = (release) => new Set(release.tracks.map((track) => track.mediumNumber || 1)).size;
-  return sameCount.reduce((best, release) => {
+  const chosen = sameCount.reduce((best, release) => {
     const commoner = orderCounts.get(orders.get(release)) - orderCounts.get(orders.get(best));
     return commoner > 0 || (commoner === 0 && discs(release) < discs(best)) ? release : best;
   });
+  // Pressings of one tracklist list a track a few seconds apart, and some
+  // round to whole seconds, so each track takes its median length.
+  const pressings = sameCount.filter((release) => orders.get(release) === orders.get(chosen)).map(tracksInOrder);
+  const ordered = tracksInOrder(chosen);
+  return {
+    ...chosen,
+    tracks: chosen.tracks.map((track) => {
+      const index = ordered.indexOf(track);
+      return { ...track, durationMs: median(pressings.map((tracks) => tracks[index]?.durationMs)) ?? track.durationMs };
+    }),
+  };
 }
 
 function storeAlbumReleaseMappings(album) {

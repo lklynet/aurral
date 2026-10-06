@@ -85,7 +85,8 @@ const metadataServer = await createMockHttpServer((request, response) => {
     artistid: variousArtists,
     artists: [
       { id: variousArtists, artistname: "Various Artists" },
-      ...tracks.map(([artistId, artistName]) => ({ id: artistId, artistname: artistName })),
+      ...tracks.map(([artistId, artistName]) => ({ id: artistId, artistname: artistName,
+        artistaliases: artistName === "Blue Swede" ? ["Björn Skifs & Blåblus"] : [] })),
     ],
     releases: [{
       id: `${albumMbid}-release`,
@@ -147,7 +148,7 @@ test("a compilation keeps Various Artists on the album and matches each track by
   assert.equal(jobs.length, 2);
   for (const job of jobs) assert.equal(job.artistName, "Various Artists");
   const hooked = jobs.find((job) => job.trackName === "Hooked on a Feeling");
-  assert.deepEqual(hooked.artistAliases, ["Blue Swede"]);
+  assert.deepEqual(hooked.artistAliases, ["Blue Swede", "Björn Skifs & Blåblus"]);
 
   const validate = (artist) => validateDownloadedTrackFile({
     request: buildResolvedJobTrack(hooked),
@@ -159,6 +160,7 @@ test("a compilation keeps Various Artists on the album and matches each track by
     }) },
   });
   assert.equal((await validate("Blue Swede")).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  assert.equal((await validate("Björn Skifs & Blåblus")).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
   assert.equal((await validate("Raspberries")).decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
 
   const root = join(isolatedState.baseDir, "music");

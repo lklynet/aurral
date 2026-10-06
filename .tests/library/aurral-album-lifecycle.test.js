@@ -582,6 +582,49 @@ test("an album asks for its most common edition and a whole shorter edition comp
     .get(requested.body.album.id).count, 3);
 });
 
+test("an album asks for each track's typical length across pressings of its tracklist", async (t) => {
+  const artistMbid = "eeeeeeee-eeee-4eee-8eee-000000000011";
+  const albumMbid = "eeeeeeee-eeee-4eee-8eee-000000000012";
+  const pressing = (id, lengths) => ({ id, status: "Official", tracks: lengths.map((durationms, index) => ({
+    id: `${id}-${index}`, recordingid: `eeeeeeee-eeee-4eee-8eee-20000000000${index + 1}`,
+    trackname: `Pressing Song ${index + 1}`, artistid: artistMbid, durationms,
+    trackposition: index + 1, mediumnumber: 1,
+  })) });
+  const releases = [pressing("vinyl", [296000, 250000]), pressing("cd", [301106, 254893]),
+    pressing("digital", [301000, 254000])];
+  const metadata = await createMockHttpServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    if (new URL(request.url, "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
+      response.writeHead(404);
+      response.end("{}");
+      return;
+    }
+    response.end(JSON.stringify({ id: albumMbid, title: "Pressing Album", artistid: artistMbid,
+      artists: [{ id: artistMbid, artistname: "Pressing Artist" }], releases }));
+  });
+  const originalSettings = dbOps.getSettings();
+  const originalWorkerStart = downloadWorker.start;
+  const originalIsConfigured = lidarrClient.isConfigured;
+  dbOps.updateSettings({ ...originalSettings, integrations: { ...originalSettings.integrations,
+    slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
+    metadata: { ...originalSettings.integrations?.metadata, baseUrl: metadata.url, enableNarrowFallbacks: false } } });
+  clearMetadataProviderCaches();
+  downloadWorker.start = async () => {};
+  lidarrClient.isConfigured = () => false;
+  t.after(async () => {
+    downloadWorker.start = originalWorkerStart;
+    lidarrClient.isConfigured = originalIsConfigured;
+    dbOps.updateSettings(originalSettings);
+    clearMetadataProviderCaches();
+    await metadata.close();
+  });
+
+  const requested = await callRoute("POST /albums/request", {}, { albumMbid, albumName: "Pressing Album",
+    artistMbid, artistName: "Pressing Artist", managedBy: "aurral" });
+  assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
+  assert.deepEqual(requested.body.jobIds.map((id) => downloadTracker.getJob(id).durationMs), [301000, 254000]);
+});
+
 test("settling an album on an edition leaves a track another album has monitored", () => {
   const albumMbid = "ffffffff-ffff-4fff-8fff-000000000001";
   const artist = libraryStore.upsertLibraryArtist({ identityKey: "mbid:ffffffff-ffff-4fff-8fff-000000000002",

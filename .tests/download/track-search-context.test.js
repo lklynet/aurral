@@ -21,9 +21,9 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("BrainzMash release-track IDs are not treated as recording IDs", () => {
+test("BrainzMash release-track IDs are not treated as recording IDs, and merged recording IDs are kept", () => {
   assert.deepEqual(
-    toNormalizedTrack({ id: "release-track-id", trackname: "Song" }),
+    toNormalizedTrack({ id: "release-track-id", trackname: "Song", oldrecordingids: ["merged-recording-id"] }),
     {
       id: "release-track-id",
       recordingId: "",
@@ -33,6 +33,7 @@ test("BrainzMash release-track IDs are not treated as recording IDs", () => {
       mediumNumber: null,
       durationMs: null,
       artistId: null,
+      oldRecordingIds: ["merged-recording-id"],
     },
   );
 });

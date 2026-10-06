@@ -19,6 +19,7 @@ const [
   { sabnzbdClient },
   { deemixClient },
   { slskdClient },
+  { prowlarrClient },
 ] = await setupIsolatedBackend(
   "provider-enqueue-cancellation",
   "backend/config/db-sqlite.js",
@@ -31,6 +32,7 @@ const [
   "backend/services/sabnzbdClient.js",
   "backend/services/deemixClient.js",
   "backend/services/slskdClient.js",
+  "backend/services/prowlarrClient.js",
 );
 
 test.beforeEach(() => resetDatabase(db));
@@ -110,7 +112,8 @@ test("SABnzbd cancellation waits for an in-flight append and can retry cleanup",
     integrations: { sabnzbd: { enabled: true, url: "http://sabnzbd.test", apiKey: "test" } },
   });
   t.mock.method(sabnzbdClient, "isConfigured", () => true);
-  t.mock.method(sabnzbdClient, "appendUrl", async () => {
+  t.mock.method(prowlarrClient, "downloadNzb", async () => Buffer.from("<nzb></nzb>"));
+  t.mock.method(sabnzbdClient, "appendNzb", async () => {
     await gate.wait();
     return { nzbId: "sabnzbd-race-item" };
   });

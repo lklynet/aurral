@@ -15,22 +15,29 @@ Aurral matches tracks with native JavaScript rules. The matcher needs no Python 
 After a download, `postDownloadValidator.js` runs the same matcher on the original file tags. Aurral writes its own tags only after this check passes.
 
 - A strong title score cannot override a known conflict in the recording ID, version, artist, or duration.
+- A recording ID tag counts only when it holds a MusicBrainz ID. Some rip tools write Spotify IDs there. An ID that MusicBrainz merged into the requested recording, which files tagged before the merge still carry, counts as the same recording.
 - Missing evidence does not count as agreement.
-- A file whose original tags match except for the duration goes to review. A Soulseek or yt-dlp file waits while the job tries its remaining candidates and the other download sources. It goes to review only when none of them verifies, and keeps its own source details, so denying it blocks that file.
+- Editions of one recording differ by a few seconds of mastering, fade, or silence, so a file whose original title and artist tags match exactly is imported within 10 seconds of the requested length, as in Lidarr. A partly matching title needs to be within 2 seconds. Otherwise a file that matches except for its length goes to review. A Soulseek or yt-dlp file waits while the job tries its remaining candidates and the other download sources. It goes to review only when none of them verifies, and keeps its own source details, so denying it blocks that file.
+- A credit such as "Kendrick Lamar, Drake" or "Blue Swede & Björn Skifs" names each of its artists, and a leading "The" does not change an artist.
+- A clean, edited, or censored copy contradicts a request that does not ask for one. An "explicit" label does not.
 - A file without usable identity tags is not imported automatically.
 - A track number that points at another track of the requested album is a conflict only when the file comes from that album. A single, a compilation, or another album has its own numbering, and a later disc numbers its tracks from 1 again.
 - Aurral takes a recording ID only from MusicBrainz release data, never from Last.fm. The expected length comes from the matched MusicBrainz release track; a Last.fm length, often a radio edit, only fills a missing one.
-- A "Various Artists" credit is not artist evidence. A compilation's jobs keep "Various Artists" as their artist and name each track's own artist as an alias for matching and searching. Each file is tagged with its own artist and "Various Artists" as the album artist, so media servers group the album, and the Library keeps each track's own artist.
+- A "Various Artists" credit is not artist evidence. A compilation's jobs keep "Various Artists" as their artist and name each track's own artist, with that artist's other names from MusicBrainz, as aliases for matching and searching. Each file is tagged with its own artist and "Various Artists" as the album artist, so media servers group the album, and the Library keeps each track's own artist.
 
 ## Titles and scripts
 
-A title in a file name keeps its dash-separated version suffix. A remaster can match the original recording, but a radio edit must match the requested version.
+A title in a file name keeps its dash-separated version suffix. A remaster can match the original recording, but a radio edit must match the requested version. When the part before the dash names more than the artist, as in `Artist [Album] 08 - Title`, the part after it counts if it is closer to the requested title.
 
 Matching removes Latin accents and treats equivalent Unicode spellings as equal. If either core title contains non-Latin letters, two different normalized titles are a contradiction, even when the artist, duration, or recording ID agrees. This rule also applies to file names and to album file assignment. A transliteration or spelling difference in such a title needs the user to choose.
 
 ## yt-dlp files
 
-yt-dlp names files by video ID, so the file name is not title evidence. yt-dlp writes the video metadata into the file, and splits a title of the form `Artist - Title` into the artist and title tags. Before matching, the validator removes promotional labels such as "Official Music Video" from the title.
+yt-dlp names files by video ID, so the file name is not title evidence. yt-dlp writes YouTube's track and artist into the file when YouTube has them. Otherwise it splits a title of the form `Artist - Title` at the first dash, or names the uploader as the artist.
+
+Aurral reads a video title the same way before and after the download. It removes upload wording such as "Official Music Video", "(Audio)", "Audio Oficial", or "| Album". The part of the title that names the requested artist is the artist, whether it comes first, last, or before 「Title」, and the part closest to the requested title is the title. A channel's name counts as the artist only when it is the artist's own channel, such as "Fleetwood Mac - Topic" or "DaftPunkVEVO".
+
+An upload on the artist's channel that is not a music video is the release audio: the "- Topic" uploads, "(Audio)" uploads, lyric videos, and visualizers. Aurral downloads those first and gives them the 10-second length window. A music video, which is often cut differently, or an upload on another channel needs to be within 2 seconds, because re-uploads are often re-timed. A YouTube title must match exactly: uploader words such as "Concept" or "Reworked" send the file to review.
 
 ## Manual selections
 

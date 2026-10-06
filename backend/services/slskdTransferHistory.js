@@ -42,6 +42,8 @@ const recentPeerRowsStmt = db.prepare(`
       'validation_failed'
     ) THEN 1 ELSE 0 END) AS failures,
     SUM(CASE WHEN status = 'validation_failed' THEN 1 ELSE 0 END) AS validation_failures,
+    MAX(CASE WHEN LOWER(reason) LIKE '%banned%' THEN created_at END) AS latest_ban_at,
+    MAX(CASE WHEN status = 'success' THEN created_at END) AS latest_success_at,
     MAX(created_at) AS latest_at
   FROM slskd_transfer_history
   WHERE created_at >= ?
@@ -177,6 +179,7 @@ export function buildSlskdRankingHistoryOptions() {
       successes: Number(row.successes || 0),
       failures: Number(row.failures || 0),
       validationFailures: Number(row.validation_failures || 0),
+      banned: Number(row.latest_ban_at || 0) > Number(row.latest_success_at || 0),
       active: 0,
     });
   }
@@ -197,6 +200,8 @@ export function buildSlskdRankingHistoryOptions() {
     isUserBlacklisted: (username) => {
       const stats = peerStats.get(normalizeUsername(username));
       if (!stats) return false;
+      // A user who banned Aurral rejects every transfer until it lifts the ban.
+      if (stats.banned) return true;
       if (stats.successes > 0) return false;
       return stats.failures >= 5 || stats.validationFailures >= 3;
     },

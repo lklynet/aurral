@@ -34,7 +34,7 @@ import {
   deniedAlbumSources,
   finishAlbumGrab,
 } from "./albumGrab.js";
-import { isCompilationJobs, jobReleaseTrack } from "./albumReleases.js";
+import { isCompilationJobs, jobReleaseTrack, withRecordingAliases } from "./albumReleases.js";
 import { assessRelease } from "./trackMatching/nativeMatcher.js";
 import {
   getPayloadCandidate,
@@ -407,10 +407,10 @@ async function handleDeemixFinalize(payload, helpers) {
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
   const candidate = getPayloadCandidate(payload);
-  const resolvedTrack = {
+  const resolvedTrack = await withRecordingAliases({
     ...buildResolvedTrack(job, payload.track),
     upgradeForJobId: payload.upgradeForJobId || null,
-  };
+  }, job.albumMbid);
   const filePath = String(payload.downloadedPath || "").trim();
   const exists = filePath ? await fs.stat(filePath).catch(() => null) : null;
   if (!exists?.isFile()) {

@@ -15,7 +15,7 @@ const request = {
   title: "Hoppípolla",
   artists: ["Sigur Rós"],
   durationMs: 275000,
-  recordingMbid: "recording-studio",
+  recordingMbid: "cc82ee93-62b1-4424-8ea0-a24d775161e5",
 };
 
 test("normalization folds diacritics, punctuation, and spacing", () => {
@@ -29,7 +29,7 @@ test("distinct non-Latin titles cannot be selected, assigned, or verified", () =
     ["Мой любимый город", "Мои любимый город"], ["Song がみ", "Song かみ"], ["कि", "की"],
     ["時", "shi"], ["shi", "時"],
   ]) {
-    const wanted = { title: expected, artists: ["X"], durationMs: 200000, recordingMbid: "same" };
+    const wanted = { title: expected, artists: ["X"], durationMs: 200000, recordingMbid: "ff339055-7335-4a88-8377-55e41514beb0" };
     const candidate = { ...wanted, title: offered };
     assert.equal(decideRecording(wanted, [candidate]).decision, "skip", `${expected}/${offered}`);
     assert.deepEqual(assignReleaseFiles([wanted], [candidate]).pairs, [], `${expected}/${offered}`);
@@ -90,7 +90,7 @@ test("listing titles parse common album file layouts without changing song subti
 
 test("known recording, variant, and duration contradictions cannot be rescued by title", () => {
   for (const candidate of [
-    { title: "Hoppipolla", artists: ["Sigur Ros"], durationMs: 275000, recordingMbid: "other" },
+    { title: "Hoppipolla", artists: ["Sigur Ros"], durationMs: 275000, recordingMbid: "d0941e68-da8f-4815-8ff8-6a61fc59f7c5" },
     { title: "Hoppipolla (Live)", artists: ["Sigur Ros"], durationMs: 275000 },
     { title: "Hoppipolla", artists: ["Sigur Ros"], durationMs: 320000 },
   ]) {
@@ -264,18 +264,18 @@ test("duplicate titles use track position and leave a duplicate file unassigned"
 test("post-download verification requires corroboration and rejects original tag conflicts", () => {
   assert.equal(verifyDownloadedRecording(request, {
     title: "Hoppipolla", artists: ["Sigur Ros"], durationMs: 275000,
-    recordingMbid: "other",
+    recordingMbid: "d0941e68-da8f-4815-8ff8-6a61fc59f7c5",
   }).decision, "no_match");
   assert.equal(verifyDownloadedRecording(request, {
     title: "Hoppipolla", artists: ["Sigur Ros"], durationMs: 275000,
-    recordingMbid: "recording-studio",
+    recordingMbid: "cc82ee93-62b1-4424-8ea0-a24d775161e5",
   }).decision, "matched");
 });
 
 test("release session requires the requested slot and lets the caller order equal folders", () => {
   const release = { key: "release", tracks: [
-    { title: "First Song", artists: ["The Band"], durationMs: 180000, recordingMbid: "first" },
-    { title: "Second Song", artists: ["The Band"], durationMs: 200000, recordingMbid: "second" },
+    { title: "First Song", artists: ["The Band"], durationMs: 180000, recordingMbid: "e0996a37-c13d-44c3-8060-74939d43fa37" },
+    { title: "Second Song", artists: ["The Band"], durationMs: 200000, recordingMbid: "352f7829-a238-4b00-8cc1-2b0c2613c756" },
   ] };
   const good = { key: "good", files: [
     { title: "First Song", durationMs: 180000 },
@@ -286,14 +286,14 @@ test("release session requires the requested slot and lets the caller order equa
     { title: "Second Song (Live)", durationMs: 200000 },
   ] };
   assert.equal(selectReleaseSession({ releases: [release], folders: [good, wrongSlot],
-    requestedRecordingMbid: "second" }).selected?.folder.key, "good");
+    requestedRecordingMbid: "352f7829-a238-4b00-8cc1-2b0c2613c756" }).selected?.folder.key, "good");
   assert.equal(selectReleaseSession({ releases: [release], folders: [wrongSlot],
-    requestedRecordingMbid: "second" }).decision, "skip");
+    requestedRecordingMbid: "352f7829-a238-4b00-8cc1-2b0c2613c756" }).decision, "skip");
   const copies = [good, { ...good, key: "copy" }];
   assert.equal(selectReleaseSession({ releases: [release], folders: copies,
-    requestedRecordingMbid: "second" }).selected.folder.key, "good");
+    requestedRecordingMbid: "352f7829-a238-4b00-8cc1-2b0c2613c756" }).selected.folder.key, "good");
   assert.equal(selectReleaseSession({ releases: [release], folders: copies,
-    requestedRecordingMbid: "second",
+    requestedRecordingMbid: "352f7829-a238-4b00-8cc1-2b0c2613c756",
     compare: (left, right) => right.folderIndex - left.folderIndex }).selected.folder.key, "copy");
 });
 
@@ -301,8 +301,8 @@ test("a Various Artists credit on the request neither conflicts with nor confirm
   const wanted = { title: "Hooked on a Feeling", artists: ["Various Artists"], durationMs: 173000 };
   const file = { title: "Hooked on a Feeling", artists: ["Blue Swede"], durationMs: 173000 };
   assert.notEqual(verifyDownloadedRecording(wanted, file).decision, "no_match");
-  assert.equal(verifyDownloadedRecording({ ...wanted, recordingMbid: "hooked" },
-    { ...file, recordingMbid: "hooked" }).decision, "matched");
+  assert.equal(verifyDownloadedRecording({ ...wanted, recordingMbid: "e2862b5d-6c43-4368-8af6-4aadec5cb2ff" },
+    { ...file, recordingMbid: "e2862b5d-6c43-4368-8af6-4aadec5cb2ff" }).decision, "matched");
   assert.equal(decideRecording(wanted, [{ ...file, artists: ["A Cover Band"] }]).decision, "uncertain");
   assert.equal(decideRecording({ ...wanted, artistAliases: ["Blue Swede"] }, [file]).decision, "selectable");
 });

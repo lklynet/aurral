@@ -43,6 +43,18 @@ test("removes the download folder and keeps sibling downloads", async () => {
   assert.equal(await fs.readFile(path.join(sibling, "track.flac"), "utf8"), "other download");
 });
 
+test("a download that failed before it started leaves NZBGet's history", async (t) => {
+  const client = new NzbgetClient({ completedPath: root });
+  const rpc = t.mock.method(client, "rpc", async () => true);
+  t.mock.method(client, "listGroups", async () => []);
+  t.mock.method(client, "history", async () => []);
+  t.mock.method(client, "getDownloadDirectories", async () => ({ completedPath: root }));
+  assert.equal(await client.deleteHistoryItem(7, { deleteFiles: true,
+    historyItem: { NZBID: 7, Status: "FAILURE/FETCH", DestDir: "", FinalDir: "" } }), true);
+  assert.deepEqual(rpc.mock.calls[0].arguments, ["editqueue", ["HistoryFinalDelete", "", [7]]]);
+  assert.equal(await exists(folder()), true);
+});
+
 test("refuses anything but a direct child of NZBGet's download folders", async () => {
   await fs.mkdir(path.join(folder(), "disc2"));
   for (const target of [root, path.join(root, "aurral"), path.join(folder(), "disc2"), state.baseDir]) {

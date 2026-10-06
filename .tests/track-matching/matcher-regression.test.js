@@ -23,9 +23,9 @@ test("structured results select the recording and reject wrong variants and arti
 
 test("source candidates with a visible wrong recording ID never become usable", async () => {
   const evaluation = await evaluateTrackCandidates({ source: "deemix",
-    context: { ...request, recordingMbid: "wanted" },
+    context: { ...request, recordingMbid: "aa8bf4d6-ee95-4407-8f7b-2efb65240a23" },
     candidates: [{ id: "wrong", title: "Get Lucky", artist: "Daft Punk",
-      durationSec: 248, recordingMbid: "other" }] });
+      durationSec: 248, recordingMbid: "d0941e68-da8f-4815-8ff8-6a61fc59f7c5" }] });
   assert.equal(evaluation.evaluations[0].decision, "reject");
   assert.ok(evaluation.evaluations[0].contradictions.includes("recording-mbid"));
 });

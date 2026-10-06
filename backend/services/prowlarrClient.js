@@ -370,6 +370,26 @@ export class ProwlarrClient {
       .map(normalizeRelease)
       .filter((release) => release.protocol === "usenet" && release.downloadUrl && release.title);
   }
+
+  // Like Lidarr, Aurral fetches the NZB itself and hands the download client
+  // the file, so the client never needs to reach Prowlarr at Aurral's address.
+  async downloadNzb(downloadUrl) {
+    const url = String(downloadUrl || "").trim();
+    if (!url) throw new Error("No Usenet release URL available");
+    const response = await axios.get(url, {
+      responseType: "arraybuffer",
+      timeout: 60000,
+      validateStatus: () => true,
+    });
+    if (response.status !== 200) {
+      throw new Error(`The indexer did not return the NZB: HTTP ${response.status}`);
+    }
+    const content = Buffer.from(response.data || []);
+    if (!/<nzb[\s>]/iu.test(content.subarray(0, 65536).toString("utf8"))) {
+      throw new Error("The indexer did not return an NZB file");
+    }
+    return content;
+  }
 }
 
 export const prowlarrClient = new ProwlarrClient();

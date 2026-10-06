@@ -257,26 +257,31 @@ async function downloadAudioFor(config = null, videoUrl, { jobId, shouldCancel }
   await fsPromises.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
   await fsPromises.mkdir(stagingDir, { recursive: true });
   const outTemplate = path.join(stagingDir, "%(id)s.%(ext)s");
+  const args = [
+    "--no-playlist",
+    "--no-warnings",
+    "-x",
+    "--embed-metadata",
+    "--parse-metadata",
+    "title:^(?P<artist>.+?)\\s+[-–—]\\s+(?P<title>.+)$",
+    "--audio-format",
+    AUDIO_FORMAT,
+    "--audio-quality",
+    "0",
+    "-o",
+    outTemplate,
+    "--",
+    url,
+  ];
   try {
-    await runYtdlp(
-      [
-        "--no-playlist",
-        "--no-warnings",
-        "-x",
-        "--embed-metadata",
-        "--parse-metadata",
-        "title:^(?P<artist>.+?)\\s+[-–—]\\s+(?P<title>.+)$",
-        "--audio-format",
-        AUDIO_FORMAT,
-        "--audio-quality",
-        "0",
-        "-o",
-        outTemplate,
-        "--",
-        url,
-      ],
-      { timeoutMs: DOWNLOAD_TIMEOUT_MS, cwd: stagingDir, shouldCancel },
-    );
+    try {
+      await runYtdlp(args, { timeoutMs: DOWNLOAD_TIMEOUT_MS, cwd: stagingDir, shouldCancel });
+    } catch (error) {
+      // YouTube often refuses one signed media URL with 403; a new run
+      // extracts fresh URLs and usually succeeds.
+      if (!/HTTP Error 403/u.test(error?.message || "")) throw error;
+      await runYtdlp(args, { timeoutMs: DOWNLOAD_TIMEOUT_MS, cwd: stagingDir, shouldCancel });
+    }
   } catch (error) {
     await fsPromises.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
     throw error;

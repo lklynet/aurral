@@ -212,8 +212,12 @@ async function rewriteAudioTags(filePath, tags) {
     "-y",
     "-i",
     sourcePath,
+    // Audio and cover art only: an M4A muxer refuses a data track, such as
+    // the chapter text YouTube downloads carry. ffmpeg rewrites chapters itself.
     "-map",
-    "0",
+    "0:a",
+    "-map",
+    "0:v?",
     "-c",
     "copy",
   ];

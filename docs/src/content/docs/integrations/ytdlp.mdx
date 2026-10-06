@@ -26,9 +26,13 @@ The default priority of yt-dlp is `50`. The other sources have lower numbers, so
 
 yt-dlp downloads the tracks that the other sources cannot find. It can also be your only download source. It always downloads one track at a time. It never downloads a whole album at once.
 
-Aurral ranks results by title, artist, and duration. It skips karaoke, live loops, and similar unwanted results.
+Aurral searches YouTube for the artist and title, then for the artist and title with "official audio" until it finds the artist's own audio upload. A compilation track is searched by its own artist. If neither search finds anything, Aurral searches for the title and artist.
 
-yt-dlp writes the video metadata into the file. When a video title has the form `Artist - Title`, yt-dlp stores the two parts as the artist and the title. Before Aurral accepts the download, it checks this artist and title against the requested track. It removes promotional labels such as "Official Music Video" from the title before it compares. It does not use the file name, because yt-dlp names files by video ID.
+Aurral prefers the release audio on the artist's own channel, such as the "Artist - Topic" uploads, then ranks the other results by title, artist, and duration. It skips karaoke, covers, live versions, sped-up or slowed edits, clean edits, and similar unwanted results.
+
+Before Aurral accepts the download, it checks the artist and title that yt-dlp wrote into the file, together with the video title, against the requested track. It ignores upload wording such as "Official Music Video" or "(Audio)", and it reads "Title - Artist" and "Artist「Title」" titles too. The title must match exactly. The release audio on the artist's channel, including its lyric videos and visualizers, may differ from the requested length by up to 10 seconds, like another edition of the album. A music video or an upload on another channel must be within 2 seconds. It does not use the file name, because yt-dlp names files by video ID.
+
+If YouTube refuses a download with HTTP 403, Aurral runs it once more with fresh links before it tries the next result.
 
 Aurral then applies the quality profile. It rejects the file if its measured M4A quality is not an enabled tier.
 
@@ -36,7 +40,7 @@ After the checks, Aurral writes the title, artist, album, album artist, year, an
 
 Aurral stores its own identity marker in the grouping tag, not in the comment tag, so Navidrome does not show it as the track description. Older versions wrote the marker into the comment tag of every download. After an update, Aurral moves it to the grouping tag once, in the files that it downloaded. It changes only the comment and grouping tags, and only when the comment holds the marker.
 
-If the file matches the requested track but its duration is very different, Aurral holds it in **Activity > Queue**. You can preview, approve, or deny it.
+If the file matches the requested track except for its length or part of its title, Aurral holds it in **Activity > Queue** while it tries the other results and sources. If none of them verifies, you can preview, approve, or deny it.
 
 YouTube audio is usually lossy. For higher quality, prefer slskd, Usenet, or deemix. yt-dlp can supply the first file for a track, but Aurral does not use yt-dlp for upgrades.
 

@@ -262,21 +262,65 @@ test("NZBGet client uses JSON-RPC append signature and exposes completed paths",
     assert.equal(status.ok, true);
     assert.equal(status.downloadPath, "/configured/done");
 
-    const appended = await nzbgetClient.appendUrl({
+    const appended = await nzbgetClient.appendNzb({
       name: "Artist - Album",
-      url: "https://example.test/file.nzb",
+      content: Buffer.from("<nzb></nzb>"),
     });
     assert.equal(appended.nzbId, 42);
     const appendCall = calls.find((call) => call.method === "append");
     assert.equal(appendCall.params.length, 11);
     assert.equal(appendCall.params[0], "Artist - Album.nzb");
-    assert.equal(appendCall.params[1], "https://example.test/file.nzb");
+    assert.equal(Buffer.from(appendCall.params[1], "base64").toString(), "<nzb></nzb>");
     assert.equal(appendCall.params[2], "aurral");
     assert.equal(appendCall.params[3], 50);
     assert.equal(appendCall.params[8], "FORCE");
 
     assert.equal((await nzbgetClient.getQueueItem(42)).Status, "DOWNLOADING");
     assert.equal((await nzbgetClient.getHistoryItem(42)).Status, "SUCCESS/ALL");
+  } finally {
+    await server.close();
+  }
+});
+
+test("Aurral fetches a release's NZB itself and refuses an indexer error page", async () => {
+  const server = await createMockHttpServer((req, res) => {
+    if (req.url === "/1/download?apikey=key&link=good") {
+      res.writeHead(200, { "Content-Type": "application/x-nzb" });
+      res.end('<?xml version="1.0"?><!DOCTYPE nzb><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"></nzb>');
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end("<html><body>Daily download limit reached</body></html>");
+  });
+  try {
+    const nzb = await prowlarrClient.downloadNzb(`${server.url}/1/download?apikey=key&link=good`);
+    assert.match(nzb.toString(), /<nzb xmlns/);
+    await assert.rejects(prowlarrClient.downloadNzb(`${server.url}/1/download?apikey=key&link=limit`),
+      /did not return an NZB file/);
+  } finally {
+    await server.close();
+  }
+});
+
+test("SABnzbd client uploads the NZB file", async () => {
+  let request = null;
+  const server = await createMockHttpServer((req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      request = { method: req.method, url: new URL(req.url, "http://mock"), body: Buffer.concat(chunks).toString() };
+      sendJson(res, 200, { status: true, nzo_ids: ["SABnzbd_nzo_1"] });
+    });
+  });
+  try {
+    const client = new SabnzbdClient({ enabled: true, url: server.url, apiKey: "sab-key", category: "music" });
+    const appended = await client.appendNzb({ name: "Artist - Album", content: Buffer.from("<nzb>release</nzb>") });
+    assert.equal(appended.nzbId, "SABnzbd_nzo_1");
+    assert.equal(request.method, "POST");
+    assert.equal(request.url.searchParams.get("mode"), "addfile");
+    assert.equal(request.url.searchParams.get("nzbname"), "Artist - Album.nzb");
+    assert.match(request.body, /filename="Artist - Album\.nzb"/);
+    assert.match(request.body, /<nzb>release<\/nzb>/);
   } finally {
     await server.close();
   }

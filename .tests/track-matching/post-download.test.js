@@ -240,7 +240,7 @@ test("karaoke tags are auto-rejected, never routed to review", async () => {
 
 test("conflicting embedded recording MBID is a hard conflict", async () => {
   const outcome = await validateDownloadedTrackFile({
-    request: { ...GET_LUCKY, recordingMbid: "rec-requested" },
+    request: { ...GET_LUCKY, recordingMbid: "861f126e-c469-4513-8f7e-9f2d74e7cf36" },
     filePath: "/staging/Get Lucky.flac",
     source: "deemix",
     options: {
@@ -248,7 +248,7 @@ test("conflicting embedded recording MBID is a hard conflict", async () => {
         stubParsed({
           title: "Get Lucky",
           artist: "Daft Punk",
-          mbid: "rec-different",
+          mbid: "9ee3918a-06c2-47f1-887f-c4adebe929c9",
         }),
       ),
     },
@@ -259,7 +259,7 @@ test("conflicting embedded recording MBID is a hard conflict", async () => {
 
 test("trackMbid from a resolved download request is checked as recording identity", async () => {
   const outcome = await validateDownloadedTrackFile({
-    request: { ...GET_LUCKY, trackMbid: "rec-requested" },
+    request: { ...GET_LUCKY, trackMbid: "861f126e-c469-4513-8f7e-9f2d74e7cf36" },
     filePath: "/staging/Get Lucky.flac",
     source: "deemix",
     options: {
@@ -267,7 +267,7 @@ test("trackMbid from a resolved download request is checked as recording identit
         stubParsed({
           title: "Get Lucky",
           artist: "Daft Punk",
-          mbid: "rec-different",
+          mbid: "9ee3918a-06c2-47f1-887f-c4adebe929c9",
         }),
       ),
     },
@@ -278,13 +278,13 @@ test("trackMbid from a resolved download request is checked as recording identit
 
 btest("matching embedded recording MBID verifies even with odd tags", async () => {
   const outcome = await validateDownloadedTrackFile({
-    request: { ...GET_LUCKY, recordingMbid: "rec-known" },
+    request: { ...GET_LUCKY, recordingMbid: "1a12c321-71cf-4451-8be7-fd68837b1aeb" },
     filePath: "/staging/daft_punk_gl.mp3",
     source: "soulseek",
     options: {
       parseFile: stubParseFile(
         stubParsed(
-          { title: "Get Lucky 2013", artist: "Daft Punk", mbid: "rec-known" },
+          { title: "Get Lucky 2013", artist: "Daft Punk", mbid: "1a12c321-71cf-4451-8be7-fd68837b1aeb" },
           248,
           { lossless: false, bitrate: 128000, container: "MPEG", codec: "MPEG 1 Layer 3" },
         ),
@@ -311,7 +311,7 @@ btest("strong tags with a conflicting duration require review, never automatic i
   assert.equal(outcome.reason, "downloaded file is 362.0s longer than the requested track");
 });
 
-btest("strict mode keeps the tight duration window unless original tags confirm title and artist", async () => {
+btest("an exact title and artist allow another edition's length, a partial title does not", async () => {
   const validate = (tags, durationSec, strict) => validateDownloadedTrackFile({
     request: GET_LUCKY,
     filePath: "/staging/Get Lucky.flac",
@@ -319,18 +319,140 @@ btest("strict mode keeps the tight duration window unless original tags confirm 
     options: { parseFile: stubParseFile(stubParsed(tags, durationSec)), strict },
   });
   const strongTags = { title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories" };
+  const partialTitle = { title: "Get Luck", artist: "Daft Punk" };
   const artistOnly = { artist: "Daft Punk", album: "Random Access Memories" };
 
-  assert.equal((await validate(strongTags, 249.5, true)).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  assert.equal((await validate(strongTags, 254.2, true)).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  const otherRecording = await validate(strongTags, 258.5, true);
+  assert.equal(otherRecording.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
+  assert.equal(otherRecording.reason, "downloaded file is 10.5s longer than the requested track");
 
-  const beyondWindow = await validate(strongTags, 250.5, true);
-  assert.equal(beyondWindow.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
-  assert.equal(beyondWindow.reason, "downloaded file is 2.5s longer than the requested track");
+  assert.equal((await validate(partialTitle, 249.5, true)).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  const partialBeyondWindow = await validate(partialTitle, 250.5, true);
+  assert.equal(partialBeyondWindow.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
+  assert.equal(partialBeyondWindow.reason, "downloaded file is 2.5s longer than the requested track");
 
   assert.equal((await validate(artistOnly, 249.5, false)).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
   const filenameTitle = await validate(artistOnly, 249.5, true);
   assert.equal(filenameTitle.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
   assert.equal(filenameTitle.reason, "downloaded file is 1.5s longer than the requested track");
+});
+
+test("a YouTube file gets another edition's length only as the artist's own audio upload", async () => {
+  const validate = (rawTitle, channel) => validateDownloadedTrackFile({
+    request: GET_LUCKY,
+    candidate: { provider: { id: "abc123DEF45", uploader: channel }, raw: { title: rawTitle, channel } },
+    filePath: "/staging/abc123DEF45.m4a",
+    source: "ytdlp",
+    options: {
+      strict: true,
+      parseFile: stubParseFile(stubParsed(
+        { title: "Get Lucky", artist: "Daft Punk" },
+        252,
+        { lossless: false, bitrate: 128000, container: "MPEG-4", codec: "AAC" },
+      )),
+    },
+  });
+  assert.equal((await validate("Get Lucky", "Daft Punk - Topic")).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  assert.equal((await validate("Daft Punk - Get Lucky (Audio)", "DaftPunkVEVO")).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  assert.equal((await validate("Daft Punk - Get Lucky (Official Lyric Video)", "Daft Punk")).decision,
+    POST_DOWNLOAD_DECISIONS.VERIFIED);
+  assert.equal((await validate("Daft Punk - Get Lucky (Official Music Video)", "Daft Punk")).decision,
+    POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
+  assert.equal((await validate("Daft Punk - Get Lucky (Lyrics)", "Lyrics Channel")).decision,
+    POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
+});
+
+test("a YouTube title with extra uploader words goes to review instead of importing", async () => {
+  const outcome = await validateDownloadedTrackFile({
+    request: { artistName: "Taylor Swift", trackName: "I Know Places (Taylor’s Version)", durationMs: 195000 },
+    candidate: { provider: { id: "abc123DEF45", uploader: "Fan Edits" } },
+    filePath: "/staging/abc123DEF45.m4a",
+    source: "ytdlp",
+    options: {
+      parseFile: stubParseFile(stubParsed(
+        { title: "I Know Places (Taylor's Version Concept)", artist: "Taylor Swift" },
+        195,
+        { lossless: false, bitrate: 128000, container: "MPEG-4", codec: "AAC" },
+      )),
+    },
+  });
+  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
+  assert.equal(outcome.reason, "downloaded file has a title that only partly matches the requested track");
+});
+
+test("a YouTube file's artist comes from the video title when yt-dlp tagged the uploader", async () => {
+  const validate = (request, { videoTitle, channel, tags }) => validateDownloadedTrackFile({
+    request,
+    candidate: { provider: { id: "abc123DEF45", uploader: channel }, raw: { title: videoTitle, channel } },
+    filePath: "/staging/abc123DEF45.m4a",
+    source: "ytdlp",
+    options: {
+      parseFile: stubParseFile(stubParsed(tags, request.durationMs / 1000,
+        { lossless: false, bitrate: 128000, container: "MPEG-4", codec: "AAC" })),
+    },
+  });
+  const quoted = await validate({ artistName: "YOASOBI", trackName: "群青", durationMs: 249000 }, {
+    videoTitle: "YOASOBI「群青」(Gunjou) Lyrics", channel: "Lyric Fan",
+    tags: { title: "YOASOBI「群青」(Gunjou) Lyrics", artist: "Lyric Fan" },
+  });
+  assert.equal(quoted.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, quoted.reason);
+  const reversed = await validate({ artistName: "Nirvana", trackName: "Come as You Are", durationMs: 219000 }, {
+    videoTitle: "Come as You Are - Nirvana", channel: "RockSongs",
+    tags: { title: "Nirvana", artist: "Come as You Are" },
+  });
+  assert.equal(reversed.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, reversed.reason);
+  const creditedCover = await validate({ artistName: "AC/DC", trackName: "Let Me Put My Love Into You", durationMs: 256000 }, {
+    videoTitle: "Six Feet Under - Let Me Put My Love Into You - AC/DC", channel: "Metal Uploads",
+    tags: { title: "Let Me Put My Love Into You - AC/DC", artist: "Six Feet Under" },
+  });
+  assert.equal(creditedCover.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+});
+
+test("a recording ID tag only counts as a MusicBrainz ID, including one merged into the requested recording", async () => {
+  const requested = "0cf9f95f-70e7-4f2e-8075-5d8ba38dd4a3";
+  const merged = "b4f0642e-05c5-4bc4-bf0c-95e67bfb3e99";
+  const validate = (mbid, request = {}) => validateDownloadedTrackFile({
+    request: { artistName: "Nirvana", trackName: "Breed", durationMs: 183933, recordingMbid: requested, ...request },
+    filePath: "/staging/04 Breed.flac",
+    source: "soulseek",
+    options: { parseFile: stubParseFile(stubParsed({ title: "Breed", artist: "Nirvana", mbid }, 184)) },
+  });
+  assert.equal((await validate("30HCB1FoE77IfGRyNv4eFq")).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  assert.equal((await validate(merged)).decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+  assert.equal((await validate(merged, { recordingMbidAliases: [merged] })).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+});
+
+test("a file name that puts the artist and album before the title is read by its title", async () => {
+  const validate = (fileName) => validateDownloadedTrackFile({
+    request: { artistName: "Nirvana", trackName: "Drain You", durationMs: 223733 },
+    filePath: `/staging/${fileName}`,
+    source: "soulseek",
+    options: { parseFile: stubParseFile(stubParsed({ title: "Drain You", artist: "Nirvana" }, 224)) },
+  });
+  assert.equal((await validate("Nirvana [Nevermind] 08 - Drain You.flac")).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  assert.equal((await validate("Nirvana [Nevermind] 05 - Lithium.flac")).decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+});
+
+test("each artist in a multi-artist credit is artist evidence, with or without a leading The", async () => {
+  const validate = (artist, source) => validateDownloadedTrackFile({
+    request: { artistName: "Kendrick Lamar", trackName: "Poetic Justice", durationMs: 300000 },
+    candidate: { provider: { id: "abc123DEF45", uploader: "Kendrick Lamar" }, raw: { title: "Poetic Justice" } },
+    filePath: "/staging/abc123DEF45.m4a",
+    source,
+    options: {
+      parseFile: stubParseFile(stubParsed(
+        { title: "Poetic Justice", artist },
+        300,
+        { lossless: false, bitrate: 256000, container: "MPEG-4", codec: "AAC" },
+      )),
+    },
+  });
+  for (const credit of ["Kendrick Lamar, Drake", "Drake & Kendrick Lamar", "Kendrick Lamar (ft. Drake)", "The Kendrick Lamar"]) {
+    assert.equal((await validate(credit, "ytdlp")).decision, POST_DOWNLOAD_DECISIONS.VERIFIED, credit);
+    assert.equal((await validate(credit, "soulseek")).decision, POST_DOWNLOAD_DECISIONS.VERIFIED, credit);
+  }
+  assert.equal((await validate("Drake, Rick Ross", "soulseek")).decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
 });
 
 test("review reasons name every missing piece of recording evidence", async () => {
@@ -340,7 +462,7 @@ test("review reasons name every missing piece of recording evidence", async () =
     source: "ytdlp",
     options: {
       parseFile: stubParseFile(stubParsed(
-        { title: "Get Lucky", artist: "DaftPunkVEVO" },
+        { title: "Get Lucky", artist: "Daft Punk Tribute" },
         244,
         { lossless: false, bitrate: 320000, container: "MPEG", codec: "MPEG 1 Layer 3" },
       )),
@@ -548,11 +670,11 @@ btest("release selection without a usable file reports no path", { skip: hasFfmp
 
 test("release selection preserves identity diagnostics when no file is usable", async () => {
   const selection = await selectVerifiedDownloadedFile({
-    request: { ...GET_LUCKY, recordingMbid: "wanted" },
+    request: { ...GET_LUCKY, recordingMbid: "aa8bf4d6-ee95-4407-8f7b-2efb65240a23" },
     filePaths: ["/staging/Get Lucky.flac"],
     source: "deemix",
     options: {
-      parseFile: stubParseFile(stubParsed({ title: "Get Lucky", artist: "Daft Punk", mbid: "wrong" })),
+      parseFile: stubParseFile(stubParsed({ title: "Get Lucky", artist: "Daft Punk", mbid: "a4b48a81-cdab-4e1a-8dd3-7907d6c85ca1" })),
     },
   });
   assert.equal(selection.filePath, null);

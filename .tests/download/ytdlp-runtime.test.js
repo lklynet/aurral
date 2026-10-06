@@ -173,3 +173,36 @@ test("yt-dlp cancellation waits for a stubborn child to exit before clearing sta
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test("a yt-dlp download refused with HTTP 403 runs once more with fresh media URLs", {
+  skip: process.platform === "win32",
+}, async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "aurral-ytdlp-403-"));
+  const binaryPath = path.join(tempDir, "yt-dlp");
+  const previousPath = process.env.PATH;
+  await writeFile(binaryPath, [
+    "#!/usr/bin/env node",
+    "const fs = require('node:fs');",
+    "const path = require('node:path');",
+    "const args = process.argv.slice(2);",
+    "const output = args[args.indexOf('-o') + 1].replace('%(id)s', 'video').replace('%(ext)s', 'm4a');",
+    "const marker = path.join(path.dirname(output), '..', '..', 'refused-once');",
+    "if (!fs.existsSync(marker)) {",
+    "  fs.writeFileSync(marker, '');",
+    "  process.stderr.write('ERROR: unable to download video data: HTTP Error 403: Forbidden');",
+    "  process.exit(1);",
+    "}",
+    "fs.writeFileSync(output, 'audio');",
+  ].join("\n"));
+  await chmod(binaryPath, 0o755);
+  process.env.PATH = `${tempDir}${path.delimiter}${previousPath || ""}`;
+  try {
+    const client = new YtdlpClient({ enabled: true, stagingPath: tempDir });
+    const { filePath } = await client.downloadAudio("https://example.test/video", { jobId: "refused" });
+    assert.equal(await readFile(filePath, "utf8"), "audio");
+    await client.cleanupStaging("refused");
+  } finally {
+    process.env.PATH = previousPath;
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});

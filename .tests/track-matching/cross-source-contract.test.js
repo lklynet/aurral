@@ -259,3 +259,34 @@ test("early eligibility rejects unrelated titles while keeping weaker valid titl
     assert.ok(usableEvaluationEntries(evaluation).length > 0, source);
   }
 });
+
+test("YouTube results are read by artist and title, not by upload wording", async () => {
+  const breed = { artistName: "Nirvana", trackName: "Breed", albumName: "Nevermind", durationMs: 183933 };
+  const { usable } = await decisionFor("ytdlp", [
+    { id: "audio", title: "Nirvana - Breed (Audio)", channel: "Nirvana", durationSec: 184 },
+    { id: "reversed", title: "Breed - Nirvana", channel: "Smiling Panther", durationSec: 185 },
+    { id: "live", title: "Nirvana - Breed (Live And Loud, Seattle / 1993)", channel: "Nirvana", durationSec: 184 },
+    { id: "cover", title: "Nirvana - Breed (drum cover)", channel: "Cobb the Drummer", durationSec: 185 },
+    { id: "other", title: "Mudhoney - Breed (Official Video)", channel: "Mudhoney", durationSec: 184 },
+  ], breed);
+  assert.deepEqual(usable.map((entry) => entry.candidate.provider.id), ["audio", "reversed"]);
+
+  for (const [request, result] of [
+    [{ artistName: "Bad Bunny", trackName: "Neverita", durationMs: 173000 },
+      { id: "suffix", title: "Bad Bunny - Neverita (360° Visualizer) | Un Verano Sin Ti", channel: "Bad Bunny", durationSec: 174 }],
+    [{ artistName: "Bad Bunny", trackName: "Moscow Mule", durationMs: 245000 },
+      { id: "spanish", title: "Bad Bunny - Moscow Mule (Audio Oficial)", channel: "Temazos", durationSec: 246 }],
+  ]) {
+    const { best } = await decisionFor("ytdlp", [result], request);
+    assert.equal(best?.candidate.provider.id, result.id, result.title);
+  }
+});
+
+test("the artist's own audio upload is tried before a lyric channel's copy", async () => {
+  const request = { artistName: "Nirvana", trackName: "Come as You Are", durationMs: 218973 };
+  const { best } = await decisionFor("ytdlp", [
+    { id: "lyrics", title: "Nirvana - Come As You Are (Lyrics)", channel: "7clouds Rock", durationSec: 219 },
+    { id: "topic", title: "Come As You Are", channel: "Nirvana - Topic", durationSec: 220 },
+  ], request);
+  assert.equal(best?.candidate.provider.id, "topic");
+});

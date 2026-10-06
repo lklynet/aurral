@@ -55,6 +55,25 @@ test("a stalled slskd transfer is cancelled and the next candidate is tried", as
   assert.equal((await processPipelinePayload(polling)).phase, "download");
 });
 
+test("a rejected slskd transfer moves to the next user instead of retrying the same one", async (t) => {
+  dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
+    slskd: { enabled: true, url: "http://127.0.0.1:9" },
+  } });
+  const client = getDownloadClient("slskd");
+  t.mock.method(client, "getEvents", async () => ({ events: [], totalCount: 0 }));
+  t.mock.method(client, "getTransfer", async () => ({ id: "transfer-1", username: "strict",
+    state: "Completed, Rejected", exception: "Transfer rejected: Banned" }));
+  t.mock.method(client, "deleteTransfer", async () => true);
+  const jobId = addJob();
+  const polling = { phase: "poll", source: "slskd", jobId, eventOffset: 0,
+    legacyTransfer: { id: "transfer-1", username: "strict" }, candidateIndex: 0,
+    candidates: [{ raw: { user: "strict", file: "a.flac" } }, { raw: { user: "open", file: "b.flac" } }] };
+
+  const next = await processPipelinePayload(polling);
+  assert.equal(next.phase, "download");
+  assert.equal(next.candidateIndex, 1);
+});
+
 test("a file in an uploader's queue moves to the next candidate after 10 minutes", async (t) => {
   dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
     slskd: { enabled: true, url: "http://127.0.0.1:9" },

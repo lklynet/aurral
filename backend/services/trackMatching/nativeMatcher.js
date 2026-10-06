@@ -1,10 +1,11 @@
 import { distance } from "fastest-levenshtein";
-import { checkVariantCompatibility } from "./semanticPolicy.js";
+import { checkVariantCompatibility, stripPromoDescriptors } from "./semanticPolicy.js";
 import { foldDiacritics } from "../providers/brainzmashRanking.js";
 import { isVariousArtistsCredit } from "./titleText.js";
+import { UUID_REGEX } from "../../../lib/uuid.js";
 
 export const MATCH_POLICY = Object.freeze({
-  version: "aurral-native-3",
+  version: "aurral-native-4",
   maxDurationGapMs: 10000,
   selectedDurationGapMs: 2000,
   minTitleSimilarity: 0.7,
@@ -18,6 +19,13 @@ export const MATCH_POLICY = Object.freeze({
 
 export function getMatcherStatus() {
   return { available: true, checked: true, policyVersion: MATCH_POLICY.version, error: null };
+}
+
+// Rip tools write Spotify or Deezer IDs into the MusicBrainz tags. Only a
+// UUID is a MusicBrainz recording ID.
+export function readRecordingMbid(value) {
+  const id = String(value || "").trim().toLowerCase();
+  return UUID_REGEX.test(id) ? id : null;
 }
 
 export function normalizeMatchText(value) {
@@ -69,15 +77,45 @@ function variants(title) {
 }
 
 function coreMatchTitle(title) {
-  return String(title || "")
-    .replace(/\s*[[(][^\])]*\b(?:live|remix|acoustic|instrumental|demo|edit|karaoke|cover|nightcore|mix|remaster(?:ed)?|feat\.?|ft\.?|featuring|official audio|official video|visualizer|lyrics)\b[^\])]*[\])]/giu, "")
+  return (stripPromoDescriptors(title) || String(title || ""))
+    .replace(/\s*[[(][^\])]*\b(?:live|remix|acoustic|instrumental|demo|edit|karaoke|cover|nightcore|mix|remaster(?:ed)?|feat\.?|ft\.?|featuring|official audio|official video|visualizer|lyrics|album version|original version)\b[^\])]*[\])]/giu, "")
     .replace(/\s+[-–—]\s+(?:(?:radio|extended|club|dance|single|album)\s+)?(?:edit|mix|live|remix|acoustic|instrumental|demo|karaoke|remaster(?:ed)?)\b.*$/iu, "")
     .replace(/\s+\b(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "")
     .trim();
 }
 
 function coreArtist(name) {
-  return String(name || "").replace(/\s+\b(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "").trim();
+  return String(name || "")
+    .replace(/\s*[([]\s*(?:feat\.?|ft\.?|featuring|with)\s+[^)\]]*[)\]]/giu, "")
+    .replace(/\s+\b(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "")
+    .trim();
+}
+
+// "Kendrick Lamar, Drake" and "Blue Swede & Björn Skifs" credit each of
+// their artists. "AC/DC" has no spaces around its slash and stays whole.
+function creditedArtists(credit) {
+  const whole = coreArtist(credit);
+  const parts = whole.split(/\s*[,;]\s*|\s+(?:&|\/|x|×)\s+/iu).map((part) => part.trim()).filter(Boolean);
+  return [...new Set([whole, ...parts])];
+}
+
+function artistKey(name) {
+  return normalizeMatchText(String(name || "").replace(/&/g, " and ")).replace(/^the (?=\S)/u, "");
+}
+
+function artistSimilarity(requested, credit) {
+  const left = artistKey(coreArtist(requested));
+  return Math.max(0, ...creditedArtists(credit).map((name) => {
+    const right = artistKey(name);
+    return Math.max(similarity(left, right), similarity(left.replace(/ /g, ""), right.replace(/ /g, "")));
+  }));
+}
+
+export function bestArtistSimilarity(requestedNames, credits) {
+  const requested = asNames(requestedNames).filter((name) => !isVariousArtistsCredit(name));
+  const offered = asNames(credits);
+  if (!requested.length || !offered.length) return null;
+  return Math.max(...requested.flatMap((left) => offered.map((right) => artistSimilarity(left, right))));
 }
 
 function nonLatinTitleContradiction(left, right) {
@@ -99,19 +137,25 @@ function requestPerformers(request) {
 function compareRecording(request, candidate, policy) {
   const contradictions = [];
   if (nonLatinTitleContradiction(request.title, candidate.title)) contradictions.push("title");
-  const requestId = String(request.recordingMbid || request.recording_mbid || "").toLowerCase();
-  const candidateId = String(candidate.recordingMbid || candidate.recording_mbid || "").toLowerCase();
-  if (requestId && candidateId && requestId !== candidateId) contradictions.push("recording-mbid");
+  // MusicBrainz merges duplicate recordings, and files tagged before a merge
+  // carry an ID that the recording keeps as an alias.
+  const requestIds = [request.recordingMbid || request.recording_mbid, ...asNames(request.recordingMbidAliases)]
+    .map(readRecordingMbid).filter(Boolean);
+  const requestId = requestIds[0] || "";
+  const candidateId = readRecordingMbid(candidate.recordingMbid || candidate.recording_mbid) || "";
+  const sameRecording = Boolean(candidateId) && requestIds.includes(candidateId);
+  if (requestId && candidateId && !sameRecording) contradictions.push("recording-mbid");
+  const versionTitle = candidate.versionTitle || candidate.title;
   const requestVariants = variants(request.title);
-  const candidateVariants = variants(candidate.title);
+  const candidateVariants = variants(versionTitle);
   const extraVariant = candidateVariants.find((variant) => !requestVariants.includes(variant));
   const missingVariant = requestVariants.find((variant) =>
     !variant.endsWith("-mix") && !candidateVariants.includes(variant));
-  if (candidate.title && (extraVariant || missingVariant)) {
+  if (versionTitle && (extraVariant || missingVariant)) {
     contradictions.push(extraVariant || missingVariant);
   }
   const semanticVariants = checkVariantCompatibility(
-    { trackName: request.title }, { title: candidate.title });
+    { trackName: request.title }, { title: versionTitle });
   for (const contradiction of semanticVariants.contradictions || []) {
     if (!contradictions.includes(contradiction)) contradictions.push(contradiction);
   }
@@ -123,15 +167,10 @@ function compareRecording(request, candidate, policy) {
   if (gap != null && gap > policy.maxDurationGapMs) contradictions.push("duration");
 
   const title = similarity(coreMatchTitle(request.title), coreMatchTitle(candidate.title));
-  const requestArtists = requestPerformers(request);
-  const candidateArtists = asNames(candidate.artists || candidate.artist);
-  const artist = requestArtists.length && candidateArtists.length
-    ? Math.max(...requestArtists.flatMap((left) => candidateArtists.map((right) =>
-      similarity(coreArtist(left), coreArtist(right)))))
-    : null;
+  const artist = bestArtistSimilarity(requestPerformers(request), candidate.artists || candidate.artist);
   if (artist != null && artist < policy.minArtistNonConflictSimilarity) contradictions.push("artist");
   const evidence = [];
-  if (requestId && candidateId && requestId === candidateId) evidence.push("recording-mbid");
+  if (sameRecording) evidence.push("recording-mbid");
   if (title >= policy.minTitleSimilarity) evidence.push("title");
   if (artist != null && artist >= policy.minArtistSimilarity) evidence.push("artist");
   if (gap != null && gap <= policy.maxDurationGapMs) evidence.push("duration");
@@ -372,4 +411,8 @@ export function verifyDownloadedRecording(request, observed, policy = MATCH_POLI
   else if (result.evidence.includes("title") && result.evidence.includes("artist")
     && result.durationGapMs != null && result.durationGapMs <= policy.selectedDurationGapMs) decision = "matched";
   return { decision, ...result, policyVersion: policy.version };
+}
+
+export function titleSimilarity(requested, offered) {
+  return similarity(coreMatchTitle(requested), coreMatchTitle(offered));
 }

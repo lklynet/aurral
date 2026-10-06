@@ -28,8 +28,9 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-function recordOutcome(username, status) {
+function recordOutcome(username, status, reason = null) {
   recordSlskdTransferOutcome({
+    reason,
     job: {
       id: `${username}-${status}`,
       artistName: "Artist",
@@ -67,4 +68,16 @@ test("buildSlskdRankingHistoryOptions keeps successful peers eligible", () => {
 
   assert.equal(options.isUserBlacklisted("recoveredPeer"), false);
   assert.ok(options.getUserQueuePenalty("recoveredPeer") > 0);
+});
+
+test("a peer that banned Aurral is skipped until it uploads again", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  recordOutcome("strictPeer", "success");
+  t.mock.timers.tick(1000);
+  recordOutcome("strictPeer", "transfer_failed", "slskd transfer failed: Transfer rejected: Banned");
+  assert.equal(buildSlskdRankingHistoryOptions().isUserBlacklisted("strictPeer"), true);
+
+  t.mock.timers.tick(1000);
+  recordOutcome("strictPeer", "success");
+  assert.equal(buildSlskdRankingHistoryOptions().isUserBlacklisted("strictPeer"), false);
 });

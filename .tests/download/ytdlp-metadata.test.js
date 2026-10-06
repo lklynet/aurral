@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rename, rm } from "node:fs/promises";
+import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parseFile } from "music-metadata";
@@ -164,4 +164,20 @@ test("startup repair tags existing completed yt-dlp M4As", async () => {
 
 test.after(async () => {
   await rm(tempDir, { recursive: true, force: true });
+});
+
+test("tags a downloaded M4A that carries a chapter track", async () => {
+  const chapters = path.join(tempDir, "chapters.txt");
+  await writeFile(chapters, ";FFMETADATA1\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=500\ntitle=Intro\n"
+    + "[CHAPTER]\nTIMEBASE=1/1000\nSTART=500\nEND=1000\ntitle=Song\n");
+  const filePath = path.join(tempDir, "chaptered.m4a");
+  const generated = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc",
+    "-i", chapters, "-map", "0:a", "-map_chapters", "1", "-t", "1", "-c:a", "aac", filePath], { encoding: "utf8" });
+  assert.equal(generated.status, 0, generated.stderr);
+
+  await writeAudioMetadata(filePath, { trackName: "Within", artistName: "Daft Punk", albumName: "Random Access Memories" });
+
+  const { common } = await parseFile(filePath);
+  assert.equal(common.title, "Within");
+  assert.equal(common.artist, "Daft Punk");
 });

@@ -30,7 +30,7 @@ import {
   finishAlbumGrab,
 } from "./albumGrab.js";
 import { selectSoulseekAlbumFolder } from "./albumReleaseSearch.js";
-import { isCompilationJobs, loadAlbumReleases } from "./albumReleases.js";
+import { isCompilationJobs, loadAlbumReleases, withRecordingAliases } from "./albumReleases.js";
 import {
   buildResolvedJobTrack as buildResolvedTrack,
   commitDownloadedFile,
@@ -183,6 +183,11 @@ function readBatchTransfers(batch) {
 
 function readTransferState(transfer) {
   return transfer?.state || transfer?.State || "";
+}
+
+function describeTransferFailure(transfer) {
+  const exception = String(transfer?.exception || transfer?.Exception || "").trim();
+  return exception ? `slskd transfer failed: ${exception}` : "slskd transfer failed";
 }
 
 function readTransferId(transfer) {
@@ -997,16 +1002,19 @@ async function handleDownload(payload, helpers) {
   };
 }
 
+// slskd re-requests a queued file now and then, which cycles its state
+// through "Requested" and back without anything moving, so only the outcome,
+// the bytes, and the queue position count as progress.
 function readTransferProgress(transfer) {
   if (!transfer) return "missing";
   return [
-    readTransferState(transfer),
+    classifyTransferState(readTransferState(transfer)),
     transfer.bytesTransferred ?? transfer.BytesTransferred ?? "",
     transfer.placeInQueue ?? transfer.PlaceInQueue ?? "",
   ].join("|");
 }
 
-// A transfer times out only when nothing about it changes for a while, so a
+// A transfer times out only when nothing about it moves for a while, so a
 // slow upload or a moving remote queue keeps going.
 function trackTransferProgress(payload, progress, now = Date.now()) {
   const changed = progress !== payload.lastProgress;
@@ -1051,7 +1059,11 @@ async function handlePoll(payload, helpers) {
     const progress = trackTransferProgress(payload, transfers.map(readTransferProgress).join(","));
     const tailWindow = albumTailWindow(transfers);
     const tailSince = tailWindow ? Number(payload.tailSince) || Date.now() : null;
-    if (!progress.stalled && !(tailSince && Date.now() - tailSince > tailWindow)) {
+    // A folder whose files all still wait untouched in the uploader's queue
+    // gets 10 minutes, as a single file does, before the next folder.
+    const queuedTooLong = transfers.every((transfer) => transfer && isQueuedUntouched(transfer))
+      && Date.now() - progress.lastProgressAt > QUEUED_TRANSFER_MS;
+    if (!progress.stalled && !queuedTooLong && !(tailSince && Date.now() - tailSince > tailWindow)) {
       return { ...payload, phase: "poll", pollAttempts, delaySeconds: POLL_DELAY_SECONDS,
         lastProgress: progress.lastProgress, lastProgressAt: progress.lastProgressAt, tailSince };
     }
@@ -1094,15 +1106,16 @@ async function handlePoll(payload, helpers) {
     const state = transfer ? classifyTransferState(readTransferState(transfer)) : "pending";
     if (state === "failed") {
       await cleanupTransferForPayload(basePayload, transfer);
-      const nextPayload = retrySameCandidateOrNext(
-        basePayload,
-        job,
-        "transfer_failed",
-        "slskd transfer failed",
-        { transfer },
-      );
+      const reason = describeTransferFailure(transfer);
+      // A rejection, such as a ban or a file no longer shared, fails again on
+      // a retry, so the next user is tried at once.
+      const rejected = /rejected/i.test(readTransferState(transfer));
+      if (rejected) recordPayloadOutcome(job, basePayload, "transfer_failed", reason, { transfer });
+      const nextPayload = rejected
+        ? hasNextCandidate(basePayload) ? buildNextCandidatePayload(basePayload, TRANSFER_RESET) : null
+        : retrySameCandidateOrNext(basePayload, job, "transfer_failed", reason, { transfer });
       if (nextPayload) return nextPayload;
-      return helpers.failOrTryNextSource(basePayload, job, "slskd transfer failed");
+      return helpers.failOrTryNextSource(basePayload, job, reason);
     }
     if (state === "success") {
       const candidate = getPayloadCandidate(basePayload);
@@ -1153,7 +1166,16 @@ async function handleFinalize(payload, helpers) {
     const remoteFiles = payload.candidate?.raw?.files || [];
     const paths = [];
     for (const [index, transfer] of (payload.albumTransfers || []).entries()) {
-      if (classifyTransferState(readTransferState(transfer)) !== "success") continue;
+      const transferState = readTransferState(transfer);
+      if (classifyTransferState(transferState) === "failed" && !/cancel/i.test(transferState)) {
+        const remote = remoteFiles[index];
+        recordPayloadOutcome(downloadTracker.getJob(remote?.jobId) || job, payload, "transfer_failed",
+          describeTransferFailure(transfer), {
+            transfer,
+            candidate: { raw: { user: payload.candidate?.raw?.user, file: remote?.file } },
+          });
+      }
+      if (classifyTransferState(transferState) !== "success") continue;
       const remote = remoteFiles[index];
       const local = await locateCompletedDownload(slskdRoot, playlistRoot, remote?.file, {
         expectedSizeBytes: Number(remote?.size || 0), transfer,
@@ -1164,6 +1186,16 @@ async function handleFinalize(payload, helpers) {
       filePaths: paths, source: "soulseek", album: job.albumName,
       resetFields: ALBUM_TRANSFER_RESET,
     });
+    // A file the album did not import, because it failed its check or no
+    // track needed it, and the folders the imports emptied would otherwise
+    // stay in slskd's download folder.
+    for (const filePath of paths) {
+      if (await fs.stat(filePath).catch(() => null)) {
+        await cleanupRejectedDownload({ sourcePath: filePath, slskdRoot, playlistRoot });
+      } else if (slskdRoot) {
+        await cleanupEmptyAncestors(path.dirname(filePath), slskdRoot).catch(() => {});
+      }
+    }
     if (slskdClient.isCleanupAfterRunsEnabled()) {
       const transfers = (payload.albumTransfers || []).map((transfer) => ({
         username: payload.candidate?.raw?.user,
@@ -1212,10 +1244,10 @@ async function handleFinalize(payload, helpers) {
   const finalDir = joinUnderRoot(playlistRoot, destination);
   const finalName = buildTrackFileName(job, ext || ".mp3");
   const finalPath = path.join(finalDir, finalName);
-  const resolvedTrack = {
+  const resolvedTrack = await withRecordingAliases({
     ...buildResolvedTrack(job, payload.track),
     upgradeForJobId: payload.upgradeForJobId || null,
-  };
+  }, job.albumMbid);
   const validation = await validateDownloadedTrackFile({
     request: resolvedTrack,
     candidate: candidate?.candidate || candidate,

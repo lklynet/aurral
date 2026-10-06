@@ -21,8 +21,16 @@
 import { parseFile } from "music-metadata";
 import { buildTrackRequest } from "./trackIdentity.js";
 import { getFileName, getFileBaseName, claimedTitle, parseFilenameArtistTitle } from "./candidateNormalizer.js";
-import { getCoreTitle, stripPromoDescriptors } from "./semanticPolicy.js";
-import { assignReleaseFiles, MATCH_POLICY, parseListingTitle, verifyDownloadedRecording } from "./nativeMatcher.js";
+import { getCoreTitle } from "./semanticPolicy.js";
+import {
+  assignReleaseFiles,
+  MATCH_POLICY,
+  parseListingTitle,
+  readRecordingMbid,
+  titleSimilarity,
+  verifyDownloadedRecording,
+} from "./nativeMatcher.js";
+import { readYoutubeFile } from "./youtubeEvidence.js";
 import { getNormalizedText, scoreTextMatch } from "../providers/brainzmashRanking.js";
 import { validateParsedQuality } from "../qualityProfileService.js";
 import { logger } from "../logger.js";
@@ -108,8 +116,8 @@ export function buildActualFileCandidate(parsed, filePath, source, preDownloadCa
     trackNumber,
     discNumber,
     recordingMbid:
-      readTagText(common.musicbrainz_recordingid) ||
-      readTagText(common.musicbrainz_trackid) ||
+      readRecordingMbid(common.musicbrainz_recordingid) ||
+      readRecordingMbid(common.musicbrainz_trackid) ||
       null,
     releaseMbid: readTagText(common.musicbrainz_albumid) || null,
     filename: fileName,
@@ -137,7 +145,7 @@ function joinPhrases(phrases) {
     : phrases[0];
 }
 
-function describeReviewReason({ verification, artists, actualDurationMs, requestedDurationMs, maxDurationGapMs }) {
+function describeReviewReason({ verification, titleAgrees, artists, actualDurationMs, requestedDurationMs, maxDurationGapMs }) {
   const issues = [];
   const gap = verification.durationGapMs;
   if (gap == null) {
@@ -146,7 +154,7 @@ function describeReviewReason({ verification, artists, actualDurationMs, request
     const seconds = (Math.ceil(gap / 100) / 10).toFixed(1);
     issues.push(`is ${seconds}s ${actualDurationMs > requestedDurationMs ? "longer" : "shorter"} than the requested track`);
   }
-  if (!verification.evidence.includes("title")) {
+  if (!verification.evidence.includes("title") || !titleAgrees) {
     issues.push("has a title that only partly matches the requested track");
   }
   if (!verification.evidence.includes("artist")) {
@@ -226,25 +234,40 @@ export async function validateDownloadedTrackFile({
   }
 
   const listedTitle = parseListingTitle(actual.filename).title;
+  // "Artist [Album] 08 - Title" names more than the artist before the title,
+  // so the last part counts when it is closer to the requested title.
   const filenameTitle = parseFilenameArtistTitle(listedTitle,
-    [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(Boolean)).title || listedTitle;
+    [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(Boolean)).title
+    || [listedTitle, claimedTitle(listedTitle)].filter(Boolean).reduce((kept, option) =>
+      titleSimilarity(trackRequest.trackName, option) > titleSimilarity(trackRequest.trackName, kept) ? option : kept);
   const hasYtdlpIdFilename = source === "ytdlp"
     && getFileBaseName(actual.filename) === readTagText(actual.provider.id);
+  const requestedArtists = [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(Boolean);
+  const youtube = source === "ytdlp"
+    ? readYoutubeFile({
+      tagTitle: actual.title,
+      tagArtists: actual.artists,
+      videoTitle: actual.raw?.title,
+      channel: actual.provider.uploader,
+    }, requestedArtists, trackRequest.trackName)
+    : null;
   const verification = verifyDownloadedRecording({
     title: trackRequest.trackName,
-    artists: [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(Boolean),
+    artists: requestedArtists,
     durationMs: trackRequest.durationMs,
     recordingMbid: trackRequest.recordingMbid,
+    recordingMbidAliases: trackRequest.recordingMbidAliases,
     albumName: trackRequest.albumName,
     trackNumber: trackRequest.trackNumber,
     albumTrackTitles: trackRequest.albumTrackTitles,
   }, {
-    title: source === "ytdlp" ? stripPromoDescriptors(actual.title) || actual.title : actual.title,
+    title: youtube ? youtube.title : actual.title,
+    versionTitle: youtube?.versionTitle,
     fileNameTitle: !hasYtdlpIdFilename && (
       /\s[-–—]\s|\b(?:live|remix|karaoke|instrumental|acoustic|demo|edit|cover|nightcore)\b/iu.test(actual.filename)
       || /(?!\p{Script=Latin})\p{L}/u.test(`${trackRequest.trackName} ${filenameTitle}`))
       ? filenameTitle : null,
-    artists: actual.artists,
+    artists: youtube ? youtube.artists : actual.artists,
     durationMs: actualDurationMs,
     recordingMbid: actual.recordingMbid,
     album: actual.album,
@@ -270,12 +293,25 @@ export async function validateDownloadedTrackFile({
   const tagsConfirmIdentity = Boolean(readTagText(parsed?.common?.title))
     && verification.evidence.includes("title")
     && verification.evidence.includes("artist");
-  const maxDurationGapMs = strict && !tagsConfirmIdentity
-    ? STRICT_DURATION_GAP_MS
-    : MATCH_POLICY.selectedDurationGapMs;
+  // Editions of one recording differ by a few seconds of mastering, fade, or
+  // silence, so an exact title and artist allow the matcher's full duration
+  // window, as Lidarr does. A YouTube upload needs to be the artist's own
+  // audio upload too: re-uploads are often re-timed.
+  const releaseAudio = !youtube || youtube.officialAudio;
+  const exactIdentity = tagsConfirmIdentity && verification.titleSimilarity === 1 && releaseAudio;
+  const maxDurationGapMs = exactIdentity
+    ? MATCH_POLICY.maxDurationGapMs
+    : strict && !tagsConfirmIdentity
+      ? STRICT_DURATION_GAP_MS
+      : MATCH_POLICY.selectedDurationGapMs;
   const durationUncertain = verification.durationGapMs != null
     && verification.durationGapMs > maxDurationGapMs && !verification.evidence.includes("recording-mbid");
-  const decision = verification.decision === "matched" && !durationUncertain
+  // Uploaders add words such as "Concept" or "Reworked" that no version rule
+  // knows, so a YouTube title must match exactly.
+  const titleAgrees = source !== "ytdlp" || verification.titleSimilarity === 1;
+  const matched = titleAgrees && (verification.decision === "matched"
+    || (exactIdentity && verification.contradictions.length === 0 && verification.durationGapMs != null));
+  const decision = matched && !durationUncertain
     ? POST_DOWNLOAD_DECISIONS.VERIFIED
     : durationOnlyConflict
       ? POST_DOWNLOAD_DECISIONS.AMBIGUOUS
@@ -289,7 +325,8 @@ export async function validateDownloadedTrackFile({
     : decision === POST_DOWNLOAD_DECISIONS.AMBIGUOUS
       ? describeReviewReason({
         verification,
-        artists: actual.artists,
+        titleAgrees,
+        artists: youtube ? youtube.artists : actual.artists,
         actualDurationMs,
         requestedDurationMs: trackRequest.durationMs,
         maxDurationGapMs,

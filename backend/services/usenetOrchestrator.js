@@ -43,7 +43,7 @@ import {
 import { getQualityProfile } from "./qualityProfileService.js";
 import { orderAdvertisedQualityCandidates } from "./qualityProfileModel.js";
 import { albumGrabJobs, deniedAlbumSources, finishAlbumGrab } from "./albumGrab.js";
-import { isCompilationJobs } from "./albumReleases.js";
+import { isCompilationJobs, withRecordingAliases } from "./albumReleases.js";
 
 const MIN_USENET_CANDIDATES = 2;
 const MAX_DOWNLOAD_CANDIDATES = 5;
@@ -362,10 +362,12 @@ async function handleUsenetDownload(payload, helpers) {
   const clientKey = getUsenetClientKey(payload.manualDownloadClient);
   let submission;
   try {
+    const nzb = await prowlarrClient.downloadNzb(release.downloadUrl);
+    if (!isPipelinePayloadActive(payload)) return null;
     submission = await withPipelineCommitLock(payload, async () => {
-      const appended = await client.appendUrl({
+      const appended = await client.appendNzb({
         name: release.title,
-        url: release.downloadUrl,
+        content: nzb,
         dupeKey: `aurral-${job.id}`,
         dupeScore: Number(candidate.score || 0),
       });
@@ -384,7 +386,7 @@ async function handleUsenetDownload(payload, helpers) {
     });
   } catch (error) {
     const message = error?.message || String(error);
-    logger.warn("slskd", "Usenet client append failed for release", {
+    logger.warn("usenet", "Usenet release could not be sent to the download client", {
       jobId: job.id,
       client: clientKey,
       releaseTitle: release.title,
@@ -472,10 +474,10 @@ async function handleUsenetFinalize(payload, helpers) {
     await removeUsenetItem(payload, job.id, { deleteFiles: true, historyItem });
     return next;
   }
-  const resolvedTrack = {
+  const resolvedTrack = await withRecordingAliases({
     ...buildResolvedTrack(job, payload.track),
     upgradeForJobId: payload.upgradeForJobId || null,
-  };
+  }, job.albumMbid);
   const audioFiles = await collectDownloadedAudioFiles(
     historyItem,
     payload.downloadClient || payload.manualDownloadClient,

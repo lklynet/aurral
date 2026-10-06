@@ -1625,9 +1625,11 @@ export class LibraryManager {
     const compilation = isVariousArtistsCredit(artist?.name, artist?.mbid);
     // A compilation track's job keeps the album's "Various Artists" credit,
     // which tags and media servers group the album by, and matches files by
-    // the track's own artist.
+    // the track's own artist under any of its names, such as "The Jackson 5"
+    // for "The Jacksons".
     const artistAliasesFor = (track) => (compilation
-      ? [track.artistName].filter((name) => name && !isVariousArtistsCredit(name))
+      ? [...new Set([track.artistName, ...(track.metadata?.artistAliases || [])])]
+        .filter((name) => name && !isVariousArtistsCredit(name))
       : artist?.metadata?.aliases || []);
     const requestedTrackIds = Array.isArray(options.trackIds)
       ? new Set(options.trackIds.map(Number))
@@ -2485,10 +2487,11 @@ export class LibraryManager {
     // A compilation keeps "Various Artists" on the album and names each
     // track's own artist.
     const compilation = isVariousArtistsCredit(artist.name, artist.mbid);
-    const trackArtistNames = new Map(providerArtists.map((entry) =>
-      [String(entry?.id || "").trim().toLowerCase(), String(entry?.name || "").trim()]));
-    const trackArtistName = (track) => (compilation
-      && trackArtistNames.get(String(track.artistId || "").trim().toLowerCase())) || null;
+    const trackArtists = new Map(providerArtists.map((entry) =>
+      [String(entry?.id || "").trim().toLowerCase(), entry]));
+    const trackArtist = (track) => (compilation
+      && trackArtists.get(String(track.artistId || "").trim().toLowerCase())) || null;
+    const trackArtistName = (track) => String(trackArtist(track)?.name || "").trim() || null;
     const resolvedAlbumName = String(metadata?.title || albumName || "").trim();
     if (!resolvedAlbumName) {
       return finishExistingOr({
@@ -2541,6 +2544,7 @@ export class LibraryManager {
             durationMs: track.durationMs,
             mediumNumber: track.mediumNumber,
             trackNumber: track.trackPosition || track.trackNumber || 0,
+            ...(trackArtist(track)?.aliases?.length ? { artistAliases: trackArtist(track).aliases } : {}),
           },
         });
         linkLibraryAlbumTrack({

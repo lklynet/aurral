@@ -8,6 +8,7 @@ const NORMALIZED_SEARCH_RESULTS = Symbol("normalizedSearchResults");
 const DEFAULT_SEARCH_TIMEOUT_MS = 60000;
 const DEFAULT_EMPTY_SEARCH_TIMEOUT_MS = 10000;
 const DEFAULT_SEARCH_GRACE_PERIOD_MS = 20000;
+const MAX_SEARCH_QUEUE_MS = 5 * 60 * 1000;
 const DEFAULT_FILE_LIMIT = 1000;
 const DEFAULT_RESPONSE_LIMIT = 150;
 const DEFAULT_MAX_PEER_QUEUE = 150;
@@ -158,6 +159,11 @@ export function isSearchComplete(data) {
   return state.includes("Completed");
 }
 
+function isSearchQueued(data) {
+  const state = String(data?.state || data?.State || "").trim();
+  return state === "Requested" || state === "Queued";
+}
+
 export function isSearchInProgress(data) {
   if (isSearchComplete(data)) return false;
   const state = String(data?.state || data?.State || "").trim();
@@ -288,17 +294,24 @@ class SearchMonitor {
     this.onSearchSettled = options.onSearchSettled;
     this.cleanupTimeoutMs = options.cleanupTimeoutMs;
     this.emptyTimeoutMs = Math.max(0, Number(options.emptyTimeoutMs ?? DEFAULT_EMPTY_SEARCH_TIMEOUT_MS));
-    const activeTimeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : DEFAULT_SEARCH_TIMEOUT_MS;
-    const gracePeriodMs = Math.max(0, Number(options.gracePeriodMs ?? DEFAULT_SEARCH_GRACE_PERIOD_MS));
-    this.startedAt = Number(options.startedAt) || Date.now();
-    this.graceStartsAt = this.startedAt + activeTimeoutMs;
-    this.deadline = Math.min(Number(options.deadline) || Infinity, this.graceStartsAt + gracePeriodMs);
+    this.activeTimeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : DEFAULT_SEARCH_TIMEOUT_MS;
+    this.gracePeriodMs = Math.max(0, Number(options.gracePeriodMs ?? DEFAULT_SEARCH_GRACE_PERIOD_MS));
+    this.hardDeadline = Number(options.deadline) || Infinity;
+    this.startWindows(Number(options.startedAt) || Date.now());
+    this.queueLimit = this.startedAt + MAX_SEARCH_QUEUE_MS;
+    this.queued = false;
     this.totalFiles = 0;
     this.hasSeenFiles = false;
     this.latest = null;
     this.collected = new Map();
     this.eligibilityAssessed = false;
     this.lastEligibility = false;
+  }
+
+  startWindows(startedAt) {
+    this.startedAt = startedAt;
+    this.graceStartsAt = startedAt + this.activeTimeoutMs;
+    this.deadline = Math.min(this.hardDeadline, this.graceStartsAt + this.gracePeriodMs);
   }
 
   cutoff() {
@@ -330,7 +343,7 @@ class SearchMonitor {
     const cancelled = () => signal?.aborted || shouldCancel?.();
     try {
       if (cancelled()) { await this.stop(); return { done: true, data: null }; }
-      const cutoff = this.cutoff();
+      const cutoff = this.queued ? Math.min(this.queueLimit, this.hardDeadline) : this.cutoff();
       if (Date.now() >= cutoff) return this.finish(this.latest);
       let data;
       try {
@@ -344,6 +357,14 @@ class SearchMonitor {
         throw error;
       }
       if (cancelled()) { await this.stop(); return { done: true, data: null }; }
+      // slskd runs a few searches at once and queues the rest. A queued search
+      // has not asked anyone yet, so its windows start once it runs.
+      this.queued = isSearchQueued(data);
+      if (this.queued) {
+        if (Date.now() >= Math.min(this.queueLimit, this.hardDeadline)) return this.finish(this.latest);
+        this.startWindows(Date.now());
+        return { done: false, data, waitMs: Math.min(2000, Math.max(1, this.queueLimit - Date.now())) };
+      }
       const files = this.client.flattenSearchResults(data);
       let eligibilityChanged = false;
       for (const file of files) {

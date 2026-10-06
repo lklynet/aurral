@@ -34,9 +34,9 @@ test("all source adapters reject a visible wrong recording before download", asy
     const result = await evaluateTrackCandidates({
       source,
       request: { trackName: "First Song", artistName: "The Band", durationMs: 180000,
-        recordingMbid: "wanted" },
+        recordingMbid: "aa8bf4d6-ee95-4407-8f7b-2efb65240a23" },
       candidates: [{ title: "First Song", artist: "The Band", durationMs: 180000,
-        recordingMbid: "wrong", file: "The Band/First Song.flac" }],
+        recordingMbid: "a4b48a81-cdab-4e1a-8dd3-7907d6c85ca1", file: "The Band/First Song.flac" }],
     });
     assert.equal(result.evaluations[0].decision, "reject", source);
   }

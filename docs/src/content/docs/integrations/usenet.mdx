@@ -72,6 +72,8 @@ Aurral cleans the text first: it drops a leading "The", removes accents, and rep
 
 A release matches when its title contains the artist and the album or track title. A compilation release needs only the album title. A single in another version, such as a remix or a radio edit, does not match the original track. A discography, box set, bootleg, tribute, or karaoke release does not match either, and an album does not match a live or greatest-hits release, unless the request names one. Aurral checks every downloaded file before it imports it.
 
+Like Lidarr, Aurral downloads the NZB from Prowlarr itself and sends the file to SABnzbd or NZBGet, so the download client does not need to reach Prowlarr. If the indexer returns an error page instead of an NZB, for example at its daily limit, Aurral tries the next release.
+
 Aurral watches SABnzbd or NZBGet for as long as the client holds the download, including while it is paused. If the download leaves the client without a history entry, Aurral tries the next release.
 
 For an Aurral album, one NZB can fill several tracks. If the NZB leaves tracks unfilled, Aurral tries the next release for those tracks before it searches for them one by one. For other requests, Aurral imports the checked track into the Downloads Folder.
@@ -80,7 +82,7 @@ A release that fails to download, or that holds no file for the track, is not of
 
 After Aurral imports a download, or the download fails, it removes the item from the client's queue and history and deletes the files that Aurral did not import. For NZBGet, turn off **Delete leftover files** to keep those files. Aurral deletes only the folder NZBGet created for the download. If a post-processing script moved the files elsewhere, Aurral leaves them and the history item in place. When two NZBGet downloads have the same name, NZBGet puts both in one folder, and Aurral removes that folder only with the last of them.
 
-If a file matches the requested track but its duration is very different, Aurral holds it in **Activity > Queue**. You can preview, approve, or deny it. Aurral keeps the rest of that download until you approve, deny, or remove the song.
+If a file matches the requested track except for its length, or its title or artist only partly matches, Aurral holds it in **Activity > Queue**. You can preview, approve, or deny it. Aurral keeps the rest of that download until you approve, deny, or remove the song. See [Track matching](/development/track-matching/) for the length rules.
 
 ## Quality and upgrades
 

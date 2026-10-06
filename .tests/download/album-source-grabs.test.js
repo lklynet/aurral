@@ -3,12 +3,13 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { basename, join } from "node:path";
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, rm, stat } from "node:fs/promises";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
 const execFileAsync = promisify(execFile);
 const [state, { dbOps }, { downloadTracker }, { getDownloadClient },
-  { processUsenetPipelinePayload }, { processPipelinePayload }, { downloadWorker }] = await setupIsolatedBackend(
+  { processUsenetPipelinePayload }, { processPipelinePayload }, { downloadWorker },
+  { buildSlskdRankingHistoryOptions }, { prowlarrClient }] = await setupIsolatedBackend(
   "album-source-grabs",
   "backend/db/helpers/index.js",
   "backend/services/downloadJobs/downloadTracker.js",
@@ -16,6 +17,8 @@ const [state, { dbOps }, { downloadTracker }, { getDownloadClient },
   "backend/services/usenetOrchestrator.js",
   "backend/services/downloadPipeline.js",
   "backend/services/downloadJobs/downloadWorker.js",
+  "backend/services/slskdTransferHistory.js",
+  "backend/services/prowlarrClient.js",
 );
 
 test.after(async () => {
@@ -51,7 +54,8 @@ async function makeAlbum(group) {
 test("one Usenet NZB fills two sibling jobs", async (t) => {
   const album = await makeAlbum("usenet-grab");
   const client = getDownloadClient("nzbget");
-  const append = t.mock.method(client, "appendUrl", async () => ({ nzbId: "nzb-one" }));
+  t.mock.method(prowlarrClient, "downloadNzb", async () => Buffer.from("<nzb></nzb>"));
+  const append = t.mock.method(client, "appendNzb", async () => ({ nzbId: "nzb-one" }));
   t.mock.method(client, "getHistoryItem", async () => ({ Status: "SUCCESS", FinalDir: album.folder }));
   const candidate = { raw: { release: { title: "The Band - Album", guid: "release-one",
     downloadUrl: "https://nzb.test/release" } }, score: 10, resolvedAlbumName: "Album" };
@@ -84,7 +88,7 @@ test("one Soulseek batch fills two sibling jobs", async (t) => {
     username: "peer", filename: filePath, state: "Completed" }));
   const enqueue = t.mock.method(client, "enqueueBatch", async () => ({ transfers, username: "peer" }));
   t.mock.method(client, "getTransfer", async (_, id) => transfers.find((item) => item.id === id));
-  t.mock.method(client, "getDownloadDirectory", async () => album.folder);
+  t.mock.method(client, "getDownloadDirectory", async () => state.baseDir);
   t.mock.method(client, "isCleanupAfterRunsEnabled", () => false);
   const queued = await processPipelinePayload({ ...album.payload, source: "slskd",
     candidateIndex: 0, candidates: [{ raw: { user: "peer", files: remoteFiles },
@@ -99,6 +103,7 @@ test("one Soulseek batch fills two sibling jobs", async (t) => {
     assert.equal(job.status, "done");
     assert.ok((await stat(job.finalPath)).isFile());
   }
+  assert.equal(await stat(album.folder).catch(() => null), null);
   const names = album.ids.map((id) => basename(downloadTracker.getJob(id).finalPath));
   assert.match(names[0], /^01 - First\b/);
   assert.match(names[1], /^02 - Second\b/);
@@ -106,6 +111,59 @@ test("one Soulseek batch fills two sibling jobs", async (t) => {
   const activity = (await getAurralHistoryRequests()).filter((item) => album.ids.includes(item.jobId));
   assert.equal(activity.length, 2);
   assert.ok(activity.every((item) => item.downloadMethod === "album" && item.actualDownloadSource === "slskd"));
+});
+
+test("a Soulseek album left untouched in the uploader's queue moves on after 10 minutes", async (t) => {
+  const album = await makeAlbum("soulseek-queued");
+  dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
+    slskd: { enabled: true, url: "http://127.0.0.1:9" },
+  } });
+  const client = getDownloadClient("slskd");
+  const transfers = album.files.map((filename, index) => ({ id: `queued-${index}`, username: "peer",
+    filename, state: "Requested", bytesTransferred: 0 }));
+  t.mock.method(client, "getTransfer", async (_, id) => transfers.find((item) => item.id === id));
+  const removed = t.mock.method(client, "deleteTransfer", async () => true);
+  const remoteFiles = album.files.map((file, index) => ({ file, size: 0, jobId: album.ids[index] }));
+  const polling = { ...album.payload, source: "slskd", phase: "poll", candidateIndex: 0,
+    candidate: { raw: { user: "peer", files: remoteFiles } }, albumTransfers: transfers };
+  const waiting = await processPipelinePayload(polling);
+  assert.equal(waiting.phase, "poll");
+
+  // slskd re-requests queued files, which changes their state but moves nothing.
+  for (const transfer of transfers) transfer.state = "Queued, Remotely";
+  const elevenMinutesAgo = Date.now() - 11 * 60 * 1000;
+  const movedOn = await processPipelinePayload({ ...waiting, lastProgressAt: elevenMinutesAgo });
+  assert.equal(movedOn.phase, "finalize");
+  assert.equal(removed.mock.callCount(), 2);
+
+  transfers[0].placeInQueue = 3;
+  assert.equal((await processPipelinePayload({ ...waiting, lastProgressAt: elevenMinutesAgo })).phase, "poll");
+});
+
+test("a Soulseek album removes the downloaded files it did not import", async (t) => {
+  const album = await makeAlbum("soulseek-unused");
+  await rm(album.files[1]);
+  const unused = join(album.folder, "02 Somebody Else.flac");
+  await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
+    "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac",
+    "-metadata", "title=Somebody Else", "-metadata", "artist=The Band", unused]);
+  dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
+    slskd: { enabled: true, url: "http://127.0.0.1:9" },
+  } });
+  const client = getDownloadClient("slskd");
+  t.mock.method(client, "getDownloadDirectory", async () => state.baseDir);
+  t.mock.method(client, "isCleanupAfterRunsEnabled", () => false);
+  const files = [album.files[0], unused];
+  const remoteFiles = files.map((file, index) => ({ file, size: 0, jobId: album.ids[index] }));
+  const transfers = files.map((filename, index) => ({ id: `transfer-${index}`, username: "peer",
+    filename, state: "Completed, Succeeded" }));
+  await processPipelinePayload({ ...album.payload, source: "slskd", phase: "finalize", candidateIndex: 0,
+    candidates: [{ raw: { user: "peer", files: remoteFiles } }],
+    candidate: { raw: { user: "peer", files: remoteFiles } }, albumTransfers: transfers });
+  assert.equal(downloadTracker.getJob(album.ids[0]).status, "done");
+  assert.equal(downloadTracker.getJob(album.ids[1]).status, "pending");
+  assert.equal(await stat(unused).catch(() => null), null);
+  assert.equal(await stat(album.folder).catch(() => null), null);
 });
 
 async function writeTracks(folder, titles) {
@@ -117,7 +175,7 @@ async function writeTracks(folder, titles) {
   }
 }
 
-test("a partial Usenet album tries the next release for the tracks it missed", async (t) => {
+test("a partial Usenet album tries the next release for the tracks it missed, past an NZB the indexer refuses", async (t) => {
   const group = "usenet-next-release";
   const titles = ["First", "Second", "Third"];
   const folders = { partial: join(state.baseDir, `${group}-partial`), complete: join(state.baseDir, `${group}-complete`) };
@@ -130,12 +188,16 @@ test("a partial Usenet album tries the next release for the tracks it missed", a
   }, "library"));
   for (const id of ids.slice(1)) downloadTracker.setDownloading(id);
   const client = getDownloadClient("nzbget");
-  const append = t.mock.method(client, "appendUrl", async ({ url }) => ({ nzbId: url }));
+  t.mock.method(prowlarrClient, "downloadNzb", async (url) => {
+    if (url.endsWith("expired")) throw new Error("The indexer did not return the NZB: HTTP 404");
+    return Buffer.from(`<nzb>${url}</nzb>`);
+  });
+  const append = t.mock.method(client, "appendNzb", async ({ content }) => ({ nzbId: content.toString() }));
   t.mock.method(client, "getHistoryItem", async (nzbId) => ({ Status: "SUCCESS",
-    FinalDir: nzbId.endsWith("partial") ? folders.partial : folders.complete }));
+    FinalDir: nzbId.includes("partial") ? folders.partial : folders.complete }));
   t.mock.method(client, "deleteQueueItem", async () => true);
   t.mock.method(client, "deleteHistoryItem", async () => true);
-  const candidates = ["partial", "complete"].map((name) => ({ raw: { release: {
+  const candidates = ["partial", "expired", "complete"].map((name) => ({ raw: { release: {
     title: `The Band - Album ${name}`, guid: `guid-${name}`, downloadUrl: `https://nzb.test/${name}`,
   } }, score: 10, resolvedAlbumName: "Album" }));
   const helpers = { failOrTryNextSource: (_, __, reason) => { throw new Error(reason); } };
@@ -209,8 +271,10 @@ test("a Soulseek album's next folder gets its own queue window", async (t) => {
     candidateIndex: 0, candidates, candidate: candidates[0], albumTransfers: transfers,
     tailSince: Date.now() - 11 * 60 * 1000 });
   assert.equal(giveUp.phase, "finalize");
+  assert.equal(buildSlskdRankingHistoryOptions().getUserQueuePenalty("peer"), 0);
   const next = await processPipelinePayload(giveUp);
   assert.equal(next.candidateIndex, 1);
   assert.equal(next.tailSince ?? null, null);
+  assert.ok(buildSlskdRankingHistoryOptions().getUserQueuePenalty("peer") > 0);
   assert.deepEqual(downloadTracker.getJob(album.ids[0]).deniedRemoteSources, [["slskd", `peer\0${album.files[0]}`]]);
 });

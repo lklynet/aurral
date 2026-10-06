@@ -12,6 +12,9 @@ const realpathOr = (dir) => fs.realpath(dir).catch(() => dir);
 // else is refused, so a misreported path cannot reach a shared folder or a
 // music library.
 export async function removeNzbgetDownloadFolder(historyItem, directories, category) {
+  // A download that failed before it started, such as an NZB NZBGet could not
+  // fetch, has no folder.
+  if (!String(historyItem?.DestDir || "").trim()) return;
   const mappings = getPathMappings("nzbget");
   const toLocal = (value) => {
     const raw = String(value || "").trim();

@@ -78,6 +78,30 @@ test("yt-dlp live results cannot satisfy the search early-exit check", () => {
   );
 });
 
+test("yt-dlp searches a compilation track by its own artist and reverses an empty search", async (t) => {
+  const client = getDownloadClient("ytdlp");
+  const queries = [];
+  t.mock.method(client, "search", async (query) => {
+    queries.push(query);
+    return query.startsWith("Go All the Way")
+      ? [{ id: "song", title: "Go All the Way", channel: "Raspberries - Topic", durationSec: 203, url: "https://example.test/song" }]
+      : [];
+  });
+  const jobId = downloadTracker.addJob({
+    artistName: "Various Artists", artistAliases: ["Raspberries"], trackName: "Go All the Way",
+    albumName: "Awesome Mix", durationMs: 202786,
+  }, "ytdlp-compilation");
+  const next = await processYtdlpPipelinePayload({ phase: "search", source: "ytdlp", jobId },
+    { failOrTryNextSource: (_payload, _job, reason) => ({ failed: reason }) });
+  assert.deepEqual(queries, [
+    "Raspberries Go All the Way",
+    "Raspberries Go All the Way official audio",
+    "Go All the Way Raspberries",
+  ]);
+  assert.equal(next.phase, "download");
+  assert.equal(next.candidates[0].raw.id, "song");
+});
+
 test("Usenet file collection only scans the current history directory", async () => {
   const sharedRoot = path.join(process.env.DOWNLOAD_FOLDER, "usenet-shared-root");
   const currentRoot = path.join(sharedRoot, "current-release");

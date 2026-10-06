@@ -225,9 +225,9 @@ export class NzbgetClient {
     return Array.isArray(result) ? result : [];
   }
 
-  async appendUrl({
+  async appendNzb({
     name,
-    url,
+    content,
     category,
     priority,
     addToTop = false,
@@ -239,12 +239,11 @@ export class NzbgetClient {
     ppParameters = [],
   }) {
     const settings = this._getSettings();
-    const safeUrl = String(url || "").trim();
-    if (!safeUrl) throw new Error("NZBGet append requires a URL");
+    if (!content?.length) throw new Error("NZBGet append requires an NZB file");
     const nzbName = `${sanitizeNzbName(name)}.nzb`;
     const result = await this.rpc("append", [
       nzbName,
-      safeUrl,
+      Buffer.from(content).toString("base64"),
       category ?? settings.category,
       normalizeInteger(priority, settings.nzbPriority),
       addToTop === true,
@@ -257,7 +256,7 @@ export class NzbgetClient {
     ]);
     const nzbId = normalizeInteger(result, 0);
     if (nzbId <= 0) {
-      throw new Error("NZBGet rejected the NZB URL");
+      throw new Error("NZBGet rejected the NZB");
     }
     return {
       nzbId,
