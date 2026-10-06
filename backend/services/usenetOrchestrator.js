@@ -80,7 +80,7 @@ async function removeUsenetItem(payload, jobId, options = {}) {
   }
 }
 
-// A song held for review keeps its release until the user approves or denies it.
+// A song held for review keeps its release until it is approved, denied, or removed.
 export async function removeReviewedUsenetDownload(job) {
   if (job?.downloadSource !== "usenet" || !job.downloadClientId) return;
   await removeUsenetItem(

@@ -311,7 +311,8 @@ function buildPipelinePayload(job) {
 }
 
 function discardReviewFiles(jobs) {
-  const held = jobs.filter((job) => job?.status === "blocked" && job.stagingPath);
+  const held = jobs.filter((job) => job?.status === "blocked" && job.stagingPath)
+    .map((job) => ({ ...job }));
   if (held.length === 0) return;
   import("./reviewFiles.js")
     .then(async ({ discardReviewFile }) => {

@@ -112,7 +112,6 @@ export async function denyBlockedJob(jobId) {
   const job = getBlockedJob(jobId);
   if (!job) return { status: 404, error: "Blocked job not found" };
   await discardReviewFile(job);
-  await removeReviewedDownload(job);
   const deniedSourceKey = ["usenet", "ytdlp", "deemix"].includes(job.downloadSource)
     ? String(job.releaseGuid || "").trim()
     : `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`;

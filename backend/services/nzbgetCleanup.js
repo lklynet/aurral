@@ -37,9 +37,11 @@ export async function removeNzbgetDownloadFolder(historyItem, directories, categ
   const roots = [directories.completedPath, directories.categoryDestDir, directories.destDir]
     .map(toLocal)
     .filter(Boolean);
-  // The category is joined onto a path, so only a plain folder name counts.
-  const categoryDirs = category && category !== ".." && path.basename(category) === category
-    ? roots.map((root) => path.join(root, category))
+  // NZBGet nests a category such as "music/aurral", but ".." must not widen
+  // the folders that cleanup accepts.
+  const categoryParts = String(category || "").split(/[\\/]/);
+  const categoryDirs = categoryParts.every((part) => part && part !== "." && part !== "..")
+    ? roots.map((root) => path.join(root, ...categoryParts))
     : [];
   const parents = await Promise.all(
     [...roots, ...categoryDirs, toLocal(directories.interDir)]

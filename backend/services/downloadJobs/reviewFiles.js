@@ -35,6 +35,9 @@ export async function discardReviewFile(job) {
           reason: safeLogDiagnostic(error),
         });
       });
+    } else if (job.downloadSource === "usenet") {
+      const { removeReviewedUsenetDownload } = await import("../usenetOrchestrator.js");
+      await removeReviewedUsenetDownload(job);
     }
     await fs.rm(filePath, { force: true });
     if (path.basename(path.dirname(filePath)) === String(job.id)) {

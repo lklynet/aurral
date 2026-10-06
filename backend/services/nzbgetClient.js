@@ -288,11 +288,21 @@ export class NzbgetClient {
     const settings = this._getSettings();
     if (deleteFiles && settings.deleteLeftovers) {
       const item = historyItem || (await this.getHistoryItem(nzbId));
-      if (item) {
+      if (item && !(await this.sharesDownloadFolder(item))) {
         await removeNzbgetDownloadFolder(item, await this.getDownloadDirectories(), settings.category);
       }
     }
     return this.editItem("HistoryFinalDelete", nzbId);
+  }
+
+  // NZBGet moves a download into the folder named after it even when another
+  // download of the same name already uses that folder. The last one removes it.
+  async sharesDownloadFolder(item) {
+    const id = normalizeInteger(item.NZBID ?? item.ID, null);
+    const isOther = (entry) => normalizeInteger(entry?.NZBID ?? entry?.ID, null) !== id;
+    const [queue, history] = await Promise.all([this.listGroups(), this.history(false)]);
+    return queue.some((entry) => isOther(entry) && entry.NZBName === item.NZBName)
+      || history.some((entry) => isOther(entry) && entry.DestDir === item.DestDir);
   }
 
   async editItem(command, nzbId) {
@@ -305,7 +315,8 @@ export class NzbgetClient {
     const settings = this._getSettings();
     const config = await this.config().catch(() => []);
     const categoryEntry = config.find((entry) =>
-      /^Category\d+\.Name$/i.test(entry.Name || "") && entry.Value === settings.category);
+      /^Category\d+\.Name$/i.test(entry.Name || "")
+      && String(entry.Value || "").toLowerCase() === settings.category.toLowerCase());
     return {
       completedPath: settings.completedPath || "",
       categoryDestDir: categoryEntry

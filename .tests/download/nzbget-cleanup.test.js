@@ -60,6 +60,14 @@ test("a category with path components cannot widen the allowed folders", async (
   assert.equal(await exists(outside), true);
 });
 
+test("a nested category counts as one of NZBGet's download folders", async () => {
+  await fs.mkdir(path.join(root, "music", "aurral", "release"), { recursive: true });
+  await removeNzbgetDownloadFolder({ DestDir: path.join(root, "music", "aurral", "release") },
+    { destDir: root }, "music/aurral");
+  assert.equal(await exists(path.join(root, "music", "aurral", "release")), false);
+  assert.equal(await exists(path.join(root, "music", "aurral")), true);
+});
+
 test("removes a failed download from the intermediate folder", async () => {
   const inter = path.join(state.baseDir, `inter-${sequence}`);
   await fs.mkdir(path.join(inter, "release.#42"), { recursive: true });
@@ -110,6 +118,8 @@ test("a folder that is already gone is not an error", async () => {
 test("the client keeps the history item when files cannot be removed, and honors the opt-out", async (t) => {
   const client = new NzbgetClient({ completedPath: root });
   const rpc = t.mock.method(client, "rpc", async () => true);
+  t.mock.method(client, "listGroups", async () => []);
+  t.mock.method(client, "history", async () => []);
   t.mock.method(client, "getDownloadDirectories", async () => ({ completedPath: root }));
   await assert.rejects(client.deleteHistoryItem(42, { deleteFiles: true,
     historyItem: { DestDir: root } }), /not inside NZBGet/);
@@ -126,12 +136,12 @@ test("category-specific completed directories are read from NZBGet configuration
   t.mock.method(client, "config", async () => [
     { Name: "DestDir", Value: "/completed" },
     { Name: "Category1.Name", Value: "music" }, { Name: "Category1.DestDir", Value: "/music-downloads" },
-    { Name: "Category2.Name", Value: "aurral" }, { Name: "Category2.DestDir", Value: root },
+    { Name: "Category2.Name", Value: "Aurral" }, { Name: "Category2.DestDir", Value: root },
   ]);
   assert.equal((await client.getDownloadDirectories()).categoryDestDir, root);
 });
 
-async function pipelineFixture(t, { deleteLeftovers = true, durationMs = 1000 } = {}) {
+async function pipelineFixture(t, { deleteLeftovers = true, durationMs = 1000, queue = [], others = [] } = {}) {
   dbOps.updateSettings({ integrations: { nzbget: { enabled: true, url: "http://127.0.0.1:9",
     completedPath: root, category: "aurral", deleteLeftovers } } });
   for (const title of ["Wanted", "Unwanted"]) {
@@ -145,9 +155,11 @@ async function pipelineFixture(t, { deleteLeftovers = true, durationMs = 1000 } 
   downloadTracker.setDownloading(jobId);
   downloadTracker.updateDownloadMetadata(jobId, { downloadSource: "usenet",
     downloadClient: "nzbget", downloadClientId: 42 });
-  const history = { NZBID: 42, Status: "SUCCESS/ALL", DestDir: folder(), Category: "aurral" };
+  const history = { NZBID: 42, NZBName: "The Band - Album FLAC", Status: "SUCCESS/ALL",
+    DestDir: folder(), Category: "aurral" };
   const client = getDownloadClient("nzbget");
-  t.mock.method(client, "getHistoryItem", async () => history);
+  t.mock.method(client, "history", async () => [history, ...others]);
+  t.mock.method(client, "listGroups", async () => queue);
   t.mock.method(client, "getDownloadDirectories", async () => ({ completedPath: root }));
   const deleted = t.mock.method(client, "editItem", async () => true);
   return { jobId, deleted, payload: { jobId, source: "usenet", phase: "finalize",
@@ -199,6 +211,35 @@ for (const [decision, review] of [["approved", approveBlockedJob], ["denied", de
     assert.equal(deleted.mock.callCount(), 0);
     assert.equal((await review(jobId)).status, 200);
     assert.equal(await exists(folder()), false);
+    assert.equal(historyDeletes(deleted), 1);
+  });
+}
+
+test("removing a song held for review removes its download", async (t) => {
+  const { jobId, payload, deleted } = await pipelineFixture(t, { durationMs: 180000 });
+  const removed = new Promise((resolve) => {
+    deleted.mock.mockImplementation(async (command) => {
+      if (command === "HistoryFinalDelete") resolve();
+      return true;
+    });
+  });
+  await processUsenetPipelinePayload(payload);
+  assert.equal(downloadTracker.getJob(jobId).status, "blocked");
+  downloadTracker.removeJob(jobId);
+  await removed;
+  assert.equal(await exists(folder()), false);
+});
+
+for (const [sharer, fixture] of [
+  ["a finished download", () => ({ others: [{ NZBID: 43, NZBName: "The Band - Album FLAC (2)",
+    Status: "SUCCESS/ALL", DestDir: folder() }] })],
+  ["a queued download", () => ({ queue: [{ NZBID: 43, NZBName: "The Band - Album FLAC" }] })],
+]) {
+  test(`an import leaves a folder that ${sharer} of the same name shares`, async (t) => {
+    const { jobId, payload, deleted } = await pipelineFixture(t, fixture());
+    await processUsenetPipelinePayload(payload);
+    assert.equal(downloadTracker.getJob(jobId).status, "done");
+    assert.equal(await exists(path.join(folder(), "Unwanted.flac")), true);
     assert.equal(historyDeletes(deleted), 1);
   });
 }
