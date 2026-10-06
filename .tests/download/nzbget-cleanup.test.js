@@ -77,9 +77,10 @@ test("removes a failed download from the intermediate folder", async () => {
 });
 
 test("leaves a download that a post-processing script moved", async () => {
-  await assert.rejects(remove({ DestDir: folder(), FinalDir: path.join(root, "sorted") }),
-    /post-processing script/);
-  assert.equal(await exists(folder()), true);
+  for (const FinalDir of [path.join(root, "sorted"), "D:\\sorted\\release"]) {
+    await assert.rejects(remove({ DestDir: folder(), FinalDir }), /post-processing script/);
+    assert.equal(await exists(folder()), true);
+  }
 });
 
 test("refuses symlinks", async () => {
@@ -129,6 +130,22 @@ test("the client keeps the history item when files cannot be removed, and honors
     historyItem: { DestDir: folder() } }), true);
   assert.equal(await exists(folder()), true);
   assert.deepEqual(rpc.mock.calls[0].arguments, ["editqueue", ["HistoryFinalDelete", "", [42]]]);
+});
+
+test("the last of two downloads sharing a folder removes it, even when both finish at once", async (t) => {
+  const client = new NzbgetClient({ url: "http://127.0.0.1:9", completedPath: root });
+  const history = [42, 43].map((NZBID) => ({ NZBID, NZBName: "release", DestDir: folder() }));
+  t.mock.method(client, "listGroups", async () => []);
+  t.mock.method(client, "history", async () => [...history]);
+  t.mock.method(client, "getDownloadDirectories", async () => ({ completedPath: root }));
+  t.mock.method(client, "editItem", async (_command, id) => {
+    history.splice(history.findIndex((item) => item.NZBID === id), 1);
+    return true;
+  });
+  await Promise.all(history.map((item) =>
+    client.deleteHistoryItem(item.NZBID, { deleteFiles: true, historyItem: item })));
+  assert.equal(history.length, 0);
+  assert.equal(await exists(folder()), false);
 });
 
 test("category-specific completed directories are read from NZBGet configuration", async (t) => {

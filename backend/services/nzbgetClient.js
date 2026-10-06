@@ -93,6 +93,7 @@ export const nzbgetSettings = Object.freeze({
 });
 
 let connectionCache = { checkedAt: 0, result: null, settingsKey: null };
+let folderCleanup = Promise.resolve();
 
 function getSettings(config = null) {
   const nzbget = config || dbOps.getSettings()?.integrations?.nzbget || {};
@@ -284,15 +285,20 @@ export class NzbgetClient {
 
   // NZBGet keeps a finished download's files, so Aurral deletes its folder
   // first. If that fails, the history entry stays for a manual cleanup.
+  // Cleanups run one at a time so two downloads that share a folder cannot
+  // each leave it to the other.
   async deleteHistoryItem(nzbId, { deleteFiles = false, historyItem = null } = {}) {
     const settings = this._getSettings();
-    if (deleteFiles && settings.deleteLeftovers) {
+    if (!deleteFiles || !settings.deleteLeftovers) return this.editItem("HistoryFinalDelete", nzbId);
+    const cleanup = folderCleanup.then(async () => {
       const item = historyItem || (await this.getHistoryItem(nzbId));
       if (item && !(await this.sharesDownloadFolder(item))) {
         await removeNzbgetDownloadFolder(item, await this.getDownloadDirectories(), settings.category);
       }
-    }
-    return this.editItem("HistoryFinalDelete", nzbId);
+      return this.editItem("HistoryFinalDelete", nzbId);
+    });
+    folderCleanup = cleanup.catch(() => {});
+    return cleanup;
   }
 
   // NZBGet moves a download into the folder named after it even when another

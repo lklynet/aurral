@@ -22,8 +22,7 @@ export async function removeNzbgetDownloadFolder(historyItem, directories, categ
   };
   const target = toLocal(historyItem?.DestDir);
   if (!target) throw new Error("NZBGet download folder is missing or unmapped");
-  const finalDir = toLocal(historyItem?.FinalDir);
-  if (finalDir && finalDir !== target) {
+  if (String(historyItem?.FinalDir || "").trim() && toLocal(historyItem.FinalDir) !== target) {
     throw new Error("A post-processing script moved the NZBGet download");
   }
 
