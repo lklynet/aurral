@@ -7,6 +7,7 @@ import DownloadFolderField from "../../../components/DownloadFolderField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import { SettingsAdapterFields } from "./SettingsAdapterFields";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
+import { SettingsInput } from "./SettingsField";
 import { RootOverlapWarning } from "./RootOverlapWarning";
 import { getProviderStatus } from "../utils/integrationStatus";
 import { PATH_MAPPING_SOURCE_OPTIONS, PathMappingModal } from "./PathMappingModal";
@@ -59,6 +60,7 @@ function clientMeta(definition, config) {
 }
 
 const QUALITY_PROFILE_MODAL = "quality-profile";
+const ADD_CLIENT_MODAL = "add-client";
 
 export function SettingsDownloadClientsSection({
   settings,
@@ -94,6 +96,12 @@ export function SettingsDownloadClientsSection({
   const clientDefinitions = downloadClientSettings
     ? Object.values(downloadClientSettings)
     : [];
+  const enabledClientDefinitions = clientDefinitions.filter((definition) =>
+    isClientEnabled(definition, integrations[definition.key] || {}),
+  );
+  const availableClientDefinitions = clientDefinitions.filter(
+    (definition) => !isClientEnabled(definition, integrations[definition.key] || {}),
+  );
   const activeClient = downloadClientSettings?.[activeModal] || null;
 
   const updateIntegration = (key, patch) => {
@@ -108,6 +116,11 @@ export function SettingsDownloadClientsSection({
         },
       },
     });
+  };
+
+  const addClient = (definition) => {
+    updateIntegration(definition.key, { enabled: true });
+    setActiveModal(definition.key);
   };
 
   const updatePathMappings = (nextMappings) => {
@@ -213,7 +226,7 @@ export function SettingsDownloadClientsSection({
       <div className="settings-page__section">
         <div className="settings-page__integration-card-grid">
           {clientDefinitions.length > 0 ? (
-            clientDefinitions.map((definition) => {
+            enabledClientDefinitions.map((definition) => {
               const config = integrations[definition.key] || {};
               return (
                 <IntegrationCard
@@ -221,7 +234,7 @@ export function SettingsDownloadClientsSection({
                   title={definition.label}
                   subtitle={definition.subtitle}
                   status={getProviderStatus(
-                    isClientEnabled(definition, config),
+                    true,
                     isClientConfigured(definition, config, health),
                   )}
                   meta={clientMeta(definition, config)}
@@ -236,6 +249,16 @@ export function SettingsDownloadClientsSection({
                 : "Download client settings are unavailable. Refresh the page to retry."}
             </div>
           )}
+          {availableClientDefinitions.length > 0 ? (
+            <button
+              type="button"
+              className="download-client-add"
+              aria-label="Add download client"
+              onClick={() => setActiveModal(ADD_CLIENT_MODAL)}
+            >
+              <Plus aria-hidden />
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -269,6 +292,32 @@ export function SettingsDownloadClientsSection({
                 downloadFolderPath: nextPath,
               })
             }
+          />
+        </SettingsArrFormGroup>
+      </SettingsArrFieldSet>
+
+      <SettingsArrFieldSet legend="Review queue">
+        <SettingsArrFormGroup
+          label="Maximum wait (hours)"
+          labelFor="download-clients-review-timeout"
+          help="Songs held for review longer than this are denied, and Aurral searches for them again. 0 keeps them until you decide."
+        >
+          <SettingsInput
+            id="download-clients-review-timeout"
+            type="number"
+            min={0}
+            max={720}
+            step={1}
+            value={settings.reviewTimeoutHours ?? 0}
+            onChange={(event) => {
+              const raw = Number(event.target.value);
+              updateSettings({
+                ...settings,
+                reviewTimeoutHours: Number.isFinite(raw)
+                  ? Math.max(0, Math.min(720, Math.floor(raw)))
+                  : 0,
+              });
+            }}
           />
         </SettingsArrFormGroup>
       </SettingsArrFieldSet>
@@ -357,6 +406,40 @@ export function SettingsDownloadClientsSection({
           onClose={closeMappingModal}
           onSave={saveMapping}
         />
+      ) : null}
+
+      {activeModal === ADD_CLIENT_MODAL ? (
+        <SettingsIntegrationModal
+          title="Add download client"
+          wide={false}
+          onClose={() => setActiveModal(null)}
+        >
+          <div className="download-client-picker">
+            <p className="download-client-picker__intro">
+              Choose a client to add and configure.
+            </p>
+            <div className="download-client-picker__list">
+              {availableClientDefinitions.map((definition) => (
+                <button
+                  key={definition.key}
+                  type="button"
+                  className="download-client-picker__option"
+                  onClick={() => addClient(definition)}
+                >
+                  <span className="download-client-picker__copy">
+                    <span className="download-client-picker__name">{definition.label}</span>
+                    {definition.subtitle ? (
+                      <span className="download-client-picker__subtitle">
+                        {definition.subtitle}
+                      </span>
+                    ) : null}
+                  </span>
+                  <Plus className="artist-icon-sm" aria-hidden />
+                </button>
+              ))}
+            </div>
+          </div>
+        </SettingsIntegrationModal>
       ) : null}
 
       {activeModal === QUALITY_PROFILE_MODAL && (

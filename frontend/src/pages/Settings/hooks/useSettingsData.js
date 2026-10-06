@@ -52,6 +52,7 @@ const defaultSettings = {
     enabled: false,
     intervalDays: 1,
   },
+  reviewTimeoutHours: 0,
   releaseTypes: allReleaseTypes,
   integrations: {
     navidrome: {

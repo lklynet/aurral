@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { dbOps } from "../../../db/helpers/index.js";
+import { MAX_REVIEW_TIMEOUT_HOURS } from "../../../db/helpers/settings.js";
 import {
   DATE_TIME_FORMATS,
   DEFAULT_METADATA_BASE_URL,
@@ -135,10 +136,18 @@ export function registerGeneral(router) {
         missingTrackSearch,
         inbox,
         dateTimeFormat,
+        reviewTimeoutHours,
       } = req.body;
 
       if (dateTimeFormat !== undefined && !DATE_TIME_FORMATS.includes(dateTimeFormat)) {
         return res.status(400).json({ error: "Invalid date and time format" });
+      }
+      if (reviewTimeoutHours !== undefined
+        && (!Number.isInteger(reviewTimeoutHours) || reviewTimeoutHours < 0
+          || reviewTimeoutHours > MAX_REVIEW_TIMEOUT_HOURS)) {
+        return res.status(400).json({
+          error: `reviewTimeoutHours must be a whole number from 0 to ${MAX_REVIEW_TIMEOUT_HOURS}`,
+        });
       }
 
       const currentSettings = dbOps.getSettings();
@@ -545,6 +554,8 @@ export function registerGeneral(router) {
           missingTrackSearch && typeof missingTrackSearch === "object"
             ? { ...currentSettings.missingTrackSearch, ...missingTrackSearch }
             : currentSettings.missingTrackSearch,
+        reviewTimeoutHours:
+          reviewTimeoutHours !== undefined ? reviewTimeoutHours : currentSettings.reviewTimeoutHours,
       };
 
       if (updatedSettings?.integrations?.coverArtArchive) {

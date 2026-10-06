@@ -119,7 +119,7 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   "download-clients": {
-    sections: ["Quality profile", "Downloads folder", "Remote path mappings", "Connection", "Behavior", "Downloads", "Advanced"],
+    sections: ["Quality profile", "Downloads folder", "Review queue", "Remote path mappings", "Connection", "Behavior", "Downloads", "Advanced"],
     services: {
       slskd: "Soulseek download client",
       "yt-dlp": "YouTube web download client",
@@ -133,6 +133,7 @@ const SETTINGS_SEARCH_METADATA = {
       "Automatic upgrades": "upgrade searches Flow Static tracks",
       "Upgrade interval": "days between checks",
       "Missing tracks": "search again retry failed missing album tracks schedule",
+      "Maximum wait (hours)": "review queue held tracks deny automatically timeout",
       "Search again for missing tracks": "retry failed missing album tracks automatic schedule on off",
       "Search interval": "days between missing track searches",
       Path: "downloads folder media library",

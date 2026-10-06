@@ -41,6 +41,8 @@ Each review row shows the requested track, artist, and album, the path of the do
 
 Approving moves the file into the Library. Denying deletes it and searches again without that file. Removing a playlist, an album, or a track that waits for review deletes its file too. Aurral never deletes a file in the Downloads Folder or a Lidarr root folder this way, for example one that deemix saved there.
 
+To stop tracks from waiting indefinitely, set **Settings > Download clients > Review queue > Maximum wait (hours)**. Aurral denies a track that waits longer, and searches again without its file. The default, `0`, keeps every track until you decide.
+
 ## History
 
 **History** shows finished, denied, and failed work.

@@ -90,6 +90,12 @@ export const SCHEDULED_SYSTEM_TASKS = [
     payload: { kind: "weekly-flow-reuse-repair" },
   },
   {
+    name: "review-timeout",
+    queue: "system-task",
+    schedule: "@every 15m",
+    payload: { kind: "review-timeout" },
+  },
+  {
     name: "quality-upgrade-check",
     queue: "system-task",
     schedule: "@every 1h",
