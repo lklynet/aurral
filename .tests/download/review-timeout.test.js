@@ -4,16 +4,21 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../helpers/backendTestHarness.js";
 
-const [state, { db }, { dbOps }, { downloadTracker }, { denyExpiredReviews }] = await setupIsolatedBackend(
+const [state, { db }, { dbOps }, { downloadTracker }, { denyExpiredReviews },
+  { withDownloadImportLock }] = await setupIsolatedBackend(
   "review-timeout",
   "backend/config/db-sqlite.js", "backend/db/helpers/index.js",
   "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/downloadJobs/blockedJobReview.js",
+  "backend/services/downloadJobs/mutationGuards.js",
 );
 const HOUR = 60 * 60 * 1000;
 let sequence = 0;
 
-test.beforeEach(() => resetDatabase(db));
+test.beforeEach(() => {
+  downloadTracker.clearAll();
+  resetDatabase(db);
+});
 test.after(() => cleanupIsolatedState(state));
 
 async function holdForReview(trackName) {
@@ -58,4 +63,31 @@ test("the stored maximum wait is limited to whole hours up to 30 days", () => {
     dbOps.updateSettings({ ...dbOps.getSettings(), reviewTimeoutHours: stored });
     assert.equal(dbOps.getSettings().reviewTimeoutHours, expected, String(stored));
   }
+});
+
+test("a timeout waits for an approval in progress and leaves the approved song alone", async () => {
+  dbOps.updateSettings({ ...dbOps.getSettings(), reviewTimeoutHours: 24 });
+  const held = await holdForReview("Approving");
+  let finishApproval;
+  let lockHeld;
+  const approvalStarted = new Promise((resolve) => { lockHeld = resolve; });
+  // The approval imports while it holds the lock.
+  const approval = withDownloadImportLock("library", async () => {
+    lockHeld();
+    await new Promise((resolve) => { finishApproval = resolve; });
+    downloadTracker.setDone(held.jobId, held.stagingPath);
+  });
+  await approvalStarted;
+  const denial = denyExpiredReviews(Date.now() + 25 * HOUR);
+  try {
+    for (let tick = 0; tick < 20; tick += 1) await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(downloadTracker.getJob(held.jobId).status, "blocked");
+    assert.equal(await exists(held.stagingPath), true);
+  } finally {
+    finishApproval();
+    await approval;
+  }
+  assert.equal(await denial, 0);
+  assert.equal(downloadTracker.getJob(held.jobId).status, "done");
+  assert.equal(await exists(held.stagingPath), true);
 });

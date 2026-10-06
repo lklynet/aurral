@@ -112,14 +112,30 @@ export async function approveBlockedJob(jobId) {
 export async function denyBlockedJob(jobId, { reason = "Denied by user" } = {}) {
   const job = getBlockedJob(jobId);
   if (!job) return { status: 404, error: "Blocked job not found" };
-  await discardReviewFile(job);
-  const deniedSourceKey = ["usenet", "ytdlp", "deemix"].includes(job.downloadSource)
-    ? String(job.releaseGuid || "").trim()
-    : `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`;
-  if (job.downloadSource && deniedSourceKey) {
-    downloadTracker.recordDeniedSource(job.id, job.downloadSource, deniedSourceKey);
-  }
-  downloadTracker.setPending(job.id, reason, { asRetryCycle: false });
+  // Approval imports under this lock. Re-check inside it, so a denial cannot
+  // delete the file of an approval in progress or reopen an approved song.
+  const committed = await withPipelineCommitLock(
+    {
+      jobId: job.id,
+      playlistId: job.playlistId || job.playlistType,
+      playlistGeneration: job.playlistGeneration,
+      downloadAttemptId: getActiveDownloadAttemptId(job.id),
+    },
+    async () => {
+      if (!getBlockedJob(job.id)) return false;
+      await discardReviewFile(job);
+      const deniedSourceKey = ["usenet", "ytdlp", "deemix"].includes(job.downloadSource)
+        ? String(job.releaseGuid || "").trim()
+        : `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`;
+      if (job.downloadSource && deniedSourceKey) {
+        downloadTracker.recordDeniedSource(job.id, job.downloadSource, deniedSourceKey);
+      }
+      downloadTracker.setPending(job.id, reason, { asRetryCycle: false });
+      return true;
+    },
+  );
+  if (committed.cancelled) return { status: 409, error: "Download job was removed" };
+  if (!committed.result) return { status: 404, error: "Blocked job not found" };
   import("../aurralHistoryService.js")
     .then(({ recordTrackJobFailed }) =>
       recordTrackJobFailed(job, `${reason} — will retry`),
