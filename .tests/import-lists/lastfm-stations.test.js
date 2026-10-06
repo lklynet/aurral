@@ -23,6 +23,7 @@ test("parseLastfmStation maps tracks, durations, and skipped entries", () => {
     playlist: [
       {
         name: "Song A",
+        mbid: "lastfm-release-track-id",
         duration: 185,
         artists: [{ name: "Artist A" }],
         primary_album: { name: "Album A" },
@@ -40,6 +41,7 @@ test("parseLastfmStation maps tracks, durations, and skipped entries", () => {
   assert.equal(tracks.length, 1);
   assert.equal(tracks[0].durationMs, 185000);
   assert.equal(tracks[0].artistName, "Artist A");
+  assert.equal(tracks[0].trackMbid, null);
   assert.deepEqual(stats, { incomplete: 1, duplicate: 1 });
 });
 

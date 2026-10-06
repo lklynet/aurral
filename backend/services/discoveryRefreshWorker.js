@@ -8,35 +8,23 @@ import {
 } from "./discovery/persistence.js";
 import {
   discoveryNeedsRefresh,
-  isDiscoveryRefreshConfigured,
   scheduleNextDiscoveryRefresh,
 } from "./discovery/refreshScheduler.js";
 
-function skipDiscoveryRefresh({ configured, progressMessage }) {
+function skipDiscoveryRefresh(progressMessage) {
   markDiscoveryRefreshStarted();
   markDiscoveryRefreshFinished();
   websocketService.emitDiscoveryUpdate({
     isUpdating: false,
-    configured,
+    configured: true,
     phase: "skipped",
     progressMessage,
   });
 }
 
 async function runDiscoveryRefresh(payload) {
-  if (!(await isDiscoveryRefreshConfigured())) {
-    skipDiscoveryRefresh({
-      configured: false,
-      progressMessage: "Discovery refresh skipped because it is not configured",
-    });
-    return;
-  }
-
   if (payload?.scheduleOnly === true && !discoveryNeedsRefresh()) {
-    skipDiscoveryRefresh({
-      configured: true,
-      progressMessage: "Discovery cache is already current",
-    });
+    skipDiscoveryRefresh("Discovery cache is already current");
     return;
   }
 

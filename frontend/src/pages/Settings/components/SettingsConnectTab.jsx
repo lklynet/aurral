@@ -273,7 +273,7 @@ export function SettingsConnectTab({
                   ? "API key and secret configured"
                   : lastfm.apiKey
                     ? "API secret required for scrobbling"
-                    : "API key required"
+                    : "Improves recommendations"
               }
               onClick={() => setActiveModal("lastfm")}
             />
@@ -653,8 +653,9 @@ export function SettingsConnectTab({
       {activeModal === "lastfm" && (
         <SettingsIntegrationModal title="Last.fm" onClose={() => setActiveModal(null)}>
           <SettingsModalIntro>
-            Aurral uses the API key for recommendations and discovery data. The API secret is also
-            required to connect a Last.fm account for scrobbling in Playback.
+            Recommendations, flows, and tag search use ListenBrainz until you add an API key. Last.fm
+            finds closer matches. The API secret is also required to connect a Last.fm account for
+            scrobbling in Playback.
           </SettingsModalIntro>
           <SettingsModalSection title="API">
             <SettingsModalField label="API key">

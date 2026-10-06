@@ -170,6 +170,7 @@ function setDownloadSourceConfigured(configured) {
       slskd: configured
         ? { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" }
         : { enabled: false },
+      ytdlp: { enabled: false },
     },
   });
 }

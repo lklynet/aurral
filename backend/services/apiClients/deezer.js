@@ -1,5 +1,6 @@
 import axios from "../../../lib/axiosFetch.js";
 import createCache from "./simpleCache.js";
+import createRateLimiter from "./rateLimiter.js";
 
 const deezerArtistCache = createCache(3600);
 
@@ -8,6 +9,7 @@ const deezerAlbumTrackCache = createCache(3600);
 const deezerPreviewMatchCache = createCache(6 * 3600);
 const deezerTopTrackCache = createCache(3600);
 const deezerInflightRequests = new Map();
+const deezerTrackListLimiter = createRateLimiter(110);
 
 async function cachedOrInflight(cache, key, inflight, fn) {
   const cached = cache.get(key);
@@ -142,6 +144,64 @@ async function getDeezerArtistTopTracksById(artistId) {
       } catch (error) {
         return [];
       }
+    },
+  );
+}
+
+const artistNameKey = (value) =>
+  String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/^the\s+/, "")
+    .replace(/&/g, " and ")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+
+async function findDeezerArtistIdByExactName(artistName) {
+  const wanted = artistNameKey(artistName);
+  if (!wanted) return null;
+  return cachedOrInflight(deezerArtistCache, `exact:${wanted}`, deezerInflightRequests, async () => {
+    const response = await deezerTrackListLimiter.schedule(() =>
+      axios.get("https://api.deezer.com/search/artist", {
+        params: { q: artistName, limit: 10 },
+        timeout: 5000,
+      }),
+    );
+    const match = (response.data?.data || []).find(
+      (artist) => artist?.id && artistNameKey(artist.name) === wanted,
+    );
+    const id = match ? String(match.id) : null;
+    deezerArtistCache.set(`exact:${wanted}`, id);
+    return id;
+  });
+}
+
+export async function deezerGetArtistTopTrackList(artistName, { limit = 25 } = {}) {
+  const artistId = await findDeezerArtistIdByExactName(artistName);
+  if (!artistId) return [];
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 25));
+  return cachedOrInflight(
+    deezerTopTrackCache,
+    `dz-list:${artistId}:${safeLimit}`,
+    deezerInflightRequests,
+    async () => {
+      const response = await deezerTrackListLimiter.schedule(() =>
+        axios.get(`https://api.deezer.com/artist/${artistId}/top`, {
+          params: { limit: safeLimit },
+          timeout: 5000,
+        }),
+      );
+      const tracks = (response.data?.data || [])
+        .filter((track) => String(track?.title || "").trim())
+        .map((track) => ({
+          name: String(track.title).trim(),
+          albumName: String(track.album?.title || "").trim() || null,
+          mbid: null,
+          durationMs: track.duration ? track.duration * 1000 : null,
+          popularity: Number(track.rank) || 0,
+        }));
+      deezerTopTrackCache.set(`dz-list:${artistId}:${safeLimit}`, tracks);
+      return tracks;
     },
   );
 }

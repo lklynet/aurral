@@ -1,5 +1,4 @@
-import { getDiscoveryCache } from "./discovery/index.js";
-import { getLastfmApiKey, lastfmRequest } from "./apiClients/index.js";
+import { getTagArtists } from "./musicDataSource/index.js";
 import { buildImageProxyUrl } from "./imageProxyService.js";
 import { selectBestArtistImage } from "./imageService.js";
 import { LIDARR_ALBUM_LOOKUP_BATCH_MAX, lidarrClient } from "./lidarrClient.js";
@@ -7,11 +6,6 @@ import {
   searchAlbums as providerSearchAlbums,
   searchArtists as providerSearchArtists,
 } from "./providers/brainzmashProvider.js";
-import {
-  DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
-  searchFallbackGenreArtists,
-} from "./listenbrainzDiscoveryFallback.js";
-import { getNormalizedText } from "./providers/brainzmashRanking.js";
 import { normalizePercentOfTracks } from "./lidarrAlbumStats.js";
 import { logger } from "./logger.js";
 import {
@@ -173,117 +167,26 @@ export async function searchAlbums(
   };
 }
 
-function normalizeTagArtistItem(artist, tag) {
+function toTagArtistItem(artist, tag) {
+  const image = buildImageProxyUrl(artist.image);
   return {
-    ...artist,
+    type: "artist",
+    id: artist.mbid || null,
+    name: artist.name || "Unknown Artist",
+    sortName: artist.name || "Unknown Artist",
+    image,
+    imageUrl: image,
+    artistType: null,
+    country: null,
+    area: null,
+    begin: null,
+    end: null,
+    disambiguation: null,
     tags: [tag],
+    genres: [tag],
+    inLibrary: false,
+    score: 0,
   };
-}
-
-function getTagArtistKey(artist) {
-  const artistId = String(artist?.id || artist?.mbid || "")
-    .trim()
-    .toLowerCase();
-  if (artistId) return `id:${artistId}`;
-  const artistName = String(artist?.name || "")
-    .trim()
-    .toLowerCase();
-  return artistName ? `name:${artistName}` : null;
-}
-
-function matchesTagSearch(artist, normalizedTag) {
-  const tags = Array.isArray(artist?.tags) ? artist.tags : [];
-  const genres = Array.isArray(artist?.genres) ? artist.genres : [];
-  return [...tags, ...genres].some((entry) => getNormalizedText(entry) === normalizedTag);
-}
-
-function dedupeTagArtists(artists) {
-  const seen = new Set();
-  const output = [];
-  for (const artist of Array.isArray(artists) ? artists : []) {
-    const key = getTagArtistKey(artist);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    output.push(artist);
-  }
-  return output;
-}
-
-function normalizeLastfmTagArtist(artist, tag) {
-  let imageUrl = null;
-  if (Array.isArray(artist?.image)) {
-    const img =
-      artist.image.find((entry) => entry.size === "extralarge") ||
-      artist.image.find((entry) => entry.size === "large") ||
-      artist.image.slice(-1)[0];
-    if (img?.["#text"] && !String(img["#text"]).includes("2a96cbd8b46e442fc41c2b86b821562f")) {
-      imageUrl = img["#text"];
-    }
-  }
-
-  return normalizeTagArtistItem(
-    {
-      type: "artist",
-      id: artist?.mbid || null,
-      name: artist?.name || "Unknown Artist",
-      sortName: artist?.name || "Unknown Artist",
-      image: buildImageProxyUrl(imageUrl),
-      imageUrl: buildImageProxyUrl(imageUrl),
-      artistType: null,
-      country: null,
-      area: null,
-      begin: null,
-      end: null,
-      disambiguation: null,
-      tags: [tag],
-      genres: [tag],
-      inLibrary: false,
-      score: 0,
-    },
-    tag,
-  );
-}
-
-async function fetchLastfmTagArtists(tag, limitInt, offsetInt) {
-  const pageSize = 50;
-  const requiredCount = offsetInt + limitInt;
-  const items = [];
-  const seen = new Set();
-  let page = 1;
-  let exhausted = false;
-
-  while (!exhausted && items.length < requiredCount) {
-    const data = await lastfmRequest("tag.getTopArtists", {
-      tag,
-      limit: pageSize,
-      page,
-    });
-    const artists = Array.isArray(data?.topartists?.artist)
-      ? data.topartists.artist
-      : data?.topartists?.artist
-        ? [data.topartists.artist]
-        : [];
-
-    if (artists.length === 0) {
-      exhausted = true;
-      break;
-    }
-
-    for (const artist of artists) {
-      const normalized = normalizeLastfmTagArtist(artist, tag);
-      const key = getTagArtistKey(normalized);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      items.push(normalized);
-    }
-
-    const reportedTotal = Number.parseInt(data?.topartists?.["@attr"]?.total, 10);
-    const totalPages = Number.isFinite(reportedTotal) ? Math.ceil(reportedTotal / pageSize) : null;
-    exhausted = artists.length < pageSize || (Number.isFinite(totalPages) && page >= totalPages);
-    page += 1;
-  }
-
-  return { items, exhausted };
 }
 
 export async function searchTags(query, limit = 24, offset = 0) {
@@ -303,87 +206,14 @@ export async function searchTags(query, limit = 24, offset = 0) {
     };
   }
 
-  const discoveryCache = getDiscoveryCache();
-  const tagLower = getNormalizedText(tag);
-
-  if (getLastfmApiKey()) {
-    const lastfm = await fetchLastfmTagArtists(tag, limitInt, offsetInt);
-    const items = lastfm.items.slice(offsetInt, offsetInt + limitInt);
-    return {
-      scope: "tag",
-      query: tag,
-      count: lastfm.exhausted
-        ? lastfm.items.length
-        : offsetInt + items.length + (lastfm.items.length > offsetInt + items.length ? 1 : 0),
-      offset: offsetInt,
-      hasMore: !lastfm.exhausted || offsetInt + items.length < lastfm.items.length,
-      items,
-    };
-  }
-
-  const fallbackResult = await searchFallbackGenreArtists({
-    tag,
-    limit: offsetInt + limitInt,
-    offset: 0,
-    precomputedGenrePools:
-      discoveryCache?.fallbackGenrePools &&
-      Object.keys(discoveryCache.fallbackGenrePools).length > 0
-        ? discoveryCache.fallbackGenrePools
-        : null,
-  });
-  if (fallbackResult) {
-    const fallbackItems = fallbackResult.artists.map((artist) =>
-      normalizeTagArtistItem(
-        {
-          type: "artist",
-          id: artist.id || artist.mbid || null,
-          name: artist.name || "Unknown Artist",
-          sortName: artist.sortName || artist.name || "Unknown Artist",
-          image: artist.image || artist.imageUrl || null,
-          imageUrl: artist.image || artist.imageUrl || null,
-          artistType: null,
-          country: null,
-          area: null,
-          begin: null,
-          end: null,
-          disambiguation: null,
-          tags: artist.tags || [tag],
-          genres: artist.genres || [tag],
-          inLibrary: false,
-          score: 0,
-        },
-        tag,
-      ),
-    );
-    const mergedItems = dedupeTagArtists(fallbackItems);
-    const items = mergedItems.slice(offsetInt, offsetInt + limitInt);
-    return {
-      scope: "tag",
-      query: tag,
-      count: Math.max(mergedItems.length, fallbackResult.total),
-      offset: offsetInt,
-      provider: DISCOVERY_PROVIDER_LISTENBRAINZ_FALLBACK,
-      fallbackLimited: true,
-      hasMore:
-        offsetInt + items.length < mergedItems.length ||
-        offsetInt + limitInt < fallbackResult.total,
-      items,
-    };
-  }
-
-  const mergedItems = dedupeTagArtists([
-    ...(Array.isArray(discoveryCache.globalTop) ? discoveryCache.globalTop : []),
-    ...(Array.isArray(discoveryCache.basedOn) ? discoveryCache.basedOn : []),
-  ])
-    .filter((artist) => matchesTagSearch(artist, tagLower))
-    .map((artist) => normalizeTagArtistItem(artist, tag));
-
+  const { artists, hasMore } = await getTagArtists(tag, { limit: limitInt, offset: offsetInt });
+  const items = artists.map((artist) => toTagArtistItem(artist, tag));
   return {
     scope: "tag",
     query: tag,
-    count: mergedItems.length,
+    count: offsetInt + items.length + (hasMore ? 1 : 0),
     offset: offsetInt,
-    hasMore: offsetInt + limitInt < mergedItems.length,
-    items: mergedItems.slice(offsetInt, offsetInt + limitInt),
+    hasMore,
+    items,
   };
 }

@@ -1,7 +1,5 @@
 import { UUID_REGEX } from "../../../../lib/uuid.js";
 import {
-  getLastfmApiKey,
-  lastfmRequest,
   musicbrainzGetArtistAppearsOnReleaseGroups,
   musicbrainzGetArtistReleaseGroups,
   musicbrainzGetArtistNameByMbid,
@@ -12,7 +10,6 @@ import { verifyTokenAuth } from "../../../middleware/auth.js";
 import { sendSSE } from "../utils.js";
 import { logger } from "../../../services/logger.js";
 import { getArtistImage } from "../../../services/imageService.js";
-import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import {
   attachCachedCoverUrls,
 } from "../../../services/releaseGroupCoverService.js";
@@ -21,7 +18,7 @@ import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.
 import {
   getArtistTagPayload,
   buildArtistBase,
-  extractLastfmImageUrl,
+  getSimilarArtistCards,
 } from "../shared/transform.js";
 
 export function registerStream(router) {
@@ -214,58 +211,17 @@ export function registerStream(router) {
 
         const similarTask = (async () => {
           if (!isClientConnected()) return;
-          if (getLastfmApiKey()) {
-            try {
-              let similarData = await lastfmRequest("artist.getSimilar", {
-                mbid: resolvedMbid,
-                limit: 10,
-              }, { signal: requestController.signal });
-
-              if (!isClientConnected()) return;
-
-              if (!similarData?.similarartists?.artist) {
-                const fallbackArtistName =
-                  streamArtistName ||
-                  (await metadataArtistPromise.catch(() => null))?.name ||
-                  (await namePromise.catch(() => null)) ||
-                  (await musicbrainzGetArtistNameByMbid(resolvedMbid, {
-                    signal: requestController.signal,
-                  }).catch(() => null)) ||
-                  "";
-
-                if (fallbackArtistName) {
-                  similarData = await lastfmRequest("artist.getSimilar", {
-                    artist: fallbackArtistName,
-                    limit: 10,
-                  }, { signal: requestController.signal });
-                }
-              }
-
-              if (similarData?.similarartists?.artist) {
-                const artists = Array.isArray(similarData.similarartists.artist)
-                  ? similarData.similarartists.artist
-                  : [similarData.similarartists.artist];
-
-                const formattedArtists = artists
-                  .map((a) => {
-                    const img = extractLastfmImageUrl(a.image);
-                    return {
-                      id: a.mbid,
-                      name: a.name,
-                      image: buildImageProxyUrl(img),
-                      match: Math.round((a.match || 0) * 100),
-                    };
-                  })
-                  .filter((a) => a.id);
-
-                sendSSE(res, "similar", { artists: formattedArtists });
-              } else {
-                sendSSE(res, "similar", { artists: [] });
-              }
-            } catch (e) {
-              sendSSE(res, "similar", { artists: [] });
-            }
-          } else {
+          try {
+            const artists = await getSimilarArtistCards(resolvedMbid, {
+              artistName: streamArtistName,
+              limit: 10,
+              signal: requestController.signal,
+              resolveArtistName: async () =>
+                (await metadataArtistPromise.catch(() => null))?.name ||
+                (await namePromise.catch(() => null)),
+            });
+            if (isClientConnected()) sendSSE(res, "similar", { artists });
+          } catch {
             sendSSE(res, "similar", { artists: [] });
           }
         })();

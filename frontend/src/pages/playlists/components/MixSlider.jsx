@@ -7,7 +7,6 @@ import { useDebouncedTask } from "../../../hooks/useDebouncedTask";
 
 import { Search } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
-import Tooltip from "../../../components/Tooltip";
 const SOURCE_MIX_COLORS = {
   discover: TAG_COLORS[10],
   mix: TAG_COLORS[4],
@@ -100,7 +99,6 @@ export function MixSlider({
   normalizeMixPercent,
   trackCounts = {},
   trailingControl = null,
-  disabledSources = {},
 }) {
   const normalized = normalizeMixPercent(mix);
   const activeKeys = getEnabledSourceKeys(normalized);
@@ -238,26 +236,20 @@ export function MixSlider({
           {SOURCE_MIX_OPTIONS.map((option) => {
             const isActive = normalized[option.key] > 0;
             const isOnlyActive = isActive && activeKeys.length === 1;
-            const disabledReason = disabledSources?.[option.key];
-            const isDisabled = Boolean(disabledReason) || isOnlyActive;
             return (
-              <Tooltip key={option.key} content={disabledReason || undefined}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    !disabledReason &&
-                    onChange(toggleSourceInMix(normalized, option.key, normalizeMixPercent))
-                  }
-                  disabled={isDisabled}
-                  className={`flow-page__mix-toggle${isActive ? " is-active" : ""}${isDisabled ? " is-disabled" : ""}`}
-                  aria-pressed={isActive}
-                >
-                  <span>{option.label}</span>
-                  <span className="flow-page__mix-toggle-state">
-                    {disabledReason ? "Needs Last.fm" : isActive ? "On" : "Off"}
-                  </span>
-                </button>
-              </Tooltip>
+              <button
+                key={option.key}
+                type="button"
+                onClick={() =>
+                  onChange(toggleSourceInMix(normalized, option.key, normalizeMixPercent))
+                }
+                disabled={isOnlyActive}
+                className={`flow-page__mix-toggle${isActive ? " is-active" : ""}${isOnlyActive ? " is-disabled" : ""}`}
+                aria-pressed={isActive}
+              >
+                <span>{option.label}</span>
+                <span className="flow-page__mix-toggle-state">{isActive ? "On" : "Off"}</span>
+              </button>
             );
           })}
         </div>

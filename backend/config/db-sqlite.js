@@ -629,6 +629,20 @@ db.transaction(() => {
   }
 }).immediate();
 
+const unifiedDiscoverySourceMigrationKey = "migration:unified-discovery-source-v1";
+db.transaction(() => {
+  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(unifiedDiscoverySourceMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  db.prepare(
+    `DELETE FROM discovery_cache
+     WHERE key = 'topTags' OR key LIKE '%fallbackGenres' OR key LIKE '%fallbackGenrePools'`,
+  ).run();
+  db.prepare(
+    "UPDATE discovery_cache SET value = 'listenbrainz' WHERE key = 'provider' AND value = 'listenbrainz-fallback'",
+  ).run();
+}).immediate();
+
 const releaseCalendarPrimaryKey = db
   .prepare("PRAGMA table_info(library_release_calendar)")
   .all()

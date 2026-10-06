@@ -1,18 +1,16 @@
 import {
   getDiscoveryCandidateLimit,
   getDiscoveryNetworkConcurrency,
-  getLastfmFailureRatio,
+  getSourceFailureRatio,
   getSimilarArtistSampling,
   getSecondHopArtistSampling,
   getSecondHopRecommendationLimit,
   getCandidateTagHydrationLimit,
   normalizeSeedTagList,
   getSeedTagMapKey,
-  pickLastfmImage,
   mapWithConcurrency,
 } from "./helpers.js";
-import { lastfmRequest } from "../apiClients/index.js";
-import { logger } from "../logger.js";
+import { getSimilarArtists } from "../musicDataSource/index.js";
 import {
   addRecommendationCandidate,
   finalizeRecommendationAccumulator,
@@ -20,25 +18,13 @@ import {
   normalizeArtistIdentityKeys,
   rerankRecommendations,
 } from "./recommendationPipeline.js";
-import { fetchArtistTopTags, hydrateRecommendationCandidateTags } from "./tasteProfile.js";
+import { fetchArtistGenreTags, hydrateRecommendationCandidateTags } from "./tasteProfile.js";
 
-const fetchSimilarArtists = async (seed, limit, lastfmHealth) => {
-  const similar = await lastfmRequest(
-    "artist.getSimilar",
-    seed.mbid ? { mbid: seed.mbid, limit } : { artist: seed.artistName, limit },
-  );
-  if (similar && !similar.error) lastfmHealth.success++; else lastfmHealth.failure++;
-  const artists = similar?.similarartists?.artist;
-  if (!artists) return [];
-  return Array.isArray(artists) ? artists : [artists];
-};
-
-const getSeedTags = async (seed, seedTagMap, lastfmHealth) => {
-  const cached = normalizeSeedTagList(seedTagMap.get(getSeedTagMapKey(seed)));
-  if (cached.length > 0) return cached;
-  return normalizeSeedTagList(
-    (await fetchArtistTopTags(seed, lastfmHealth)).map((tag) => tag.name),
-  );
+const getSeedTags = async (seed, seedTagMap, sourceHealth) => {
+  const key = getSeedTagMapKey(seed);
+  if (seedTagMap.has(key)) return normalizeSeedTagList(seedTagMap.get(key));
+  const [tags] = await fetchArtistGenreTags([seed], sourceHealth);
+  return normalizeSeedTagList(tags.map((tag) => tag.name));
 };
 
 const collectSimilarCandidates = async ({
@@ -48,34 +34,30 @@ const collectSimilarCandidates = async ({
   candidateOverrides = {},
   getSourceTags,
   accumulator,
-  lastfmHealth,
+  sourceHealth,
   profileTagWeights,
   existingArtistKeys,
 }) => {
   await mapWithConcurrency(seeds, getDiscoveryNetworkConcurrency(), async (seed) => {
-    try {
-      const sourceTags = await getSourceTags(seed);
-      const artists = await fetchSimilarArtists(seed, similarLimit, lastfmHealth);
-      for (const artist of artists.slice(0, maxPerSeed)) {
-        addRecommendationCandidate(accumulator, {
-          candidate: {
-            mbid: artist?.mbid,
-            name: artist?.name,
-            image: pickLastfmImage(artist?.image),
-            match: artist?.match,
-            ...candidateOverrides,
-          },
-          seed,
-          sourceTags,
-          profileTagWeights,
-          existingArtistKeys,
-        });
-      }
-    } catch (error) {
-      logger.warn(
-        'discovery',
-        `Error getting similar artists for ${seed.artistName}: ${error.message}`,
-      );
+    const sourceTags = await getSourceTags(seed);
+    const artists = await getSimilarArtists(
+      { mbid: seed.mbid, name: seed.artistName },
+      { limit: similarLimit, health: sourceHealth },
+    );
+    for (const artist of artists.slice(0, maxPerSeed)) {
+      addRecommendationCandidate(accumulator, {
+        candidate: {
+          mbid: artist.mbid,
+          name: artist.name,
+          image: artist.image,
+          match: artist.match,
+          ...candidateOverrides,
+        },
+        seed,
+        sourceTags,
+        profileTagWeights,
+        existingArtistKeys,
+      });
     }
   });
 };
@@ -108,7 +90,7 @@ export const buildRecommendationsFromSeeds = async ({
   seeds,
   existingArtistKeys,
   bridgeExclusionKeys = new Set(),
-  lastfmHealth,
+  sourceHealth,
   profileTagWeights,
   seedTagMap = new Map(),
   discoveryMode,
@@ -117,11 +99,11 @@ export const buildRecommendationsFromSeeds = async ({
   const directRecommendations = new Map();
   await collectSimilarCandidates({
     seeds,
-    ...getSimilarArtistSampling(getLastfmFailureRatio(lastfmHealth)),
+    ...getSimilarArtistSampling(getSourceFailureRatio(sourceHealth)),
     candidateOverrides: { discoveryDepth: 1 },
-    getSourceTags: (seed) => getSeedTags(seed, seedTagMap, lastfmHealth),
+    getSourceTags: (seed) => getSeedTags(seed, seedTagMap, sourceHealth),
     accumulator: directRecommendations,
-    lastfmHealth,
+    sourceHealth,
     profileTagWeights,
     existingArtistKeys,
   });
@@ -131,14 +113,14 @@ export const buildRecommendationsFromSeeds = async ({
   });
   directList = await hydrateRecommendationCandidateTags({
     recommendations: directList,
-    lastfmHealth,
+    sourceHealth,
     profileTagWeights,
-    limit: getCandidateTagHydrationLimit(directList.length, getLastfmFailureRatio(lastfmHealth), 1),
+    limit: getCandidateTagHydrationLimit(directList.length, getSourceFailureRatio(sourceHealth), 1),
     depth: 1,
   });
   directList = rerankRecommendations(directList, candidateLimit, { discoveryMode });
 
-  const secondHopSampling = getSecondHopArtistSampling(getLastfmFailureRatio(lastfmHealth));
+  const secondHopSampling = getSecondHopArtistSampling(getSourceFailureRatio(sourceHealth));
   if (secondHopSampling.seedLimit <= 0 || directList.length === 0) {
     return directList;
   }
@@ -165,7 +147,7 @@ export const buildRecommendationsFromSeeds = async ({
     },
     getSourceTags: (bridge) => bridge.bridgeTags,
     accumulator: secondHopRecommendations,
-    lastfmHealth,
+    sourceHealth,
     profileTagWeights,
     existingArtistKeys,
   });
@@ -176,11 +158,11 @@ export const buildRecommendationsFromSeeds = async ({
   });
   secondHopList = await hydrateRecommendationCandidateTags({
     recommendations: secondHopList,
-    lastfmHealth,
+    sourceHealth,
     profileTagWeights,
     limit: getCandidateTagHydrationLimit(
       secondHopList.length,
-      getLastfmFailureRatio(lastfmHealth),
+      getSourceFailureRatio(sourceHealth),
       2,
     ),
     depth: 2,

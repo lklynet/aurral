@@ -56,7 +56,6 @@ const EMPTY_SUGGESTION_RESULTS = { library: null, catalog: null };
 
 function GlobalSearch({ settingsMode = false }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [lastfmConfigured, setLastfmConfigured] = useState(true);
   const [localSearchConfigured, setLocalSearchConfigured] = useState(true);
   const [suggestionRows, setSuggestionRows] = useState([]);
   const [suggestionMode, setSuggestionMode] = useState(null);
@@ -71,7 +70,7 @@ function GlobalSearch({ settingsMode = false }) {
   const { schedule: scheduleLibrarySuggest, cancel: cancelLibrarySuggest } = useDebouncedTask();
   const navigate = useNavigate();
   const location = useLocation();
-  const { hasPermission, bootstrap } = useAuth();
+  const { hasPermission } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
   const { isAlbumDownloading } = useActiveDownloads();
@@ -157,12 +156,6 @@ function GlobalSearch({ settingsMode = false }) {
   }, []);
 
   useEffect(() => {
-    if (bootstrap) {
-      setLastfmConfigured(!!bootstrap.lastfmConfigured);
-    }
-  }, [bootstrap]);
-
-  useEffect(() => {
     setSearchQuery("");
     closeAutocomplete();
   }, [location.pathname, location.search, closeAutocomplete]);
@@ -194,7 +187,7 @@ function GlobalSearch({ settingsMode = false }) {
       closeAutocomplete();
       return cancelAll;
     }
-    const isTagShortcut = lastfmConfigured && trimmed.startsWith("#");
+    const isTagShortcut = trimmed.startsWith("#");
     const tagPart = isTagShortcut ? trimmed.slice(1).trim() : trimmed;
 
     if (isTagShortcut) {
@@ -289,7 +282,6 @@ function GlobalSearch({ settingsMode = false }) {
   }, [
     searchQuery,
     closeAutocomplete,
-    lastfmConfigured,
     scheduleSuggest,
     cancelSuggest,
     scheduleLibrarySuggest,

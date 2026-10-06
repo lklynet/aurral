@@ -181,6 +181,15 @@ test("interval check does not queue a refresh after a seedless run left genres e
   assert.equal(countDiscoveryRefreshJobs(), 0);
 });
 
+test("discoveryNeedsRefresh rebuilds a fresh cache that came from the other music data source", () => {
+  const fresh = { globalTop: [{ id: "trend-1" }], lastUpdated: new Date().toISOString() };
+  delete process.env.LASTFM_API_KEY;
+  assert.equal(discoveryNeedsRefresh({ ...fresh, provider: "lastfm" }), true);
+  assert.equal(discoveryNeedsRefresh({ ...fresh, provider: "listenbrainz" }), false);
+  process.env.LASTFM_API_KEY = "test-key";
+  assert.equal(discoveryNeedsRefresh({ ...fresh, provider: "listenbrainz" }), true);
+});
+
 test("discoveryNeedsRefresh returns false for fresh populated cache", () => {
   assert.equal(
     discoveryNeedsRefresh({

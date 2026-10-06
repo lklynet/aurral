@@ -8,6 +8,7 @@ import {
 } from "../helpers/backendTestHarness.js";
 import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.js";
 import { pickResolvedDurationMs } from "../../backend/services/providers/brainzmashRanking.js";
+import { toNormalizedTrack } from "../../backend/services/providers/brainzmashMappers.js";
 
 const [isolatedState, { dbOps }, { resolveTrackSearchContext }] =
   await setupIsolatedBackend(
@@ -18,6 +19,22 @@ const [isolatedState, { dbOps }, { resolveTrackSearchContext }] =
 
 test.after(async () => {
   await cleanupIsolatedState(isolatedState);
+});
+
+test("BrainzMash release-track IDs are not treated as recording IDs", () => {
+  assert.deepEqual(
+    toNormalizedTrack({ id: "release-track-id", trackname: "Song" }),
+    {
+      id: "release-track-id",
+      recordingId: "",
+      title: "Song",
+      trackNumber: null,
+      trackPosition: null,
+      mediumNumber: null,
+      durationMs: null,
+      artistId: null,
+    },
+  );
 });
 
 test("pickResolvedDurationMs takes a Last.fm length only when no other is known", () => {
@@ -155,8 +172,63 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
   assert.deepEqual(resolved.albumTrackTitles, ["The Concept of Love"]);
 });
 
-test("resolveTrackSearchContext keeps a job's MusicBrainz release identity without lookups", async (t) => {
-  const get = t.mock.method(axios, "get", async () => ({ data: {} }));
+test("resolveTrackSearchContext preserves a recording from a non-representative edition", async (t) => {
+  const originalSettings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      metadata: { ...originalSettings.integrations.metadata, baseUrl: "https://brainzmash.example.test" },
+    },
+  });
+  clearMetadataProviderCaches();
+  t.after(() => {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(originalSettings);
+  });
+  const get = t.mock.method(axios, "get", async (url) => {
+    assert.equal(new URL(url).pathname, "/album/b1392450-e666-3926-a536-22c65f834433");
+    return { data: {
+      id: "b1392450-e666-3926-a536-22c65f834433",
+      title: "OK Computer",
+      artistid: "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+      artists: [{ id: "a74b1b7f-71a5-4011-9441-d0b5e4122711", artistname: "Radiohead" }],
+      releases: [
+        { id: "ok-computer-representative", status: "Official", tracks: [
+          {
+            id: "airbag-representative-track",
+            recordingid: "airbag-representative-recording",
+            trackname: "Airbag",
+            trackposition: 1,
+            durationms: 287000,
+          },
+          {
+            id: "paranoid-representative-track",
+            recordingid: "paranoid-representative-recording",
+            trackname: "Paranoid Android",
+            trackposition: 2,
+            durationms: 382000,
+          },
+        ] },
+        { id: "ok-computer-remaster", status: "Official", tracks: [
+          {
+            id: "airbag-remaster-track",
+            recordingid: "airbag-remaster-recording",
+            trackname: "Airbag",
+            trackposition: 1,
+            durationms: 288000,
+          },
+          {
+            id: "release-track-from-musicbrainz",
+            recordingid: "recording-from-musicbrainz",
+            trackname: "Paranoid Android",
+            trackposition: 2,
+            durationms: 383000,
+          },
+        ] },
+      ],
+    } };
+  });
   const job = {
     artistName: "Radiohead",
     trackName: "Paranoid Android",
@@ -170,10 +242,84 @@ test("resolveTrackSearchContext keeps a job's MusicBrainz release identity witho
     artistAliases: ["Radio Head"],
   };
   const resolved = await resolveTrackSearchContext(job);
-  assert.equal(get.mock.callCount(), 0);
+  assert.equal(get.mock.callCount(), 1);
   assert.equal(resolved.trackMbid, job.trackMbid);
   assert.equal(resolved.trackNumber, 2);
   assert.deepEqual(resolved.albumTrackTitles, job.albumTrackTitles);
+});
+
+test("resolveTrackSearchContext repairs a stored Last.fm release-track ID", async (t) => {
+  const originalSettings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      metadata: { ...originalSettings.integrations.metadata, baseUrl: "https://brainzmash.example.test" },
+    },
+  });
+  clearMetadataProviderCaches();
+  t.after(() => {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(originalSettings);
+  });
+  t.mock.method(axios, "get", async (url) => {
+    assert.equal(new URL(url).pathname, "/album/legacy-album");
+    return { data: {
+      id: "legacy-album",
+      title: "ROCKISDEAD",
+      artistid: "legacy-artist",
+      artists: [{ id: "legacy-artist", artistname: "Dorothy" }],
+      releases: [{ id: "legacy-release", status: "Official", tracks: [{
+        id: "be758dcb-9166-4c33-87ff-30ba2d32e501",
+        recordingid: "befc26a0-5403-4d73-b0f8-3f6a6fb0c292",
+        trackname: "What's Coming To Me",
+        trackposition: 1,
+        durationms: 203000,
+      }] }],
+    } };
+  });
+
+  const resolved = await resolveTrackSearchContext({
+    artistName: "Dorothy",
+    trackName: "What's Coming To Me",
+    albumName: "ROCKISDEAD",
+    artistMbid: "legacy-artist",
+    albumMbid: "legacy-album",
+    trackMbid: "be758dcb-9166-4c33-87ff-30ba2d32e501",
+    durationMs: 203000,
+    trackNumber: 1,
+    albumTrackCount: 1,
+    albumTrackTitles: ["What's Coming To Me"],
+    artistAliases: ["Dorothy"],
+  });
+
+  assert.equal(resolved.trackMbid, "befc26a0-5403-4d73-b0f8-3f6a6fb0c292");
+});
+
+test("resolveTrackSearchContext drops an unverified stored recording ID", async (t) => {
+  clearMetadataProviderCaches();
+  t.after(() => clearMetadataProviderCaches());
+  t.mock.method(axios, "get", async () => {
+    const error = new Error("metadata unavailable");
+    error.response = { status: 503 };
+    throw error;
+  });
+
+  const resolved = await resolveTrackSearchContext({
+    artistName: "Legacy Artist",
+    trackName: "Legacy Song",
+    albumName: "Legacy Album",
+    artistMbid: "legacy-artist-unavailable",
+    albumMbid: "legacy-album-unavailable",
+    trackMbid: "unverified-track-id",
+    durationMs: 180000,
+    trackNumber: 1,
+    albumTrackCount: 1,
+    albumTrackTitles: ["Legacy Song"],
+    artistAliases: ["Legacy Artist"],
+  });
+
+  assert.equal(resolved.trackMbid, null);
 });
 
 test("resolveTrackSearchContext takes neither a recording ID nor a length from Last.fm", async (t) => {

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { getDiscoveryCapabilities } from "../../backend/services/listenbrainzDiscoveryFallback.js";
 
 test("discovery worker progress and completed data reach the API without shared memory", async () => {
   const { dbOps } = await import("../../backend/db/helpers/index.js");
@@ -19,7 +18,7 @@ test("discovery worker progress and completed data reach the API without shared 
 
   dbOps.updateDiscoveryCache({
     recommendations: [{ id: "worker-artist", name: "Worker Artist" }],
-    provider: "listenbrainz-fallback",
+    provider: "listenbrainz",
   });
   persistence.markDiscoveryRefreshFinished();
   await forwardWorkerBroadcast({
@@ -30,8 +29,7 @@ test("discovery worker progress and completed data reach the API without shared 
   assert.equal(getDiscoveryStatus(null).isUpdating, false);
   assert.equal(getDiscoveryStatus(null).lastUpdated, dbOps.getDiscoveryCache().lastUpdated);
   assert.equal(getDiscoveryCache().recommendations[0].name, "Worker Artist");
-  assert.equal(getDiscoveryCache().provider, "listenbrainz-fallback");
-  assert.deepEqual(getDiscoveryCache().capabilities, getDiscoveryCapabilities(false));
+  assert.equal(getDiscoveryCache().provider, "listenbrainz");
 });
 
 test("a personal refresh in a worker shows as updating only for its user", async () => {
@@ -41,8 +39,6 @@ test("a personal refresh in a worker shows as updating only for its user", async
   const { websocketService } = await import("../../backend/services/websocketService.js");
   const { forwardWorkerBroadcast } = await import("../../backend/services/appRuntime.js");
 
-  const originalLastfmApiKey = process.env.LASTFM_API_KEY;
-  process.env.LASTFM_API_KEY = "test-key";
   const sent = { alice: [], bob: [] };
   const client = (id, inbox) => ({
     user: { id },
@@ -74,7 +70,5 @@ test("a personal refresh in a worker shows as updating only for its user", async
     assert.equal(dbOps.getDiscoveryCache("user:7").recommendations[0].name, "Fresh");
   } finally {
     clients.forEach((entry) => websocketService.clients.delete(entry));
-    if (originalLastfmApiKey === undefined) delete process.env.LASTFM_API_KEY;
-    else process.env.LASTFM_API_KEY = originalLastfmApiKey;
   }
 });

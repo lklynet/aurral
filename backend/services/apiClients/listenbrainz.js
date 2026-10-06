@@ -2,17 +2,27 @@ import axios from "../../../lib/axiosFetch.js";
 import createRateLimiter from "./rateLimiter.js";
 import createCache from "./simpleCache.js";
 import { logger } from "../logger.js";
-import { LISTENBRAINZ_API } from "../../config/constants.js";
+import { APP_NAME, APP_VERSION, LISTENBRAINZ_API } from "../../config/constants.js";
 
 const listenbrainzCache = createCache(300);
 
-const listenbrainzLimiter = createRateLimiter(250);
+const listenbrainzLimiter = createRateLimiter(350);
+const LISTENBRAINZ_USER_AGENT = `${APP_NAME}/${APP_VERSION} ( https://github.com/lklynet/aurral )`;
 
 const LISTENBRAINZ_TIMEOUT_MS = 6000;
 const LISTENBRAINZ_MAX_RETRIES = 2;
 
+const LISTENBRAINZ_MAX_RATE_LIMIT_WAIT_SECONDS = 15;
+
 const listenbrainzInflightRequests = new Map();
 const listenbrainzErrorLogAt = new Map();
+
+const getRateLimitWaitMs = (error) => {
+  if (error.response?.status !== 429) return null;
+  const resetIn = Number(error.response.headers?.["x-ratelimit-reset-in"]);
+  const seconds = Number.isFinite(resetIn) && resetIn >= 0 ? resetIn : 1;
+  return Math.min(seconds, LISTENBRAINZ_MAX_RATE_LIMIT_WAIT_SECONDS) * 1000 + 250;
+};
 
 const normalizeListenbrainzBaseUrl = (baseUrl) => {
   const candidate = String(baseUrl || "").trim().replace(/\/+$/, "") || LISTENBRAINZ_API;
@@ -29,7 +39,10 @@ const normalizeListenbrainzBaseUrl = (baseUrl) => {
 const listenbrainzWrite = async (baseUrl, path, { token, data } = {}) => {
   const response = await listenbrainzLimiter.schedule(() =>
     axios.post(`${String(baseUrl).replace(/\/+$/, "")}${path}`, data, {
-      headers: { Authorization: `Token ${String(token || "").trim()}` },
+      headers: {
+        Authorization: `Token ${String(token || "").trim()}`,
+        "User-Agent": LISTENBRAINZ_USER_AGENT,
+      },
       timeout: LISTENBRAINZ_TIMEOUT_MS,
       validateStatus: (status) => status >= 200 && status < 300,
     }),
@@ -41,7 +54,10 @@ export const listenbrainzValidateToken = async (token, baseUrl = LISTENBRAINZ_AP
   const root = normalizeListenbrainzBaseUrl(baseUrl);
   const response = await listenbrainzLimiter.schedule(() =>
     axios.get(`${root}/1/validate-token`, {
-      headers: { Authorization: `Token ${String(token || "").trim()}` },
+      headers: {
+        Authorization: `Token ${String(token || "").trim()}`,
+        "User-Agent": LISTENBRAINZ_USER_AGENT,
+      },
       timeout: LISTENBRAINZ_TIMEOUT_MS,
       validateStatus: (status) => status >= 200 && status < 300,
     }),
@@ -82,7 +98,7 @@ export const listenbrainzSubmit = async ({ token, baseUrl = LISTENBRAINZ_API, ev
 export async function listenbrainzRequest(
   path,
   params = {},
-  { token = null, baseUrl = LISTENBRAINZ_API } = {},
+  { token = null, baseUrl = LISTENBRAINZ_API, timeoutMs = LISTENBRAINZ_TIMEOUT_MS } = {},
 ) {
   const root = normalizeListenbrainzBaseUrl(baseUrl);
   const isAuthenticated = Boolean(String(token || "").trim());
@@ -128,10 +144,11 @@ export async function listenbrainzRequest(
         const response = await listenbrainzLimiter.schedule(() =>
           axios.get(`${root}${path}`, {
             params,
-            ...(isAuthenticated
-              ? { headers: { Authorization: `Token ${String(token).trim()}` } }
-              : {}),
-            timeout: LISTENBRAINZ_TIMEOUT_MS,
+            headers: {
+              "User-Agent": LISTENBRAINZ_USER_AGENT,
+              ...(isAuthenticated ? { Authorization: `Token ${String(token).trim()}` } : {}),
+            },
+            timeout: timeoutMs,
             validateStatus: (status) =>
               (status >= 200 && status < 300) || status === 204,
           }),
@@ -141,6 +158,9 @@ export async function listenbrainzRequest(
         return payload;
       } catch (error) {
         lastError = error;
+        const rateLimitWaitMs = getRateLimitWaitMs(error);
+        if (rateLimitWaitMs !== null) listenbrainzLimiter.pauseFor(rateLimitWaitMs);
+        if (retryCount < LISTENBRAINZ_MAX_RETRIES && rateLimitWaitMs !== null) continue;
         if (retryCount < LISTENBRAINZ_MAX_RETRIES && isRetryable(error)) {
           const backoffMs = 300 * Math.pow(2, retryCount) + retryCount * 200;
           await new Promise((resolve) => setTimeout(resolve, backoffMs));

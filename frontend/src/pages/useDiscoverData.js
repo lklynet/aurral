@@ -210,10 +210,6 @@ export function useDiscoverData() {
             ...current,
             recommendations: (current.recommendations || []).filter(keepArtist),
             globalTop: (current.globalTop || []).filter(keepArtist),
-            fallbackGenres: (current.fallbackGenres || []).map((section) => ({
-              ...section,
-              artists: (section?.artists || []).filter(keepArtist),
-            })),
           };
           return next;
         });

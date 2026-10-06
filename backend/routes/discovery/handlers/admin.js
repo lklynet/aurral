@@ -4,12 +4,7 @@ import { clearApiCaches } from "../../../services/apiClients/index.js";
 import {
   getDiscoveryCache,
 } from "../../../services/discovery/index.js";
-import {
-  DISCOVERY_PROVIDER_LASTFM,
-  getDiscoveryCapabilities,
-} from "../../../services/listenbrainzDiscoveryFallback.js";
 import { enqueueDiscoveryRefresh } from "../../../services/discovery/refreshScheduler.js";
-import { pendingTagRequests, pendingTagSuggestRequest } from "./utils.js";
 
 export function registerAdmin(router) {
   router.post("/refresh", requireAuth, requireAdmin, (req, res) => {
@@ -50,8 +45,6 @@ export function registerAdmin(router) {
       basedOn: [],
       topTags: [],
       topGenres: [],
-      fallbackGenres: [],
-      provider: DISCOVERY_PROVIDER_LASTFM,
       recommendationQuality: null,
       isEnriching: false,
       discoveryRunId: null,
@@ -68,9 +61,6 @@ export function registerAdmin(router) {
       basedOn: [],
       topTags: [],
       topGenres: [],
-      fallbackGenres: [],
-      provider: DISCOVERY_PROVIDER_LASTFM,
-      capabilities: getDiscoveryCapabilities(true),
       recommendationQuality: null,
       isEnriching: false,
       discoveryRunId: null,
@@ -79,9 +69,6 @@ export function registerAdmin(router) {
       enrichmentProgressMessage: null,
       lastUpdated: null,
     });
-    pendingTagRequests.clear();
-    pendingTagSuggestRequest.promise = null;
-    pendingTagSuggestRequest.expiry = 0;
     res.json({ message: "Discovery cache cleared" });
   });
 }

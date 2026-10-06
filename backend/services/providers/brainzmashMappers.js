@@ -97,7 +97,7 @@ export function toNormalizedArtist(raw) {
 export function toNormalizedTrack(raw) {
   return {
     id: normalizeString(raw?.id),
-    recordingId: normalizeString(raw?.recordingid || raw?.recordingId || raw?.id),
+    recordingId: normalizeString(raw?.recordingid || raw?.recordingId),
     title: normalizeString(raw?.trackname || raw?.title),
     trackNumber:
       raw?.trackposition != null && Number.isFinite(Number(raw.trackposition))

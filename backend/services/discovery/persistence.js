@@ -1,9 +1,5 @@
 import { dbOps } from "../../db/helpers/index.js";
 import { websocketService } from "../websocketService.js";
-import {
-  DISCOVERY_PROVIDER_LASTFM,
-  getDiscoveryCapabilities,
-} from "../listenbrainzDiscoveryFallback.js";
 import { isHonkerLockHeld } from "../honkerDb.js";
 
 export const EMPTY_CACHE = {
@@ -12,10 +8,7 @@ export const EMPTY_CACHE = {
   basedOn: [],
   topTags: [],
   topGenres: [],
-  fallbackGenres: [],
-  fallbackGenrePools: {},
-  provider: DISCOVERY_PROVIDER_LASTFM,
-  capabilities: getDiscoveryCapabilities(true),
+  provider: null,
   lastUpdated: null,
   metadata: {},
   recommendationQuality: null,
@@ -33,9 +26,7 @@ if (
   dbData.lastUpdated ||
   dbData.recommendations?.length > 0 ||
   dbData.globalTop?.length > 0 ||
-  dbData.topGenres?.length > 0 ||
-  dbData.fallbackGenres?.length > 0 ||
-  Object.keys(dbData.fallbackGenrePools || {}).length > 0
+  dbData.topGenres?.length > 0
 ) {
   discoveryCache = {
     recommendations: dbData.recommendations || [],
@@ -43,13 +34,7 @@ if (
     basedOn: dbData.basedOn || [],
     topTags: dbData.topTags || [],
     topGenres: dbData.topGenres || [],
-    fallbackGenres: dbData.fallbackGenres || [],
-    fallbackGenrePools: dbData.fallbackGenrePools || {},
-    provider: dbData.provider || DISCOVERY_PROVIDER_LASTFM,
-    capabilities: getDiscoveryCapabilities(
-      (dbData.provider || DISCOVERY_PROVIDER_LASTFM) ===
-        DISCOVERY_PROVIDER_LASTFM,
-    ),
+    provider: dbData.provider || null,
     lastUpdated: dbData.lastUpdated || null,
     metadata: dbData.metadata || {},
     recommendationQuality: dbData.recommendationQuality || null,
@@ -66,13 +51,7 @@ export function resetDiscoveryModuleCache() {
 }
 
 export function reloadDiscoveryPersistedCache() {
-  const persisted = dbOps.getDiscoveryCache();
-  Object.assign(discoveryCache, persisted, {
-    provider: persisted.provider || DISCOVERY_PROVIDER_LASTFM,
-    capabilities: getDiscoveryCapabilities(
-      (persisted.provider || DISCOVERY_PROVIDER_LASTFM) === DISCOVERY_PROVIDER_LASTFM,
-    ),
-  });
+  Object.assign(discoveryCache, dbOps.getDiscoveryCache());
 }
 
 export const getDiscoveryCache = () => discoveryCache;
@@ -83,8 +62,7 @@ export function synchronizeDiscoveryCacheFromWorker(update = {}) {
     reloadDiscoveryPersistedCache();
   }
   for (const key of [
-    "recommendations", "globalTop", "basedOn", "topTags", "topGenres",
-    "fallbackGenres", "provider", "capabilities",
+    "recommendations", "globalTop", "basedOn", "topTags", "topGenres", "provider",
     "lastUpdated", "recommendationQuality", "isEnriching", "discoveryRunId",
     "enrichmentStartedAt", "enrichmentCompletedAt", "enrichmentProgressMessage",
   ]) {

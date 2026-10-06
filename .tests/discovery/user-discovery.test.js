@@ -34,18 +34,16 @@ test("cached discovery excludes library identities and paginates the remaining r
   assert.equal((await getUserDiscovery(7, 0)).body.recommendationCount, 6);
 });
 
-test("cached discovery applies per-user blocks to recommendations and fallback sections", async () => {
+test("cached discovery applies per-user blocks to recommendations and trending artists", async () => {
   dbOps.updateDiscoveryCache({
     recommendations: [{ name: "Allowed" }, { name: "Blocked" }],
     globalTop: [{ name: "Blocked" }],
-    fallbackGenres: [{ name: "Genre", artists: [{ name: "Blocked" }, { name: "Allowed" }] }],
   });
   persistedDiscovery.reloadDiscoveryPersistedCache();
   const block = discovery.addDiscoveryFeedback(7, { artistName: "Blocked", action: "block_artist" });
   const { body } = await getUserDiscovery(7, 0);
   assert.deepEqual(body.recommendations.map((artist) => artist.name), ["Allowed"]);
   assert.equal(body.globalTop.length, 0);
-  assert.deepEqual(body.fallbackGenres[0].artists.map((artist) => artist.name), ["Allowed"]);
   assert.equal((await getUserDiscovery(8, 0)).body.globalTop.length, 1);
   discovery.removeDiscoveryFeedback(7, block.id);
   assert.equal((await getUserDiscovery(7, 0)).body.globalTop.length, 1);

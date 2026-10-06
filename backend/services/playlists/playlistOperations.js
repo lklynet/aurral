@@ -43,7 +43,6 @@ import {
   withPlaylistMutationLock,
 } from "../downloadJobs/mutationGuards.js";
 import { withHonkerLock } from "../honkerDb.js";
-import { getUnavailableFlowSourceError } from "../flows/flowValidation.js";
 import { schedulePlaylistMbidEnrichment } from "../playlistMbidEnrichmentService.js";
 import { filterBlockedArtistsForUser } from "../discovery/feedback.js";
 import {
@@ -289,9 +288,6 @@ async function runFlowSeed({
   }
   if (requireEnabled && flow.enabled !== true) return { skipped: true };
   if (!isOwnerActive(flow.ownerUserId)) return { skipped: true, inactiveOwner: true };
-  const unavailableError = getUnavailableFlowSourceError(flow.mix);
-  if (unavailableError) throw new Error(unavailableError);
-
   const effectiveSize =
     Number.isFinite(Number(size)) && Number(size) > 0
       ? Number(size)

@@ -15,9 +15,6 @@ import { schedulePlaylistMbidEnrichment } from "../../../services/playlistMbidEn
 import {
   buildLidarrImportListItems,
 } from "../../../services/lidarrImportListFeed.js";
-import {
-  getUnavailableFlowSourceError,
-} from "../../../services/flows/flowValidation.js";
 import { withPlaylistMutationLock } from "../../../services/downloadJobs/mutationGuards.js";
 import {
   DEFAULT_LIMIT,
@@ -52,14 +49,6 @@ export function registerFlows(router) {
       }
       if (isRetiredFlow(flow)) {
         return res.status(409).json({ error: RETIRED_FLOW_MESSAGE, message: RETIRED_FLOW_MESSAGE });
-      }
-
-      const unavailableError = getUnavailableFlowSourceError(flow.mix);
-      if (unavailableError) {
-        return res.status(400).json({
-          error: unavailableError,
-          message: unavailableError,
-        });
       }
 
       const { token, tokenScope } = markFlowMutationToken(flowId);
@@ -292,13 +281,6 @@ export function registerFlows(router) {
       if (enabled) {
         if (isRetiredFlow(flow)) {
           return res.status(409).json({ error: RETIRED_FLOW_MESSAGE, message: RETIRED_FLOW_MESSAGE });
-        }
-        const unavailableError = getUnavailableFlowSourceError(flow.mix);
-        if (unavailableError) {
-          return res.status(400).json({
-            error: unavailableError,
-            message: unavailableError,
-          });
         }
         flowPlaylistConfig.setEnabled(flowId, true);
         flowPlaylistConfig.scheduleNextRun(flowId);
