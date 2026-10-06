@@ -98,7 +98,7 @@ export const listenbrainzSubmit = async ({ token, baseUrl = LISTENBRAINZ_API, ev
 export async function listenbrainzRequest(
   path,
   params = {},
-  { token = null, baseUrl = LISTENBRAINZ_API } = {},
+  { token = null, baseUrl = LISTENBRAINZ_API, timeoutMs = LISTENBRAINZ_TIMEOUT_MS } = {},
 ) {
   const root = normalizeListenbrainzBaseUrl(baseUrl);
   const isAuthenticated = Boolean(String(token || "").trim());
@@ -148,7 +148,7 @@ export async function listenbrainzRequest(
               "User-Agent": LISTENBRAINZ_USER_AGENT,
               ...(isAuthenticated ? { Authorization: `Token ${String(token).trim()}` } : {}),
             },
-            timeout: LISTENBRAINZ_TIMEOUT_MS,
+            timeout: timeoutMs,
             validateStatus: (status) =>
               (status >= 200 && status < 300) || status === 204,
           }),

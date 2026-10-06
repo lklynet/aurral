@@ -16,6 +16,9 @@ const ARTIST_METADATA_BATCH_SIZE = 50;
 const TAG_SEARCH_PAGE_SIZE = 100;
 const RESOLVE_CONCURRENCY = 4;
 const TAG_TRACK_CONCURRENCY = 4;
+const TRENDING_ARTIST_COUNT = 100;
+const TRENDING_RECORDING_COUNT = 500;
+const SITEWIDE_STATS_TIMEOUT_MS = 20000;
 
 const text = (value) => String(value ?? "").trim();
 const normalizeMbid = (value) => {
@@ -146,11 +149,13 @@ export const listenbrainzSource = {
   },
 
   async getTrendingArtists({ limit = 100 } = {}) {
-    const data = await listenbrainzRequest("/1/stats/sitewide/artists", {
-      count: limit,
-      range: "week",
-    });
+    const data = await listenbrainzRequest(
+      "/1/stats/sitewide/artists",
+      { count: TRENDING_ARTIST_COUNT, range: "week" },
+      { timeoutMs: SITEWIDE_STATS_TIMEOUT_MS },
+    );
     return (Array.isArray(data?.payload?.artists) ? data.payload.artists : [])
+      .slice(0, limit)
       .map((artist, index) => {
         const name = text(artist?.artist_name);
         if (!name) return null;
@@ -169,11 +174,12 @@ export const listenbrainzSource = {
       .filter(Boolean);
   },
 
-  async getTrendingTracks({ limit = 50 } = {}) {
-    const data = await listenbrainzRequest("/1/stats/sitewide/recordings", {
-      count: limit,
-      range: "week",
-    }).catch(() => null);
+  async getTrendingTracks() {
+    const data = await listenbrainzRequest(
+      "/1/stats/sitewide/recordings",
+      { count: TRENDING_RECORDING_COUNT, range: "week" },
+      { timeoutMs: SITEWIDE_STATS_TIMEOUT_MS },
+    ).catch(() => null);
     return (Array.isArray(data?.payload?.recordings) ? data.payload.recordings : [])
       .map((recording) => ({
         artistName: text(recording?.artist_name),

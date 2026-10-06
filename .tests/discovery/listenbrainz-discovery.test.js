@@ -75,6 +75,18 @@ const respond = (url) => {
       },
     })));
   }
+  if (url.hostname === "api.listenbrainz.org" && url.pathname === "/1/stats/sitewide/recordings") {
+    return json({
+      payload: {
+        recordings: Array.from({ length: 60 }, (_, index) => ({
+          artist_name: `Chart Artist ${index}`,
+          artist_mbids: [mbid(100 + index)],
+          track_name: `Chart Song ${index}`,
+          release_name: `Chart Album ${index}`,
+        })),
+      },
+    });
+  }
   if (url.hostname === "musicbrainz.org" && url.pathname === "/ws/2/artist") {
     return json({
       count: 3,
@@ -198,4 +210,28 @@ test("without a Last.fm key a Mix flow picks the library artist's own Deezer top
     [["mix", LIBRARY.name, "Hit Song", "First Album"]],
   );
   assert.equal(requests.some((url) => url.pathname === "/artist/8/top"), false);
+});
+
+test("without a Last.fm key flows of any size share one ListenBrainz trending request", async () => {
+  const source = new FlowTrackSource();
+  const small = await source.getTrendingTracks(5);
+  const large = await source.getTrendingTracks(40);
+
+  assert.equal(small.length, 5);
+  assert.equal(large.length, 40);
+  assert.equal(requests.filter((url) => url.pathname === "/1/stats/sitewide/recordings").length, 1);
+});
+
+test("switching sources never keeps the other source's trending artists when ListenBrainz fails", async () => {
+  Object.assign(discovery.getDiscoveryCache(), {
+    provider: "lastfm",
+    globalTop: [{ id: mbid(90), name: "Last.fm Chart Artist", popularityLabel: "1M listeners on Last.fm" }],
+  });
+
+  await discovery.updateDiscoveryCache();
+
+  const cache = dbOps.getDiscoveryCache();
+  assert.equal(cache.provider, "listenbrainz");
+  assert.deepEqual(cache.globalTop, []);
+  assert.ok(requests.some((url) => url.pathname === "/1/stats/sitewide/artists"));
 });

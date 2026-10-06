@@ -274,7 +274,7 @@ export const updateDiscoveryCache = async (options = {}) => {
       provider,
     });
     const runStartedAt = new Date().toISOString();
-    let globalTop = discoveryCache.globalTop || [];
+    let globalTop = discoveryCache.provider === provider ? discoveryCache.globalTop || [] : [];
     try {
       globalTop = await fetchTrendingArtists(
         buildExistingArtistKeySet(getLibraryArtistKeyProjection()),
