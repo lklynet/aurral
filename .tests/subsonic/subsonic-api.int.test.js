@@ -392,6 +392,40 @@ test("transcodes requested formats and bitrate limits while preserving raw strea
   }
 });
 
+test("stops ffmpeg when a client closes a transcoded stream early", async () => {
+  const song = responseJson(await request("getRandomSongs", { size: 1 })).randomSongs.song[0];
+  const original = await readFile(fixturePath);
+  const runningFfmpeg = async () => {
+    const { stdout } = await promisify(execFile)("ps", ["-o", "pid=,comm=", "--ppid", String(aurral.child.pid)])
+      .catch((error) => (error.code === 1 ? { stdout: "" } : Promise.reject(error)));
+    return stdout.split("\n").filter((line) => /\bffmpeg$/.test(line.trim()));
+  };
+  try {
+    await promisify(execFile)("ffmpeg", [
+      "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi", "-i",
+      "anoisesrc=sample_rate=44100:duration=120:seed=1", "-c:a", "flac", fixturePath,
+    ]);
+    const controller = new AbortController();
+    const response = await fetch(subsonicUrl("stream", { id: song.id, format: "mp3", maxBitRate: 128 }),
+      { signal: controller.signal });
+    assert.equal(response.status, 200);
+    const reader = response.body.getReader();
+    let received = 0;
+    while (received < 20_000) received += (await reader.read()).value.length;
+    assert.equal((await runningFfmpeg()).length, 1);
+    controller.abort();
+    await reader.read().catch(() => {});
+    const deadline = Date.now() + 10_000;
+    while ((await runningFfmpeg()).length && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.deepEqual(await runningFfmpeg(), []);
+    assert.equal((await request("ping")).response.status, 200);
+  } finally {
+    await writeFile(fixturePath, original);
+  }
+});
+
 test("returns sidecar and embedded lyrics through both Subsonic lyrics endpoints", async () => {
   const song = responseJson(await request("getRandomSongs", { size: 1 })).randomSongs.song[0];
   const sidecar = fixturePath.replace(/\.[^.]+$/, ".lrc");

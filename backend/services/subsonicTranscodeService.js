@@ -38,6 +38,7 @@ export async function streamSubsonicAudio(res, filePath, { format, maxBitRate, t
     const child = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] });
     let spawnError;
     const stop = () => {
+      child.stdout.destroy();
       if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
     };
     res.once("close", stop);
