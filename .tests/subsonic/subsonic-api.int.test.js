@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { parseBuffer } from "music-metadata";
+import { mkdir, mkdtemp, rm, stat, writeFile, readFile, symlink } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -319,6 +322,73 @@ test("saves a personal play queue through form POST, filters missing songs, and 
   } finally {
     db.prepare("DELETE FROM users WHERE id = ?").run(bob.id);
     assert.equal(db.prepare("SELECT user_id FROM subsonic_play_queues WHERE user_id = ?").get(bob.id), undefined);
+  }
+});
+
+test("transcodes requested formats and bitrate limits while preserving raw streams and downloads", async () => {
+  const song = responseJson(await request("getRandomSongs", { size: 1 })).randomSongs.song[0];
+  const original = await readFile(fixturePath);
+  try {
+    await promisify(execFile)("ffmpeg", [
+      "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi", "-i",
+      "anoisesrc=sample_rate=44100:duration=4:seed=1", "-c:a", "flac", fixturePath,
+    ]);
+    const flac = await readFile(fixturePath);
+    const raw = await fetch(subsonicUrl("stream", { id: song.id, format: "raw", maxBitRate: 128 }));
+    assert.equal(raw.status, 200);
+    assert.deepEqual(Buffer.from(await raw.arrayBuffer()), flac);
+    const originalType = raw.headers.get("content-type");
+    const unlimited = await fetch(subsonicUrl("stream", { id: song.id, maxBitRate: 0 }));
+    assert.deepEqual(Buffer.from(await unlimited.arrayBuffer()), flac);
+    const above = await fetch(subsonicUrl("stream", { id: song.id, maxBitRate: 10000 }));
+    assert.equal(above.headers.get("content-type"), originalType);
+    assert.deepEqual(Buffer.from(await above.arrayBuffer()), flac);
+    const converted = await fetch(subsonicUrl("stream", { id: song.id, maxBitRate: 128 }));
+    assert.equal(converted.status, 200);
+    assert.match(converted.headers.get("content-type"), /^audio\/mpeg/);
+    assert.equal(converted.headers.get("content-length"), null);
+    const mp3 = Buffer.from(await converted.arrayBuffer());
+    assert.notDeepEqual(mp3, flac);
+    const metadata = await parseBuffer(mp3, { mimeType: "audio/mpeg" }, { duration: true });
+    assert.match(metadata.format.codec, /MPEG/);
+    assert.ok(metadata.format.bitrate <= 129000);
+    for (const [format, mime, codec] of [["mp3", "audio/mpeg", /MPEG/], ["opus", "audio/ogg", /Opus/], ["aac", "audio/aac", /AAC/]]) {
+      const encoded = await fetch(subsonicUrl("stream", { id: song.id, format, maxBitRate: 128, timeOffset: 2 }));
+      assert.equal(encoded.status, 200);
+      assert.match(encoded.headers.get("content-type"), new RegExp(`^${mime}`));
+      const result = await parseBuffer(Buffer.from(await encoded.arrayBuffer()), { mimeType: mime }, { duration: true });
+      assert.match(result.format.codec, codec);
+      assert.ok(result.format.duration > 1.8 && result.format.duration < 2.3, `${format} seek duration ${result.format.duration}`);
+    }
+    const download = await fetch(subsonicUrl("download", { id: song.id, format: "mp3", maxBitRate: 128 }));
+    assert.equal(download.headers.get("content-type"), originalType);
+    assert.deepEqual(Buffer.from(await download.arrayBuffer()), flac);
+    assert.equal(responseJson(await request("stream", { id: song.id, format: "unsupported" })).error.code, 0);
+    assert.equal(responseJson(await request("stream", { id: song.id, maxBitRate: "-1" })).error.code, 0);
+    assert.equal(responseJson(await request("stream", { id: song.id, format: "mp3", timeOffset: "-2" })).error.code, 0);
+    await writeFile(fixturePath, "invalid audio");
+    const failed = await request("stream", { id: song.id, format: "mp3" });
+    assert.equal(failed.response.status, 500);
+    assert.equal(failed.body, "Audio transcoding unavailable");
+    assert.equal((await request("ping")).response.status, 200);
+    const executableDir = path.join(isolatedState.baseDir, "node-only-bin");
+    await mkdir(executableDir, { recursive: true });
+    await symlink(process.execPath, path.join(executableDir, "node"));
+    const withoutFfmpeg = await startServerProcess({ extraEnv: { PATH: executableDir } });
+    try {
+      const unavailable = await fetch(subsonicUrl("stream", { id: song.id, format: "mp3" })
+        .replace(`:${aurral.port}/`, `:${withoutFfmpeg.port}/`));
+      assert.equal(unavailable.status, 503);
+      assert.equal(await unavailable.text(), "Audio transcoding unavailable");
+      const rawWithoutFfmpeg = await fetch(subsonicUrl("stream", { id: song.id, format: "raw" })
+        .replace(`:${aurral.port}/`, `:${withoutFfmpeg.port}/`));
+      assert.equal(rawWithoutFfmpeg.status, 200);
+      assert.equal(await rawWithoutFfmpeg.text(), "invalid audio");
+    } finally {
+      await withoutFfmpeg.stop();
+    }
+  } finally {
+    await writeFile(fixturePath, original);
   }
 });
 

@@ -4,6 +4,7 @@ import express from "express";
 import { APP_NAME, APP_VERSION } from "../config/constants.js";
 import { hasPermission, resolveSubsonicTokenUser, resolveUser } from "../middleware/auth.js";
 import { getPlayQueue, savePlayQueue } from "../services/subsonicPlayQueueService.js";
+import { streamSubsonicAudio } from "../services/subsonicTranscodeService.js";
 import { streamAudioFile } from "../services/audioFileStream.js";
 import {
   getAlbum,
@@ -577,7 +578,28 @@ async function handleSubsonicRequest(req, res) {
   if (method === "stream" || method === "download") {
     const filePath = resolveStreamPath(getParameter(req, "id"), user);
     if (!filePath) return handleBinaryError(res, "Track file missing");
-    const streamed = await streamAudioFile(res, filePath);
+    const outputFormat = getParameter(req, "format").toLowerCase();
+    const bitrate = getParameter(req, "maxBitRate");
+    const offset = getParameter(req, "timeOffset");
+    if (method === "stream") {
+      if (outputFormat && !["raw", "mp3", "opus", "aac"].includes(outputFormat)) {
+        return sendError(res, format, 0, "Unsupported audio format");
+      }
+      if (bitrate && (!/^\d+$/.test(bitrate) || !Number.isSafeInteger(Number(bitrate))
+        || (Number(bitrate) > 0 && Number(bitrate) < 8))) {
+        return sendError(res, format, 0, "maxBitRate must be zero or at least 8 kbps");
+      }
+      if (offset && (!Number.isFinite(Number(offset)) || Number(offset) < 0)) {
+        return sendError(res, format, 0, "timeOffset must be a nonnegative number of seconds");
+      }
+    }
+    const streamed = method === "download"
+      ? await streamAudioFile(res, filePath)
+      : await streamSubsonicAudio(res, filePath, {
+        format: outputFormat,
+        maxBitRate: Number(bitrate) || 0,
+        timeOffset: Number(offset) || 0,
+      });
     return streamed || res.headersSent ? undefined : handleBinaryError(res, "Track file missing");
   }
   if (method === "getcoverart") {

@@ -23,6 +23,8 @@ Aurral answers from its own index. It does not ask a metadata service while a cl
 
 Subsonic clients can save a personal play queue with `savePlayQueue` and restore it with `getPlayQueue`, including the current track and position. Library tracks, flow tracks, and static playlist tracks keep their order. Tracks that are no longer available are omitted. Saving without any track IDs clears the queue. The web player keeps its own queue.
 
+Subsonic `stream` can convert audio to MP3, Opus in an Ogg container, or AAC when a client requests `format=mp3`, `format=opus`, or `format=aac`. A lower `maxBitRate` converts to MP3 by default. `timeOffset` seeks in seconds when converting. `format=raw`, an unlimited request, or a bitrate limit above the source bitrate keeps the original file. `download` always sends the original file. Conversion requires ffmpeg, which is included in the Docker image.
+
 ### Connect a Subsonic client
 
 Point the client at the Aurral URL, and sign in with any local Aurral account.
