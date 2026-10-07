@@ -11,7 +11,7 @@ function textLyrics(text) {
     const offsetTag = /\[offset:([+-]?\d+)\]/i.exec(line);
     if (offsetTag) offset = Number(offsetTag[1]);
     const timestamps = [...line.matchAll(/\[(\d+):([0-5]\d)(?:\.(\d{1,3}))?\]/g)];
-    const value = line.replace(/\[[^\]]*\]/g, "").trim();
+    const value = line.replace(/\[(\d+):([0-5]\d)(?:\.(\d{1,3}))?\]/g, "").trim();
     for (const match of timestamps) {
       timed.push({
         start: (Number(match[1]) * 60 + Number(match[2])) * 1000

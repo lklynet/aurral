@@ -399,7 +399,7 @@ test("returns sidecar and embedded lyrics through both Subsonic lyrics endpoints
   const mp3Path = fixturePath.replace(/\.[^.]+$/, ".mp3");
   try {
     assert.deepEqual(responseJson(await request("getLyricsBySongId", { id: song.id })).lyricsList, { structuredLyrics: [] });
-    await writeFile(sidecar, "[ar:Canonical Artist]\n[offset:125]\n[00:03.50]Later\n[00:01.234][00:02.00]Earlier\n");
+    await writeFile(sidecar, "[ar:Canonical Artist]\n[offset:125]\n[00:03.50]Later [echo]\n[00:01.234][00:02.00]Earlier\n");
     const structured = responseJson(await request("getLyricsBySongId", { id: song.id })).lyricsList.structuredLyrics;
     assert.deepEqual(structured, [{
       displayArtist: song.artist,
@@ -407,10 +407,10 @@ test("returns sidecar and embedded lyrics through both Subsonic lyrics endpoints
       lang: "und",
       synced: true,
       offset: 125,
-      line: [{ start: 1234, value: "Earlier" }, { start: 2000, value: "Earlier" }, { start: 3500, value: "Later" }],
+      line: [{ start: 1234, value: "Earlier" }, { start: 2000, value: "Earlier" }, { start: 3500, value: "Later [echo]" }],
     }]);
     const legacy = responseJson(await request("getLyrics", { artist: song.artist, title: song.title })).lyrics;
-    assert.equal(legacy.value, "Earlier\nEarlier\nLater");
+    assert.equal(legacy.value, "Earlier\nEarlier\nLater [echo]");
     const xml = await request("getLyricsBySongId", { id: song.id, f: "xml" });
     assert.match(xml.body, /<line start="1234">Earlier<\/line>/);
     await rm(sidecar);
