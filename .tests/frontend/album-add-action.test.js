@@ -73,6 +73,7 @@ test("release display keeps albums with an incomplete track list incomplete", ()
   assert.equal(display.isComplete, false);
   assert.equal(display.kind, "incomplete");
   assert.equal(display.label, "Incomplete");
+  assert.equal(resolveReleaseLibraryDisplay(lookup, { status: "partial" }).kind, "incomplete");
   const complete = resolveReleaseLibraryDisplay({ ...lookup, trackListComplete: true, percentOfTracks: 100 });
   assert.equal(complete.isComplete, true);
   assert.equal(complete.label, "In library");

@@ -264,7 +264,7 @@ export const resolveReleaseLibraryDisplay = (libraryInfo, downloadStatus) => {
   }
 
   const activeStatus = String(downloadStatus?.status || "").trim();
-  if (activeStatus) {
+  if (activeStatus && activeStatus !== "partial") {
     const labels = {
       adding: "Adding...",
       searching: "Searching...",
