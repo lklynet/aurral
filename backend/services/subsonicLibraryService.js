@@ -1,3 +1,4 @@
+import { audioContentType } from "./audioFileStream.js";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dbOps } from "../db/helpers/index.js";
@@ -156,7 +157,7 @@ const toSong = (library, track, album = findAlbumForTrack(library, track)) => {
     artistId: artistValue.id,
     albumArtists: [artistValue],
     artists: [artistValue],
-    contentType: `audio/${format}`,
+    contentType: audioContentType(format),
     created: isoDate(track.createdAt ?? file?.createdAt ?? file?.mtimeMs),
     track: Number(relation?.trackNumber) || 0,
     discNumber: Number(relation?.discNumber) || 1,
@@ -331,7 +332,7 @@ function toPlaylistSong(
     albumArtists: [artist],
     artists: [artist],
     coverArt: albumMbid ? idFor("album", `release-group:${albumMbid}`) : undefined,
-    contentType: `audio/${format}`,
+    contentType: audioContentType(format),
     created: isoDate(job.createdAt),
     // Stars on unmatched playlist songs stay keyed by the playlist song, not a library track.
     starred: starredAt?.get(`${songKind}:${playlist.id}:${job.id}`),
