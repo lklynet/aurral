@@ -18,11 +18,14 @@ export function audioContentType(format) {
 
 export function streamAudioFile(res, filePath) {
   const absolutePath = path.resolve(String(filePath));
-  res.type(audioContentType(path.extname(absolutePath).slice(1)));
   return new Promise((resolve, reject) => {
     res.sendFile(
       path.basename(absolutePath),
-      { root: path.dirname(absolutePath), dotfiles: "allow" },
+      {
+        root: path.dirname(absolutePath),
+        dotfiles: "allow",
+        headers: { "Content-Type": audioContentType(path.extname(absolutePath).slice(1)) },
+      },
       (error) => {
         if (!error || res.headersSent) return resolve(true);
         if (error.status === 416) {

@@ -943,6 +943,7 @@ test("returns missing files and stale IDs without exposing filesystem paths", as
 
   const missing = await request("stream", { id: song.id });
   assert.equal(missing.response.status, 404);
+  assert.match(missing.contentType, /^text\/plain/);
 
   const stale = await request("getSong", { id: "song:missing-identity" });
   assert.equal(responseJson(stale).error.code, 70);
