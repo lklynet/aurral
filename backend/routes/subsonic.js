@@ -3,6 +3,7 @@ import express from "express";
 
 import { APP_NAME, APP_VERSION } from "../config/constants.js";
 import { hasPermission, resolveSubsonicTokenUser, resolveUser } from "../middleware/auth.js";
+import { getPlayQueue, savePlayQueue } from "../services/subsonicPlayQueueService.js";
 import { streamAudioFile } from "../services/audioFileStream.js";
 import {
   getAlbum,
@@ -331,15 +332,21 @@ async function handleSubsonicRequest(req, res) {
   if (method === "getbookmarks") {
     return sendResponse(res, format, "ok", null, { bookmarks: { bookmark: [] } });
   }
-  if (method === "getplayqueue") {
-    return sendResponse(res, format, "ok", null, {
-      playQueue: {
-        username: user.username,
-        changed: new Date(0).toISOString(),
-        changedBy: APP_NAME,
-        entry: [],
-      },
+  if (method === "saveplayqueue") {
+    const position = getParameter(req, "position");
+    if (position && (!/^\d+$/.test(position) || !Number.isSafeInteger(Number(position)))) {
+      return sendError(res, format, 0, "position must be a nonnegative integer in milliseconds");
+    }
+    savePlayQueue(user, {
+      ids: getParameters(req, ["id"]),
+      current: getParameter(req, "current"),
+      position: position ? Number(position) : null,
+      changedBy: getParameter(req, "c"),
     });
+    return sendResponse(res, format);
+  }
+  if (method === "getplayqueue") {
+    return sendResponse(res, format, "ok", null, { playQueue: getPlayQueue(user) });
   }
   if (method === "getalbumlist" || method === "getalbumlist2") {
     const responseKey = method === "getalbumlist" ? "albumList" : "albumList2";
