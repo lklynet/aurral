@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router";
-import { User, Heart, LogOut, ExternalLink } from "lucide-react";
+import { User, Heart, LogOut, ExternalLink, Smartphone } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import TooltipButton from "./TooltipButton";
+import AppPasswordsModal from "./AppPasswordsModal";
 
 function GitHubIcon({ className = "" }) {
   return (
@@ -14,9 +15,17 @@ function GitHubIcon({ className = "" }) {
 
 function UserProfileMenu() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [connectOpen, setConnectOpen] = useState(false);
   const menuRef = useRef(null);
   const triggerRef = useRef(null);
-  const { authRequired, canLogOut, logout } = useAuth();
+  const returnFocusRef = useRef(false);
+  const { user, authRequired, canLogOut, logout } = useAuth();
+
+  useEffect(() => {
+    if (connectOpen || !returnFocusRef.current) return;
+    returnFocusRef.current = false;
+    triggerRef.current?.focus();
+  }, [connectOpen]);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -70,6 +79,14 @@ function UserProfileMenu() {
                 <span>Profile</span>
               </Link>
             </li>
+            {user?.id > 0 ? (
+              <li role="none">
+                <button type="button" role="menuitem" className="app-profile-menu__item" onClick={() => { closeMenu(); setConnectOpen(true); }}>
+                  <Smartphone className="app-profile-menu__item-icon" />
+                  <span>Connect an app</span>
+                </button>
+              </li>
+            ) : null}
             <li role="none">
               <a
                 href="https://github.com/sponsors/lklynet/"
@@ -117,6 +134,7 @@ function UserProfileMenu() {
           </ul>
         </div>
       )}
+      {connectOpen ? <AppPasswordsModal onClose={() => { returnFocusRef.current = true; setConnectOpen(false); }} /> : null}
     </div>
   );
 }

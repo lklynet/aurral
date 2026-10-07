@@ -13,11 +13,13 @@ import {
   User,
   Ban,
   ChevronLeft,
+  Smartphone,
 } from "lucide-react";
 import Sidebar from "./Sidebar";
 import GlobalSearch from "./GlobalSearch";
 import GlobalPlayerBar from "./GlobalPlayerBar";
 import UserProfileMenu from "./UserProfileMenu";
+import AppPasswordsModal from "./AppPasswordsModal";
 import InboxMenu from "./InboxMenu";
 import TooltipButton from "./TooltipButton";
 import { useAuth } from "../contexts/AuthContext";
@@ -47,6 +49,9 @@ function Layout({ children, headerActions }) {
   const scrollbarFadeTimeoutRef = useRef(null);
   const sidebarResizeSessionRef = useRef(null);
   const mobileMenuInitialFocusRef = useRef(null);
+  const mobileMenuTriggerRef = useRef(null);
+  const [connectAppOpen, setConnectAppOpen] = useState(false);
+  const connectAppReturnFocusRef = useRef(false);
   const [mobileMenuPresence, setMobileMenuPresence] = useState("closed");
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     try {
@@ -86,6 +91,12 @@ function Layout({ children, headerActions }) {
     onClose: closeMobileMenu,
     initialFocusRef: mobileMenuInitialFocusRef,
   });
+
+  useEffect(() => {
+    if (connectAppOpen || !connectAppReturnFocusRef.current) return;
+    connectAppReturnFocusRef.current = false;
+    mobileMenuTriggerRef.current?.focus();
+  }, [connectAppOpen]);
 
   const sidebarMode = sidebarWidth < SIDEBAR_THRESHOLD ? "icons" : "full";
 
@@ -570,6 +581,19 @@ function Layout({ children, headerActions }) {
                     </Link>
                   );
                 })}
+                {user?.id > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      setConnectAppOpen(true);
+                    }}
+                    className="app-mobile-menu__item"
+                  >
+                    <Smartphone aria-hidden="true" />
+                    <span>Connect an app</span>
+                  </button>
+                ) : null}
                 {authRequired && canLogOut && (
                   <button
                     type="button"
@@ -606,6 +630,7 @@ function Layout({ children, headerActions }) {
               );
             })}
             <button
+              ref={mobileMenuTriggerRef}
               type="button"
               onClick={() => setIsMobileMenuOpen((open) => !open)}
               className={`app-mobile-nav__item${
@@ -623,6 +648,14 @@ function Layout({ children, headerActions }) {
           </div>
         </nav>
       </div>
+      {connectAppOpen ? (
+        <AppPasswordsModal
+          onClose={() => {
+            connectAppReturnFocusRef.current = true;
+            setConnectAppOpen(false);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -24,11 +24,14 @@ can change Aurral, Lidarr, files, users, or external services.
 | `GET` | `/api/health` | Detailed application health |
 | `GET` | `/api/health/ws` | WebSocket connection statistics |
 | `POST` | `/api/health/stream-token` | Issue a short-lived token for media streams |
-| `POST` | `/api/auth/login` | Create a password-login session |
+| `POST` | `/api/auth/login` | Create a session with an account or app password |
+| `GET` | `/api/auth/app-passwords` | List the current user's devices. Administrators can pass `all=true` for every user |
+| `POST` | `/api/auth/app-passwords` | Create a device with `{ "name": "Phone" }` and return its secret once. Requires a recent web session |
+| `DELETE` | `/api/auth/app-passwords/:id` | Revoke an owned device. Administrators can revoke any device |
 | `POST` | `/api/auth/logout` | End a login session |
 | `GET` | `/api/auth/me` | Current authenticated identity |
-| `GET` | `/api/auth/api-key` | Read or create the instance API key |
-| `POST` | `/api/auth/api-key/rotate` | Replace the instance API key |
+| `GET` | `/api/auth/api-key` | Read or create the instance API key. Administrators only |
+| `POST` | `/api/auth/api-key/rotate` | Replace the instance API key. Administrators only |
 | `POST` | `/api/auth/reauth` | Confirm the current password with `{ "currentPassword": "…" }` before a sensitive account change |
 | `GET` | `/api/auth/oidc/login` | Start an OpenID Connect login |
 | `POST` | `/api/auth/oidc/exchange` | Exchange an OpenID Connect code for a session |

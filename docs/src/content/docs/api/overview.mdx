@@ -15,6 +15,20 @@ capabilities are additive, so clients ignore unknown fields and check the
 feature list before using a capability. `appVersion` identifies the build,
 not API compatibility.
 
+## Connect a phone or desktop app
+
+Open the user menu, or **More** on a phone, and select **Connect an app**. Enter a device name and check the server address. Aurral fills in `AURRAL_PUBLIC_URL` when it is set, or the address in your browser. Change it if your app reaches Aurral at another address. Select **Create app password**.
+
+Scan the QR code in the Aurral app, or copy the password into your music player. The password appears only once. Aurral stores its hash and keeps your account password unchanged.
+
+Send the app password as `Authorization: Bearer APP_PASSWORD` to the JSON API. You can also exchange it for a session at `POST /api/auth/login` with your username and the app password in the `password` field. Both methods use your current account permissions.
+
+The QR code contains `aurral://connect?server=SERVER_URL&user=USERNAME&token=APP_PASSWORD`. Aurral generates it in your browser and sends no credentials to a QR service.
+
+Return to **Connect an app** to see each device's creation and last-use dates. Select **Revoke** to disconnect a device immediately, including its exchanged sessions and playback tokens. Other devices keep working. Administrators can select **Show all users' devices** to revoke another user's device.
+
+Creating another app password requires a recent web sign-in. An app password cannot create more app passwords. A session exchanged from an app password must confirm the account password before sensitive account changes, such as a new password.
+
 ## Authenticate with the API key
 
 Open **Settings > System** and copy the API key. Send it in the `X-Api-Key` header:
@@ -98,12 +112,15 @@ Browser Subsonic clients such as Feishin can use `/rest` without `CORS_ORIGIN`.
 
 ## Subsonic authentication
 
-The Subsonic API at `/rest` uses Aurral user accounts, not the API key. It supports both Subsonic sign-in methods:
+The Subsonic API at `/rest` uses Aurral user accounts. The installation API key does not work here. It supports these sign-in methods:
 
 - **Password authentication** sends the username and password. Clients often call it legacy authentication.
-- **Token authentication** sends a salted token made from the password.
+- **Token authentication** sends a salted token made from the account password.
+- **App password authentication** sends a device password with the username, using plain `p` or hex-encoded `p=enc:`. OpenSubsonic clients can send the device password as `apiKey` without a username. Aurral advertises `apiKeyAuthentication`.
 
-Token authentication needs a password that Aurral stored for Subsonic. When it fails, Aurral returns error `41`, `Token authentication failed`, with a link to this section. To fix it:
+App passwords cannot use salted token authentication because Aurral stores only their hashes. Choose password or API-key authentication for these credentials. A revoked app password sent as `p` returns error `40`. A revoked or unknown `apiKey` returns error `44`. An `apiKey` sent with `u`, `p`, or `t` returns error `43`. `tokenInfo` returns the username for an `apiKey`.
+
+Account token authentication needs a password that Aurral stored for Subsonic. When it fails, Aurral returns error `41`, `Token authentication failed`, with a link to this section. To fix it:
 
 1. Turn on password authentication in the client. In Music Assistant, turn on legacy authentication. In Feishin, set `LEGACY_AUTHENTICATION=true`.
 2. Or make sure that the account has a local password. An account created before Aurral stored Subsonic credentials needs one Aurral sign-in. An account created by OIDC or a reverse proxy needs an admin to set a password.

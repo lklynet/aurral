@@ -1,4 +1,4 @@
 export const API_CONTRACT = {
   version: 1,
-  features: ["discover", "flows", "activity", "review", "trackDownloads"],
+  features: ["discover", "flows", "activity", "review", "trackDownloads", "appPasswords"],
 };
