@@ -138,7 +138,11 @@ async function fetchUpstream(source, url, { accept = "application/json", headers
     );
   }
   if (!response.ok) throw unavailable(source, `request failed (${response.status})`);
-  return response.text();
+  try {
+    return await response.text();
+  } catch {
+    throw unavailable(source);
+  }
 }
 
 async function fetchJson(source, url) {

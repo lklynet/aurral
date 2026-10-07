@@ -216,10 +216,14 @@ test("unsupported links return 400 without contacting any service", async (t) =>
 });
 
 test("an unreachable service returns 502 and is retried on the next request", async (t) => {
-  let deezerUp = false;
+  let deezerState = "down";
   stubServices(t, {
     "https://api.deezer.com/artist/27": () => {
-      if (!deezerUp) throw new TypeError("fetch failed");
+      if (deezerState === "down") throw new TypeError("fetch failed");
+      if (deezerState === "cut off") {
+        const body = new ReadableStream({ pull(controller) { controller.error(new TypeError("terminated")); } });
+        return new Response(body, { headers: { "Content-Type": "application/json" } });
+      }
       return new Response(JSON.stringify({ id: 27, name: "Daft Punk" }), { headers: { "Content-Type": "application/json" } });
     },
   });
@@ -229,7 +233,12 @@ test("an unreachable service returns 502 and is retried on the next request", as
   assert.equal(failed.status, 502);
   assert.equal(failed.body.code, "LINK_SERVICE_UNAVAILABLE");
 
-  deezerUp = true;
+  deezerState = "cut off";
+  const cutOff = await resolveLink(link);
+  assert.equal(cutOff.status, 502);
+  assert.equal(cutOff.body.code, "LINK_SERVICE_UNAVAILABLE");
+
+  deezerState = "up";
   const retried = await resolveLink(link);
   assert.equal(retried.status, 200);
   assert.deepEqual(retried.body, {
