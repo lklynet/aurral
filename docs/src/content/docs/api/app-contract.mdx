@@ -11,7 +11,7 @@ description: Version and response guarantees for the JSON API used by Aurral app
 {
   "api": {
     "version": 1,
-    "features": ["discover", "flows", "activity", "review", "trackDownloads", "appPasswords", "linkSearch"]
+    "features": ["discover", "flows", "activity", "review", "trackDownloads", "appPasswords", "linkSearch", "downloadCancel"]
   }
 }
 ```
@@ -37,6 +37,7 @@ The feature list is the same before and after sign-in.
 | `trackDownloads` | Single-track requests through `/api/library/downloads/track` |
 | `appPasswords` | Per-device app passwords as Bearer credentials and at `POST /api/auth/login`, managed through `/api/auth/app-passwords` |
 | `linkSearch` | Streaming-service links resolved through `/api/search/link` |
+| `downloadCancel` | Cancelling one pending or downloading song through `POST /api/playlists/jobs/:jobId/cancel`, and searching again for cancelled songs that did not come from an album request |
 
 Clients check for a feature before using its routes. An absent name means the
 server does not promise that capability. Features implemented in later releases
