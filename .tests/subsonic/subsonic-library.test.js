@@ -17,6 +17,7 @@ const [isolatedState, { db }, subsonic, libraryStore] =
 
 const {
   getSong,
+  getAlbum,
   getAlbumList,
   getMusicDirectory,
   getTopSongs,
@@ -463,4 +464,28 @@ test("reports registered audio types for library song formats", () => {
     upsertLibraryMediaFile({ trackId: track.id, source: "lidarr", path: `/test/mime.${format}`, format, available: true });
     assert.equal(getSong(idFor("song", `mime:${format}`)).contentType, expected);
   }
+});
+
+test("reports known file bitrates in kbps and omits unknown ones", () => {
+  const artist = upsertLibraryArtist({ identityKey: "bitrate:artist", name: "Bitrate Artist" });
+  const album = upsertLibraryAlbum({ identityKey: "bitrate:album", artistId: artist.id, title: "Bitrate Album", albumArtist: artist.name });
+  const files = [
+    { title: "Lidarr FLAC", source: "lidarr", format: "flac", quality: { audioFormat: "FLAC", audioBitRate: "1012 kbps" } },
+    { title: "Scanned MP3", source: "aurral", format: "mp3", quality: { format: "MPEG 1 Layer 3", bitrate: 128000 } },
+    { title: "Lidarr Unknown", source: "lidarr", format: "mp3", quality: { audioFormat: "MP3", audioBitRate: "0 kbps" } },
+    { title: "No Quality", source: "aurral", format: "ogg", quality: null },
+  ];
+  files.forEach((file, index) => {
+    const track = upsertLibraryTrack({ identityKey: `bitrate:${file.title}`, title: file.title, artistName: artist.name });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: index + 1 });
+    upsertLibraryMediaFile({ trackId: track.id, source: file.source, path: `/test/bitrate/${file.title}.${file.format}`, format: file.format, quality: file.quality, available: true });
+  });
+
+  const songs = getAlbum(idFor("album", "bitrate:album")).song;
+  assert.deepEqual(
+    songs.map((song) => [song.title, song.bitRate]),
+    [["Lidarr FLAC", 1012], ["Scanned MP3", 128], ["Lidarr Unknown", undefined], ["No Quality", undefined]],
+  );
+  assert.equal(Object.hasOwn(songs[2], "bitRate"), false);
+  assert.equal(Object.hasOwn(songs[3], "bitRate"), false);
 });

@@ -66,6 +66,13 @@ const seconds = (durationMs) => {
   return Number.isFinite(value) && value > 0 ? Math.round(value / 1000) : 0;
 };
 
+const bitRateKbps = (quality) => {
+  const lidarrKbps = Number.parseInt(quality?.audioBitRate, 10);
+  if (lidarrKbps > 0) return lidarrKbps;
+  const bitsPerSecond = Number(quality?.bitrate);
+  return bitsPerSecond > 0 ? Math.round(bitsPerSecond / 1000) : null;
+};
+
 const isoDate = (epochMs) => new Date(Number(epochMs) || Date.now()).toISOString();
 
 const year = (value) => {
@@ -171,6 +178,8 @@ const toSong = (library, track, album = findAlbumForTrack(library, track)) => {
     musicBrainzId: track.mbid || "",
     mediaType: "song",
   };
+  const bitRate = bitRateKbps(file?.quality);
+  if (bitRate) song.bitRate = bitRate;
   const releaseYear = year(album?.releaseDate);
   if (releaseYear != null) song.year = releaseYear;
   const genre = (Array.isArray(genres) ? genres[0] : genres) || null;
@@ -320,7 +329,7 @@ function toPlaylistSong(
   const songKind = kind === "flow" ? "flow-song" : "shared-song";
   const id = idFor(songKind, `${playlist.id}:${job.id}`);
   const albumMbid = String(job.releaseGroupMbid || job.albumMbid || "").trim();
-  return {
+  const song = {
     id,
     parent: idFor(kind, playlist.id),
     isDir: false,
@@ -346,6 +355,8 @@ function toPlaylistSong(
     musicBrainzId: job.trackMbid || "",
     mediaType: "song",
   };
+  if (job.qualityBitrateKbps > 0) song.bitRate = job.qualityBitrateKbps;
+  return song;
 }
 
 function playlistJobs(playlist) {
