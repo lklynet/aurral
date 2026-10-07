@@ -179,6 +179,13 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
+      - name: Ensure transcoding runtime dependency
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
+
       - run: npm ci
 
       - name: Run integration tests
