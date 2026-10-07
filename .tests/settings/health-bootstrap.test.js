@@ -71,3 +71,19 @@ test("unauthenticated health exposes the native matcher policy version", async (
   assert.equal(payload.matcher.available, true);
   assert.ok(payload.matcher.policyVersion);
 });
+
+test("bootstrap reports the same API contract before and after sign-in", async () => {
+  dbOps.updateSettings({ onboardingComplete: true, integrations: {} });
+  const response = await fetch(`${baseUrl}/api/health/bootstrap`);
+  assert.equal(response.status, 200);
+  const signedOut = await response.json();
+  assert.ok(Number.isSafeInteger(signedOut.api?.version));
+  assert.ok(signedOut.api.version > 0);
+  assert.ok(Array.isArray(signedOut.api.features));
+  assert.ok(signedOut.api.features.every((feature) => typeof feature === "string" && feature.length > 0));
+  assert.equal(new Set(signedOut.api.features).size, signedOut.api.features.length);
+  assert.equal(signedOut.user, undefined);
+  const signedIn = await bootstrapAsUser();
+  assert.equal(signedIn.user.username, "owner");
+  assert.deepEqual(signedIn.api, signedOut.api);
+});

@@ -8,9 +8,12 @@ Aurral has two HTTP APIs:
 - The **JSON API** under `/api`. The web app uses it. You can also use it for scripts, dashboards, and homepage widgets.
 - The **Subsonic API** under `/rest`. Music players use it.
 
-:::caution
-The JSON API has no version numbers. Routes and response fields can change between Aurral releases. Test each integration after you upgrade, and make it handle missing fields.
-:::
+`GET /api/health/bootstrap` reports `api.version` and `api.features` without
+sign-in. Version 1 keeps the [app API contract](/api/app-contract/) stable.
+A breaking contract change increments the version. New optional fields and
+capabilities are additive, so clients ignore unknown fields and check the
+feature list before using a capability. `appVersion` identifies the build,
+not API compatibility.
 
 ## Authenticate with the API key
 

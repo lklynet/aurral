@@ -6,12 +6,11 @@ description: This page lists all HTTP routes for the current Aurral API.
 This page lists the routes for the current Aurral release. All paths start at
 the Aurral origin.
 
-:::caution
-The Aurral web interface uses these routes. The routes are not a public contract
-with version numbers. Read the [API overview](/api/overview/) for authentication
-and compatibility information. An API key gives administrator access. Routes
-that change data are not read-only.
-:::
+The [app API contract](/api/app-contract/) defines stable request and response
+fields for official apps. Public `GET /api/health/bootstrap` reports the API
+version and implemented features. Read the [API overview](/api/overview/) for
+authentication. An API key gives administrator access. Routes that change data
+are not read-only.
 
 `GET` and media routes read data. `POST`, `PUT`, `PATCH`, and `DELETE` routes
 can change Aurral, Lidarr, files, users, or external services.
