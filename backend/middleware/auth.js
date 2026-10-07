@@ -4,6 +4,7 @@ import os from "os";
 import { dbOps, userOps } from "../db/helpers/index.js";
 import { createSession, getSessionByToken } from "../config/session-helpers.js";
 import { hashPassword, verifyPassword, needsRehash } from "./passwordHash.js";
+import { getAppPasswordUser, isAppPasswordSecret, resolveAppPassword } from "../services/appPasswordService.js";
 
 const safeCompare = (a, b) => {
   const bufA = Buffer.from(String(a));
@@ -217,11 +218,18 @@ export function toResolvedUser(user) {
   };
 }
 
+const toAppPasswordUser = (device) =>
+  device ? { ...toResolvedUser(device.user), appPasswordId: device.appPasswordId } : null;
+
+export const resolveAppPasswordUser = (secret, username = null) =>
+  toAppPasswordUser(resolveAppPassword(secret, username));
+
 const toSessionUser = (session) => {
   if (!session?.user) return null;
   const baseUser = session.user;
   return {
     id: baseUser.id,
+    ...(session.appPasswordId ? { appPasswordId: session.appPasswordId } : {}),
     username: baseUser.username,
     role: baseUser.role,
     permissions: buildPermissions(baseUser.role, baseUser.permissions),
@@ -479,6 +487,8 @@ export function resolveUser(username, password) {
     .toLowerCase();
   const u = userOps.getUserByUsername(un);
   if (!u || u.status !== "active" || !password) return null;
+  const appPasswordUser = resolveAppPasswordUser(password, un);
+  if (appPasswordUser) return appPasswordUser;
   if (!verifyPassword(password, u.passwordHash)) return null;
   if (needsRehash(u.passwordHash)) {
     userOps.updateUser(u.id, {
@@ -553,8 +563,10 @@ export function resolveLocalNetworkBypassUser(req) {
 }
 
 export function resolveRequestUser(req) {
-  const sessionUser = resolveSessionUserFromToken(getBearerToken(req));
+  const bearerToken = getBearerToken(req);
+  const sessionUser = resolveSessionUserFromToken(bearerToken);
   if (sessionUser) return sessionUser;
+  if (isAppPasswordSecret(bearerToken)) return resolveAppPasswordUser(bearerToken);
   const proxyUser = resolveProxyUser(req);
   if (proxyUser) return proxyUser;
   const apiKeyUser = resolveApiKeyUser(req);
@@ -596,6 +608,7 @@ export function issueStreamToken(user, ttlMs = STREAM_TOKEN_TTL_MS) {
       username: user.username,
       role: user.role,
       permissions: user.permissions || {},
+      ...(user.appPasswordId ? { appPasswordId: user.appPasswordId } : {}),
     },
     expiresAt: Date.now() + Math.max(1000, Number(ttlMs) || STREAM_TOKEN_TTL_MS),
   });
@@ -612,6 +625,7 @@ function consumeStreamToken(rawToken) {
     streamTokenStore.delete(token);
     return null;
   }
+  if (payload.user?.appPasswordId) return toAppPasswordUser(getAppPasswordUser(payload.user.appPasswordId));
   return payload.user || null;
 }
 

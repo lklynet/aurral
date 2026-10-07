@@ -17,6 +17,7 @@ import {
 } from "../../../services/downloadJobs/mutationGuards.js";
 import { normalizeFlowMixForValidation } from "../../../services/flows/flowValidation.js";
 import { logger } from "../../../services/logger.js";
+import { isDownloadJobCancelled } from "../../../services/downloadJobs/downloadCancellation.js";
 
 export const EXISTING_FILE_MODE_OPTIONS = ["download", "reuse"];
 export const DEFAULT_LIMIT = DEFAULT_SIZE;
@@ -217,6 +218,12 @@ export const enqueueResearchTrack = async (req, res, playlistId, jobId, labelPre
     return res.status(409).json({
       error: "Track is already being processed",
     });
+  }
+  if (job.status === "cancel_requested") {
+    return res.status(409).json({ error: "Track cancellation is still in progress" });
+  }
+  if (job.requestGroupId && isDownloadJobCancelled(job.id)) {
+    return res.status(409).json({ error: "Cancelled album tracks cannot be searched again. Request the album again." });
   }
   if (downloadTracker.findActiveUpgradeJob(job)) {
     return res.status(409).json({

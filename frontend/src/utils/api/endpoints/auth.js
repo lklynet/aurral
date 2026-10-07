@@ -160,3 +160,7 @@ export const getMyIdentities = () => getData("/users/me/identities");
 export const unlinkMyIdentity = async (identityId) => {
   await deleteData(`/users/me/identities/${identityId}`);
 };
+
+export const getAppPasswords = (all = false) => getData("/auth/app-passwords", { params: all ? { all: true } : undefined });
+export const createAppPassword = (name) => postData("/auth/app-passwords", { name });
+export const revokeAppPassword = (id) => deleteData(`/auth/app-passwords/${encodeURIComponent(id)}`);

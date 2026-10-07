@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import express from "express";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -46,6 +47,23 @@ const [
 );
 
 const { downloadTracker, DownloadTracker } = trackerModule;
+const { default: playlistsRouter } = await import("../../backend/routes/playlists/index.js");
+const { default: requestsRouter } = await import("../../backend/routes/requests.js");
+const history = await import("../../backend/services/aurralHistoryService.js");
+let requestUser = { id: 1, role: "admin" };
+const app = express();
+app.use(express.json());
+app.use((req, _res, next) => { req.user = requestUser; next(); });
+app.use("/api/playlists", playlistsRouter);
+app.use("/api/requests", requestsRouter);
+const server = await new Promise((resolve) => {
+  const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+});
+const baseUrl = `http://127.0.0.1:${server.address().port}`;
+async function apiRequest(route, method = "GET") {
+  const response = await fetch(`${baseUrl}${route}`, { method });
+  return { status: response.status, body: await response.json() };
+}
 
 const routes = new Map();
 const route = (method) => (routePath, ...handlers) => {
@@ -144,10 +162,182 @@ function addAlbumJob(trackName, requestGroupId = "group-1") {
 
 test.beforeEach(() => {
   downloadTracker.clearAll();
+  requestUser = { id: 1, role: "admin" };
 });
 
 test.after(async () => {
+  await new Promise((resolve) => server.close(resolve));
   await cleanupIsolatedState(isolatedState);
+});
+
+test("cancelling one Library download preserves monitoring and rejects finished work", async () => {
+  const fixture = createLibraryAlbum();
+  const pending = fixture.jobFor(0);
+  const untouched = fixture.jobFor(1);
+  const cancelled = await apiRequest(`/api/playlists/jobs/${pending}/cancel`, "POST");
+  assert.equal(cancelled.status, 200);
+  assert.equal(cancelled.body.status, "cancelled");
+  assert.equal(downloadTracker.getJob(pending).status, "cancelled");
+  assert.equal(downloadTracker.getJob(untouched).status, "pending");
+  assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(fixture.tracks[0].id).monitored, 1);
+  const finished = fixture.jobFor(2);
+  downloadTracker.setDone(finished, "/disposable/finished.flac");
+  assert.equal((await apiRequest(`/api/playlists/jobs/${finished}/cancel`, "POST")).status, 409);
+  assert.equal(downloadTracker.getJob(finished).status, "done");
+  assert.equal((await apiRequest(`/api/playlists/flows/library/tracks/${pending}/research`, "POST")).status, 409);
+  assert.equal(downloadTracker.getJob(pending).status, "cancelled");
+});
+
+test("a Library requester can cancel without flow permission and cannot cancel another requester's song", async () => {
+  const fixture = createLibraryAlbum();
+  const own = fixture.jobFor(0);
+  const other = fixture.jobFor(1);
+  history.recordTrackJobQueued(downloadTracker.getJob(own), { id: 3, username: "owner" });
+  history.recordTrackJobQueued(downloadTracker.getJob(other), { id: 4, username: "other" });
+  history.recordTrackJobSearching(downloadTracker.getJob(own));
+  requestUser = { id: 3, role: "user", permissions: {} };
+  assert.equal((await apiRequest(`/api/playlists/jobs/${other}/cancel`, "POST")).status, 403);
+  assert.equal((await apiRequest("/api/playlists/jobs/unknown-job/cancel", "POST")).status, 404);
+  assert.equal((await apiRequest(`/api/playlists/jobs/${own}/cancel`, "POST")).status, 200);
+  assert.equal(downloadTracker.getJob(own).status, "cancelled");
+  assert.equal(downloadTracker.getJob(other).status, "pending");
+});
+
+test("album-grab request rows include canonical ids and request groups", async () => {
+  const fixture = createLibraryAlbum({ trackCount: 2 });
+  const ids = [fixture.jobFor(0), fixture.jobFor(1)];
+  history.recordAlbumRequested({ albumId: fixture.album.id, albumName: fixture.album.title,
+    managedBy: "aurral", requestGroupId: downloadTracker.getJob(ids[0]).requestGroupId });
+  const { recordAlbumGrabQueued } = await import("../../backend/services/albumGrabActivity.js");
+  recordAlbumGrabQueued({ albumGrab: true, jobId: ids[0], albumGroupJobIds: ids }, ids.map((id) => downloadTracker.getJob(id)));
+  const response = await apiRequest("/api/requests?refresh=1");
+  assert.equal(response.status, 200);
+  const rows = response.body.filter((item) => ids.includes(item.jobId));
+  assert.equal(rows.length, 2);
+  for (const row of rows) {
+    assert.equal(row.canonicalAlbumId, String(fixture.album.id));
+    assert.equal(row.albumGrab.canonicalAlbumId, String(fixture.album.id));
+    assert.equal(row.requestGroupId, downloadTracker.getJob(row.jobId).requestGroupId);
+  }
+  const albumRequest = response.body.find((item) => item.kind === "album_requested" && item.albumId === String(fixture.album.id));
+  assert.equal(albumRequest.canonicalAlbumId, String(fixture.album.id));
+  assert.equal(albumRequest.requestGroupId, downloadTracker.getJob(ids[0]).requestGroupId);
+});
+
+test("track cancellation keeps failed provider cleanup pending and succeeds after recovery", async (t) => {
+  const fixture = createLibraryAlbum();
+  const id = fixture.jobFor(0);
+  downloadTracker.setDownloading(id);
+  downloadTracker.updateDownloadMetadata(id, { downloadSource: "usenet", downloadClient: "sabnzbd", downloadClientId: "disposable-queue" });
+  const first = await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST");
+  assert.equal(first.status, 200);
+  assert.equal(first.body.status, "cancel_requested");
+  assert.equal(first.body.cleanupFailed, true);
+  const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
+  const client = getDownloadClient("sabnzbd");
+  t.mock.method(client, "isConfigured", () => true);
+  t.mock.method(client, "deleteQueueItem", async () => true);
+  t.mock.method(client, "deleteHistoryItem", async () => true);
+  const recovered = await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST");
+  assert.equal(recovered.body.status, "cancelled");
+  assert.equal(recovered.body.cleanupFailed, false);
+  assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(fixture.tracks[0].id).monitored, 1);
+});
+
+test("track cancellation respects private flow ownership", async () => {
+  const { flowPlaylistConfig } = await import("../../backend/services/playlists/flowPlaylistConfig.js");
+  const flow = flowPlaylistConfig.createFlow({ name: "Private cancellation fixture", ownerUserId: 4 });
+  const id = downloadTracker.addJob({ artistName: "Artist", trackName: "Private song" }, flow.id);
+  requestUser = { id: 3, role: "user", permissions: { accessFlow: true } };
+  assert.equal((await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST")).status, 404);
+  assert.equal(downloadTracker.getJob(id).status, "pending");
+  requestUser = { id: 4, role: "user", permissions: { accessFlow: true } };
+  assert.equal((await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST")).status, 200);
+});
+
+test("cancelling an album leader keeps its held peer and shared transfer running", async () => {
+  const fixture = createLibraryAlbum({ trackCount: 2 });
+  const leader = fixture.jobFor(0);
+  const peer = fixture.jobFor(1);
+  downloadTracker.setDownloading(leader);
+  downloadTracker.setDownloading(peer);
+  downloadTracker.markSlskdDispatched(leader);
+  downloadTracker.updateDownloadMetadata(leader, { downloadSource: "deemix", downloadClientId: "shared-transfer" });
+  const honker = await import("../../backend/services/honkerDb.js");
+  const payload = { jobId: leader, playlistId: "library", playlistGeneration: 0, phase: "poll", albumGrab: true, albumGroupJobIds: [leader, peer], queueUuid: "shared-transfer" };
+  honker.getPipelineQueue().enqueue(payload);
+  const response = await apiRequest(`/api/playlists/jobs/${leader}/cancel`, "POST");
+  assert.equal(response.status, 200);
+  assert.equal(response.body.status, "cancelled");
+  assert.equal(downloadTracker.getJob(peer).status, "downloading");
+  assert.equal(downloadTracker.getJob(peer).downloadClientId, "shared-transfer");
+  const { resolveTransferredDownloadPayload } = await import("../../backend/services/downloadJobs/downloadOwnership.js");
+  const continued = resolveTransferredDownloadPayload(payload);
+  assert.equal(continued.jobId, peer);
+  assert.equal(cancellation.isPipelinePayloadActive(continued), true);
+  assert.ok(honker.listHonkerJobs("slskd-pipeline").some((row) => row.payload.jobId === peer));
+});
+
+test("a cancelled single song can be searched again and the worker takes it", async () => {
+  setDownloadSourceConfigured(false);
+  const id = downloadTracker.addJob({ artistName: "Single Artist", trackName: "Single song" }, "library");
+  assert.equal((await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST")).body.status, "cancelled");
+  const { processPlaylistOperation } = await import("../../backend/services/playlists/playlistOperations.js");
+  try {
+    const result = await processPlaylistOperation({ kind: "shared-playlist-research-track", playlistId: "library", jobId: id });
+    assert.equal(result.success, true);
+    const deadline = Date.now() + 5000;
+    while (downloadTracker.getJob(id).status === "pending" && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(downloadTracker.getJob(id).status, "failed");
+  } finally {
+    await downloadWorker.stopAndDrain();
+  }
+});
+
+test("requeueing a Library job refreshes the cached activity response", async () => {
+  const fixture = createLibraryAlbum();
+  const id = fixture.jobFor(0);
+  downloadTracker.setFailed(id, "No match");
+  history.recordTrackJobFailed(downloadTracker.getJob(id), "No match");
+  const before = await apiRequest("/api/requests?refresh=1");
+  assert.equal(before.body.find((item) => item.jobId === id).status, "failed");
+  const { processPlaylistOperation } = await import("../../backend/services/playlists/playlistOperations.js");
+  const result = await processPlaylistOperation({ kind: "shared-playlist-research-track", playlistId: "library", jobId: id });
+  assert.equal(result.success, true);
+  try {
+    const after = await apiRequest("/api/requests");
+    assert.equal(after.body.find((item) => item.jobId === id).status, "processing");
+  } finally {
+    await downloadWorker.stopAndDrain();
+  }
+});
+
+test("the web activity cache notices job changes committed by another process", async () => {
+  const fixture = createLibraryAlbum();
+  const id = fixture.jobFor(0);
+  history.recordTrackJobQueued(downloadTracker.getJob(id));
+  const script = `
+    import { createRequire } from 'node:module';
+    const Database = createRequire(import.meta.url)('better-sqlite3');
+    const db = new Database(process.argv[1]);
+    db.prepare("UPDATE playlist_download_jobs SET status = 'done', completed_at = ? WHERE id = ?").run(Date.now(), process.argv[2]);
+    db.close();
+  `;
+  const previousMode = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
+  try {
+    const before = await apiRequest("/api/requests?refresh=1");
+    assert.equal(before.body.find((item) => item.jobId === id).status, "pending");
+    await promisify(execFile)(process.execPath, ["--input-type=module", "-e", script, isolatedState.dbPath, id]);
+    assert.equal(downloadTracker.getJob(id).status, "done");
+    const after = await apiRequest("/api/requests");
+    assert.equal(after.body.find((item) => item.jobId === id).status, "completed");
+  } finally {
+    process.env.NODE_ENV = previousMode;
+    downloadTracker.reconcileCommittedJobs();
+  }
 });
 
 test("restart returns interrupted album jobs to pending and never revives cancelled work", () => {

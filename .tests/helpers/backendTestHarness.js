@@ -10,6 +10,7 @@ const repoRoot = join(__dirname, "..", "..");
 
 const RESET_TABLES = [
   "sessions",
+  "app_passwords",
   "user_identities",
   "lastfm_link_states",
   "subsonic_stars",

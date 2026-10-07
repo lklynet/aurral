@@ -13,6 +13,7 @@ export function ModalShell({
   footer,
   disableClose = false,
   className = "",
+  initialFocusRef,
 }) {
   const titleId = useId();
   const descriptionId = useId();
@@ -20,6 +21,7 @@ export function ModalShell({
     open,
     onClose,
     closeDisabled: disableClose,
+    initialFocusRef,
   });
 
   if (!open) return null;

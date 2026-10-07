@@ -386,6 +386,11 @@ export function registerDownloads(router) {
         trackMbid: track.trackMbid,
       });
       if (monitoredTrack) {
+        const { recordTrackJobQueued } = await import("../../../services/aurralHistoryService.js");
+        const { downloadTracker } = await import("../../../services/downloadJobs/downloadTracker.js");
+        for (const jobId of monitoredTrack.queuedJobIds) {
+          recordTrackJobQueued(downloadTracker.getJob(jobId), req.user);
+        }
         await invalidateActivityRequestsCache();
         return res.status(202).json({
           success: true,
@@ -460,7 +465,7 @@ export function registerDownloads(router) {
       const { recordTrackJobQueued } = await import(
         "../../../services/aurralHistoryService.js"
       );
-      recordTrackJobQueued(downloadTracker.getJob(jobId));
+      recordTrackJobQueued(downloadTracker.getJob(jobId), req.user);
       await invalidateActivityRequestsCache();
       await downloadWorker.start();
       return res.status(202).json({ success: true, queued: true, jobId });

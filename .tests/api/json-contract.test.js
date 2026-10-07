@@ -146,7 +146,7 @@ test("sign-in, bootstrap, and identity preserve their public response fields", a
   const bootstrap = await call("/api/health/bootstrap", { authenticated: false });
   fields(bootstrap, { status: "string", authRequired: "boolean", onboardingRequired: "boolean", appVersion: "string", api: "object" });
   fields(bootstrap.api, { version: "number", features: "array" });
-  for (const feature of ["discover", "flows", "activity", "review", "trackDownloads"]) {
+  for (const feature of ["discover", "flows", "activity", "review", "trackDownloads", "appPasswords", "linkSearch"]) {
     assert.ok(bootstrap.api.features.includes(feature), `missing implemented capability ${feature}`);
   }
   const signedIn = await call("/api/health/bootstrap");

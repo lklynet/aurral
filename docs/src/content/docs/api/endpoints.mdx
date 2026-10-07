@@ -24,11 +24,14 @@ can change Aurral, Lidarr, files, users, or external services.
 | `GET` | `/api/health` | Detailed application health |
 | `GET` | `/api/health/ws` | WebSocket connection statistics |
 | `POST` | `/api/health/stream-token` | Issue a short-lived token for media streams |
-| `POST` | `/api/auth/login` | Create a password-login session |
+| `POST` | `/api/auth/login` | Create a session with an account or app password |
+| `GET` | `/api/auth/app-passwords` | List the current user's devices. Administrators can pass `all=true` for every user |
+| `POST` | `/api/auth/app-passwords` | Create a device with `{ "name": "Phone" }` and return its secret once. Requires a recent web session |
+| `DELETE` | `/api/auth/app-passwords/:id` | Revoke an owned device. Administrators can revoke any device |
 | `POST` | `/api/auth/logout` | End a login session |
 | `GET` | `/api/auth/me` | Current authenticated identity |
-| `GET` | `/api/auth/api-key` | Read or create the instance API key |
-| `POST` | `/api/auth/api-key/rotate` | Replace the instance API key |
+| `GET` | `/api/auth/api-key` | Read or create the instance API key. Administrators only |
+| `POST` | `/api/auth/api-key/rotate` | Replace the instance API key. Administrators only |
 | `POST` | `/api/auth/reauth` | Confirm the current password with `{ "currentPassword": "…" }` before a sensitive account change |
 | `GET` | `/api/auth/oidc/login` | Start an OpenID Connect login |
 | `POST` | `/api/auth/oidc/exchange` | Exchange an OpenID Connect code for a session |
@@ -202,15 +205,40 @@ detail route instead.
 | --- | --- | --- |
 | `GET` | `/api/search` | Search artists, albums, or tags |
 | `GET` | `/api/search/unified` | Unified search suggestions or results |
+| `GET` | `/api/search/link` | Find the MusicBrainz artist, album, and track for a streaming-service link |
 | `GET` | `/api/requests` | List current artist and album requests |
 | `DELETE` | `/api/requests/:mbid` | Remove an artist request |
 | `DELETE` | `/api/requests/album/:albumId` | Remove an album request |
 
 `GET /api/search` requires `q`. Its optional `scope` is `artist` (default),
 `album`, or `tag`. The route also accepts `limit` and `offset`. Album searches
-accept `releaseTypes` and `sort`. `GET /api/requests` accepts `refresh=true` to
+accept `releaseTypes` and `sort`. `GET /api/search/link` requires an encoded `url`. It accepts album, track, and
+artist links from `open.spotify.com`, `music.apple.com`, `music.youtube.com`,
+`tidal.com`, `deezer.com`, `song.link`, and `album.link`. It returns:
+
+```json
+{
+  "kind": "track",
+  "artist": { "name": "Daft Punk", "mbid": "056e4f3e-d505-4dad-8ec1-d04f521cbb56" },
+  "album": { "title": "Discovery", "mbid": "48117b90-a16e-34ca-a514-19c702df1158" },
+  "track": { "title": "One More Time", "mbid": null },
+  "source": "appleMusic"
+}
+```
+
+`source` is `spotify`, `appleMusic`, `youtubeMusic`, `tidal`, `deezer`, or
+`songlink`. A `null` ID means no MusicBrainz match. YouTube Music track links do
+not report an album, so their `album` is `null`. Aurral reads names from each
+service's public pages or lookup API. Spotify album and track links go through
+song.link. Other links return `400`. A link the service cannot find returns
+`404`, and an unreachable service returns `502`. Aurral caches each link's names
+for a day.
+
+`GET /api/requests` accepts `refresh=true` to
 rebuild the list. A refreshed list reuses Lidarr's queue and history when
-Aurral read them in the last 10 seconds.
+Aurral read them in the last 10 seconds. Aurral items include
+`canonicalAlbumId` and `requestGroupId` when they're known, and album downloads
+include `albumGrab.canonicalAlbumId`.
 
 ## Discovery
 
@@ -270,6 +298,7 @@ The routes call a static playlist a shared playlist.
 | `GET` | `/api/playlists/status` | Download worker, flow, and static playlist status |
 | `GET` | `/api/playlists/jobs` | List Library and accessible flow and playlist jobs |
 | `GET` | `/api/playlists/jobs/:playlistId` | List jobs for a flow or static playlist |
+| `POST` | `/api/playlists/jobs/:jobId/cancel` | Cancel a pending or downloading song without changing its monitoring |
 | `POST` | `/api/playlists/research-missing` | Re-search every missing track in Wanted |
 | `GET` | `/api/playlists/jobs/:jobId/manual-search/sources` | List the download clients available for a manual search |
 | `POST` | `/api/playlists/jobs/:jobId/manual-search` | Search one download client for a track. Send `sourceId`, and `mode` set to `missing` or `replacement` |
@@ -315,6 +344,16 @@ The routes call a static playlist a shared playlist.
 
 The repeated `playlists` segment in
 `/api/playlists/playlists/:playlistId/retry-cycle` is the current route.
+
+Cancelling a song needs `accessFlow` and access to its playlist, or the user who
+requested the Library download. Other users get `403`. The track stays
+monitored, and other songs in the same album download keep downloading. The
+response holds the job's new `status` and `cleanupFailed`. When a download
+client can't confirm cleanup, the job stays `cancel_requested`; cancel again
+once the client is back. A finished job returns `409`.
+
+Searching again for a cancelled song from an album returns `409`. Request the
+album again to retry it. Other cancelled songs can be searched again.
 
 ### Spotify import
 

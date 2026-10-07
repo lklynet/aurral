@@ -56,3 +56,21 @@ test("a due schedule runs in background processes that exit once idle", { timeou
   assert.deepEqual(honker.listHonkerJobs("system-task-maintenance"), []);
   assert.deepEqual(honker.listBackgroundGroupsWithWork(), []);
 });
+
+test("the download owner cancels one persisted job over IPC", { timeout: 30000 }, async (t) => {
+  const { downloadTracker } = await import("../../backend/services/downloadJobs/downloadTracker.js");
+  const jobId = downloadTracker.addJob({ artistName: "Disposable IPC Artist", trackName: "Waiting song" }, "library");
+  downloadTracker.setPending(jobId, "Waiting for retry", { asRetryCycle: true });
+  const supervisor = createBackgroundProcessSupervisor({ groups: ["downloads"] });
+  process.env.NODE_ENV = "production";
+  t.after(async () => {
+    await supervisor.stop();
+    process.env.NODE_ENV = "test";
+    downloadTracker.reconcileCommittedJobs();
+  });
+  supervisor.start();
+  const result = await supervisor.request("downloads", "cancelTrackDownload", [jobId]);
+  assert.equal(result.status, "cancelled");
+  assert.equal(result.cleanupFailed, false);
+  assert.equal(downloadTracker.getJob(jobId).status, "cancelled");
+});
