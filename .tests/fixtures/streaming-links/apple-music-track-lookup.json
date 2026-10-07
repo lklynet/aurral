@@ -1,0 +1,38 @@
+{
+  "resultCount": 1,
+  "results": [
+    {
+      "wrapperType": "track",
+      "kind": "song",
+      "artistId": 5468295,
+      "collectionId": 697194953,
+      "trackId": 697195462,
+      "artistName": "Daft Punk",
+      "collectionName": "Discovery",
+      "trackName": "One More Time",
+      "collectionCensoredName": "Discovery",
+      "trackCensoredName": "One More Time",
+      "artistViewUrl": "https://music.apple.com/us/artist/daft-punk/5468295?uo=4",
+      "collectionViewUrl": "https://music.apple.com/us/album/one-more-time/697194953?i=697195462&uo=4",
+      "trackViewUrl": "https://music.apple.com/us/album/one-more-time/697194953?i=697195462&uo=4",
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/5d/93/d8/5d93d83f-ad1e-da4d-1d79-9937bdff24ec/mzaf_14396932211949300852.plus.aac.p.m4a",
+      "artworkUrl30": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/fd/4a/77/fd4a77db-0ebc-d043-41a2-f32fa1bb0fb4/dj.qrikkdwj.jpg/30x30bb.jpg",
+      "artworkUrl60": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/fd/4a/77/fd4a77db-0ebc-d043-41a2-f32fa1bb0fb4/dj.qrikkdwj.jpg/60x60bb.jpg",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/fd/4a/77/fd4a77db-0ebc-d043-41a2-f32fa1bb0fb4/dj.qrikkdwj.jpg/100x100bb.jpg",
+      "collectionPrice": 9.99,
+      "trackPrice": 1.29,
+      "releaseDate": "2000-11-30T08:00:00Z",
+      "collectionExplicitness": "notExplicit",
+      "trackExplicitness": "notExplicit",
+      "discCount": 1,
+      "discNumber": 1,
+      "trackCount": 14,
+      "trackNumber": 1,
+      "trackTimeMillis": 320357,
+      "country": "USA",
+      "currency": "USD",
+      "primaryGenreName": "Dance",
+      "isStreamable": true
+    }
+  ]
+}

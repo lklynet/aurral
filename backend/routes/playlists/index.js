@@ -9,7 +9,7 @@ import { registerSpotifyImport } from "./handlers/spotifyImport.js";
 import { registerListenBrainzImport } from "./handlers/listenbrainzImport.js";
 import { registerLastfmImport } from "./handlers/lastfmImport.js";
 import { registerYoutubeMusicImport } from "./handlers/youtubeMusicImport.js";
-import { registerJobs } from "./handlers/jobs.js";
+import { registerJobs, registerJobCancellation } from "./handlers/jobs.js";
 
 const router = express.Router();
 
@@ -17,6 +17,7 @@ registerStream(router);
 registerArtworkServe(router);
 
 router.use(requireAuth);
+registerJobCancellation(router);
 router.use(requirePermission("accessFlow"));
 
 registerArtworkManagement(router);

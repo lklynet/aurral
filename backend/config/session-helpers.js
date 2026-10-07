@@ -1,11 +1,12 @@
 import crypto from "crypto";
+import { getAppPasswordUser } from "../services/appPasswordService.js";
 import { db } from "./db-sqlite.js";
 import { userOps } from "../db/helpers/index.js";
 
 const DEFAULT_EXPIRY_HOURS = 24 * 30;
 
 const insertSessionStmt = db.prepare(
-  "INSERT INTO sessions (user_id, token, created_at, expires_at, ip_address, user_agent, reauthenticated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  "INSERT INTO sessions (user_id, token, created_at, expires_at, ip_address, user_agent, reauthenticated_at, app_password_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 );
 const getSessionByTokenStmt = db.prepare("SELECT * FROM sessions WHERE token = ? LIMIT 1");
 const deleteSessionByTokenStmt = db.prepare("DELETE FROM sessions WHERE token = ?");
@@ -29,7 +30,7 @@ const toUserPayload = (user) => {
   };
 };
 
-export const createSession = (userId, ipAddress = null, userAgent = null) => {
+export const createSession = (userId, ipAddress = null, userAgent = null, appPasswordId = null) => {
   const now = Date.now();
   const expiresAt = now + getSessionExpiryMs();
   const token = crypto.randomBytes(32).toString("hex");
@@ -40,7 +41,8 @@ export const createSession = (userId, ipAddress = null, userAgent = null) => {
     expiresAt,
     ipAddress ? String(ipAddress).slice(0, 255) : null,
     userAgent ? String(userAgent).slice(0, 1024) : null,
-    now,
+    appPasswordId ? null : now,
+    appPasswordId,
   );
   return {
     token,
@@ -64,6 +66,10 @@ export const getSessionByToken = (token) => {
     deleteSessionByTokenStmt.run(rawToken);
     return null;
   }
+  if (row.app_password_id && !getAppPasswordUser(row.app_password_id)) {
+    deleteSessionByTokenStmt.run(rawToken);
+    return null;
+  }
   const user = userOps.getUserAuthById(row.user_id);
   if (!user || user.status !== "active") {
     deleteSessionByTokenStmt.run(rawToken);
@@ -71,13 +77,14 @@ export const getSessionByToken = (token) => {
   }
   return {
     id: row.id,
+    appPasswordId: row.app_password_id || null,
     token: row.token,
     userId: row.user_id,
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     ipAddress: row.ip_address,
     userAgent: row.user_agent,
-    reauthenticatedAt: row.reauthenticated_at || row.created_at,
+    reauthenticatedAt: row.reauthenticated_at || (row.app_password_id ? 0 : row.created_at),
     user: toUserPayload(user),
   };
 };

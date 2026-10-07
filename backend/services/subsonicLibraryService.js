@@ -449,6 +449,20 @@ export function getSong(value, user) {
   return track?.identityKey ? toSong(library, track) : null;
 }
 
+export function findUniqueLibrarySong(artist, title, user) {
+  if (!String(artist).trim() || !String(title).trim()) return null;
+  const library = indexFocusedLibrary(getLibraryForTrackMatches({
+    source: "all",
+    availableOnly: true,
+    titles: [String(title).trim()],
+  }), starredAtFor(user));
+  const songs = library.tracks.map((track) => toSong(library, track)).filter((song) =>
+    song.artist.toLocaleLowerCase() === String(artist).trim().toLocaleLowerCase()
+      && song.title.toLocaleLowerCase() === String(title).trim().toLocaleLowerCase(),
+  );
+  return songs.length === 1 ? songs[0] : null;
+}
+
 export function getMusicDirectory(value, user) {
   if (value === "root" || value === "1") {
     const rootId = value === "1" ? "1" : "root";

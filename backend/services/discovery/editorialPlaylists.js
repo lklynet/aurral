@@ -6,10 +6,7 @@ import {
   searchEditorialPlaylists,
   validateDeezerPlaylistId,
 } from "../importLists/deezerPlaylists.js";
-import {
-  musicbrainzResolveArtistMbidByName,
-  resolveDeezerAlbumToMbid,
-} from "../apiClients/index.js";
+import { resolveArtistAndAlbumMbids } from "../apiClients/index.js";
 import { getUserDiscovery } from "./userDiscovery.js";
 
 const PROVIDER = "deezer-playlist";
@@ -84,13 +81,12 @@ export async function resolveEditorialTrackLinks({ artistName, albumName, deezer
   if (!artist) {
     throw Object.assign(new Error("artistName is required"), { statusCode: 400 });
   }
-  const album = String(albumName || "").trim();
   const albumId = String(deezerAlbumId || "").trim();
-  const [artistMbid, albumMbid] = await Promise.all([
-    musicbrainzResolveArtistMbidByName(artist),
-    album && /^\d+$/.test(albumId) ? resolveDeezerAlbumToMbid(artist, album, albumId) : null,
-  ]);
-  return { artistMbid: artistMbid || null, albumMbid: albumMbid || null };
+  return resolveArtistAndAlbumMbids({
+    artistName: artist,
+    albumName: /^\d+$/.test(albumId) ? albumName : "",
+    deezerAlbumId: albumId,
+  });
 }
 
 export async function getEditorialPlaylist(user, value) {

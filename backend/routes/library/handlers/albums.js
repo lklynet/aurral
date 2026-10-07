@@ -143,6 +143,7 @@ export function registerAlbums(router) {
         );
         recordAlbumRequested({
           albumId: album.id,
+          requestGroupId: album.requestGroupId,
           albumName: album.albumName || albumName,
           artistName: album.artistName,
           artistMbid: album.mbid || album.foreignAlbumId,
@@ -208,6 +209,7 @@ export function registerAlbums(router) {
         };
         recordAlbumRequested({
           ...historyAlbum,
+          requestGroupId: result?.requestGroupId || result?.album?.requestGroupId,
           searching: result?.status === "available" ? false : searching,
         });
         if (result?.status === "available") {

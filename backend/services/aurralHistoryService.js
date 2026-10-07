@@ -274,6 +274,7 @@ export const recordAlbumRequested = ({
   artistName,
   artistMbid,
   managedBy = null,
+  requestGroupId = null,
   searching: requestedSearching = false,
   user = null,
 } = {}) => {
@@ -299,6 +300,8 @@ export const recordAlbumRequested = ({
       artistName: artist,
       artistMbid,
       ...(managedBy ? { managedBy } : {}),
+      ...(managedBy === "aurral" && albumId != null ? { canonicalAlbumId: String(albumId) } : {}),
+      ...(requestGroupId ? { requestGroupId } : {}),
       ...requester,
     },
   });
@@ -927,6 +930,8 @@ export const recordTrackJobActivity = ({
   sourceFilename = null,
   releaseTitle = null,
   albumMbid = null,
+  requestGroupId = null,
+  user = null,
   href = null,
 } = {}) => {
   const id = String(jobId || "").trim();
@@ -938,6 +943,9 @@ export const recordTrackJobActivity = ({
   const clientLabel = resolveDownloadClientLabel(downloadSource, downloadClient);
   const filename = String(sourceFilename || "").trim() || null;
   const release = String(releaseTitle || "").trim() || null;
+  const previous = dbOps.getAurralHistoryById(stableId("track_download", id));
+  const requester = requesterFromMetadata(previous?.metadata) || requesterFromUser(user);
+  const groupId = requestGroupId || previous?.metadata?.requestGroupId || null;
   return upsertAurralHistory({
     referenceId: id,
     kind: "track_download",
@@ -954,6 +962,9 @@ export const recordTrackJobActivity = ({
       playlistId,
       downloadSource: downloadSource || "slskd",
       downloadClient: downloadClient || null,
+      ...(albumMbid ? { albumMbid } : {}),
+      ...(groupId ? { requestGroupId: groupId } : {}),
+      ...requester,
       ...(filename ? { sourceFilename: filename } : {}),
       ...(release ? { releaseTitle: release } : {}),
     },
@@ -965,6 +976,8 @@ const trackJobFields = (job) => ({
   trackName: job?.trackName,
   artistName: job?.artistName,
   albumName: job?.albumName,
+  albumMbid: job?.albumMbid,
+  requestGroupId: job?.requestGroupId,
   playlistId: job?.playlistId || job?.playlistType,
   downloadSource: job?.downloadSource,
   downloadClient: job?.downloadClient,
@@ -981,10 +994,21 @@ export const recordTrackJobSearching = (job) =>
     title: `Searching ${resolveDownloadClientLabel(job?.downloadSource, job?.downloadClient)} for ${job?.trackName || "track"}`,
   });
 
-export const recordTrackJobQueued = (job) => {
+export const getTrackJobRequesterId = (jobId) =>
+  requesterFromMetadata(dbOps.getAurralHistoryById(stableId("track_download", jobId))?.metadata)?.userId ?? null;
+
+export const recordTrackJobQueued = (job, user = null) => {
   const jobId = String(job?.id || "").trim();
-  if (!jobId || dbOps.getAurralHistoryById(stableId("track_download", jobId))) return null;
+  if (!jobId) return null;
+  const existing = dbOps.getAurralHistoryById(stableId("track_download", jobId));
+  if (existing) {
+    if (user?.id != null && existing.metadata?.userId == null) {
+      dbOps.insertAurralHistory({ ...existing, metadata: { ...existing.metadata, ...requesterFromUser(user) } });
+    }
+    return null;
+  }
   return recordTrackJob(job, {
+    user,
     status: "pending",
     statusLabel: "Queued",
     title: `Queued ${job?.trackName || "track"}`,
@@ -1077,6 +1101,8 @@ export const toHistoryRequestItem = (entry, options = {}) => {
     artistName: entry.metadata?.artistName || null,
     albumName,
     albumId: entry.metadata?.albumId ? String(entry.metadata.albumId) : null,
+    canonicalAlbumId: options.canonicalAlbumId || entry.metadata?.canonicalAlbumId || null,
+    requestGroupId: options.requestGroupId || entry.metadata?.requestGroupId || null,
     requestedBy: requester
       ? { id: requester.userId, username: requester.username || null }
       : null,
@@ -1152,6 +1178,15 @@ export const getAurralHistoryRequests = async (lidarrClient = null, user = null)
 
   const now = Date.now();
   const jobsById = new Map(jobs.map((job) => [job.id, job]));
+  const canonicalAlbumIds = new Map();
+  const resolveCanonicalAlbumId = (albumMbid) => {
+    if (!albumMbid) return null;
+    if (!canonicalAlbumIds.has(albumMbid)) {
+      const album = getLibraryForAlbumReferences({ source: "all", references: [albumMbid] }).albums[0];
+      canonicalAlbumIds.set(albumMbid, album?.id != null ? String(album.id) : null);
+    }
+    return canonicalAlbumIds.get(albumMbid);
+  };
   const canViewEntry = (entry) => canViewPlaylistActivity(
     user, entry.metadata?.playlistId || entry.metadata?.playlistType, entry.metadata?.ownerUserId,
   );
@@ -1166,6 +1201,9 @@ export const getAurralHistoryRequests = async (lidarrClient = null, user = null)
     .map((entry) => {
       const jobId = String(entry.metadata?.jobId || "").trim();
       const job = jobId ? jobsById.get(jobId) : null;
+      const manifest = expanded.manifests.get(entry.metadata?.albumGrabId);
+      const canonicalAlbumId = entry.metadata?.canonicalAlbumId ||
+        resolveCanonicalAlbumId(job?.albumMbid || entry.metadata?.albumMbid || manifest?.albumMbid);
       const blockedJob = entry.status === "blocked" ? job : null;
       const sourceFilename =
         (blockedJob && resolveBlockedJobSourceFilename(blockedJob)) ||
@@ -1190,7 +1228,9 @@ export const getAurralHistoryRequests = async (lidarrClient = null, user = null)
       }
       return toHistoryRequestItem(entry, {
         sourceFilename, releaseTitle, albumName, trackName,
-        albumGrab: expanded.manifests.get(entry.metadata?.albumGrabId),
+        canonicalAlbumId,
+        requestGroupId: job?.requestGroupId || manifest?.requestGroupId,
+        albumGrab: manifest ? { ...manifest, canonicalAlbumId } : null,
       });
     });
 };
