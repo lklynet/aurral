@@ -121,6 +121,5 @@ export const hasDownloadWorkerActivity = (status) => {
 
 export const hasReviewActivity = (status) => {
   if (!status) return false;
-  const stats = getCombinedActivityStats(status);
-  return stats.blocked > 0;
+  return statCount(status.reviewCount) > 0;
 };

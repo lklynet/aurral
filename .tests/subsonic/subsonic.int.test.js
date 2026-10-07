@@ -9,12 +9,13 @@ import {
   startServerProcess,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }] =
+const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, libraryStore] =
   await setupIsolatedBackend(
     "subsonic-contract",
     "backend/config/db-sqlite.js",
     "backend/db/helpers/index.js",
     "backend/middleware/passwordHash.js",
+    "backend/services/libraryMediaStore.js",
   );
 
 let aurral;
@@ -47,6 +48,13 @@ test.before(async () => {
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
   userOps.createUser("alice", hashPassword("password123"), "user");
   userOps.createUser("bob", hashPassword("bob-password"), "user");
+  for (const name of ["The Cure", "Los Lobos", "2Pac", "Cure Tribute", "Alpha", "Theater", "!Bang", "El Bicho", "éclair"]) {
+    const artist = libraryStore.upsertLibraryArtist({ identityKey: `index-artist:${name}`, name });
+    const album = libraryStore.upsertLibraryAlbum({ identityKey: `index-album:${name}`, artistId: artist.id, title: name, albumArtist: name });
+    const track = libraryStore.upsertLibraryTrack({ identityKey: `index-track:${name}`, title: name, artistName: name });
+    libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+    libraryStore.upsertLibraryMediaFile({ trackId: track.id, source: "lidarr", path: `/test/${name}.flac`, format: "flac", available: true });
+  }
   aurral = await startServerProcess({ extraEnv: { CORS_ORIGIN: "" } });
 });
 
@@ -232,4 +240,15 @@ test("keeps the Subsonic contract after a process restart", async () => {
   aurral = await startServerProcess();
   const result = await request("ping", { f: "json" });
   assert.equal(result.json.status, "ok");
+});
+
+test("sorts both artist indexes using their advertised ignored articles", async () => {
+  for (const [method, payload] of [["getArtists", "artists"], ["getIndexes", "indexes"]]) {
+    const result = await request(method, { f: "json" });
+    const sections = result.json[payload].index;
+    assert.deepEqual(sections.map((section) => section.name), ["A", "B", "C", "L", "T", "É", "#"]);
+    assert.deepEqual(sections.find((section) => section.name === "C").artist.map((artist) => artist.name), ["The Cure", "Cure Tribute"]);
+    assert.deepEqual(sections.find((section) => section.name === "L").artist.map((artist) => artist.name), ["Los Lobos"]);
+    assert.deepEqual(sections.at(-1).artist.map((artist) => artist.name), ["!Bang", "2Pac"]);
+  }
 });

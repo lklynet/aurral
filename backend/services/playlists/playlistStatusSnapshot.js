@@ -166,6 +166,7 @@ export function getPlaylistStatusSnapshot({
   const scopedStats = downloadTracker.getStatsByPlaylistType([
     ...flowIds,
     ...staticPlaylistIds,
+    "library",
   ]);
   const staticPlaylists = rawStaticPlaylists.map((playlist) => {
     const playlistStats = scopedStats?.[playlist.id];
@@ -210,6 +211,7 @@ export function getPlaylistStatusSnapshot({
   }));
   const stats = aggregateStats(scopedStats, flowIds);
   const sharedStats = aggregateStats(scopedStats, staticPlaylistIds);
+  const reviewCount = stats.blocked + sharedStats.blocked + Number(scopedStats.library?.blocked || 0);
   const nextRunMessage = formatNextRunMessage(flowsWithOwners);
   const operationQueue = playlistOperationQueue.getStatus();
   const operationWorker = workerStatus?.operationWorker || getPlaylistOperationWorkerStatus();
@@ -262,6 +264,7 @@ export function getPlaylistStatusSnapshot({
     },
     slskd: getDownloadClient("slskd").getStatus(),
     stats,
+    reviewCount,
     flowStats,
     sharedStats,
     sharedPlaylistStats: staticPlaylistStats,
