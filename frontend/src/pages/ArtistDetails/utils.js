@@ -1,7 +1,7 @@
 import {
   RELEASE_LIST_VIEW_MODE_KEY,
-} from "./constants";
-import { TAG_COLORS } from "../discoverUtils";
+} from "./constants.js";
+import { TAG_COLORS } from "../discoverUtils.js";
 import { shouldTriggerAlbumSearch } from "../../utils/albumAddAction.js";
 import { formatDate } from "../../utils/dateTime.js";
 
@@ -251,7 +251,8 @@ export const resolveReleaseLibraryDisplay = (libraryInfo, downloadStatus) => {
   const trackCount = Number(libraryInfo.trackCount || 0);
   const hasFiles = sizeOnDisk > 0 || trackFileCount > 0;
   const isComplete =
-    trackCount > 0 ? percent >= 100 || trackFileCount >= trackCount : hasFiles;
+    libraryInfo.trackListComplete !== false &&
+    (trackCount > 0 ? percent >= 100 || trackFileCount >= trackCount : hasFiles);
 
   if (isComplete) {
     return withAction({
@@ -281,10 +282,10 @@ export const resolveReleaseLibraryDisplay = (libraryInfo, downloadStatus) => {
     });
   }
 
-  if (percent > 0) {
+  if (libraryInfo.trackListComplete === false || percent > 0) {
     return withAction({
       kind: "incomplete",
-      label: `Incomplete · ${percent}%`,
+      label: libraryInfo.trackListComplete === false ? "Incomplete" : `Incomplete · ${percent}%`,
       isComplete: false,
       isInLibrary: true,
     });
