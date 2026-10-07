@@ -116,7 +116,7 @@ function parseStreamingLink(value) {
   }
   const parsed = parsers[source](url);
   if (!parsed) throw unsupportedLink();
-  return { source, ...parsed, cacheKey: `${source}:${parsed.kind || "page"}:${parsed.id}` };
+  return { source, ...parsed, cacheKey: [source, parsed.kind || "page", parsed.id, parsed.country].filter(Boolean).join(":") };
 }
 
 async function fetchUpstream(source, url, { accept = "application/json", headers = {} } = {}) {
@@ -310,7 +310,11 @@ async function lookupLink(link) {
   const cached = lookupCache.get(link.cacheKey);
   if (cached) return cached;
   const result = await lookups[link.source](link);
-  if (!result.artistName || (result.kind === "track" && !result.trackTitle)) {
+  if (
+    !result.artistName ||
+    (result.kind === "track" && !result.trackTitle) ||
+    (result.kind === "album" && !result.albumTitle)
+  ) {
     throw unavailable(link.source, "returned an unreadable response");
   }
   lookupCache.set(link.cacheKey, result);

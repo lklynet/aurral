@@ -158,6 +158,10 @@ test("Apple Music links resolve the artist, album, and recording without reusing
       body: JSON.stringify({ resultCount: 1, results: [{ wrapperType: "collection", artistName: "Daft Punk", collectionName: "Homework" }] }),
       type: "text/javascript; charset=utf-8",
     },
+    "https://itunes.apple.com/lookup?id=697194438&country=us": {
+      body: JSON.stringify({ resultCount: 1, results: [{ wrapperType: "collection", artistName: "Daft Punk" }] }),
+      type: "text/javascript; charset=utf-8",
+    },
   });
 
   const { status, body } = await resolveLink("https://music.apple.com/us/album/one-more-time/697194953?i=697195462");
@@ -173,9 +177,16 @@ test("Apple Music links resolve the artist, album, and recording without reusing
   const otherAlbum = await resolveLink("https://music.apple.com/gb/album/homework/697194438");
   assert.equal(otherAlbum.status, 200);
   assert.deepEqual(otherAlbum.body.album, { title: "Homework", mbid: null });
+
+  const untitled = await resolveLink("https://music.apple.com/us/album/homework/697194438");
+  assert.equal(untitled.status, 502);
+  assert.equal(untitled.body.code, "LINK_SERVICE_UNAVAILABLE");
+  assert.equal((await resolveLink("https://music.apple.com/us/album/homework/697194438")).status, 502);
   assert.deepEqual(requests, [
     "https://itunes.apple.com/lookup?id=697195462&country=us",
     "https://itunes.apple.com/lookup?id=697194438&country=gb",
+    "https://itunes.apple.com/lookup?id=697194438&country=us",
+    "https://itunes.apple.com/lookup?id=697194438&country=us",
   ]);
 });
 
