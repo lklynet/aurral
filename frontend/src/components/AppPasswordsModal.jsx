@@ -66,6 +66,12 @@ export default function AppPasswordsModal({ onClose }) {
     return () => { active = false; };
   }, [created, user.username]);
 
+  const clearCreated = () => {
+    setCreated(null);
+    setQrCode("");
+    setCopied(false);
+  };
+
   const connect = async (event) => {
     event.preventDefault();
     let serverUrl;
@@ -112,7 +118,7 @@ export default function AppPasswordsModal({ onClose }) {
     try {
       await revokeAppPassword(revokeTarget.id);
       setDevices((current) => current.filter((device) => device.id !== revokeTarget.id));
-      if (created?.device.id === revokeTarget.id) setCreated(null);
+      if (created?.device.id === revokeTarget.id) clearCreated();
       setRevokeTarget(null);
     } catch (requestError) {
       setError(errorMessage(requestError));
@@ -134,7 +140,7 @@ export default function AppPasswordsModal({ onClose }) {
             <input id="app-password-secret" className="artist-input" readOnly value={created.secret} autoComplete="off" />
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => void copyPassword()}>{copied ? "Copied" : "Copy password"}</button>
             <p className="app-passwords__meta">Server: {created.server}<br />Username: {user.username}</p>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setCreated(null); setQrCode(""); setCopied(false); setName(""); }}>Connect another app</button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => { clearCreated(); setName(""); }}>Connect another app</button>
           </div>
         ) : (
           <form className="app-passwords__form" onSubmit={(event) => void connect(event)}>
