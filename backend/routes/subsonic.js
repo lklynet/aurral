@@ -5,8 +5,10 @@ import { APP_NAME, APP_VERSION } from "../config/constants.js";
 import { hasPermission, resolveSubsonicTokenUser, resolveUser } from "../middleware/auth.js";
 import { getPlayQueue, savePlayQueue } from "../services/subsonicPlayQueueService.js";
 import { streamSubsonicAudio } from "../services/subsonicTranscodeService.js";
+import { getLyricsBySongId } from "../services/subsonicLyricsService.js";
 import { streamAudioFile } from "../services/audioFileStream.js";
 import {
+  findUniqueLibrarySong,
   getAlbum,
   getAlbumList,
   getArtist,
@@ -47,6 +49,7 @@ const IGNORED_ARTICLES = "The El La Los Las Le Les";
 const SUPPORTED_EXTENSIONS = [
   { name: "formPost", versions: [1] },
   { name: "topSongsByArtistId", versions: [1] },
+  { name: "songLyrics", versions: [1] },
 ];
 const router = express.Router();
 
@@ -434,8 +437,20 @@ async function handleSubsonicRequest(req, res) {
       ? sendResponse(res, format, "ok", null, { albumInfo: {} })
       : sendError(res, format, 70, "Requested data was not found");
   }
+  if (method === "getlyricsbysongid") {
+    const id = getParameter(req, "id");
+    if (!id) return sendError(res, format, 10, "Required parameter is missing: id");
+    return sendResponse(res, format, "ok", null, {
+      lyricsList: { structuredLyrics: await getLyricsBySongId(id, user) },
+    });
+  }
   if (method === "getlyrics") {
-    return sendResponse(res, format, "ok", null, { lyrics: { value: "" } });
+    const song = findUniqueLibrarySong(getParameter(req, "artist"), getParameter(req, "title"), user);
+    const lyrics = song ? await getLyricsBySongId(song.id, user) : [];
+    return sendResponse(res, format, "ok", null, { lyrics: {
+      ...(lyrics.length ? { artist: song.artist, title: song.title } : {}),
+      value: lyrics[0]?.line.map((line) => line.value).join("\n") || "",
+    } });
   }
   if (method === "getinternetradiostations") {
     return sendResponse(res, format, "ok", null, { internetRadioStations: { internetRadioStation: [] } });

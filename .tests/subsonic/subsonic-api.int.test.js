@@ -392,6 +392,87 @@ test("transcodes requested formats and bitrate limits while preserving raw strea
   }
 });
 
+test("returns sidecar and embedded lyrics through both Subsonic lyrics endpoints", async () => {
+  const song = responseJson(await request("getRandomSongs", { size: 1 })).randomSongs.song[0];
+  const sidecar = fixturePath.replace(/\.[^.]+$/, ".lrc");
+  const original = await readFile(fixturePath);
+  const mp3Path = fixturePath.replace(/\.[^.]+$/, ".mp3");
+  try {
+    assert.deepEqual(responseJson(await request("getLyricsBySongId", { id: song.id })).lyricsList, { structuredLyrics: [] });
+    await writeFile(sidecar, "[ar:Canonical Artist]\n[offset:125]\n[00:03.50]Later\n[00:01.234][00:02.00]Earlier\n");
+    const structured = responseJson(await request("getLyricsBySongId", { id: song.id })).lyricsList.structuredLyrics;
+    assert.deepEqual(structured, [{
+      displayArtist: song.artist,
+      displayTitle: song.title,
+      lang: "und",
+      synced: true,
+      offset: 125,
+      line: [{ start: 1234, value: "Earlier" }, { start: 2000, value: "Earlier" }, { start: 3500, value: "Later" }],
+    }]);
+    const legacy = responseJson(await request("getLyrics", { artist: song.artist, title: song.title })).lyrics;
+    assert.equal(legacy.value, "Earlier\nEarlier\nLater");
+    const xml = await request("getLyricsBySongId", { id: song.id, f: "xml" });
+    assert.match(xml.body, /<line start="1234">Earlier<\/line>/);
+    await rm(sidecar);
+    const payload = Buffer.from("\x03eng\x00First line\nSecond line");
+    const frame = Buffer.alloc(10);
+    frame.write("USLT");
+    frame.writeUInt32BE(payload.length, 4);
+    const tag = Buffer.concat([frame, payload]);
+    const header = Buffer.from([73, 68, 51, 3, 0, 0, 0, 0, 0, tag.length]);
+    const audio = Buffer.alloc(417);
+    Buffer.from([255, 251, 144, 100]).copy(audio);
+    await writeFile(mp3Path, Buffer.concat([header, tag, audio, audio, audio]));
+    db.prepare("UPDATE library_media_files SET path = ? WHERE path = ?").run(mp3Path, fixturePath);
+    const embedded = responseJson(await request("getLyricsBySongId", { id: song.id })).lyricsList.structuredLyrics;
+    assert.equal(embedded[0].lang, "eng");
+    assert.equal(embedded[0].synced, false);
+    assert.deepEqual(embedded[0].line, [{ value: "First line" }, { value: "Second line" }]);
+    assert.equal(responseJson(await request("getLyrics", { artist: song.artist, title: song.title })).lyrics.value, "First line\nSecond line");
+    const syncPayload = Buffer.concat([
+      Buffer.from([3]), Buffer.from("eng"), Buffer.from([2, 1, 0]),
+      Buffer.from("Later\x00"), Buffer.from([0, 0, 7, 208]),
+      Buffer.from("Earlier\x00"), Buffer.from([0, 0, 3, 232]),
+    ]);
+    const syncFrame = Buffer.alloc(10);
+    syncFrame.write("SYLT");
+    syncFrame.writeUInt32BE(syncPayload.length, 4);
+    const syncTag = Buffer.concat([syncFrame, syncPayload]);
+    header[9] = syncTag.length;
+    await writeFile(mp3Path, Buffer.concat([header, syncTag, audio, audio, audio]));
+    const synchronized = responseJson(await request("getLyricsBySongId", { id: song.id })).lyricsList.structuredLyrics[0];
+    assert.equal(synchronized.synced, true);
+    assert.deepEqual(synchronized.line, [{ start: 1000, value: "Earlier" }, { start: 2000, value: "Later" }]);
+    const littleEndian = (value) => {
+      const bytes = Buffer.alloc(4);
+      bytes.writeUInt32LE(value);
+      return bytes;
+    };
+    db.prepare("UPDATE library_media_files SET path = ? WHERE path = ?").run(fixturePath, mp3Path);
+    for (const tagName of ["LYRICS", "UNSYNCEDLYRICS"]) {
+      const comment = Buffer.from(`${tagName}=Vorbis first\nVorbis second`);
+      const comments = Buffer.concat([littleEndian(0), littleEndian(1), littleEndian(comment.length), comment]);
+      await writeFile(fixturePath, Buffer.concat([
+        Buffer.from("fLaC"), Buffer.from([0, 0, 0, 34]), Buffer.alloc(34),
+        Buffer.from([132, 0, 0, comments.length]), comments,
+      ]));
+      const vorbis = responseJson(await request("getLyricsBySongId", { id: song.id })).lyricsList.structuredLyrics[0];
+      assert.equal(vorbis.synced, false);
+      assert.deepEqual(vorbis.line, [{ value: "Vorbis first" }, { value: "Vorbis second" }]);
+    }
+    await writeFile(sidecar, "Preferred sidecar\n");
+    assert.equal(responseJson(await request("getLyricsBySongId", { id: song.id })).lyricsList.structuredLyrics[0].line[0].value, "Preferred sidecar");
+    assert.deepEqual(responseJson(await request("getLyricsBySongId", { id: "song:missing" })).lyricsList, { structuredLyrics: [] });
+    assert.equal(responseJson(await request("getLyricsBySongId")).error.code, 10);
+    assert.equal(responseJson(await request("getLyrics", { artist: "Other artist", title: song.title })).lyrics.value, "");
+  } finally {
+    await rm(sidecar, { force: true });
+    await rm(mp3Path, { force: true });
+    db.prepare("UPDATE library_media_files SET path = ? WHERE path = ?").run(fixturePath, mp3Path);
+    await writeFile(fixturePath, original);
+  }
+});
+
 test("browses library artists, albums, and songs with stable protocol IDs", async () => {
   const user = responseJson(await request("getUser")).user;
   assert.equal(user.username, "alice");

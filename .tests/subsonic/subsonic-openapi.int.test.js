@@ -178,6 +178,7 @@ test("system and browsing responses match the OpenSubsonic schema", async () => 
   await assertValid("getTopSongs", { artist: "Schema Artist" });
   await assertValid("getTopSongs", { id: artistId });
   await assertValid("getLyrics", { artist: "Schema Artist", title: "Schema Song" });
+  await assertValid("getLyricsBySongId", { id: "song:missing" });
   await assertValid("getInternetRadioStations");
   await assertValid("getPodcasts");
 });
