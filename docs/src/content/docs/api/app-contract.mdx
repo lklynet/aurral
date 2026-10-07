@@ -11,7 +11,7 @@ description: Version and response guarantees for the JSON API used by Aurral app
 {
   "api": {
     "version": 1,
-    "features": ["discover", "flows", "activity", "review", "trackDownloads", "appPasswords"]
+    "features": ["discover", "flows", "activity", "review", "trackDownloads", "appPasswords", "linkSearch"]
   }
 }
 ```
@@ -36,14 +36,15 @@ The feature list is the same before and after sign-in.
 | `review` | Blocked download jobs and approval or denial |
 | `trackDownloads` | Single-track requests through `/api/library/downloads/track` |
 | `appPasswords` | Per-device app passwords as Bearer credentials and at `POST /api/auth/login`, managed through `/api/auth/app-passwords` |
+| `linkSearch` | Streaming-service links resolved through `/api/search/link` |
 
 Clients check for a feature before using its routes. An absent name means the
 server does not promise that capability. Features implemented in later releases
 receive their own names. Aurral adds each name only when its routes are available.
 
 The registry is `backend/config/apiContract.js`. A capability change updates that
-registry and this reference. The response checks in
-`.tests/api/json-contract.test.js` pin the fields below through HTTP requests.
+registry and this reference. The response checks in `.tests/api/` pin the fields
+below through HTTP requests.
 
 ## Authentication and errors
 
@@ -73,6 +74,7 @@ contain additional fields. Arrays can be empty. Fields marked nullable can be
 | `GET /api/health/bootstrap` | Public; optional credential | String `status` and `appVersion`, boolean `authRequired` and `onboardingRequired`, and `api` |
 | `GET /api/discover` | Optional `limit` from 1 to 200 and `offset` | Arrays `recommendations`, `globalTop`, `basedOn`, `topTags`, and `topGenres`; numeric `recommendationCount`; nullable string `lastUpdated`; boolean `configured`; string `provider` |
 | `GET /api/search` | Required `q`; `scope=artist` or `scope=album`; optional `limit`, `offset` | Strings `scope` and `query`, numeric `count` and `offset`, and array `items` |
+| `GET /api/search/link` | Required `url` | String `kind` and `source`; object `artist`; nullable objects `album` and `track` |
 | `GET /api/artists/:mbid` | Artist MusicBrainz ID; optional `mode=core` | Strings `id` and `name`, arrays `tags`, `genres`, `release-groups`, and `appears-on-release-groups` |
 | `GET /api/artists/release-group/:mbid` | Release-group MusicBrainz ID | Strings `id`, `title`, and `primary-type`; arrays `secondary-types`, `artist-credit`, `releases`, and `genres`; nullable strings `first-release-date` and `coverUrl`; string `overview` |
 | `GET /api/library/canonical` | Required `kind=artists`, `albums`, `tracks`, or `genres`, and `pageSize` from 1 to 100; optional `page`, `source`, `availableOnly`, and filters | String `kind`; numeric `page`, `pageSize`, and `total`; boolean `hasMore`; arrays `items`, `artists`, `albums`, `tracks`, and `genres` |
@@ -96,6 +98,13 @@ Discovery artist entries contain nullable string `id` and `image`, strings
 `name`, and `type`, nullable string `image`, array `tags`, and boolean
 `inLibrary`. Search album entries contain strings `id`, `title`, `artistName`,
 `type`, and `status`, and boolean `inLibrary`.
+
+A resolved link's `artist` contains string `name` and nullable string `mbid`.
+`album` contains string `title` and nullable string `mbid`; it is `null` for
+artist links and for tracks whose album the service does not report. `track`
+contains string `title` and nullable string `mbid`; it is `null` unless `kind`
+is `track`. A `null` MusicBrainz ID means Aurral found no match, so search by
+name instead. An unsupported link returns `400`.
 
 Artist release-group entries contain strings `id`, `title`, and `primary-type`,
 array `secondary-types`, and nullable string `first-release-date`.

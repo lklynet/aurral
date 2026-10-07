@@ -159,7 +159,7 @@ function _flattenReleaseTracks(releaseData) {
   return tracks;
 }
 
-function matchTrackByTitle(tracks, trackName, trackNumber = null) {
+export function matchTrackByTitle(tracks, trackName, trackNumber = null) {
   const safeTrackName = String(trackName || "").trim();
   if (!safeTrackName) return null;
   const expectedTrackNumber = Number(trackNumber);
