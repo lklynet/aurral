@@ -122,6 +122,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_lastfm_link_states_expiry
     ON lastfm_link_states(expires_at);
 
+  CREATE TABLE IF NOT EXISTS subsonic_play_queues (
+    user_id INTEGER PRIMARY KEY,
+    song_ids TEXT NOT NULL,
+    current_song TEXT,
+    position INTEGER,
+    changed_at INTEGER NOT NULL,
+    changed_by TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS subsonic_stars (
     user_id INTEGER NOT NULL,
     entity_kind TEXT NOT NULL,
