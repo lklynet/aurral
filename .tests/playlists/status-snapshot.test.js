@@ -7,7 +7,7 @@ import {
   importFromRepo,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
-import { getStaticPlaylistTrackCount } from "../../frontend/src/pages/playlists/playlistStats.js";
+import { getStaticPlaylistTrackCount, hasReviewActivity } from "../../frontend/src/pages/playlists/playlistStats.js";
 
 const [isolatedState, { db }, { dbOps }, { flowPlaylistConfig }, snapshotModule] =
   await setupIsolatedBackend(
@@ -132,4 +132,29 @@ test("status snapshot trackCount includes failed download jobs", async () => {
     getStaticPlaylistTrackCount(shared, status.sharedPlaylistStats[playlist.id]),
     1,
   );
+});
+
+test("review count includes Library jobs and respects playlist ownership", async () => {
+  const { downloadTracker } = await importFromRepo("backend/services/downloadJobs/downloadTracker.js");
+  const ownFlow = flowPlaylistConfig.createFlow({ name: "Mine", ownerUserId: 1 });
+  const otherFlow = flowPlaylistConfig.createFlow({ name: "Someone else's", ownerUserId: 2 });
+  const staticPlaylist = flowPlaylistConfig.createStaticPlaylist({ name: "Mine too", ownerUserId: 1 });
+  const held = ["library", ownFlow.id, otherFlow.id, staticPlaylist.id].map((playlistId, index) => {
+    const id = downloadTracker.addJob({ artistName: "Artist", trackName: `Held ${index}` }, playlistId);
+    downloadTracker.setBlocked(id, "Needs review");
+    return id;
+  });
+  downloadTracker.addJob({ artistName: "Artist", trackName: "Pending" }, "library");
+  const user = { id: 1, role: "user" };
+  assert.equal(getPlaylistStatusSnapshot({ user }).reviewCount, 3);
+  assert.equal(getPlaylistStatusSnapshot({ user: { id: 1, role: "admin" } }).reviewCount, 4);
+  assert.equal(hasReviewActivity(getPlaylistStatusSnapshot({ user })), true);
+  for (const id of [held[1], held[3]]) downloadTracker.setFailed(id, "Dismissed");
+  const libraryOnly = getPlaylistStatusSnapshot({ user });
+  assert.equal(libraryOnly.stats.blocked + libraryOnly.sharedStats.blocked, 0);
+  assert.equal(libraryOnly.reviewCount, 1);
+  assert.equal(hasReviewActivity(libraryOnly), true);
+  downloadTracker.setFailed(held[0], "Dismissed");
+  assert.equal(getPlaylistStatusSnapshot({ user }).reviewCount, 0);
+  assert.equal(hasReviewActivity(getPlaylistStatusSnapshot({ user })), false);
 });
