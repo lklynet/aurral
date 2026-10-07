@@ -687,6 +687,37 @@ test("failed Subsonic playlist creation rolls back its playlist and jobs", async
   }
 });
 
+test("playlist detail and list report its owner's saved description", async () => {
+  userOps.createUser("playlist-owner", hashPassword("owner-password"), "user", { accessFlow: true });
+  const credentials = { u: "playlist-owner", p: "owner-password" };
+  const created = responseJson(await request("createPlaylist", { ...credentials, name: "Owner Description" })).playlist;
+  assert.ok(created);
+  assert.equal(responseJson(await request("updatePlaylist", { ...credentials, playlistId: created.id, comment: "Saved description" })).status, "ok");
+  const detail = responseJson(await request("getPlaylist", { id: created.id })).playlist;
+  assert.equal(detail.owner, "playlist-owner");
+  assert.equal(detail.comment, "Saved description");
+  const listed = responseJson(await request("getPlaylists")).playlists.playlist.find((playlist) => playlist.id === created.id);
+  assert.equal(listed.owner, "playlist-owner");
+  assert.equal(listed.comment, "Saved description");
+  assert.equal(responseJson(await request("deletePlaylist", { ...credentials, id: created.id })).status, "ok");
+});
+
+test("createPlaylist replaces songs in order and supports an empty replacement", async () => {
+  const flow = responseJson(await request("getPlaylists")).playlists.playlist.find((playlist) => playlist.name === "Canonical Flow");
+  const flowSong = responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry[0];
+  const librarySong = responseJson(await request("search3", { query: "Canonical Song" })).searchResult3.song[0];
+  const created = responseJson(await request("createPlaylist", { name: "Replace Songs", songId: librarySong.id })).playlist;
+  const replaced = responseJson(await request("createPlaylist", { playlistId: created.id, name: "Reordered Songs", songId: [flowSong.id, librarySong.id] })).playlist;
+  assert.equal(replaced.name, "Reordered Songs");
+  assert.deepEqual(replaced.entry.map((song) => song.title), ["Flow Song", "Canonical Song"]);
+  const invalid = responseJson(await request("createPlaylist", { playlistId: created.id, songId: "song:missing" }));
+  assert.equal(invalid.error.code, 70);
+  assert.deepEqual(responseJson(await request("getPlaylist", { id: created.id })).playlist.entry.map((song) => song.title), ["Flow Song", "Canonical Song"]);
+  const empty = responseJson(await request("createPlaylist", { playlistId: created.id })).playlist;
+  assert.deepEqual(empty.entry, []);
+  assert.equal(responseJson(await request("deletePlaylist", { id: created.id })).status, "ok");
+});
+
 test("malformed Subsonic settings do not crash the settings update", async () => {
   const initialFavoriteAutoKeep = dbOps.getSettings().subsonic.favoriteAutoKeep;
   try {

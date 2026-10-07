@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { dbOps } from "../db/helpers/index.js";
+import { dbOps, userOps } from "../db/helpers/index.js";
 import { db } from "../config/db-sqlite.js";
 import {
   getLibraryAlbumPage,
@@ -965,7 +965,7 @@ export async function createSubsonicPlaylist(user, { name, songIds = [] } = {}) 
 
 export async function updateSubsonicPlaylist(
   user,
-  { playlistId, name, comment, songIdsToAdd = [], songIndexesToRemove = [] } = {},
+  { playlistId, name, comment, songIds, songIdsToAdd = [], songIndexesToRemove = [] } = {},
 ) {
   return withHonkerLock("weekly-flow-operation", async () => {
     const playlist = flowPlaylistConfig.getStaticPlaylistForUser(
@@ -973,10 +973,10 @@ export async function updateSubsonicPlaylist(
       normalizeStaticPlaylistId(playlistId),
     );
     if (!playlist || !hasPermission(user, "accessFlow")) return null;
-    const resolvedAdds = songIdsToAdd.map((id) => resolveSubsonicTrack(user, id));
+    const resolvedAdds = (songIds ?? songIdsToAdd).map((id) => resolveSubsonicTrack(user, id));
     if (resolvedAdds.some((entry) => !entry)) return null;
     const removals = new Set(songIndexesToRemove);
-    const currentTracks = playlist.tracks.filter((_track, index) => !removals.has(index));
+    const currentTracks = songIds !== undefined ? [] : playlist.tracks.filter((_track, index) => !removals.has(index));
     const nextTracks = [
       ...currentTracks,
       ...resolvedAdds.map((entry) => entry.track),
@@ -1172,7 +1172,7 @@ export function getSubsonicPlaylists(user) {
     const playlist = {
       id: idFor("flow", flow.id),
       name: flow.name,
-      owner: user.username,
+      owner: userOps.getUserById(flow.ownerUserId)?.username || "",
       coverArt: playlistCoverArt("flow", flow.id),
       songCount: jobs.length,
       duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
@@ -1188,7 +1188,7 @@ export function getSubsonicPlaylists(user) {
     const value = {
       id: idFor("shared", playlist.id),
       name: playlist.name,
-      owner: user.username,
+      owner: userOps.getUserById(playlist.ownerUserId)?.username || "",
       coverArt: playlistCoverArt("shared", playlist.id),
       songCount: jobs.length,
       duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
@@ -1213,7 +1213,8 @@ export function getSubsonicPlaylist(value, user) {
   return {
     id: idFor(kind, playlist.id),
     name: playlist.name,
-    owner: user.username,
+    ...(playlist.description ? { comment: playlist.description } : {}),
+    owner: userOps.getUserById(playlist.ownerUserId)?.username || "",
     coverArt: playlistCoverArt(kind, playlist.id),
     songCount: jobs.length,
     duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),

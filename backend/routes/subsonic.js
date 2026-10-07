@@ -466,7 +466,7 @@ async function handleSubsonicRequest(req, res) {
             comment: Object.hasOwn(requestParameters(req), "comment")
               ? getParameter(req, "comment")
               : undefined,
-            songIdsToAdd: getParameters(req, ["songId"]),
+            songIds: getParameters(req, ["songId"]),
           })
         : await createSubsonicPlaylist(user, {
             name,
