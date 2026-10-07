@@ -8,6 +8,7 @@ import {
 } from "./library/handlers/downloads.js";
 import { buildLidarrRequests } from "../services/lidarrRequestBuilder.js";
 import { getAurralHistoryRequests } from "../services/aurralHistoryService.js";
+import { downloadTracker } from "../services/downloadJobs/downloadTracker.js";
 
 const router = express.Router();
 const dismissedAlbumIds = new Map();
@@ -32,9 +33,9 @@ const filterDismissedRequests = (requests) =>
     ? requests.filter((r) => !r.albumId || !dismissedAlbumIds.has(String(r.albumId)))
     : [];
 
-const updateRequestsCache = (requests, user) => {
+const updateRequestsCache = (requests, user, jobsRevision) => {
   const response = filterDismissedRequests(requests);
-  requestsCache.set(getRequestsUserId(user), { response, at: Date.now() });
+  requestsCache.set(getRequestsUserId(user), { response, at: Date.now(), jobsRevision });
   return response;
 };
 
@@ -93,8 +94,9 @@ const buildRequestsResponse = async (lidarrClient, { refresh = false, user = nul
 const refreshRequestsCache = async (lidarrClient, options) => {
   const userId = getRequestsUserId(options?.user);
   if (pendingRequestsRefreshes.has(userId)) return pendingRequestsRefreshes.get(userId);
+  const jobsRevision = downloadTracker.getRevision();
   const refresh = buildRequestsResponse(lidarrClient, options)
-    .then((requests) => updateRequestsCache(requests, options?.user))
+    .then((requests) => updateRequestsCache(requests, options?.user, jobsRevision))
     .finally(() => {
       pendingRequestsRefreshes.delete(userId);
     });
@@ -123,7 +125,8 @@ router.get("/", requireAuth, noCache, async (req, res) => {
     if (
       !forceRefresh &&
       cached &&
-      Date.now() - cached.at < REQUESTS_CACHE_MS
+      Date.now() - cached.at < REQUESTS_CACHE_MS &&
+      cached.jobsRevision === downloadTracker.getRevision()
     ) {
       return res.json(filterDismissedRequests(cached.response));
     }

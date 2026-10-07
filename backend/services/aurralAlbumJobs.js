@@ -129,7 +129,7 @@ export function summarizeAurralAlbum({ tracks = [], jobs = [], sourceConfigured,
   };
 }
 
-async function cancelActiveAurralJobs(activeJobs, albumMbid) {
+async function cancelActiveAurralJobs(activeJobs, albumMbid, { lock = true } = {}) {
   if (activeJobs.length === 0) {
     return { cancelledJobIds: [], cleanupFailed: false };
   }
@@ -145,7 +145,7 @@ async function cancelActiveAurralJobs(activeJobs, albumMbid) {
   }
 
   try {
-    await cancelDownloadWorkForJobs(activeJobs);
+    await cancelDownloadWorkForJobs(activeJobs, { lock });
   } catch (error) {
     logger.warn("library", "Aurral album cancellation is waiting on download provider cleanup", {
       albumMbid,
@@ -166,6 +166,40 @@ export async function cancelAurralAlbumJobs(albumMbid) {
     findAurralAlbumJobs(albumMbid).filter((job) => ACTIVE_JOB_STATUSES.has(job.status)),
     albumMbid,
   );
+}
+
+export async function cancelTrackDownload(jobId) {
+  const { withPlaylistMutationLock } = await import("./downloadJobs/mutationGuards.js");
+  const job = downloadTracker.getJob(jobId);
+  if (!job) return { statusCode: 404, error: "Track not found" };
+  return withPlaylistMutationLock(job.playlistId || job.playlistType, async () => {
+    const current = downloadTracker.getJob(jobId);
+    if (!current) return { statusCode: 404, error: "Track not found" };
+    if (!ACTIVE_JOB_STATUSES.has(current.status)) {
+      return { statusCode: 409, error: "Track download is already finished", status: current.status };
+    }
+    const { listHonkerJobs } = await import("./honkerDb.js");
+    const grab = listHonkerJobs("slskd-pipeline").find(({ payload }) =>
+      payload?.albumGrab === true && payload.albumGroupJobIds?.includes(jobId));
+    const peers = (grab?.payload.albumGroupJobIds || []).filter((id) => id !== jobId)
+      .map((id) => downloadTracker.getJob(id))
+      .filter((peer) => peer?.status === "downloading" && !downloadTracker.isSlskdDispatched(peer.id));
+    if (grab && peers.length > 0) {
+      if (grab.payload.jobId === jobId) {
+        const { db } = await import("../config/db-sqlite.js");
+        const { replaceAlbumDownloadLeaderInTransaction } = await import("./downloadJobs/downloadOwnership.js");
+        const redirect = db.transaction(() =>
+          replaceAlbumDownloadLeaderInTransaction(jobId, peers[0].id, { retainCancelled: true }))();
+        downloadTracker.reconcileCommittedJobs([redirect]);
+      }
+      cancelDownloadJobs([jobId]);
+      downloadTracker.setCancelled(jobId);
+      downloadTracker.clearSlskdPipelineState(jobId);
+      return { jobId, status: "cancelled", cleanupFailed: false };
+    }
+    const { cleanupFailed } = await cancelActiveAurralJobs([current], null, { lock: false });
+    return { jobId, status: downloadTracker.getJob(jobId).status, cleanupFailed };
+  });
 }
 
 export async function cancelLibraryTrackJobs(track) {

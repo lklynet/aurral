@@ -10,6 +10,9 @@ import { playlistOperationQueue } from "../../../services/playlists/playlistOper
 import { getPlaylistStatusSnapshot } from "../../../services/playlists/playlistStatusSnapshot.js";
 import { indexUnmonitoredJobs } from "../../../services/aurralUnmonitoredJobs.js";
 import { noCache } from "../../../middleware/cache.js";
+import { hasPermission } from "../../../middleware/auth.js";
+import { ACTIVE_JOB_STATUSES, cancelTrackDownload } from "../../../services/aurralAlbumJobs.js";
+import { getTrackJobRequesterId } from "../../../services/aurralHistoryService.js";
 import { requireAdmin } from "../../../middleware/requirePermission.js";
 import {
   EXISTING_FILE_MODE_OPTIONS,
@@ -484,6 +487,38 @@ export function registerJobs(router) {
         error: "Failed to ensure playlists or trigger scan",
         message: error.message,
       });
+    }
+  });
+}
+
+export function registerJobCancellation(router) {
+  router.post("/jobs/:jobId/cancel", async (req, res) => {
+    const job = downloadTracker.getJob(req.params.jobId);
+    if (!job) return res.status(404).json({ error: "Track not found" });
+    if (hasPermission(req.user, "accessFlow")) {
+      if (!canAccessJobType(req.user, job.playlistId || job.playlistType)) {
+        return res.status(404).json({ error: "Track not found" });
+      }
+    } else {
+      const ownsLibraryJob = job.playlistType === LIBRARY_JOB_TYPE && req.user?.id != null &&
+        String(getTrackJobRequesterId(job.id)) === String(req.user.id);
+      if (!ownsLibraryJob) return res.status(403).json({ error: "Forbidden" });
+    }
+    if (!ACTIVE_JOB_STATUSES.has(job.status)) {
+      return res.status(409).json({ error: "Track download is already finished", status: job.status });
+    }
+    try {
+      const result = isDownloadOwnerProcess()
+        ? await cancelTrackDownload(job.id)
+        : await requestDownloadOwner("cancelTrackDownload", [job.id]);
+      if (result.statusCode) {
+        const { statusCode, ...body } = result;
+        return res.status(statusCode).json(body);
+      }
+      invalidateRequestsCache();
+      return res.json(result);
+    } catch (error) {
+      return res.status(500).json({ error: "Failed to cancel track download", message: error.message });
     }
   });
 }

@@ -1,7 +1,7 @@
 import { db } from "../../config/db-sqlite.js";
 import { downloadTracker } from "./downloadTracker.js";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.js";
-import { beginDownloadAttempt, getActiveDownloadAttemptId, getPlaylistDownloadGeneration } from "./downloadCancellation.js";
+import { beginDownloadAttempt, getActiveDownloadAttemptId, getPlaylistDownloadGeneration, isDownloadJobCancelled } from "./downloadCancellation.js";
 import { buildAurralTrackDestination } from "../downloadPaths.js";
 import { sanitizePathPart } from "../downloadUtils.js";
 
@@ -37,7 +37,7 @@ export function resolveTransferredDownloadPayload(original) {
   for (let index = 0; index < 64; index++) {
     const job = currentJob(payload.jobId);
     const attempt = job ? getActiveDownloadAttemptId(job.id) : null;
-    if (job && payload.playlistId === job.playlistId && Number(payload.playlistGeneration || 0) === job.playlistGeneration &&
+    if (job && !isDownloadJobCancelled(job.id) && payload.playlistId === job.playlistId && Number(payload.playlistGeneration || 0) === job.playlistGeneration &&
         ((payload.downloadAttemptId || null) === attempt)) return payload;
     const transfer = readTransfers(payload.jobId).findLast((entry) =>
       entry.fromPlaylistId === payload.playlistId && entry.fromGeneration === Number(payload.playlistGeneration || 0) &&
@@ -101,7 +101,7 @@ export function transferDownloadOwnershipInTransaction(jobId, targetPlaylistId) 
   return { fromJobId: jobId, toJobId: jobId, dispatched: downloadTracker.isSlskdDispatched(jobId) };
 }
 
-export function replaceAlbumDownloadLeaderInTransaction(jobId, peerId) {
+export function replaceAlbumDownloadLeaderInTransaction(jobId, peerId, { retainCancelled = false } = {}) {
   if (!db.inTransaction) throw new Error("Album leadership must change inside the membership transaction");
   const from = currentJob(jobId);
   const peer = currentJob(peerId);
@@ -115,6 +115,6 @@ export function replaceAlbumDownloadLeaderInTransaction(jobId, peerId) {
   db.prepare(`UPDATE playlist_download_jobs SET ${columns.map((column) => `${column} = ?`).join(", ")} WHERE id = ?`).run(...columns.map((column) => row[column]), peerId);
   recordTransfer(from, peer, previousAttempt, attempt);
   db.prepare("INSERT OR IGNORE INTO weekly_flow_download_job_cancellations (job_id, cancelled_at) VALUES (?, ?)").run(jobId, Date.now());
-  db.prepare("DELETE FROM playlist_download_jobs WHERE id = ?").run(jobId);
+  if (!retainCancelled) db.prepare("DELETE FROM playlist_download_jobs WHERE id = ?").run(jobId);
   return { fromJobId: jobId, toJobId: peerId, dispatched: downloadTracker.isSlskdDispatched(jobId) };
 }

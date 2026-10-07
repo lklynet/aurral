@@ -1764,7 +1764,7 @@ export class LibraryManager {
         const { recordTrackJobQueued } = await import("./aurralHistoryService.js");
         for (const jobId of jobIds) {
           const job = downloadTracker.getJob(jobId);
-          if (job) recordTrackJobQueued(job);
+          if (job) recordTrackJobQueued(job, options.user);
         }
       } catch {}
       try {

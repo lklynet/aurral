@@ -210,7 +210,9 @@ detail route instead.
 `album`, or `tag`. The route also accepts `limit` and `offset`. Album searches
 accept `releaseTypes` and `sort`. `GET /api/requests` accepts `refresh=true` to
 rebuild the list. A refreshed list reuses Lidarr's queue and history when
-Aurral read them in the last 10 seconds.
+Aurral read them in the last 10 seconds. Aurral items include
+`canonicalAlbumId` and `requestGroupId` when they're known, and album downloads
+include `albumGrab.canonicalAlbumId`.
 
 ## Discovery
 
@@ -270,6 +272,7 @@ The routes call a static playlist a shared playlist.
 | `GET` | `/api/playlists/status` | Download worker, flow, and static playlist status |
 | `GET` | `/api/playlists/jobs` | List Library and accessible flow and playlist jobs |
 | `GET` | `/api/playlists/jobs/:playlistId` | List jobs for a flow or static playlist |
+| `POST` | `/api/playlists/jobs/:jobId/cancel` | Cancel a pending or downloading song without changing its monitoring |
 | `POST` | `/api/playlists/research-missing` | Re-search every missing track in Wanted |
 | `GET` | `/api/playlists/jobs/:jobId/manual-search/sources` | List the download clients available for a manual search |
 | `POST` | `/api/playlists/jobs/:jobId/manual-search` | Search one download client for a track. Send `sourceId`, and `mode` set to `missing` or `replacement` |
@@ -315,6 +318,16 @@ The routes call a static playlist a shared playlist.
 
 The repeated `playlists` segment in
 `/api/playlists/playlists/:playlistId/retry-cycle` is the current route.
+
+Cancelling a song needs `accessFlow` and access to its playlist, or the user who
+requested the Library download. Other users get `403`. The track stays
+monitored, and other songs in the same album download keep downloading. The
+response holds the job's new `status` and `cleanupFailed`. When a download
+client can't confirm cleanup, the job stays `cancel_requested`; cancel again
+once the client is back. A finished job returns `409`.
+
+Searching again for a cancelled song from an album returns `409`. Request the
+album again to retry it. Other cancelled songs can be searched again.
 
 ### Spotify import
 
