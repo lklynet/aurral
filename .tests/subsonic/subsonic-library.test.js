@@ -203,6 +203,59 @@ test("implements starred and frequent album lists without inventing ratings", ()
   }
 });
 
+test("recent albums follow each user's latest plays of available albums", () => {
+  const insertUser = db.prepare(
+    "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, '', 'user', '{}') RETURNING id",
+  );
+  const listener = insertUser.get("subsonic-recent-listener");
+  const otherListener = insertUser.get("subsonic-recent-other");
+  const quietListener = insertUser.get("subsonic-recent-quiet");
+  const insertPlay = db.prepare(`
+    INSERT INTO play_events
+      (user_id, track_id, title, artist, album, album_key, played_at, source, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'subsonic', ?)
+  `);
+  const play = (user, trackTitle, albumTitle, playedAt) => insertPlay.run(
+    user.id,
+    idFor("song", `test-track:${trackTitle}`),
+    trackTitle,
+    "Artist A",
+    albumTitle,
+    `test-album:${albumTitle}`,
+    playedAt,
+    playedAt,
+  );
+  const recentTitles = (user, options = {}) =>
+    getAlbumList({ type: "recent", ...options }, user).map((album) => album.title);
+  const setAvailable = db.prepare(
+    "UPDATE library_media_files SET available = ? WHERE path LIKE '%/Other Artist Song.flac'",
+  );
+
+  try {
+    play(listener, "Old Song", "Old Album", 1000);
+    play(listener, "New Song", "New Album", 2000);
+    play(listener, "Other Artist Song", "Artist A Collection", 3000);
+    play(otherListener, "Other Artist Song", "Artist A Collection", 9000);
+    play(otherListener, "New Song", "New Album", 8000);
+
+    assert.deepEqual(recentTitles(listener), ["Artist A Collection", "New Album", "Old Album"]);
+
+    play(listener, "Old Song", "Old Album", 4000);
+    assert.deepEqual(recentTitles(listener), ["Old Album", "Artist A Collection", "New Album"]);
+    assert.deepEqual(recentTitles(listener, { size: 1, offset: 1 }), ["Artist A Collection"]);
+    assert.deepEqual(recentTitles(otherListener), ["Artist A Collection", "New Album"]);
+
+    setAvailable.run(0);
+    assert.deepEqual(recentTitles(listener), ["Old Album", "New Album"]);
+
+    assert.deepEqual(recentTitles(quietListener), []);
+  } finally {
+    setAvailable.run(1);
+    db.prepare("DELETE FROM users WHERE id IN (?, ?, ?)")
+      .run(listener.id, otherListener.id, quietListener.id);
+  }
+});
+
 test("returns top songs only for the requested artist", () => {
   const songs = getTopSongs("Artist A", { count: 10 });
   assert.deepEqual(songs.map((song) => song.title), ["New Song", "Old Song"]);

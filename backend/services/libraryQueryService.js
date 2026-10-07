@@ -1577,7 +1577,7 @@ export function getLibraryAlbumPage({
   let orderBy;
   if (type === "random") {
     orderBy = "random()";
-  } else if (type === "newest" || type === "recent") {
+  } else if (type === "newest") {
     orderBy = recentMediaOrder("albums", sourceFilter, availableOnly, "asc");
   } else if (type === "alphabeticalByArtist") {
     orderBy = "coalesce(album.album_artist, artist.name) COLLATE NOCASE, album.title COLLATE NOCASE";

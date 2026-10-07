@@ -522,7 +522,7 @@ export function getAlbumList(options = {}, user = null) {
   if (type === "starred") {
     return getStarred(user).album.slice(offset, offset + limit);
   }
-  if (type === "frequent") return getFrequentlyPlayedAlbums(user, { offset, limit });
+  if (type === "frequent" || type === "recent") return getPlayedAlbums(type, user, { offset, limit });
   // Aurral does not currently store per-user ratings. Returning no albums is
   // accurate; falling through would falsely label an alphabetical list as rated.
   if (type === "highest") return [];
@@ -560,7 +560,7 @@ export function getGenres() {
 const getStarsStmt = db.prepare(
   "SELECT entity_kind, entity_key, created_at FROM subsonic_stars WHERE user_id = ? ORDER BY created_at, entity_kind, entity_key",
 );
-const getFrequentlyPlayedAlbumsStmt = db.prepare(`
+const preparePlayedAlbumsStmt = (orderBy) => db.prepare(`
   SELECT album.identity_key
   FROM play_album_stats AS played
   JOIN library_albums AS album
@@ -576,12 +576,15 @@ const getFrequentlyPlayedAlbumsStmt = db.prepare(`
         AND media.available = 1
     )
   GROUP BY album.id
-  ORDER BY SUM(played.play_count) DESC,
-    MAX(played.last_played_at) DESC,
+  ORDER BY ${orderBy},
     album.title COLLATE NOCASE,
     album.id
   LIMIT ? OFFSET ?
 `);
+const playedAlbumsStmts = {
+  frequent: preparePlayedAlbumsStmt("SUM(played.play_count) DESC, MAX(played.last_played_at) DESC"),
+  recent: preparePlayedAlbumsStmt("MAX(played.last_played_at) DESC"),
+};
 const addStarStmt = db.prepare(
   "INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (?, ?, ?, ?)",
 );
@@ -596,9 +599,9 @@ const getStarsChangedStmt = db.prepare(
   "SELECT changed_at FROM subsonic_star_changes WHERE user_id = ?",
 );
 
-function getFrequentlyPlayedAlbums(user, { offset, limit }) {
+function getPlayedAlbums(type, user, { offset, limit }) {
   if (!user?.id || limit === 0) return [];
-  const albumKeys = getFrequentlyPlayedAlbumsStmt
+  const albumKeys = playedAlbumsStmts[type]
     .all(user.id, limit, offset)
     .map((row) => row.identity_key);
   if (!albumKeys.length) return [];
