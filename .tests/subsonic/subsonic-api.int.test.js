@@ -29,6 +29,7 @@ const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidar
 
 let aurral;
 let authToken;
+let heldJobId;
 let fixtureRoot;
 let fixturePath;
 let staticPlaylist;
@@ -247,6 +248,10 @@ test.before(async () => {
     path.join(playlistManager.libraryRoot, `${playlistManager.getPlaylistName(staticPlaylist.id)}.webp`),
     "shared-artwork",
   );
+  const heldFlow = flowPlaylistConfig.createFlow({ name: "Held FLAC", size: 1 });
+  heldJobId = downloadTracker.addJob({ artistName: "Held Artist", trackName: "Held Song" }, heldFlow.id);
+  downloadTracker.setBlocked(heldJobId, "Review required", fixturePath);
+
   aurral = await startServerProcess();
   const login = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
     method: "POST",
@@ -865,6 +870,7 @@ test("streams library files with full and range responses", async () => {
 
   const full = await request("stream", { id: song.id });
   assert.equal(full.response.status, 200);
+  assert.equal(full.contentType, "audio/flac");
   assert.equal(full.body, "0123456789");
   assert.equal(full.response.headers.get("accept-ranges"), "bytes");
 
@@ -913,12 +919,20 @@ test("streams library files through the authenticated native route", async () =>
     { headers },
   );
   assert.equal(stream.status, 200);
+  assert.equal(stream.headers.get("content-type"), "audio/flac");
   assert.equal(await stream.text(), "0123456789");
 
   const unauthorized = await fetch(
     `http://127.0.0.1:${aurral.port}/api${track.streamPath}`,
   );
   assert.equal(unauthorized.status, 401);
+});
+
+test("streams held FLAC previews with the registered audio type", async () => {
+  const response = await apiFetch(`/api/playlists/staging-stream/${heldJobId}`);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "audio/flac");
+  assert.equal(await response.text(), "0123456789");
 });
 
 test("returns missing files and stale IDs without exposing filesystem paths", async () => {

@@ -16,6 +16,7 @@ const [isolatedState, { db }, subsonic, libraryStore] =
   );
 
 const {
+  getSong,
   getAlbumList,
   getMusicDirectory,
   getTopSongs,
@@ -450,5 +451,16 @@ test("frequent albums keep same-titled releases separated by library identity", 
     );
   } finally {
     db.prepare("DELETE FROM users WHERE id = ?").run(user.id);
+  }
+});
+
+test("reports registered audio types for library song formats", () => {
+  const artist = upsertLibraryArtist({ identityKey: "mime:artist", name: "MIME Artist" });
+  const album = upsertLibraryAlbum({ identityKey: "mime:album", artistId: artist.id, title: "MIME Album", albumArtist: artist.name });
+  for (const [format, expected] of [["flac", "audio/flac"], ["m4a", "audio/mp4"], ["opus", "audio/ogg"], ["ogg", "audio/ogg"], ["mp3", "audio/mpeg"]]) {
+    const track = upsertLibraryTrack({ identityKey: `mime:${format}`, title: `MIME ${format}`, artistName: "MIME Artist" });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+    upsertLibraryMediaFile({ trackId: track.id, source: "lidarr", path: `/test/mime.${format}`, format, available: true });
+    assert.equal(getSong(idFor("song", `mime:${format}`)).contentType, expected);
   }
 });
