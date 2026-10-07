@@ -268,6 +268,55 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
+test("saves a personal play queue through form POST, filters missing songs, and clears it", async () => {
+  const song = responseJson(await request("getRandomSongs", { size: 1 })).randomSongs.song[0];
+  const playlists = responseJson(await request("getPlaylists")).playlists.playlist;
+  const entries = [];
+  for (const playlist of playlists) {
+    entries.push(...responseJson(await request("getPlaylist", { id: playlist.id })).playlist.entry);
+  }
+  const sharedSong = entries.find((entry) => entry.id.startsWith("shared-song:"));
+  const flowSong = entries.find((entry) => entry.id.startsWith("flow-song:"));
+  assert.ok(sharedSong);
+  assert.ok(flowSong);
+  const ids = [sharedSong.id, song.id, flowSong.id, song.id, "song:missing"];
+  const body = new URLSearchParams({ current: song.id, position: "4321" });
+  ids.forEach((id) => body.append("id", id));
+  const saved = responseJson(await request("savePlayQueue", {}, { method: "POST", body }));
+  assert.equal(saved.status, "ok");
+  await aurral.stop();
+  aurral = await startServerProcess();
+  const queue = responseJson(await request("getPlayQueue")).playQueue;
+  assert.deepEqual(queue.entry.map((entry) => entry.id), ids.slice(0, -1));
+  assert.equal(queue.entry[1].title, song.title);
+  assert.equal(queue.current, song.id);
+  assert.equal(queue.position, 4321);
+  assert.equal(queue.username, "alice");
+  assert.equal(queue.changedBy, "canonical-test");
+  assert.ok(Date.parse(queue.changed) > 0);
+  const bob = userOps.createUser("queue-bob", hashPassword("password123"), "user");
+  try {
+    assert.deepEqual(responseJson(await request("getPlayQueue", { u: "queue-bob" })).playQueue.entry, []);
+    assert.equal(responseJson(await request("savePlayQueue", { u: "queue-bob", id: song.id })).status, "ok");
+    assert.equal(responseJson(await request("getPlayQueue", { u: "queue-bob" })).playQueue.entry[0].id, song.id);
+    const removed = db.prepare("SELECT id FROM library_media_files WHERE path = ?").get(fixturePath);
+    db.prepare("UPDATE library_media_files SET available = 0 WHERE id = ?").run(removed.id);
+    try {
+      const filtered = responseJson(await request("getPlayQueue")).playQueue;
+      assert.deepEqual(filtered.entry.map((entry) => entry.id), [sharedSong.id, flowSong.id]);
+      assert.equal(filtered.current, undefined);
+      assert.equal(filtered.position, undefined);
+    } finally {
+      db.prepare("UPDATE library_media_files SET available = 1 WHERE id = ?").run(removed.id);
+    }
+    assert.equal(responseJson(await request("savePlayQueue")).status, "ok");
+    assert.deepEqual(responseJson(await request("getPlayQueue")).playQueue.entry, []);
+  } finally {
+    db.prepare("DELETE FROM users WHERE id = ?").run(bob.id);
+    assert.equal(db.prepare("SELECT user_id FROM subsonic_play_queues WHERE user_id = ?").get(bob.id), undefined);
+  }
+});
+
 test("browses library artists, albums, and songs with stable protocol IDs", async () => {
   const user = responseJson(await request("getUser")).user;
   assert.equal(user.username, "alice");
