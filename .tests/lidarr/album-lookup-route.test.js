@@ -415,7 +415,6 @@ test("library album lookup reports partial ownership, its manager, and the compl
     artistName: artist.name,
   });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: ownedTrack.id, trackNumber: 1 });
-  linkLibraryAlbumTrack({ albumId: album.id, trackId: missingTrack.id, trackNumber: 2 });
   setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
   const ownedPath = `/tmp/${key}/owned.flac`;
   upsertLibraryMediaFile({
@@ -450,6 +449,17 @@ test("library album lookup reports partial ownership, its manager, and the compl
       { body: { mbids: [album.mbid] } },
       response,
     );
+    assert.equal(body?.[album.mbid]?.status, "partial");
+    assert.equal(body?.[album.mbid]?.trackListComplete, false);
+    assert.equal("percentOfTracks" in body[album.mbid], false);
+    assert.equal(body[album.mbid].trackCount, 1);
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: missingTrack.id, trackNumber: 2 });
+    upsertLibraryAlbum({ identityKey: `${key}:album`, mbid: album.mbid, artistId: artist.id, title: "Partial Lookup Album", metadata: { trackListComplete: true } });
+    invalidateLibraryQueryCache();
+    await routes.get("/albums/lookup/batch")(
+      { body: { mbids: [album.mbid] } },
+      response,
+    );
     const result = body?.[album.mbid];
     assert.equal(statusCode, 200);
     assert.equal(result?.status, "partial");
@@ -458,9 +468,16 @@ test("library album lookup reports partial ownership, its manager, and the compl
     assert.equal(result?.percentOfTracks, 50);
     assert.deepEqual(result?.ownedTrackMbids, [ownedTrack.mbid]);
     assert.equal(result?.managedBy, "aurral");
+    assert.equal(result?.trackListComplete, true);
+    upsertLibraryMediaFile({ trackId: missingTrack.id, albumId: album.id, source: "aurral", path: `/tmp/${key}/missing.flac` });
+    invalidateLibraryQueryCache();
+    await routes.get("/albums/lookup/batch")({ body: { mbids: [album.mbid] } }, response);
+    assert.equal(body[album.mbid].status, "available");
+    assert.equal(body[album.mbid].percentOfTracks, 100);
+    assert.equal(body[album.mbid].trackListComplete, true);
   } finally {
     db.prepare("DELETE FROM library_management WHERE entity_kind = 'album' AND entity_id = ?").run(album.id);
-    db.prepare("DELETE FROM library_media_files WHERE path = ?").run(ownedPath);
+    db.prepare("DELETE FROM library_media_files WHERE album_id = ?").run(album.id);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
     db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(ownedTrack.id, missingTrack.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);

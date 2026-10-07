@@ -34,6 +34,7 @@ const libraryAlbumResult = (album, ownedTrackMbids = []) => ({
   libraryAlbumId: String(album.providerId ?? album.id),
   libraryArtistId: String(album.providerArtistId ?? album.artistId),
   status:
+    album.trackListComplete === false ||
     Number(album.statistics?.trackCount || 0) > Number(album.statistics?.trackFileCount || 0)
       ? "partial"
       : album.available
@@ -41,7 +42,8 @@ const libraryAlbumResult = (album, ownedTrackMbids = []) => ({
         : "partial",
   monitored: album.monitored,
   managedBy: album.managedBy || null,
-  percentOfTracks: Number(album.statistics?.percentOfTracks || 0),
+  trackListComplete: album.trackListComplete !== false,
+  ...(album.trackListComplete === false ? {} : { percentOfTracks: Number(album.statistics?.percentOfTracks || 0) }),
   sizeOnDisk: Number(album.statistics?.sizeOnDisk || 0),
   trackCount: Number(album.statistics?.trackCount || 0),
   trackFileCount: Number(album.statistics?.trackFileCount || 0),
@@ -311,6 +313,7 @@ export function registerMisc(router) {
             album.artistId !== undefined && album.artistId !== null ? String(album.artistId) : null,
           status: hasFiles ? "available" : monitored ? "monitored" : "unmonitored",
           monitored,
+          trackListComplete: true,
           percentOfTracks,
           sizeOnDisk,
           trackCount,

@@ -97,6 +97,7 @@ const buildAlbum = (album, artistsById, tracksById, managementByAlbumId = new Ma
     releaseDate: album.releaseDate,
     addedAt: null,
     monitored: Boolean(album.metadata?.monitored),
+    trackListComplete: management?.managedBy !== "aurral" || album.metadata?.trackListComplete === true,
     statistics: {
       trackCount: albumTracks.length,
       trackFileCount,

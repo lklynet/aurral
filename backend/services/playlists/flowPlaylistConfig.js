@@ -1008,6 +1008,7 @@ export const flowPlaylistConfig = {
       ...current,
       name: nextName,
       sourceName: updates?.sourceName ?? current.sourceName,
+      description: updates?.description !== undefined ? updates.description : current.description,
       recordHistory:
         typeof updates?.recordHistory === "boolean"
           ? updates.recordHistory
