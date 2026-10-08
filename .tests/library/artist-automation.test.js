@@ -13,6 +13,7 @@ const [
   { libraryManager },
   { registerArtists },
   { registerAlbums },
+  { downloadWorker },
 ] =
   await setupIsolatedBackend(
     "artist-automation",
@@ -24,6 +25,7 @@ const [
     "backend/services/libraryManager.js",
     "backend/routes/library/handlers/artists.js",
     "backend/routes/library/handlers/albums.js",
+    "backend/services/downloadJobs/downloadWorker.js",
   );
 
 const routes = new Map();
@@ -67,7 +69,10 @@ const lidarrAlbum = (id, foreignAlbumId, monitored) => ({
   statistics: {},
 });
 
+const originalWorkerStart = downloadWorker.start;
+
 test.before(() => {
+  downloadWorker.start = async () => {};
   lidarrClient.isConfigured = () => lidarr.configured;
   lidarrClient.getArtistByMbid = async () => lidarr.artist;
   lidarrClient.getArtist = async () => lidarr.artist;
@@ -120,6 +125,7 @@ test.beforeEach(() => {
 });
 
 test.after(async () => {
+  downloadWorker.start = originalWorkerStart;
   Object.assign(lidarrClient, originalClient);
   await cleanupIsolatedState(isolatedState);
 });
@@ -209,7 +215,19 @@ test("with Lidarr connected, new artists go to Lidarr and Aurral keeps managing 
   const futureState = management("artist", artist.id);
   const none = await libraryManager.setArtistMonitoring(artistMbid, { monitorOption: "none", user: admin });
   const monitorAlbum = await libraryManager.setAurralAlbumMonitoring(album.id, { monitored: true });
+  const request = (albumMbid) => libraryManager.requestAlbumFromSearch({
+    albumMbid,
+    albumName: "Album",
+    artistMbid,
+    artistName: "Automation Artist",
+    managedBy: "aurral",
+    user: admin,
+  }).catch((error) => error);
+  const retried = await request(aurralAlbumMbid);
+  const newAlbum = await request(otherAlbumMbid);
 
+  assert.notEqual(retried.statusCode, 409, retried.message);
+  assert.equal(newAlbum.statusCode, 409);
   assert.equal(add.statusCode, 409);
   assert.equal(future.error, undefined);
   assert.deepEqual(futureState, ["aurral", "future"]);

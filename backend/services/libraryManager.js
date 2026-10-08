@@ -683,6 +683,16 @@ export class LibraryManager {
     throw error;
   }
 
+  // Aurral keeps the albums it already has while Lidarr is connected.
+  async resolveAlbumManagedBy(requested, albumMbid) {
+    const reference = String(albumMbid || "").trim();
+    if (normalizeLibraryManager(requested) === "aurral" && reference &&
+      libraryAlbumForReference(reference)?.managedBy === "aurral") {
+      return "aurral";
+    }
+    return this.resolveManagedBy(requested);
+  }
+
   async _addAurralArtist(mbid, artistName, options = {}) {
     const normalizedMbid = String(mbid || "").trim();
     const requestedName = String(artistName || "").trim();
@@ -2577,7 +2587,7 @@ export class LibraryManager {
   async addAlbum(artistId, releaseGroupMbid, albumName, options = {}) {
     let managedBy;
     try {
-      managedBy = await this.resolveManagedBy(options.managedBy);
+      managedBy = await this.resolveAlbumManagedBy(options.managedBy, releaseGroupMbid);
     } catch (error) {
       return {
         error: error.message,
@@ -2805,7 +2815,7 @@ export class LibraryManager {
     user = null,
     managedBy: requestedManagedBy = null,
   } = {}) {
-    const managedBy = await this.resolveManagedBy(requestedManagedBy);
+    const managedBy = await this.resolveAlbumManagedBy(requestedManagedBy, albumMbid);
     const normalizedAlbumMbid = String(albumMbid || "").trim();
     const normalizedAlbumName = String(albumName || "").trim();
     const normalizedArtistMbid = String(artistMbid || "").trim();
