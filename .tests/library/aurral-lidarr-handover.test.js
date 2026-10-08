@@ -100,6 +100,18 @@ test("downloading a single's album with Lidarr hands the album to Lidarr and sto
   assert.equal(typeof metadata.aurralHandoverAt, "number");
 });
 
+test("adding an Aurral album to Lidarr directly hands it to Lidarr too", async () => {
+  const { album } = seedAlbum({ monitored: true, monitorMode: "monitored" });
+
+  const added = await libraryManager.addAlbum(String(lidarrArtist.id), albumMbid, "Handover Album", {
+    managedBy: "lidarr",
+    user: { role: "admin" },
+  });
+
+  assert.equal(added?.error, undefined);
+  assert.equal(managementStore.getManagedBy("album", album.id), "lidarr");
+});
+
 test("an album Aurral was monitoring is handed to Lidarr too", async () => {
   const { album, track } = seedAlbum({ monitored: true, monitorMode: "monitored" });
 

@@ -507,3 +507,45 @@ test("keeps a library job and track when provider cancellation fails, then retri
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("deletes a scanned Lidarr track through the Lidarr album with the same MusicBrainz ID", async (t) => {
+  const identity = `lidarr-track-delete-${process.pid}-${Date.now()}`;
+  const albumMbid = "d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1";
+  const trackMbid = "d2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2";
+  const artist = upsertLibraryArtist({ identityKey: `${identity}:artist`, name: "Scanned Artist" });
+  const album = upsertLibraryAlbum({
+    identityKey: `release-group:${albumMbid}`,
+    mbid: albumMbid,
+    releaseGroupMbid: albumMbid,
+    artistId: artist.id,
+    title: "Scanned Album",
+    metadata: { tags: {} },
+  });
+  const track = upsertLibraryTrack({
+    identityKey: `recording:${trackMbid}`,
+    mbid: trackMbid,
+    title: "Scanned Track",
+    artistName: "Scanned Artist",
+    metadata: { tags: {} },
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "lidarr",
+    path: `/music/${identity}/01 Scanned Track.flac`,
+    available: true,
+  });
+  t.after(() => {
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  });
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getAlbumByMbid", async (mbid) => (mbid === albumMbid ? { id: 70 } : null));
+  t.mock.method(lidarrClient, "getTracksByAlbumId", async (albumId) =>
+    albumId === 70 ? [{ id: 1, foreignRecordingId: trackMbid, trackFileId: 99, hasFile: true }] : []);
+  const deleted = t.mock.method(lidarrClient, "deleteTrackFile", async () => {});
+
+  assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
+  assert.deepEqual(deleted.mock.calls.map((call) => call.arguments[0]), [99]);
+});

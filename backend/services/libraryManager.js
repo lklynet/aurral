@@ -2612,6 +2612,11 @@ export class LibraryManager {
     const request = add.call(this, artistId, releaseGroupMbid, albumName, {
       ...options,
       managedBy,
+    }).then(async (result) => {
+      if (managedBy === "lidarr" && !result?.error) {
+        await this._handAurralAlbumToLidarr(String(releaseGroupMbid).trim());
+      }
+      return result;
     }).finally(
       () => {
         if (_albumAddInflight.get(albumKey) === request) {
@@ -2969,7 +2974,6 @@ export class LibraryManager {
           : 503;
       throw error;
     }
-    await this._handAurralAlbumToLidarr(normalizedAlbumMbid);
 
     const albumStatus =
       (album.statistics?.percentOfTracks ?? 0) >= 100 || (album.statistics?.sizeOnDisk ?? 0) > 0
@@ -3218,14 +3222,21 @@ export class LibraryManager {
         const album = lidarrLibrary.albums.find((entry) =>
           trackAlbums.some((relation) => String(relation.albumId) === String(entry.id)),
         );
-        const lidarrAlbumId = Number(album?.metadata?.id);
+        let lidarrAlbumId = Number(album?.metadata?.id);
+        const albumMbid = album?.releaseGroupMbid || album?.mbid;
+        if (!Number.isFinite(lidarrAlbumId) && albumMbid) {
+          lidarrAlbumId = Number((await lidarr.getAlbumByMbid(albumMbid))?.id);
+        }
         if (Number.isFinite(lidarrAlbumId)) {
           const lidarrTracks = await lidarr.getTracksByAlbumId(lidarrAlbumId);
+          const reference = String(metadata.id ?? track.mbid ?? "");
+          const title = String(track.title || "").trim().toLowerCase();
           const match = lidarrTracks.find((entry) =>
-            [entry.id, entry.foreignRecordingId, entry.foreignTrackId].some(
-              (candidate) =>
-                String(candidate ?? "") === String(metadata.id ?? track.mbid ?? ""),
+            reference && [entry.id, entry.foreignRecordingId, entry.foreignTrackId].some(
+              (candidate) => String(candidate ?? "") === reference,
             ),
+          ) || lidarrTracks.find((entry) =>
+            entry.hasFile && title && String(entry.title || "").trim().toLowerCase() === title,
           );
           trackFileId = Number(match?.trackFileId);
         }
