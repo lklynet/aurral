@@ -51,7 +51,6 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
       "Not monitored",
       "All albums",
       "Future albums",
-      "Missing albums",
       "Latest album",
       "First album",
     ]);
