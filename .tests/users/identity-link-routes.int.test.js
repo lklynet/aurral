@@ -105,6 +105,18 @@ test("GET /me/identities lists only the caller's own linked identities", async (
   assert.equal(payloadB.identities.length, 0);
 });
 
+test("only administrators can read or rotate the instance API key", async () => {
+  userOps.createUser("key-admin", bcrypt.hashSync("password123", 4), "admin");
+  userOps.createUser("key-user", bcrypt.hashSync("password123", 4), "user");
+  const adminToken = await login("key-admin", "password123");
+  const userToken = await login("key-user", "password123");
+
+  const { payload: before } = await apiFetch(adminToken, "/api/auth/api-key");
+  assert.equal((await apiFetch(userToken, "/api/auth/api-key")).response.status, 403);
+  assert.equal((await apiFetch(userToken, "/api/auth/api-key/rotate", { method: "POST" })).response.status, 403);
+  assert.deepEqual((await apiFetch(adminToken, "/api/auth/api-key")).payload, before);
+});
+
 test("reauth accepts the correct password and rejects an incorrect one", async () => {
   userOps.createUser("reauth-user", bcrypt.hashSync("password123", 4), "user");
   const token = await login("reauth-user", "password123");

@@ -86,16 +86,6 @@ db.exec(`
     discover_layout TEXT
   );
 
-  CREATE TABLE IF NOT EXISTS app_passwords (
-    id TEXT PRIMARY KEY,
-    user_id INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    secret_hash TEXT UNIQUE NOT NULL,
-    created_at INTEGER NOT NULL,
-    last_used_at INTEGER,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-
   CREATE TABLE IF NOT EXISTS sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -105,7 +95,6 @@ db.exec(`
     ip_address TEXT,
     user_agent TEXT,
     reauthenticated_at INTEGER,
-    app_password_id TEXT REFERENCES app_passwords(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
@@ -856,10 +845,6 @@ const sessionColumns = db
   .map((column) => column.name);
 if (!sessionColumns.includes("reauthenticated_at")) {
   tryAddColumn("ALTER TABLE sessions ADD COLUMN reauthenticated_at INTEGER");
-}
-
-if (!sessionColumns.includes("app_password_id")) {
-  tryAddColumn("ALTER TABLE sessions ADD COLUMN app_password_id TEXT REFERENCES app_passwords(id) ON DELETE CASCADE");
 }
 
 const userColumns = db

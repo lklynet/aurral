@@ -6,7 +6,7 @@ import {
   getSessionByToken,
   touchReauth,
 } from "../config/session-helpers.js";
-import { requireAdmin, requireAuth, requireUserAccount, requireRecentAuth } from "../middleware/requirePermission.js";
+import { requireAdmin, requireAuth, requireRecentAuth } from "../middleware/requirePermission.js";
 import { getApiKey, rotateApiKey } from "../middleware/auth.js";
 import { hashPassword, verifyPassword, needsRehash } from "../middleware/passwordHash.js";
 import { clearOidcTransactionCookie, exchangeOidcCallback, startOidcLogin } from "../services/oidcAuth.js";
@@ -17,8 +17,6 @@ import {
 } from "../services/googleAuth.js";
 import { startPlexLogin, completePlexLogin } from "../services/plexLoginAuth.js";
 import { logger } from "../services/logger.js";
-import { createAppPassword, listAppPasswords, resolveAppPassword, revokeAppPassword } from "../services/appPasswordService.js";
-import { websocketService } from "../services/websocketService.js";
 
 const router = express.Router();
 
@@ -38,20 +36,21 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Username and password are required" });
     }
     const user = userOps.getUserByUsername(username);
-    const device = resolveAppPassword(password, username);
-    if (!user || (!device && !verifyPassword(password, user.passwordHash))) {
+    if (!user || !verifyPassword(password, user.passwordHash)) {
       return res.status(401).json({ error: "Invalid username or password" });
     }
     if (user.status !== "active") {
       return res.status(403).json({ error: "This account has been suspended or disabled" });
     }
-    if (!device) {
-      const updates = { subsonicPassword: password };
-      if (needsRehash(user.passwordHash)) updates.passwordHash = hashPassword(password);
-      if (!user.hasLocalPassword) updates.hasLocalPassword = true;
-      userOps.updateUser(user.id, updates);
+    const updates = { subsonicPassword: password };
+    if (needsRehash(user.passwordHash)) {
+      updates.passwordHash = hashPassword(password);
     }
-    const session = createSession(user.id, req.ip || null, req.headers["user-agent"] || null, device?.appPasswordId || null);
+    if (!user.hasLocalPassword) {
+      updates.hasLocalPassword = true;
+    }
+    userOps.updateUser(user.id, updates);
+    const session = createSession(user.id, req.ip || null, req.headers["user-agent"] || null);
     res.json({
       token: session.token,
       expiresAt: session.expiresAt,
@@ -126,45 +125,6 @@ router.get("/api-key", requireAuth, requireAdmin, (req, res) => {
 router.post("/api-key/rotate", requireAuth, requireAdmin, (req, res) => {
   const newKey = rotateApiKey();
   res.json({ apiKey: newKey });
-});
-
-const configuredServerUrl = () => {
-  try {
-    const url = new URL(String(process.env.AURRAL_PUBLIC_URL || "").trim());
-    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
-    return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
-  } catch {
-    return null;
-  }
-};
-
-const rejectAppPasswordCredential = (req, res, next) => {
-  if (req.user.appPasswordId) {
-    return res.status(403).json({ error: "Sign in to the web app with your account password to connect another app" });
-  }
-  next();
-};
-
-router.get("/app-passwords", requireAuth, requireUserAccount, (req, res) => {
-  const all = req.query.all === "true";
-  if (all && req.user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
-  res.set("Cache-Control", "no-store").json({
-    devices: listAppPasswords(all ? null : req.user.id),
-    serverUrl: configuredServerUrl(),
-  });
-});
-
-router.post("/app-passwords", requireAuth, requireUserAccount, rejectAppPasswordCredential, requireRecentAuth(), (req, res) => {
-  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
-  if (!name || name.length > 100) return res.status(400).json({ error: "Device name must be between 1 and 100 characters" });
-  res.status(201).set("Cache-Control", "no-store").json(createAppPassword(req.user.id, name));
-});
-
-router.delete("/app-passwords/:id", requireAuth, requireUserAccount, (req, res) => {
-  const revoked = revokeAppPassword(req.params.id, req.user.role === "admin" ? null : req.user.id);
-  if (!revoked) return res.status(404).json({ error: "Device not found" });
-  websocketService.disconnectUser(revoked.userId, { appPasswordId: req.params.id });
-  res.json({ success: true });
 });
 
 router.get("/oidc/login", async (req, res) => {

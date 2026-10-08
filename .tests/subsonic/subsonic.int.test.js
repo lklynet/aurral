@@ -178,7 +178,6 @@ test("exposes getOpenSubsonicExtensions without authentication", async () => {
   assert.equal(body.status, "ok");
   assert.equal(body.openSubsonic, true);
   assert.deepEqual(body.openSubsonicExtensions, [
-    { name: "apiKeyAuthentication", versions: [1] },
     { name: "formPost", versions: [1] },
     { name: "topSongsByArtistId", versions: [1] },
     { name: "songLyrics", versions: [1] },
@@ -189,7 +188,7 @@ test("exposes getOpenSubsonicExtensions without authentication", async () => {
   assert.match(await anonymousXml.text(), /<openSubsonicExtensions name="formPost"><versions>1<\/versions><\/openSubsonicExtensions>/);
 
   const authenticated = await request("getOpenSubsonicExtensions", { f: "json" });
-  assert.equal(authenticated.json.openSubsonicExtensions.length, 5);
+  assert.equal(authenticated.json.openSubsonicExtensions.length, 4);
 });
 
 test("accepts form-encoded POST requests", async () => {

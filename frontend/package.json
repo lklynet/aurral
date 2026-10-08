@@ -17,7 +17,6 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@tanstack/react-query": "^5.104.0",
     "lucide-react": "^1.49.0",
-    "qrcode-generator": "^2.0.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router": "^8.4.0",

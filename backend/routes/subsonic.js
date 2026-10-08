@@ -2,7 +2,7 @@ import path from "path";
 import express from "express";
 
 import { APP_NAME, APP_VERSION } from "../config/constants.js";
-import { hasPermission, resolveAppPasswordUser, resolveSubsonicTokenUser, resolveUser } from "../middleware/auth.js";
+import { hasPermission, resolveSubsonicTokenUser, resolveUser } from "../middleware/auth.js";
 import { getPlayQueue, savePlayQueue } from "../services/subsonicPlayQueueService.js";
 import { streamSubsonicAudio } from "../services/subsonicTranscodeService.js";
 import { getLyricsBySongId } from "../services/subsonicLyricsService.js";
@@ -47,7 +47,6 @@ const SUBSONIC_AUTH_HELP_URL = "https://docs.aurral.org/api/overview/";
 const IGNORED_ARTICLES = "The El La Los Las Le Les";
 // OpenSubsonic extensions this server implements, advertised by getOpenSubsonicExtensions.
 const SUPPORTED_EXTENSIONS = [
-  { name: "apiKeyAuthentication", versions: [1] },
   { name: "formPost", versions: [1] },
   { name: "topSongsByArtistId", versions: [1] },
   { name: "songLyrics", versions: [1] },
@@ -188,7 +187,10 @@ function validateRequest(req, format) {
   if (providedMechanisms > 1 || (apiKey && getParameter(req, "u"))) {
     return { format, error: [43, "Multiple conflicting authentication mechanisms provided"] };
   }
-  if (!apiKey && !password && !(token && salt)) {
+  if (apiKey) {
+    return { format, error: [42, "API key authentication is not supported"] };
+  }
+  if (!password && !(token && salt)) {
     return { format, error: [10, "Required parameter is missing: p or t/s"] };
   }
 
@@ -203,7 +205,7 @@ function validateRequest(req, format) {
     return { format, error: [20, "Incompatible Subsonic REST protocol version. Client must upgrade."] };
   }
 
-  return { format, password, token, salt, apiKey };
+  return { format, password, token, salt };
 }
 
 const artistSortKey = (name) => {
@@ -247,11 +249,9 @@ async function handleSubsonicRequest(req, res) {
   const validation = validateRequest(req, requestedFormat(req));
   if (validation.error) return sendError(res, validation.format, ...validation.error);
 
-  const { format, password, token, salt, apiKey } = validation;
+  const { format, password, token, salt } = validation;
   const decodedPassword = password ? decodePassword(password) : null;
-  const user = apiKey
-    ? resolveAppPasswordUser(apiKey)
-    : password
+  const user = password
     ? decodedPassword == null
       ? null
       : resolveUser(getParameter(req, "u"), decodedPassword)
@@ -260,9 +260,8 @@ async function handleSubsonicRequest(req, res) {
     logger.debug("subsonic", "Authentication failed", {
       username: getParameter(req, "u"),
       method: req.params.method,
-      authentication: apiKey ? "apiKey" : password ? "password" : "token",
+      authentication: password ? "password" : "token",
     });
-    if (apiKey) return sendError(res, format, 44, "Invalid API key", SUBSONIC_AUTH_HELP_URL);
     return password
       ? sendError(res, format, 40, "Wrong username or password")
       : sendError(res, format, 41, "Token authentication failed", SUBSONIC_AUTH_HELP_URL);
@@ -270,7 +269,6 @@ async function handleSubsonicRequest(req, res) {
   req.user = user;
 
   if (method === "ping") return sendResponse(res, format);
-  if (method === "tokeninfo") return sendResponse(res, format, "ok", null, { tokenInfo: { username: user.username } });
   if (method === "getuser") {
     const isAdmin = req.user.role === "admin";
     return sendResponse(res, format, "ok", null, {

@@ -11,7 +11,7 @@ description: Version and response guarantees for the JSON API used by Aurral app
 {
   "api": {
     "version": 1,
-    "features": ["discover", "flows", "activity", "review", "trackDownloads", "appPasswords", "linkSearch", "downloadCancel"]
+    "features": ["discover", "flows", "activity", "review", "trackDownloads", "linkSearch", "downloadCancel"]
   }
 }
 ```
@@ -35,7 +35,6 @@ The feature list is the same before and after sign-in.
 | `activity` | Activity through `/api/requests` |
 | `review` | Blocked download jobs and approval or denial |
 | `trackDownloads` | Single-track requests through `/api/library/downloads/track` |
-| `appPasswords` | Per-device app passwords as Bearer credentials and at `POST /api/auth/login`, managed through `/api/auth/app-passwords` |
 | `linkSearch` | Streaming-service links resolved through `/api/search/link` |
 | `downloadCancel` | Cancelling one pending or downloading song through `POST /api/playlists/jobs/:jobId/cancel`, and searching again for cancelled songs that did not come from an album request |
 
@@ -51,10 +50,8 @@ below through HTTP requests.
 
 Password sign-in uses `POST /api/auth/login` with a JSON body containing
 `username` and `password`. Subsequent requests use
-`Authorization: Bearer SESSION_TOKEN`. An app can send an app password as the
-`password`, or send it directly as the Bearer credential. The
-[API overview](/api/overview/) covers app passwords, API keys, and other
-authentication methods.
+`Authorization: Bearer SESSION_TOKEN`. The [API overview](/api/overview/) covers
+API keys and other authentication methods.
 
 A JSON error contains a string `error`. Other error fields are optional.
 `401` means authentication failed or is missing. `403` means the credential

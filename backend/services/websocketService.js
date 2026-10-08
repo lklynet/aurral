@@ -224,13 +224,12 @@ class WebSocketService {
     }
   }
 
-  disconnectUser(userId, { appPasswordId = null } = {}) {
+  disconnectUser(userId) {
     const targetUserId = Number(userId);
     if (!Number.isFinite(targetUserId)) return 0;
     let disconnected = 0;
     for (const client of [...this.clients]) {
       if (Number(client.user?.id) !== targetUserId) continue;
-      if (appPasswordId !== null && client.user?.appPasswordId !== appPasswordId) continue;
       this.clients.delete(client);
       client.subscriptions.clear();
       client.user = null;
