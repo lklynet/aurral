@@ -606,6 +606,12 @@ async function findLidarrSource(track, options = {}) {
   return null;
 }
 
+async function canReuseLidarrFiles(options) {
+  if (options.allowLidarr === false) return false;
+  const { lidarrClient } = await import("../lidarrClient.js");
+  return lidarrClient.isConfigured();
+}
+
 /**
  * Resolves a reusable track source from local storage, Aurral library, or Lidarr library.
  *
@@ -624,7 +630,7 @@ export async function resolveReusableTrackSource(track, options = {}) {
 
   const aurralSource = await findAurralSource(track, options);
   if (aurralSource) return { source: aurralSource, reason: null };
-  if (options.allowLidarr !== false) {
+  if (await canReuseLidarrFiles(options)) {
     const lidarrSource = await findLidarrSource(track, options);
     if (lidarrSource) return { source: lidarrSource, reason: null };
   }
@@ -647,7 +653,7 @@ export async function resolveRepairTrackSource(track, options = {}) {
   const localSource = await findLocalExistingSource(track, options);
   if (localSource) return { source: localSource, reason: null };
 
-  if (options.allowLidarr !== false) {
+  if (await canReuseLidarrFiles(options)) {
     const lidarrSource = await findLidarrSource(track, options);
     if (lidarrSource) return { source: lidarrSource, reason: null };
   }

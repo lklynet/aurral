@@ -703,3 +703,38 @@ test("turning Lidarr off requeues downloads that used a Lidarr file", async (t) 
   assert.equal(await downloadWorker.releaseLidarrFiles(), 0);
   assert.equal(downloadTracker.getJob(kept).status, "done");
 });
+
+test("playlists reuse a Lidarr file only while Lidarr is on", async (t) => {
+  const { lidarrClient } = await importFromRepo("backend/services/lidarrClient.js");
+  const setLidarr = (enabled) => {
+    dbOps.updateSettings({ integrations: { lidarr: { enabled, apiKey: "key" } } });
+    lidarrClient.updateConfig();
+  };
+  t.after(() => setLidarr(false));
+  const lidarrPath = path.join(isolatedState.baseDir, "music", "Reuse Artist", "Reuse Album", "01 Song.flac");
+  await fs.mkdir(path.dirname(lidarrPath), { recursive: true });
+  await fs.writeFile(lidarrPath, "lidarr");
+  const artist = libraryStore.upsertLibraryArtist({ identityKey: "name:reuse-artist", name: "Reuse Artist" });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: "name:reuse-artist:reuse-album",
+    artistId: artist.id,
+    title: "Reuse Album",
+  });
+  const libraryTrack = libraryStore.upsertLibraryTrack({
+    identityKey: "name:reuse-artist:reuse-album:song",
+    title: "Song",
+    artistName: "Reuse Artist",
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: libraryTrack.id, trackNumber: 1 });
+  libraryStore.upsertLibraryMediaFile({ trackId: libraryTrack.id, albumId: album.id, source: "lidarr", path: lidarrPath });
+  const track = { artistName: "Reuse Artist", trackName: "Song", albumName: "Reuse Album" };
+
+  setLidarr(false);
+  const off = await reuseTrackForPlaylist(track, "off-playlist", { existingFileMode: "reuse", downloadRoot });
+  setLidarr(true);
+  const on = await reuseTrackForPlaylist(track, "on-playlist", { existingFileMode: "reuse", downloadRoot });
+
+  assert.equal(off.reused, false);
+  assert.equal(on.reused, true);
+  assert.equal(on.sourceType, "lidarr");
+});
