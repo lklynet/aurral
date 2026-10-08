@@ -109,6 +109,7 @@ export function ArtistDetailsDownloadTargets({
       ? tracks
       : tracks.slice(0, TRACK_PREVIEW_LIMIT);
   const hasHiddenTracks = tracks.length > TRACK_PREVIEW_LIMIT;
+  const pickCover = getReleaseGroupCoverUrl(releaseGroup, albumCovers);
 
   const normalizeTrack = useCallback(
     (track, index) =>
@@ -121,11 +122,12 @@ export function ArtistDetailsDownloadTargets({
         artistName || artist?.name || "",
         {
           album: missingReleasePick?.title || "",
+          artwork: pickCover || null,
           artistMbid: artist?.id || "",
           albumMbid: missingReleasePick?.releaseGroupId || "",
         },
       ),
-    [artist?.id, artist?.name, artistName, missingReleasePick?.releaseGroupId, missingReleasePick?.title],
+    [artist?.id, artist?.name, artistName, missingReleasePick?.releaseGroupId, missingReleasePick?.title, pickCover],
   );
 
   const { currentTrack, isPlaying, isLoading, playTrack, togglePlayPause, source } =

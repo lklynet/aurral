@@ -237,6 +237,7 @@ function ReleasePage() {
     tracks,
     artistName,
     artistMbid,
+    artwork: coverUrl,
     playbackSource,
   });
   const pageTitle = artistName ? `${releaseTitle} — ${artistName}` : releaseTitle;

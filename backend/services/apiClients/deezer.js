@@ -136,6 +136,7 @@ async function getDeezerArtistTopTracksById(artistId) {
             id: String(track.id),
             title: track.title,
             album: track.album?.title ?? null,
+            artworkUrl: track.album?.cover_medium ?? null,
             preview_url: track.preview,
             duration_ms: (track.duration || 0) * 1000,
           }));

@@ -14,6 +14,7 @@ import { DiscoverRecentProvider } from "./contexts/DiscoverRecentProvider";
 import { AudioQueueProvider } from "./contexts/AudioQueueProvider";
 import { AlertTriangle, XCircle } from "lucide-react";
 import ReloadPrompt from "./components/ReloadPrompt";
+import ThemeSync from "./components/ThemeSync";
 import UpdateIndicator from "./components/UpdateIndicator";
 import SpotifyReconnectNotice from "./components/SpotifyReconnectNotice";
 import { DotLoader } from "./components/DotLoader";
@@ -352,6 +353,7 @@ function App() {
           <AudioPlayerProvider>
             <AudioQueueProvider>
               <AppContent />
+              <ThemeSync />
               <ReloadPrompt />
             </AudioQueueProvider>
           </AudioPlayerProvider>

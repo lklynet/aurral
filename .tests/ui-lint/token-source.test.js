@@ -19,7 +19,8 @@ test("reads canonical Aurral tokens and preserves their CSS values", async () =>
 
   const chromeToken = result.declarations.find(({ name }) => name === "--aurral-chrome");
   assert.equal(chromeToken.selector, ":root");
-  assert.equal(chromeToken.value, "light-dark(#f5f5f5, #050505)");
+  assert.match(chromeToken.value, /^light-dark\(/);
+  assert.equal(source.includes(`--aurral-chrome: ${chromeToken.value};`), true);
   assert.equal(result.declarations.some(({ name }) => name === "--aurral-accent"), true);
   assert.equal(result.references.has("--aurral-surface"), true);
 });

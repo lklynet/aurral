@@ -1,18 +1,18 @@
 :root {
   color-scheme: dark;
   --font-sans: ui-sans-serif, system-ui, -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
-  --aurral-chrome: light-dark(#f5f5f5, #050505);
-  --aurral-surface: light-dark(#ffffff, #111111);
-  --aurral-text-subtle: light-dark(#737373, #666666);
-  --aurral-text-muted: light-dark(#525252, #a3a3a3);
-  --aurral-text: light-dark(#171717, #f5f5f5);
+  --aurral-chrome: light-dark(#e5e7eb, #000000);
+  --aurral-surface: light-dark(#ffffff, #121212);
+  --aurral-text-subtle: light-dark(#737373, #757575);
+  --aurral-text-muted: light-dark(#525252, #b3b3b3);
+  --aurral-text: light-dark(#171717, #ffffff);
   --aurral-accent: light-dark(#525252, #b3b3b3);
-  --aurral-accent-contrast: light-dark(#ffffff, #111111);
-  --aurral-surface-raised: color-mix(in srgb, var(--aurral-surface) 94%, var(--aurral-text));
-  --aurral-surface-popover: color-mix(in srgb, var(--aurral-surface-raised) 94%, var(--aurral-text));
+  --aurral-accent-contrast: light-dark(#ffffff, #000000);
+  --aurral-surface-raised: light-dark(#f1f1f1, #202020);
+  --aurral-surface-popover: light-dark(#e4e4e4, #2d2d2d);
   --aurral-surface-glass: var(--aurral-surface-popover);
-  --aurral-surface-hover: color-mix(in srgb, var(--aurral-surface-popover) 90%, var(--aurral-text));
-  --aurral-surface-selected: color-mix(in srgb, var(--aurral-text) 7%, var(--aurral-surface));
+  --aurral-surface-hover: light-dark(#d0d0d0, #424242);
+  --aurral-surface-selected: light-dark(#efefef, #232323);
   --aurral-surface-mid: var(--aurral-surface-raised);
   --aurral-overlay: var(--aurral-surface-popover);
   --aurral-overlay-hover: var(--aurral-surface-hover);
@@ -41,10 +41,10 @@
   --aurral-success: light-dark(#15803d, #22c55e);
   --aurral-danger: light-dark(#dc2626, #ef4444);
   --aurral-warning: light-dark(#b45309, #f59e0b);
-  --aurral-ring: color-mix(in srgb, var(--aurral-text) 46%, transparent);
-  --aurral-scrim: color-mix(in srgb, var(--aurral-chrome) 72%, transparent);
-  --aurral-border: color-mix(in srgb, var(--aurral-text) 8%, transparent);
-  --aurral-border-strong: color-mix(in srgb, var(--aurral-text) 14%, transparent);
+  --aurral-ring: light-dark(#17171775, #ffffff75);
+  --aurral-scrim: light-dark(#e5e7ebb8, #000000b8);
+  --aurral-border: light-dark(#17171714, #ffffff14);
+  --aurral-border-strong: light-dark(#17171724, #ffffff24);
   --aurral-shadow-popover: 0 12px 32px rgb(0 0 0 / 0.28);
   --aurral-shadow-modal: 0 24px 64px rgb(0 0 0 / 0.38);
   --aurral-shadow-action-icon: 0 1px 1px rgb(0 0 0 / 55%);
@@ -13578,7 +13578,21 @@ button.native-library-genre-row:focus-visible {
 }
 
 .global-player__track {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   min-width: 0;
+}
+
+.global-player__art--bar {
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--aurral-radius-sm);
+}
+
+.global-player__art--bar svg {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .global-player__main {

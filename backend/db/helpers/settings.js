@@ -128,6 +128,18 @@ export const dbOps = {
     );
   },
 
+  getUserTheme(userId) {
+    return dbOps.getJSONSetting(`user:${parseInt(userId, 10)}:theme`);
+  },
+
+  setUserTheme(userId, theme) {
+    dbOps.setJSONSetting(`user:${parseInt(userId, 10)}:theme`, theme);
+  },
+
+  deleteUserTheme(userId) {
+    deleteSettingStmt.run(`user:${parseInt(userId, 10)}:theme`);
+  },
+
   setLidarrRootFolderPaths(paths) {
     const settings = dbOps.getSettings();
     const normalized = normalizeLidarrRootFolderPaths(paths);

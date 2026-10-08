@@ -19,7 +19,7 @@ const formatReleaseTrackDuration = (length) =>
         .padStart(2, "0")}`
     : "—";
 
-export function useReleasePreviewQueue({ release, trackKey, tracks, artistName, artistMbid, playbackSource }) {
+export function useReleasePreviewQueue({ release, trackKey, tracks, artistName, artistMbid, artwork, playbackSource }) {
   const normalizeTrack = useCallback(
     (track, index) =>
       normalizePreviewTrack(
@@ -31,11 +31,12 @@ export function useReleasePreviewQueue({ release, trackKey, tracks, artistName, 
         artistName,
         {
           album: release?.title || "",
+          artwork: artwork || null,
           artistMbid,
           albumMbid: release?.id || trackKey,
         },
       ),
-    [artistMbid, artistName, release?.id, release?.title, trackKey],
+    [artistMbid, artistName, artwork, release?.id, release?.title, trackKey],
   );
   const getQueueTracks = useCallback(
     () =>

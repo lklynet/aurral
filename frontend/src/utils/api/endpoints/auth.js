@@ -120,6 +120,10 @@ export const getMyLidarrPreferences = ({ signal } = {}) =>
 
 export const getMyDiscoverLayout = () => getData("/users/me/discover-layout");
 
+export const getMyTheme = () => getData("/users/me/theme");
+
+export const saveMyTheme = (theme) => putData("/users/me/theme", { theme });
+
 export const updateMyListeningHistory = (userId, payload) =>
   patchData(`/users/${userId}`, payload);
 

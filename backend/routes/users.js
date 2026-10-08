@@ -5,8 +5,10 @@ import {
   requireAuth,
   requireAdmin,
   requireRecentAuth,
+  requireUserAccount,
   isRecentlyAuthenticated,
 } from "../middleware/requirePermission.js";
+import { normalizeUserThemeDocument, ThemeValidationError } from "../services/userTheme.js";
 import { reconcileLocalNetworkBypassSetting } from "../middleware/auth.js";
 import { requirePasswordStrength } from "../middleware/auth.js";
 import { deleteSessionsByUserId } from "../config/session-helpers.js";
@@ -391,6 +393,34 @@ router.get("/me/lidarr-preferences", requireAuth, async (req, res) => {
   }
 });
 
+router.get("/me/theme", requireAuth, requireUserAccount, (req, res) => {
+  try {
+    const stored = dbOps.getUserTheme(req.user.id);
+    let theme = null;
+    try {
+      theme = stored ? normalizeUserThemeDocument(stored) : null;
+    } catch {
+      theme = null;
+    }
+    res.json({ theme });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to get theme", message: e.message });
+  }
+});
+
+router.put("/me/theme", requireAuth, requireUserAccount, (req, res) => {
+  try {
+    const theme = normalizeUserThemeDocument(req.body?.theme);
+    dbOps.setUserTheme(req.user.id, theme);
+    res.json({ theme });
+  } catch (e) {
+    if (e instanceof ThemeValidationError) {
+      return res.status(400).json({ error: "Invalid theme", message: e.message, field: "theme" });
+    }
+    res.status(500).json({ error: "Failed to save theme", message: e.message });
+  }
+});
+
 router.get("/me/discover-layout", requireAuth, (req, res) => {
   try {
     const user = userOps.getUserById(req.user.id);
@@ -587,6 +617,7 @@ router.delete("/:id", requireAuth, requireAdmin, (req, res) => {
     }
     deleteSessionsByUserId(id);
     userOps.deleteUser(id);
+    dbOps.deleteUserTheme(id);
     dbOps.deleteDiscoveryCacheByPrefix(`${getUserDiscoveryNamespace(id)}:`);
     reconcileLocalBypassAfterUserMutation();
     res.json({ success: true });

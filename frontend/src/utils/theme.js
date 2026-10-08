@@ -1,9 +1,26 @@
-export const THEME_STORAGE_KEY = "aurralTheme";
-export const THEME_APPEARANCE_STORAGE_KEY = "aurralThemeAppearance:v1";
-export const CUSTOM_THEMES_STORAGE_KEY = "aurralThemes:v1";
-export const THEME_FILE_VERSION = 1;
+import {
+  adjustLightnessForContrast,
+  colorAtContrast,
+  contrastRatio,
+  hexToOklch,
+  isDarkColor,
+  mixColors,
+  normalizeHexColor,
+  oklchToHex,
+  withAlpha,
+} from "./themeColor.js";
+import { THEME_PRESETS } from "./themePresets.js";
+
+export const THEME_STORAGE_KEY = "aurralTheme:v2";
+export const THEME_PAINT_STORAGE_KEY = "aurralThemePaint:v1";
+export const THEME_OWNER_STORAGE_KEY = "aurralThemeOwner:v1";
+export const LEGACY_THEME_STORAGE_KEYS = ["aurralTheme", "aurralThemeAppearance:v1", "aurralThemes:v1"];
+export const THEME_DOCUMENT_VERSION = 2;
 export const DEFAULT_THEME_ID = "aurral";
 export const THEME_APPEARANCES = ["system", "light", "dark"];
+export const THEME_MODES = ["light", "dark"];
+export const MAX_CUSTOM_THEMES = 50;
+export const THEME_SEED_ROLES = ["background", "text", "accent", "danger", "warning", "success", "info"];
 
 export const THEME_COLOR_ROLES = [
   "chrome",
@@ -29,442 +46,508 @@ export const THEME_COLOR_ROLES = [
   "scrim",
 ];
 
-const THEME_VARIABLES = Object.fromEntries(
-  THEME_COLOR_ROLES.map((role) => [
-    role,
-    `--aurral-${role.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,
-  ]),
-);
-const THEME_COLOR_ROLE_SET = new Set(THEME_COLOR_ROLES);
+const cssVariable = (role) => `--aurral-${role.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
 
-function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+const STATUS_DEFAULTS = {
+  light: { danger: "#dc2626", warning: "#b45309", success: "#15803d", info: "#2563eb" },
+  dark: { danger: "#ef4444", warning: "#f59e0b", success: "#22c55e", info: "#60a5fa" },
+};
+
+export const AURRAL_THEME = {
+  id: DEFAULT_THEME_ID,
+  name: "Aurral",
+  light: { background: "#ffffff", text: "#171717", accent: "#525252" },
+  dark: { background: "#121212", text: "#ffffff", accent: "#b3b3b3" },
+};
+
+export const BUILT_IN_THEMES = [AURRAL_THEME, ...THEME_PRESETS];
+const BUILT_IN_THEME_IDS = new Set(BUILT_IN_THEMES.map((theme) => theme.id));
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const otherMode = (mode) => (mode === "dark" ? "light" : "dark");
+
+function readableOn(background, candidates) {
+  return [...candidates, "#ffffff", "#000000"].find((color) => contrastRatio(color, background) >= 4.5)
+    || (contrastRatio("#ffffff", background) >= contrastRatio("#000000", background) ? "#ffffff" : "#000000");
 }
 
-function clamp(value, min = 0, max = 1) {
-  return Math.min(max, Math.max(min, value));
-}
+export function createThemePalette(seed) {
+  const dark = isDarkColor(seed.background);
+  const surface = normalizeHexColor(seed.background);
+  const base = hexToOklch(surface);
+  const shade = (delta) => oklchToHex({ ...base, l: base.l + delta });
+  const toward = dark ? 1 : -1;
+  const surfaceRaised = shade(toward * (dark ? 0.05 : 0.035));
+  const surfacePopover = shade(toward * (dark ? 0.1 : 0.075));
+  const surfaceHover = shade(toward * (dark ? 0.17 : 0.13));
+  const chrome = shade(dark ? -0.06 : -0.07);
 
-function parseHexColor(value) {
-  const hex = value.trim().replace(/^#/, "");
-  if (!/^(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i.test(hex)) return null;
-  const expand = (part) => Number.parseInt(part.length === 1 ? `${part}${part}` : part, 16);
-  return {
-    r: expand(hex.slice(0, hex.length <= 4 ? 1 : 2)),
-    g: expand(hex.slice(hex.length <= 4 ? 1 : 2, hex.length <= 4 ? 2 : 4)),
-    b: expand(hex.slice(hex.length <= 4 ? 2 : 4, hex.length <= 4 ? 3 : 6)),
-    a:
-      hex.length === 4
-        ? expand(hex.slice(3, 4)) / 255
-        : hex.length === 8
-          ? expand(hex.slice(6, 8)) / 255
-          : 1,
-  };
-}
+  const textSeed = seed.text || oklchToHex({ l: dark ? 0.96 : 0.2, c: Math.min(base.c, 0.02), h: base.h });
+  const text = adjustLightnessForContrast(textSeed, surfacePopover, 7);
+  const textColor = hexToOklch(text);
+  const textContrast = contrastRatio(text, surfacePopover);
+  const mutedTarget = clamp(textContrast * 0.48, 4.6, textContrast);
+  const subtleTarget = clamp(textContrast * 0.25, 3.2, mutedTarget);
+  const textMuted = colorAtContrast(textColor.h, textColor.c, surfacePopover, mutedTarget, dark);
+  const textSubtle = colorAtContrast(textColor.h, textColor.c, surfacePopover, subtleTarget, dark);
 
-export function parseThemeColor(value) {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.startsWith("#") ? parseHexColor(trimmed) : null;
-}
+  const accent = adjustLightnessForContrast(seed.accent, surface, 3);
+  const accentContrast = readableOn(accent, [text, surface]);
+  const status = Object.fromEntries(
+    Object.entries(STATUS_DEFAULTS[dark ? "dark" : "light"]).map(([role, fallback]) => [
+      role,
+      adjustLightnessForContrast(seed[role] || fallback, surfacePopover, 4.5),
+    ]),
+  );
 
-function channelToHex(value) {
-  return Math.round(clamp(value, 0, 255)).toString(16).padStart(2, "0");
-}
-
-function rgbaToHex(color) {
-  const opaque = `#${channelToHex(color.r)}${channelToHex(color.g)}${channelToHex(color.b)}`;
-  return color.a >= 0.999 ? opaque : `${opaque}${channelToHex(color.a * 255)}`;
-}
-
-export function normalizeThemeColor(value) {
-  const parsed = parseThemeColor(value);
-  return parsed ? rgbaToHex(parsed) : null;
-}
-
-function colorToRgb(value, fallback = { r: 0, g: 0, b: 0, a: 1 }) {
-  return parseThemeColor(value) || fallback;
-}
-
-function relativeLuminance(color) {
-  const channel = (value) => {
-    const ratio = clamp(value / 255);
-    return ratio <= 0.03928 ? ratio / 12.92 : ((ratio + 0.055) / 1.055) ** 2.4;
-  };
-  return 0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b);
-}
-
-function contrastRatio(first, second) {
-  const a = relativeLuminance(first);
-  const b = relativeLuminance(second);
-  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-}
-
-export function readableThemeForeground(background) {
-  const color = typeof background === "string" ? colorToRgb(background) : background;
-  const light = { r: 255, g: 255, b: 255, a: 1 };
-  const dark = { r: 20, g: 20, b: 20, a: 1 };
-  return rgbaToHex(contrastRatio(color, light) >= contrastRatio(color, dark) ? light : dark);
-}
-
-function mixColors(first, second, amount) {
-  const a = colorToRgb(first);
-  const b = colorToRgb(second);
-  return rgbaToHex({
-    r: a.r + (b.r - a.r) * amount,
-    g: a.g + (b.g - a.g) * amount,
-    b: a.b + (b.b - a.b) * amount,
-    a: 1,
-  });
-}
-
-export function createThemeColors(appearance, background, accent, overrides = {}) {
-  const dark = appearance === "dark";
-  const canvas = normalizeThemeColor(background) || (dark ? "#111111" : "#ffffff");
-  const accentColor = normalizeThemeColor(accent) || (dark ? "#79a8ff" : "#315fcb");
-  const text = normalizeThemeColor(overrides.text) || readableThemeForeground(canvas);
-  const muted = normalizeThemeColor(overrides.textMuted) || mixColors(text, canvas, 0.52);
-  const subtle = normalizeThemeColor(overrides.textSubtle) || mixColors(muted, canvas, 0.58);
-  const chrome = normalizeThemeColor(overrides.chrome) || canvas;
-  const surface = normalizeThemeColor(overrides.surface) || mixColors(canvas, text, dark ? 0.035 : 0.015);
-  const surfaceRaised = normalizeThemeColor(overrides.surfaceRaised) || mixColors(surface, text, dark ? 0.12 : 0.035);
-  const surfacePopover = normalizeThemeColor(overrides.surfacePopover) || mixColors(surfaceRaised, text, dark ? 0.1 : 0.025);
-  const surfaceHover = normalizeThemeColor(overrides.surfaceHover) || mixColors(surfacePopover, text, dark ? 0.16 : 0.08);
-  const surfaceSelected = normalizeThemeColor(overrides.surfaceSelected) || mixColors(surface, accentColor, dark ? 0.18 : 0.1);
-  const border = normalizeThemeColor(overrides.border) || mixColors(canvas, text, dark ? 0.2 : 0.12);
-  const borderStrong = normalizeThemeColor(overrides.borderStrong) || mixColors(border, text, 0.4);
-  const accentContrast = normalizeThemeColor(overrides.accentContrast) || readableThemeForeground(accentColor);
   return {
     chrome,
     surface,
     surfaceRaised,
     surfacePopover,
     surfaceHover,
-    surfaceSelected,
+    surfaceSelected: mixColors(surface, accent, dark ? 0.16 : 0.1),
     text,
-    textMuted: muted,
-    textSubtle: subtle,
-    border,
-    borderStrong,
-    accent: accentColor,
+    textMuted,
+    textSubtle,
+    border: withAlpha(text, 0.08),
+    borderStrong: withAlpha(text, 0.14),
+    accent,
     accentContrast,
-    danger: normalizeThemeColor(overrides.danger) || (dark ? "#ff777d" : "#bd2735"),
-    warning: normalizeThemeColor(overrides.warning) || (dark ? "#ffbd66" : "#a65c00"),
-    success: normalizeThemeColor(overrides.success) || (dark ? "#79d69d" : "#197343"),
-    info: normalizeThemeColor(overrides.info) || accentColor,
-    ring: normalizeThemeColor(overrides.ring) || accentColor,
-    controlOn: normalizeThemeColor(overrides.controlOn) || accentColor,
-    controlOnContrast: normalizeThemeColor(overrides.controlOnContrast) || accentContrast,
-    scrim: normalizeThemeColor(overrides.scrim) || (dark ? "#000000b8" : "#00000066"),
+    ...status,
+    ring: withAlpha(text, 0.46),
+    controlOn: accent,
+    controlOnContrast: accentContrast,
+    scrim: dark ? "#000000b8" : withAlpha(chrome, 0.72),
   };
 }
 
-export const BUILT_IN_THEMES = [
-  {
-    id: DEFAULT_THEME_ID,
-    label: "Aurral",
-    appearance: "light",
-    colors: createThemeColors("light", "#ffffff", "#525252", {
-      chrome: "#e5e7eb",
-      surface: "#ffffff",
-      surfaceRaised: "#f1f1f1",
-      surfacePopover: "#e4e4e4",
-      surfaceHover: "#d0d0d0",
-      surfaceSelected: "#efefef",
-      text: "#171717",
-      textMuted: "#525252",
-      textSubtle: "#737373",
-      border: "#17171714",
-      borderStrong: "#17171724",
-      accentContrast: "#ffffff",
-      danger: "#dc2626",
-      warning: "#b45309",
-      success: "#15803d",
-      info: "#2563eb",
-      ring: "#17171775",
-      controlOn: "#2563eb",
-      controlOnContrast: "#ffffff",
-      scrim: "#e5e7ebb8",
+function mirrorSeed(seed, mode) {
+  const dark = mode === "dark";
+  const background = hexToOklch(seed.background);
+  const mirrored = {
+    background: oklchToHex(dark
+      ? { l: 0.2, c: Math.min(background.c, 0.03), h: background.h }
+      : { l: 0.98, c: Math.min(background.c * 0.5, 0.012), h: background.h }),
+    accent: seed.accent,
+  };
+  if (seed.text) {
+    const text = hexToOklch(seed.text);
+    mirrored.text = oklchToHex({ l: dark ? 0.93 : 0.24, c: Math.min(text.c, 0.03), h: text.h });
+  }
+  for (const role of ["danger", "warning", "success", "info"]) {
+    if (seed[role]) mirrored[role] = seed[role];
+  }
+  return mirrored;
+}
+
+export function getThemeSeed(theme, mode) {
+  return theme[mode] || mirrorSeed(theme[otherMode(mode)], mode);
+}
+
+const paletteCache = new WeakMap();
+
+export function getThemePalette(theme, mode) {
+  let palettes = paletteCache.get(theme);
+  if (!palettes) {
+    palettes = {};
+    paletteCache.set(theme, palettes);
+  }
+  palettes[mode] ||= createThemePalette(getThemeSeed(theme, mode));
+  return palettes[mode];
+}
+
+export function tintSeedWithArtwork(seed, artwork) {
+  const art = hexToOklch(artwork);
+  const background = hexToOklch(seed.background);
+  const dark = isDarkColor(seed.background);
+  return {
+    ...seed,
+    accent: artwork,
+    background: oklchToHex({
+      l: background.l,
+      c: dark ? Math.min(0.022, art.c * 0.25) : Math.min(0.014, art.c * 0.15),
+      h: art.h,
     }),
-    variants: {
-      dark: createThemeColors("dark", "#121212", "#b3b3b3", {
-        chrome: "#000000",
-        surface: "#121212",
-        surfaceRaised: "#202020",
-        surfacePopover: "#2d2d2d",
-        surfaceHover: "#424242",
-        surfaceSelected: "#232323",
-        text: "#ffffff",
-        textMuted: "#b3b3b3",
-        textSubtle: "#535353",
-        border: "#ffffff14",
-        borderStrong: "#ffffff24",
-        accentContrast: "#000000",
-        danger: "#ef4444",
-        warning: "#f59e0b",
-        success: "#22c55e",
-        info: "#60a5fa",
-        ring: "#ffffff75",
-        controlOn: "#3b82f6",
-        controlOnContrast: "#07111f",
-        scrim: "#000000b8",
-      }),
-    },
-  },
-];
-
-const BUILT_IN_THEME_IDS = new Set(BUILT_IN_THEMES.map((theme) => theme.id));
-const RESERVED_THEME_IDS = new Set(["system", "light", "dark", ...BUILT_IN_THEMES.map((theme) => theme.id)]);
-
-export function getThemeModes(theme) {
-  return ["light", "dark"].filter((mode) => mode === theme.appearance || Boolean(theme.variants?.[mode]));
+  };
 }
 
-export function getThemeColorsForMode(theme, mode) {
-  if (mode === theme.appearance) return theme.colors;
-  return theme.variants?.[mode] || null;
+function normalizeSeed(value, mode, themeName) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${themeName} has unreadable ${mode} colors.`);
+  }
+  const seed = {};
+  for (const role of THEME_SEED_ROLES) {
+    if (value[role] === undefined || value[role] === null || value[role] === "") continue;
+    const color = normalizeHexColor(value[role]);
+    if (!color) throw new Error(`${themeName} has an invalid ${mode} ${role} color.`);
+    seed[role] = color;
+  }
+  if (!seed.background || !seed.accent) throw new Error(`${themeName} needs a ${mode} background and accent color.`);
+  if (isDarkColor(seed.background) !== (mode === "dark")) {
+    throw new Error(`${themeName} needs a ${mode} background for its ${mode} colors.`);
+  }
+  return seed;
 }
 
-export function themeIdFromName(name) {
-  const id = String(name || "custom-theme")
-    .trim()
+export function normalizeThemeName(value) {
+  const name = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+  if (!name) throw new Error("Give the theme a name.");
+  if (name.length > 48) throw new Error("Theme names can be up to 48 characters.");
+  return name;
+}
+
+export function isThemeId(value) {
+  return typeof value === "string" && /^[a-z0-9](?:[a-z0-9-]{0,63})$/.test(value);
+}
+
+export function normalizeTheme(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("This theme is unreadable.");
+  const name = normalizeThemeName(value.name);
+  if (!isThemeId(value.id)) throw new Error(`${name} has an invalid id.`);
+  const theme = { id: value.id, name };
+  for (const mode of THEME_MODES) {
+    if (value[mode] !== undefined && value[mode] !== null) theme[mode] = normalizeSeed(value[mode], mode, name);
+  }
+  if (!theme.light && !theme.dark) throw new Error(`${name} needs light or dark colors.`);
+  return theme;
+}
+
+export function createThemeId(name, takenIds = []) {
+  const slug = String(name || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-  return RESERVED_THEME_IDS.has(id) ? `${id}-custom` : id || "custom-theme";
+    .slice(0, 48) || "theme";
+  const taken = new Set([...BUILT_IN_THEME_IDS, ...takenIds]);
+  let id = `custom-${slug}`;
+  for (let suffix = 2; taken.has(id); suffix += 1) id = `custom-${slug}-${suffix}`;
+  return id;
 }
 
-function isThemeId(value) {
-  return typeof value === "string" && /^[a-z0-9](?:[a-z0-9-]{0,47})$/.test(value);
+export function createDefaultThemeDocument() {
+  return {
+    version: THEME_DOCUMENT_VERSION,
+    themeId: DEFAULT_THEME_ID,
+    appearance: "system",
+    matchArtwork: false,
+    themes: [],
+  };
 }
 
-function isThemeAppearance(value) {
-  return value === "light" || value === "dark";
-}
-
-function isThemeMode(value) {
-  return THEME_APPEARANCES.includes(value);
-}
-
-function isThemeLabel(value) {
-  return typeof value === "string" && value.trim().length > 0 && value.trim().length <= 48;
-}
-
-function getDefaultThemeColors(appearance) {
-  const theme = BUILT_IN_THEMES[0];
-  return getThemeColorsForMode(theme, appearance) || theme.colors;
-}
-
-function parseThemeColors(value, appearance) {
-  if (!isRecord(value)) throw new Error("Theme colors must be an object.");
-  const colors = { ...getDefaultThemeColors(appearance) };
-  for (const [role, color] of Object.entries(value)) {
-    if (!THEME_COLOR_ROLE_SET.has(role)) throw new Error(`"${role}" is not a supported Aurral theme color role.`);
-    const normalized = normalizeThemeColor(color);
-    if (!normalized) throw new Error(`The color for "${role}" is invalid.`);
-    colors[role] = normalized;
-  }
-  return colors;
-}
-
-export function parseThemeFile(value) {
-  if (!isRecord(value)) throw new Error("Theme files must contain a JSON object.");
-  if (value.version !== THEME_FILE_VERSION) {
-    throw new Error(`This theme file uses an unsupported version. Expected ${THEME_FILE_VERSION}.`);
-  }
-  const label = value.name ?? value.label;
-  if (!isThemeLabel(label)) throw new Error("Theme files need a name (48 characters or fewer).");
-  if (!isThemeAppearance(value.appearance)) throw new Error('Theme files need an appearance of "light" or "dark".');
-  const id = value.id === undefined ? themeIdFromName(label) : value.id;
-  if (!isThemeId(id)) throw new Error("Theme ids may only contain lowercase letters, numbers, and hyphens.");
-  if (RESERVED_THEME_IDS.has(id)) throw new Error(`The theme id "${id}" is reserved.`);
-  const colors = parseThemeColors(value.colors, value.appearance);
-  const variants = {};
-  if (value.variants !== undefined) {
-    if (!isRecord(value.variants)) throw new Error("Theme variants must be an object.");
-    for (const [mode, variantColors] of Object.entries(value.variants)) {
-      if (!isThemeAppearance(mode) || mode === value.appearance) throw new Error("Theme variants must contain the other light or dark appearance.");
-      variants[mode] = parseThemeColors(variantColors, mode);
+export function normalizeThemeDocument(value) {
+  const document = createDefaultThemeDocument();
+  if (!value || typeof value !== "object" || value.version !== THEME_DOCUMENT_VERSION) return document;
+  if (THEME_APPEARANCES.includes(value.appearance)) document.appearance = value.appearance;
+  document.matchArtwork = value.matchArtwork === true;
+  const seen = new Set(BUILT_IN_THEME_IDS);
+  for (const item of Array.isArray(value.themes) ? value.themes : []) {
+    if (document.themes.length >= MAX_CUSTOM_THEMES) break;
+    try {
+      const theme = normalizeTheme(item);
+      if (seen.has(theme.id)) continue;
+      seen.add(theme.id);
+      document.themes.push(theme);
+    } catch {
+      continue;
     }
   }
-  return {
-    id,
-    label: label.trim(),
-    appearance: value.appearance,
-    colors,
-    ...(Object.keys(variants).length ? { variants } : {}),
-  };
+  if (isThemeId(value.themeId) && seen.has(value.themeId)) document.themeId = value.themeId;
+  return document;
 }
 
-function storedThemeFile(theme) {
-  return {
-    version: THEME_FILE_VERSION,
-    id: theme.id,
-    name: theme.label,
-    appearance: theme.appearance,
-    colors: theme.colors,
-    ...(theme.variants ? { variants: theme.variants } : {}),
-  };
+export function isDefaultThemeDocument(document) {
+  return JSON.stringify(document) === JSON.stringify(createDefaultThemeDocument());
 }
 
-let customThemeCache = null;
-const customThemeListeners = new Set();
-const themeListeners = new Set();
-
-function notify(listeners) {
-  for (const listener of listeners) listener();
-}
-
-function readCustomThemes() {
-  try {
-    const raw = globalThis.localStorage?.getItem(CUSTOM_THEMES_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((value) => {
-      try {
-        const theme = parseThemeFile(value);
-        return BUILT_IN_THEME_IDS.has(theme.id) ? [] : [theme];
-      } catch {
-        return [];
-      }
-    });
-  } catch {
-    return [];
+export function convertLegacyTheme(value) {
+  if (!value || typeof value !== "object" || !value.colors) throw new Error("This theme file is unreadable.");
+  const palettes = [value.colors, ...Object.values(value.variants || {})];
+  const theme = { id: value.id, name: value.name ?? value.label };
+  for (const colors of palettes) {
+    const background = normalizeHexColor(String(colors?.surface || "").slice(0, 7));
+    const accent = normalizeHexColor(String(colors?.accent || "").slice(0, 7));
+    if (!background || !accent) continue;
+    const mode = isDarkColor(background) ? "dark" : "light";
+    if (theme[mode]) continue;
+    const seed = { background, accent };
+    for (const role of ["text", "danger", "warning", "success", "info"]) {
+      const color = normalizeHexColor(String(colors[role] || "").slice(0, 7));
+      if (color) seed[role] = color;
+    }
+    theme[mode] = seed;
   }
+  return theme;
 }
 
-export function getCustomThemes() {
-  if (customThemeCache === null) customThemeCache = readCustomThemes();
-  return customThemeCache;
-}
-
-export function subscribeToCustomThemes(listener) {
-  customThemeListeners.add(listener);
-  return () => customThemeListeners.delete(listener);
-}
-
-export function subscribeToThemeChanges(listener) {
-  themeListeners.add(listener);
-  return () => themeListeners.delete(listener);
-}
-
-function saveCustomThemes(themes) {
+function readStorage(key) {
   try {
-    globalThis.localStorage?.setItem(CUSTOM_THEMES_STORAGE_KEY, JSON.stringify(themes.map(storedThemeFile)));
-  } catch {
-    throw new Error("Aurral could not save themes on this device.");
-  }
-  customThemeCache = themes;
-  notify(customThemeListeners);
-}
-
-export function installCustomTheme(theme) {
-  const normalized = parseThemeFile(storedThemeFile(theme));
-  if (RESERVED_THEME_IDS.has(normalized.id)) throw new Error(`The theme id "${normalized.id}" is reserved.`);
-  if ([...BUILT_IN_THEMES, ...getCustomThemes()].some((item) => item.id === normalized.id)) {
-    throw new Error(`A theme named "${normalized.label}" is already installed.`);
-  }
-  saveCustomThemes([...getCustomThemes(), normalized]);
-  return normalized;
-}
-
-export function replaceCustomTheme(theme) {
-  const normalized = parseThemeFile(storedThemeFile(theme));
-  if (RESERVED_THEME_IDS.has(normalized.id)) throw new Error(`The theme id "${normalized.id}" is reserved.`);
-  const themes = getCustomThemes();
-  if (!themes.some((item) => item.id === normalized.id)) throw new Error(`The theme "${normalized.label}" is not installed.`);
-  saveCustomThemes(themes.map((item) => item.id === normalized.id ? normalized : item));
-  return normalized;
-}
-
-export function removeCustomTheme(themeId) {
-  saveCustomThemes(getCustomThemes().filter((theme) => theme.id !== themeId));
-}
-
-export function getThemeDefinition(themeId) {
-  return BUILT_IN_THEMES.find((theme) => theme.id === themeId) || getCustomThemes().find((theme) => theme.id === themeId) || null;
-}
-
-function readStoredValue(key) {
-  try {
-    return globalThis.localStorage?.getItem(key) || null;
+    return globalThis.localStorage?.getItem(key) ?? null;
   } catch {
     return null;
   }
 }
 
-export function getThemeSettings() {
-  const storedTheme = readStoredValue(THEME_STORAGE_KEY);
-  if (THEME_APPEARANCES.includes(storedTheme)) return { themeId: DEFAULT_THEME_ID, appearance: storedTheme };
-  const themeId = getThemeDefinition(storedTheme) ? storedTheme : DEFAULT_THEME_ID;
-  const storedAppearance = readStoredValue(THEME_APPEARANCE_STORAGE_KEY);
-  return { themeId, appearance: isThemeMode(storedAppearance) ? storedAppearance : "system" };
-}
-
-function writeThemeSettings(themeId, appearance) {
+function writeStorage(key, value) {
   try {
-    if (themeId === DEFAULT_THEME_ID && THEME_APPEARANCES.includes(appearance)) {
-      globalThis.localStorage?.setItem(THEME_STORAGE_KEY, appearance);
-      globalThis.localStorage?.removeItem(THEME_APPEARANCE_STORAGE_KEY);
-    } else {
-      globalThis.localStorage?.setItem(THEME_STORAGE_KEY, themeId);
-      globalThis.localStorage?.setItem(THEME_APPEARANCE_STORAGE_KEY, appearance);
-    }
-  } catch {}
+    if (value === null) globalThis.localStorage?.removeItem(key);
+    else globalThis.localStorage?.setItem(key, value);
+  } catch {
+    return;
+  }
 }
 
-function getSystemAppearance() {
+function parseJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function migrateLegacyDocument() {
+  const selection = readStorage("aurralTheme");
+  const appearance = readStorage("aurralThemeAppearance:v1");
+  const legacyThemes = parseJson(readStorage("aurralThemes:v1"));
+  if (selection === null && appearance === null && legacyThemes === null) return null;
+  const themes = (Array.isArray(legacyThemes) ? legacyThemes : []).flatMap((item) => {
+    try {
+      return [normalizeTheme(convertLegacyTheme(item))];
+    } catch {
+      return [];
+    }
+  });
+  const document = normalizeThemeDocument({
+    version: THEME_DOCUMENT_VERSION,
+    themeId: THEME_APPEARANCES.includes(selection) ? DEFAULT_THEME_ID : selection,
+    appearance: THEME_APPEARANCES.includes(selection) ? selection : appearance,
+    themes,
+  });
+  writeStorage(THEME_STORAGE_KEY, JSON.stringify(document));
+  for (const key of LEGACY_THEME_STORAGE_KEYS) writeStorage(key, null);
+  return document;
+}
+
+function readLocalDocument() {
+  const stored = parseJson(readStorage(THEME_STORAGE_KEY));
+  if (stored) return normalizeThemeDocument(stored);
+  return migrateLegacyDocument() || createDefaultThemeDocument();
+}
+
+let documentCache = null;
+let artworkColor = null;
+let preview = null;
+let saveToAccount = null;
+let appliedPalette = null;
+let tweenFrame = null;
+let lastPaintCache = null;
+const listeners = new Set();
+
+export function getThemeDocument() {
+  documentCache ||= readLocalDocument();
+  return documentCache;
+}
+
+export function subscribeToTheme(listener) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function getAllThemes(document = getThemeDocument()) {
+  return [...BUILT_IN_THEMES, ...document.themes];
+}
+
+export function findTheme(themeId, document = getThemeDocument()) {
+  return getAllThemes(document).find((theme) => theme.id === themeId) || null;
+}
+
+export function isCustomTheme(theme) {
+  return Boolean(theme) && !BUILT_IN_THEME_IDS.has(theme.id);
+}
+
+function commit(document, { fromAccount = false } = {}) {
+  documentCache = document;
+  writeStorage(THEME_STORAGE_KEY, JSON.stringify(document));
+  render();
+  for (const listener of listeners) listener();
+  if (!fromAccount) saveToAccount?.(document);
+}
+
+function update(changes) {
+  commit(normalizeThemeDocument({ ...getThemeDocument(), ...changes }));
+}
+
+export function selectTheme(themeId) {
+  update({ themeId: findTheme(themeId) ? themeId : DEFAULT_THEME_ID });
+}
+
+export function setThemeAppearance(appearance) {
+  update({ appearance: THEME_APPEARANCES.includes(appearance) ? appearance : "system" });
+}
+
+export function setMatchArtwork(matchArtwork) {
+  update({ matchArtwork: Boolean(matchArtwork) });
+}
+
+export function saveCustomTheme(value, { select = true } = {}) {
+  const document = getThemeDocument();
+  const exists = document.themes.some((theme) => theme.id === value.id);
+  const id = exists ? value.id : createThemeId(value.name, document.themes.map((theme) => theme.id));
+  const theme = normalizeTheme({ ...value, id });
+  if (!exists && document.themes.length >= MAX_CUSTOM_THEMES) {
+    throw new Error(`You can keep up to ${MAX_CUSTOM_THEMES} themes. Remove one to add another.`);
+  }
+  const themes = exists
+    ? document.themes.map((item) => (item.id === id ? theme : item))
+    : [...document.themes, theme];
+  commit({ ...document, themes, themeId: select ? id : document.themeId });
+  return theme;
+}
+
+export function removeCustomTheme(themeId) {
+  const document = getThemeDocument();
+  const index = document.themes.findIndex((theme) => theme.id === themeId);
+  if (index < 0) return null;
+  const removed = { theme: document.themes[index], index, wasSelected: document.themeId === themeId };
+  commit({
+    ...document,
+    themes: document.themes.filter((theme) => theme.id !== themeId),
+    themeId: removed.wasSelected ? DEFAULT_THEME_ID : document.themeId,
+  });
+  return removed;
+}
+
+export function restoreCustomTheme({ theme, index, wasSelected }) {
+  const document = getThemeDocument();
+  if (document.themes.some((item) => item.id === theme.id)) return;
+  const themes = [...document.themes];
+  themes.splice(index, 0, theme);
+  commit({ ...document, themes, themeId: wasSelected ? theme.id : document.themeId });
+}
+
+export function setThemeAccountSaver(saver) {
+  saveToAccount = saver;
+}
+
+export function syncThemeWithAccount(userId, accountDocument) {
+  const owner = Number(readStorage(THEME_OWNER_STORAGE_KEY)) || null;
+  writeStorage(THEME_OWNER_STORAGE_KEY, String(userId));
+  if (accountDocument) {
+    const next = normalizeThemeDocument(accountDocument);
+    if (JSON.stringify(next) !== JSON.stringify(getThemeDocument())) commit(next, { fromAccount: true });
+    return null;
+  }
+  if (owner !== null && owner !== userId) {
+    commit(createDefaultThemeDocument(), { fromAccount: true });
+    return null;
+  }
+  const local = getThemeDocument();
+  return isDefaultThemeDocument(local) ? null : local;
+}
+
+export function previewTheme(theme, mode) {
+  preview = theme ? { theme, mode } : null;
+  render();
+}
+
+export function setArtworkColor(color) {
+  const next = normalizeHexColor(color);
+  if (next === artworkColor) return;
+  artworkColor = next;
+  render({ animate: true });
+}
+
+function systemMode() {
   return globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-export function resolveThemeSelection(selection = getThemeSettings()) {
-  const theme = getThemeDefinition(selection.themeId) || BUILT_IN_THEMES[0];
-  const wantedMode = selection.appearance === "system" ? getSystemAppearance() : selection.appearance;
-  const mode = getThemeColorsForMode(theme, wantedMode) ? wantedMode : theme.appearance;
-  return { theme, mode, colors: getThemeColorsForMode(theme, mode) || theme.colors };
+export function resolveThemeMode(appearance = getThemeDocument().appearance) {
+  return appearance === "light" || appearance === "dark" ? appearance : systemMode();
 }
 
-function applyResolvedTheme(resolved, selection) {
+function mixPaletteColor(from, to, amount) {
+  const rgb = mixColors(from.slice(0, 7), to.slice(0, 7), amount);
+  if (from.length === 7 && to.length === 7) return rgb;
+  const alpha = (hex) => (hex.length === 9 ? Number.parseInt(hex.slice(7), 16) / 255 : 1);
+  return withAlpha(rgb, alpha(from) + (alpha(to) - alpha(from)) * amount);
+}
+
+function setVariables(root, palette) {
+  for (const role of THEME_COLOR_ROLES) {
+    if (palette) root.style.setProperty(cssVariable(role), palette[role]);
+    else root.style.removeProperty(cssVariable(role));
+  }
+}
+
+function updateMetaThemeColor(palette) {
+  const document = globalThis.document;
+  const color = palette?.chrome
+    || (document.body && globalThis.getComputedStyle?.(document.body).backgroundColor);
+  if (!color) return;
+  for (const meta of document.querySelectorAll?.('meta[name="theme-color"]') || []) meta.setAttribute("content", color);
+}
+
+function paint(root, palette, { animate, fallback }) {
+  if (tweenFrame !== null) {
+    globalThis.cancelAnimationFrame?.(tweenFrame);
+    tweenFrame = null;
+  }
+  const from = appliedPalette || fallback;
+  appliedPalette = palette;
+  const reduceMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const to = palette || fallback;
+  if (!animate || reduceMotion || !globalThis.requestAnimationFrame || !from || !to || from === to) {
+    setVariables(root, palette);
+    updateMetaThemeColor(palette);
+    return;
+  }
+  const started = globalThis.performance?.now?.() ?? Date.now();
+  const step = (now) => {
+    const progress = Math.min(1, (now - started) / 280);
+    const eased = 1 - (1 - progress) ** 3;
+    if (progress < 1) {
+      setVariables(root, Object.fromEntries(
+        THEME_COLOR_ROLES.map((role) => [role, mixPaletteColor(from[role], to[role], eased)]),
+      ));
+      tweenFrame = globalThis.requestAnimationFrame(step);
+      return;
+    }
+    tweenFrame = null;
+    setVariables(root, palette);
+    updateMetaThemeColor(palette);
+  };
+  tweenFrame = globalThis.requestAnimationFrame(step);
+}
+
+function writePaintCache(document, theme) {
+  const cache = JSON.stringify({
+    appearance: document.appearance,
+    themeId: theme.id,
+    light: theme.id === DEFAULT_THEME_ID ? null : getThemePalette(theme, "light"),
+    dark: theme.id === DEFAULT_THEME_ID ? null : getThemePalette(theme, "dark"),
+  });
+  if (cache === lastPaintCache) return;
+  lastPaintCache = cache;
+  writeStorage(THEME_PAINT_STORAGE_KEY, cache);
+}
+
+function render({ animate = false } = {}) {
   const root = globalThis.document?.documentElement;
-  if (!root) return resolved;
-  if (root.style) {
-    for (const variable of Object.values(THEME_VARIABLES)) root.style.removeProperty(variable);
-    for (const [role, value] of Object.entries(resolved.colors)) root.style.setProperty(THEME_VARIABLES[role], value);
-    root.style.colorScheme = resolved.mode;
-  }
-  const followsSystem = selection.themeId === DEFAULT_THEME_ID && selection.appearance === "system";
-  if (followsSystem) {
-    root.removeAttribute?.("data-theme");
-    root.removeAttribute?.("data-theme-id");
-  } else {
-    root.setAttribute?.("data-theme", resolved.mode);
-    root.setAttribute?.("data-theme-id", resolved.theme.id);
-  }
-  for (const meta of globalThis.document.querySelectorAll?.('meta[name="theme-color"]') || []) meta.setAttribute("content", resolved.colors.chrome);
-  return resolved;
-}
-
-export function applyThemeSelection(selection = getThemeSettings()) {
-  return applyResolvedTheme(resolveThemeSelection(selection), selection);
-}
-
-export function applyThemePreview(theme, appearance = getThemeSettings().appearance) {
-  const wantedMode = appearance === "system" ? getSystemAppearance() : appearance;
-  const mode = getThemeColorsForMode(theme, wantedMode) ? wantedMode : theme.appearance;
-  const resolved = { theme, mode, colors: getThemeColorsForMode(theme, mode) || theme.colors };
-  return applyResolvedTheme(resolved, { themeId: theme.id, appearance });
-}
-
-export function setThemeSelection(themeId, appearance = "system") {
-  const nextThemeId = getThemeDefinition(themeId) ? themeId : DEFAULT_THEME_ID;
-  const nextAppearance = isThemeMode(appearance) ? appearance : "system";
-  writeThemeSettings(nextThemeId, nextAppearance);
-  const settings = { themeId: nextThemeId, appearance: nextAppearance };
-  applyThemeSelection(settings);
-  notify(themeListeners);
-  return settings;
+  if (!root?.style) return;
+  const document = getThemeDocument();
+  const theme = preview?.theme || findTheme(document.themeId, document) || AURRAL_THEME;
+  const mode = preview?.mode || resolveThemeMode(document.appearance);
+  const artwork = !preview && document.matchArtwork ? artworkColor : null;
+  const palette = artwork
+    ? createThemePalette(tintSeedWithArtwork(getThemeSeed(theme, mode), artwork))
+    : theme.id === DEFAULT_THEME_ID
+      ? null
+      : getThemePalette(theme, mode);
+  root.dataset.theme = mode;
+  root.dataset.themeId = theme.id;
+  root.style.colorScheme = mode;
+  paint(root, palette, { animate, fallback: getThemePalette(theme, mode) });
+  if (!preview) writePaintCache(document, theme);
 }
 
 let initialized = false;
@@ -472,23 +555,15 @@ let initialized = false;
 export function initializeTheme() {
   if (initialized) return;
   initialized = true;
-  applyThemeSelection();
-  if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = () => {
-      if (getThemeSettings().appearance === "system") {
-        applyThemeSelection();
-        notify(themeListeners);
-      }
-    };
-    media.addEventListener?.("change", onChange);
-    window.addEventListener("storage", (event) => {
-      if ([THEME_STORAGE_KEY, THEME_APPEARANCE_STORAGE_KEY, CUSTOM_THEMES_STORAGE_KEY].includes(event.key)) {
-        customThemeCache = null;
-        applyThemeSelection();
-        notify(customThemeListeners);
-        notify(themeListeners);
-      }
-    });
-  }
+  render();
+  globalThis.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", () => {
+    if (getThemeDocument().appearance === "system") render();
+    for (const listener of listeners) listener();
+  });
+  globalThis.addEventListener?.("storage", (event) => {
+    if (event.key !== THEME_STORAGE_KEY) return;
+    documentCache = null;
+    render();
+    for (const listener of listeners) listener();
+  });
 }

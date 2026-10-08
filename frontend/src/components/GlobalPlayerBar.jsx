@@ -431,6 +431,7 @@ function GlobalPlayerBar() {
 
       <div className="global-player__inner">
         <div className="global-player__track">
+          {artwork("global-player__art global-player__art--bar")}
           <div className="global-player__meta">
             <div className="global-player__title-row">
               <span className="global-player__title">{currentTrack.title}</span>

@@ -412,6 +412,8 @@ These routes retrieve public playlists anonymously. Preview accepts a supported 
 | `PATCH` | `/api/users/me/lidarr-preferences` | Update current user's Lidarr preferences |
 | `GET` | `/api/users/me/discover-layout` | Current user's discovery layout |
 | `PATCH` | `/api/users/me/discover-layout` | Update current user's discovery layout |
+| `GET` | `/api/users/me/theme` | Current user's theme settings and saved themes, or `null` |
+| `PUT` | `/api/users/me/theme` | Replace the current user's theme settings. Returns `400` when the theme is invalid |
 | `POST` | `/api/users/me/password` | Change current user's password |
 | `GET` | `/api/users/me/plex-link/status` | Read the current user's Plex link |
 | `POST` | `/api/users/me/plex-link/oauth/pin` | Start Plex linking for the current user |

@@ -23,6 +23,8 @@ Name a new token for its role. Use `light-dark()` when the role needs different 
 
 Artwork can use colors extracted from the artwork. Keep those values tied to artwork content. Do not use artwork colors for Aurral controls or page chrome. The checker allows the fallback used by the discover playlist artwork treatment.
 
+The stylesheet owns Aurral's own light and dark colors. Other themes are stored as a few input colors, and `frontend/src/utils/theme.js` generates the color roles from them with contrast targets and writes them over the stylesheet values. A token outside those roles keeps Aurral's value in every theme, so derive a new color token from a role token when it should follow the theme. The opt-in **Match album art** setting is the one exception to the artwork rule above. It feeds the cover color through the same contrast checks, so components should not apply artwork colors to controls themselves.
+
 ## Reuse shared controls
 
 Use `.btn` with the existing variant classes for standard actions:

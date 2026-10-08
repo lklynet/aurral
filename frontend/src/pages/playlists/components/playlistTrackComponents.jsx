@@ -450,15 +450,20 @@ export function PlaylistTracksPanel({
     setSelectedIds(new Set());
   };
 
+  const trackCover = (track) =>
+    track.artworkUrl || track.coverUrl || artworkByAlbumMbid[String(track.albumMbid || "")] || "";
+  const toQueueTrack = (track) =>
+    normalizePlaylistQueueTrack({ ...track, artworkUrl: trackCover(track) }, { recordHistory });
+
   const handlePlayTrack = (track) => {
     if (!track?.streamUrl) return;
     if (currentTrackId === track.id) {
       togglePlayPause();
       return;
     }
-    playTrack(normalizePlaylistQueueTrack(track, { recordHistory }), {
+    playTrack(toQueueTrack(track), {
       source: playbackSource,
-      queue: playableTracks.map((entry) => normalizePlaylistQueueTrack(entry, { recordHistory })),
+      queue: playableTracks.map(toQueueTrack),
       shuffle: isShuffleEnabled,
     });
   };
@@ -526,7 +531,7 @@ export function PlaylistTracksPanel({
         onOpen: canOpenAlbum ? () => onNavigateAlbum(track) : null,
       },
       cover: {
-        src: track.artworkUrl || track.coverUrl || artworkByAlbumMbid[String(track.albumMbid || "")] || "",
+        src: trackCover(track),
         label: track.albumName || track.trackName,
         onOpen: canOpenAlbum ? () => onNavigateAlbum(track) : null,
       },

@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { normalizeMediaUrl } from "./normalizeMediaUrl.js";
+import { pickVividColor } from "./themeColor.js";
 
 const N = 64;
 const gradientCache = new Map();
+const accentCache = new Map();
 export const FALLBACK_GRADIENT = { top: "#343434", bottom: "#171717" };
 
 function avgHex(data, y0, y1) {
@@ -22,21 +24,37 @@ function avgHex(data, y0, y1) {
   return `#${h(r)}${h(g)}${h(b)}`;
 }
 
-export async function extractTwoToneGradientFromImage(src) {
-  if (!src) return null;
-  if (gradientCache.has(src)) return gradientCache.get(src);
-  const request = new Promise((ok, err) => {
+function readImagePixels(src, { cors = false } = {}) {
+  return new Promise((ok, err) => {
     const img = new Image();
+    if (cors) img.crossOrigin = "anonymous";
     img.onload = () => ok(img);
     img.onerror = err;
     img.src = normalizeMediaUrl(src);
-  })
-    .then((img) => {
-      const c = Object.assign(document.createElement("canvas"), { width: N, height: N });
-      const ctx = c.getContext("2d");
-      if (!ctx) return null;
-      ctx.drawImage(img, 0, 0, N, N);
-      const { data } = ctx.getImageData(0, 0, N, N);
+  }).then((img) => {
+    const c = Object.assign(document.createElement("canvas"), { width: N, height: N });
+    const ctx = c.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, N, N);
+    return ctx.getImageData(0, 0, N, N).data;
+  });
+}
+
+export function extractArtworkAccent(src) {
+  if (!src) return Promise.resolve(null);
+  if (!accentCache.has(src)) {
+    if (accentCache.size >= 200) accentCache.delete(accentCache.keys().next().value);
+    accentCache.set(src, readImagePixels(src, { cors: true }).then((data) => (data ? pickVividColor(data) : null)).catch(() => null));
+  }
+  return accentCache.get(src);
+}
+
+export async function extractTwoToneGradientFromImage(src) {
+  if (!src) return null;
+  if (gradientCache.has(src)) return gradientCache.get(src);
+  const request = readImagePixels(src)
+    .then((data) => {
+      if (!data) return null;
       const top = avgHex(data, 0, N >> 1);
       const bottom = avgHex(data, N >> 1, N);
       return top || bottom ? { top: top || bottom, bottom: bottom || top } : null;
