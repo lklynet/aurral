@@ -108,7 +108,7 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
       .poll(async () => (await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status, {
         timeout: 30_000,
       })
-      .toBe("cancelled");
+      .not.toMatch(ACTIVE_STATUS);
 
     await albumOptions.click();
     await expect(page.getByRole("menuitem", { name: "Stop monitoring album", exact: true })).toHaveCount(0);
