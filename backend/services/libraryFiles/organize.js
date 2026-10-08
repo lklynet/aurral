@@ -464,6 +464,7 @@ export async function applyOrganizeItem(operation, item, context) {
     : null;
   if (placed && matchesExpected(placed)) {
     commitRename(current, item.targetPath, context);
+    await transferSidecars(current, item.targetPath, "move").catch(() => {});
     details.results.rename = "done";
     current = item.targetPath;
     stat = await fs.stat(current);
