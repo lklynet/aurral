@@ -845,7 +845,7 @@ export function SettingsPlaybackSection({
               hint={
                 <>
                   Include an existing Plex library so playlists can reuse tracks already in your
-                  Lidarr library.
+                  library.
                 </>
               }
             >

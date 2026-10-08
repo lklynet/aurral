@@ -20,6 +20,7 @@ import {
   getScheduledLibraryScanJobId,
   scheduleLibraryScan,
 } from "../../../services/libraryScanWorker.js";
+import { lidarrClient } from "../../../services/lidarrClient.js";
 
 const isFilesystemPathKey = (key) => key.toLowerCase().endsWith("path");
 
@@ -33,18 +34,11 @@ export function stripFilesystemPaths(value) {
   );
 }
 
-// Resolves the effective availableOnly flag for a library page read.
-// An explicit query param always wins so detail/track views can force a value.
-// Otherwise the Lidarr "show available music only" setting decides once Lidarr
-// has been connected, defaulting to on so the Library hides Lidarr's full
-// discography. Without Lidarr, every library item was added through Aurral, so
-// albums that are still downloading stay visible.
 export function resolveAvailableOnly(queryValue, settings) {
   if (queryValue === "true") return true;
   if (queryValue === "false") return false;
-  const lidarr = settings?.integrations?.lidarr;
-  if (!String(lidarr?.apiKey || "").trim()) return false;
-  return lidarr.availableOnly !== false;
+  if (!lidarrClient.isConfigured()) return false;
+  return settings?.integrations?.lidarr?.availableOnly !== false;
 }
 
 function getAlbumCoverUrl(album) {

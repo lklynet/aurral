@@ -13366,10 +13366,6 @@ button.native-library-genre-row:focus-visible {
   line-height: 1.5;
 }
 
-.settings-page__is-dimmed {
-  opacity: 0.6;
-}
-
 .playlist-modal-backdrop {
   position: fixed;
   inset: 0;

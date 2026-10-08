@@ -855,7 +855,7 @@ async function checkNativePlaybackSection() {
   if (trackCount === 0) {
     return buildSection("native-playback", "Aurral-native playback", [
       healthStep("indexed", "warn", "Library media is ready for native playback", {
-        fix: "Connect Lidarr, let the library index refresh, then run Storage Health again.",
+        fix: "Add music to the Downloads Folder or connect Lidarr, then scan the Library and run Storage Health again.",
       }),
     ]);
   }

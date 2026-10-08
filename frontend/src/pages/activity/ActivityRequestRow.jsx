@@ -101,7 +101,10 @@ export default function ActivityRequestRow({
   const timelineAt = request.completedAt || request.requestedAt;
   const timelineTime = formatTimelineTime(timelineAt);
   const canReSearch =
-    request.canReSearch === true && request.albumId && !reSearchingAlbumIds[request.albumId];
+    Boolean(onReSearch) &&
+    request.canReSearch === true &&
+    request.albumId &&
+    !reSearchingAlbumIds[request.albumId];
   const isReSearching = Boolean(request.albumId && reSearchingAlbumIds[request.albumId]);
   const isApproving = reviewingJobs[request.jobId] === "approve";
   const isDenying = reviewingJobs[request.jobId] === "deny";

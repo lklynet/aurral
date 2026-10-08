@@ -284,7 +284,7 @@ function buildBootstrapPayload(req) {
     payload.rootFolderConfigured = lidarrConfigured || Boolean(resolveDownloadRoot());
     payload.lidarr = {
       configured: lidarrConfigured,
-      circuitOpen: lidarrClient.isCircuitOpen(),
+      circuitOpen: lidarrConfigured && lidarrClient.isCircuitOpen(),
     };
     payload.lidarrConfigured = lidarrConfigured;
     payload.lastfmConfigured = !!getLastfmApiKey();

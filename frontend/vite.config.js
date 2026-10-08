@@ -35,7 +35,7 @@ export default defineConfig(({ mode }) => {
         manifest: {
           name: "Aurral - Music Discovery",
           short_name: "Aurral",
-          description: "Self-hosted music discovery for the Lidarr stack",
+          description: "Self-hosted music discovery and library management.",
           theme_color: "#050505",
           background_color: "#050505",
           display: "standalone",

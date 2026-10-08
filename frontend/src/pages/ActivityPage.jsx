@@ -6,6 +6,7 @@ import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useAuth } from "../contexts/AuthContext";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
+import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { getActivityPollIntervalMs } from "../utils/requestScheduling.js";
 import { PageSectionMobileNav } from "../components/PageSectionMobileNav";
 import {
@@ -50,6 +51,7 @@ function ActivityPage() {
   const { view: viewParam } = useParams();
   const { user } = useAuth();
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
+  const lidarrConnected = useLibraryDestination().primary === "lidarr";
   const [localError, setLocalError] = useState(null);
   const [visibleCount, setVisibleCount] = useState(ACTIVITY_PAGE_SIZE);
   const [reSearchingAlbumIds, setReSearchingAlbumIds] = useState({});
@@ -466,7 +468,7 @@ function ActivityPage() {
                   currentTrack={currentTrack}
                   isPlaying={isPlaying}
                   onNavigate={handleRowNavigate}
-                  onReSearch={handleReSearchAlbum}
+                  onReSearch={lidarrConnected ? handleReSearchAlbum : undefined}
                   onApprove={(jobId) => reviewBlockedJob(jobId, "approve")}
                   onDeny={(jobId) => reviewBlockedJob(jobId, "deny")}
                   onPreview={handleReviewPreview}

@@ -222,6 +222,8 @@ function ArtistDetailsPage() {
     enabled: false,
   });
   const libraryArtistRecordId = libraryLookup.data?.libraryArtistId || null;
+  const lidarrManagesArtist =
+    libraryDestination.primary === "lidarr" && libraryArtist?.managedBy !== "aurral";
 
   const preview = usePreviewPlayer(mbid, artistNameFromNav, artist);
   const {
@@ -511,7 +513,7 @@ function ArtistDetailsPage() {
         loadingLibrary={loadingLibrary}
         canChangeMonitoring={canChangeMonitoring}
         canAddArtist={canAddArtist}
-        canRefreshArtist={canChangeMonitoring}
+        canRefreshArtist={canChangeMonitoring && lidarrManagesArtist}
         buildingQueue={buildingQueue}
         isArtistPlaybackActive={isArtistPlaybackActive}
         handlePreviewPlayAll={handlePreviewPlayAll}
@@ -640,6 +642,7 @@ function ArtistDetailsPage() {
         artist={artist}
         libraryArtist={libraryArtist}
         appSettings={appSettings}
+        lidarrConnected={lidarrManagesArtist}
         existsInLibrary={existsInLibrary}
         coverImages={coverImages}
         onNavigate={(path) => navigate(path)}

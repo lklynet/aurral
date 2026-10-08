@@ -81,6 +81,7 @@ export function ArtistDetailsAbout({
   artist,
   libraryArtist,
   appSettings,
+  lidarrConnected,
   existsInLibrary,
   coverImages,
   onNavigate,
@@ -97,7 +98,7 @@ export function ArtistDetailsAbout({
     const lidarrUrl =
       appSettings?.integrations?.lidarr?.externalUrl || appSettings?.integrations?.lidarr?.url;
     const lidarrHref =
-      lidarrUrl && lidarrArtistId
+      lidarrConnected && lidarrUrl && lidarrArtistId
         ? `${lidarrUrl.replace(/\/$/, "")}/${
             existsInLibrary
               ? `artist/${lidarrArtistId}`
@@ -145,7 +146,7 @@ export function ArtistDetailsAbout({
       return true;
     });
     return [...primary, ...secondary];
-  }, [appSettings, artist, existsInLibrary, libraryArtist]);
+  }, [appSettings, artist, existsInLibrary, libraryArtist, lidarrConnected]);
   const aboutImage = useMemo(() => {
     return getArtistHeroImage(coverImages);
   }, [coverImages]);

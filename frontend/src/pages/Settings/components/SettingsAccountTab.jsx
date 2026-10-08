@@ -230,65 +230,54 @@ export function SettingsAccountTab({
           showError={showError}
         />
 
-        <div className="settings-page__section profile-settings__section">
-          <div className="settings-page__section-intro">
-            <h3 className="settings-page__section-title">Library defaults</h3>
-            <p className="settings-page__section-note">
-              Defaults for one-click artist adds. Profile values override them.
-            </p>
+        {lidarrConfigured && (
+          <div className="settings-page__section profile-settings__section">
+            <div className="settings-page__section-intro">
+              <h3 className="settings-page__section-title">Library defaults</h3>
+              <p className="settings-page__section-note">
+                Defaults for one-click artist adds. Profile values override them.
+              </p>
+            </div>
+
+            <fieldset className="settings-page__field-stack--lg settings-page__fields profile-settings__fields">
+              <div className="profile-settings__field">
+                <label className="profile-settings__label" htmlFor="profile-root-folder">
+                  Default root folder
+                </label>
+                <SettingsSelect
+                  id="profile-root-folder"
+                  value={lidarrRootFolderPath}
+                  onChange={(e) => setLidarrRootFolderPath(e.target.value)}
+                >
+                  <option value="">Use automatic default</option>
+                  {lidarrRootFolders.map((folder) => (
+                    <option key={folder.path} value={folder.path}>
+                      {folder.path}
+                    </option>
+                  ))}
+                </SettingsSelect>
+              </div>
+
+              <div className="profile-settings__field">
+                <label className="profile-settings__label" htmlFor="profile-quality-profile">
+                  Default quality profile
+                </label>
+                <SettingsSelect
+                  id="profile-quality-profile"
+                  value={lidarrQualityProfileId}
+                  onChange={(e) => setLidarrQualityProfileId(e.target.value)}
+                >
+                  <option value="">Use automatic default</option>
+                  {lidarrQualityProfiles.map((profile) => (
+                    <option key={profile.id} value={String(profile.id)}>
+                      {profile.name}
+                    </option>
+                  ))}
+                </SettingsSelect>
+              </div>
+            </fieldset>
           </div>
-
-          <fieldset
-            disabled={!lidarrConfigured}
-            className={`settings-page__field-stack--lg settings-page__fields profile-settings__fields${lidarrConfigured ? "" : " settings-page__is-dimmed"}`}
-          >
-            <div className="profile-settings__field">
-              <label className="profile-settings__label" htmlFor="profile-root-folder">
-                Default root folder
-              </label>
-              <SettingsSelect
-                id="profile-root-folder"
-                value={lidarrRootFolderPath}
-                onChange={(e) => setLidarrRootFolderPath(e.target.value)}
-              >
-                <option value="">Use automatic default</option>
-                {lidarrRootFolders.map((folder) => (
-                  <option key={folder.path} value={folder.path}>
-                    {folder.path}
-                  </option>
-                ))}
-              </SettingsSelect>
-            </div>
-
-            <div className="profile-settings__field">
-              <label className="profile-settings__label" htmlFor="profile-quality-profile">
-                Default quality profile
-              </label>
-              <SettingsSelect
-                id="profile-quality-profile"
-                value={lidarrQualityProfileId}
-                onChange={(e) => setLidarrQualityProfileId(e.target.value)}
-              >
-                <option value="">Use automatic default</option>
-                {lidarrQualityProfiles.map((profile) => (
-                  <option key={profile.id} value={String(profile.id)}>
-                    {profile.name}
-                  </option>
-                ))}
-              </SettingsSelect>
-            </div>
-          </fieldset>
-
-          {!lidarrConfigured && (
-            <p className="settings-page__footnote">
-              Lidarr must be configured by an admin in{" "}
-              <Link to="/settings/lidarr" className="settings-page__link">
-                Settings → Lidarr
-              </Link>{" "}
-              before personal library defaults can be saved.
-            </p>
-          )}
-        </div>
+        )}
 
         <div className="settings-page__section profile-settings__section profile-settings__section--action">
           <div className="settings-page__section-intro">

@@ -8,6 +8,7 @@ import TooltipButton from "../../components/TooltipButton";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
+import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import {
   convertFlowToStaticPlaylist,
   deleteFlow,
@@ -104,6 +105,7 @@ export default function FlowDetailPage() {
 }
 
 function FlowDetail({ flow }) {
+  const lidarrConnected = useLibraryDestination().primary === "lidarr";
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
@@ -385,13 +387,15 @@ function FlowDetail({ flow }) {
                       flow.showInLibrary === true ? "Hidden from library" : "Shown in library",
                     ),
                 }),
-                {
-                  id: "lidarr-url",
-                  label: "Copy Lidarr import URL",
-                  icon: ClipboardCopy,
-                  separatorBefore: true,
-                  onSelect: handleCopyLidarrUrl,
-                },
+                ...(lidarrConnected
+                  ? [{
+                      id: "lidarr-url",
+                      label: "Copy Lidarr import URL",
+                      icon: ClipboardCopy,
+                      separatorBefore: true,
+                      onSelect: handleCopyLidarrUrl,
+                    }]
+                  : []),
                 {
                   id: "delete",
                   label: "Delete flow",

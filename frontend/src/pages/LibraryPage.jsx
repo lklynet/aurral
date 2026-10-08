@@ -1492,7 +1492,7 @@ function LibraryPage() {
     }
   }, [libraryAlbum, lidarrAlbumId, showError, showSuccess, updateAlbumMonitoringState]);
   const lidarrAlbumAction =
-    lidarrAlbumId && canChangeMonitoring
+    activeManager === "lidarr" && lidarrAlbumId && canChangeMonitoring
       ? getMonitoringMenuAction({ monitored: albumMonitored, hasMissing: hasMissingAlbumTracks })
       : null;
   const albumMonitoringMenuItem = albumManager === "lidarr"
