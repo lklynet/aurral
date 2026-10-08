@@ -36,11 +36,21 @@ export function activeLidarrRoots(lidarrClient, override = null) {
 
 export function isPathWithin(rootPath, candidatePath) {
   const relative = path.relative(path.resolve(rootPath), path.resolve(candidatePath));
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  return relative === "" ||
+    (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
-const isStrictlyWithin = (rootPath, candidatePath) =>
-  path.resolve(rootPath) !== path.resolve(candidatePath) && isPathWithin(rootPath, candidatePath);
+const libraryFolders = ({ downloadRoot, lidarrRoots }) => [
+  ...lidarrRoots.map((root) => ({ owner: "lidarr", root: path.resolve(root) })),
+  { owner: "aurral", root: path.resolve(downloadRoot) },
+];
+
+const deepestHolders = (folders, filePath) => {
+  const candidate = path.resolve(String(filePath || ""));
+  const holders = folders.filter(({ root }) => isPathWithin(root, candidate));
+  const depth = Math.max(...holders.map(({ root }) => root.length));
+  return holders.filter(({ root }) => root.length === depth);
+};
 
 // The deepest library folder holding a path owns it. Lidarr owns a folder it
 // shares with the Downloads Folder.
@@ -48,24 +58,17 @@ export function libraryFolderOwner(filePath, {
   downloadRoot = resolveDownloadRoot(),
   lidarrRoots = [],
 } = {}) {
-  const candidate = path.resolve(String(filePath || ""));
-  const holders = [
-    ...lidarrRoots.map((root) => ({ owner: "lidarr", root: path.resolve(root) })),
-    { owner: "aurral", root: path.resolve(downloadRoot) },
-  ].filter(({ root }) => isPathWithin(root, candidate));
+  const holders = deepestHolders(libraryFolders({ downloadRoot, lidarrRoots }), filePath);
   if (holders.length === 0) return null;
-  return holders.reduce((deepest, holder) =>
-    holder.root.length > deepest.root.length ? holder : deepest,
-  ).owner;
+  return holders.some(({ owner }) => owner === "lidarr") ? "lidarr" : "aurral";
 }
 
-// Folders the Downloads Folder scan leaves to Lidarr, and the reverse.
-export function lidarrRootsInsideDownloads(downloadRoot, lidarrRoots) {
-  return lidarrRoots.filter((root) => isStrictlyWithin(downloadRoot, root));
-}
-
-export function downloadsInsideLidarrRoots(downloadRoot, lidarrRoots) {
-  return lidarrRoots.some((root) => isStrictlyWithin(root, downloadRoot))
-    ? [path.resolve(downloadRoot)]
-    : [];
+// A scan skips a path that a deeper folder of the other manager holds. A
+// folder both managers share is scanned by both.
+export function createLibraryScanExclusion(source, { downloadRoot, lidarrRoots }) {
+  const folders = libraryFolders({ downloadRoot, lidarrRoots });
+  return (filePath) => {
+    const holders = deepestHolders(folders, filePath);
+    return holders.length > 0 && !holders.some(({ owner }) => owner === source);
+  };
 }

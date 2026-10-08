@@ -23,6 +23,7 @@ import {
 } from "../../../utils/libraryDestination.js";
 import { describeArtistAdd } from "../../../utils/artistMonitoring.js";
 import { describeAlbumRequestResult } from "../../../utils/albumAddAction.js";
+import { buildAurralAlbumRetryPayload } from "../../../utils/aurralAlbumStatus.js";
 import { getMyLidarrPreferences } from "../../../utils/api/endpoints/auth.js";
 import { deduplicateAlbums } from "../utils";
 import { useWebSocketChannel } from "../../../hooks/useWebSocket";
@@ -537,13 +538,31 @@ export function useArtistDetailsLibrary({
 
   const searchLibraryAlbum = async (album) => {
     if (resolveAlbumManager(album) === "aurral") {
-      await setAurralAlbumMonitoring(album.id, true);
-      return;
+      if (!album.monitored) return setAurralAlbumMonitoring(album.id, true);
+      return requestAlbumFromSearch(buildAurralAlbumRetryPayload({
+        album,
+        artist: {
+          mbid: album.artistMbid || libraryArtist?.foreignArtistId || libraryArtist?.mbid,
+          name: album.artistName || libraryArtist?.artistName,
+        },
+      }));
     }
     if (!album.monitored) {
       await updateAlbumMutation.mutateAsync({ id: album.id, data: { ...album, monitored: true } });
     }
     await searchAlbumMutation.mutateAsync(album.id);
+    return null;
+  };
+
+  const isBlockedSearch = (result) =>
+    result?.status === "blocked" || result?.albumStatus?.status === "blocked";
+
+  const undoReSearchOverrides = (albumIds) => {
+    const nextOverrides = { ...reSearchOverridesRef.current };
+    for (const albumId of albumIds) delete nextOverrides[String(albumId)];
+    reSearchOverridesRef.current = nextOverrides;
+    setReSearchOverrides(nextOverrides);
+    queryClient.invalidateQueries({ queryKey: queryKeys.downloadStatus(downloadStatusIds) });
   };
 
   const handleReSearchAlbum = async (libraryAlbumId, title) => {
@@ -566,10 +585,15 @@ export function useArtistDetailsLibrary({
           [overrideKey]: { status: "searching" },
         }),
       );
-      await searchLibraryAlbum(album);
+      const result = await searchLibraryAlbum(album);
       setLibraryAlbums((prev) =>
         prev.map((a) => (a.id === libraryAlbumId ? { ...a, monitored: true } : a)),
       );
+      if (isBlockedSearch(result)) {
+        undoReSearchOverrides([libraryAlbumId]);
+        showInfo(describeAlbumRequestResult(result, title).message);
+        return;
+      }
       showSuccess(`Search triggered for ${title}`);
     } catch (err) {
       showError(`Failed to re-search album: ${err.response?.data?.message || err.message}`);
@@ -618,7 +642,8 @@ export function useArtistDetailsLibrary({
       setReSearchOverrides(overrideNext);
       queryClient.setQueryData(queryKeys.downloadStatus(downloadStatusIds), nextStatuses);
 
-      await Promise.all(eligibleAlbums.map(searchLibraryAlbum));
+      const results = await Promise.all(eligibleAlbums.map(searchLibraryAlbum));
+      const blockedAlbums = eligibleAlbums.filter((_album, index) => isBlockedSearch(results[index]));
 
       setLibraryAlbums((prev) =>
         prev.map((album) =>
@@ -628,10 +653,14 @@ export function useArtistDetailsLibrary({
         ),
       );
 
+      if (blockedAlbums.length > 0) undoReSearchOverrides(blockedAlbums.map((album) => album.id));
+      const searched = eligibleAlbums.length - blockedAlbums.length;
+      if (searched === 0) {
+        showInfo("Nothing is downloading. Open an album to see why.");
+        return;
+      }
       showSuccess(
-        `Triggered search for ${eligibleAlbums.length} missing download${
-          eligibleAlbums.length === 1 ? "" : "s"
-        }`,
+        `Triggered search for ${searched} missing download${searched === 1 ? "" : "s"}`,
       );
     } catch (err) {
       showError(

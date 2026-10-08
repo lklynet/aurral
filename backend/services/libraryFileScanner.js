@@ -306,12 +306,11 @@ export async function scanMusicRoot({
   metadataReader = parseFile,
   metadataEnricher = null,
   syncSearch = true,
-  excludePaths = [],
+  isExcluded = () => false,
 } = {}) {
   const resolvedRoot = path.resolve(String(rootPath || ""));
   await fs.mkdir(resolvedRoot, { recursive: true });
   mergeReleaseKeyedLibraryAlbums();
-  const isExcluded = createPathScopeMatcher(excludePaths);
   const changed = Array.isArray(changedPaths)
     ? await resolveChangedFiles(resolvedRoot, changedPaths, isExcluded)
     : null;
@@ -497,7 +496,7 @@ export async function scanMusicRoots({ rootPaths = [], changedPaths = null, ...o
 
     try {
       const filePaths = [];
-      for await (const filePath of walkAudioFiles(rootPath, createPathScopeMatcher(options.excludePaths))) {
+      for await (const filePath of walkAudioFiles(rootPath, options.isExcluded)) {
         filePaths.push(filePath);
       }
       const scan = await scanMusicRoot({ ...options, rootPath, filePaths });

@@ -387,6 +387,59 @@ test("a Lidarr root folder inside the Downloads Folder belongs to Lidarr while i
   assert.equal(albumByTitle(`${tag} Album`).managed_by, "aurral");
 });
 
+test("each folder is scanned by its deepest manager when Lidarr and Aurral folders nest", async (t) => {
+  const music = await mkdtemp(path.join(tmpdir(), "aurral-deep-nesting-"));
+  const downloads = path.join(music, "downloads");
+  const innerLidarr = path.join(downloads, "lidarr");
+  const tag = `Deep ${process.pid}`;
+  t.after(async () => {
+    removeArtistsNamed(`${tag}%`);
+    await rm(music, { recursive: true, force: true });
+  });
+  const outer = await createAudioFile(music, `${tag} Outer/${tag} Outer Album/01 Track.flac`);
+  const aurral = await createAudioFile(downloads, `${tag} Aurral/${tag} Aurral Album/01 Track.flac`);
+  const inner = await createAudioFile(innerLidarr, `${tag} Inner/${tag} Inner Album/01 Track.flac`);
+
+  await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOn, lidarrRoots: [music, innerLidarr] });
+
+  assert.deepEqual(mediaSources(outer), ["lidarr"]);
+  assert.deepEqual(mediaSources(aurral), ["aurral"]);
+  assert.deepEqual(mediaSources(inner), ["lidarr"]);
+});
+
+test("turning Lidarr off drops a Lidarr-only album link from a track Aurral keeps elsewhere", async (t) => {
+  const downloads = await mkdtemp(path.join(tmpdir(), "aurral-off-links-"));
+  const tag = `Links ${process.pid}`;
+  t.after(async () => {
+    removeArtistsNamed(`${tag}%`);
+    await rm(downloads, { recursive: true, force: true });
+  });
+  const aurralFile = await createAudioFile(downloads, `${tag}/${tag} Album/01 Shared.flac`);
+  await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOn, lidarrRoots: [] });
+  const album = albumByTitle(`${tag} Album`);
+  const trackId = db.prepare("SELECT track_id FROM library_media_files WHERE path = ?").pluck().get(aurralFile);
+  const compilation = upsertLibraryAlbum({
+    identityKey: `${tag}:compilation`,
+    artistId: album.artist_id,
+    title: `${tag} Compilation`,
+    syncSearch: false,
+  });
+  linkLibraryAlbumTrack({ albumId: compilation.id, trackId, trackNumber: 7, syncSearch: false });
+  upsertLibraryMediaFile({
+    trackId,
+    albumId: compilation.id,
+    source: "lidarr",
+    path: path.join(tmpdir(), `${tag}-compilation.flac`),
+    available: true,
+  });
+
+  await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOff });
+
+  assert.equal(albumByTitle(`${tag} Compilation`), undefined);
+  assert.deepEqual(albumTrackTitles(album.id), ["Shared"]);
+  assert.deepEqual(mediaSources(aurralFile), ["aurral"]);
+});
+
 const metadata = {
   common: {
     albumartist: "Aurral Fixture",

@@ -24,9 +24,8 @@ import {
 import { logger } from "./logger.js";
 import {
   activeLidarrRoots,
-  downloadsInsideLidarrRoots,
+  createLibraryScanExclusion,
   isLidarrLibraryActive,
-  lidarrRootsInsideDownloads,
 } from "./libraryFolders.js";
 
 function getAurralJobMetadataByPath() {
@@ -181,7 +180,7 @@ export async function scanConfiguredLibrary({
           force,
           metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
           syncSearch: targeted,
-          excludePaths: lidarrRootsInsideDownloads(musicRoot, lidarrFolders),
+          isExcluded: createLibraryScanExclusion("aurral", { downloadRoot: musicRoot, lidarrRoots: lidarrFolders }),
         });
     if (!targeted) {
       flow = await syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force);
@@ -197,7 +196,7 @@ export async function scanConfiguredLibrary({
           force,
           source: "lidarr",
           syncSearch: targeted,
-          excludePaths: downloadsInsideLidarrRoots(musicRoot, lidarrFolders),
+          isExcluded: createLibraryScanExclusion("lidarr", { downloadRoot: musicRoot, lidarrRoots: lidarrFolders }),
         });
         if (!targeted) {
           const removedRootPaths = [...getAvailableLibraryMediaPaths("lidarr")]

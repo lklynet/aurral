@@ -490,3 +490,22 @@ test("album removal never deletes a reused file outside the Downloads Folder", a
   assert.equal(await exists(tracks[1].filePath), false);
   assert.equal(albumRow(album.id), undefined);
 });
+
+test("album removal deletes files in a Downloads Folder subfolder whose name starts with two dots", async () => {
+  const { album, tracks } = await createAurralAlbum({ trackCount: 1, filesFor: [] });
+  const filePath = path.join(resolveDownloadRoot(), "..Live", `dotted-${album.id}.flac`);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, "audio");
+  libraryStore.upsertLibraryMediaFile({
+    trackId: tracks[0].id,
+    albumId: album.id,
+    source: "aurral",
+    path: filePath,
+    available: true,
+  });
+
+  const response = await removeAlbum(album, true);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(await exists(filePath), false);
+});

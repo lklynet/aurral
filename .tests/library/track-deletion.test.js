@@ -549,3 +549,41 @@ test("deletes a scanned Lidarr track through the Lidarr album with the same Musi
   assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
   assert.deepEqual(deleted.mock.calls.map((call) => call.arguments[0]), [99]);
 });
+
+test("a scanned Lidarr track is not deleted when only a title matches more than one Lidarr track", async (t) => {
+  const identity = `lidarr-title-delete-${process.pid}-${Date.now()}`;
+  const albumMbid = "d3d3d3d3-d3d3-4d3d-8d3d-d3d3d3d3d3d3";
+  const artist = upsertLibraryArtist({ identityKey: `${identity}:artist`, name: "Title Artist" });
+  const album = upsertLibraryAlbum({
+    identityKey: `release-group:${albumMbid}`,
+    mbid: albumMbid,
+    releaseGroupMbid: albumMbid,
+    artistId: artist.id,
+    title: "Title Album",
+  });
+  const track = upsertLibraryTrack({ identityKey: `${identity}:track`, title: "Intro", artistName: "Title Artist" });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "lidarr",
+    path: `/music/${identity}/01 Intro.flac`,
+    available: true,
+  });
+  t.after(() => {
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  });
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getAlbumByMbid", async () => ({ id: 71 }));
+  t.mock.method(lidarrClient, "getTracksByAlbumId", async () => [
+    { id: 1, title: "Intro", trackFileId: 101, hasFile: true },
+    { id: 2, title: "Intro", trackFileId: 102, hasFile: true },
+  ]);
+  const deleted = t.mock.method(lidarrClient, "deleteTrackFile", async () => {});
+
+  const result = await libraryManager.deleteTrack(track.id);
+
+  assert.equal(result.success, false);
+  assert.equal(deleted.mock.callCount(), 0);
+});

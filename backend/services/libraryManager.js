@@ -3130,13 +3130,15 @@ export class LibraryManager {
           const lidarrTracks = await lidarr.getTracksByAlbumId(lidarrAlbumId);
           const reference = String(metadata.id ?? track.mbid ?? "");
           const title = String(track.title || "").trim().toLowerCase();
+          const sameTitle = title
+            ? lidarrTracks.filter((entry) =>
+              entry.hasFile && String(entry.title || "").trim().toLowerCase() === title)
+            : [];
           const match = lidarrTracks.find((entry) =>
             reference && [entry.id, entry.foreignRecordingId, entry.foreignTrackId].some(
               (candidate) => String(candidate ?? "") === reference,
             ),
-          ) || lidarrTracks.find((entry) =>
-            entry.hasFile && title && String(entry.title || "").trim().toLowerCase() === title,
-          );
+          ) || (sameTitle.length === 1 ? sameTitle[0] : null);
           trackFileId = Number(match?.trackFileId);
         }
       }

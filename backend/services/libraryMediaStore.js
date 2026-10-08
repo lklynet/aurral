@@ -975,14 +975,17 @@ export function removeLidarrLibrary() {
        WHERE track_id = ? AND album_id NOT IN (
          SELECT entity_id FROM library_management
          WHERE entity_kind = 'album' AND managed_by = 'aurral'
+       ) AND NOT EXISTS (
+         SELECT 1 FROM library_media_files AS media
+         WHERE media.track_id = library_album_tracks.track_id
+           AND (media.album_id = library_album_tracks.album_id OR media.album_id IS NULL)
        )`,
     );
     const isLinked = db.prepare("SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1");
     const deleteTrack = db.prepare("DELETE FROM library_tracks WHERE id = ?");
     for (const trackId of trackIds) {
-      if (hasMedia.get(trackId)) continue;
       unlinkOutsideAurral.run(trackId);
-      if (!isLinked.get(trackId)) deleteTrack.run(trackId);
+      if (!hasMedia.get(trackId) && !isLinked.get(trackId)) deleteTrack.run(trackId);
     }
     db.prepare(
       `DELETE FROM library_albums
