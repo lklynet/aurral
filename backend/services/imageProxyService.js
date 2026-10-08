@@ -5,7 +5,6 @@ import path from "path";
 import { Agent, fetch as undiciFetch } from "undici";
 import sharp from "./sharpConfig.js";
 import { resolveAurralDataDir } from "../config/data-dir.js";
-import { noteDeprecatedUsage } from "./deprecatedUsage.js";
 import { isPrivateAddress, isPrivateHostname } from "../../lib/publicUrl.js";
 
 const IMAGE_PROXY_ROUTE = "/api/image-proxy";
@@ -788,24 +787,6 @@ export const handleImageProxyRequest = async (req, res) => {
     root: IMAGE_PROXY_DIR,
     dotfiles: "allow",
   });
-};
-
-export const handleLegacyImageProxyRequest = async (req, res) => {
-  noteDeprecatedUsage("image-proxy-query");
-  const rawSourceUrl = typeof req.query.src === "string" ? req.query.src.trim() : "";
-  if (!rawSourceUrl) {
-    return res.status(404).json({ error: "Image not found" });
-  }
-
-  try {
-    const cached = await warmImageProxy(rawSourceUrl);
-    if (!cached?.localUrl) {
-      return res.status(404).json({ error: "Image not found" });
-    }
-    return res.redirect(302, cached.localUrl);
-  } catch {
-    return res.status(404).json({ error: "Image not found" });
-  }
 };
 
 migrateObsoleteImageCache();
