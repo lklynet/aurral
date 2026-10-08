@@ -19,6 +19,11 @@ export const canRemoveLibraryAlbum = (album, { lidarrConnected = false } = {}) =
     Boolean(album.releaseGroupMbid || album.mbid || album.providerId);
 };
 
+export const canSearchLibraryAlbum = (album, { lidarrConnected = false } = {}) => {
+  const manager = resolveAlbumManager(album);
+  return manager === "aurral" || (manager === "lidarr" && lidarrConnected);
+};
+
 export const getManagerName = (manager) =>
   MANAGER_NAMES[normalizeLibraryManager(manager)] || MANAGER_NAMES.aurral;
 

@@ -291,7 +291,7 @@ export function registerMisc(router) {
         }
         const album = result.value;
         if (!album) {
-          delete results[foreignAlbumId];
+          if (results[foreignAlbumId]?.managedBy !== "aurral") delete results[foreignAlbumId];
           continue;
         }
         if (results[foreignAlbumId]) continue;

@@ -12,11 +12,14 @@ import {
   addArtistToLibrary,
   lookupArtistInLibrary,
   requestAlbumFromSearch,
+  setAurralAlbumMonitoring,
   settleLibraryOwnerConflict,
 } from "../../../utils/api/endpoints/library.js";
 import {
   buildAlbumRequestPayload,
   buildArtistAddPayload,
+  canSearchLibraryAlbum,
+  resolveAlbumManager,
 } from "../../../utils/libraryDestination.js";
 import { describeArtistAdd } from "../../../utils/artistMonitoring.js";
 import { describeAlbumRequestResult } from "../../../utils/albumAddAction.js";
@@ -530,6 +533,19 @@ export function useArtistDetailsLibrary({
     }
   };
 
+  const lidarrConnected = libraryDestination?.primary === "lidarr";
+
+  const searchLibraryAlbum = async (album) => {
+    if (resolveAlbumManager(album) === "aurral") {
+      await setAurralAlbumMonitoring(album.id, true);
+      return;
+    }
+    if (!album.monitored) {
+      await updateAlbumMutation.mutateAsync({ id: album.id, data: { ...album, monitored: true } });
+    }
+    await searchAlbumMutation.mutateAsync(album.id);
+  };
+
   const handleReSearchAlbum = async (libraryAlbumId, title) => {
     if (!libraryAlbumId) return;
     setReSearchingAlbum(libraryAlbumId);
@@ -543,15 +559,6 @@ export function useArtistDetailsLibrary({
       setReSearchOverrides(overrideNext);
       const album = libraryAlbums.find((a) => a.id === libraryAlbumId);
       if (!album) throw new Error("Album not found in library");
-      if (!album.monitored) {
-        await updateAlbumMutation.mutateAsync({
-          id: libraryAlbumId,
-          data: { ...album, monitored: true },
-        });
-        setLibraryAlbums((prev) =>
-          prev.map((a) => (a.id === libraryAlbumId ? { ...a, monitored: true } : a)),
-        );
-      }
       queryClient.setQueryData(
         queryKeys.downloadStatus(downloadStatusIds),
         (previous = {}) => ({
@@ -559,7 +566,10 @@ export function useArtistDetailsLibrary({
           [overrideKey]: { status: "searching" },
         }),
       );
-      await searchAlbumMutation.mutateAsync(libraryAlbumId);
+      await searchLibraryAlbum(album);
+      setLibraryAlbums((prev) =>
+        prev.map((a) => (a.id === libraryAlbumId ? { ...a, monitored: true } : a)),
+      );
       showSuccess(`Search triggered for ${title}`);
     } catch (err) {
       showError(`Failed to re-search album: ${err.response?.data?.message || err.message}`);
@@ -575,6 +585,7 @@ export function useArtistDetailsLibrary({
       const eligibleAlbums = libraryAlbums.filter((album) => {
         const albumId = String(album.id ?? "");
         if (!albumId || albumId.startsWith("pending-")) return false;
+        if (!canSearchLibraryAlbum(album, { lidarrConnected })) return false;
         const percentOfTracks = album.statistics?.percentOfTracks ?? 0;
         const sizeOnDisk = album.statistics?.sizeOnDisk ?? 0;
         const isComplete = percentOfTracks >= 100 || sizeOnDisk > 0;
@@ -607,14 +618,7 @@ export function useArtistDetailsLibrary({
       setReSearchOverrides(overrideNext);
       queryClient.setQueryData(queryKeys.downloadStatus(downloadStatusIds), nextStatuses);
 
-      for (const album of eligibleAlbums) {
-        if (!album.monitored) {
-          await updateAlbumMutation.mutateAsync({
-            id: album.id,
-            data: { ...album, monitored: true },
-          });
-        }
-      }
+      await Promise.all(eligibleAlbums.map(searchLibraryAlbum));
 
       setLibraryAlbums((prev) =>
         prev.map((album) =>
@@ -623,8 +627,6 @@ export function useArtistDetailsLibrary({
             : album,
         ),
       );
-
-      await Promise.all(eligibleAlbums.map((album) => searchAlbumMutation.mutateAsync(album.id)));
 
       showSuccess(
         `Triggered search for ${eligibleAlbums.length} missing download${

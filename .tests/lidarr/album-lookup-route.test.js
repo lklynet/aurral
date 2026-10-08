@@ -485,7 +485,7 @@ test("library album lookup reports partial ownership, its manager, and the compl
   }
 });
 
-test("album lookup follows fresh Lidarr removal while the library index catches up", async (t) => {
+test("album lookup follows fresh Lidarr removal but keeps Aurral's albums", async (t) => {
   const key = `album-lookup-stale-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -526,7 +526,16 @@ test("album lookup follows fresh Lidarr removal while the library index catches 
       { json(value) { body = value; return this; } },
     );
     assert.deepEqual(body, {});
+
+    setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
+    invalidateLibraryQueryCache();
+    await routes.get("/albums/lookup/batch")(
+      { body: { mbids: [album.mbid] } },
+      { json(value) { body = value; return this; } },
+    );
+    assert.equal(body[album.mbid]?.managedBy, "aurral");
   } finally {
+    clearLibraryManagement("album", album.id);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);

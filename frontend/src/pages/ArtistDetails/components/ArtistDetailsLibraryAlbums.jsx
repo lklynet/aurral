@@ -12,6 +12,7 @@ import {
 import { DotLoader } from "../../../components/DotLoader";
 import { navigateToLibraryAlbum } from "../../../utils/searchNavigation";
 import { isVisibleLibraryAlbum } from "../utils";
+import { canSearchLibraryAlbum } from "../../../utils/libraryDestination";
 import TooltipButton from "../../../components/TooltipButton";
 import Tooltip from "../../../components/Tooltip";
 
@@ -30,6 +31,7 @@ export function ArtistDetailsLibraryAlbums({
   canDeleteAlbum,
   handleDeleteAlbumClick,
   canReSearchAlbum,
+  lidarrConnected = false,
   handleReSearchAlbum,
   handleReSearchMissingDownloads,
   onVisibleCoverIdsChange,
@@ -72,6 +74,7 @@ export function ArtistDetailsLibraryAlbums({
         downloadStatus.status,
       );
     const canReSearch =
+      canSearchLibraryAlbum(libraryAlbum, { lidarrConnected }) &&
       !isComplete &&
       !String(libraryAlbum.id ?? "").startsWith("pending-") &&
       !isActiveSearch &&

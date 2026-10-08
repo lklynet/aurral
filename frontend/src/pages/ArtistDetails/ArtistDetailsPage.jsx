@@ -582,6 +582,7 @@ function ArtistDetailsPage() {
           canDeleteAlbum={canDeleteAlbum}
           handleDeleteAlbumClick={library.handleDeleteAlbumClick}
           canReSearchAlbum={canAddAlbum}
+          lidarrConnected={libraryDestination.primary === "lidarr"}
           handleReSearchAlbum={library.handleReSearchAlbum}
           handleReSearchMissingDownloads={library.handleReSearchMissingDownloads}
           onVisibleCoverIdsChange={setVisibleLibraryCoverIds}

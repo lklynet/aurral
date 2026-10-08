@@ -1857,8 +1857,8 @@ export class LibraryManager {
   }
 
   async getArtistMonitoring(mbid) {
-    const manager = await getActiveLibraryManager();
     const artist = libraryArtistFallback(mbid);
+    const manager = artist?.managedBy === "aurral" ? "aurral" : await getActiveLibraryManager();
     const inAurral = aurralHoldsArtist(artist);
     if (manager === "aurral") {
       return {
@@ -1892,10 +1892,11 @@ export class LibraryManager {
     const name = String(artistName || libraryArtistFallback(mbid)?.name || "").trim();
     const forbidden = { error: "Permission required: addArtist", statusCode: 403, code: "forbidden" };
 
-    if (await getActiveLibraryManager() === "aurral") {
+    const existingArtist = libraryArtistFallback(mbid);
+    if (existingArtist?.managedBy === "aurral" || await getActiveLibraryManager() === "aurral") {
       const resolvedMode = resolveAurralMonitorMode(option);
       if (resolvedMode.error) return resolvedMode;
-      const artist = libraryArtistFallback(mbid);
+      const artist = existingArtist;
       if (option === "none" && artist?.managedBy !== "aurral") {
         return { ...(artist || { mbid }), monitored: false, monitorOption: "none" };
       }
@@ -2028,9 +2029,6 @@ export class LibraryManager {
   }
 
   async acquireAurralReleases({ artistMbid, releaseGroups = [], monitoringMode = null } = {}) {
-    if (await getActiveLibraryManager() !== "aurral") {
-      return releaseGroups.map((release) => ({ releaseGroupId: release.id, status: "skipped" }));
-    }
     const results = [];
     const artist = libraryArtistFallback(artistMbid);
     const expectedMode = monitoringMode || getLibraryManagementEntry("artist", Number(artist?.id))?.monitorMode;
@@ -2074,9 +2072,6 @@ export class LibraryManager {
   }
 
   async reconcileAurralMonitoring() {
-    if (await getActiveLibraryManager() !== "aurral") {
-      return { artists: 0, queuedAlbums: 0, failedArtists: 0 };
-    }
     const monitoredArtists = [...getManagedByMap("artist").entries()].filter(
       ([, entry]) => entry.managedBy === "aurral" && entry.monitorMode && entry.monitorMode !== "none",
     );
@@ -2150,9 +2145,6 @@ export class LibraryManager {
   async setAurralAlbumMonitoring(canonicalId, { monitored } = {}) {
     if (typeof monitored !== "boolean") {
       return { error: "monitored must be true or false", statusCode: 400, code: "invalid_monitored" };
-    }
-    if (monitored && await getActiveLibraryManager() !== "aurral") {
-      return { error: MANAGER_UNAVAILABLE.lidarr, statusCode: 409, code: "library_manager_unavailable" };
     }
     return serializeMonitoringUpdate(_albumMonitoringUpdates, Number(canonicalId), async () => {
       const resolved = this._resolveAurralAlbum(canonicalId);
@@ -3022,7 +3014,12 @@ export class LibraryManager {
       const artistAlbums = Array.isArray(allAlbums)
         ? allAlbums.filter((a) => a.artistId === parseInt(artistId))
         : [];
-      return artistAlbums.map((a) => this.mapLidarrAlbum(a, resolvedArtist));
+      const lidarrAlbums = artistAlbums.map((a) => this.mapLidarrAlbum(a, resolvedArtist));
+      if (!options.includeAurral) return lidarrAlbums;
+      const lidarrMbids = new Set(lidarrAlbums.map((album) => album.mbid).filter(Boolean));
+      const aurralAlbums = libraryAlbumsForArtist(resolvedArtist.foreignArtistId)
+        .filter((album) => album.managedBy === "aurral" && !lidarrMbids.has(album.mbid));
+      return [...lidarrAlbums, ...aurralAlbums];
     } catch (error) {
       if (isLidarrNotFoundError(error)) return [];
       logger.error('library', `[LibraryManager] Failed to fetch albums from Lidarr: ${error.message}`);
