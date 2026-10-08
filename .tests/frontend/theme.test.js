@@ -146,30 +146,132 @@ test("theme choices from the previous version carry over", async () => {
   assert.equal(fresh.getThemeDocument().appearance, "light");
 });
 
+function fakeAccount(initial = null) {
+  const account = { stored: initial, saves: [], loads: [] };
+  account.loadAccountTheme = () => {
+    const theme = account.stored;
+    return new Promise((resolve) => account.loads.push(() => resolve({ theme })));
+  };
+  account.saveAccountTheme = async (document) => {
+    account.saves.push(document);
+    account.stored = document;
+  };
+  account.answer = async () => {
+    while (!account.loads.length) await new Promise((resolve) => setImmediate(resolve));
+    account.loads.shift()();
+  };
+  return account;
+}
+
 test("the account's saved theme wins and is never echoed back", async () => {
   createBrowser();
-  const { getThemeDocument, selectTheme, setThemeAccountSaver, syncThemeWithAccount } = await loadTheme();
-  const saved = [];
-  setThemeAccountSaver((document) => saved.push(document));
-
+  const { getThemeDocument, selectTheme, startThemeAccountSync } = await loadTheme();
   const accountDocument = { version: 2, themeId: "gruvbox", appearance: "light", matchArtwork: true, themes: [] };
-  assert.equal(syncThemeWithAccount(7, accountDocument), null);
+  const account = fakeAccount(accountDocument);
+  const sync = startThemeAccountSync({ userId: 7, ...account });
+  await account.answer();
+  await sync.ready;
+
   assert.deepEqual(getThemeDocument(), accountDocument);
-  assert.equal(saved.length, 0);
+  assert.equal(account.saves.length, 0);
 
   selectTheme("nord");
-  assert.equal(saved.length, 1);
-  assert.equal(saved[0].themeId, "nord");
+  await sync.refresh;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(account.saves.map((document) => document.themeId), ["nord"]);
 });
 
 test("a device's theme is uploaded only to the account that made it", async () => {
   createBrowser();
-  const first = await loadTheme();
-  first.selectTheme("dracula");
-  assert.equal(first.syncThemeWithAccount(3, null).themeId, "dracula");
+  const theme = await loadTheme();
+  theme.selectTheme("dracula");
 
-  assert.equal(first.syncThemeWithAccount(4, null), null);
-  assert.equal(first.getThemeDocument().themeId, "aurral");
+  const owner = fakeAccount();
+  const ownerSync = theme.startThemeAccountSync({ userId: 3, ...owner });
+  await owner.answer();
+  await ownerSync.ready;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(owner.saves[0]?.themeId, "dracula");
+  ownerSync.stop();
+
+  const other = fakeAccount();
+  const otherSync = theme.startThemeAccountSync({ userId: 4, ...other });
+  await other.answer();
+  await otherSync.ready;
+  assert.equal(other.saves.length, 0);
+  assert.equal(theme.getThemeDocument().themeId, "aurral");
+});
+
+test("a refresh that started before a local change does not undo it", async () => {
+  createBrowser();
+  const theme = await loadTheme();
+  const account = fakeAccount({ version: 2, themeId: "gruvbox", appearance: "dark", matchArtwork: false, themes: [] });
+  const sync = theme.startThemeAccountSync({ userId: 5, ...account });
+  await account.answer();
+  await sync.ready;
+
+  const refreshing = sync.refresh();
+  theme.selectTheme("nord");
+  await account.answer();
+  await refreshing;
+
+  assert.equal(theme.getThemeDocument().themeId, "nord");
+  assert.equal(account.stored.themeId, "nord");
+});
+
+test("saves still queued at sign-out are not sent to the next account", async () => {
+  createBrowser();
+  const theme = await loadTheme();
+  const account = fakeAccount({ version: 2, themeId: "aurral", appearance: "dark", matchArtwork: false, themes: [] });
+  let releaseFirstSave;
+  const firstSave = new Promise((resolve) => {
+    releaseFirstSave = resolve;
+  });
+  const saveAccountTheme = async (document) => {
+    if (!account.saves.length) await firstSave;
+    account.saves.push(document);
+  };
+  const sync = theme.startThemeAccountSync({ userId: 6, loadAccountTheme: account.loadAccountTheme, saveAccountTheme });
+  await account.answer();
+  await sync.ready;
+
+  theme.selectTheme("nord");
+  await new Promise((resolve) => setImmediate(resolve));
+  theme.selectTheme("solarized");
+  sync.stop();
+  releaseFirstSave();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(account.saves.map((document) => document.themeId), ["nord"]);
+});
+
+test("undo does not restore a theme past the limit", async () => {
+  createBrowser();
+  const theme = await loadTheme();
+  for (let index = 0; index < theme.MAX_CUSTOM_THEMES; index += 1) {
+    theme.saveCustomTheme({ name: `Theme ${index}`, dark: { background: "#101820", accent: "#f2aa4c" } }, { select: false });
+  }
+  const removed = theme.removeCustomTheme(theme.getThemeDocument().themes[0].id);
+  theme.saveCustomTheme({ name: "Replacement", dark: { background: "#101820", accent: "#f2aa4c" } }, { select: false });
+
+  assert.throws(() => theme.restoreCustomTheme(removed), /up to/);
+  assert.equal(theme.getThemeDocument().themes.length, theme.MAX_CUSTOM_THEMES);
+  assert.equal(theme.getThemeDocument().themes.at(-1).name, "Replacement");
+});
+
+test("a browser that cannot store themes reports it and keeps the old copy", async () => {
+  const { stored } = createBrowser({ storage: { aurralTheme: "dark" } });
+  globalThis.localStorage.setItem = () => {
+    throw new Error("QuotaExceededError");
+  };
+  const theme = await loadTheme();
+
+  assert.equal(theme.getThemeDocument().appearance, "dark");
+  assert.equal(stored.get("aurralTheme"), "dark");
+  assert.throws(
+    () => theme.saveCustomTheme({ name: "Unsaved", dark: { background: "#101820", accent: "#f2aa4c" } }),
+    /couldn't save/,
+  );
 });
 
 test("the startup script paints the saved theme before the app loads", async () => {

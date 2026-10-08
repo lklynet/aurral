@@ -292,8 +292,9 @@ function writeStorage(key, value) {
   try {
     if (value === null) globalThis.localStorage?.removeItem(key);
     else globalThis.localStorage?.setItem(key, value);
+    return true;
   } catch {
-    return;
+    return false;
   }
 }
 
@@ -323,8 +324,9 @@ function migrateLegacyDocument() {
     appearance: THEME_APPEARANCES.includes(selection) ? selection : appearance,
     themes,
   });
-  writeStorage(THEME_STORAGE_KEY, JSON.stringify(document));
-  for (const key of LEGACY_THEME_STORAGE_KEYS) writeStorage(key, null);
+  if (writeStorage(THEME_STORAGE_KEY, JSON.stringify(document))) {
+    for (const key of LEGACY_THEME_STORAGE_KEYS) writeStorage(key, null);
+  }
   return document;
 }
 
@@ -367,11 +369,14 @@ export function isCustomTheme(theme) {
 
 function commit(document, { fromAccount = false } = {}) {
   documentCache = document;
-  writeStorage(THEME_STORAGE_KEY, JSON.stringify(document));
+  const storedLocally = writeStorage(THEME_STORAGE_KEY, JSON.stringify(document));
   render();
   for (const listener of listeners) listener();
   if (!fromAccount) saveToAccount?.(document);
+  return storedLocally || Boolean(saveToAccount);
 }
+
+const NOT_SAVED_MESSAGE = "This browser couldn't save your themes. They'll reset when the page reloads.";
 
 function update(changes) {
   commit(normalizeThemeDocument({ ...getThemeDocument(), ...changes }));
@@ -400,7 +405,7 @@ export function saveCustomTheme(value, { select = true } = {}) {
   const themes = exists
     ? document.themes.map((item) => (item.id === id ? theme : item))
     : [...document.themes, theme];
-  commit({ ...document, themes, themeId: select ? id : document.themeId });
+  if (!commit({ ...document, themes, themeId: select ? id : document.themeId })) throw new Error(NOT_SAVED_MESSAGE);
   return theme;
 }
 
@@ -420,16 +425,15 @@ export function removeCustomTheme(themeId) {
 export function restoreCustomTheme({ theme, index, wasSelected }) {
   const document = getThemeDocument();
   if (document.themes.some((item) => item.id === theme.id)) return;
+  if (document.themes.length >= MAX_CUSTOM_THEMES) {
+    throw new Error(`You can keep up to ${MAX_CUSTOM_THEMES} themes. Remove one to restore ${theme.name}.`);
+  }
   const themes = [...document.themes];
   themes.splice(index, 0, theme);
   commit({ ...document, themes, themeId: wasSelected ? theme.id : document.themeId });
 }
 
-export function setThemeAccountSaver(saver) {
-  saveToAccount = saver;
-}
-
-export function syncThemeWithAccount(userId, accountDocument) {
+function syncThemeWithAccount(userId, accountDocument) {
   const owner = Number(readStorage(THEME_OWNER_STORAGE_KEY)) || null;
   writeStorage(THEME_OWNER_STORAGE_KEY, String(userId));
   if (accountDocument) {
@@ -443,6 +447,41 @@ export function syncThemeWithAccount(userId, accountDocument) {
   }
   const local = getThemeDocument();
   return isDefaultThemeDocument(local) ? null : local;
+}
+
+export function startThemeAccountSync({ userId, loadAccountTheme, saveAccountTheme, onSaveError }) {
+  let stopped = false;
+  let edits = 0;
+  let pending = Promise.resolve();
+  const save = (document) => {
+    edits += 1;
+    pending = pending
+      .then(() => (stopped ? undefined : saveAccountTheme(document)))
+      .catch(() => {
+        if (!stopped) onSaveError?.();
+      });
+  };
+  const refresh = () => {
+    const editsAtStart = edits;
+    return pending
+      .then(() => loadAccountTheme())
+      .then((response) => {
+        if (stopped || edits !== editsAtStart) return;
+        const upload = syncThemeWithAccount(userId, response?.theme || null);
+        saveToAccount = save;
+        if (upload) save(upload);
+      })
+      .catch(() => {});
+  };
+  const ready = refresh();
+  return {
+    ready,
+    refresh,
+    stop() {
+      stopped = true;
+      if (saveToAccount === save) saveToAccount = null;
+    },
+  };
 }
 
 export function previewTheme(theme, mode) {

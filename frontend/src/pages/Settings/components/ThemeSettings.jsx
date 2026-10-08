@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, Download, FileUp, Monitor, Moon, Pencil, Plus, Sun, Trash2 } from "lucide-react";
 import PillToggle from "../../../components/PillToggle";
 import TooltipButton from "../../../components/TooltipButton.jsx";
@@ -121,10 +121,15 @@ function ThemeCard({ theme, mode, active, onSelect, onEdit }) {
   );
 }
 
-function ColorField({ label, value, placeholder, onChange }) {
+function ColorField({ fieldKey, label, value, placeholder, onChange, onInvalidChange }) {
   const id = useId();
   const [text, setText] = useState(value || "");
+  const invalid = text.trim() !== "" && !normalizeHexColor(text);
   useEffect(() => setText((current) => (normalizeHexColor(current) === value ? current : value || "")), [value]);
+  useEffect(() => {
+    onInvalidChange(fieldKey, invalid);
+    return () => onInvalidChange(fieldKey, false);
+  }, [fieldKey, invalid, onInvalidChange]);
   return (
     <div className="theme-settings__color-field">
       <label className="theme-settings__color-label" htmlFor={id}>{label}</label>
@@ -144,6 +149,7 @@ function ColorField({ label, value, placeholder, onChange }) {
           placeholder={placeholder}
           spellCheck={false}
           autoComplete="off"
+          aria-invalid={invalid}
           onChange={(event) => {
             setText(event.target.value);
             const color = normalizeHexColor(event.target.value);
@@ -164,15 +170,27 @@ function ThemeEditor({ draft, title, onClose, onSaved, onRemoved, showError }) {
     return seeds[current] ? current : seeds.dark ? "dark" : "light";
   });
   const [error, setError] = useState("");
+  const [invalidFields, setInvalidFields] = useState(() => new Set());
   const nameId = useId();
 
+  const setFieldInvalid = useCallback((fieldKey, invalid) => {
+    setInvalidFields((current) => {
+      if (current.has(fieldKey) === invalid) return current;
+      const next = new Set(current);
+      if (invalid) next.add(fieldKey);
+      else next.delete(fieldKey);
+      return next;
+    });
+  }, []);
+
   const validation = useMemo(() => {
+    if (invalidFields.size) return { error: "Enter colors as hex values, like #1b1d2a." };
     try {
       return { theme: normalizeTheme({ id: draft.id || "draft", name: name || "Untitled", ...seeds }) };
     } catch (validationError) {
       return { error: validationError.message };
     }
-  }, [draft.id, name, seeds]);
+  }, [draft.id, invalidFields, name, seeds]);
 
   useEffect(() => {
     if (validation.theme) previewTheme(validation.theme, mode);
@@ -204,7 +222,7 @@ function ThemeEditor({ draft, title, onClose, onSaved, onRemoved, showError }) {
   };
 
   const handleExport = () => {
-    const url = URL.createObjectURL(new Blob([serializeThemeFile({ name, ...seeds })], { type: "application/json" }));
+    const url = URL.createObjectURL(new Blob([serializeThemeFile({ name: name.trim() || "Untitled", ...seeds })], { type: "application/json" }));
     const link = Object.assign(document.createElement("a"), {
       href: url,
       download: `${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "theme"}.aurral-theme.json`,
@@ -279,10 +297,12 @@ function ThemeEditor({ draft, title, onClose, onSaved, onRemoved, showError }) {
                 {SEED_FIELDS.map(({ role, label }) => (
                   <ColorField
                     key={`${mode}-${role}`}
+                    fieldKey={`${mode}-${role}`}
                     label={label}
                     value={seed[role]}
                     placeholder={role === "text" ? (mode === "dark" ? "#f5f5f5" : "#171717") : "#000000"}
                     onChange={(color) => updateSeed(role, color)}
+                    onInvalidChange={setFieldInvalid}
                   />
                 ))}
               </div>
@@ -328,7 +348,15 @@ function ThemeImport({ onClose, onParsed }) {
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const fileRef = useRef(null);
+  const mountedRef = useRef(true);
   const textId = useId();
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const parse = (source) => {
     try {
@@ -381,6 +409,7 @@ function ThemeImport({ onClose, onParsed }) {
             event.target.value = "";
             if (!file) return;
             const contents = await file.text();
+            if (!mountedRef.current) return;
             setText(contents);
             parse(contents);
           }}
@@ -421,7 +450,16 @@ export function ThemeSettings({ showSuccess, showError }) {
     addToast(
       {
         message: `${removed.theme.name} removed`,
-        action: { label: "Undo", onClick: () => restoreCustomTheme(removed) },
+        action: {
+          label: "Undo",
+          onClick: () => {
+            try {
+              restoreCustomTheme(removed);
+            } catch (restoreError) {
+              showError?.(restoreError.message);
+            }
+          },
+        },
       },
       "success",
       8000,

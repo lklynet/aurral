@@ -5,7 +5,7 @@ import { useToast } from "../contexts/ToastContext";
 import { useThemeDocument } from "../hooks/useThemeDocument.js";
 import { getMyTheme, saveMyTheme } from "../utils/api/endpoints/auth.js";
 import { extractArtworkAccent } from "../utils/imageColors.js";
-import { setArtworkColor, setThemeAccountSaver, syncThemeWithAccount } from "../utils/theme.js";
+import { setArtworkColor, startThemeAccountSync } from "../utils/theme.js";
 
 export default function ThemeSync() {
   const { isAuthenticated, user } = useAuth();
@@ -17,33 +17,19 @@ export default function ThemeSync() {
 
   useEffect(() => {
     if (!userId) return undefined;
-    let cancelled = false;
-    let pending = Promise.resolve();
-    const save = (document) => {
-      pending = pending
-        .then(() => saveMyTheme(document))
-        .catch(() => {
-          if (!cancelled) showError("Your theme couldn't be saved to your account. It still applies on this device.");
-        });
-    };
-    const load = () =>
-      getMyTheme()
-        .then((response) => {
-          if (cancelled) return;
-          const upload = syncThemeWithAccount(userId, response?.theme || null);
-          setThemeAccountSaver(save);
-          if (upload) save(upload);
-        })
-        .catch(() => {});
+    const sync = startThemeAccountSync({
+      userId,
+      loadAccountTheme: getMyTheme,
+      saveAccountTheme: saveMyTheme,
+      onSaveError: () => showError("Your theme couldn't be saved to your account. It still applies on this device."),
+    });
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void load();
+      if (document.visibilityState === "visible") void sync.refresh();
     };
-    void load();
     document.addEventListener("visibilitychange", refreshWhenVisible);
     window.addEventListener("focus", refreshWhenVisible);
     return () => {
-      cancelled = true;
-      setThemeAccountSaver(null);
+      sync.stop();
       document.removeEventListener("visibilitychange", refreshWhenVisible);
       window.removeEventListener("focus", refreshWhenVisible);
     };
