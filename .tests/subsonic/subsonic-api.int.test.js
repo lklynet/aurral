@@ -14,13 +14,13 @@ import {
   startServerProcess,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidarrLibrary }, { flowPlaylistConfig }, { downloadTracker }, { downloadWorker }, { updateStaticPlaylist }, { resolveArtworkUrl, createSubsonicPlaylist, star }, { warmImageProxy }, { playlistManager }] =
+const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { scanMusicRoot }, { flowPlaylistConfig }, { downloadTracker }, { downloadWorker }, { updateStaticPlaylist }, { resolveArtworkUrl, createSubsonicPlaylist, star }, { warmImageProxy }, { playlistManager }] =
   await setupIsolatedBackend(
     "subsonic-canonical",
     "backend/config/db-sqlite.js",
     "backend/db/helpers/index.js",
     "backend/middleware/passwordHash.js",
-    "backend/services/libraryLidarrIndexer.js",
+    "backend/services/libraryFileScanner.js",
     "backend/services/playlists/flowPlaylistConfig.js",
   "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/downloadJobs/downloadWorker.js",
@@ -94,6 +94,24 @@ async function waitFor(check, timeoutMs = 5000) {
   throw new Error("Timed out waiting for Subsonic mutation");
 }
 
+function canonicalTags(title, trackNumber, recordingMbid) {
+  return {
+    common: {
+      albumartist: "Canonical Artist",
+      artist: "Canonical Artist",
+      album: "Canonical Album",
+      title,
+      track: { no: trackNumber },
+      genre: ["Rock"],
+      musicbrainz_albumartistid: "11111111-1111-4111-8111-111111111111",
+      musicbrainz_albumid: "22222222-2222-4222-8222-222222222222",
+      musicbrainz_releasegroupid: "22222222-2222-4222-8222-222222222222",
+      musicbrainz_recordingid: recordingMbid,
+    },
+    format: { duration: 10, codec: "FLAC" },
+  };
+}
+
 test.before(async () => {
   resetDatabase(db);
   dbOps.updateSettings({
@@ -107,52 +125,20 @@ test.before(async () => {
   fixturePath = path.join(fixtureRoot, "Canonical Artist", "Canonical Album", "01 Canonical Song.flac");
   await mkdir(path.dirname(fixturePath), { recursive: true });
   await writeFile(fixturePath, "0123456789");
-  await indexLidarrLibrary({
-    client: {
-      isConfigured: () => true,
-      request: async () => [{
-        id: 1,
-        artistName: "Canonical Artist",
-        sortName: "Canonical Artist",
-        foreignArtistId: "11111111-1111-4111-8111-111111111111",
-        genres: ["Rock"],
-      }],
-      getAllAlbums: async () => [{
-        id: 2,
-        artistId: 1,
-        title: "Canonical Album",
-        foreignAlbumId: "22222222-2222-4222-8222-222222222222",
-      }],
-      getTracksByAlbumId: async () => [
-        {
-          id: 3,
-          albumId: 2,
-          title: "Canonical Song",
-          trackNumber: 1,
-          duration: 10,
-          foreignRecordingId: "33333333-3333-4333-8333-333333333333",
-          trackFileId: 4,
-        },
-        {
-          id: 5,
-          albumId: 2,
-          title: "Unavailable Canonical Song",
-          trackNumber: 2,
-          duration: 10,
-          foreignRecordingId: "66666666-6666-4666-8666-666666666666",
-          trackFileId: 0,
-        },
-      ],
-      getTrackFilesByAlbumId: async () => [{
-        id: 4,
-        path: fixturePath,
-        trackIds: [3],
-        duration: 10,
-        mediaInfo: { audioFormat: "FLAC" },
-      }],
-      getRootFolders: async () => [{ path: fixtureRoot }],
-    },
+  const unavailablePath = path.join(path.dirname(fixturePath), "02 Unavailable Canonical Song.flac");
+  await writeFile(unavailablePath, "0123456789");
+  const tagsByPath = new Map([
+    [fixturePath, canonicalTags("Canonical Song", 1, "33333333-3333-4333-8333-333333333333")],
+    [unavailablePath, canonicalTags("Unavailable Canonical Song", 2, "66666666-6666-4666-8666-666666666666")],
+  ]);
+  const scanLidarrRoot = () => scanMusicRoot({
+    rootPath: fixtureRoot,
+    source: "lidarr",
+    metadataReader: async (filePath) => tagsByPath.get(filePath),
   });
+  await scanLidarrRoot();
+  await rm(unavailablePath);
+  await scanLidarrRoot();
 
   const flow = flowPlaylistConfig.createFlow({ name: "Canonical Flow", size: 1 });
   const jobId = downloadTracker.addJob({
