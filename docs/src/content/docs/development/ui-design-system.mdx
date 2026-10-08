@@ -55,6 +55,23 @@ Keep a component-specific control class when the control has a dedicated layout 
 
 Menu items and switches have different roles. Use `role="menuitem"` or `role="switch"` only when the control has that behavior.
 
+Use `SectionRail` on long pages with several titled sections. Render it as the first child of the page's content column and point it at the sections. It finds them in the page, so sections that appear later or only in some setups are picked up. It shows only when the column has a left margin wide enough for it, and never on touch screens.
+
+```jsx
+const pageRef = useRef(null);
+
+<div ref={pageRef} className="profile-page">
+  <SectionRail
+    containerRef={pageRef}
+    sectionSelector=".profile-settings__section"
+    titleSelector=".settings-page__section-title"
+    descriptionSelector=".settings-page__section-note"
+    label="Profile sections"
+  />
+  {sections}
+</div>
+```
+
 ## Add a narrow exception
 
 Add an entry to `frontend/eslint-rules/shared-control-exceptions.json` only when an existing control must keep a different pattern. Each entry needs a unique `id`, a source `file`, one exact class, class expression, or role, and a reason.

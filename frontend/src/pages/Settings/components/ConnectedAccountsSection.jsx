@@ -93,7 +93,7 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
   return (
     <div className={`settings-page__section${className ? ` ${className}` : ""}`}>
       <div className="settings-page__section-intro">
-        <h3 className="settings-page__section-title">Connected Accounts</h3>
+        <h3 className="settings-page__section-title">Connected accounts</h3>
         <p className="settings-page__section-note">
           Other ways you can sign in to Aurral. You can always sign in with your local password
           {hasLocalPassword ? "" : " once you set one below"}.
