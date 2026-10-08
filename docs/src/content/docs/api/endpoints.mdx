@@ -504,9 +504,11 @@ setup, Aurral does not require a credential for these routes.
 | --- | --- | --- |
 | `GET` | `/api/filesystem/browse` | Browse server directories |
 | `POST` | `/api/filesystem/ensure` | Create or validate a server directory |
+| `POST` | `/api/image-proxy` | Cache a remote image and return its same-origin `/api/image-proxy/:cacheKey` URL |
 | `GET` | `/api/image-proxy/:cacheKey` | Fetch a cached native-library image |
 
-Image-proxy routes are public. Before onboarding, filesystem routes do not
+Fetching a cached image is public. Caching a new image requires a signed-in
+user. Before onboarding, filesystem routes do not
 require authentication. After onboarding, Aurral requires an administrator
 credential for filesystem routes. Aurral accepts the instance API key. Do not
 expose an Aurral server directly to the public internet. Some `/api` routes do

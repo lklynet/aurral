@@ -212,7 +212,7 @@ export default function ActivityRequestRow({
           <>
             <TooltipButton
               className="native-library-icon-button"
-              onClick={() => onPreview(request.jobId, trackName, request.artistName)}
+              onClick={() => onPreview({ ...request, trackName })}
               label={isThisPlaying ? "Pause preview" : "Preview track"}
             >
               {isThisPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}

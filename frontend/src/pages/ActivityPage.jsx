@@ -310,7 +310,7 @@ function ActivityPage() {
   };
 
   const handleReviewPreview = useCallback(
-    (jobId, trackName, artistName) => {
+    ({ jobId, trackName, artistName, albumName, albumMbid }) => {
       const trackId = String(jobId);
       if (currentTrack?.id === trackId) {
         togglePlayPause();
@@ -321,6 +321,8 @@ function ActivityPage() {
         src: getStagingStreamUrl(jobId),
         title: trackName || "Track",
         artist: artistName || "Artist",
+        album: albumName || "",
+        albumMbid,
       });
     },
     [currentTrack?.id, playTrack, togglePlayPause],

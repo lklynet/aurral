@@ -74,7 +74,7 @@ const allowedCorsOrigins = String(process.env.CORS_ORIGIN || "")
 
 const isSubsonicRequest = (req) => req.path === "/rest" || req.path.startsWith("/rest/");
 const isImageProxyRequest = (req) =>
-  req.path === "/api/image-proxy" || req.path.startsWith("/api/image-proxy/");
+  (req.method === "GET" || req.method === "HEAD") && req.path.startsWith("/api/image-proxy/");
 
 const corsDefaults = {
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",

@@ -3,6 +3,7 @@ import { useAudioPlayerContext } from "react-use-audio-player";
 import { getFormatLoadAttempts, getHowlerFormat, normalizeQueueTrack } from "../utils/audioQueue";
 import { AudioQueueContext } from "./audioQueueContext";
 import { recordPlayEvent } from "../utils/api/endpoints/auth";
+import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists";
 
 const SHARED_VOLUME_KEY = "aurral.preview.volume";
 const SHARED_VOLUME_EVENT = "aurral:shared-volume-change";
@@ -93,6 +94,15 @@ function queueReducer(state, action) {
         queueRevision: state.queueRevision + 1,
         isShuffleEnabled: updateShufflePreference ? shuffle : state.isShuffleEnabled,
       };
+    }
+    case "SET_ALBUM_ARTWORK": {
+      let changed = false;
+      const queue = state.queue.map((track) => {
+        if (track.artwork || track.albumMbid !== action.albumMbid) return track;
+        changed = true;
+        return { ...track, artwork: action.artwork };
+      });
+      return changed ? { ...state, queue } : state;
     }
     case "SET_CURRENT_INDEX":
       return { ...state, currentIndex: action.index, error: null };
@@ -424,6 +434,28 @@ export function AudioQueueProvider({ children }) {
     () => state.playbackOrder.map((queueIndex) => state.queue[queueIndex]).filter(Boolean),
     [state.playbackOrder, state.queue],
   );
+
+  const missingArtworkMbid = currentTrack && !currentTrack.artwork ? currentTrack.albumMbid : null;
+  const currentArtist = currentTrack?.artist || "";
+  const currentAlbum = currentTrack?.album || "";
+
+  useEffect(() => {
+    if (!missingArtworkMbid) return undefined;
+    let cancelled = false;
+    getReleaseGroupCoversBatch([
+      { mbid: missingArtworkMbid, artistName: currentArtist, albumTitle: currentAlbum },
+    ])
+      .then((covers) => {
+        const artwork = covers?.[missingArtworkMbid]?.image;
+        if (!cancelled && artwork) {
+          dispatch({ type: "SET_ALBUM_ARTWORK", albumMbid: missingArtworkMbid, artwork });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [currentAlbum, currentArtist, missingArtworkMbid]);
 
   useEffect(() => {
     const mediaSession = navigator.mediaSession;

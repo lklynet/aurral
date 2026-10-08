@@ -1100,6 +1100,7 @@ export const toHistoryRequestItem = (entry, options = {}) => {
     trackName,
     artistName: entry.metadata?.artistName || null,
     albumName,
+    albumMbid: entry.metadata?.albumMbid || null,
     albumId: entry.metadata?.albumId ? String(entry.metadata.albumId) : null,
     canonicalAlbumId: options.canonicalAlbumId || entry.metadata?.canonicalAlbumId || null,
     requestGroupId: options.requestGroupId || entry.metadata?.requestGroupId || null,

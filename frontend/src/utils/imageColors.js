@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { cacheImageLocally } from "./api/endpoints/images.js";
 import { normalizeMediaUrl } from "./normalizeMediaUrl.js";
 import { pickVividColor } from "./themeColor.js";
 
 const N = 64;
 const gradientCache = new Map();
 const accentCache = new Map();
+const localCopyCache = new Map();
 export const FALLBACK_GRADIENT = { top: "#343434", bottom: "#171717" };
 
 function avgHex(data, y0, y1) {
@@ -24,13 +26,40 @@ function avgHex(data, y0, y1) {
   return `#${h(r)}${h(g)}${h(b)}`;
 }
 
-function readImagePixels(src, { cors = false } = {}) {
+function isCrossOrigin(src) {
+  try {
+    const url = new URL(src, window.location.href);
+    return /^https?:$/.test(url.protocol) && url.origin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+function sameOriginCopy(src) {
+  if (!localCopyCache.has(src)) {
+    if (localCopyCache.size >= 200) localCopyCache.delete(localCopyCache.keys().next().value);
+    localCopyCache.set(
+      src,
+      cacheImageLocally(src)
+        .then((result) => result?.url || src)
+        .catch(() => {
+          localCopyCache.delete(src);
+          return src;
+        }),
+    );
+  }
+  return localCopyCache.get(src);
+}
+
+async function readImagePixels(src) {
+  const normalized = normalizeMediaUrl(src);
+  const readable = isCrossOrigin(normalized) ? await sameOriginCopy(normalized) : normalized;
   return new Promise((ok, err) => {
     const img = new Image();
-    if (cors) img.crossOrigin = "anonymous";
+    img.crossOrigin = "anonymous";
     img.onload = () => ok(img);
     img.onerror = err;
-    img.src = normalizeMediaUrl(src);
+    img.src = readable;
   }).then((img) => {
     const c = Object.assign(document.createElement("canvas"), { width: N, height: N });
     const ctx = c.getContext("2d");
@@ -44,7 +73,7 @@ export function extractArtworkAccent(src) {
   if (!src) return Promise.resolve(null);
   if (!accentCache.has(src)) {
     if (accentCache.size >= 200) accentCache.delete(accentCache.keys().next().value);
-    accentCache.set(src, readImagePixels(src, { cors: true }).then((data) => (data ? pickVividColor(data) : null)).catch(() => null));
+    accentCache.set(src, readImagePixels(src).then((data) => (data ? pickVividColor(data) : null)).catch(() => null));
   }
   return accentCache.get(src);
 }

@@ -789,4 +789,18 @@ export const handleImageProxyRequest = async (req, res) => {
   });
 };
 
+export const handleImageCacheRequest = async (req, res) => {
+  const sourceUrl = typeof req.body?.src === "string" ? req.body.src.trim() : "";
+  if (!/^https?:\/\//i.test(sourceUrl)) {
+    return res.status(400).json({ error: "An http or https image URL is required" });
+  }
+  try {
+    const cached = await warmImageProxy(sourceUrl);
+    if (!cached?.localUrl) return res.status(404).json({ error: "Image not found" });
+    return res.json({ url: cached.localUrl });
+  } catch {
+    return res.status(404).json({ error: "Image not found" });
+  }
+};
+
 migrateObsoleteImageCache();
