@@ -585,14 +585,23 @@ export function findLibraryAlbumByReleaseMbid(mbid) {
   ).get(releaseMbid) || null;
 }
 
+// Names that reduce to nothing in ASCII, such as Japanese titles, compare as
+// written instead of all matching each other.
+export function isSameLibraryName(left, right) {
+  const a = normalizeKeyPart(left);
+  const b = normalizeKeyPart(right);
+  if (a || b) return a === b;
+  const raw = (value) => normalizeText(value).normalize("NFKC").toLowerCase();
+  return Boolean(raw(left)) && raw(left) === raw(right);
+}
+
 // A file without MusicBrainz album tags belongs to the artist's one album
 // with the same title, so an untagged copy never splits an album in two.
 export function findLibraryAlbumByArtistTitle(artistId, title) {
-  const key = normalizeKeyPart(title);
-  if (!key || !Number.isSafeInteger(Number(artistId))) return null;
+  if (!normalizeText(title) || !Number.isSafeInteger(Number(artistId))) return null;
   const matches = db.prepare("SELECT * FROM library_albums WHERE artist_id = ? ORDER BY id")
     .all(Number(artistId))
-    .filter((album) => normalizeKeyPart(album.title) === key);
+    .filter((album) => isSameLibraryName(album.title, title));
   return matches.length === 1 ? matches[0] : null;
 }
 
@@ -639,6 +648,7 @@ export function rekeyLibraryTrack(trackId, identityKey) {
        )`,
     ).run(target.id, id, target.id);
     db.prepare("UPDATE library_media_files SET track_id = ? WHERE track_id = ?").run(target.id, id);
+    if (track.monitored === 1) db.prepare("UPDATE library_tracks SET monitored = 1 WHERE id = ?").run(target.id);
     db.prepare("DELETE FROM library_album_tracks WHERE track_id = ?").run(id);
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(id);
     removeLibrarySearchDocument("track", id);

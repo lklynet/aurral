@@ -168,6 +168,11 @@ export default function LibraryFileOperation({ operation }) {
     setOffset(0);
   }, [group?.id, operation?.id]);
 
+  const groupCount = group?.count || 0;
+  useEffect(() => {
+    setOffset((current) => (current >= groupCount ? Math.max(0, Math.floor((groupCount - 1) / PAGE_SIZE) * PAGE_SIZE) : current));
+  }, [groupCount]);
+
   const items = useQuery({
     queryKey: [...libraryFilesQueryKey, "items", operation?.id, group?.id, offset, operation?.updatedAt],
     queryFn: () => getLibraryFileOperationItems(operation.id, { status: group.statuses, offset, limit: PAGE_SIZE }),

@@ -17,6 +17,7 @@ import {
 import { matchLibraryRecord } from "./libraryMatch.js";
 import {
   addLibraryFileOperationItems,
+  deleteLibraryFileOperationItems,
   listLibraryFileOperationItems,
   updateLibraryFileOperation,
   updateLibraryFileOperationItem,
@@ -95,6 +96,7 @@ export function validateIngestOptions({ mode } = {}) {
 }
 
 async function listSourceFiles(operation) {
+  deleteLibraryFileOperationItems(operation.id, ["new"]);
   const files = [];
   for await (const filePath of walkAudioFiles(operation.options.sourcePath)) {
     files.push({ sourcePath: filePath, status: "new" });
@@ -204,11 +206,13 @@ export async function planIngest(operation, deadline) {
 
 async function removeDuplicateSource(item) {
   if (!(await fs.lstat(item.sourcePath).catch(() => null))) {
+    await transferSidecars(item.sourcePath, item.targetPath, "move").catch(() => {});
     return { status: "duplicate", reason: "The Library already has this file." };
   }
   if (!(await filesIdentical(item.sourcePath, item.targetPath).catch(() => false))) {
     return { status: "conflict", reason: "The Library's copy changed before Aurral could compare it." };
   }
+  await transferSidecars(item.sourcePath, item.targetPath, "move").catch(() => {});
   await fs.unlink(item.sourcePath);
   return { status: "duplicate", reason: "The Library already had this file, so the source copy was removed." };
 }
@@ -221,9 +225,9 @@ async function fileItem(operation, item) {
   const targetStat = await fs.lstat(target).catch(() => null);
   if (targetStat) {
     if (!sourceStat) {
-      return mode === "move"
-        ? { status: "done" }
-        : { status: "failed", reason: "The source file is gone." };
+      if (mode !== "move") return { status: "failed", reason: "The source file is gone." };
+      await transferSidecars(source, target, mode).catch(() => {});
+      return { status: "done" };
     }
     if (!(await filesIdentical(source, target).catch(() => false))) {
       return { status: "conflict", reason: "A different file already has this name." };
@@ -256,7 +260,7 @@ export async function applyIngestItem(operation, item) {
 
 export function ingestScanRequest(operation, items) {
   const changedPaths = items
-    .filter((item) => item.status === "done")
+    .filter((item) => ["done", "duplicate"].includes(item.status) && item.targetPath)
     .map((item) => item.targetPath);
   if (operation.options.mode === "move") changedPaths.push(...items.map((item) => item.sourcePath));
   return { includeLidarr: operation.options.mode === "move", changedPaths };
@@ -267,17 +271,22 @@ export function ingestScanRequest(operation, items) {
 export async function finishIngest(operation) {
   const { sourcePath: sourceRoot, mode } = operation.options;
   const folders = new Map();
-  for (const item of db.prepare(
-    `SELECT source_path, target_path FROM library_file_operation_items
-     WHERE operation_id = ? AND status IN ('done', 'duplicate') AND target_path IS NOT NULL`,
-  ).iterate(operation.id)) {
+  const unfiled = new Set();
+  const items = db.prepare(
+    "SELECT source_path, target_path, status FROM library_file_operation_items WHERE operation_id = ?",
+  ).all(operation.id);
+  for (const item of items) {
     const folder = path.dirname(item.source_path);
+    if (!["done", "duplicate"].includes(item.status) || !item.target_path) {
+      unfiled.add(folder);
+      continue;
+    }
     const targets = folders.get(folder) || new Set();
     targets.add(path.dirname(item.target_path));
     folders.set(folder, targets);
   }
   for (const [folder, targets] of folders) {
-    if (targets.size !== 1) continue;
+    if (targets.size !== 1 || unfiled.has(folder)) continue;
     const [target] = targets;
     const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
@@ -289,4 +298,9 @@ export async function finishIngest(operation) {
     const deepestFirst = [...folders.keys()].sort((left, right) => right.length - left.length);
     for (const folder of deepestFirst) await removeEmptyDirectories(folder, sourceRoot);
   }
+  return ingestScanRequest(operation, items.map((item) => ({
+    status: item.status,
+    sourcePath: item.source_path,
+    targetPath: item.target_path,
+  })));
 }

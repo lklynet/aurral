@@ -3,10 +3,8 @@ import {
   buildFallbackIdentityKey,
   findLibraryAlbumByArtistTitle,
   findLibraryAlbumByReleaseMbid,
+  isSameLibraryName,
 } from "../libraryMediaStore.js";
-
-const sameName = (left, right) =>
-  Boolean(left && right) && buildFallbackIdentityKey("name", left) === buildFallbackIdentityKey("name", right);
 
 function findArtist(record) {
   if (record.artistMbid) {
@@ -50,7 +48,7 @@ function findTrack(record, album) {
     (record.trackMbid && track.mbid === record.trackMbid) || track.identity_key === record.trackKey);
   if (byIdentity) return byIdentity;
   const named = tracks.filter((track) =>
-    sameName(track.title, record.title)
+    isSameLibraryName(track.title, record.title)
     && (!record.trackNumber || !track.track_number || track.track_number === record.trackNumber)
     && (!record.discNumber || !track.disc_number || track.disc_number === record.discNumber));
   return named.length === 1 ? named[0] : null;

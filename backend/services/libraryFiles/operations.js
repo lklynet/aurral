@@ -55,7 +55,7 @@ export async function startOrganize(options = {}) {
 
 export async function confirmLibraryFileOperation(id) {
   if (!transitionLibraryFileOperation(id, ["ready"], "running")) return false;
-  await enqueue(id);
+  await enqueue(id, { dedupe: false });
   return true;
 }
 

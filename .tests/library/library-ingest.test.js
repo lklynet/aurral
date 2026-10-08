@@ -290,3 +290,39 @@ test("only one file operation runs at a time", async () => {
   assert.equal(operations.cancelLibraryFileOperation(first.id), true);
   assert.equal(getLibraryFileOperation(first.id).status, "cancelled");
 });
+
+test("a restart while listing files lists each file once", async () => {
+  const source = newSource();
+  const track = await makeTrack(path.join(source, "Listed", "Album", "a.flac"), {
+    artist: "Listed", album: "Album", title: "Once", track: "1",
+  });
+  const operation = await operations.startIngest({ sourcePath: source, mode: "copy" });
+  db.prepare(
+    `INSERT INTO library_file_operation_items (operation_id, position, source_path, status, updated_at)
+     VALUES (?, 0, ?, 'new', 1)`,
+  ).run(operation.id, track);
+
+  const ready = await runUntilSettled(operation.id);
+
+  assert.deepEqual(
+    operations.describeLibraryFileOperationItems(ready, {}).map((item) => item.status),
+    ["pending"],
+  );
+});
+
+test("album art stays with music that is left for review", async () => {
+  const source = newSource();
+  await makeTrack(path.join(source, "Split", "Album", "a.flac"), {
+    artist: "Split", album: "Album", title: "Filed", track: "1",
+  });
+  await makeTrack(path.join(source, "Split", "Album", "b.flac"), {
+    artist: "Split", album: "Album", title: "Blocked", track: "2",
+  });
+  await writeFile(path.join(source, "Split", "Album", "cover.jpg"), "art");
+  await makeTrack(path.join(root, "Split", "Album", "02 - Blocked.flac"), { title: "Other" });
+
+  const items = await apply(await ingest(source, "move"));
+
+  assert.deepEqual(items.map((item) => item.status), ["done", "conflict"]);
+  assert.equal(await readFile(path.join(source, "Split", "Album", "cover.jpg"), "utf8"), "art");
+});

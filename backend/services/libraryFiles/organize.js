@@ -9,10 +9,10 @@ import { downloadTracker } from "../downloadJobs/downloadTracker.js";
 import { buildMetadataRecord, scanMusicRoot } from "../libraryFileScanner.js";
 import { activeLidarrRoots, createLibraryScanExclusion } from "../libraryFolders.js";
 import {
-  buildFallbackIdentityKey,
   findLibraryAlbumByArtistTitle,
   findLibraryAlbumByReleaseMbid,
   getLibraryMediaFile,
+  isSameLibraryName,
   moveLibraryMediaFilePath,
   rekeyLibraryAlbum,
   rekeyLibraryTrack,
@@ -89,8 +89,6 @@ function scopeAlbumIds({ kind, id }) {
 }
 
 const text = (value) => String(Array.isArray(value) ? value[0] ?? "" : value ?? "").trim();
-const sameName = (left, right) =>
-  buildFallbackIdentityKey("name", left) === buildFallbackIdentityKey("name", right);
 const yearOf = (value) => String(value || "").match(/^\d{4}/)?.[0] || "";
 
 async function resolveMusicBrainzAlbum(album, artist) {
@@ -108,7 +106,7 @@ async function resolveMusicBrainzAlbum(album, artist) {
   const artists = Array.isArray(found?.artists) ? found.artists : [];
   const sameArtist = artist?.mbid
     ? found?.artistId === artist.mbid || artists.some((entry) => entry.id === artist.mbid)
-    : artists.some((entry) => sameName(entry.name, artist?.name));
+    : artists.some((entry) => isSameLibraryName(entry.name, artist?.name));
   return sameArtist ? found : null;
 }
 
@@ -123,7 +121,7 @@ function matchMusicBrainzTrack(mbAlbum, file, recordingMbid) {
     }
     return null;
   }
-  let candidates = (chosen?.tracks || []).filter((entry) => sameName(entry.title, file.title));
+  let candidates = (chosen?.tracks || []).filter((entry) => isSameLibraryName(entry.title, file.title));
   if (candidates.length > 1 && file.track_number) {
     candidates = candidates.filter((entry) => entry.trackNumber === file.track_number
       && (!file.disc_number || (entry.mediumNumber || 1) === file.disc_number));
@@ -410,7 +408,9 @@ async function renameLibraryFile(from, to, context) {
       }
       keptOld = true;
     } else if (LINK_FALLBACK.has(error?.code)) {
-      await placeFile(from, to, "move");
+      keptOld = !(await context.deletionGuard().canDelete(from));
+      await placeFile(from, to, keptOld ? "copy" : "move");
+      keptOld = false;
     } else {
       throw error;
     }
@@ -453,16 +453,21 @@ export async function applyOrganizeItem(operation, item, context) {
   const save = () => updateLibraryFileOperationItem(operation.id, item.position, { details });
   let current = path.resolve(item.sourcePath);
   if (details.results.rename === "done" && item.targetPath) current = item.targetPath;
+  const expected = details.results.retag === "done" ? details.retagged : details;
+  const matchesExpected = (fileStat) =>
+    Number(expected.size) === fileStat.size && Number(expected.mtimeMs) === fileStat.mtimeMs;
   let stat = await fs.stat(current).catch(() => null);
-  if (!stat && actions.includes("rename") && item.targetPath && await fs.stat(item.targetPath).catch(() => null)) {
+  const placed = !stat && actions.includes("rename") && item.targetPath
+    ? await fs.stat(item.targetPath).catch(() => null)
+    : null;
+  if (placed && matchesExpected(placed)) {
     commitRename(current, item.targetPath, context);
     details.results.rename = "done";
     current = item.targetPath;
     stat = await fs.stat(current);
   }
   if (!stat) return { status: "failed", reason: "The file is gone.", details };
-  const expected = details.results.retag === "done" ? details.retagged : details;
-  if (Number(expected.size) !== stat.size || Number(expected.mtimeMs) !== stat.mtimeMs) {
+  if (!matchesExpected(stat)) {
     return { status: "skipped", reason: "The file changed after the preview. Run Organize again.", details };
   }
   if (actions.includes("retag") && details.results.retag !== "done") {
@@ -476,7 +481,12 @@ export async function applyOrganizeItem(operation, item, context) {
     details.retagged = { size: tagged.size, mtimeMs: tagged.mtimeMs };
     details.results.retag = "done";
     save();
-    await reindexRetaggedFile(current, root).catch(() => {
+  }
+  if (actions.includes("retag") && details.results.reindex !== "done") {
+    await reindexRetaggedFile(current, root).then(() => {
+      details.results.reindex = "done";
+      save();
+    }, () => {
       context.rescan.add(current);
     });
   }
