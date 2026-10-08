@@ -11,6 +11,7 @@ import {
   Eye,
   EyeOff,
   Fingerprint,
+  FolderSync,
   Grid3X3,
   Heart,
   Info,
@@ -34,6 +35,7 @@ import { useAurralTrackMonitoring } from "../components/AurralTrackMonitoring";
 import { AurralAlbumStatus } from "../components/AurralAlbumStatus";
 import { DotLoader } from "../components/DotLoader";
 import { LibraryItemMenu } from "../components/LibraryItemMenu";
+import OrganizeFilesModal from "../components/OrganizeFilesModal";
 import TooltipButton from "../components/TooltipButton";
 import { FavoriteButton, TrackList } from "../components/TrackList";
 import {
@@ -55,6 +57,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useLibraryFiles } from "../hooks/useLibraryFileOperation.js";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
 import { useHiddenPlaylistTracks, usePlaylistBulkActions } from "./playlists/usePlaylistBulkActions.js";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
@@ -364,6 +367,7 @@ function LibraryPage() {
   const [libraryRemoval, setLibraryRemoval] = useState(null);
   const [libraryInfo, setLibraryInfo] = useState(null);
   const [mbidArtist, setMbidArtist] = useState(null);
+  const [organizeTarget, setOrganizeTarget] = useState(null);
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [deletingLibraryEntity, setDeletingLibraryEntity] = useState(false);
   const [homeAlbumsGridRef, homeAlbumColumns] = useResponsiveReleaseLimit({
@@ -839,6 +843,8 @@ function LibraryPage() {
   const libraryDestination = useLibraryDestination();
   const { isAlbumDownloading, isTrackDownloading } = useActiveDownloads();
   const canEditArtistMbid = hasPermission("addArtist");
+  const libraryFiles = useLibraryFiles({ enabled: user?.role === "admin" });
+  const organizeActions = libraryFiles.data?.enabledActions || [];
 
   const openLibraryRemoval = useCallback((kind, entity, manager = null) => {
     setDeleteFiles(false);
@@ -1734,6 +1740,18 @@ function LibraryPage() {
         ]
       : [];
 
+  const organizeMenuItems = (kind, entity, name) =>
+    organizeActions.length && entity
+      ? [
+          {
+            id: "organize",
+            label: "Organize files…",
+            icon: FolderSync,
+            onSelect: () => setOrganizeTarget({ kind, id: entity.canonicalId || entity.id, name }),
+          },
+        ]
+      : [];
+
   const handleArtistMbidSaved = (result) => {
     const previousId = mbidArtist?.id;
     setMbidArtist(null);
@@ -2514,6 +2532,7 @@ function LibraryPage() {
                     icon: Info,
                     onSelect: () => openLibraryInfo("album", libraryAlbum, { artist }),
                   },
+                  ...organizeMenuItems("album", libraryAlbum, libraryAlbum.title),
                   {
                     id: "favorite",
                     label: favoriteIds.has(favoriteId("album", libraryAlbum))
@@ -2645,6 +2664,7 @@ function LibraryPage() {
                     icon: Info,
                     onSelect: () => openLibraryInfo("artist", libraryArtist),
                   },
+                  ...organizeMenuItems("artist", libraryArtist, libraryArtist.name),
                   ...artistMbidMenuItems(libraryArtist),
                   {
                     id: "favorite",
@@ -2738,6 +2758,18 @@ function LibraryPage() {
         onClose={() => setMbidArtist(null)}
         onSaved={handleArtistMbidSaved}
       />
+      {organizeTarget ? (
+        <OrganizeFilesModal
+          target={organizeTarget}
+          actions={organizeActions}
+          onClose={() => setOrganizeTarget(null)}
+          onFinished={() => {
+            clearLibraryPageCache();
+            void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPrefix });
+          }}
+          showError={showError}
+        />
+      ) : null}
     </>
   );
 

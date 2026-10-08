@@ -2927,3 +2927,9 @@
     padding-block: 1.5rem 1.75rem;
   }
 }
+
+.settings-library-files__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}

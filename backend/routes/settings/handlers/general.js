@@ -134,6 +134,7 @@ export function registerGeneral(router) {
         security,
         playlistArtwork,
         missingTrackSearch,
+        libraryFiles,
         inbox,
         dateTimeFormat,
         reviewTimeoutHours,
@@ -554,6 +555,10 @@ export function registerGeneral(router) {
           missingTrackSearch && typeof missingTrackSearch === "object"
             ? { ...currentSettings.missingTrackSearch, ...missingTrackSearch }
             : currentSettings.missingTrackSearch,
+        libraryFiles:
+          libraryFiles && typeof libraryFiles === "object"
+            ? { ...currentSettings.libraryFiles, ...libraryFiles }
+            : currentSettings.libraryFiles,
         reviewTimeoutHours:
           reviewTimeoutHours !== undefined ? reviewTimeoutHours : currentSettings.reviewTimeoutHours,
       };

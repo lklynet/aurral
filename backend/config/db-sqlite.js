@@ -491,6 +491,34 @@ db.exec(`
     cleaned_at INTEGER
   );
 
+  CREATE TABLE IF NOT EXISTS library_file_operations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    status TEXT NOT NULL,
+    options_json TEXT NOT NULL,
+    summary_json TEXT,
+    error TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    finished_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS library_file_operation_items (
+    operation_id INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    source_path TEXT NOT NULL,
+    target_path TEXT,
+    status TEXT NOT NULL,
+    reason TEXT,
+    details_json TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (operation_id, position),
+    FOREIGN KEY (operation_id) REFERENCES library_file_operations(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_library_file_operation_items_status
+    ON library_file_operation_items(operation_id, status, position);
+
   CREATE TABLE IF NOT EXISTS honker_task_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     job_id INTEGER NOT NULL,

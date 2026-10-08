@@ -47,10 +47,15 @@ const defaultSettings = {
     cutoff: "flac-standard",
     automaticUpgrades: false,
     intervalDays: 2,
+    libraryTracks: false,
   },
   missingTrackSearch: {
     enabled: false,
     intervalDays: 1,
+  },
+  libraryFiles: {
+    rename: false,
+    retag: false,
   },
   reviewTimeoutHours: 0,
   releaseTypes: allReleaseTypes,

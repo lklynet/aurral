@@ -22,6 +22,7 @@ export const HONKER_QUEUE_NAMES = [
   "slskd-pipeline",
   "playlist-mbid-enrichment",
   "library-scan",
+  "library-files",
   "discovery-refresh",
   "discovery-user-refresh",
   "_outbox:notifications",
@@ -386,6 +387,18 @@ const libraryScan = registerQueue({
 export const getLibraryScanQueue = libraryScan.getQueue;
 export const enqueueLibraryScanJob = libraryScan.enqueueJob;
 
+const libraryFiles = registerQueue({
+  name: "library-files",
+  visibilityTimeoutS: 600,
+  maxAttempts: 5,
+  skipInTest: true,
+  workerModule: "./libraryFiles/libraryFileWorker.js",
+  workerStartFn: "startLibraryFileWorker",
+});
+
+export const getLibraryFileQueue = libraryFiles.getQueue;
+export const enqueueLibraryFileJob = libraryFiles.enqueueJob;
+
 export function getNotificationOutbox() {
   if (!notificationOutbox) {
     notificationOutbox = getHonkerDb().outbox(
@@ -556,6 +569,9 @@ export function enqueueHonkerStartupTasks() {
     enqueueIfAbsent({ kind: "identity-marker-migration" }, { delaySeconds: 30, priority: -5 });
   }
   enqueueIfAbsent({ kind: "weekly-flow-startup-check" }, { delaySeconds: 5, priority: 5 });
+  import("./libraryFiles/operations.js")
+    .then(({ resumeLibraryFileOperations }) => resumeLibraryFileOperations())
+    .catch((error) => console.warn("[LibraryFiles] Could not resume file operations:", error?.message || error));
   enqueueIfAbsent({ kind: "upgrade-readiness-check" }, { delaySeconds: 60, priority: -10 });
   enqueueIfAbsent({ kind: "discovery-bootstrap" }, { delaySeconds: 15, priority: 5 });
   enqueueIfAbsent({ kind: "library-index-bootstrap" }, { delaySeconds: 8, priority: 0 });

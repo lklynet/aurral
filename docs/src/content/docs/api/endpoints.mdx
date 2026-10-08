@@ -102,6 +102,14 @@ WebSocket connections.
 | `POST` | `/api/library/refresh` | Queue a library scan. `mode` is `quick`, the default, or `full` to read every file again |
 | `GET` | `/api/library/refresh` | Read the ID and status of the scheduled library scan |
 | `GET` | `/api/library/refresh/:jobId` | Read the status of a library scan |
+| `GET` | `/api/library/files` | Read the enabled Organize actions and the latest ingest or organize operation. Admin only |
+| `POST` | `/api/library/files/ingest/check` | Check an ingest folder with `{ "sourcePath": "…" }`: music file count, whether Hardlink works, and any Lidarr root folder it is in |
+| `POST` | `/api/library/files/ingest` | Start an ingest preview with `{ "sourcePath": "…", "mode": "move" \| "copy" \| "hardlink" }`. Returns `409` while another operation runs |
+| `POST` | `/api/library/files/organize` | Start an organize preview with `{ "scope": { "kind": "library" \| "artist" \| "album", "id": … }, "actions": ["rename", "retag", "upgrade"] }`. Each action must be turned on in settings |
+| `GET` | `/api/library/files/operations/:id` | Read an operation's status, progress, and counts |
+| `GET` | `/api/library/files/operations/:id/items` | Read an operation's files. Optional `status`, `offset`, and `limit` up to 200 |
+| `POST` | `/api/library/files/operations/:id/start` | Apply a finished preview |
+| `POST` | `/api/library/files/operations/:id/cancel` | Cancel a preview, or stop an operation after the current file |
 | `GET` | `/api/library/canonical` | Read one page of Library items. Requires a supported `kind`, and `pageSize` from 1 to 100 |
 | `GET` | `/api/library/favorites` | Read the current user's library favorites |
 | `POST` | `/api/library/favorites` | Add or remove a library favorite. Requires a user session |

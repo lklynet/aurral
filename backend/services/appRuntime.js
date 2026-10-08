@@ -43,6 +43,7 @@ const WORKER_STARTS = {
   "system-task-maintenance": ["./systemTaskWorker.js", "startMaintenanceTaskWorker"],
   "system-task-inbox": ["./systemTaskWorker.js", "startInboxTaskWorker"],
   "library-scan": ["./libraryScanWorker.js", "startLibraryScanWorker"],
+  "library-files": ["./libraryFiles/libraryFileWorker.js", "startLibraryFileWorker"],
   "_outbox:notifications": ["./notificationOutboxWorker.js", "startNotificationOutboxWorker"],
   "_outbox:play-events": ["./playEventOutboxWorker.js", "startPlayEventOutboxWorker"],
   "slskd-pipeline": ["./downloadPipelineWorker.js", "startDownloadPipelineWorker"],

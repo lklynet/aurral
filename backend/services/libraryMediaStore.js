@@ -121,18 +121,20 @@ export function finishLibraryScan(scanId, {
   );
 }
 
-function moveLibraryArtistStars(fromKey, toKey) {
+function moveLibraryStars(entityKind, fromKey, toKey) {
   const copied = db.prepare(
     `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
      SELECT user_id, entity_kind, ?, created_at
      FROM subsonic_stars
-     WHERE entity_kind = 'artist' AND entity_key = ?`,
-  ).run(toKey, fromKey).changes > 0;
+     WHERE entity_kind = ? AND entity_key = ?`,
+  ).run(toKey, entityKind, fromKey).changes > 0;
   const deleted = db.prepare(
-    "DELETE FROM subsonic_stars WHERE entity_kind = 'artist' AND entity_key = ?",
-  ).run(fromKey).changes > 0;
+    "DELETE FROM subsonic_stars WHERE entity_kind = ? AND entity_key = ?",
+  ).run(entityKind, fromKey).changes > 0;
   return copied || deleted;
 }
+
+const moveLibraryArtistStars = (fromKey, toKey) => moveLibraryStars("artist", fromKey, toKey);
 
 function mergeLibraryArtistInto(fallback, resolved, { syncSearch = true } = {}) {
   if (!fallback || !resolved || fallback.id === resolved.id) return false;
@@ -581,6 +583,168 @@ export function findLibraryAlbumByReleaseMbid(mbid) {
      WHERE mbid = ? AND release_group_mbid IS NOT NULL AND release_group_mbid != mbid
      ORDER BY id LIMIT 1`,
   ).get(releaseMbid) || null;
+}
+
+// A file without MusicBrainz album tags belongs to the artist's one album
+// with the same title, so an untagged copy never splits an album in two.
+export function findLibraryAlbumByArtistTitle(artistId, title) {
+  const key = normalizeKeyPart(title);
+  if (!key || !Number.isSafeInteger(Number(artistId))) return null;
+  const matches = db.prepare("SELECT * FROM library_albums WHERE artist_id = ? ORDER BY id")
+    .all(Number(artistId))
+    .filter((album) => normalizeKeyPart(album.title) === key);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+export function moveLibraryMediaFilePath(source, fromPath, toPath) {
+  const from = normalizeText(fromPath);
+  const to = normalizeText(toPath);
+  const fileSource = normalizeText(source);
+  if (!from || !to || from === to) return false;
+  const moved = db.transaction(() => {
+    const file = getLibraryMediaFileStmt.get(fileSource, from);
+    if (!file) return false;
+    const occupied = getLibraryMediaFileStmt.get(fileSource, to);
+    if (occupied) db.prepare("DELETE FROM library_media_files WHERE id = ?").run(occupied.id);
+    db.prepare("UPDATE library_media_files SET path = ?, updated_at = ? WHERE id = ?")
+      .run(to, now(), file.id);
+    return true;
+  })();
+  if (moved) invalidateLibraryCache();
+  return moved;
+}
+
+// Retagging can give a file new identity tags. The track keeps its row,
+// favorites, and monitoring, or folds into the track that already has them.
+export function rekeyLibraryTrack(trackId, identityKey) {
+  const key = normalizeText(identityKey);
+  const id = Number(trackId);
+  if (!key || !Number.isSafeInteger(id)) return null;
+  const result = db.transaction(() => {
+    const track = db.prepare("SELECT * FROM library_tracks WHERE id = ?").get(id);
+    if (!track) return null;
+    if (track.identity_key === key) return { id, changed: false };
+    moveLibraryStars("song", track.identity_key, key);
+    const target = db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
+    if (!target) {
+      db.prepare("UPDATE library_tracks SET identity_key = ?, updated_at = ? WHERE id = ?").run(key, now(), id);
+      return { id, changed: true };
+    }
+    db.prepare(
+      `INSERT OR IGNORE INTO library_album_tracks (album_id, track_id, disc_number, track_number, created_at)
+       SELECT link.album_id, ?, link.disc_number, link.track_number, link.created_at
+       FROM library_album_tracks AS link
+       WHERE link.track_id = ? AND NOT EXISTS (
+         SELECT 1 FROM library_album_tracks AS kept WHERE kept.album_id = link.album_id AND kept.track_id = ?
+       )`,
+    ).run(target.id, id, target.id);
+    db.prepare("UPDATE library_media_files SET track_id = ? WHERE track_id = ?").run(target.id, id);
+    db.prepare("DELETE FROM library_album_tracks WHERE track_id = ?").run(id);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(id);
+    removeLibrarySearchDocument("track", id);
+    return { id: target.id, changed: true };
+  }).immediate();
+  if (result?.changed) {
+    syncLibrarySearchTrack(result.id);
+    invalidateLibraryCache();
+  }
+  return result?.id ?? null;
+}
+
+export function rekeyLibraryAlbum(albumId, identityKey) {
+  const key = normalizeText(identityKey);
+  const id = Number(albumId);
+  if (!key || !Number.isSafeInteger(id)) return null;
+  const result = db.transaction(() => {
+    const album = db.prepare("SELECT * FROM library_albums WHERE id = ?").get(id);
+    if (!album) return null;
+    if (album.identity_key === key) return { id, changed: false };
+    moveLibraryStars("album", album.identity_key, key);
+    db.prepare(
+      `INSERT INTO play_album_stats (user_id, album_key, play_count, last_played_at)
+       SELECT user_id, ?, play_count, last_played_at FROM play_album_stats WHERE album_key = ?
+       ON CONFLICT (user_id, album_key) DO UPDATE SET
+         play_count = play_album_stats.play_count + excluded.play_count,
+         last_played_at = MAX(play_album_stats.last_played_at, excluded.last_played_at)`,
+    ).run(key, album.identity_key);
+    db.prepare("DELETE FROM play_album_stats WHERE album_key = ?").run(album.identity_key);
+    db.prepare("UPDATE play_events SET album_key = ? WHERE album_key = ?").run(key, album.identity_key);
+    const target = db.prepare("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
+    if (!target) {
+      db.prepare("UPDATE library_albums SET identity_key = ?, updated_at = ? WHERE id = ?").run(key, now(), id);
+      return { id, changed: true };
+    }
+    db.prepare(
+      `INSERT OR IGNORE INTO library_album_tracks (album_id, track_id, disc_number, track_number, created_at)
+       SELECT ?, link.track_id, link.disc_number, link.track_number, link.created_at
+       FROM library_album_tracks AS link
+       WHERE link.album_id = ? AND NOT EXISTS (
+         SELECT 1 FROM library_album_tracks AS kept WHERE kept.album_id = ? AND kept.track_id = link.track_id
+       )`,
+    ).run(target.id, id, target.id);
+    db.prepare("UPDATE library_media_files SET album_id = ? WHERE album_id = ?").run(target.id, id);
+    db.prepare(
+      `INSERT OR IGNORE INTO library_management
+        (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at)
+       SELECT entity_kind, ?, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at
+       FROM library_management WHERE entity_kind = 'album' AND entity_id = ?`,
+    ).run(target.id, id);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(id);
+    clearLibraryManagement("album", id);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(id);
+    removeLibrarySearchDocument("album", id);
+    touchLibraryAlbum(target.id);
+    return { id: target.id, changed: true };
+  }).immediate();
+  if (result?.changed) {
+    invalidateLibraryManagementCache();
+    syncLibrarySearchAlbum(result.id);
+    invalidateLibraryCache();
+  }
+  return result?.id ?? null;
+}
+
+// Removes an album link a retag left behind, and the album, track, or
+// artist it emptied.
+export function unlinkLibraryAlbumTrackWithoutMedia(albumId, trackId) {
+  const album = Number(albumId);
+  const track = Number(trackId);
+  const removed = db.transaction(() => {
+    const hasMedia = db.prepare(
+      "SELECT 1 FROM library_media_files WHERE track_id = ? AND album_id = ? LIMIT 1",
+    ).get(track, album);
+    if (hasMedia) return false;
+    const artistId = db.prepare("SELECT artist_id FROM library_albums WHERE id = ?").get(album)?.artist_id;
+    if (db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(album, track).changes === 0) {
+      return false;
+    }
+    if (!db.prepare("SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1").get(track)
+      && !db.prepare("SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1").get(track)) {
+      db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track);
+      removeLibrarySearchDocument("track", track);
+    }
+    if (!db.prepare("SELECT 1 FROM library_album_tracks WHERE album_id = ? LIMIT 1").get(album)
+      && !db.prepare("SELECT 1 FROM library_media_files WHERE album_id = ? AND available = 1 LIMIT 1").get(album)) {
+      db.prepare("DELETE FROM library_media_files WHERE album_id = ?").run(album);
+      clearLibraryManagement("album", album);
+      db.prepare("DELETE FROM library_albums WHERE id = ?").run(album);
+      removeLibrarySearchDocument("album", album);
+      if (artistId != null
+        && !db.prepare("SELECT 1 FROM library_albums WHERE artist_id = ? LIMIT 1").get(artistId)
+        && !db.prepare("SELECT 1 FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?").get(artistId)) {
+        db.prepare("DELETE FROM library_artists WHERE id = ?").run(artistId);
+        removeLibrarySearchDocument("artist", artistId);
+      }
+    } else {
+      touchLibraryAlbum(album);
+    }
+    return true;
+  }).immediate();
+  if (removed) {
+    invalidateLibraryManagementCache();
+    invalidateLibraryCache();
+  }
+  return removed;
 }
 
 // Downloads once took an album's release ID for its release group, and the
