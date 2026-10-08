@@ -14,6 +14,7 @@ import {
   repairOrphanedPlaylistTrackPaths,
   moveHandedOverTracksToLidarr,
   repairReusableTrackLinks,
+  requeueJobsUsingLidarrFiles,
   reuseTrackForPlaylist,
 } from "./fileReuse.js";
 import {
@@ -21,6 +22,7 @@ import {
   resolveDownloadRoot,
 } from "../downloadPaths.js";
 import { startDownloadPipelineWorker } from "../downloadPipelineWorker.js";
+import { configuredLidarrFolders, isLidarrLibraryActive } from "../libraryFolders.js";
 import { listHonkerJobs, withHonkerLock } from "../honkerDb.js";
 import { isPlaylistOwnerActive } from "./playlistOwnerStatus.js";
 import {
@@ -378,7 +380,22 @@ export class DownloadWorker {
     return requeued;
   }
 
+  async releaseLidarrFiles() {
+    const { lidarrClient } = await import("../lidarrClient.js");
+    if (isLidarrLibraryActive(lidarrClient)) return 0;
+    const requeued = requeueJobsUsingLidarrFiles({
+      downloadRoot: this.downloadRoot,
+      lidarrRoots: configuredLidarrFolders(lidarrClient),
+    });
+    if (requeued > 0) {
+      if (this.running) this.wake();
+      else await this.start();
+    }
+    return requeued;
+  }
+
   async repairReusableLinks(force = false) {
+    await this.releaseLidarrFiles();
     const now = Date.now();
     if (!force && now - this.lastReuseRepairAt < REUSE_REPAIR_INTERVAL_MS) {
       return null;

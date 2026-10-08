@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -213,7 +213,6 @@ test("configured Lidarr roots scan locally and reconcile only those roots", asyn
     mkdtemp(path.join(tmpdir(), "aurral-local-lidarr-root-one-")),
     mkdtemp(path.join(tmpdir(), "aurral-local-lidarr-root-two-")),
   ]);
-  const aurralRoot = path.join(tmpdir(), `aurral-disabled-lidarr-${process.pid}`);
   const paths = await Promise.all([
     createAudioFile(roots[0], "Local Artist/Local Album/01 Local Track.flac"),
     createAudioFile(roots[1], "Local Artist/Local Album/02 Local Track.flac"),
@@ -260,23 +259,6 @@ test("configured Lidarr roots scan locally and reconcile only those roots", asyn
     assert.equal(rescanned.filesIndexed, 1);
     assert.equal(snapshot.files.find((file) => file.path === paths[0])?.available, 0);
     assert.equal(snapshot.files.find((file) => file.path === outsidePath)?.available, 1);
-
-    let disabledCalls = 0;
-    const disabled = await scanConfiguredLibrary({
-      musicRoot: aurralRoot,
-      includeLidarr: true,
-      lidarrRoots: roots,
-      lidarrClient: {
-        isEnabled: () => false,
-        request: async () => {
-          disabledCalls += 1;
-          throw new Error("unexpected disabled Lidarr request");
-        },
-      },
-    });
-    assert.equal(disabled.lidarr.skipped, true);
-    assert.equal(disabledCalls, 0);
-    assert.equal(snapshot.files.find((file) => file.path === outsidePath)?.available, 1);
   } finally {
     const albumIds = trackId
       ? db.prepare("SELECT album_id FROM library_album_tracks WHERE track_id = ?").all(trackId)
@@ -302,8 +284,108 @@ test("configured Lidarr roots scan locally and reconcile only those roots", asyn
       db.prepare(`DELETE FROM library_artists WHERE id IN (${artistIds.map(() => "?").join(",")})`).run(...artistIds);
     }
     await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
-    await rm(aurralRoot, { recursive: true, force: true });
   }
+});
+
+const lidarrOn = { isConfigured: () => true };
+const lidarrOff = { isConfigured: () => false };
+
+const albumByTitle = (title) => db.prepare(
+  `SELECT album.*, management.managed_by, management.monitor_mode
+   FROM library_albums AS album
+   LEFT JOIN library_management AS management
+     ON management.entity_kind = 'album' AND management.entity_id = album.id
+   WHERE album.title = ?`,
+).get(title);
+
+const albumTrackTitles = (albumId) => db.prepare(
+  `SELECT track.title FROM library_album_tracks AS link
+   JOIN library_tracks AS track ON track.id = link.track_id
+   WHERE link.album_id = ? ORDER BY track.title`,
+).pluck().all(albumId);
+
+const mediaSources = (filePath) => db.prepare(
+  "SELECT source FROM library_media_files WHERE path = ? ORDER BY source",
+).pluck().all(filePath);
+
+const removeArtistsNamed = (pattern) =>
+  db.prepare("DELETE FROM library_artists WHERE name LIKE ?").run(pattern);
+
+test("turning Lidarr off removes its music from the Library and keeps Aurral's", async (t) => {
+  const downloads = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-off-downloads-"));
+  const music = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-off-music-"));
+  const tag = `Off ${process.pid}`;
+  t.after(async () => {
+    removeArtistsNamed(`${tag}%`);
+    await rm(downloads, { recursive: true, force: true });
+    await rm(music, { recursive: true, force: true });
+  });
+  const lidarrOnly = await createAudioFile(music, `${tag} Lidarr/${tag} Only/01 Only.flac`);
+  const sharedSingle = await createAudioFile(downloads, `${tag} Shared/${tag} Shared/01 Single.flac`);
+  const sharedLidarr = await createAudioFile(music, `${tag} Shared/${tag} Shared/02 Rest.flac`);
+  const requestedAurral = await createAudioFile(downloads, `${tag} Requested/${tag} Requested/01 Have.flac`);
+  await createAudioFile(music, `${tag} Requested/${tag} Requested/02 Want.flac`);
+
+  await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOn, lidarrRoots: [music] });
+
+  assert.equal(albumByTitle(`${tag} Only`).managed_by, "lidarr");
+  assert.equal(albumByTitle(`${tag} Shared`).managed_by, "lidarr");
+  const requested = albumByTitle(`${tag} Requested`);
+  db.prepare("UPDATE library_management SET managed_by = 'aurral' WHERE entity_kind = 'album' AND entity_id = ?")
+    .run(requested.id);
+  db.prepare("UPDATE library_albums SET metadata_json = json_set(metadata_json, '$.trackListComplete', json('true')) WHERE id = ?")
+    .run(requested.id);
+  await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOn, lidarrRoots: [music] });
+  assert.equal(albumByTitle(`${tag} Requested`).managed_by, "aurral");
+
+  const off = await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOff, lidarrRoots: [music] });
+
+  assert.equal(off.lidarrRemoved, true);
+  assert.equal(albumByTitle(`${tag} Only`), undefined);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM library_artists WHERE name = ?").get(`${tag} Lidarr`).count,
+    0,
+  );
+  const shared = albumByTitle(`${tag} Shared`);
+  assert.equal(shared.managed_by, "aurral");
+  assert.equal(shared.monitor_mode, null);
+  assert.deepEqual(albumTrackTitles(shared.id), ["Single"]);
+  assert.deepEqual(albumTrackTitles(requested.id), ["Have", "Want"]);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM library_media_files WHERE source = 'lidarr'").get().count,
+    0,
+  );
+  assert.deepEqual(mediaSources(sharedSingle), ["aurral"]);
+  assert.deepEqual(mediaSources(requestedAurral), ["aurral"]);
+  for (const filePath of [lidarrOnly, sharedSingle, sharedLidarr, requestedAurral]) {
+    assert.equal(await access(filePath).then(() => true, () => false), true);
+  }
+
+  const again = await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOff, lidarrRoots: [music] });
+  assert.equal(again.lidarrRemoved, false);
+
+  await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOn, lidarrRoots: [music] });
+  assert.equal(albumByTitle(`${tag} Only`).managed_by, "lidarr");
+  assert.deepEqual(mediaSources(sharedLidarr), ["lidarr"]);
+});
+
+test("a Lidarr root folder inside the Downloads Folder belongs to Lidarr while it is on", async (t) => {
+  const downloads = await mkdtemp(path.join(tmpdir(), "aurral-nested-lidarr-"));
+  const music = path.join(downloads, "music");
+  const tag = `Nested ${process.pid}`;
+  t.after(async () => {
+    removeArtistsNamed(`${tag}%`);
+    await rm(downloads, { recursive: true, force: true });
+  });
+  const nested = await createAudioFile(music, `${tag}/${tag} Album/01 Track.flac`);
+
+  await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOn, lidarrRoots: [music] });
+  assert.deepEqual(mediaSources(nested), ["lidarr"]);
+  assert.equal(albumByTitle(`${tag} Album`).managed_by, "lidarr");
+
+  await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOff, lidarrRoots: [music] });
+  assert.deepEqual(mediaSources(nested), ["aurral"]);
+  assert.equal(albumByTitle(`${tag} Album`).managed_by, "aurral");
 });
 
 const metadata = {

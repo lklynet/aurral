@@ -7,15 +7,25 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps }, { registerGeneral }, { playlistManager }, { lidarrClient }] =
-  await setupIsolatedBackend(
-    "general-settings",
-    "backend/config/db-sqlite.js",
-    "backend/db/helpers/index.js",
-    "backend/routes/settings/handlers/general.js",
-    "backend/services/playlists/playlistManager.js",
-    "backend/services/lidarrClient.js",
-  );
+const [
+  isolatedState,
+  { db },
+  { dbOps },
+  { registerGeneral },
+  { playlistManager },
+  { lidarrClient },
+  libraryScans,
+  honker,
+] = await setupIsolatedBackend(
+  "general-settings",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
+  "backend/routes/settings/handlers/general.js",
+  "backend/services/playlists/playlistManager.js",
+  "backend/services/lidarrClient.js",
+  "backend/services/libraryScanWorker.js",
+  "backend/services/honkerDb.js",
+);
 
 test.beforeEach(() => {
   resetDatabase(db);
@@ -225,6 +235,38 @@ test("the missing-track search setting keeps fields a save leaves out and never 
   }
 });
 
+test("turning Lidarr off or on starts a Library scan, and other saves do not", async (t) => {
+  const { postSettings } = captureSettingsRoutes();
+  t.mock.method(lidarrClient, "getRootFolders", async () => []);
+  dbOps.updateSettings({
+    integrations: { lidarr: { url: "http://127.0.0.1:18686", apiKey: "key", enabled: true } },
+  });
+  const scheduledScan = () => {
+    const jobId = libraryScans.getScheduledLibraryScanJobId();
+    const job = jobId == null ? null : honker.getLibraryScanQueue().getJob(jobId);
+    return job ? JSON.parse(job.payload) : null;
+  };
+  const releaseTask = () => honker.findActiveHonkerJob(
+    "system-task",
+    (payload) => payload?.kind === "lidarr-files-release",
+    { payloadKind: "lidarr-files-release" },
+  );
+  const clearScan = () => libraryScans.clearScheduledLibraryScan();
+  clearScan();
+  t.after(clearScan);
+
+  await postSettings({ integrations: { lidarr: { insecure: true } } });
+  assert.equal(scheduledScan(), null);
+
+  await postSettings({ integrations: { lidarr: { enabled: false } } });
+  assert.equal(scheduledScan()?.includeLidarr, false);
+  assert.notEqual(releaseTask(), null);
+  clearScan();
+
+  await postSettings({ integrations: { lidarr: { enabled: true } } });
+  assert.equal(scheduledScan()?.includeLidarr, true);
+});
+
 test("saves overlapping roots with an equal overlap warning", async () => {
   const { postSettings } = captureSettingsRoutes();
   const sharedRoot = join(isolatedState.baseDir, "roots", "shared");
@@ -245,7 +287,6 @@ test("saves overlapping roots with an equal overlap warning", async () => {
   const warnings = response.body.rootWarnings;
   assert.equal(warnings.length, 1);
   assert.equal(warnings[0].type, "equal");
-  assert.match(warnings[0].message, /rename, import, or delete/);
 });
 
 test("does not warn about lidarr roots while lidarr is disabled", async () => {

@@ -212,7 +212,7 @@ export function LidarrSettingsSection({
         }
       >
         <div className="arr-info">
-          Music library manager. Path access and mappings are checked in{" "}
+          Optional. Aurral manages its own Library without Lidarr. Path access and mappings are checked in{" "}
           <Link to="/settings/system" className="arr-link">
             System
           </Link>
@@ -228,12 +228,23 @@ export function LidarrSettingsSection({
 
         <SettingsArrFormGroup
           label="Enabled"
-          help="Turn off to stop Lidarr requests without removing the connection."
+          help="Turning Lidarr off removes its music from Aurral's Library. Files on disk are not touched."
         >
           <PillToggle
             className="settings-toggle"
             checked={settings.integrations?.lidarr?.enabled !== false}
-            onChange={(e) => updateLidarr({ enabled: e.target.checked })}
+            onChange={(e) => {
+              const enabled = e.target.checked;
+              if (
+                !enabled &&
+                !window.confirm(
+                  "Turn Lidarr off? After you save, Aurral removes Lidarr's music from the Library and downloads its own copy of playlist songs that used Lidarr files. Files on disk are not touched.",
+                )
+              ) {
+                return;
+              }
+              updateLidarr({ enabled });
+            }}
             aria-label="Enable Lidarr"
           />
         </SettingsArrFormGroup>

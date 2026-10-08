@@ -444,7 +444,7 @@ async function checkDownloadsSection() {
         detail: rootOverlaps
           .map((warning) => `${warning.lidarrRoot}: ${warning.message}`)
           .join(" "),
-        fix: "Overlapping roots are allowed, but Lidarr can rename, import, or delete files under an overlapping root.",
+        fix: "Use separate folders. While they overlap, Lidarr can rename, import, or delete files in the shared folder, and Aurral leaves files in a Lidarr root folder to Lidarr.",
       }),
     );
   }

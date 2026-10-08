@@ -252,7 +252,6 @@ test("root overlap warnings cover equal and nested roots without rejecting", () 
   });
   assert.equal(equal.length, 1);
   assert.equal(equal[0].type, "equal");
-  assert.match(equal[0].message, /rename, import, or delete/);
 
   const nestedLidarr = computeLibraryRootOverlaps({
     aurralRoot: "/data/media",

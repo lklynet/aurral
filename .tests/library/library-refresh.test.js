@@ -481,7 +481,7 @@ test("library file watcher debounces library changes and ignores generated folde
 test("library watcher reuses configured roots without querying Lidarr", (t) => {
   const rootPath = path.resolve("/data/music");
   const pathProbe = t.mock.method(fs, "existsSync", () => { throw new Error("Main-thread path probe"); });
-  t.mock.method(lidarrClient, "isEnabled", () => true);
+  t.mock.method(lidarrClient, "isConfigured", () => true);
   t.mock.method(lidarrClient, "getConfiguredRootFolderPaths", () => [rootPath]);
   const rootRequest = t.mock.method(lidarrClient, "getRootFolders", async () => {
     throw new Error("watcher should not discover roots");

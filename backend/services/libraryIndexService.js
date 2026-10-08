@@ -1,13 +1,16 @@
 import path from "node:path";
 import { db } from "../config/db-sqlite.js";
-import { dbOps } from "../db/helpers/index.js";
 import { resolveDownloadRoot } from "./downloadPaths.js";
 import { scanMusicRoot, scanMusicRoots } from "./libraryFileScanner.js";
 import {
   assignLibraryArtistMbid,
   getLibraryMediaPaths,
+  assignLidarrAlbumOwners,
+  getAvailableLibraryMediaPaths,
   getUnresolvedLibraryArtists,
+  markLibraryMediaFilesUnavailable,
   removeLibraryMediaFiles,
+  removeLidarrLibrary,
   upsertLibraryArtist,
 } from "./libraryMediaStore.js";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.js";
@@ -19,7 +22,12 @@ import {
   musicbrainzResolveLibraryArtistMbid,
 } from "./apiClients/index.js";
 import { logger } from "./logger.js";
-import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
+import {
+  activeLidarrRoots,
+  downloadsInsideLidarrRoots,
+  isLidarrLibraryActive,
+  lidarrRootsInsideDownloads,
+} from "./libraryFolders.js";
 
 function getAurralJobMetadataByPath() {
   const rows = db
@@ -125,23 +133,6 @@ async function resolveUnmatchedLibraryArtists() {
   return changed;
 }
 
-function configuredLidarrRoots(lidarrClient, override) {
-  if (Array.isArray(override)) return override;
-  const fromClient = lidarrClient?.getConfiguredRootFolderPaths?.();
-  if (Array.isArray(fromClient) && fromClient.length > 0) return fromClient;
-  const settings = dbOps.getSettings();
-  const lidarr = settings.integrations?.lidarr || {};
-  return [
-    ...(Array.isArray(lidarr.rootFolderPaths) ? lidarr.rootFolderPaths : []),
-    lidarr.rootFolderPath,
-  ].filter(Boolean);
-}
-
-function isLidarrScanEnabled(lidarrClient) {
-  if (typeof lidarrClient?.isEnabled === "function") return lidarrClient.isEnabled();
-  return dbOps.getSettings().integrations?.lidarr?.enabled !== false;
-}
-
 function isPathWithin(rootPath, candidatePath) {
   const relative = path.relative(path.resolve(rootPath), path.resolve(candidatePath));
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
@@ -177,6 +168,9 @@ export async function scanConfiguredLibrary({
   let flow = skippedScan();
   let scanFailed = false;
   let artistsResolved = false;
+  let lidarrRemoved = false;
+  const lidarrActive = isLidarrLibraryActive(lidarrClient);
+  const lidarrFolders = activeLidarrRoots(lidarrClient, lidarrRoots);
   try {
     local = targeted && localPaths.length === 0
       ? skippedScan()
@@ -187,6 +181,7 @@ export async function scanConfiguredLibrary({
           force,
           metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
           syncSearch: targeted,
+          excludePaths: lidarrRootsInsideDownloads(musicRoot, lidarrFolders),
         });
     if (!targeted) {
       flow = await syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force);
@@ -194,17 +189,21 @@ export async function scanConfiguredLibrary({
     if (!targeted || localPaths.length > 0) {
       await canonicalizeAurralArtistNames(jobMetadataByPath, targeted ? localPaths : null);
     }
-    const configuredRoots = configuredLidarrRoots(lidarrClient, lidarrRoots)
-      .map((root) => resolveLocalPath(root, getPathMappings("lidarr")));
-    if (includeLidarr && isLidarrScanEnabled(lidarrClient) && configuredRoots.length > 0) {
+    if (includeLidarr && lidarrFolders.length > 0) {
       try {
         lidarr = await scanMusicRoots({
-          rootPaths: configuredRoots,
+          rootPaths: lidarrFolders,
           changedPaths: targeted ? changedPaths : null,
           force,
           source: "lidarr",
           syncSearch: targeted,
+          excludePaths: downloadsInsideLidarrRoots(musicRoot, lidarrFolders),
         });
+        if (!targeted) {
+          const removedRootPaths = [...getAvailableLibraryMediaPaths("lidarr")]
+            .filter((filePath) => !lidarrFolders.some((root) => isPathWithin(root, filePath)));
+          if (markLibraryMediaFilesUnavailable("lidarr", removedRootPaths) > 0) lidarr.changed = true;
+        }
       } catch (error) {
         scanFailed = true;
         logger.error("library", "Lidarr root scan failed", {
@@ -219,6 +218,8 @@ export async function scanConfiguredLibrary({
         };
       }
     }
+    if (lidarrActive) assignLidarrAlbumOwners();
+    else if (!targeted) lidarrRemoved = removeLidarrLibrary();
     artistsResolved = await resolveUnmatchedLibraryArtists();
     if (!targeted) {
       await removePlaylistTracksWithoutDownloads().catch((error) => {
@@ -231,10 +232,10 @@ export async function scanConfiguredLibrary({
     scanFailed = true;
     throw error;
   } finally {
-    if (scanFailed || artistsResolved || local?.changed || lidarr?.changed || flow?.changed) {
+    if (scanFailed || artistsResolved || lidarrRemoved || local?.changed || lidarr?.changed || flow?.changed) {
       if (!targeted || scanFailed || artistsResolved) rebuildLibrarySearchIndex();
       if (!targeted) rebuildLibraryGenreStats();
     }
   }
-  return { local, lidarr, flow };
+  return { local, lidarr, flow, lidarrRemoved };
 }

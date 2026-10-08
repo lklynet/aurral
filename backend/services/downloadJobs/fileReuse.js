@@ -723,6 +723,23 @@ export async function restoreCompletedTrack(job, options = {}) {
   };
 }
 
+// A download that reused a Lidarr file needs Aurral's own copy once Lidarr
+// is turned off.
+export function requeueJobsUsingLidarrFiles({ downloadRoot = resolveDownloadRoot(), lidarrRoots = [] } = {}) {
+  const root = path.resolve(downloadRoot);
+  let requeued = 0;
+  for (const job of downloadTracker.getAll()) {
+    if (job?.status !== "done" || typeof job.finalPath !== "string" || job.managedBy === "lidarr") continue;
+    const finalPath = path.resolve(remapLegacyPath(job.finalPath, root));
+    if (isPathInsideRoot(finalPath, root)) continue;
+    const inLidarrRoot = lidarrRoots.some((lidarrRoot) =>
+      finalPath === path.resolve(lidarrRoot) || isPathInsideRoot(finalPath, path.resolve(lidarrRoot)));
+    if (!job.externalPath && !inLidarrRoot) continue;
+    if (downloadTracker.setPending(job.id, "Lidarr was turned off")) requeued += 1;
+  }
+  return requeued;
+}
+
 export async function repairJobsUnderRemovedPlaylistDir(playlistType, options = {}) {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const safePlaylistType = String(playlistType || "").trim();

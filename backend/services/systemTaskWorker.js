@@ -237,6 +237,11 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       await refreshUpgradeReadiness();
       return;
     }
+    case "lidarr-files-release": {
+      const { downloadWorker } = await import("./downloadJobs/downloadWorker.js");
+      await downloadWorker.releaseLidarrFiles();
+      return;
+    }
     case "lidarr-retry": {
       const { libraryManager } = await import("./libraryManager.js");
       await libraryManager.syncLidarrArtists({ forceRefresh: true });

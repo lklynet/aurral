@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { parseFile } from "music-metadata";
+import { db } from "../config/db-sqlite.js";
 import {
   buildFallbackIdentityKey,
   buildIdentityKey,
@@ -180,12 +181,13 @@ function buildMetadataRecord(metadata, filePath, rootPath) {
   };
 }
 
-async function* walkAudioFiles(rootPath) {
+async function* walkAudioFiles(rootPath, isExcluded = () => false) {
   const entries = await fs.readdir(rootPath, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.isDirectory()) {
-      if (isLibraryScanExcludedDirectory(entry.name)) continue;
-      yield* walkAudioFiles(path.join(rootPath, entry.name));
+      const directory = path.join(rootPath, entry.name);
+      if (isLibraryScanExcludedDirectory(entry.name) || isExcluded(directory)) continue;
+      yield* walkAudioFiles(directory, isExcluded);
       continue;
     }
     if (entry.isFile() && AUDIO_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
@@ -224,7 +226,7 @@ export function createPathScopeMatcher(scopes = []) {
   };
 }
 
-async function resolveChangedFiles(rootPath, changedPaths) {
+async function resolveChangedFiles(rootPath, changedPaths, isExcluded) {
   const filePaths = new Set();
   const reconcilePaths = new Set();
 
@@ -232,7 +234,7 @@ async function resolveChangedFiles(rootPath, changedPaths) {
     const rawPath = String(value || "").trim();
     if (!rawPath) continue;
     const changedPath = path.resolve(rawPath);
-    if (!isPathWithin(rootPath, changedPath)) continue;
+    if (!isPathWithin(rootPath, changedPath) || isExcluded(changedPath)) continue;
 
     let stat = null;
     let missing = false;
@@ -249,7 +251,7 @@ async function resolveChangedFiles(rootPath, changedPaths) {
     if (stat?.isDirectory()) {
       reconcilePaths.add(changedPath);
       try {
-        for await (const filePath of walkAudioFiles(changedPath)) filePaths.add(filePath);
+        for await (const filePath of walkAudioFiles(changedPath, isExcluded)) filePaths.add(filePath);
       } catch (error) {
         if (error?.code !== "ENOENT") reconcilePaths.delete(changedPath);
       }
@@ -279,8 +281,12 @@ function normalizeScanPaths(rootPath, filePaths) {
   )];
 }
 
+const albumHasLidarrFileStmt = db.prepare(
+  "SELECT 1 FROM library_media_files WHERE album_id = ? AND source = 'lidarr' AND available = 1 LIMIT 1",
+);
+
 function claimUnownedAlbum(album) {
-  if (getLibraryManagementEntry("album", album.id)) return;
+  if (getLibraryManagementEntry("album", album.id) || albumHasLidarrFileStmt.get(album.id)) return;
   setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
   upsertLibraryAlbum({
     identityKey: album.identity_key,
@@ -300,12 +306,14 @@ export async function scanMusicRoot({
   metadataReader = parseFile,
   metadataEnricher = null,
   syncSearch = true,
+  excludePaths = [],
 } = {}) {
   const resolvedRoot = path.resolve(String(rootPath || ""));
   await fs.mkdir(resolvedRoot, { recursive: true });
   mergeReleaseKeyedLibraryAlbums();
+  const isExcluded = createPathScopeMatcher(excludePaths);
   const changed = Array.isArray(changedPaths)
-    ? await resolveChangedFiles(resolvedRoot, changedPaths)
+    ? await resolveChangedFiles(resolvedRoot, changedPaths, isExcluded)
     : null;
   const requestedFiles = changed
     ? normalizeScanPaths(resolvedRoot, changed.filePaths).filter((filePath) =>
@@ -313,7 +321,7 @@ export async function scanMusicRoot({
       )
     : Array.isArray(filePaths)
       ? normalizeScanPaths(resolvedRoot, filePaths).filter((filePath) =>
-          AUDIO_EXTENSIONS.has(path.extname(filePath).toLowerCase()),
+          AUDIO_EXTENSIONS.has(path.extname(filePath).toLowerCase()) && !isExcluded(filePath),
         )
       : null;
   const reconcilePaths = changed?.reconcilePaths || null;
@@ -325,7 +333,7 @@ export async function scanMusicRoot({
   let firstFailure = null;
   const scanResult = await withLibraryScan(source, resolvedRoot, (scanId) => {
     const run = async () => {
-      const files = requestedFiles || walkAudioFiles(resolvedRoot);
+      const files = requestedFiles || walkAudioFiles(resolvedRoot, isExcluded);
       for await (const filePath of files) {
         result.filesSeen += 1;
         try {
@@ -489,7 +497,9 @@ export async function scanMusicRoots({ rootPaths = [], changedPaths = null, ...o
 
     try {
       const filePaths = [];
-      for await (const filePath of walkAudioFiles(rootPath)) filePaths.push(filePath);
+      for await (const filePath of walkAudioFiles(rootPath, createPathScopeMatcher(options.excludePaths))) {
+        filePaths.push(filePath);
+      }
       const scan = await scanMusicRoot({ ...options, rootPath, filePaths });
       result.filesSeen += scan.filesSeen;
       result.filesIndexed += scan.filesIndexed;

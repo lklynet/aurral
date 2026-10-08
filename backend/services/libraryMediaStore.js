@@ -1,7 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { db, dbHelpers } from "../config/db-sqlite.js";
-import { invalidateLibraryManagementCache } from "./libraryManagementStore.js";
+import {
+  invalidateLibraryManagementCache,
+  notifyLibraryManagementChanged,
+} from "./libraryManagementStore.js";
 import { invalidateLibraryQueryCache } from "./libraryQueryService.js";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 import { clearLibraryManagement } from "./libraryManagementStore.js";
@@ -896,4 +899,126 @@ export async function withLibraryScan(source, rootPath, run) {
 
 export function getLibraryMediaFile({ source, path }) {
   return getLibraryMediaFileStmt.get(normalizeText(source), normalizeText(path));
+}
+
+const AURRAL_REQUESTED_ALBUM = `
+  json_valid(album.metadata_json) AND (
+    json_extract(album.metadata_json, '$.trackListComplete') = 1
+    OR json_extract(album.metadata_json, '$.monitored') = 1
+  )
+`;
+
+// Lidarr owns an album with files in its root folders unless Aurral was
+// asked for that album. This also returns albums that older scans claimed
+// for Aurral because one of their tracks was an Aurral download.
+export function assignLidarrAlbumOwners() {
+  const timestamp = now();
+  const changed = db.prepare(
+    `INSERT INTO library_management (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at)
+     SELECT 'album', album.id, 'lidarr', NULL, ?, ?
+     FROM library_albums AS album
+     WHERE EXISTS (
+       SELECT 1 FROM library_media_files AS media
+       WHERE media.album_id = album.id AND media.source = 'lidarr' AND media.available = 1
+     )
+     ON CONFLICT (entity_kind, entity_id) DO UPDATE SET
+       managed_by = 'lidarr',
+       monitor_mode = NULL,
+       updated_at = excluded.updated_at
+     WHERE library_management.managed_by = 'aurral'
+       AND library_management.monitor_mode IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM library_albums AS album
+         WHERE album.id = library_management.entity_id AND ${AURRAL_REQUESTED_ALBUM}
+       )`,
+  ).run(timestamp, timestamp).changes;
+  if (changed > 0) {
+    notifyLibraryManagementChanged();
+    invalidateLibraryCache();
+  }
+  return changed;
+}
+
+const LIDARR_METADATA_PATHS = [...LIDARR_METADATA_KEYS, "monitorOption"]
+  .map((key) => `'$.${key}'`)
+  .join(", ");
+
+// Turning Lidarr off removes everything its root folders added. Aurral's own
+// files, and the tracks Aurral asked for, stay. What Lidarr managed and still
+// has Aurral files becomes Aurral's, unmonitored.
+export function removeLidarrLibrary() {
+  const hasLidarrData = db.prepare(
+    `SELECT EXISTS (SELECT 1 FROM library_media_files WHERE source = 'lidarr')
+       OR EXISTS (SELECT 1 FROM library_management WHERE managed_by = 'lidarr')
+       OR EXISTS (
+         SELECT 1 FROM library_artists
+         WHERE json_valid(metadata_json) AND json_extract(metadata_json, '$.librarySource') = 'lidarr'
+       )
+       OR EXISTS (
+         SELECT 1 FROM library_albums
+         WHERE json_valid(metadata_json) AND json_extract(metadata_json, '$.librarySource') = 'lidarr'
+       ) AS present`,
+  ).get().present === 1;
+  if (!hasLidarrData) return false;
+  const timestamp = now();
+  db.transaction(() => {
+    const trackIds = db.prepare(
+      "SELECT DISTINCT track_id FROM library_media_files WHERE source = 'lidarr'",
+    ).pluck().all();
+    db.prepare("DELETE FROM library_media_files WHERE source = 'lidarr'").run();
+    const hasMedia = db.prepare("SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1");
+    const unlinkOutsideAurral = db.prepare(
+      `DELETE FROM library_album_tracks
+       WHERE track_id = ? AND album_id NOT IN (
+         SELECT entity_id FROM library_management
+         WHERE entity_kind = 'album' AND managed_by = 'aurral'
+       )`,
+    );
+    const isLinked = db.prepare("SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1");
+    const deleteTrack = db.prepare("DELETE FROM library_tracks WHERE id = ?");
+    for (const trackId of trackIds) {
+      if (hasMedia.get(trackId)) continue;
+      unlinkOutsideAurral.run(trackId);
+      if (!isLinked.get(trackId)) deleteTrack.run(trackId);
+    }
+    db.prepare(
+      `DELETE FROM library_albums
+       WHERE NOT EXISTS (SELECT 1 FROM library_album_tracks WHERE album_id = library_albums.id)
+         AND id NOT IN (
+           SELECT entity_id FROM library_management
+           WHERE entity_kind = 'album' AND managed_by = 'aurral'
+         )`,
+    ).run();
+    db.prepare(
+      `DELETE FROM library_artists
+       WHERE NOT EXISTS (SELECT 1 FROM library_albums WHERE artist_id = library_artists.id)
+         AND id NOT IN (
+           SELECT entity_id FROM library_management
+           WHERE entity_kind = 'artist' AND managed_by = 'aurral'
+         )`,
+    ).run();
+    db.prepare(
+      `DELETE FROM library_management
+       WHERE (entity_kind = 'album' AND entity_id NOT IN (SELECT id FROM library_albums))
+          OR (entity_kind = 'artist' AND entity_id NOT IN (SELECT id FROM library_artists))`,
+    ).run();
+    db.prepare(
+      `UPDATE library_management
+       SET managed_by = 'aurral',
+         monitor_mode = CASE entity_kind WHEN 'artist' THEN 'none' ELSE NULL END,
+         updated_at = ?
+       WHERE managed_by = 'lidarr'`,
+    ).run(timestamp);
+    for (const table of ["library_artists", "library_albums"]) {
+      db.prepare(
+        `UPDATE ${table}
+         SET metadata_json = json_remove(metadata_json, ${LIDARR_METADATA_PATHS}), updated_at = ?
+         WHERE json_valid(metadata_json) AND json_extract(metadata_json, '$.librarySource') = 'lidarr'`,
+      ).run(timestamp);
+    }
+    finishLibraryScan(beginLibraryScan({ source: "lidarr-removal" }));
+  }).immediate();
+  notifyLibraryManagementChanged();
+  invalidateLibraryCache();
+  return true;
 }

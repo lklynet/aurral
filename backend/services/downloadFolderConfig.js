@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { resolveAurralDataDir } from "../config/data-dir.js";
+import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 import { stripTrailingSeparators } from "./textUtils.js";
 
 let storedDownloadFolderPath = null;
@@ -350,10 +351,11 @@ function compareRoots(left, right) {
 
 export function getOverlapCheckedLidarrRoots(lidarrSettings = {}) {
   if (lidarrSettings?.enabled === false) return [];
+  const mappings = getPathMappings("lidarr");
   return [
     ...(Array.isArray(lidarrSettings?.rootFolderPaths) ? lidarrSettings.rootFolderPaths : []),
     lidarrSettings?.rootFolderPath,
-  ];
+  ].filter(Boolean).map((root) => resolveLocalPath(root, mappings));
 }
 
 export function computeLibraryRootOverlaps({ aurralRoot, lidarrRoots } = {}) {
@@ -375,10 +377,10 @@ export function computeLibraryRootOverlaps({ aurralRoot, lidarrRoots } = {}) {
       lidarrRoot,
       message:
         relation === "equal"
-          ? "The Lidarr root folder is the same as the Aurral download folder. Lidarr can rename, import, or delete files under that path."
+          ? "The Lidarr root folder is the Downloads Folder. Aurral treats every file there as Lidarr's and never deletes it."
           : relation === "nested-b-in-a"
-            ? "The Lidarr root folder is inside the Aurral download folder. Lidarr can rename, import, or delete files under that path."
-            : "The Aurral download folder is inside the Lidarr root folder. Lidarr can rename, import, or delete files under that path.",
+            ? "The Lidarr root folder is inside the Downloads Folder. Aurral leaves that folder to Lidarr while Lidarr is on."
+            : "The Downloads Folder is inside the Lidarr root folder. Lidarr can rename, import, or delete Aurral's downloads.",
     });
   }
   return warnings;

@@ -475,6 +475,7 @@ function buildLibraryArtistProjectionQuery({
         FROM library_scan_runs AS scan
         WHERE scan.source = 'lidarr'
           AND scan.status = 'failed'
+          AND EXISTS (SELECT 1 FROM library_media_files WHERE source = 'lidarr')
           AND scan.id > COALESCE((
             SELECT complete.id
             FROM library_scan_runs AS complete
@@ -643,6 +644,7 @@ export function getLibraryIndexLastModified() {
        UNION ALL SELECT MAX(updated_at) FROM library_albums
        UNION ALL SELECT MAX(updated_at) FROM library_tracks
        UNION ALL SELECT MAX(updated_at) FROM library_media_files
+       UNION ALL SELECT MAX(completed_at) FROM library_scan_runs WHERE source = 'lidarr-removal'
      )`,
   ).get();
   return Number(row?.last_modified) || null;

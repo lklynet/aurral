@@ -135,6 +135,10 @@ export const SYSTEM_TASK_LABELS = {
     label: "Playlist Startup Migration",
     description: "Migrates legacy playlist files and reconciles playlist folders.",
   },
+  "lidarr-files-release": {
+    label: "Lidarr Turned Off",
+    description: "Downloads Aurral's own copy of playlist and flow songs that used a Lidarr file.",
+  },
   "lidarr-retry": {
     label: "Lidarr Retry",
     description: "Retries Lidarr library access after a temporary connection problem.",

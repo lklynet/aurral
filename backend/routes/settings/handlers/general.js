@@ -577,6 +577,8 @@ export function registerGeneral(router) {
       }
 
       const previousMusicDataSource = getMusicDataSourceName();
+      const { lidarrClient } = await import("../../../services/lidarrClient.js");
+      const lidarrWasActive = lidarrClient.isConfigured();
       dbOps.updateSettings(updatedSettings);
       if (getMusicDataSourceName() !== previousMusicDataSource) {
         const { enqueueDiscoveryRefresh } = await import(
@@ -584,15 +586,25 @@ export function registerGeneral(router) {
         );
         enqueueDiscoveryRefresh({ reason: "music_data_source_changed", force: true });
       }
-      const { lidarrClient } = await import("../../../services/lidarrClient.js");
       lidarrClient.updateConfig();
-      if (didLidarrRootDiscoveryChange(currentSettings, updatedSettings) && lidarrClient.isConfigured()) {
+      const lidarrActive = lidarrClient.isConfigured();
+      if (didLidarrRootDiscoveryChange(currentSettings, updatedSettings) && lidarrActive) {
         try {
           await lidarrClient.getRootFolders({ forceRefresh: true });
         } catch (error) {
           logger.warn("settings", "Failed to refresh Lidarr root folders:", {
             message: error.message,
           });
+        }
+      }
+      if (lidarrActive !== lidarrWasActive) {
+        const { scheduleLibraryScan } = await import("../../../services/libraryScanWorker.js");
+        scheduleLibraryScan({ includeLidarr: lidarrActive });
+        if (!lidarrActive) {
+          const { invalidateLidarrArtistCache } = await import("../../../services/libraryManager.js");
+          const { enqueueSystemTaskJob } = await import("../../../services/honkerDb.js");
+          invalidateLidarrArtistCache();
+          enqueueSystemTaskJob({ kind: "lidarr-files-release" });
         }
       }
       const { downloadClientRegistry } = await import(

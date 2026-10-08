@@ -87,6 +87,8 @@ test.after(async () => {
 });
 
 let fixtureCount = 0;
+const lidarrConnected = { isConfigured: () => true };
+
 function createArtist(name, { mbid = null, metadata = null } = {}) {
   fixtureCount += 1;
   const artist = libraryStore.upsertLibraryArtist({
@@ -197,11 +199,11 @@ test("removing an MBID never merges two artists that share a name", async () => 
 
 test("clearing a wrong automatic match keeps the artist unmatched on later scans", async () => {
   const { artist } = createArtist("Wrongly Matched");
-  await indexService.scanConfiguredLibrary({ musicRoot, includeLidarr: false });
+  await indexService.scanConfiguredLibrary({ musicRoot, includeLidarr: false, lidarrClient: lidarrConnected });
   assert.equal(artistRow(artist.id).mbid, MATCHED_BY_NAME_MBID);
 
   const response = await updateMbid(artist.id, null);
-  await indexService.scanConfiguredLibrary({ musicRoot, includeLidarr: false });
+  await indexService.scanConfiguredLibrary({ musicRoot, includeLidarr: false, lidarrClient: lidarrConnected });
 
   assert.equal(response.statusCode, 200);
   assert.equal(artistRow(artist.id).mbid, null);

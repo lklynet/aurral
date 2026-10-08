@@ -18,10 +18,7 @@ export function isLidarrLibraryActive(lidarrClient) {
   return lidarrClient?.isConfigured?.() === true;
 }
 
-// Lidarr's root folders belong to the Library only while Lidarr is enabled
-// and has an API key.
-export function activeLidarrRoots(lidarrClient, override = null) {
-  if (!isLidarrLibraryActive(lidarrClient)) return [];
+export function configuredLidarrFolders(lidarrClient, override = null) {
   const mappings = getPathMappings("lidarr");
   return [...new Set(
     configuredLidarrRoots(lidarrClient, override)
@@ -29,6 +26,12 @@ export function activeLidarrRoots(lidarrClient, override = null) {
       .filter(Boolean)
       .map((root) => path.resolve(resolveLocalPath(root, mappings))),
   )];
+}
+
+// Lidarr's root folders belong to the Library only while Lidarr is enabled
+// and has an API key.
+export function activeLidarrRoots(lidarrClient, override = null) {
+  return isLidarrLibraryActive(lidarrClient) ? configuredLidarrFolders(lidarrClient, override) : [];
 }
 
 export function isPathWithin(rootPath, candidatePath) {

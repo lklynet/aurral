@@ -74,6 +74,11 @@ export function invalidateLibraryManagementCache() {
   cache = null;
 }
 
+export function notifyLibraryManagementChanged() {
+  invalidateLibraryManagementCache();
+  notifyChanged();
+}
+
 export function getLibraryManagementEntry(entityKind, entityId) {
   if (!ENTITY_KINDS.has(entityKind)) return null;
   const id = Number(entityId);
