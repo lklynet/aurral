@@ -10,7 +10,10 @@ function isRed(color) {
   return Number.parseInt(color.slice(1, 3), 16) > Number.parseInt(color.slice(5, 7), 16);
 }
 
-async function loadImageColors(t, { cacheImage }) {
+async function loadImageColors(t, { cacheImage, apiBase = "/api" }) {
+  const previousApiUrl = process.env.VITE_API_URL;
+  if (apiBase === "/api") delete process.env.VITE_API_URL;
+  else process.env.VITE_API_URL = apiBase;
   const vite = await startFrontendServer();
   const previous = {
     document: globalThis.document,
@@ -23,7 +26,7 @@ async function loadImageColors(t, { cacheImage }) {
 
   globalThis.window = { location: { href: `${APP_ORIGIN}/library`, origin: APP_ORIGIN } };
   globalThis.fetch = async (url, init) => {
-    assert.equal(url, "/api/image-proxy");
+    assert.equal(url, `${apiBase}/image-proxy`);
     assert.equal(init.method, "POST");
     const { src } = JSON.parse(init.body);
     cacheRequests.push(src);
@@ -59,6 +62,8 @@ async function loadImageColors(t, { cacheImage }) {
   };
   t.after(async () => {
     Object.assign(globalThis, previous);
+    if (previousApiUrl === undefined) delete process.env.VITE_API_URL;
+    else process.env.VITE_API_URL = previousApiUrl;
     await vite.close();
   });
 
@@ -82,6 +87,20 @@ test("covers from hosts without CORS are read through Aurral's same-origin copy"
   assert.ok(isRed(gradient.top), `${gradient.top} is red`);
   assert.equal(colors.loadedImage().currentSrc, localCopy);
   assert.deepEqual(colors.cacheRequests, [source]);
+});
+
+test("same-origin cover copies load under the app's API base path", async (t) => {
+  const source = "https://images.lidarr.audio/cover.jpg";
+  const key = "c".repeat(64);
+  const colors = await loadImageColors(t, {
+    apiBase: "/aurral/api",
+    cacheImage: async () => ({ status: 200, body: { url: `/api/image-proxy/${key}.webp` } }),
+  });
+
+  const accent = await colors.extractArtworkAccent(source);
+
+  assert.ok(isRed(accent), `${accent} is red`);
+  assert.equal(colors.loadedImage().currentSrc, `/aurral/api/image-proxy/${key}.webp`);
 });
 
 test("covers still read directly from CORS hosts when Aurral can't cache them", async (t) => {

@@ -232,6 +232,8 @@ export const lidarrCredentialParams = (url, apiKey, { trimUrl = false } = {}) =>
 
 const getApiBaseUrl = () => import.meta.env.VITE_API_URL || getDefaultApiBaseUrl();
 
+export const resolveApiPath = (path) => joinUrl(getApiBaseUrl(), String(path || "").replace(/^\/api(?=\/)/, ""));
+
 export const buildAuthenticatedApiUrl = (path, params = {}) => {
   const normalizedPath = String(path || "").startsWith("/")
     ? String(path || "")

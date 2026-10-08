@@ -1,3 +1,6 @@
-import { postData } from "../core.js";
+import { postData, resolveApiPath } from "../core.js";
 
-export const cacheImageLocally = (src) => postData("/image-proxy", { src });
+export const cacheImageLocally = async (src) => {
+  const result = await postData("/image-proxy", { src });
+  return result?.url ? resolveApiPath(result.url) : null;
+};

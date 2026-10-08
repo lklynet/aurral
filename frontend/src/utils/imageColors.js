@@ -41,7 +41,7 @@ function sameOriginCopy(src) {
     localCopyCache.set(
       src,
       cacheImageLocally(src)
-        .then((result) => result?.url || src)
+        .then((url) => url || src)
         .catch(() => {
           localCopyCache.delete(src);
           return src;
