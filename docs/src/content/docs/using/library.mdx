@@ -31,19 +31,28 @@ On a Discover artist page, you can search releases by title. Filter by all relea
 
 ## Who manages your library
 
-Lidarr or Aurral manages your artists and albums, never both:
+Each artist and album has one manager, Lidarr or Aurral:
 
-- **With Lidarr connected**, Lidarr adds and monitors artists and downloads albums into the Lidarr root folders. Aurral still downloads tracks for playlists, flows, and single-track downloads into the Downloads Folder.
+- **With Lidarr connected**, new artists and albums go to Lidarr. Lidarr monitors them and downloads albums into its root folders. Artists and albums that Aurral already has stay Aurral's, and you can still monitor, search, and remove them. Aurral also downloads the tracks for playlists, flows, and single-track downloads into the Downloads Folder.
 - **Without Lidarr**, Aurral monitors artists and downloads albums and tracks with your download clients into the Downloads Folder.
 
-Aurral follows **Settings > Lidarr**. When Lidarr is configured but unreachable, Lidarr actions show an error, and Aurral does not take over.
+Lidarr is connected when **Settings > Lidarr > Enabled** is on and the API key is set. When Lidarr is connected but cannot be reached, Lidarr actions show an error and Lidarr's music stays in the Library. Aurral does not take over.
 
 The buttons are the same either way. To get an album, select **Download album**. To get a track, select its **+** button and choose **Add to library**. To follow an artist, open the artist's page and select **Monitor**. Discover and Search cards don't add artists. See [Artists](#artists).
 
-Connecting or disconnecting Lidarr does not move music:
+When you connect Lidarr, the music Aurral already has stays Aurral's. Lidarr takes an album over only when you send it to Lidarr. See [Albums and tracks](#albums-and-tracks).
 
-- When you connect Lidarr, Aurral stops monitoring artists. Albums that Aurral downloaded stay in the Library until Lidarr takes them over.
-- When you disconnect Lidarr, artists that Aurral monitored before keep their option, and the rest start **Not monitored**. Albums that Lidarr downloaded stay in the Library, and Aurral leaves them alone.
+### Turning Lidarr off
+
+Turning off Lidarr removes Lidarr's music from the Library. Aurral stops scanning the Lidarr root folders and removes the artists, albums, and tracks it found there. The files stay on disk. Removing the API key does the same.
+
+- Aurral's own files stay. An album with files in both places keeps its Aurral tracks.
+- On an album that you downloaded with Aurral, tracks that only Lidarr had stay on the album as missing.
+- An artist or album that Lidarr managed and that still has Aurral files becomes Aurral's and starts **Not monitored**.
+- Playlist and flow tracks that used a Lidarr file download again, so that Aurral has its own copy.
+- Favorites and play counts come back when the same music returns to the Library.
+
+To bring Lidarr's music back, turn Lidarr on again and save. Aurral scans its root folders again. To keep Lidarr's music in Aurral without Lidarr, move it into the Downloads Folder first. See [Bring your existing music](#bring-your-existing-music).
 
 ## Monitor music
 
@@ -53,8 +62,8 @@ Monitoring decides what Aurral or Lidarr does by itself. It works at three level
 
 An artist's monitoring decides which of its albums download by themselves. On a Discover artist page, select **Monitor** and choose an option. The button then shows the option. On a Library artist page, the same choices are in the artist's menu under **Monitor**. Every artist starts **Not monitored**, so you never add an artist first.
 
-- With Lidarr, choosing an option adds the artist to Lidarr with your Lidarr defaults. Lidarr also offers **Existing albums** and **Missing albums**. To choose the root folder, quality profile, tag, or monitoring for one artist before it is added, select **Customize add…** in the menu. If you change an artist's monitoring in Lidarr itself, the option shows **Custom**. When Lidarr monitors or downloads an album that Aurral has tracks from, Lidarr takes the album over. See [Albums and tracks](#albums-and-tracks).
-- Without Lidarr, Aurral monitors the artist.
+- With Lidarr, choosing an option for an artist that Aurral does not have adds it to Lidarr with your Lidarr defaults. An artist that Aurral already has keeps Aurral's options. Lidarr also offers **Existing albums** and **Missing albums**. To choose the root folder, quality profile, tag, or monitoring for one artist before it is added, select **Customize add…** in the menu. If you change an artist's monitoring in Lidarr itself, the option shows **Custom**. When Lidarr monitors or downloads an album that Aurral has tracks from, Lidarr takes the album over. See [Albums and tracks](#albums-and-tracks).
+- Without Lidarr, Aurral monitors the artist. Aurral keeps monitoring its own artists after you connect Lidarr.
 
 Aurral looks only for official albums and EPs. It skips singles, live albums, compilations, and other releases with a secondary type. Aurral's options are:
 
@@ -72,9 +81,9 @@ Downloading something monitors it. When you download an album, Aurral monitors t
 
 A track can be monitored on its own. A single that a synced playlist downloaded puts its album in your Library. The album is unmonitored, and the playlist's track is monitored. Files that Aurral did not download, such as music you copied into the download folder, start unmonitored.
 
-With Lidarr connected, **Download album** sends the album to Lidarr. Lidarr then manages the album, and Aurral stops monitoring its tracks. When Lidarr has a track, playlists use Lidarr's file and Aurral deletes its own copy, unless a playlist on a media server still uses it.
+With Lidarr connected, **Download album** on an album that Aurral does not have sends it to Lidarr. Sending an album that Aurral has to Lidarr from Discover or Search hands it to Lidarr. Lidarr then manages the album, and Aurral stops monitoring its tracks. When Lidarr has a track, playlists use Lidarr's file and Aurral deletes its own copy, unless a playlist on a media server still uses it.
 
-- To get the rest of an album, open its Library page and select the download button next to **Add to favorites**. Without Lidarr, Aurral looks up the full track list and downloads what is missing. With Lidarr, Lidarr searches for the album.
+- To get the rest of an album, open its Library page and select the download button next to **Add to favorites**. On an Aurral album, Aurral looks up the full track list and downloads what is missing. On a Lidarr album, Lidarr searches for it.
 - To get one missing track, select the download button on its row. Aurral downloads the track, even on an album that Lidarr manages.
 - To stop monitoring an album, open the album's menu and select **Stop monitoring album**. This stops monitoring every track on it.
 - To stop monitoring one track, open its menu on the album page and select **Stop monitoring track**. Use this to keep a file you are happy with from being upgraded. An unmonitored track shows a crossed-out eye. Lidarr cannot monitor single tracks, so tracks whose files come from Lidarr have no track monitoring.
@@ -96,7 +105,7 @@ A monitored album shows its download state on its page, such as **Queued**, **Do
 Aurral asks for the tracklist that most releases of the album share, in the order most of them share. That is usually the standard edition rather than a deluxe edition, a box set, or a pressing that swaps tracks. If the album download turns out to be a whole shorter edition, the album is complete. Aurral stops monitoring the tracks that only the longer edition has and does not search for them. To get one of them, select the download button on its row.
 
 - To stop unfinished tracks, select **Cancel downloads**. Finished tracks stay in the Library.
-- To search again for cancelled and failed tracks, select **Retry**. While Lidarr is connected, Lidarr handles albums, so use the album's download button instead.
+- To search again for cancelled and failed tracks, select **Retry**.
 
 If no download client is set up, or if tracks wait for review, the album page links to the settings page or the Activity view that fixes the problem. To see where a track's file came from, select **View info** in its menu.
 
@@ -111,7 +120,8 @@ When you delete a track that Aurral manages, Aurral deletes its file. If no othe
 To remove an album or artist, select **Delete album** or **Delete artist** at the bottom of its menu. Aurral cancels unfinished downloads and removes it from Lidarr too when Lidarr has it. To also delete the music files, select **Delete album files** or **Delete artist files**. Otherwise the files stay on disk.
 
 - You cannot delete one album of an artist that Aurral monitors, because monitoring would add it again. First set the artist's monitoring to **Not monitored**, or delete the whole artist.
-- Albums and artists that Lidarr has can be deleted only while Lidarr is connected. If Lidarr cannot be reached, nothing is deleted.
+- Deleting an album or artist that Lidarr has needs Lidarr. If Lidarr cannot be reached, nothing is deleted.
+- Aurral deletes files only in the Downloads Folder. A file in a Lidarr root folder stays, even when a playlist used it.
 
 ## Where Aurral keeps files
 
@@ -143,7 +153,17 @@ When a scan finishes, an open Library page reloads. **Recently added** sorting o
 
 If Discover says that an album is in Lidarr but the Library does not show it, Aurral probably cannot read the Lidarr root folder. Run **Settings > Storage health > Run checks** and fix the **Lidarr library** section, then select **Refresh**. See [Filesystem and mounts](/getting-started/storage/).
 
-When you turn off Lidarr in **Settings > Lidarr > Enabled**, Aurral keeps indexed Lidarr tracks in the Library. It stops watching and scanning the Lidarr root folders until you turn Lidarr on again.
+When you turn off Lidarr in **Settings > Lidarr > Enabled**, Aurral removes Lidarr's music from the Library and stops watching the Lidarr root folders. See [Turning Lidarr off](#turning-lidarr-off).
+
+When a Lidarr root folder is inside the Downloads Folder, Aurral leaves that folder to Lidarr while Lidarr is connected. When the Downloads Folder is inside a Lidarr root folder, the Lidarr scan skips the Downloads Folder.
+
+## Bring your existing music
+
+The Library includes everything in the Downloads Folder, so move or copy music there to add it. Aurral reads the tags and matches artists and albums by MusicBrainz ID. Files without MusicBrainz tags are matched by artist and album name. See [Artists without a MusicBrainz ID](#artists-without-a-musicbrainz-id).
+
+The music starts **Not monitored**, so nothing downloads by itself. Monitor the artists you want Aurral to follow.
+
+From then on, Aurral manages these files. **Delete album files** and **Delete artist files** delete them from disk.
 
 ## Artists without a MusicBrainz ID
 
@@ -156,4 +176,6 @@ To fix a wrong or missing link, open the artist menu and select **Edit MusicBrai
 ## Known limits
 
 - Aurral hands an album to Lidarr only when Lidarr downloads or monitors it. Aurral never takes albums from Lidarr.
+- When you remove an album and keep its files in the Downloads Folder, the next full scan adds it back, unmonitored. To remove it for good, delete its files too.
+- Lidarr files tagged with a release ID but no release group ID can show up as a second copy of an album that Aurral also has.
 - When Lidarr is connected and **Show available music only** is on, the Library hides albums that Aurral is still downloading until one track finishes. To show them, turn off the setting in **Settings > Lidarr**.

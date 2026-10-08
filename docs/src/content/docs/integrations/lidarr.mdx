@@ -27,7 +27,13 @@ Connect Lidarr during first-run setup, or later in **Settings > Lidarr**.
 
 To apply the quality profile, custom formats, and file naming from Davo's Community Lidarr Guide to Lidarr, select **Apply recommended settings** in the same tab. This action changes your Lidarr settings.
 
-To stop Aurral from sending requests to Lidarr without removing the connection, turn off **Enabled**. Aurral keeps indexed Lidarr tracks in the Library, and stops watching and scanning the Lidarr root folders. When Lidarr is turned off, not configured, or not reachable, the Lidarr tab says which one applies.
+## Turn Lidarr off
+
+Turning off **Enabled** and saving disconnects Lidarr's root folders. Aurral removes Lidarr's music from the Library, and downloads its own copy of playlist and flow tracks that used a Lidarr file. The files stay on disk, and Aurral keeps the connection details. Turn **Enabled** on again to add Lidarr's music back. See [Turning Lidarr off](/using/library/#turning-lidarr-off).
+
+If Lidarr only stops answering, nothing is removed. The Lidarr tab says when Lidarr is off or unreachable.
+
+If you want Aurral to manage the music that Lidarr downloaded, move it into the Downloads Folder before you turn Lidarr off. See [Bring your existing music](/using/library/#bring-your-existing-music).
 
 ## Library display
 
@@ -40,7 +46,7 @@ This setting changes only what the Library lists. You can still search for and r
 
 ## Add artists and albums
 
-When Lidarr is connected, Lidarr manages your artists and albums, but the buttons stay the same. **Download album** asks Lidarr for the album. On an artist page, **Monitor** adds the artist to Lidarr with your Lidarr defaults and sets its monitoring. To choose the root folder, quality profile, tag, or monitoring for one artist, select **Customize add…** in the **Monitor** menu. Aurral keeps downloading tracks for playlists, flows, and single tracks.
+When Lidarr is connected, Lidarr manages the artists and albums you add, but the buttons stay the same. Artists and albums that Aurral already has stay Aurral's. **Download album** asks Lidarr for the album. On an artist page, **Monitor** adds the artist to Lidarr with your Lidarr defaults and sets its monitoring. To choose the root folder, quality profile, tag, or monitoring for one artist, select **Customize add…** in the **Monitor** menu. Aurral keeps downloading tracks for playlists, flows, and single tracks.
 
 When Lidarr downloads or monitors an album that Aurral has tracks from, Lidarr takes the album over. See [Who manages your library](/using/library/#who-manages-your-library).
 
@@ -85,7 +91,7 @@ Aurral accepts other Lidarr webhook events but ignores them. It updates request 
 
 ## What Aurral changes
 
-Changes to Lidarr artists and albums go through the Lidarr API. Changes to Aurral artists and albums write to the Downloads Folder. Aurral never writes into a Lidarr root folder.
+Changes to Lidarr artists and albums go through the Lidarr API. Changes to Aurral artists and albums write to the Downloads Folder. Aurral never writes to or deletes files in a Lidarr root folder.
 
 ## Import list feeds
 

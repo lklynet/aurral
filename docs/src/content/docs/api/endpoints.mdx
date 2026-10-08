@@ -92,7 +92,7 @@ WebSocket connections.
 | `POST` | `/api/library/albums/request` | Request an album from search data |
 | `PUT` | `/api/library/albums/:id` | Update an album |
 | `DELETE` | `/api/library/albums/:id` | Delete an album |
-| `PUT` | `/api/library/albums/aurral/:canonicalId` | Monitor or stop monitoring an Aurral-managed album and all of its tracks with `{ "monitored": true \| false }`. Monitoring returns `409` while Lidarr is connected |
+| `PUT` | `/api/library/albums/aurral/:canonicalId` | Monitor or stop monitoring an Aurral-managed album and all of its tracks with `{ "monitored": true \| false }` |
 | `GET` | `/api/library/albums/aurral/:canonicalId/status` | Get the download status of an Aurral-managed album |
 | `POST` | `/api/library/albums/aurral/:canonicalId/cancel` | Cancel queued and active downloads for an Aurral-managed album |
 | `DELETE` | `/api/library/albums/aurral/:canonicalId?deleteFiles=true\|false` | Remove an Aurral-managed album |
@@ -123,10 +123,12 @@ WebSocket connections.
 | `POST` | `/api/library/downloads/album/search` | Trigger a Lidarr album search |
 | `POST` | `/api/library/downloads/tracks/:trackId/research` | Search for a replacement of an Aurral library track. Send the `albumId`. Returns `409` when a search for the track is already running |
 
-Lidarr manages artists and albums when it is connected, and Aurral manages
-them otherwise. The artist and album add routes accept an optional `managedBy`
-value. A value other than the active manager returns `409` with
-`library_manager_unavailable`.
+New artists and albums go to Lidarr when it is connected, and to Aurral
+otherwise. Artists and albums that Aurral already has stay Aurral's. The artist
+and album add routes accept an optional `managedBy` value. A value other than
+the active manager returns `409` with `library_manager_unavailable`, except
+`aurral` for an album that Aurral already manages. A `GET /api/library/albums`
+list for a Lidarr artist also includes that artist's Aurral albums.
 
 Aurral album routes take the Library album ID, `canonicalId`, not a Lidarr album ID. They
 return `409` with the current manager when Lidarr manages the album. An album

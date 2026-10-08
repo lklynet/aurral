@@ -25,8 +25,8 @@ yt-dlp writes downloads to `/config/_staging` first. To use another disk, mount 
 
 ## Library safety
 
-- Lidarr is optional. Aurral and Lidarr each keep their own folders. The Library shows both without moving files.
-- Aurral never writes into a Lidarr root folder. Changes to Lidarr artists and albums go through Lidarr.
+- Lidarr is optional. Aurral and Lidarr each keep their own folders. While Lidarr is connected, the Library shows both without moving files. Turning Lidarr off removes its music from the Library and leaves the files on disk.
+- Aurral never writes to or deletes files in a Lidarr root folder. Changes to Lidarr artists and albums go through Lidarr.
 - Aurral does not move artists, albums, or files between Aurral and Lidarr.
 - Aurral keeps its own media in the Downloads Folder. Flow files use `_flows`. Permanent tracks use `Artist/Album/Track` folders.
 - The Downloads Folder and a Lidarr root folder can overlap, but it is not recommended. See [Settings warn that roots overlap](/admin/troubleshooting/#settings-warn-that-roots-overlap).

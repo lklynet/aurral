@@ -37,13 +37,28 @@ Aurral deletes playlists and flows in the background. The page shows **removal q
 
 If a download client still shows work after the removal, check that client's queue. Aurral does not import results into the removed playlist. If Aurral cannot remove the item from the client, the removal fails and Aurral tries again.
 
+## Lidarr is unreachable
+
+When Lidarr fails several requests in a row, Aurral pauses Lidarr requests, and **Settings > Lidarr** says that Lidarr is unreachable. Lidarr's music stays in the Library, and Aurral does not take over Lidarr's artists and albums.
+
+1. Check that Lidarr is running and that the Aurral server can reach the **Server URL**.
+2. In **Settings > Lidarr**, select **Test connection**.
+
+Do not turn off **Enabled** to fix an outage. Turning Lidarr off removes its music from the Library. See [Turning Lidarr off](/using/library/#turning-lidarr-off).
+
+## Lidarr's music disappeared from the Library
+
+Aurral removes Lidarr's music when **Settings > Lidarr > Enabled** is off or the API key is empty. Turn Lidarr on, enter the API key, and save. Aurral scans the Lidarr root folders again.
+
 ## Albums are missing from the Library
 
 When Lidarr is connected, **Settings > Lidarr > Show available music only** is on by default. It hides albums without downloaded files, including albums that Aurral is still downloading. Turn it off to see them, or follow the download on the album page and in **Activity**. Without Lidarr, the Library shows every album that you add.
 
 ## Settings warn that roots overlap
 
-Aurral shows this warning when the Downloads Folder and a Lidarr root folder are the same folder, or when one is inside the other. Aurral allows it, but Lidarr can rename, import, or delete files under its root folders. Aurral never moves files to remove the overlap.
+Aurral shows this warning when the Downloads Folder and a Lidarr root folder are the same folder, or when one is inside the other. The check applies your Lidarr remote path mappings. Aurral allows the overlap, but Lidarr can rename, import, or delete files under its root folders.
+
+While the folders overlap, Aurral treats files in a Lidarr root folder as Lidarr's and never deletes them. A Lidarr root folder inside the Downloads Folder is scanned only as Lidarr's. Aurral never moves files to remove the overlap.
 
 To clear the warning, set **Settings > Download clients > Downloads Folder > Path** to a folder outside every Lidarr root folder. Move the existing files yourself if you want them in the new folder.
 
