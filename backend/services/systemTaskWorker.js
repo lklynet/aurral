@@ -99,7 +99,11 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       const { hasCompletedLibraryScan, scheduleLibraryScan } = await import(
         "./libraryScanWorker.js"
       );
-      if (!hasCompletedLibraryScan()) scheduleLibraryScan();
+      const { lidarrClient } = await import("./lidarrClient.js");
+      const { hasLidarrLibraryData } = await import("./libraryMediaStore.js");
+      if (!hasCompletedLibraryScan() || (!lidarrClient.isConfigured() && hasLidarrLibraryData())) {
+        scheduleLibraryScan();
+      }
       return;
     }
     case "weekly-flow-startup-check": {

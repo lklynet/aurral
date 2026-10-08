@@ -946,8 +946,8 @@ const LIDARR_METADATA_PATHS = [...LIDARR_METADATA_KEYS, "monitorOption"]
 // Turning Lidarr off removes everything its root folders added. Aurral's own
 // files, and the tracks Aurral asked for, stay. What Lidarr managed and still
 // has Aurral files becomes Aurral's, unmonitored.
-export function removeLidarrLibrary() {
-  const hasLidarrData = db.prepare(
+export function hasLidarrLibraryData() {
+  return db.prepare(
     `SELECT EXISTS (SELECT 1 FROM library_media_files WHERE source = 'lidarr')
        OR EXISTS (SELECT 1 FROM library_management WHERE managed_by = 'lidarr')
        OR EXISTS (
@@ -959,7 +959,10 @@ export function removeLidarrLibrary() {
          WHERE json_valid(metadata_json) AND json_extract(metadata_json, '$.librarySource') = 'lidarr'
        ) AS present`,
   ).get().present === 1;
-  if (!hasLidarrData) return false;
+}
+
+export function removeLidarrLibrary() {
+  if (!hasLidarrLibraryData()) return false;
   const timestamp = now();
   db.transaction(() => {
     const trackIds = db.prepare(

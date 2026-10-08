@@ -40,7 +40,7 @@ test("library scans are not scheduled as a recurring background task", () => {
   assert.equal(getHonkerDb().scheduler().list().some((task) => task.queue === "library-scan"), false);
 });
 
-test("library bootstrap runs only until the first completed scan", async () => {
+test("library bootstrap runs until the first completed scan, and again while a turned-off Lidarr's music remains", async (t) => {
   const queue = getLibraryScanQueue();
   db.prepare("DELETE FROM library_scan_runs").run();
   clearScheduledLibraryScan();
@@ -56,7 +56,20 @@ test("library bootstrap runs only until the first completed scan", async () => {
     finishLibraryScan(scanId);
     await processSystemTask({ kind: "library-index-bootstrap" });
     assert.equal(getScheduledLibraryScanJobId(), null);
+
+    db.prepare(
+      `INSERT INTO library_management (entity_kind, entity_id, managed_by, created_at, updated_at)
+       VALUES ('artist', 987654, 'lidarr', 0, 0)`,
+    ).run();
+    t.mock.method(lidarrClient, "isConfigured", () => true);
+    await processSystemTask({ kind: "library-index-bootstrap" });
+    assert.equal(getScheduledLibraryScanJobId(), null);
+    t.mock.method(lidarrClient, "isConfigured", () => false);
+    await processSystemTask({ kind: "library-index-bootstrap" });
+    bootstrapJobId = getScheduledLibraryScanJobId();
+    assert.ok(bootstrapJobId, "a turned-off Lidarr's indexed music is removed after startup");
   } finally {
+    db.prepare("DELETE FROM library_management WHERE entity_id = 987654").run();
     if (bootstrapJobId) queue.cancel(bootstrapJobId);
     clearScheduledLibraryScan();
     db.prepare("DELETE FROM library_scan_runs WHERE source = 'test'").run();
