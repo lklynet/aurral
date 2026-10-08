@@ -212,7 +212,7 @@ export function LidarrSettingsSection({
         }
       >
         <div className="arr-info">
-          Optional. Aurral manages its own Library without Lidarr. Path access and mappings are checked in{" "}
+          Optional. Path access and mappings are checked in{" "}
           <Link to="/settings/system" className="arr-link">
             System
           </Link>
