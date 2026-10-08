@@ -326,3 +326,30 @@ test("album art stays with music that is left for review", async () => {
   assert.deepEqual(items.map((item) => item.status), ["done", "conflict"]);
   assert.equal(await readFile(path.join(source, "Split", "Album", "cover.jpg"), "utf8"), "art");
 });
+
+test("cancelling between slices still tidies what was already filed", async () => {
+  const source = newSource();
+  const filed = await makeTrack(path.join(source, "Stop", "First", "a.flac"), {
+    artist: "Stop", album: "First", title: "Filed", track: "1",
+  });
+  await writeFile(path.join(source, "Stop", "First", "cover.jpg"), "art");
+  const waiting = await makeTrack(path.join(source, "Stop", "Second", "b.flac"), {
+    artist: "Stop", album: "Second", title: "Waiting", track: "1",
+  });
+  const id = await ingest(source, "move");
+  assert.equal(await operations.confirmLibraryFileOperation(id), true);
+  const [first] = operations.describeLibraryFileOperationItems(getLibraryFileOperation(id), {});
+  const target = path.join(root, first.target);
+  await mkdir(path.dirname(target), { recursive: true });
+  await link(filed, target);
+  await rm(filed);
+  db.prepare("UPDATE library_file_operation_items SET status = 'done' WHERE operation_id = ? AND position = ?")
+    .run(id, first.position);
+  assert.equal(operations.cancelLibraryFileOperation(id), true);
+
+  assert.equal((await runUntilSettled(id)).status, "cancelled");
+
+  assert.equal(await readFile(path.join(path.dirname(target), "cover.jpg"), "utf8"), "art");
+  assert.equal(await exists(path.join(source, "Stop", "First")), false);
+  assert.equal(await exists(waiting), true);
+});

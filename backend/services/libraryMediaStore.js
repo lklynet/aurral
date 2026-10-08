@@ -644,7 +644,9 @@ export function rekeyLibraryTrack(trackId, identityKey) {
        SELECT link.album_id, ?, link.disc_number, link.track_number, link.created_at
        FROM library_album_tracks AS link
        WHERE link.track_id = ? AND NOT EXISTS (
-         SELECT 1 FROM library_album_tracks AS kept WHERE kept.album_id = link.album_id AND kept.track_id = ?
+         SELECT 1 FROM library_album_tracks AS kept
+         WHERE kept.album_id = link.album_id AND kept.track_id = ?
+           AND kept.disc_number = link.disc_number AND kept.track_number = link.track_number
        )`,
     ).run(target.id, id, target.id);
     db.prepare("UPDATE library_media_files SET track_id = ? WHERE track_id = ?").run(target.id, id);
@@ -689,7 +691,9 @@ export function rekeyLibraryAlbum(albumId, identityKey) {
        SELECT ?, link.track_id, link.disc_number, link.track_number, link.created_at
        FROM library_album_tracks AS link
        WHERE link.album_id = ? AND NOT EXISTS (
-         SELECT 1 FROM library_album_tracks AS kept WHERE kept.album_id = ? AND kept.track_id = link.track_id
+         SELECT 1 FROM library_album_tracks AS kept
+         WHERE kept.album_id = ? AND kept.track_id = link.track_id
+           AND kept.disc_number = link.disc_number AND kept.track_number = link.track_number
        )`,
     ).run(target.id, id, target.id);
     db.prepare("UPDATE library_media_files SET album_id = ? WHERE album_id = ?").run(target.id, id);

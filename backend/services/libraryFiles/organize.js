@@ -110,22 +110,24 @@ async function resolveMusicBrainzAlbum(album, artist) {
   return sameArtist ? found : null;
 }
 
+const atFilePosition = (file) => (entry) => entry.trackNumber === file.track_number
+  && (!file.disc_number || (entry.mediumNumber || 1) === file.disc_number);
+
 function matchMusicBrainzTrack(mbAlbum, file, recordingMbid) {
   const chosen = selectAlbumRelease(mbAlbum);
   const releases = [chosen, ...(mbAlbum.releases || []).filter((release) => release !== chosen)].filter(Boolean);
   if (recordingMbid) {
     for (const release of releases) {
-      const track = (release.tracks || []).find((entry) =>
+      let tracks = (release.tracks || []).filter((entry) =>
         entry.recordingId === recordingMbid || entry.oldRecordingIds?.includes(recordingMbid));
-      if (track) return { release, track };
+      if (tracks.length > 1) tracks = file.track_number ? tracks.filter(atFilePosition(file)) : [];
+      if (tracks.length === 1) return { release, track: tracks[0] };
+      if (tracks.length > 1) return null;
     }
     return null;
   }
   let candidates = (chosen?.tracks || []).filter((entry) => isSameLibraryName(entry.title, file.title));
-  if (candidates.length > 1 && file.track_number) {
-    candidates = candidates.filter((entry) => entry.trackNumber === file.track_number
-      && (!file.disc_number || (entry.mediumNumber || 1) === file.disc_number));
-  }
+  if (candidates.length > 1 && file.track_number) candidates = candidates.filter(atFilePosition(file));
   if (candidates.length !== 1) return null;
   const [track] = candidates;
   if (file.duration_ms && track.durationMs && Math.abs(file.duration_ms - track.durationMs) > LENGTH_TOLERANCE_MS) {

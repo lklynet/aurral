@@ -82,10 +82,11 @@ async function requestScan(request) {
 
 async function finish(operation, handler, status) {
   const current = getLibraryFileOperation(operation.id);
+  if (current.summary.finished) return;
   await requestScan(await handler.finish(current));
   updateLibraryFileOperation(operation.id, {
     status,
-    summary: { counts: countLibraryFileOperationItems(operation.id) },
+    summary: { counts: countLibraryFileOperationItems(operation.id), finished: true },
   });
 }
 
@@ -142,6 +143,10 @@ export async function runLibraryFileOperation(id, { budgetMs = BUDGET_MS } = {})
       }
       return { done: true };
     }
+    if (operation.status === "cancelled") {
+      await finish(operation, handler, "cancelled");
+      return { done: true };
+    }
     if (operation.status !== "running") return { done: true };
     const { cancelled } = await applyBatch(operation, handler, deadline);
     if (cancelled) {
@@ -177,7 +182,7 @@ export function describeLibraryFileOperation(operation) {
   if (!operation) return null;
   const counts = countLibraryFileOperationItems(operation.id);
   const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
-  const { cursor, playlistIds: _playlistIds, ...summary } = operation.summary;
+  const { cursor, playlistIds: _playlistIds, finished: _finished, ...summary } = operation.summary;
   return {
     id: operation.id,
     kind: operation.kind,
