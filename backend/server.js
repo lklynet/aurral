@@ -137,7 +137,7 @@ app.use(
         fontSrc: ["'self'", "data:"],
         imgSrc: ["'self'", "data:", "https:"],
         connectSrc: connectSrcDirectives,
-        mediaSrc: ["'self'", "data:", "https://*.dzcdn.net", "https://*.deezer.com"],
+        mediaSrc: ["'self'", "data:", "https:"],
         frameSrc: ["'self'", "https://www.youtube-nocookie.com", "https://www.youtube.com"],
         frameAncestors: null,
         upgradeInsecureRequests: null,

@@ -19,14 +19,14 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("CSP permits direct HTTPS artwork", async () => {
+test("CSP permits direct HTTPS artwork and preview audio", async () => {
   const response = await fetch(`http://127.0.0.1:${server.port}/api/health/live`);
   const policy = response.headers.get("content-security-policy") || "";
-  const imageSources = policy
-    .split(";")
-    .find((directive) => directive.trim().startsWith("img-src "));
+  const sources = (name) =>
+    (policy.split(";").find((directive) => directive.trim().startsWith(`${name} `)) || "").trim().split(/\s+/);
 
-  assert.ok((imageSources || "").trim().split(/\s+/).includes("https:"));
+  assert.ok(sources("img-src").includes("https:"));
+  assert.ok(sources("media-src").includes("https:"));
 });
 
 test("CORS allows only configured origins on the JSON API", async () => {
