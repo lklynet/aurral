@@ -21,6 +21,7 @@ const [
   { db },
   { registerArtists },
   { libraryManager },
+  { resolveDownloadRoot },
 ] = await setupIsolatedBackend(
   "aurral-library-removal",
   "backend/services/downloadJobs/downloadTracker.js",
@@ -33,6 +34,7 @@ const [
   "backend/config/db-sqlite.js",
   "backend/routes/library/handlers/artists.js",
   "backend/services/libraryManager.js",
+  "backend/services/downloadPaths.js",
 );
 
 const routes = new Map();
@@ -88,7 +90,7 @@ async function createAurralAlbum({ trackCount = 2, filesFor = [0, 1], artist: ex
     artistId: artist.id,
     title: `Removal Album ${sequence}`,
   });
-  const albumDir = path.join(isolatedState.dataDir, "aurral-root", `album-${sequence}`);
+  const albumDir = path.join(resolveDownloadRoot(), `album-${sequence}`);
   await fs.mkdir(albumDir, { recursive: true });
   const tracks = [];
   for (let index = 0; index < trackCount; index += 1) {
@@ -471,4 +473,20 @@ test("album removal never deletes a file Lidarr also lists as available", async 
       .get("lidarr", tracks[0].filePath)?.available,
     1,
   );
+});
+
+test("album removal never deletes a reused file outside the Downloads Folder", async () => {
+  const { album, tracks, jobFor } = await createAurralAlbum({ trackCount: 2, filesFor: [1] });
+  const lidarrPath = path.join(isolatedState.baseDir, "music", `reused-${album.id}.flac`);
+  await fs.mkdir(path.dirname(lidarrPath), { recursive: true });
+  await fs.writeFile(lidarrPath, "lidarr audio");
+  const reusedJob = jobFor(0);
+  downloadTracker.setDone(reusedJob, lidarrPath, album.title, lidarrPath);
+
+  const response = await removeAlbum(album, true);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(await exists(lidarrPath), true);
+  assert.equal(await exists(tracks[1].filePath), false);
+  assert.equal(albumRow(album.id), undefined);
 });

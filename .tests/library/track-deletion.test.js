@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import fsp from "node:fs/promises";
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { db } from "../../backend/config/db-sqlite.js";
@@ -28,9 +27,16 @@ import {
   withPipelineCommitLock,
 } from "../../backend/services/downloadJobs/downloadCancellation.js";
 import { createMockHttpServer } from "../helpers/backendTestHarness.js";
+import { resolveDownloadRoot } from "../../backend/services/downloadPaths.js";
+
+async function downloadsDir() {
+  const root = resolveDownloadRoot();
+  await mkdir(root, { recursive: true });
+  return root;
+}
 
 test("deletes Aurral-owned track files without Lidarr", async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-"));
+  const root = await mkdtemp(path.join(await downloadsDir(), "aurral-track-delete-"));
   const filePath = path.join(root, "Artist", "Album", "01 Track.flac");
   const identity = `track-delete-${process.pid}-${Date.now()}`;
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -112,7 +118,7 @@ test("deletes Aurral-owned track files without Lidarr", async (t) => {
 });
 
 test("deleting a library track removes it from playlists that referenced its download", async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-playlist-"));
+  const root = await mkdtemp(path.join(await downloadsDir(), "aurral-track-delete-playlist-"));
   const filePath = path.join(root, "Artist", "Single", "01 Track.flac");
   const identity = `track-delete-playlist-${process.pid}-${Date.now()}`;
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -184,7 +190,7 @@ test("deleting a library track removes it from playlists that referenced its dow
 });
 
 test("deleting a library track preserves a file still referenced by a playlist job", async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-shared-file-"));
+  const root = await mkdtemp(path.join(await downloadsDir(), "aurral-track-delete-shared-file-"));
   const filePath = path.join(root, "Artist", "Album", "01 Track.flac");
   const identity = `track-delete-shared-file-${process.pid}-${Date.now()}`;
   const mbid = `${identity}-mbid`;
@@ -244,7 +250,7 @@ test("deleting a library track preserves a file still referenced by a playlist j
 });
 
 test("deletes a library file committed while track removal waits for its lock", async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-commit-race-"));
+  const root = await mkdtemp(path.join(await downloadsDir(), "aurral-track-delete-commit-race-"));
   const originalPath = path.join(root, "Artist", "Album", "Original.flac");
   const committedPath = path.join(root, "Artist", "Album", "Committed.flac");
   const identity = `track-delete-commit-race-${process.pid}-${Date.now()}`;
@@ -318,7 +324,7 @@ test("deletes a library file committed while track removal waits for its lock", 
 });
 
 test("records successful Aurral deletions when another file fails", async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-partial-"));
+  const root = await mkdtemp(path.join(await downloadsDir(), "aurral-track-delete-partial-"));
   const deletedPath = path.join(root, "Artist", "Album", "01 Track.flac");
   const failedPath = path.join(root, "Artist", "Album", "02 Track.flac");
   const identity = `track-delete-partial-${process.pid}-${Date.now()}`;
@@ -413,7 +419,7 @@ test("records successful Aurral deletions when another file fails", async (t) =>
 });
 
 test("keeps a library job and track when provider cancellation fails, then retries", async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-cancel-"));
+  const root = await mkdtemp(path.join(await downloadsDir(), "aurral-track-delete-cancel-"));
   const filePath = path.join(root, "Artist", "Album", "Track.flac");
   const identity = `track-delete-cancel-${process.pid}-${Date.now()}`;
   const searchId = `search-${identity}`;

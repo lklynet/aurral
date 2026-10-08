@@ -41,6 +41,8 @@ import {
 import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.js";
 import { restoreDownloadJobCancellations } from "./downloadJobs/downloadCancellation.js";
 import { removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.js";
+import { resolveDownloadRoot } from "./downloadPaths.js";
+import { activeLidarrRoots, libraryFolderOwner } from "./libraryFolders.js";
 import { removePlaylistTracksWithoutDownloads } from "./playlists/trackRemoval.js";
 import {
   cancelAurralAlbumJobs,
@@ -448,6 +450,10 @@ async function removeLibraryDownloadJobs(tracks, { albumMbids = [] } = {}) {
 }
 
 async function deleteAurralLibraryFiles(paths) {
+  const folders = {
+    downloadRoot: resolveDownloadRoot(),
+    lidarrRoots: activeLidarrRoots(await getLidarrClient()),
+  };
   const deletionResults = await Promise.allSettled(paths.map(async (filePath) => {
     const removal = await removePlaylistFileIfUnshared(filePath, "library", {
       deleteIfUnshared: true,
@@ -460,7 +466,7 @@ async function deleteAurralLibraryFiles(paths) {
         typeof job.finalPath === "string" &&
         path.resolve(job.finalPath) === resolvedPath,
       );
-      if (!referencedByAnotherJob) {
+      if (!referencedByAnotherJob && libraryFolderOwner(filePath, folders) === "aurral") {
         try {
           await fsp.unlink(filePath);
         } catch (error) {
