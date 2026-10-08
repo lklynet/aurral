@@ -1,5 +1,5 @@
 import { isDarkColor, normalizeHexColor } from "./themeColor.js";
-import { convertLegacyTheme, normalizeThemeName, THEME_DOCUMENT_VERSION, THEME_MODES } from "./theme.js";
+import { convertLegacyTheme, normalizeTheme, THEME_DOCUMENT_VERSION, THEME_MODES } from "./theme.js";
 
 export const THEME_GALLERY_URL = "https://tinted-theming.github.io/tinted-gallery/";
 export const MAX_THEME_FILE_BYTES = 64 * 1024;
@@ -58,8 +58,8 @@ export function parseThemeText(text) {
     } catch {
       throw new Error("That theme file isn't valid JSON.");
     }
-    const theme = parseThemeFile(value);
-    return { ...theme, name: normalizeThemeName(theme.name) };
+    const { id: _id, ...theme } = normalizeTheme({ ...parseThemeFile(value), id: "import" });
+    return theme;
   }
   return parseBase16Scheme(source);
 }

@@ -144,6 +144,26 @@ test("theme choices from the previous version carry over", async () => {
   const fresh = await loadTheme();
   assert.equal(fresh.getThemeDocument().themeId, "aurral");
   assert.equal(fresh.getThemeDocument().appearance, "light");
+
+  const legacyTheme = (index) => ({
+    version: 1,
+    id: index === 0 ? "nord" : `old-theme-${index}`,
+    name: index === 0 ? "Nord" : `Old theme ${index}`,
+    appearance: "dark",
+    colors: { surface: "#101820", text: "#e0e0e0", accent: index === 0 ? "#ff00aa" : "#f2aa4c" },
+  });
+  const crowded = createBrowser({
+    storage: {
+      aurralTheme: "nord",
+      "aurralThemes:v1": JSON.stringify(Array.from({ length: 55 }, (_, index) => legacyTheme(index))),
+    },
+  });
+  const migrated = (await loadTheme()).getThemeDocument();
+  const selected = migrated.themes.find((theme) => theme.id === migrated.themeId);
+  assert.equal(selected.name, "Nord");
+  assert.equal(selected.dark.accent, "#ff00aa");
+  assert.notEqual(selected.id, "nord");
+  assert.ok(crowded.stored.has("aurralThemes:v1"), "the old copy stays while some themes did not fit");
 });
 
 function fakeAccount(initial = null) {
@@ -409,6 +429,7 @@ test("Aurral theme files round-trip and old theme files still import", () => {
 
   assert.throws(() => parseThemeText("hello there"), /base16/);
   assert.throws(() => parseThemeText('{"version": 9, "name": "Future"}'), /version/);
+  assert.throws(() => parseThemeText('{"version": 2, "name": "Broken", "dark": {"background": "#101820", "accent": 123}}'), /invalid/);
 });
 
 test("album art matching picks the vivid color, not the average", () => {

@@ -311,20 +311,29 @@ function migrateLegacyDocument() {
   const appearance = readStorage("aurralThemeAppearance:v1");
   const legacyThemes = parseJson(readStorage("aurralThemes:v1"));
   if (selection === null && appearance === null && legacyThemes === null) return null;
-  const themes = (Array.isArray(legacyThemes) ? legacyThemes : []).flatMap((item) => {
+  const themes = [];
+  let themeId = THEME_APPEARANCES.includes(selection) ? DEFAULT_THEME_ID : selection;
+  for (const item of Array.isArray(legacyThemes) ? legacyThemes : []) {
     try {
-      return [normalizeTheme(convertLegacyTheme(item))];
+      const legacy = convertLegacyTheme(item);
+      const taken = themes.map((theme) => theme.id);
+      const id = isThemeId(legacy.id) && !BUILT_IN_THEME_IDS.has(legacy.id) && !taken.includes(legacy.id)
+        ? legacy.id
+        : createThemeId(legacy.name, taken);
+      themes.push(normalizeTheme({ ...legacy, id }));
+      if (legacy.id === selection) themeId = id;
     } catch {
-      return [];
+      continue;
     }
-  });
+  }
   const document = normalizeThemeDocument({
     version: THEME_DOCUMENT_VERSION,
-    themeId: THEME_APPEARANCES.includes(selection) ? DEFAULT_THEME_ID : selection,
+    themeId,
     appearance: THEME_APPEARANCES.includes(selection) ? selection : appearance,
     themes,
   });
-  if (writeStorage(THEME_STORAGE_KEY, JSON.stringify(document))) {
+  const keptEveryTheme = document.themes.length === themes.length;
+  if (writeStorage(THEME_STORAGE_KEY, JSON.stringify(document)) && keptEveryTheme) {
     for (const key of LEGACY_THEME_STORAGE_KEYS) writeStorage(key, null);
   }
   return document;
