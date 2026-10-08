@@ -12786,6 +12786,11 @@ button.native-library-genre-row:focus-visible {
   min-width: 0;
 }
 
+.profile-settings__field > .pill-toggle {
+  justify-self: end;
+  align-self: center;
+}
+
 .profile-settings__control {
   display: flex;
   grid-area: control;
@@ -12834,6 +12839,10 @@ button.native-library-genre-row:focus-visible {
 
   .profile-settings__field > .settings-page__hint {
     margin-top: 0;
+  }
+
+  .profile-settings__field > .pill-toggle {
+    align-self: flex-end;
   }
 
   .profile-settings__section-status {
