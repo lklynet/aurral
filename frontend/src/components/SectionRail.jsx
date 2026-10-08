@@ -24,7 +24,7 @@ export default function SectionRail({ containerRef, sectionSelector, titleSelect
   const [activeIndex, setActiveIndex] = useState(0);
   const [hoveredIndex, setHoveredIndex] = useState(null);
   const [hasRoom, setHasRoom] = useState(false);
-  const pinnedIndexRef = useRef(null);
+  const pinnedElementRef = useRef(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -67,7 +67,14 @@ export default function SectionRail({ containerRef, sectionSelector, titleSelect
     let frame = null;
     const update = () => {
       frame = null;
-      if (pinnedIndexRef.current !== null) return;
+      if (pinnedElementRef.current) {
+        const pinnedIndex = sections.findIndex((section) => section.element === pinnedElementRef.current);
+        if (pinnedIndex >= 0) {
+          setActiveIndex(pinnedIndex);
+          return;
+        }
+        pinnedElementRef.current = null;
+      }
       const bounds = scrollParent.getBoundingClientRect();
       const atBottom = scrollParent.scrollTop + scrollParent.clientHeight >= scrollParent.scrollHeight - 2;
       if (atBottom) {
@@ -85,7 +92,7 @@ export default function SectionRail({ containerRef, sectionSelector, titleSelect
       if (frame === null) frame = requestAnimationFrame(update);
     };
     const release = () => {
-      pinnedIndexRef.current = null;
+      pinnedElementRef.current = null;
     };
     const userScrollEvents = ["wheel", "touchstart", "keydown", "pointerdown"];
     update();
@@ -101,7 +108,7 @@ export default function SectionRail({ containerRef, sectionSelector, titleSelect
   if (sections.length < 2 || !hasRoom) return null;
 
   const jumpTo = (index) => {
-    pinnedIndexRef.current = index;
+    pinnedElementRef.current = sections[index].element;
     setActiveIndex(index);
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     sections[index].element.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });

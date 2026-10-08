@@ -24,6 +24,16 @@ test("the profile section rail previews, jumps to, and tracks sections", async (
   await nextFrames();
   await expect(tick("Connected accounts")).toHaveAttribute("aria-current", "location");
 
+  await page.evaluate(() => {
+    const first = document.querySelector(".profile-settings__section");
+    const inserted = first.cloneNode(false);
+    inserted.innerHTML = '<h3 class="settings-page__section-title">Inserted section</h3>';
+    first.before(inserted);
+  });
+  await expect(tick("Inserted section")).toBeVisible();
+  await nextFrames();
+  await expect(tick("Connected accounts")).toHaveAttribute("aria-current", "location");
+
   const secondToLast = rail.getByRole("button").nth(-2);
   const secondToLastName = await secondToLast.getAttribute("aria-label");
   await secondToLast.click();
