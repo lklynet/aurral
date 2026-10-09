@@ -131,10 +131,12 @@ export function ArtistDetailsAppearsOn({
                   .join(" · ")}
               </p>
               {metric.label && (
-                <p className="artist-release-card__metric">
-                  <Star className="artist-star-icon" />
-                  {metric.label}
-                </p>
+                <Tooltip content={metric.title}>
+                  <p className="artist-release-card__metric">
+                    <Star className="artist-star-icon" />
+                    {metric.label}
+                  </p>
+                </Tooltip>
               )}
             </article>
           );

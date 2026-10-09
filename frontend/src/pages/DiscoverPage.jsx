@@ -35,7 +35,7 @@ import {
 } from "./discoverUtils";
 import { useDiscoverData } from "./useDiscoverData";
 import { useLibraryNews } from "../hooks/useLibraryNews";
-import { formatDate } from "../utils/dateTime.js";
+import { formatDate, formatRelativeTime } from "../utils/dateTime.js";
 import TooltipButton from "../components/TooltipButton";
 import RouteLink from "../components/RouteLink";
 const getArtistId = (artist) => getArtistRecordId(artist);
@@ -330,9 +330,8 @@ function DiscoverPage() {
                       image: getLibraryArtistImage(artist),
                       type: "Artist",
                       metaText: "",
-                      subtitle: `Added ${formatDate(
-                        new Date(artist.added || artist.addedAt),
-                      )}`,
+                      subtitle: `Added ${formatRelativeTime(new Date(artist.added || artist.addedAt), { unit: "day" })}`,
+                      subtitleDetail: formatDate(new Date(artist.added || artist.addedAt)),
                     }}
                   />
                 </div>
