@@ -72,6 +72,7 @@ export function matchLibraryRecord(record) {
     : [];
   return {
     artistName: artist?.name || record.artistName,
+    artistMbid: artist?.mbid || record.artistMbid || null,
     albumName: album?.title || record.albumName,
     album: album || null,
     track: track || null,

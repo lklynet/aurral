@@ -49,5 +49,10 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "ajv": "^8.20.0"
+  },
+  "overrides": {
+    "node-taglib-sharp": {
+      "uuid": "^11.1.1"
+    }
   }
 }

@@ -10,7 +10,7 @@ export const PLAYLIST_STARTUP_MIGRATION_VERSION = 1;
 export const PLAYLIST_STARTUP_MIGRATION_SETTING = "playlistStartupMigration";
 export const STORED_DATA_MIGRATION_VERSION = 1;
 export const STORED_DATA_MIGRATION_SETTING = "storedDataMigration";
-export const IDENTITY_MARKER_MIGRATION_VERSION = 1;
+export const IDENTITY_MARKER_MIGRATION_VERSION = 2;
 export const IDENTITY_MARKER_MIGRATION_SETTING = "identityMarkerMigration";
 
 export const HONKER_QUEUE_NAMES = [

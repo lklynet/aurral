@@ -7,6 +7,7 @@ import test from "node:test";
 import { parseFile } from "music-metadata";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.js";
+import { readAurralIdentity } from "../../backend/services/downloadUtils.js";
 
 const [
   isolatedState,
@@ -50,7 +51,7 @@ function addFinishedJob(finalPath, downloadClient) {
 }
 
 const readTags = async (filePath) => (await parseFile(filePath, { skipCovers: true })).common;
-const markerTagIds = async (filePath) =>
+const legacyMarkerTagIds = async (filePath) =>
   Object.values((await parseFile(filePath, { skipCovers: true })).native)
     .flat()
     .filter((tag) => JSON.stringify(tag.value).includes("AURRAL_IDS="))
@@ -61,7 +62,7 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("moves the identity marker from the comment tag only in files Aurral downloaded", async () => {
+test("moves the identity marker from the comment or grouping tag to its own tag only in files Aurral downloaded", async () => {
   const root = resolveDownloadRoot();
   const m4a = await createTaggedFile(path.join(root, "Artist", "Album", "01 Marked.m4a"), "aac", {
     comment: marker({ artistMbid: ids.artistMbid, albumMbid: ids.albumMbid }),
@@ -69,6 +70,9 @@ test("moves the identity marker from the comment tag only in files Aurral downlo
   });
   const mp3 = await createTaggedFile(path.join(root, "Artist", "Album", "02 Marked.mp3"), "libmp3lame", {
     comment: marker(ids),
+  });
+  const grouped = await createTaggedFile(path.join(root, "Artist", "Album", "07 Grouped.flac"), "flac", {
+    grouping: marker(ids),
   });
   const ownComment = await createTaggedFile(path.join(root, "Artist", "Album", "03 Own.flac"), "flac", {
     comment: "Ripped from my own CD",
@@ -81,6 +85,7 @@ test("moves the identity marker from the comment tag only in files Aurral downlo
   });
   addFinishedJob(m4a, "ytdlp");
   addFinishedJob(mp3, "slskd");
+  addFinishedJob(grouped, "usenet");
   addFinishedJob(ownComment, "deemix");
   addFinishedJob(outside, "slskd");
   addFinishedJob(notDownloaded, null);
@@ -92,12 +97,11 @@ test("moves the identity marker from the comment tag only in files Aurral downlo
 
   await processSystemTask({ kind: "identity-marker-migration" });
 
-  for (const filePath of [m4a, mp3]) {
+  for (const filePath of [m4a, mp3, grouped]) {
     const tags = await readTags(filePath);
-    assert.equal(tags.grouping, marker(ids), `${path.basename(filePath)} grouping`);
-    const tagIds = await markerTagIds(filePath);
-    assert.equal(tagIds.length, 1, `${path.basename(filePath)} has one marker tag: ${tagIds}`);
-    assert.doesNotMatch(tagIds[0], /comment|comm|cmt/i);
+    assert.equal(tags.grouping, undefined, `${path.basename(filePath)} grouping`);
+    assert.deepEqual(await legacyMarkerTagIds(filePath), [], `${path.basename(filePath)} legacy markers`);
+    assert.deepEqual(readAurralIdentity(await parseFile(filePath, { skipCovers: true })), ids);
   }
   for (const [index, [filePath, bytes]] of untouched.entries()) {
     assert.deepEqual(await readFile(filePath), bytes, `${path.basename(filePath)} should be untouched`);
@@ -105,7 +109,7 @@ test("moves the identity marker from the comment tag only in files Aurral downlo
   }
   assert.deepEqual(
     (({ checked, moved, failed }) => ({ checked, moved, failed }))(dbOps.getJSONSetting("identityMarkerMigration")),
-    { checked: 3, moved: 2, failed: 0 },
+    { checked: 4, moved: 3, failed: 0 },
   );
 
   await processSystemTask({ kind: "identity-marker-migration" });

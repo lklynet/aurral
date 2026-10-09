@@ -3,9 +3,12 @@ import path from "node:path";
 import { db } from "../../config/db-sqlite.js";
 import { buildLibraryTrackPath, isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.js";
 import { downloadTracker } from "../downloadJobs/downloadTracker.js";
+import { writeAudioTags } from "../audioTags.js";
 import { configuredLidarrFolders, libraryFolderOwner } from "../libraryFolders.js";
 import { moveLibraryMediaFilePath } from "../libraryMediaStore.js";
+import { adoptLibraryFileIdentity } from "./fileIdentity.js";
 import { ALBUM_IMAGE_EXTENSIONS, placeFile, removeEmptyDirectories, transferSidecars } from "./fileTransfer.js";
+import { planTagFill } from "./tagFill.js";
 import {
   addLibraryFileOperationItems,
   updateLibraryFileOperation,
@@ -24,7 +27,7 @@ function albumFiles(albumId, { root, lidarrRoots }) {
   const seen = new Set();
   return db.prepare(
     `SELECT media.id, media.path, media.track_id, media.album_id, media.size, media.mtime_ms,
-       track.title,
+       media.duration_ms, track.title,
        link.disc_number, link.track_number
      FROM library_media_files AS media
      JOIN library_tracks AS track ON track.id = media.track_id
@@ -37,6 +40,28 @@ function albumFiles(albumId, { root, lidarrRoots }) {
     seen.add(file.id);
     return true;
   });
+}
+
+async function planTags(file, album, artist, context) {
+  const fill = await planTagFill({
+    filePath: file.path,
+    album: {
+      releaseGroupMbid: album.release_group_mbid,
+      releaseMbid: album.mbid,
+      title: album.title,
+      year: album.release_date,
+    },
+    artist: { name: artist?.name, mbid: artist?.mbid },
+    file: {
+      title: file.title,
+      trackNumber: file.track_number,
+      discNumber: file.disc_number,
+      durationMs: file.duration_ms,
+    },
+  }, context.albums);
+  if (!fill.tags) return { reason: fill.reason || null };
+  const hardlinked = (await fs.stat(file.path).catch(() => null))?.nlink > 1;
+  return { tags: fill.tags, tagFields: fill.fields, ...(hardlinked ? { hardlinked } : {}) };
 }
 
 async function planAlbum(albumId, context) {
@@ -53,23 +78,35 @@ async function planAlbum(albumId, context) {
       trackName: file.title,
       trackNumber: file.track_number,
     }, path.extname(file.path));
-    if (target === path.resolve(file.path)) {
-      unchanged += 1;
-      continue;
-    }
-    if (!isPathInsideRoot(target, context.root)) {
+    const rename = target !== path.resolve(file.path);
+    if (rename && !isPathInsideRoot(target, context.root)) {
       items.push({ sourcePath: file.path, status: "skipped", reason: "The new name does not fit inside the Downloads Folder.", details });
       continue;
     }
-    const existing = await fs.lstat(target).catch(() => null);
-    const sameFile = existing && (await fs.stat(file.path).then((stat) =>
-      stat.ino === existing.ino && stat.dev === existing.dev).catch(() => false));
-    if ((existing && !sameFile) || context.targets.has(target)) {
-      items.push({ sourcePath: file.path, targetPath: target, status: "conflict", reason: "Another file already has this name.", details });
+    if (rename) {
+      const existing = await fs.lstat(target).catch(() => null);
+      const sameFile = existing && (await fs.stat(file.path).then((stat) =>
+        stat.ino === existing.ino && stat.dev === existing.dev).catch(() => false));
+      if ((existing && !sameFile) || context.targets.has(target)) {
+        items.push({ sourcePath: file.path, targetPath: target, status: "conflict", reason: "Another file already has this name.", details });
+        continue;
+      }
+    }
+    const { reason, ...fill } = await planTags(file, album, artist, context);
+    const actions = [fill.tags && "tags", rename && "rename"].filter(Boolean);
+    if (!actions.length) {
+      if (reason) items.push({ sourcePath: file.path, status: "skipped", reason, details });
+      else unchanged += 1;
       continue;
     }
-    context.targets.add(target);
-    items.push({ sourcePath: file.path, targetPath: target, status: "pending", details: { ...details, actions: ["rename"] } });
+    if (rename) context.targets.add(target);
+    items.push({
+      sourcePath: file.path,
+      targetPath: rename ? target : null,
+      status: "pending",
+      reason,
+      details: { ...details, ...fill, actions },
+    });
   }
   return { items, unchanged };
 }
@@ -84,6 +121,7 @@ export async function planCleanup(operation, deadline) {
   const context = {
     root,
     lidarrRoots: configuredLidarrFolders(null),
+    albums: new Map(),
     targets: new Set(db.prepare(
       `SELECT target_path FROM library_file_operation_items
        WHERE operation_id = ? AND status = 'pending' AND target_path IS NOT NULL`,
@@ -145,6 +183,7 @@ function commitRename(from, to) {
 export function createCleanupContext() {
   let guard = null;
   return {
+    rescan: new Set(),
     deletionGuard() {
       return guard;
     },
@@ -161,8 +200,9 @@ export async function applyCleanupItem(operation, item, context) {
   const save = () => updateLibraryFileOperationItem(operation.id, item.position, { details });
   let current = path.resolve(item.sourcePath);
   if (details.results.rename === "done" && item.targetPath) current = item.targetPath;
+  const expected = details.results.tags === "done" ? details.tagged : details;
   const matchesExpected = (fileStat) =>
-    Number(details.size) === fileStat.size && Number(details.mtimeMs) === fileStat.mtimeMs;
+    Number(expected.size) === fileStat.size && Number(expected.mtimeMs) === fileStat.mtimeMs;
   let stat = await fs.stat(current).catch(() => null);
   const placed = !stat && actions.includes("rename") && item.targetPath
     ? await fs.stat(item.targetPath).catch(() => null)
@@ -177,6 +217,26 @@ export async function applyCleanupItem(operation, item, context) {
   if (!stat) return { status: "failed", reason: "The file is gone.", details };
   if (!matchesExpected(stat)) {
     return { status: "skipped", reason: "The file changed while Aurral was checking it. Run Clean up Library again.", details };
+  }
+  if (actions.includes("tags") && details.results.tags !== "done") {
+    try {
+      await writeAudioTags(current, details.tags, { fillOnly: true });
+    } catch (error) {
+      details.results.tags = "failed";
+      return { status: "failed", reason: `Aurral could not write the tags: ${error?.message || error}`, details };
+    }
+    const tagged = await fs.stat(current);
+    details.tagged = { size: tagged.size, mtimeMs: tagged.mtimeMs };
+    details.results.tags = "done";
+    save();
+  }
+  if (actions.includes("tags") && details.results.reindex !== "done") {
+    await adoptLibraryFileIdentity(current).then(() => {
+      details.results.reindex = "done";
+      save();
+    }, () => {
+      context.rescan.add(current);
+    });
   }
   if (actions.includes("rename") && details.results.rename !== "done") {
     try {

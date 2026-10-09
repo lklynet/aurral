@@ -35,6 +35,7 @@ test("ingest a folder as monitored tracks, then clean up the Library", async ({ 
     await expect(page.getByText("2 music files found.")).toBeVisible({ timeout: 15_000 });
     await page.locator("#library-ingest-mode").selectOption("copy");
     await expect(page.locator("#library-ingest-monitor")).toHaveValue("tracks");
+    await expect(page.getByRole("switch", { name: "Fill in missing tags" })).toBeChecked();
     await page.getByRole("button", { name: "Ingest", exact: true }).click();
 
     await expect(page.getByText("Finished. Filed 2 files.")).toBeInViewport({ timeout: 30_000 });

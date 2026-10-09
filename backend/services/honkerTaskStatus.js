@@ -132,7 +132,7 @@ export const SYSTEM_TASK_LABELS = {
   },
   "identity-marker-migration": {
     label: "Track identity tag update",
-    description: "Moves Aurral's track identity marker from the comment tag to the grouping tag in downloaded files.",
+    description: "Moves Aurral's track identity marker from the comment or grouping tag to its own tag in downloaded files.",
   },
   "upgrade-readiness-check": {
     label: "Aurral 3.0 readiness check",

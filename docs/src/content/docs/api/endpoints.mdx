@@ -104,8 +104,8 @@ WebSocket connections.
 | `GET` | `/api/library/refresh/:jobId` | Read the status of a library scan |
 | `GET` | `/api/library/files` | Read the latest ingest or clean up operation. Admin only |
 | `POST` | `/api/library/files/ingest/check` | Check an ingest folder with `{ "sourcePath": "…" }`: music file count, whether Hardlink works, and any Lidarr root folder it is in |
-| `POST` | `/api/library/files/ingest` | Start an ingest with `{ "sourcePath": "…", "mode": "move" \| "copy" \| "hardlink", "monitor": "none" \| "tracks" \| "albums" }`. `monitor` defaults to `none`. Returns `409` while another operation runs |
-| `POST` | `/api/library/files/cleanup` | Start renaming Library files in the Downloads Folder to Aurral's names. Returns `409` while another operation runs |
+| `POST` | `/api/library/files/ingest` | Start an ingest with `{ "sourcePath": "…", "mode": "move" \| "copy" \| "hardlink", "monitor": "none" \| "tracks" \| "albums", "fillTags": true }`. `monitor` defaults to `none`, and `fillTags` to `false`. Returns `409` while another operation runs |
+| `POST` | `/api/library/files/cleanup` | Start renaming Library files in the Downloads Folder to Aurral's names and filling in their missing tags. Returns `409` while another operation runs |
 | `GET` | `/api/library/files/operations/:id` | Read an operation's status, progress, and counts |
 | `GET` | `/api/library/files/operations/:id/items` | Read an operation's files. Optional `status`, `offset`, and `limit` up to 200 |
 | `POST` | `/api/library/files/operations/:id/cancel` | Stop an ingest or clean up after the current file. Files already done stay done |

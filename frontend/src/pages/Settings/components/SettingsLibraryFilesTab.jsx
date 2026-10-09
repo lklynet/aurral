@@ -3,6 +3,7 @@ import { FolderInput, FolderSync } from "lucide-react";
 import DownloadFolderField from "../../../components/DownloadFolderField";
 import { DotLoader } from "../../../components/DotLoader";
 import LibraryFileOperation from "../../../components/LibraryFileOperation";
+import PillToggle from "../../../components/PillToggle";
 import {
   ACTIVE_LIBRARY_FILE_STATUSES,
   refreshLibraryFiles,
@@ -20,7 +21,7 @@ import { SettingsSelect } from "./SettingsField";
 const MODE_HELP = {
   move: "Moves each file into the Downloads Folder. Empty source folders are removed.",
   copy: "Copies each file. The source folder stays as it is, and the music takes twice the space.",
-  hardlink: "Links each file into the Downloads Folder without using more space. Upgrading a linked file later gives the Library its own copy.",
+  hardlink: "Links each file into the Downloads Folder without using more space. Filling in tags or upgrading a linked file gives the Library its own copy.",
 };
 
 const MONITOR_HELP = {
@@ -29,6 +30,8 @@ const MONITOR_HELP = {
   albums: "Each ingested track is upgraded, and Aurral downloads the tracks its album is missing.",
 };
 
+const FILL_TAGS_HELP = "Adds MusicBrainz IDs, and any missing title, album artist, track and disc numbers, year, and genre, to the Library's copy of files that Aurral matches to MusicBrainz with confidence. Tags a file already has never change.";
+
 const errorMessage = (error, fallback) =>
   error?.response?.data?.message || error?.message || fallback;
 
@@ -36,6 +39,7 @@ function IngestSection({ busy, operation, onChanged, showError }) {
   const [sourcePath, setSourcePath] = useState("");
   const [mode, setMode] = useState("copy");
   const [monitor, setMonitor] = useState("tracks");
+  const [fillTags, setFillTags] = useState(true);
   const [check, setCheck] = useState({ loading: false, result: null, error: "" });
   const [starting, setStarting] = useState(false);
   const requestRef = useRef(0);
@@ -72,7 +76,7 @@ function IngestSection({ busy, operation, onChanged, showError }) {
   const start = async () => {
     setStarting(true);
     try {
-      await startLibraryIngest(result.sourcePath, mode, monitor);
+      await startLibraryIngest(result.sourcePath, mode, { monitor, fillTags });
       await onChanged();
     } catch (error) {
       showError(errorMessage(error, "The ingest could not start. Nothing was changed."));
@@ -106,6 +110,14 @@ function IngestSection({ busy, operation, onChanged, showError }) {
           <option value="copy">Copy</option>
           <option value="hardlink" disabled={Boolean(hardlinkUnavailable)}>Hardlink</option>
         </SettingsSelect>
+      </SettingsArrFormGroup>
+      <SettingsArrFormGroup label="Fill in missing tags" help={FILL_TAGS_HELP}>
+        <PillToggle
+          className="settings-toggle"
+          checked={fillTags}
+          onChange={(event) => setFillTags(event.target.checked)}
+          aria-label="Fill in missing tags"
+        />
       </SettingsArrFormGroup>
       <SettingsArrFormGroup label="Monitor" labelFor="library-ingest-monitor" help={MONITOR_HELP[monitor]}>
         <SettingsSelect id="library-ingest-monitor" value={monitor} onChange={(event) => setMonitor(event.target.value)}>
@@ -175,8 +187,8 @@ export function SettingsLibraryFilesTab({ showError }) {
         <SettingsArrFieldSet legend="Clean up Library">
           <div className="arr-info">
             Renames Library files in the Downloads Folder to Aurral&apos;s names, <code>Artist/Album/07 - Title.flac</code>,
-            for music you added by hand. Playlists, favorites, and media servers follow the files. Lidarr&apos;s files
-            stay with Lidarr. Downloads already get these names.
+            and fills in the tags they are missing, for music you added by hand. Playlists, favorites, and media
+            servers follow the files. Lidarr&apos;s files stay with Lidarr. Downloads already get these names and tags.
           </div>
           <div className="settings-library-files__actions">
             <button

@@ -5,9 +5,9 @@ import { dbOps } from "../db/helpers/index.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { isPathInsideRoot, resolveDownloadRoot } from "./downloadPaths.js";
 import {
-  moveIdentityMarkerToGrouping,
-  parseAurralIdentityComment,
-  readCommentIdentity,
+  moveIdentityMarkerToOwnTag,
+  readAurralIdentity,
+  readLegacyAurralIdentity,
 } from "./downloadUtils.js";
 import {
   IDENTITY_MARKER_MIGRATION_SETTING,
@@ -36,12 +36,8 @@ export async function migrateIdentityMarkers() {
     try {
       const metadata = await parseFile(filePath, { skipCovers: true });
       result.checked += 1;
-      const commentIdentity = readCommentIdentity(metadata);
-      if (!commentIdentity) continue;
-      await moveIdentityMarkerToGrouping(filePath, {
-        ...commentIdentity,
-        ...(parseAurralIdentityComment(metadata.common.grouping) || {}),
-      });
+      if (!readLegacyAurralIdentity(metadata)) continue;
+      await moveIdentityMarkerToOwnTag(filePath, readAurralIdentity(metadata));
       result.moved += 1;
     } catch {
       result.failed += 1;

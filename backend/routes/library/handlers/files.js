@@ -55,6 +55,7 @@ export function registerFiles(router) {
         sourcePath: req.body?.sourcePath,
         mode: req.body?.mode,
         monitor: req.body?.monitor,
+        fillTags: req.body?.fillTags === true,
       });
       res.status(202).json({ operation: describeLibraryFileOperation(operation) });
     } catch (error) {

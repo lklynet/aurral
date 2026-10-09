@@ -38,7 +38,7 @@ Aurral then applies the quality profile. It rejects the file if its measured M4A
 
 After the checks, Aurral writes the title, artist, album, album artist, year, and track number into the file. Tag-based servers such as Navidrome can then sort the track correctly.
 
-Aurral stores its own identity marker in the grouping tag, not in the comment tag, so Navidrome does not show it as the track description. Older versions wrote the marker into the comment tag of every download. After an update, Aurral moves it to the grouping tag once, in the files that it downloaded. It changes only the comment and grouping tags, and only when the comment holds the marker.
+Aurral stores its own identity marker in an `AURRAL_IDS` tag, so Navidrome does not show it as the track description and your grouping tag stays yours. Older versions wrote the marker into the comment or grouping tag. After an update, Aurral moves it to its own tag once, in the files that it downloaded. It changes the comment or grouping tag only when it holds the marker.
 
 If the file matches the requested track except for its length or part of its title, Aurral holds it in **Activity > Queue** while it tries the other results and sources. If none of them verifies, you can preview, approve, or deny it.
 

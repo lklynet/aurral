@@ -235,7 +235,7 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       const result = await migrateIdentityMarkers();
       if (result.moved > 0 || result.failed > 0) {
         console.log(
-          `[Library] Moved the identity marker to the grouping tag in ${result.moved} file(s); ${result.failed} file(s) failed`,
+          `[Library] Moved the identity marker to its own tag in ${result.moved} file(s); ${result.failed} file(s) failed`,
         );
       }
       await refreshUpgradeReadiness();
