@@ -1,5 +1,6 @@
 import { UUID_REGEX } from "../../../../lib/uuid.js";
 import { dbOps } from "../../../db/helpers/index.js";
+import { noCache } from "../../../middleware/cache.js";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import { fetchReleaseGroupCoverUrl } from "../../../services/releaseGroupCoverService.js";
 import { libraryManager } from "../../../services/libraryManager.js";
@@ -12,7 +13,9 @@ import {
 import {
   getLibraryArtistMbids,
   getLibraryArtistProjection,
+  getRecentlyAddedLibraryArtists,
 } from "../../../services/libraryQueryService.js";
+import { resolveAvailableOnly } from "./libraryIndex.js";
 
 const ARTIST_LOOKUP_BATCH_MAX = 100;
 
@@ -333,18 +336,16 @@ export function registerMisc(router) {
     }
   });
 
-  router.get("/recent", async (req, res) => {
+  router.get("/recent", noCache, (req, res) => {
     try {
-      const artists = await libraryManager.getAllArtists();
-      const recent = [...artists]
-        .sort((a, b) => new Date(b.addedAt || b.added) - new Date(a.addedAt || a.added))
-        .slice(0, 20)
-        .map((artist) => ({
-          ...artist,
-          foreignArtistId: artist.foreignArtistId || artist.mbid,
-          added: artist.addedAt || artist.added,
-        }));
-      res.set("Cache-Control", "public, max-age=300");
+      const recent = getRecentlyAddedLibraryArtists({
+        availableOnly: resolveAvailableOnly(undefined, dbOps.getSettings()),
+        limit: 20,
+      }).map((artist) => ({
+        ...artist,
+        foreignArtistId: artist.foreignArtistId || artist.mbid,
+        added: artist.addedAt,
+      }));
       res.json(recent);
     } catch (error) {
       res.status(500).json({

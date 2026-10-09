@@ -38,6 +38,18 @@ async function getRecent() {
   return body;
 }
 
+function addFile(artist, name, createdAt, { available = true } = {}) {
+  const album = store.upsertLibraryAlbum({
+    identityKey: `album:${artist.id}:${name}`, artistId: artist.id, title: name,
+  });
+  const track = store.upsertLibraryTrack({ identityKey: `track:${artist.id}:${name}`, title: name });
+  store.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  const file = store.upsertLibraryMediaFile({
+    trackId: track.id, albumId: album.id, source: "aurral", available, path: `/music/${artist.id}/${name}.flac`,
+  });
+  db.prepare("UPDATE library_media_files SET created_at = ? WHERE id = ?").run(Date.parse(createdAt), file.id);
+}
+
 test.beforeEach(() => {
   resetDatabase(db);
   management.invalidateLibraryManagementCache();
@@ -58,6 +70,8 @@ test("recent artists combines both owners with artwork and library identities wh
     identityKey: "lidarr-artist:123@deezer", name: "Lidarr Artist",
     metadata: { id: 12, foreignArtistId: "123@deezer", images: lidarrImages, added: "2026-09-28T12:00:00Z", librarySource: "lidarr" },
   });
+  addFile(aurral, "Aurral Album", "2026-10-02T12:00:00Z");
+  addFile(lidarr, "Lidarr Album", "2026-10-01T12:00:00Z");
   management.setLibraryManagement({ entityKind: "artist", entityId: aurral.id, managedBy: "aurral" });
   management.setLibraryManagement({ entityKind: "artist", entityId: lidarr.id, managedBy: "lidarr" });
 
@@ -72,24 +86,60 @@ test("recent artists combines both owners with artwork and library identities wh
   assert.deepEqual(recent[1].images, lidarrImages);
 });
 
-test("recent artists selects the newest twenty across the library and includes artists without albums or MBIDs", async () => {
+test("recent artists follow the newest library file instead of the Lidarr added date", async (t) => {
+  const oldLidarr = store.upsertLibraryArtist({
+    identityKey: "name:old-lidarr", name: "Old Lidarr Artist",
+    metadata: { added: "2020-01-01T12:00:00Z", librarySource: "lidarr" },
+  });
+  const recentLidarr = store.upsertLibraryArtist({
+    identityKey: "name:recent-lidarr", name: "Recent Lidarr Artist",
+    metadata: { added: "2026-10-05T12:00:00Z", librarySource: "lidarr" },
+  });
+  const withoutFiles = store.upsertLibraryArtist({
+    identityKey: "name:without-files", name: "Artist Without Files",
+    metadata: { added: "2026-10-06T12:00:00Z" },
+  });
+  store.upsertLibraryAlbum({ identityKey: "album:without-files", artistId: withoutFiles.id, title: "Wanted" });
+  const missing = store.upsertLibraryArtist({ identityKey: "name:missing", name: "Missing Files Artist" });
+  addFile(oldLidarr, "First Album", "2026-09-01T12:00:00Z");
+  addFile(recentLidarr, "Only Album", "2026-09-15T12:00:00Z");
+  addFile(oldLidarr, "New Album", "2026-10-07T12:00:00Z");
+  addFile(missing, "Gone", "2026-10-08T12:00:00Z", { available: false });
+
+  t.mock.method(lidarrClient, "isConfigured", () => false);
+  const recent = await getRecent();
+  assert.deepEqual(recent.map((artist) => artist.artistName),
+    ["Missing Files Artist", "Old Lidarr Artist", "Recent Lidarr Artist"]);
+  assert.deepEqual(recent.map((artist) => artist.added),
+    ["2026-10-08T12:00:00.000Z", "2026-10-07T12:00:00.000Z", "2026-09-15T12:00:00.000Z"]);
+
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  assert.deepEqual((await getRecent()).map((artist) => artist.artistName),
+    ["Old Lidarr Artist", "Recent Lidarr Artist"]);
+});
+
+test("recent artists returns the twenty with the newest files, including artists without MBIDs", async () => {
   for (let index = 1; index <= 25; index++) {
-    store.upsertLibraryArtist({
+    const artist = store.upsertLibraryArtist({
       identityKey: `name:artist-${index}`,
       name: `Artist ${String(26 - index).padStart(2, "0")}`,
-      metadata: { added: `2026-09-${String(index).padStart(2, "0")}T12:00:00Z` },
     });
+    addFile(artist, "Album", `2026-09-${String(index).padStart(2, "0")}T12:00:00Z`);
   }
   const recent = await getRecent();
   assert.equal(recent.length, 20);
   assert.deepEqual(recent.map((artist) => artist.artistName),
     Array.from({ length: 20 }, (_, index) => `Artist ${String(index + 1).padStart(2, "0")}`));
   assert.ok(recent.every((artist) => artist.mbid === null && artist.canonicalId));
-  const artistId = recent[0].canonicalId;
+});
+
+test("library pages resolve artists without albums or MBIDs", () => {
+  const artist = store.upsertLibraryArtist({ identityKey: "name:no-albums", name: "No Albums" });
+  const artistId = String(artist.id);
   for (const kind of ["albums", "tracks"]) {
     const page = getLibraryPage({ kind, artistId, availableOnly: true });
     assert.deepEqual(page.items, []);
-    assert.equal(page.artists[0]?.name, recent[0].artistName);
+    assert.equal(page.artists[0]?.name, "No Albums");
     assert.equal(page.artists[0]?.mbid, null);
   }
   db.prepare("DELETE FROM library_artists WHERE id = ?").run(artistId);
@@ -116,10 +166,11 @@ test("file scans retain artist identity, artwork and added date while updating f
       } }),
     });
     assert.equal(scan.filesIndexed, 1);
+    const indexedAt = db.prepare("SELECT created_at FROM library_media_files").get().created_at;
     const [recent] = await getRecent();
     assert.equal(recent.canonicalId, String(artist.id));
     assert.equal(recent.mbid, mbid);
-    assert.equal(recent.added, added);
+    assert.equal(recent.added, new Date(indexedAt).toISOString());
     assert.deepEqual(recent.images, images);
     const stored = JSON.parse(db.prepare("SELECT metadata_json FROM library_artists WHERE id = ?").get(artist.id).metadata_json);
     assert.equal(stored.tags.title, title);

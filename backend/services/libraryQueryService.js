@@ -405,6 +405,7 @@ function buildLibraryArtistProjectionQuery({
   pageSize = 100,
   offset = null,
   reference = null,
+  artistIds = null,
 } = {}) {
   const normalizedPage = Math.max(1, Number.parseInt(page, 10) || 1);
   const normalizedPageSize = Math.min(
@@ -435,9 +436,14 @@ function buildLibraryArtistProjectionQuery({
       ...references,
     );
   }
+  const ids = Array.isArray(artistIds) ? artistIds : null;
+  if (ids) {
+    where.push(`artist.id IN (${ids.map(() => "?").join(",") || "NULL"})`);
+    parameters.push(...ids);
+  }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const limit = references.length ? "" : "LIMIT ? OFFSET ?";
-  if (!references.length) {
+  const limit = references.length || ids ? "" : "LIMIT ? OFFSET ?";
+  if (!references.length && !ids) {
     parameters.push(normalizedPageSize, normalizedOffset);
   }
   return {
@@ -499,6 +505,36 @@ export function getLibraryArtistProjection(options = {}) {
   const query = buildLibraryArtistProjectionQuery(options);
   const rows = db.prepare(query.sql).all(...query.parameters);
   return rows.map(libraryArtistProjection);
+}
+
+export function getRecentlyAddedLibraryArtists({ availableOnly = false, limit = 20 } = {}) {
+  const rows = db.prepare(
+    `SELECT id, added_at
+     FROM (
+       SELECT artist.id, (
+         SELECT MAX(media.created_at)
+         FROM library_albums AS album
+         JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
+         JOIN library_media_files AS media INDEXED BY idx_library_media_files_track_album_source_available_created
+           ON media.track_id = album_track.track_id
+         WHERE album.artist_id = artist.id
+           AND ${albumMediaCondition("media", "album_track")}${recentMediaFilter(null, availableOnly, "media")}
+       ) AS added_at
+       FROM library_artists AS artist
+     )
+     WHERE added_at IS NOT NULL
+     ORDER BY added_at DESC, id DESC
+     LIMIT ?`,
+  ).all(limit);
+  const addedAtById = new Map(rows.map((row) => [String(row.id), new Date(row.added_at).toISOString()]));
+  const artistsById = new Map(
+    getLibraryArtistProjection({ artistIds: rows.map((row) => row.id) })
+      .map((artist) => [artist.id, artist]),
+  );
+  return rows
+    .map((row) => artistsById.get(String(row.id)))
+    .filter(Boolean)
+    .map((artist) => ({ ...artist, addedAt: addedAtById.get(artist.id) }));
 }
 
 export function getLibraryArtistProjectionQueryPlan(options = {}) {
