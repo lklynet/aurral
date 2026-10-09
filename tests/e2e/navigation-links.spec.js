@@ -88,3 +88,17 @@ test("a plain click on a card opens the playlist in place", async ({ page }) => 
   await page.goBack();
   await expect(page).toHaveURL(/\/$/);
 });
+
+test("hovering a card prefetches its page and the click reuses it", async ({ page }) => {
+  const requests = await fixture(page);
+  await page.goto("/");
+  const playlistLink = page.locator("main").getByRole("link", { name: `Open ${playlist.name}`, exact: true });
+  await expect(playlistLink).toBeVisible();
+  const detailRequests = () => requests.filter((path) => path === `/discover/editorial/${playlist.id}`).length;
+
+  await playlistLink.hover();
+  await expect.poll(detailRequests).toBe(1);
+  await playlistLink.click();
+  await expect(page.getByRole("heading", { name: playlist.name })).toBeVisible();
+  expect(detailRequests()).toBe(1);
+});

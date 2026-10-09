@@ -60,11 +60,9 @@ import {
   deleteAurralAlbumFromLibrary,
   deleteLidarrAlbumFromLibrary,
   deleteTrackFromLibrary,
-  fetchLibraryPage,
   getActiveLibraryRefresh,
   getLibraryPage,
   getDownloadStatus,
-  getLibraryFavorites,
   getLibraryRefreshStatus,
   getRequests,
   downloadTrackToLibrary,
@@ -84,12 +82,10 @@ import { mergeAlbumMetadataTracks } from "../utils/libraryTrackHydration.js";
 import {
   EMPTY_LIBRARY,
   favoriteId,
-  favoriteLibraryFromResponse,
   firstAvailableFile,
   getAlbumCoverId,
   getCachedAlbumTracks,
   mergeAlbumTrackPageIntoLibrary,
-  normalizeLibraryPages,
 } from "../utils/libraryPageData.js";
 import {
   aurralAlbumStatusKey,
@@ -110,8 +106,14 @@ import { useArtistMonitoring } from "../components/ArtistMonitoringButtons";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { useQueueTrackActions } from "../hooks/useQueueTrackActions";
-import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
+import { LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
+import {
+  LIBRARY_PAGE_SIZE,
+  libraryTabForSection,
+  libraryViewQueryOptions,
+  resolveLibrarySection,
+} from "./libraryViewQuery.js";
 import {
   TrackPlaylistRemoveSubmenu,
   TrackPlaylistSubmenu,
@@ -129,7 +131,7 @@ import { useResponsiveReleaseLimit } from "./ArtistDetails/hooks/useResponsiveRe
 import { queryClient, queryKeys } from "../queryClient.js";
 import Tooltip from "../components/Tooltip";
 
-const LIBRARY_VIEW_IDS = new Set(LIBRARY_VIEWS.map((view) => view.id));
+const pageSize = LIBRARY_PAGE_SIZE;
 
 const text = (value) => String(value || "").trim();
 
@@ -159,24 +161,6 @@ const hasAurralTrackFile = (track) =>
 
 const firstAvailableAurralFile = (track) =>
   (track?.files || []).find((file) => file.source === "aurral" && file.available) || null;
-
-const favoriteIdsFromPages = (pages) => new Set(
-  ["artists", "albums", "tracks"].flatMap((kind) =>
-    pages
-      .flatMap((page) => (Array.isArray(page?.[kind]) ? page[kind] : []))
-      .filter((entity) => entity.userFavorite)
-      .map((entity) => favoriteId(
-        kind === "artists" ? "artist" : kind === "albums" ? "album" : "song",
-        entity,
-      )),
-  ),
-);
-
-const favoriteIdsFromFavorites = (favorites) => new Set(
-  ["artist", "album", "song"].flatMap((kind) =>
-    (Array.isArray(favorites?.[kind]) ? favorites[kind] : []).map((entry) => entry.id),
-  ),
-);
 
 const trackDurationMs = (track) => {
   const fileDurationMs = (track?.files || []).find((file) => Number(file?.durationMs) > 0)
@@ -395,8 +379,6 @@ function LibraryPage() {
 
   useWebSocketChannel("library", handleLibraryScanMessage);
 
-  const pageSize = 100;
-
   useEffect(() => () => {
     refreshAttemptRef.current += 1;
   }, []);
@@ -506,9 +488,9 @@ function LibraryPage() {
     />
   );
 
-  const section = LIBRARY_VIEW_IDS.has(routeSection) ? routeSection : DEFAULT_LIBRARY_VIEW;
+  const section = resolveLibrarySection(routeSection);
   const isDetail = Boolean(routeAlbumId || routeArtistId);
-  const tab = section === "home" || section === "album-artists" ? "artists" : section;
+  const tab = libraryTabForSection(section);
   const selectedGenre = searchParams.get("genre") || "";
   const forcePreview = import.meta.env.DEV && searchParams.get("preview") === "1";
   const previewQuery = forcePreview ? "?preview=1" : "";
@@ -565,11 +547,10 @@ function LibraryPage() {
   const setPageIndex = (nextPage) =>
     updateViewParams({ page: nextPage > 1 ? nextPage : null });
 
-  const libraryQueryKey = useMemo(
-    () => queryKeys.libraryView({
+  const libraryQueryOptions = useMemo(
+    () => libraryViewQueryOptions({
       preview: forcePreview,
       section,
-      tab,
       albumId: routeAlbumId || null,
       artistId: routeArtistId || null,
       pageIndex,
@@ -588,100 +569,10 @@ function LibraryPage() {
       selectedGenre,
       sortDirection,
       sortMode,
-      tab,
     ],
   );
-  const libraryQuery = useQuery({
-    queryKey: libraryQueryKey,
-    enabled: !forcePreview,
-    staleTime: 15_000,
-    queryFn: async ({ signal }) => {
-      const nextData = isDetail
-        ? routeAlbumId
-          ? await fetchLibraryPage({
-              kind: "tracks",
-              albumId: routeAlbumId,
-              page: 1,
-              pageSize,
-              // An album detail view shows the full tracklist regardless of the
-              // library-wide availability setting; owned/missing is shown per row.
-              availableOnly: false,
-            }, { signal })
-          : await Promise.all([
-              fetchLibraryPage({
-                kind: "albums",
-                artistId: routeArtistId,
-                page: 1,
-                pageSize,
-                availableOnly: true,
-              }, { signal }),
-              fetchLibraryPage({
-                kind: "tracks",
-                artistId: routeArtistId,
-                page: 1,
-                pageSize,
-                availableOnly: true,
-              }, { signal }),
-            ])
-        : section === "favorites"
-          ? await getLibraryFavorites({ signal })
-          : section === "home"
-            ? await Promise.all([
-                fetchLibraryPage({
-                  kind: "albums",
-                  page: 1,
-                  pageSize,
-                  sort: "newest",
-                  // "Recently added" defers to the Lidarr "available only"
-                  // setting (omitted param) like the Albums/Artists tabs.
-                }, { signal }),
-                fetchLibraryPage({
-                  kind: "tracks",
-                  page: 1,
-                  pageSize: 12,
-                  sort: "newest",
-                  availableOnly: true,
-                }, { signal }),
-              ])
-            : await fetchLibraryPage({
-                kind: tab,
-                page: pageIndex,
-                pageSize,
-                query: normalizedQuery,
-                genre: selectedGenre,
-                sort: sortMode,
-                direction: sortDirection,
-                // Albums/artists defer to the Lidarr "available only" setting
-                // (omitted param); tracks always filter to playable files.
-                availableOnly: tab === "tracks" ? true : undefined,
-              }, { signal });
-      const pageResults = section === "favorites"
-        ? [nextData?.library || EMPTY_LIBRARY]
-        : Array.isArray(nextData) ? nextData : [nextData];
-      const normalizedLibrary = section === "favorites"
-        ? favoriteLibraryFromResponse(nextData)
-        : normalizeLibraryPages(pageResults);
-      const usePreview =
-        import.meta.env.DEV &&
-        pageResults.every((page) => Number(page?.total || 0) === 0) &&
-        !normalizedQuery &&
-        !selectedGenre &&
-        normalizedLibrary.artists.length === 0 &&
-        normalizedLibrary.albums.length === 0 &&
-        normalizedLibrary.tracks.length === 0;
-      return {
-        nextData,
-        pageResults,
-        isPreview: usePreview,
-        library: usePreview ? libraryPreviewData : normalizedLibrary,
-        favoriteIds: usePreview
-          ? new Set(libraryPreviewFavorites)
-          : section === "favorites"
-            ? favoriteIdsFromFavorites(nextData)
-            : favoriteIdsFromPages(pageResults),
-      };
-    },
-  });
+  const libraryQueryKey = libraryQueryOptions.queryKey;
+  const libraryQuery = useQuery(libraryQueryOptions);
 
   const queryData = libraryQuery.data;
   const isPreviewLibrary = forcePreview || queryData?.isPreview === true;

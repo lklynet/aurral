@@ -1,12 +1,9 @@
 import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Circle, CircleDot, Square, SquareCheck } from "lucide-react";
-import {
-  getPlaylistArtworkUrl,
-  getPlaylistJobs,
-  getPlaylistTrackStreamUrl,
-} from "../../utils/api/endpoints/playlists.js";
+import { getPlaylistArtworkUrl } from "../../utils/api/endpoints/playlists.js";
 import { queryClient, queryKeys } from "../../queryClient.js";
+import { playlistJobsQueryOptions } from "../../queryOptions.js";
 import {
   buildStaticTracklistPayload,
   downloadTracklistFile,
@@ -90,21 +87,9 @@ export const getFlowActivityMessage = ({ flow, status, stats, rerunning = false 
     rerunning,
   })?.message || null;
 
-const normalizePlaylistJobs = (jobs) =>
-  (Array.isArray(jobs) ? jobs : []).map((job) => ({
-    ...job,
-    albumName: job?.albumName || null,
-    reason: job?.reason || null,
-    streamUrl: job?.status === "done" && job?.id ? getPlaylistTrackStreamUrl(job.id) : null,
-  }));
-
 export function usePlaylistTracks(playlistId, { pollAvailability = false } = {}) {
-  const queryKey = queryKeys.playlistJobs(playlistId);
   const query = useQuery({
-    queryKey,
-    queryFn: ({ signal }) => getPlaylistJobs(playlistId, null, { signal }).then(normalizePlaylistJobs),
-    enabled: Boolean(playlistId),
-    staleTime: 15_000,
+    ...playlistJobsQueryOptions(playlistId),
     refetchInterval: (currentQuery) => {
       if (!pollAvailability) return false;
       return currentQuery.state.data?.some((track) =>

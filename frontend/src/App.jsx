@@ -19,6 +19,7 @@ import SpotifyReconnectNotice from "./components/SpotifyReconnectNotice";
 import { DotLoader } from "./components/DotLoader";
 import { useDiscoveryStatus } from "./hooks/useDiscoveryStatus";
 import { buildActivityPath, DEFAULT_ACTIVITY_VIEW } from "./navigation/activityNavConfig";
+import { routeModules } from "./navigation/routeModules.js";
 import { getBootstrapPollIntervalMs } from "./utils/requestScheduling.js";
 
 function LegacyHistoryRedirect() {
@@ -37,25 +38,25 @@ function ActivityRootRedirect() {
 const Login = lazy(() => import("./pages/Login"));
 const SsoComplete = lazy(() => import("./pages/SsoComplete"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
-const SearchResultsPage = lazy(() => import("./pages/SearchResultsPage"));
-const DiscoverPage = lazy(() => import("./pages/DiscoverPage"));
-const ShowsPage = lazy(() => import("./pages/ShowsPage"));
-const LibraryPage = lazy(() => import("./pages/LibraryPage"));
-const SettingsPage = lazy(() => import("./pages/Settings/SettingsPage"));
-const ProfilePage = lazy(() => import("./pages/ProfilePage"));
-const BlocklistPage = lazy(() => import("./pages/BlocklistPage"));
-const ArtistDetailsPage = lazy(() => import("./pages/ArtistDetails/ArtistDetailsPage"));
-const ArtistReleaseListPage = lazy(() => import("./pages/ArtistDetails/ArtistReleaseListPage"));
-const ReleasePage = lazy(() => import("./pages/ArtistDetails/ReleasePage"));
-const ActivityPage = lazy(() => import("./pages/ActivityPage"));
-const PlaylistsPage = lazy(() => import("./pages/playlists/PlaylistsPage"));
-const PlaylistDetailPage = lazy(() => import("./pages/playlists/PlaylistDetailPage"));
-const FlowsPage = lazy(() => import("./pages/playlists/FlowsPage"));
-const FlowDetailPage = lazy(() => import("./pages/playlists/FlowDetailPage"));
-const PlaylistRedirect = lazy(() => import("./pages/playlists/PlaylistRedirect"));
-const DiscoverPlaylistsPage = lazy(() => import("./pages/DiscoverPlaylistsPage"));
-const EditorialPlaylistDetailPage = lazy(() => import("./pages/EditorialPlaylistDetailPage"));
-const NewsPage = lazy(() => import("./pages/NewsPage"));
+const SearchResultsPage = lazy(routeModules.search);
+const DiscoverPage = lazy(routeModules.discover);
+const ShowsPage = lazy(routeModules.shows);
+const LibraryPage = lazy(routeModules.library);
+const SettingsPage = lazy(routeModules.settings);
+const ProfilePage = lazy(routeModules.profile);
+const BlocklistPage = lazy(routeModules.blocklist);
+const ArtistDetailsPage = lazy(routeModules.artist);
+const ArtistReleaseListPage = lazy(routeModules.artistReleases);
+const ReleasePage = lazy(routeModules.release);
+const ActivityPage = lazy(routeModules.activity);
+const PlaylistsPage = lazy(routeModules.playlists);
+const PlaylistDetailPage = lazy(routeModules.playlist);
+const FlowsPage = lazy(routeModules.flows);
+const FlowDetailPage = lazy(routeModules.flow);
+const PlaylistRedirect = lazy(routeModules.playlistRedirect);
+const DiscoverPlaylistsPage = lazy(routeModules.discoverPlaylists);
+const EditorialPlaylistDetailPage = lazy(routeModules.editorialPlaylist);
+const NewsPage = lazy(routeModules.news);
 
 const PageLoader = () => (
   <div className="app-loading">

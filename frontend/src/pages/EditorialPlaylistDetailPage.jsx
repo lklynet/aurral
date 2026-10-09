@@ -4,14 +4,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Check, ListMusic, Plus } from "lucide-react";
 import {
   addEditorialPlaylistToLibrary,
-  getEditorialPlaylist,
   resolveEditorialTrackLinks,
 } from "../utils/api/endpoints/discovery.js";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { queryClient, queryKeys } from "../queryClient.js";
+import { queryClient } from "../queryClient.js";
+import { editorialPlaylistQueryOptions } from "../queryOptions.js";
 import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../components/CollectionHeader";
 import TooltipButton from "../components/TooltipButton";
 import Tooltip from "../components/Tooltip";
@@ -45,13 +45,10 @@ export default function EditorialPlaylistDetailPage() {
   const { showSuccess, showError } = useToast();
   const [adding, setAdding] = useState(false);
   const [failedArtwork, setFailedArtwork] = useState(false);
-  const queryKey = queryKeys.editorialPlaylist(user?.id, playlistId);
+  const playlistQueryOptions = editorialPlaylistQueryOptions(user?.id, playlistId);
+  const { queryKey } = playlistQueryOptions;
 
-  const { data: playlist, error, isPending, refetch } = useQuery({
-    queryKey,
-    queryFn: ({ signal }) => getEditorialPlaylist(playlistId, { signal }),
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: playlist, error, isPending, refetch } = useQuery(playlistQueryOptions);
   useDocumentTitle(playlist?.name || "Playlist");
 
   const tracks = useMemo(
