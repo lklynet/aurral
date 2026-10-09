@@ -161,10 +161,6 @@ function GlobalPlayerBar() {
       return undefined;
     }
     const tick = () => setPosition(getPosition());
-    if (!isPlaying) {
-      tick();
-      return undefined;
-    }
     tick();
     const interval = window.setInterval(tick, 250);
     return () => window.clearInterval(interval);

@@ -19,6 +19,11 @@ import { AudioQueueContext } from "./audioQueueContext";
 import { recordPlayEvent } from "../utils/api/endpoints/auth";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists";
 import { createAudioEngine } from "../utils/audioEngine";
+import {
+  MEDIA_SESSION_SEEK_SECONDS,
+  mediaSessionArtwork,
+  mediaSessionPosition,
+} from "../utils/mediaSession";
 
 const SHARED_VOLUME_KEY = "aurral.preview.volume";
 const SHARED_MUTED_KEY = "aurral.preview.muted";
@@ -283,15 +288,42 @@ export function AudioQueueProvider({ children }) {
     dispatch({ type: "NEXT" });
   }, []);
 
+  const updatePositionState = useCallback(
+    (position = engine.getPosition()) => {
+      const mediaSession = navigator.mediaSession;
+      if (typeof mediaSession?.setPositionState !== "function") return;
+      const positionState =
+        stateRef.current.currentIndex >= 0
+          ? mediaSessionPosition(engine.getSnapshot().duration, position)
+          : null;
+      try {
+        if (positionState) mediaSession.setPositionState(positionState);
+        else mediaSession.setPositionState();
+      } catch {}
+    },
+    [engine],
+  );
+
+  const seek = useCallback(
+    (position) => {
+      const { duration } = engine.getSnapshot();
+      if (!Number.isFinite(position)) return;
+      const target = Math.max(0, duration > 0 ? Math.min(position, duration) : position);
+      engine.seek(target);
+      updatePositionState(target);
+    },
+    [engine, updatePositionState],
+  );
+
   const playPrevious = useCallback(() => {
     const s = stateRef.current;
     if (s.queue.length === 0) return;
     if (shouldRestartTrack(s, engine.getPosition())) {
-      engine.seek(0);
+      seek(0);
       return;
     }
     dispatch({ type: "PREVIOUS" });
-  }, [engine]);
+  }, [engine, seek]);
 
   const skipTo = useCallback((playbackIndex) => {
     if (playbackIndex === stateRef.current.currentIndex) return;
@@ -341,34 +373,50 @@ export function AudioQueueProvider({ children }) {
           title: currentTrack.title || "",
           artist: currentTrack.artist || "",
           album: currentTrack.album || "",
-          artwork: currentTrack.artwork
-            ? [{ src: new URL(currentTrack.artwork, window.location.href).href }]
-            : [],
+          artwork: mediaSessionArtwork(currentTrack.artwork, window.location.href),
         })
       : null;
   }, [currentTrack]);
 
+  const isPlayingOrStarting = playback.isPlaying || playback.isStarting;
+
   useEffect(() => {
     const mediaSession = navigator.mediaSession;
     if (!mediaSession) return;
-    mediaSession.playbackState = !isActive ? "none" : playback.isPlaying ? "playing" : "paused";
-  }, [isActive, playback.isPlaying]);
+    mediaSession.playbackState = !isActive ? "none" : isPlayingOrStarting ? "playing" : "paused";
+  }, [isActive, isPlayingOrStarting]);
+
+  useEffect(() => {
+    updatePositionState();
+  }, [
+    currentTrack,
+    isActive,
+    playback.duration,
+    playback.isLoading,
+    playback.isPlaying,
+    updatePositionState,
+  ]);
 
   useEffect(() => {
     const mediaSession = navigator.mediaSession;
     if (!mediaSession || !isActive) return undefined;
+    const isRunning = () => {
+      const snapshot = engine.getSnapshot();
+      return snapshot.isPlaying || snapshot.isStarting;
+    };
+    const seekBy = (offset) => seek(engine.getPosition() + offset);
     const handlers = {
       play: () => {
-        if (!engine.getSnapshot().isPlaying) togglePlayPause();
+        if (!isRunning()) togglePlayPause();
       },
       pause: () => {
-        if (engine.getSnapshot().isPlaying) togglePlayPause();
+        if (isRunning()) togglePlayPause();
       },
       nexttrack: playNext,
       previoustrack: playPrevious,
-      seekto: (details) => {
-        if (Number.isFinite(details?.seekTime)) engine.seek(details.seekTime);
-      },
+      seekto: (details) => seek(details?.seekTime),
+      seekforward: (details) => seekBy(details?.seekOffset || MEDIA_SESSION_SEEK_SECONDS),
+      seekbackward: (details) => seekBy(-(details?.seekOffset || MEDIA_SESSION_SEEK_SECONDS)),
       stop: clearQueue,
     };
     for (const [action, handler] of Object.entries(handlers)) {
@@ -383,7 +431,7 @@ export function AudioQueueProvider({ children }) {
         } catch {}
       }
     };
-  }, [clearQueue, engine, isActive, playNext, playPrevious, togglePlayPause]);
+  }, [clearQueue, engine, isActive, playNext, playPrevious, seek, togglePlayPause]);
 
   const matchesSource = useCallback(
     (candidate) => {
@@ -409,7 +457,7 @@ export function AudioQueueProvider({ children }) {
       isStarting: playback.isStarting,
       duration: playback.duration,
       getPosition: engine.getPosition,
-      seek: engine.seek,
+      seek,
       volume,
       muted,
       setVolume,
@@ -445,6 +493,7 @@ export function AudioQueueProvider({ children }) {
       playback.isLoading,
       playback.isPlaying,
       playback.isStarting,
+      seek,
       muted,
       setMuted,
       setVolume,

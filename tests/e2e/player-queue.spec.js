@@ -309,3 +309,46 @@ test("unmuting after a reload restores the volume from before mute", async ({ pa
   await page.getByRole("button", { name: "Unmute" }).click();
   await expect(volume).toHaveValue("40");
 });
+
+test("lock-screen controls seek, follow play and pause, and clear with the queue", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__mediaSession = { handlers: {}, positions: [] };
+    const session = navigator.mediaSession;
+    const setActionHandler = session.setActionHandler.bind(session);
+    session.setActionHandler = (action, handler) => {
+      window.__mediaSession.handlers[action] = handler;
+      setActionHandler(action, handler);
+    };
+    session.setPositionState = (state) => window.__mediaSession.positions.push(state ?? null);
+  });
+  await page.reload();
+  const player = playerControls(page);
+  await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
+  await waitUntilPlaying(player);
+  await player.playPause.click();
+  await expect(player.playPause).toHaveAccessibleName("Play");
+
+  const lastPosition = () => page.evaluate(() => window.__mediaSession.positions.at(-1));
+  const runAction = (action, details = {}) =>
+    page.evaluate(([name, value]) => window.__mediaSession.handlers[name]?.({ action: name, ...value }), [action, details]);
+  await expect.poll(lastPosition).toMatchObject({ duration: 60, playbackRate: 1 });
+  expect(await page.evaluate(() => navigator.mediaSession.playbackState)).toBe("paused");
+
+  await runAction("seekto", { seekTime: 20 });
+  await expect(player.seek).toHaveAttribute("aria-valuetext", "0:20 of 1:00");
+  await runAction("seekforward");
+  await expect(player.seek).toHaveAttribute("aria-valuetext", "0:30 of 1:00");
+  expect((await lastPosition()).position).toBe(30);
+  await runAction("seekbackward", { seekOffset: 5 });
+  await expect(player.seek).toHaveAttribute("aria-valuetext", "0:25 of 1:00");
+  expect((await lastPosition()).position).toBe(25);
+
+  await runAction("play");
+  await waitUntilPlaying(player);
+  await expect.poll(() => page.evaluate(() => navigator.mediaSession.playbackState)).toBe("playing");
+  expect(await page.evaluate(() => navigator.mediaSession.metadata?.title)).toBe("Alpha");
+
+  await page.getByRole("button", { name: "Close player" }).click();
+  await expect.poll(lastPosition).toBeNull();
+  expect(await page.evaluate(() => navigator.mediaSession.playbackState)).toBe("none");
+});
