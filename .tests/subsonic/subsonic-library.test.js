@@ -19,6 +19,7 @@ const {
   getSong,
   getAlbum,
   getAlbumList,
+  getGenres,
   getMusicDirectory,
   getTopSongs,
   idFor,
@@ -488,4 +489,35 @@ test("reports known file bitrates in kbps and omits unknown ones", () => {
   );
   assert.equal(Object.hasOwn(songs[2], "bitRate"), false);
   assert.equal(Object.hasOwn(songs[3], "bitRate"), false);
+});
+
+test("splits semicolon genre tags into separate Subsonic genres", () => {
+  const artist = upsertLibraryArtist({ identityKey: "split-genre:artist", name: "Split Genre Artist" });
+  const album = upsertLibraryAlbum({
+    identityKey: "split-genre:album",
+    artistId: artist.id,
+    title: "Split Genre Album",
+    albumArtist: artist.name,
+    metadata: { genre: "Metalcore;Melodic Metalcore; Rock;;Rock" },
+  });
+  const track = upsertLibraryTrack({
+    identityKey: "split-genre:track",
+    title: "Split Genre Song",
+    artistName: artist.name,
+    metadata: { genres: ["Alt/Indie", "Folk, World, & Country"] },
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  upsertLibraryMediaFile({ trackId: track.id, source: "lidarr", path: "/test/split-genre.flac", format: "flac", available: true });
+
+  const result = getAlbum(idFor("album", "split-genre:album"));
+  const expected = ["Metalcore", "Melodic Metalcore", "Rock", "Alt/Indie", "Folk, World, & Country"];
+  assert.equal(result.genre, "Metalcore");
+  assert.deepEqual(result.genres, expected.map((name) => ({ name })));
+  assert.equal(result.song[0].genre, "Metalcore");
+  assert.deepEqual(result.song[0].genres, expected.map((name) => ({ name })));
+  assert.deepEqual(
+    getGenres().filter((genre) => expected.includes(genre.value) || genre.value.includes(";")),
+    [...expected].sort((left, right) => left.localeCompare(right))
+      .map((value) => ({ value, albumCount: 1, songCount: 1 })),
+  );
 });

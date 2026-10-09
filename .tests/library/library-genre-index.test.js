@@ -94,9 +94,43 @@ test("startup backfills existing genres, repairs missed updates, and leaves libr
   query.invalidateLibraryQueryCache({ persistedGenres: false });
   assert.equal(read("classical"), 0);
   assert.equal(read("blues"), 1);
+  db.prepare("UPDATE library_tracks SET metadata_json = ? WHERE id = ?").run(JSON.stringify({ genre: "Blues; Soul" }), track.id);
+  db.prepare("DELETE FROM library_entity_genres WHERE entity_id = ?").run(track.id);
+  db.prepare("INSERT INTO library_entity_genres (entity_kind, entity_id, name) VALUES ('tracks', ?, 'Blues; Soul')").run(track.id);
+  db.prepare("UPDATE settings SET value = '2' WHERE key = 'libraryGenreIndexVersion'").run();
+  initializeLibraryGenreIndex(db);
+  query.invalidateLibraryQueryCache({ persistedGenres: false });
+  assert.deepEqual(query.getLibraryPage({ kind: "genres" }).items.map((genre) => genre.name), ["Blues", "Soul"]);
   const changes = db.prepare("SELECT total_changes() AS total").get().total;
   initializeLibraryGenreIndex(db);
   assert.equal(db.prepare("SELECT total_changes() AS total").get().total, changes);
+});
+
+test("genre filters split semicolon tags and keep other separators intact", () => {
+  const artist = store.upsertLibraryArtist({ identityKey: "genre:split-artist", name: "Split Artist" });
+  const album = store.upsertLibraryAlbum({
+    identityKey: "genre:split-album", artistId: artist.id, title: "Split Album",
+    metadata: {
+      genre: "Metalcore;Melodic Metalcore; Rock",
+      common: { genre: ["Alt/Indie", "Folk, World, & Country;"] },
+    },
+  });
+  const track = store.upsertLibraryTrack({ identityKey: "genre:split-track", title: "Split Track" });
+  store.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  store.upsertLibraryMediaFile({ trackId: track.id, albumId: album.id, source: "aurral", path: "/genre/split.flac" });
+  const albums = (genre) => query.getLibraryPage({ kind: "albums", genre, pageSize: 100 }).items.map((item) => item.id);
+  const expected = ["Alt/Indie", "Folk, World, & Country", "Melodic Metalcore", "Metalcore", "Rock"];
+  for (const genre of expected) assert.deepEqual(albums(genre.toLowerCase()), [album.id]);
+  assert.deepEqual(albums("metalcore;melodic metalcore; rock"), []);
+  assert.deepEqual(albums("alt"), []);
+  assert.deepEqual(
+    query.getLibraryPage({ kind: "genres", pageSize: 100 }).items
+      .filter((genre) => expected.includes(genre.name) || /[;,/]/.test(genre.name))
+      .map((genre) => genre.name),
+    expected,
+  );
+  db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  query.invalidateLibraryQueryCache();
 });
 
 test("Subsonic genre counts deduplicate files and preserve inherited genres across albums", () => {

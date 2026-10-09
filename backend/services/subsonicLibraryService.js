@@ -97,7 +97,8 @@ const includesAurralMusicFolder = (options = {}) => {
 
 const genreNames = (value) =>
   (Array.isArray(value) ? value : [value])
-    .map((entry) => String(entry || "").trim())
+    .flatMap((entry) => String(entry || "").split(";"))
+    .map((entry) => entry.trim())
     .filter(Boolean);
 
 const entityGenres = (entity) => {
@@ -182,10 +183,9 @@ const toSong = (library, track, album = findAlbumForTrack(library, track)) => {
   if (bitRate) song.bitRate = bitRate;
   const releaseYear = year(album?.releaseDate);
   if (releaseYear != null) song.year = releaseYear;
-  const genre = (Array.isArray(genres) ? genres[0] : genres) || null;
-  if (genre) {
-    song.genre = genre;
-    song.genres = [{ name: genre }];
+  if (genres.length) {
+    song.genre = genres[0];
+    song.genres = genres.map((name) => ({ name }));
   }
   return song;
 };

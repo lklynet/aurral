@@ -1,12 +1,14 @@
-const GENRE_INDEX_VERSION = "2";
+const GENRE_INDEX_VERSION = "3";
 const entities = ["artists", "albums", "tracks"];
 
 function genreValues(kind, id, metadata, entityFrom = "") {
   const valid = `CASE WHEN json_valid(${metadata}) THEN ${metadata} ELSE '{}' END`;
+  const parts = "'[' || replace(json_quote(CAST(genre_value.value AS TEXT)), ';', '\",\"') || ']'";
   return ["$.genres", "$.genre", "$.common.genre", "$.tags.genre"].map((path) =>
-    `SELECT '${kind}', ${id}, TRIM(CAST(genre_value.value AS TEXT))
-     FROM ${entityFrom ? `${entityFrom}, ` : ""}json_each(${valid}, '${path}') AS genre_value
-     WHERE TRIM(CAST(genre_value.value AS TEXT)) <> ''`).join(" UNION ");
+    `SELECT '${kind}', ${id}, TRIM(genre_part.value)
+     FROM ${entityFrom ? `${entityFrom}, ` : ""}json_each(${valid}, '${path}') AS genre_value,
+       json_each(${parts}) AS genre_part
+     WHERE TRIM(genre_part.value) <> ''`).join(" UNION ");
 }
 
 export function initializeLibraryGenreIndex(db) {

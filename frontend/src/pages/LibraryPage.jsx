@@ -136,6 +136,7 @@ const metadataGenres = (entity) => {
   const metadata = entity?.metadata || {};
   return [metadata.genres, metadata.genre, metadata.common?.genre, metadata.tags?.genre]
     .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .flatMap((value) => String(value || "").split(";"))
     .map(text)
     .filter(Boolean)
     .filter((value, index, values) => values.indexOf(value) === index);
