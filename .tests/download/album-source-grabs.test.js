@@ -4,9 +4,29 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { basename, join } from "node:path";
 import { mkdir, rm, stat } from "node:fs/promises";
-import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
+import { parseFile } from "music-metadata";
+import { setupIsolatedBackend, cleanupIsolatedState, createMockHttpServer } from "../helpers/backendTestHarness.js";
 
 const execFileAsync = promisify(execFile);
+const releaseGroup = "11111111-1111-4111-8111-111111111111";
+const releaseId = "22222222-2222-4222-8222-222222222222";
+const sourceReleaseId = "33333333-3333-4333-8333-333333333333";
+const provider = await createMockHttpServer((request, response) => {
+  response.setHeader("content-type", "application/json");
+  if (request.url?.startsWith(`/album/${releaseGroup}`)) {
+    response.end(JSON.stringify({ id: releaseGroup, title: "Album", releases: [{
+      id: releaseId, title: "Album", tracks: [
+        { title: "Intro", trackposition: 1, durationms: 60000 },
+        { title: "First", trackposition: 2, durationms: 1000 },
+        { title: "Second", trackposition: 3, durationms: 1000 },
+      ],
+    }] }));
+    return;
+  }
+  response.statusCode = 404;
+  response.end("{}");
+});
+process.env.BRAINZMASH_BASE_URL = provider.url;
 const [state, { dbOps }, { downloadTracker }, { getDownloadClient },
   { processUsenetPipelinePayload }, { processPipelinePayload }, { downloadWorker },
   { buildSlskdRankingHistoryOptions }, { prowlarrClient }] = await setupIsolatedBackend(
@@ -24,17 +44,22 @@ const [state, { dbOps }, { downloadTracker }, { getDownloadClient },
 test.after(async () => {
   await downloadWorker.stopAndDrain();
   await cleanupIsolatedState(state);
+  await provider.close();
+  delete process.env.BRAINZMASH_BASE_URL;
 });
 
-async function makeAlbum(group) {
+async function makeAlbum(group, { positions = null, sourceRelease = null } = {}) {
   const folder = join(state.baseDir, group);
   await mkdir(folder, { recursive: true });
   const files = [];
   for (const [index, title] of ["First", "Second"].entries()) {
-    const filePath = join(folder, `0${index + 1} ${title}.flac`);
+    const filePath = join(folder, `0${positions?.[index] || index + 1} ${title}.flac`);
     await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
       "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac",
-      "-metadata", `title=${title}`, "-metadata", "artist=The Band", filePath]);
+      "-metadata", `title=${title}`, "-metadata", "artist=The Band",
+      ...(positions ? ["-metadata", `track=${positions[index]}`] : []),
+      ...(index === 0 && sourceRelease ? ["-metadata", `musicbrainz_albumid=${sourceRelease}`] : []),
+      filePath]);
     files.push(filePath);
   }
   const ids = ["First", "Second"].map((trackName, index) => downloadTracker.addJob({
@@ -50,6 +75,27 @@ async function makeAlbum(group) {
     destination: `The Band/${group}`, albumGrab: true, albumGroupJobIds: ids,
   } };
 }
+
+test("album grab writes its selected edition ID to every imported track", async (t) => {
+  const album = await makeAlbum(releaseGroup, { positions: [2, 3], sourceRelease: sourceReleaseId });
+  const client = getDownloadClient("nzbget");
+  t.mock.method(prowlarrClient, "downloadNzb", async () => Buffer.from("<nzb></nzb>"));
+  t.mock.method(client, "appendNzb", async () => ({ nzbId: "edition-grab" }));
+  t.mock.method(client, "getHistoryItem", async () => ({ Status: "SUCCESS", FinalDir: album.folder }));
+  const candidate = { raw: { release: { title: "The Band - Album", guid: "edition-grab",
+    downloadUrl: "https://nzb.test/edition" } }, score: 10, resolvedAlbumName: "Album" };
+  const queued = await processUsenetPipelinePayload({ ...album.payload, candidates: [candidate],
+    candidateIndex: 0 }, { failOrTryNextSource: (_, __, reason) => { throw new Error(reason); } });
+  const polled = await processUsenetPipelinePayload(queued);
+  await processUsenetPipelinePayload(polled);
+  for (const id of album.ids) {
+    const job = downloadTracker.getJob(id);
+    assert.equal(job.status, "done");
+    const { common } = await parseFile(job.finalPath);
+    assert.equal(common.musicbrainz_albumid, releaseId);
+    assert.equal(common.musicbrainz_releasegroupid, releaseGroup);
+  }
+});
 
 test("one Usenet NZB fills two sibling jobs", async (t) => {
   const album = await makeAlbum("usenet-grab");

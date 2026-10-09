@@ -166,7 +166,10 @@ export async function finishAlbumGrab(payload, {
       const finalPath = path.join(destination, buildTrackFileName(placed, ext));
       const committed = await withPipelineCommitLock(peerPayload, async () => {
         const committedFinalPath = await commitDownloadedFile(match.filePath, finalPath);
-        await writeImportedFileMetadata(committedFinalPath, buildResolvedJobTrack(placed), {
+        await writeImportedFileMetadata(committedFinalPath, buildResolvedJobTrack({
+          ...placed,
+          releaseMbid: assigned.releaseId || placed.releaseMbid,
+        }), {
           source,
           jobId: job.id,
         });
