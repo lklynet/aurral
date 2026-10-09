@@ -5,6 +5,8 @@ test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } }
 const artist = { id: "nav-link-artist", name: "Link Test Artist", tags: [], genres: [] };
 const playlist = { id: "908622995", name: "Link Test Mix", trackCount: 2, artworkUrl: null };
 const playlistPath = `/discover/playlists/deezer/${playlist.id}`;
+const trackTitle = (page, title) =>
+  page.getByRole("list", { name: `${playlist.name} tracks` }).getByText(title, { exact: true });
 
 async function fixture(page, { holdPlaylist } = {}) {
   const requests = [];
@@ -122,10 +124,10 @@ test("a playlist opened from its card shows its header before the tracks load", 
   await expect(page.getByText(`${playlist.trackCount} tracks`, { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: `Play ${playlist.name} previews` })).toBeDisabled();
   await expect(page.getByRole("status").filter({ hasText: "Loading tracks" })).toHaveCount(1);
-  await expect(page.getByText("First Link Track")).toHaveCount(0);
+  await expect(trackTitle(page, "First Link Track")).toHaveCount(0);
 
   release();
-  await expect(page.getByText("First Link Track")).toBeVisible();
+  await expect(trackTitle(page, "First Link Track")).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Loading tracks" })).toHaveCount(0);
 });
 
@@ -133,7 +135,7 @@ test("a playlist opened directly still loads without card data", async ({ page }
   await fixture(page);
   await page.goto(playlistPath);
   await expect(page.getByRole("heading", { name: playlist.name, level: 1 })).toBeVisible();
-  await expect(page.getByText("First Link Track")).toBeVisible();
+  await expect(trackTitle(page, "First Link Track")).toBeVisible();
 });
 
 const recordTransitions = () => {
@@ -150,12 +152,15 @@ const recordTransitions = () => {
   };
 };
 
-async function openPlaylistAfterPrefetch(page) {
+async function openPlaylistAgain(page) {
   const link = page.locator("main").getByRole("link", { name: `Open ${playlist.name}`, exact: true });
+  await link.click();
+  await expect(page.getByRole("heading", { name: playlist.name, level: 1 })).toBeVisible();
+  await page.goBack();
   await expect(link).toBeVisible();
-  const chunk = page.waitForResponse((response) => response.url().includes("EditorialPlaylistDetailPage"));
-  await link.hover();
-  await chunk;
+  await page.evaluate(() => {
+    window.__routeTransitions = [];
+  });
   await link.click();
   await expect(page.getByRole("heading", { name: playlist.name, level: 1 })).toBeVisible();
 }
@@ -164,7 +169,7 @@ test("opening a card morphs only that card's artwork into the page header", asyn
   await page.addInitScript(recordTransitions);
   await fixture(page);
   await page.goto("/");
-  await openPlaylistAfterPrefetch(page);
+  await openPlaylistAgain(page);
   const transitions = await page.evaluate(() => window.__routeTransitions);
   expect(transitions).toEqual([["shared-artwork"]]);
   await expect(page.locator("[style*=view-transition-name]")).toHaveCount(0);
@@ -175,7 +180,7 @@ test("route transitions are skipped when reduced motion is requested", async ({ 
   await page.addInitScript(recordTransitions);
   await fixture(page);
   await page.goto("/");
-  await openPlaylistAfterPrefetch(page);
+  await openPlaylistAgain(page);
   expect(await page.evaluate(() => window.__routeTransitions)).toEqual([]);
 });
 

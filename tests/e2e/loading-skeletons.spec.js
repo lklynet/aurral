@@ -47,7 +47,7 @@ test("Discover keeps its heading and reserves section space while loading", asyn
   const reserved = await busy.boundingBox();
   expect(reserved.height).toBeGreaterThan(800);
   const animations = await busy.evaluate((node) =>
-    [...node.querySelectorAll("[aria-hidden=true] *")].map((child) => getComputedStyle(child).animationName),
+    [...node.querySelectorAll(":scope > div[aria-hidden=true] *")].map((child) => getComputedStyle(child).animationName),
   );
   expect(animations.length).toBeGreaterThan(0);
   expect(animations.every((name) => name === "none")).toBe(true);

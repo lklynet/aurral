@@ -46,7 +46,7 @@ test("library keeps its page, sort, view, and search in the URL across Back and 
 
   await page.getByRole("combobox", { name: "Sort artists" }).selectOption("newest");
   await expect.poll(search).toBe("?sort=newest");
-  await expect(page.getByRole("button", { name: `Open ${artistName(250)}` })).toBeVisible();
+  await expect(page.getByRole("link", { name: `Open ${artistName(250)}` })).toBeVisible();
 
   await page.getByRole("button", { name: "Next page" }).click();
   await expect.poll(search).toBe("?sort=newest&page=2");
@@ -57,8 +57,8 @@ test("library keeps its page, sort, view, and search in the URL across Back and 
 
   await main.evaluate((node) => node.scrollTo({ top: 900 }));
   await expect.poll(() => main.evaluate((node) => node.scrollTop)).toBe(900);
-  const target = page.getByRole("button", { name: `Open ${artistName(120)}` });
-  await target.evaluate((button) => button.click());
+  const target = page.getByRole("link", { name: `Open ${artistName(120)}` });
+  await target.evaluate((element) => element.click());
   await expect(page).toHaveURL(/\/library\/artist\/e2e-view-state-120$/);
 
   await page.goBack();
@@ -81,8 +81,8 @@ test("library keeps its page, sort, view, and search in the URL across Back and 
 
   await page.reload();
   await expect(page.getByRole("searchbox", { name: "Search artists" })).toHaveValue("Artist 1");
-  await expect(page.getByRole("button", { name: `Open ${artistName(199)}` })).toBeVisible();
-  await expect(page.getByRole("button", { name: `Open ${artistName(250)}` })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: `Open ${artistName(199)}` })).toBeVisible();
+  await expect(page.getByRole("link", { name: `Open ${artistName(250)}` })).toHaveCount(0);
 
   await page.goBack();
   await expect.poll(search).toBe("?sort=newest");
@@ -91,5 +91,5 @@ test("library keeps its page, sort, view, and search in the URL across Back and 
 
   await page.getByRole("combobox", { name: "Sort artists" }).selectOption("name");
   await expect.poll(search).toBe("");
-  await expect(page.getByRole("button", { name: `Open ${artistName(1)}` })).toBeVisible();
+  await expect(page.getByRole("link", { name: `Open ${artistName(1)}` })).toBeVisible();
 });
