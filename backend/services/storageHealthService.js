@@ -17,6 +17,7 @@ import {
   getPathMappings,
   looksLikeExternalOnlyPath,
   resolveLocalPath,
+  resolveRemotePath,
 } from "./pathMappings.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { commitDownloadedFile } from "./downloadUtils.js";
@@ -766,7 +767,9 @@ async function checkNavidromeSection() {
     return buildSection("navidrome", "Navidrome playback", steps);
   }
 
-  const expectedLibraryPath = normalizeSeparators(resolveDownloadRoot());
+  const expectedLibraryPath = normalizeSeparators(
+    resolveRemotePath(resolveDownloadRoot(), getPathMappings("navidrome")),
+  );
   const expectedLibraryCandidates = [expectedLibraryPath];
 
   let libraries = [];
@@ -807,7 +810,7 @@ async function checkNavidromeSection() {
   for (const library of relevantLibraries) {
     const libraryPath = String(library?.path || "").trim();
     if (!libraryPath) continue;
-    const readablePath = await checkPathReadable(libraryPath);
+    const readablePath = await checkPathReadable(libraryPath, "navidrome");
     if (!readablePath) {
       unreadableLibraries.push(libraryPath);
     }

@@ -4,7 +4,7 @@ import { setTimeout as wait } from "node:timers/promises";
 import { userOps } from "../../db/helpers/index.js";
 import { NavidromeClient } from "../navidrome.js";
 import { logger } from "../logger.js";
-import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
+import { getPathMappings, resolveLocalPath, resolveRemotePath } from "../pathMappings.js";
 import { navidromePlaylistPointerStore } from "../navidrome/navidromePlaylistPointerStore.js";
 import {
   AURRAL_FLOWS_DIR,
@@ -377,7 +377,7 @@ export class NavidromePlaybackDestination {
       await fs.mkdir(path.join(this.downloadRoot, AURRAL_FLOWS_DIR), { recursive: true });
       if (this.isConfigured()) {
         await this.client.ensureAurralLibrary(
-          this.mediaLibraryRoot.replace(/\\/g, "/").replace(/\/+$/, ""),
+          resolveRemotePath(this.mediaLibraryRoot, getPathMappings("navidrome")),
         );
         await this._loadPlaylists(true);
       }
@@ -490,9 +490,14 @@ export class NavidromePlaybackDestination {
     if (typeof this.client?.invalidateIndexedSongsCache === "function") {
       this.client.invalidateIndexedSongsCache();
     }
+    const mappings = getPathMappings("navidrome");
+    const remoteTracks = snapshot.tracks.map((track) => ({
+      ...track,
+      path: resolveRemotePath(track.path, mappings),
+    }));
     const songs = [];
-    for (let index = 0; index < snapshot.tracks.length; index += SONG_LOOKUP_BATCH_SIZE) {
-      const batch = snapshot.tracks.slice(index, index + SONG_LOOKUP_BATCH_SIZE);
+    for (let index = 0; index < remoteTracks.length; index += SONG_LOOKUP_BATCH_SIZE) {
+      const batch = remoteTracks.slice(index, index + SONG_LOOKUP_BATCH_SIZE);
       songs.push(...await Promise.all(
         batch.map((track) => this.client.findSong(track.title, track.artist, track)),
       ));
@@ -502,7 +507,7 @@ export class NavidromePlaybackDestination {
     if (snapshot.tracks.length && !songIds.length && !pointer) {
       await fs.writeFile(
         path.join(this.libraryRoot, `${this._sanitize(current)}.m3u`),
-        buildM3uContent(snapshot.tracks),
+        buildM3uContent(remoteTracks),
         "utf8",
       );
       this._pendingSnapshots.set(`${snapshot.entityId}:${targetKey}`, snapshot);
