@@ -37,10 +37,10 @@ const root = resolveDownloadRoot();
 let sourceCount = 0;
 let tone = 200;
 
-async function makeTrack(filePath, tags = {}) {
+async function makeTrack(filePath, tags = {}, { seconds = 0.2 } = {}) {
   await mkdir(path.dirname(filePath), { recursive: true });
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi",
-    "-i", `sine=frequency=${tone += 7}:duration=0.2`];
+    "-i", `sine=frequency=${tone += 7}:duration=${seconds}`];
   for (const [key, value] of Object.entries(tags)) args.push("-metadata", `${key}=${value}`);
   await execFileAsync("ffmpeg", [...args, filePath]);
   return filePath;
@@ -163,7 +163,7 @@ test("an ingest refuses a Monitor choice it does not know", async () => {
   await assert.rejects(operations.startIngest({ sourcePath: newSource(), mode: "copy", monitor: "artists" }), /Choose None/);
 });
 
-test("never overwrites: a different file in the way stays, and the source is listed for review", async () => {
+test("never overwrites: a different file in the way stays, and the source is skipped", async () => {
   const source = newSource();
   const incoming = await makeTrack(path.join(source, "Busy", "Album", "01.flac"), {
     artist: "Busy", album: "Album", title: "Taken", track: "1",
@@ -175,10 +175,10 @@ test("never overwrites: a different file in the way stays, and the source is lis
 
   const id = await ingest(source, "move");
   const [planned] = operations.describeLibraryFileOperationItems(getLibraryFileOperation(id), {});
-  assert.equal(planned.status, "conflict");
+  assert.equal(planned.status, "skipped");
   const items = await apply(id);
 
-  assert.equal(items[0].status, "conflict");
+  assert.equal(items[0].status, "skipped");
   assert.deepEqual(await readFile(occupant), before);
   assert.equal(await exists(incoming), true);
 });
@@ -206,22 +206,163 @@ test("an identical file already in the Library is kept once", async () => {
   assert.equal(await exists(path.join(moveSource, "Twin")), false);
 });
 
-test("a track the Library has in a different file is listed for review, not replaced", async () => {
-  const library = await makeTrack(path.join(root, "Held", "Album", "01 - Song.flac"), {
-    artist: "Held", album: "Album", title: "Song", track: "1",
-  });
+const describe = (id) => operations.describeLibraryFileOperation(getLibraryFileOperation(id));
+
+async function libraryTrack(relativePath, tags, options) {
+  const filePath = await makeTrack(path.join(root, relativePath), tags, options);
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  const source = newSource();
-  const incoming = await makeTrack(path.join(source, "Held", "Album", "song.mp3"), {
+  return filePath;
+}
+
+test("a track the Library has in a different file is skipped as already in the Library, and only Move offers to remove it", async () => {
+  const library = await libraryTrack(path.join("Held", "Album", "01 - Song.flac"), {
     artist: "Held", album: "Album", title: "Song", track: "1",
   });
+  const libraryBytes = await readFile(library);
+  const tags = { artist: "Held", album: "Album", title: "Song", track: "1" };
+  const copySource = newSource();
+  const copied = await makeTrack(path.join(copySource, "Held", "Album", "song.mp3"), tags);
+  const moveSource = newSource();
+  const kept = await makeTrack(path.join(moveSource, "Held", "Album", "song.mp3"), tags);
+  await makeTrack(path.join(moveSource, "Held", "Album", "other.mp3"), { ...tags, title: "Other", track: "2" });
+  await writeFile(path.join(moveSource, "Held", "Album", "cover.jpg"), "art");
 
-  const [item] = await apply(await ingest(source, "move"));
+  const copyId = await ingest(copySource, "copy");
+  const [copiedItem] = await apply(copyId);
+  const moveId = await ingest(moveSource, "move");
+  const keptItem = (await apply(moveId)).find((item) => item.source.endsWith("song.mp3"));
 
-  assert.equal(item.status, "conflict");
-  assert.equal(item.target, path.relative(root, library));
-  assert.equal(await exists(incoming), true);
+  assert.deepEqual([copiedItem.status, keptItem.status], ["duplicate", "duplicate"]);
+  assert.equal(keptItem.target, path.relative(root, library));
+  assert.equal(describe(copyId).sources, null);
+  await assert.rejects(operations.removeIngestSources(copyId), /Only a Move ingest/);
+  assert.deepEqual(describe(moveId).sources, { removable: 1, removed: 0 });
+  assert.equal(await exists(copied), true);
+  assert.equal(await exists(kept), true);
+  assert.equal(await exists(path.join(moveSource, "Held", "Album", "cover.jpg")), true);
+  assert.deepEqual(await readFile(library), libraryBytes);
   assert.equal(await exists(path.join(root, "Held", "Album", "01 - Song.mp3")), false);
+});
+
+test("a source whose MusicBrainz tags miss the Library's album is still the track at its Library name", async () => {
+  const library = await libraryTrack(path.join("Quad", "Album", "01 - Song.flac"), {
+    artist: "Quad", album: "Album", title: "Song", track: "1",
+  });
+  const source = newSource();
+  await makeTrack(path.join(source, "song.flac"), {
+    artist: "Quad",
+    album: "Album",
+    title: "Song",
+    track: "1",
+    MUSICBRAINZ_RELEASEGROUPID: "44444444-4444-4444-8444-444444444444",
+  });
+
+  const [item] = await apply(await ingest(source, "copy"));
+
+  assert.equal(item.status, "duplicate");
+  assert.equal(item.target, path.relative(root, library));
+});
+
+test("a source much longer or shorter than the Library's track is a different recording, held back and never offered for removal", async () => {
+  await libraryTrack(path.join("Kweller", "Sha Sha", "03 - Wasted & Ready.flac"), {
+    artist: "Kweller", album: "Sha Sha", title: "Wasted & Ready", track: "3",
+  }, { seconds: 0.5 });
+  const source = newSource();
+  const demo = await makeTrack(path.join(source, "Kweller", "Sha Sha", "demo.flac"), {
+    artist: "Kweller", album: "Sha Sha", title: "Wasted & Ready", track: "3",
+  }, { seconds: 5 });
+
+  const id = await ingest(source, "move");
+  const [item] = await apply(id);
+
+  assert.equal(item.status, "skipped");
+  assert.match(item.reason, /Wasted & Ready.*0:0[45] longer/);
+  assert.equal(describe(id).counts.duplicate, undefined);
+  assert.deepEqual(describe(id).sources, { removable: 0, removed: 0 });
+  await operations.removeIngestSources(id);
+  assert.equal((await runUntilSettled(id)).status, "complete");
+  assert.equal(await exists(demo), true);
+});
+
+test("a lossless source of a track the Library has only in a lossy format is listed, not skipped as already in the Library", async () => {
+  await libraryTrack(path.join("Lossy", "Album", "01 - Song.mp3"), {
+    artist: "Lossy", album: "Album", title: "Song", track: "1",
+  });
+  const source = newSource();
+  const flac = await makeTrack(path.join(source, "song.flac"), {
+    artist: "Lossy", album: "Album", title: "Song", track: "1",
+  });
+
+  const id = await ingest(source, "move");
+  const [item] = await apply(id);
+
+  assert.equal(item.status, "skipped");
+  assert.match(item.reason, /lossless/);
+  assert.deepEqual(describe(id).sources, { removable: 0, removed: 0 });
+  assert.equal(await exists(flac), true);
+});
+
+test("removing kept sources checks each against the Library again, removes emptied folders, and is safe to repeat", async () => {
+  const tags = (title, track) => ({ artist: "Tidy", album: "Album", title, track: String(track) });
+  await libraryTrack(path.join("Tidy", "Album", "01 - One.flac"), tags("One", 1));
+  const second = await libraryTrack(path.join("Tidy", "Album", "02 - Two.flac"), tags("Two", 2));
+  await libraryTrack(path.join("Tidy", "Album", "03 - Three.flac"), tags("Three", 3), { seconds: 0.5 });
+  const source = newSource();
+  const one = await makeTrack(path.join(source, "first", "one.mp3"), tags("One", 1));
+  await writeFile(path.join(source, "first", "one.lrc"), "[00:00.00]One");
+  await writeFile(path.join(source, "first", "cover.jpg"), "art");
+  await writeFile(path.join(root, "Tidy", "Album", "cover.jpg"), "art");
+  const two = await makeTrack(path.join(source, "second", "two.mp3"), tags("Two", 2));
+  const three = await makeTrack(path.join(source, "second", "three.flac"), tags("Three", 3), { seconds: 5 });
+  await makeTrack(path.join(source, "third", "four.flac"), tags("Four", 4));
+  const id = await ingest(source, "move", "tracks");
+  await apply(id);
+  assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  await applyIngestMonitoring();
+  const unmonitorFour = db.prepare("UPDATE library_tracks SET monitored = 0 WHERE title = 'Four'");
+  assert.equal(unmonitorFour.run().changes, 1);
+
+  await operations.removeIngestSources(id);
+  assert.equal(operations.cancelLibraryFileOperation(id), true);
+  assert.equal((await runUntilSettled(id)).status, "cancelled");
+  assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
+  assert.equal(await exists(one), true);
+
+  await rm(second);
+  await operations.removeIngestSources(id);
+  assert.equal((await runUntilSettled(id)).status, "complete");
+
+  assert.equal(await exists(one), false);
+  assert.equal(await exists(path.join(source, "first")), false);
+  assert.equal(await readFile(path.join(root, "Tidy", "Album", "01 - One.lrc"), "utf8"), "[00:00.00]One");
+  assert.equal(await exists(two), true);
+  assert.equal(await exists(three), true);
+  assert.equal(await exists(path.join(root, "Tidy", "Album", "01 - One.flac")), true);
+  const after = describe(id);
+  assert.deepEqual(after.sources, { removable: 0, removed: 1 });
+  const items = operations.describeLibraryFileOperationItems(getLibraryFileOperation(id), {});
+  const twoItem = items.find((item) => item.source.endsWith("two.mp3"));
+  assert.equal(twoItem.status, "skipped");
+  assert.match(twoItem.reason, /gone/);
+
+  await operations.removeIngestSources(id);
+  assert.deepEqual(describe(id), after);
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  await applyIngestMonitoring();
+  assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE title = 'Four'").pluck().get(), 0);
+});
+
+test("two files that claim the same track are not both filed, and the second says which track its tags claim", async () => {
+  const source = newSource();
+  await makeTrack(path.join(source, "a.flac"), { artist: "Demo", album: "Deluxe", title: "In Other Words", track: "5" });
+  const demo = await makeTrack(path.join(source, "b.flac"), { artist: "Demo", album: "Deluxe", title: "In Other Words", track: "5" });
+
+  const items = await apply(await ingest(source, "move"));
+
+  assert.deepEqual(items.map((item) => item.status), ["done", "skipped"]);
+  assert.match(items[1].reason, /track 5, In Other Words/);
+  assert.equal(await exists(demo), true);
 });
 
 test("hardlink and move leave one file on disk under the Library name", async () => {
@@ -434,7 +575,7 @@ test("a restart while listing files lists each file once", async () => {
   );
 });
 
-test("album art stays with music that is left for review", async () => {
+test("album art stays with music that is skipped", async () => {
   const source = newSource();
   await makeTrack(path.join(source, "Split", "Album", "a.flac"), {
     artist: "Split", album: "Album", title: "Filed", track: "1",
@@ -447,7 +588,7 @@ test("album art stays with music that is left for review", async () => {
 
   const items = await apply(await ingest(source, "move"));
 
-  assert.deepEqual(items.map((item) => item.status), ["done", "conflict"]);
+  assert.deepEqual(items.map((item) => item.status), ["done", "skipped"]);
   assert.equal(await readFile(path.join(source, "Split", "Album", "cover.jpg"), "utf8"), "art");
 });
 

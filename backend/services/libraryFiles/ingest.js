@@ -23,11 +23,13 @@ import {
 } from "./fileTransfer.js";
 import { writeAudioTags } from "../audioTags.js";
 import { rekeyLibraryAlbum } from "../libraryMediaStore.js";
-import { matchLibraryRecord } from "./libraryMatch.js";
+import { findLibraryTrackAtPath, matchLibraryRecord } from "./libraryMatch.js";
 import { planTagFill } from "./tagFill.js";
 import {
+  OperationConflictError,
   addLibraryFileOperationItems,
   deleteLibraryFileOperationItems,
+  getActiveLibraryFileOperation,
   getLibraryFileOperation,
   listLibraryFileOperationItems,
   updateLibraryFileOperation,
@@ -143,6 +145,56 @@ async function planFill(item, record, match, metadata, albums) {
   }, albums);
 }
 
+const SAME_LENGTH_MS = 3000;
+const TAKEN_NAME_REASON =
+  "A different file already has this name in the Library. Aurral never replaces a file. Rename or remove one of them, then ingest again.";
+
+async function readRecording(filePath, metadata = null) {
+  try {
+    const parsed = metadata || await parseFile(filePath, { skipCovers: true, duration: false });
+    let seconds = Number(parsed.format?.duration);
+    if (!(seconds > 0)) seconds = Number((await parseFile(filePath, { skipCovers: true, duration: true })).format?.duration);
+    return { durationMs: seconds > 0 ? Math.round(seconds * 1000) : null, lossless: parsed.format?.lossless === true };
+  } catch {
+    return { durationMs: null, lossless: false };
+  }
+}
+
+const formatGap = (ms) => {
+  const seconds = Math.round(Math.abs(ms) / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+};
+
+// Matching tags are not proof: a mistagged demo can claim to be an album
+// track. The Library has the same recording only when the lengths agree.
+async function compareWithLibrary(source, candidates, title) {
+  const copies = await Promise.all(candidates.map(async (targetPath) => ({ targetPath, ...(await readRecording(targetPath)) })));
+  const measured = source.durationMs == null
+    ? []
+    : copies.filter((copy) => copy.durationMs != null).map((copy) => ({ ...copy, gap: source.durationMs - copy.durationMs }));
+  if (!measured.length) {
+    return {
+      targetPath: candidates[0],
+      reason: `Its tags match ${title}, which the Library already has, but Aurral could not tell how long one of them is. Check the file.`,
+    };
+  }
+  const same = measured.filter((copy) => Math.abs(copy.gap) <= SAME_LENGTH_MS);
+  if (!same.length) {
+    const nearest = measured.reduce((best, copy) => (Math.abs(copy.gap) < Math.abs(best.gap) ? copy : best));
+    return {
+      targetPath: nearest.targetPath,
+      reason: `Its tags match ${title}, which the Library already has, but it is ${formatGap(nearest.gap)} ${nearest.gap > 0 ? "longer" : "shorter"}. Check its tags.`,
+    };
+  }
+  if (source.lossless && !same.some((copy) => copy.lossless)) {
+    return {
+      targetPath: same[0].targetPath,
+      reason: `It is a lossless copy of ${title}, which the Library has only in a lossy format. To use it instead, remove the Library's copy and ingest again.`,
+    };
+  }
+  return { targetPath: (same.find((copy) => copy.lossless === source.lossless) || same[0]).targetPath };
+}
+
 async function planItem(operation, item, plannedTargets, albums) {
   const { sourcePath: sourceRoot, mode } = operation.options;
   const root = resolveDownloadRoot();
@@ -175,19 +227,22 @@ async function planItem(operation, item, plannedTargets, albums) {
     }
     return null;
   };
+  const identicalCopy = (targetPath) => mode === "move"
+    ? { status: "pending", targetPath, details: { ...details, action: "remove-duplicate" } }
+    : { status: "duplicate", targetPath, reason: "The Library already has this file.", details };
+  const sameRecording = async (candidates, title) => {
+    const verdict = await compareWithLibrary(await readRecording(item.sourcePath, metadata), candidates, title);
+    if (verdict.reason) return { status: "skipped", targetPath: verdict.targetPath, reason: verdict.reason, details };
+    return {
+      status: "duplicate",
+      targetPath: verdict.targetPath,
+      reason: "The Library already has this track in a different file.",
+      details: mode === "move" ? { ...details, removable: true } : details,
+    };
+  };
   if (match.files.length) {
     const identical = await libraryCopy(match.files);
-    if (identical) {
-      return mode === "move"
-        ? { status: "pending", targetPath: identical, details: { ...details, action: "remove-duplicate" } }
-        : { status: "duplicate", targetPath: identical, reason: "The Library already has this file.", details };
-    }
-    return {
-      status: "conflict",
-      targetPath: match.files[0],
-      reason: "The Library already has this track in a different file.",
-      details,
-    };
+    return identical ? identicalCopy(identical) : sameRecording(match.files, match.track.title);
   }
   const target = buildLibraryTrackPath(
     root,
@@ -198,18 +253,19 @@ async function planItem(operation, item, plannedTargets, albums) {
     return { status: "skipped", reason: "The file's name does not fit inside the Downloads Folder.", details };
   }
   if (await fs.lstat(target).catch(() => null)) {
-    if (await libraryCopy([target])) {
-      return mode === "move"
-        ? { status: "pending", targetPath: target, details: { ...details, action: "remove-duplicate" } }
-        : { status: "duplicate", targetPath: target, reason: "The Library already has this file.", details };
-    }
-    return { status: "conflict", targetPath: target, reason: "A different file already has this name.", details };
+    if (await libraryCopy([target])) return identicalCopy(target);
+    const occupant = findLibraryTrackAtPath(target, record);
+    if (occupant) return sameRecording([target], occupant.title);
+    return { status: "skipped", targetPath: target, reason: TAKEN_NAME_REASON, details };
   }
   if (plannedTargets.has(target)) {
+    const claim = [record.discNumber > 1 && `disc ${record.discNumber}`, record.trackNumber && `track ${record.trackNumber}`]
+      .filter(Boolean)
+      .join(", ");
     return {
-      status: "conflict",
+      status: "skipped",
       targetPath: target,
-      reason: "Another file in this folder gets the same name in the Library.",
+      reason: `Its tags say it is ${claim ? `${claim}, ` : ""}${record.title}, which another file in this folder also claims. Retag it and ingest again.`,
       details,
     };
   }
@@ -259,11 +315,32 @@ async function removeDuplicateSource(item) {
     return { status: "duplicate", reason: "The Library already has this file." };
   }
   if (!(await filesIdentical(item.sourcePath, item.targetPath).catch(() => false))) {
-    return { status: "conflict", reason: "The Library's copy changed before Aurral could compare it." };
+    return { status: "skipped", reason: "The Library's copy changed before Aurral could compare it. Ingest again to check it." };
   }
   await transferSidecars(item.sourcePath, item.targetPath, "move").catch(() => {});
   await fs.unlink(item.sourcePath);
   return { status: "duplicate", reason: "The Library already had this file, so the source copy was removed." };
+}
+
+// Removing a source the user asked to remove checks it against the Library's
+// copy again, since either file may have changed since the ingest.
+async function removeKeptSource(item) {
+  const details = { ...item.details, removable: false };
+  if (!(await fs.lstat(item.sourcePath).catch(() => null))) {
+    return { status: "duplicate", reason: "The Library already has this track, and the source file is gone.", details: { ...details, sourceRemoved: true } };
+  }
+  if (!(await fs.stat(item.targetPath).catch(() => null))) {
+    return { status: "skipped", reason: "The Library's copy is gone, so Aurral kept this file. Ingest it again to file it.", details };
+  }
+  const verdict = await compareWithLibrary(await readRecording(item.sourcePath), [item.targetPath], item.details.title);
+  if (verdict.reason) return { status: "skipped", reason: verdict.reason, details };
+  await transferSidecars(item.sourcePath, item.targetPath, "move").catch(() => {});
+  await fs.unlink(item.sourcePath);
+  return {
+    status: "duplicate",
+    reason: "The Library already had this track, so the source copy was removed.",
+    details: { ...details, sourceRemoved: true },
+  };
 }
 
 async function fileItem(operation, item) {
@@ -279,7 +356,7 @@ async function fileItem(operation, item) {
       return { status: "done" };
     }
     if (!(await filesIdentical(source, target).catch(() => false))) {
-      return { status: "conflict", reason: "A different file already has this name." };
+      return { status: "skipped", reason: TAKEN_NAME_REASON };
     }
     if (mode === "hardlink" && !(await isSameFile(source, target))) {
       return { status: "duplicate", reason: "The Library already has this file." };
@@ -352,6 +429,7 @@ export async function applyIngestItem(operation, item) {
     return { status: "failed", reason: "A link in the Downloads Folder leads back to this file, so Aurral left it alone." };
   }
   if (item.details.action === "remove-duplicate") return removeDuplicateSource(item);
+  if (item.details.action === "remove-source") return removeKeptSource(item);
   const tagging = item.details.actions?.includes("tags");
   if (tagging && await isFilledCopy(item)) {
     if (operation.options.mode === "move") await fs.rm(item.sourcePath, { force: true });
@@ -371,17 +449,23 @@ export function ingestScanRequest(operation, items) {
 }
 
 // Album art beside the music follows it when the whole folder went to one
-// album. A moved folder that is left empty is removed.
+// album. A moved folder that is left empty is removed. A source that Move kept
+// because the Library already has its track keeps its folder and art.
 export async function finishIngest(operation) {
   const { sourcePath: sourceRoot, mode } = operation.options;
+  db.prepare(
+    `UPDATE library_file_operation_items SET status = 'duplicate', updated_at = ?
+     WHERE operation_id = ? AND status = 'pending' AND json_extract(details_json, '$.action') = 'remove-source'`,
+  ).run(Date.now(), operation.id);
   const folders = new Map();
   const unfiled = new Set();
   const items = db.prepare(
-    "SELECT source_path, target_path, status FROM library_file_operation_items WHERE operation_id = ?",
+    "SELECT source_path, target_path, status, details_json FROM library_file_operation_items WHERE operation_id = ?",
   ).all(operation.id);
   for (const item of items) {
     const folder = path.dirname(item.source_path);
-    if (!["done", "duplicate"].includes(item.status) || !item.target_path) {
+    const kept = mode === "move" && item.status === "duplicate" && JSON.parse(item.details_json || "{}").removable === true;
+    if (!["done", "duplicate"].includes(item.status) || !item.target_path || kept) {
       unfiled.add(folder);
       continue;
     }
@@ -395,7 +479,13 @@ export async function finishIngest(operation) {
     const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
       if (!entry.isFile() || !ALBUM_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
-      await placeFile(path.join(folder, entry.name), path.join(target, entry.name), mode).catch(() => {});
+      const from = path.join(folder, entry.name);
+      const to = path.join(target, entry.name);
+      await placeFile(from, to, mode).catch(async (error) => {
+        if (mode === "move" && error?.code === "EEXIST" && await filesIdentical(from, to).catch(() => false)) {
+          await fs.rm(from, { force: true });
+        }
+      });
     }
   }
   if (mode === "move") {
@@ -403,14 +493,53 @@ export async function finishIngest(operation) {
     for (const folder of deepestFirst) await removeEmptyDirectories(folder, sourceRoot);
   }
   const filed = items.some((item) => item.status === "done");
-  if (filed && operation.options.monitor && operation.options.monitor !== "none") {
-    updateLibraryFileOperation(operation.id, { summary: { monitor: "pending" } });
+  const monitor = filed && !operation.summary.monitor && operation.options.monitor && operation.options.monitor !== "none";
+  if (monitor || operation.summary.removingSources) {
+    updateLibraryFileOperation(operation.id, {
+      summary: { removingSources: null, ...(monitor ? { monitor: "pending" } : {}) },
+    });
   }
   return ingestScanRequest(operation, items.map((item) => ({
     status: item.status,
     sourcePath: item.source_path,
     targetPath: item.target_path,
   })));
+}
+
+// Move keeps a source whose track the Library has in a different file until
+// the user asks to remove it. The ingest then runs again over just those
+// sources, each checked against the Library's copy before it is removed.
+export function reopenIngestToRemoveSources(id) {
+  return db.transaction(() => {
+    const operation = getLibraryFileOperation(id);
+    if (operation?.kind !== "ingest" || operation.options.mode !== "move") {
+      throw new IngestSourceError("Only a Move ingest removes its source files.");
+    }
+    const active = getActiveLibraryFileOperation();
+    if (active) throw new OperationConflictError(active);
+    const requested = db.prepare(
+      `UPDATE library_file_operation_items
+       SET status = 'pending', details_json = json_set(details_json, '$.action', 'remove-source'), updated_at = ?
+       WHERE operation_id = ? AND status = 'duplicate' AND json_extract(details_json, '$.removable') = 1`,
+    ).run(Date.now(), operation.id).changes;
+    if (!requested) return false;
+    updateLibraryFileOperation(operation.id, {
+      status: "running",
+      summary: { finished: false, removingSources: requested },
+    });
+    return true;
+  }).immediate();
+}
+
+export function countIngestSources(operation) {
+  if (operation.kind !== "ingest" || operation.options.mode !== "move") return null;
+  const counts = db.prepare(
+    `SELECT
+       COALESCE(SUM(json_extract(details_json, '$.removable') = 1), 0) AS removable,
+       COALESCE(SUM(json_extract(details_json, '$.sourceRemoved') = 1), 0) AS removed
+     FROM library_file_operation_items WHERE operation_id = ? AND status = 'duplicate'`,
+  ).get(operation.id);
+  return { removable: counts.removable, removed: counts.removed };
 }
 
 const fileExists = (filePath) => fs.lstat(filePath).then(() => true, () => false);

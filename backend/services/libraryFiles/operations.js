@@ -3,9 +3,11 @@ import { resolveDownloadRoot } from "../downloadPaths.js";
 import { logger, safeLogDiagnostic } from "../logger.js";
 import {
   applyIngestItem,
+  countIngestSources,
   finishIngest,
   ingestScanRequest,
   planIngest,
+  reopenIngestToRemoveSources,
   resolveIngestSource,
   validateIngestOptions,
 } from "./ingest.js";
@@ -48,6 +50,11 @@ export async function startCleanup() {
   const operation = createLibraryFileOperation({ kind: "cleanup", options: {} });
   await enqueue(operation.id);
   return operation;
+}
+
+export async function removeIngestSources(id) {
+  if (reopenIngestToRemoveSources(id)) await enqueue(id);
+  return getLibraryFileOperation(id);
 }
 
 export function cancelLibraryFileOperation(id) {
@@ -165,6 +172,7 @@ export function describeLibraryFileOperation(operation) {
   const counts = countLibraryFileOperationItems(operation.id);
   const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
   const { cursor, finished: _finished, ...summary } = operation.summary;
+  const removing = operation.status === "running" && summary.removingSources;
   return {
     id: operation.id,
     kind: operation.kind,
@@ -178,7 +186,10 @@ export function describeLibraryFileOperation(operation) {
           total: operation.kind === "cleanup" ? cursor?.albumIds?.length || 0 : total,
           unit: operation.kind === "cleanup" ? "albums" : "files",
         }
-      : { done: total - (counts.pending || 0), total, unit: "files" },
+      : removing
+        ? { done: removing - (counts.pending || 0), total: removing, unit: "files" }
+        : { done: total - (counts.pending || 0), total, unit: "files" },
+    sources: countIngestSources(operation),
     error: operation.error,
     createdAt: operation.createdAt,
     updatedAt: operation.updatedAt,

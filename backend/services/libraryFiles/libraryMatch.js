@@ -79,3 +79,21 @@ export function matchLibraryRecord(record) {
     files,
   };
 }
+
+// The Library's own track for the file at this path, when its title, disc,
+// and track number agree with the record.
+export function findLibraryTrackAtPath(filePath, record) {
+  const track = db.prepare(
+    `SELECT track.title, link.disc_number, link.track_number
+     FROM library_media_files AS media
+     JOIN library_tracks AS track ON track.id = media.track_id
+     LEFT JOIN library_album_tracks AS link ON link.track_id = media.track_id AND link.album_id = media.album_id
+     WHERE media.source = 'aurral' AND media.path = ? AND media.available = 1
+     LIMIT 1`,
+  ).get(filePath);
+  const same = track
+    && isSameLibraryName(track.title, record.title)
+    && (track.track_number || 0) === (record.trackNumber || 0)
+    && (track.disc_number || 1) === (record.discNumber || 1);
+  return same ? track : null;
+}

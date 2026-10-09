@@ -161,3 +161,21 @@
     transition: none;
   }
 }
+
+.library-file-op__offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--aurral-border);
+  border-radius: var(--aurral-radius-sm);
+}
+
+.library-file-op__question {
+  margin: 0 0 0.25rem;
+  color: var(--aurral-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+}

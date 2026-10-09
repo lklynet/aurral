@@ -177,13 +177,14 @@ To add music from another folder, such as an old library, a Lidarr root folder, 
 - **Copy** copies each file and leaves the source folder as it is.
 - **Hardlink** adds each file to the Downloads Folder without using more space. It works only when the folder and the Downloads Folder are on the same filesystem and mount. When it is not available, Aurral says why.
 
-Select **Ingest**. Aurral reads each file's tags and files it under the same `Artist/Album/07 - Title` names that downloads use. The ingest runs in the background and continues after a restart. **Stop** ends it after the current file, and files already done stay done. When it finishes, Aurral shows how many files it filed and lists any it left alone, with the reason.
+Select **Ingest**. Aurral reads each file's tags and files it under the same `Artist/Album/07 - Title` names that downloads use. The ingest runs in the background and continues after a restart. **Stop** ends it after the current file, and files already done stay done. When it finishes, Aurral shows how many files it filed and how many the Library already had, and lists each file it skipped with the reason.
 
 Aurral matches music by its MusicBrainz tags first and by artist and album names second, so music from an artist or album that you already have goes into that artist's or album's folder. **Fill in missing tags**, on by default, has Aurral add MusicBrainz IDs, and any missing title, album artist, track and disc numbers, year, and genre, to the Library's copy of each file it matches to MusicBrainz with confidence. Tags that a file already has never change, and the source file keeps its tags. Aurral never overwrites a file:
 
-- When the Library already has an identical file, Aurral keeps one copy. With Move, it removes the source copy.
-- When a different file is in the way, or the Library already has the track in another file, Aurral leaves the source file where it is and lists it under **Needs review**.
-- When a file has no artist or album tag and is not in an `Artist/Album` folder, Aurral skips it.
+- When the Library already has the track, Aurral skips the file as already in the Library. This includes a track the Library has in another file, such as a FLAC of an MP3 you ingest. With Move, Aurral removes a source file that is identical to the Library's copy. When other source files are left, Aurral offers to remove them. It checks each one against the Library's copy again before it deletes it.
+- When a file's tags match a Library track but its length differs by more than 3 seconds, it is a different recording, such as a mistagged demo. Aurral skips it and names the track it matched. Fix its tags and ingest again.
+- When a file is lossless and the Library has the track only in a lossy format, Aurral skips it and says so. To use the lossless file, remove the Library's copy and ingest again.
+- When a different file already has the name, two files in the folder claim the same track, or a file has no artist or album tag and is not in an `Artist/Album` folder, Aurral skips it and says why.
 
 **Monitor** decides what Aurral does with the music afterwards:
 
