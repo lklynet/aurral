@@ -1,8 +1,8 @@
 .section-rail {
   --section-rail-step: 0.625rem;
   position: sticky;
-  top: 35vh;
-  z-index: 3;
+  top: 35dvh;
+  z-index: var(--aurral-z-sticky);
   height: 0;
 }
 

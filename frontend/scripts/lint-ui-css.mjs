@@ -156,6 +156,17 @@ export function findRawMotion(property, value) {
   return durations.some((duration) => !allowedDurations.has(duration.toLowerCase())) ? "duration" : null;
 }
 
+const zIndexKeywords = new Set(["auto", "inherit", "initial", "unset", "revert", "revert-layer"]);
+
+export function hasRawZIndex(value) {
+  const trimmed = value.trim().toLowerCase();
+  return !zIndexKeywords.has(trimmed) && !/var\(\s*--aurral-z-[\w-]+/.test(trimmed);
+}
+
+export function hasStaticViewportHeight(value) {
+  return /(?<![\w.-])\d*\.?\d+vh\b/i.test(value);
+}
+
 function sourceLine(declaration) {
   return declaration.source?.start?.line ?? 1;
 }
@@ -224,6 +235,28 @@ export function lintCss(css, { filePath = "<input>", tokenNames = new Set() } = 
     if (isAurralTokenDefinition(declaration)) return;
 
     const property = declaration.prop.toLowerCase();
+    if (hasStaticViewportHeight(declaration.value)) {
+      findings.push(
+        createFinding(
+          filePath,
+          line,
+          "aurral/no-vh",
+          "uses vh, which ignores mobile browser toolbars; use dvh.",
+        ),
+      );
+    }
+
+    if (property === "z-index" && hasRawZIndex(declaration.value)) {
+      findings.push(
+        createFinding(
+          filePath,
+          line,
+          "aurral/no-raw-z-index",
+          "uses a raw z-index; use a --aurral-z-* layer token.",
+        ),
+      );
+    }
+
     const rawMotion = findRawMotion(property, declaration.value);
     if (rawMotion) {
       findings.push(

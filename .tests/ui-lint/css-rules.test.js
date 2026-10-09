@@ -165,3 +165,35 @@ test("flags easing keywords in looping animations while allowing their cycle len
 
   assert.deepEqual(ruleFindings(findings, "aurral/no-raw-motion"), [3]);
 });
+
+test("reports raw z-index numbers outside the layer tokens", () => {
+  const findings = lintCss(`
+    :root {
+      --aurral-z-popover: 60;
+    }
+    .menu {
+      z-index: 95 !important;
+      z-index: 1;
+      z-index: var(--aurral-z-popover);
+      z-index: calc(var(--aurral-z-popover) + 1);
+      z-index: auto;
+      z-index: var(--local-layer);
+    }
+  `, { filePath: "menu.css", tokenNames });
+
+  assert.deepEqual(ruleFindings(findings, "aurral/no-raw-z-index"), [6, 7, 11]);
+});
+
+test("reports viewport-height units that ignore mobile browser toolbars", () => {
+  const findings = lintCss(`
+    .shell {
+      height: 100vh;
+      max-height: min(32rem, calc(100vh - 6rem));
+      min-height: 100dvh;
+      top: 35svh;
+      width: 50vw;
+    }
+  `, { filePath: "shell.css", tokenNames });
+
+  assert.deepEqual(ruleFindings(findings, "aurral/no-vh"), [3, 4]);
+});

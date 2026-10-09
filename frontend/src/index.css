@@ -78,6 +78,17 @@
   --aurral-ease-linear: linear;
   --aurral-ease-emphasized: cubic-bezier(0.22, 1, 0.36, 1);
   --aurral-ease-spring: cubic-bezier(0.34, 1.28, 0.64, 1);
+  --aurral-z-below: -1;
+  --aurral-z-base: 0;
+  --aurral-z-raised: 1;
+  --aurral-z-sticky: 10;
+  --aurral-z-player: 20;
+  --aurral-z-sidebar: 30;
+  --aurral-z-overlay: 40;
+  --aurral-z-modal: 50;
+  --aurral-z-popover: 60;
+  --aurral-z-toast: 70;
+  --aurral-z-tooltip: 80;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -128,7 +139,7 @@ body {
   margin: 0;
   background: var(--aurral-chrome);
   background-attachment: fixed;
-  background-size: 100% 100vh;
+  background-size: 100% 100dvh;
   background-repeat: no-repeat;
   background-color: var(--aurral-chrome);
   color: var(--aurral-text);
@@ -256,7 +267,7 @@ textarea {
     position: fixed;
     inset: 0;
     background: var(--aurral-chrome);
-    z-index: -1;
+    z-index: var(--aurral-z-below);
   }
 }
 
@@ -695,7 +706,7 @@ textarea {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 1000;
+  z-index: var(--aurral-z-tooltip);
   padding: 0.375rem 0.625rem;
   border: 1px solid var(--aurral-border-strong);
   border-radius: var(--aurral-radius-sm);
@@ -976,8 +987,8 @@ textarea {
 }
 
 .app-shell {
-  height: 100vh;
-  min-height: 100vh;
+  height: 100dvh;
+  min-height: 100dvh;
   overflow: hidden;
   background: var(--aurral-chrome);
   color: var(--aurral-text);
@@ -987,20 +998,12 @@ textarea {
 
 .app-content {
   display: flex;
-  height: 100vh;
+  height: 100dvh;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
   padding: var(--aurral-space-outer);
   transition: margin-left var(--aurral-duration-slow) var(--aurral-ease-standard);
-}
-
-@supports (height: 100dvh) {
-  .app-shell,
-  .app-content {
-    height: 100dvh;
-    min-height: 100dvh;
-  }
 }
 
 .app-content--sidebar-full,
@@ -1011,7 +1014,6 @@ textarea {
 .app-topbar {
   position: relative;
   flex-shrink: 0;
-  z-index: 30;
   display: flex;
   min-height: 3.25rem;
   align-items: center;
@@ -1060,7 +1062,7 @@ textarea {
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: 80;
+  z-index: calc(var(--aurral-z-sticky) + 1);
   width: 1rem;
   border-radius: var(--aurral-radius-round);
   pointer-events: none;
@@ -1168,10 +1170,10 @@ textarea {
   position: absolute;
   top: calc(100% + 0.5rem);
   right: 0;
-  z-index: 70;
+  z-index: var(--aurral-z-popover);
   display: grid;
   width: min(28rem, calc(100vw - 2rem));
-  max-height: min(32rem, calc(100vh - 6rem));
+  max-height: min(32rem, calc(100dvh - 6rem));
   gap: 1rem;
   overflow-y: auto;
   padding: 1rem;
@@ -1235,7 +1237,7 @@ textarea {
 .app-mobile-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: var(--aurral-z-overlay);
   background: transparent;
   transition: background-color var(--aurral-duration-slow) var(--aurral-ease-out);
 }
@@ -1248,7 +1250,7 @@ textarea {
   position: fixed;
   inset-inline: 0;
   bottom: 0;
-  z-index: 61;
+  z-index: calc(var(--aurral-z-overlay) + 1);
   max-height: calc(100dvh - 4rem);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1309,7 +1311,7 @@ textarea {
 
 .app-mobile-nav {
   position: relative;
-  z-index: 40;
+  z-index: var(--aurral-z-sidebar);
   flex-shrink: 0;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   border-top: 1px solid var(--aurral-border);
@@ -1568,7 +1570,7 @@ textarea {
       .artist-playlist-menu) {
     position: fixed !important;
     inset: auto 0 0 !important;
-    z-index: 95 !important;
+    z-index: var(--aurral-z-popover);
     width: auto !important;
     min-width: 0 !important;
     max-width: none !important;
@@ -1669,7 +1671,7 @@ textarea {
       .artist-options-menu,
       .artist-floating-menu,
       .artist-playlist-menu)) :is(.app-mobile-nav, .global-player) {
-    z-index: 0;
+    z-index: var(--aurral-z-base);
   }
 
   body:has(:is(
@@ -1746,7 +1748,7 @@ textarea {
   position: fixed;
   inset-block: var(--aurral-space-outer);
   left: var(--aurral-space-outer);
-  z-index: 50;
+  z-index: var(--aurral-z-sidebar);
   display: none;
   min-width: 0;
   max-width: var(--sidebar-width);
@@ -1765,7 +1767,7 @@ textarea {
   position: absolute;
   inset-inline: 0;
   top: 0;
-  z-index: 0;
+  z-index: var(--aurral-z-base);
   height: 3.5rem;
   overflow: hidden;
   user-select: none;
@@ -1806,7 +1808,7 @@ textarea {
   left: calc(var(--sidebar-width) + var(--aurral-space-outer) - 0.5rem);
   width: 1rem;
   cursor: col-resize;
-  z-index: 51;
+  z-index: calc(var(--aurral-z-sidebar) + 1);
   display: none;
   touch-action: none;
 }
@@ -1841,7 +1843,7 @@ textarea {
 
 .sidebar-logo-row {
   position: relative;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   display: flex;
   height: 3.25rem;
   align-items: center;
@@ -1851,7 +1853,7 @@ textarea {
 
 .sidebar-logo-link {
   position: relative;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -1871,7 +1873,7 @@ textarea {
 
 .sidebar-body {
   position: relative;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -1914,7 +1916,7 @@ textarea {
 
 .sidebar-link {
   position: relative;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   display: flex;
   align-items: center;
   border-radius: var(--aurral-radius-sm);
@@ -2027,7 +2029,7 @@ textarea {
   position: fixed;
   top: var(--sidebar-tooltip-top);
   left: var(--sidebar-tooltip-left);
-  z-index: 100;
+  z-index: var(--aurral-z-tooltip);
   padding: 0.375rem 0.625rem;
   border: 1px solid var(--aurral-border-strong);
   border-radius: var(--aurral-radius-sm);
@@ -2186,7 +2188,7 @@ textarea {
 
 .global-search__suggestions {
   position: absolute;
-  z-index: 70;
+  z-index: var(--aurral-z-popover);
   overflow: hidden;
   border-radius: var(--aurral-radius-sm);
   background: var(--aurral-surface-popover);
@@ -2317,7 +2319,7 @@ textarea {
   position: absolute;
   right: 0;
   top: calc(100% + 0.5rem);
-  z-index: 70;
+  z-index: var(--aurral-z-popover);
   min-width: 11.5rem;
   overflow: hidden;
   border-radius: var(--aurral-radius-sm);
@@ -2402,9 +2404,9 @@ textarea {
   position: absolute;
   top: calc(100% + 0.5rem);
   right: 0;
-  z-index: 70;
+  z-index: var(--aurral-z-popover);
   width: min(24rem, calc(100vw - 2rem));
-  max-height: min(34rem, calc(100vh - 5rem));
+  max-height: min(34rem, calc(100dvh - 5rem));
   overflow: visible;
   border: 1px solid var(--aurral-border);
   border-radius: var(--aurral-radius-sm);
@@ -2415,7 +2417,7 @@ textarea {
 .app-inbox-menu__header {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2476,7 +2478,7 @@ textarea {
   position: absolute;
   top: calc(100% + 0.5rem);
   right: 0.75rem;
-  z-index: 3;
+  z-index: var(--aurral-z-popover);
   display: grid;
   width: min(12rem, calc(100vw - 3rem));
   gap: 0.25rem;
@@ -2512,7 +2514,7 @@ textarea {
 
 .app-inbox-menu__list {
   display: grid;
-  max-height: min(29rem, calc(100vh - 10rem));
+  max-height: min(29rem, calc(100dvh - 10rem));
   gap: 0.5rem;
   overflow-y: auto;
   padding: 0.5rem;
@@ -2686,7 +2688,7 @@ textarea {
   position: fixed;
   top: calc(var(--aurral-space-outer) + 3.25rem);
   right: max(1rem, env(safe-area-inset-right, 0px));
-  z-index: 80;
+  z-index: var(--aurral-z-toast);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -2705,7 +2707,7 @@ textarea {
 
 .app-toast {
   position: relative;
-  z-index: calc(20 - var(--toast-index, 0));
+  z-index: calc(var(--aurral-z-toast) - var(--toast-index, 0));
   display: flex;
   width: 100%;
   min-width: 0;
@@ -3273,7 +3275,7 @@ textarea {
 
 .artist-hero__content {
   position: relative;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   display: flex;
   min-height: 250px;
   flex-direction: column;
@@ -3367,7 +3369,7 @@ textarea {
 .artist-action-bar {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: var(--aurral-z-sticky);
   margin: -1px -1rem 1.75rem;
   padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--aurral-border);
@@ -3424,7 +3426,7 @@ textarea {
 
 .artist-dropdown {
   position: absolute;
-  z-index: 30;
+  z-index: var(--aurral-z-popover);
   margin-top: 0.5rem;
   overflow: hidden;
   background: var(--aurral-surface-popover);
@@ -3445,7 +3447,7 @@ textarea {
 .artist-backdrop-button {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: calc(var(--aurral-z-sticky) + 1);
   cursor: default;
   border-radius: 0;
 }
@@ -3512,7 +3514,7 @@ textarea {
   position: absolute;
   top: 0;
   right: 100%;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   display: none;
   width: 16rem;
   background: var(--aurral-surface-popover);
@@ -3807,7 +3809,7 @@ textarea {
   bottom: 0.5rem;
   display: flex;
   justify-content: flex-end;
-  z-index: 20;
+  z-index: calc(var(--aurral-z-raised) + 2);
 }
 
 .artist-release-card__status,
@@ -4026,7 +4028,7 @@ textarea {
 
 .artist-pick-panel__grid {
   position: relative;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   display: grid;
   align-items: start;
   gap: 0.875rem;
@@ -4187,12 +4189,12 @@ textarea {
 
 .artist-library-card__menu .btn {
   position: relative;
-  z-index: 16;
+  z-index: calc(var(--aurral-z-raised) + 1);
 }
 
 .artist-floating-menu {
   position: fixed;
-  z-index: 50;
+  z-index: var(--aurral-z-popover);
   width: 12rem;
   padding: 0.25rem;
   background: var(--aurral-surface-popover);
@@ -4427,7 +4429,7 @@ textarea {
   position: absolute;
   left: 0;
   bottom: 0;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   padding: 0.125rem 0.375rem;
   border-radius: var(--aurral-radius-sm);
   background: color-mix(in srgb, var(--aurral-overlay-base) 70%, transparent);
@@ -4587,7 +4589,7 @@ textarea {
   position: absolute;
   right: 0;
   top: 3rem;
-  z-index: 40;
+  z-index: var(--aurral-z-popover);
   width: 14rem;
 }
 
@@ -4658,7 +4660,7 @@ textarea {
 .artist-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: var(--aurral-z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4883,7 +4885,7 @@ textarea {
 }
 
 .file-browser-modal-backdrop {
-  z-index: 130;
+  z-index: calc(var(--aurral-z-modal) + 1);
 }
 
 .file-browser-modal {
@@ -4960,7 +4962,7 @@ textarea {
 .file-browser-modal__table th {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   padding: 0.55rem 1.25rem;
   text-align: left;
   font-size: 0.8rem;
@@ -5028,7 +5030,7 @@ textarea {
 
 .artist-playlist-menu {
   position: fixed;
-  z-index: 50;
+  z-index: var(--aurral-z-popover);
   width: 16rem;
   padding: 0.25rem;
   overflow: visible;
@@ -5041,7 +5043,7 @@ textarea {
 }
 
 .artist-playlist-menu--search-suggestion {
-  z-index: 90;
+  z-index: calc(var(--aurral-z-popover) + 1);
   background: var(--aurral-surface-popover);
 }
 
@@ -5731,7 +5733,7 @@ textarea {
   position: absolute;
   right: 0.5rem;
   bottom: 0.5rem;
-  z-index: 20;
+  z-index: calc(var(--aurral-z-raised) + 2);
 }
 
 .artist-discover-card__action .btn-add-action,
@@ -5791,7 +5793,7 @@ textarea {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: 15;
+  z-index: var(--aurral-z-raised);
   border-radius: 0.5rem;
 }
 
@@ -5814,13 +5816,13 @@ textarea {
     .card-link__label
   ) {
   position: relative;
-  z-index: 16;
+  z-index: calc(var(--aurral-z-raised) + 1);
 }
 
 .artist-discover-card__menu,
 .artist-release-list-item .artist-row-actions {
   position: relative;
-  z-index: 20;
+  z-index: calc(var(--aurral-z-raised) + 2);
 }
 
 .artist-discover-card:hover .artist-image-preview-button,
@@ -6067,7 +6069,7 @@ textarea {
   top: 0.75rem;
   display: flex;
   gap: 0.5rem;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
 }
 
 .artist-show-card__distance-badge--discover {
@@ -6657,7 +6659,7 @@ textarea {
   flex-direction: column;
   width: 100%;
   max-width: 32rem;
-  height: min(600px, 90vh);
+  height: min(600px, 90dvh);
   overflow: hidden;
   border-radius: var(--aurral-radius);
   background-color: var(--aurral-surface-glass);
@@ -6736,7 +6738,7 @@ textarea {
 }
 
 .artist-customize-section-row--dragging {
-  z-index: 10;
+  z-index: calc(var(--aurral-z-raised) + 2);
   border-color: var(--aurral-border);
   background-color: var(--aurral-surface-hover);
 }
@@ -6853,7 +6855,7 @@ textarea {
   position: absolute;
   top: 100%;
   right: 0;
-  z-index: 50;
+  z-index: var(--aurral-z-popover);
   min-width: 16rem;
   margin-top: 0.5rem;
   padding: 1rem;
@@ -7188,7 +7190,7 @@ textarea {
 
 .search-top-artist__content {
   position: relative;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   display: flex;
   align-items: center;
   gap: 1.25rem;
@@ -7489,7 +7491,7 @@ textarea {
 
 .search-mixed-results__actions {
   position: relative;
-  z-index: 20;
+  z-index: calc(var(--aurral-z-raised) + 2);
   display: flex;
   width: auto;
   min-width: 2rem;
@@ -7599,7 +7601,7 @@ textarea {
 }
 
 .search-page .search-album-results__item .artist-release-card__action {
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
 }
 
 
@@ -7751,7 +7753,7 @@ textarea {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
 }
 
 .library-page .artist-release-card__cover {
@@ -8197,7 +8199,7 @@ textarea {
 
 .native-library-item-menu {
   position: relative;
-  z-index: 4;
+  z-index: calc(var(--aurral-z-raised) + 2);
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
@@ -8300,9 +8302,9 @@ textarea {
 
 .native-library-item-menu__panel {
   position: fixed;
-  z-index: 80;
+  z-index: var(--aurral-z-popover);
   width: min(15rem, calc(100vw - 1rem));
-  max-height: calc(100vh - 1rem);
+  max-height: calc(100dvh - 1rem);
   overflow: visible;
   padding: 0.25rem;
   border-radius: var(--aurral-radius-sm);
@@ -8322,7 +8324,7 @@ textarea {
 .native-library-item-menu__panel .artist-menu-submenu__panel {
   right: auto;
   left: calc(100% + 0.5rem);
-  max-height: calc(100vh - 1rem);
+  max-height: calc(100dvh - 1rem);
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -9106,7 +9108,7 @@ button.native-library-genre-row:focus-visible {
 
 .collection-page::before {
   position: absolute;
-  z-index: -1;
+  z-index: var(--aurral-z-below);
   top: calc(-1 * var(--collection-tint-bleed, 0px));
   right: calc(-1 * var(--collection-tint-bleed, 0px));
   left: calc(-1 * var(--collection-tint-bleed, 0px));
@@ -9146,7 +9148,7 @@ button.native-library-genre-row:focus-visible {
 
 .collection-header__corner {
   position: absolute;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   top: 0;
   right: 0;
 }
@@ -10200,7 +10202,7 @@ button.native-library-genre-row:focus-visible {
 
 .activity-info-modal {
   max-width: 42rem;
-  max-height: min(42rem, calc(100vh - 2rem));
+  max-height: min(42rem, calc(100dvh - 2rem));
   overflow: auto;
   border-radius: var(--aurral-radius);
 }
@@ -10266,7 +10268,7 @@ button.native-library-genre-row:focus-visible {
 .manual-search-modal .playlist-modal__body {
   display: grid;
   gap: 1rem;
-  max-height: min(38rem, calc(100vh - 12rem));
+  max-height: min(38rem, calc(100dvh - 12rem));
   overflow: auto;
 }
 
@@ -10489,7 +10491,7 @@ button.native-library-genre-row:focus-visible {
 
 .login-page {
   display: flex;
-  min-height: 100vh;
+  min-height: 100dvh;
   align-items: center;
   justify-content: center;
   padding: 1rem;
@@ -11137,7 +11139,7 @@ button.native-library-genre-row:focus-visible {
 .settings-page__modal {
   width: 100%;
   max-width: 28rem;
-  max-height: 90vh;
+  max-height: 90dvh;
   overflow-y: auto;
   padding: 1.5rem;
   background: var(--aurral-surface-glass);
@@ -11147,7 +11149,7 @@ button.native-library-genre-row:focus-visible {
 .settings-page__modal--integration {
   display: flex;
   flex-direction: column;
-  max-height: min(90vh, 44rem);
+  max-height: min(90dvh, 44rem);
   overflow: hidden;
   padding: 0;
 }
@@ -11279,7 +11281,7 @@ button.native-library-genre-row:focus-visible {
 }
 
 .quality-profile-row.is-dragging {
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   box-shadow: var(--aurral-shadow-popover);
   opacity: 0.9;
 }
@@ -11948,7 +11950,7 @@ button.native-library-genre-row:focus-visible {
 .flow-page__mix-handle {
   position: absolute;
   top: 0;
-  z-index: 10;
+  z-index: calc(var(--aurral-z-raised) + 2);
   width: 2.75rem;
   height: 100%;
   margin-left: -1.375rem;
@@ -12083,7 +12085,7 @@ button.native-library-genre-row:focus-visible {
 
 .flow-page__token-suggestions {
   position: absolute;
-  z-index: 80;
+  z-index: var(--aurral-z-popover);
   top: calc(100% + 0.4rem);
   left: 0;
   right: 0;
@@ -12141,15 +12143,15 @@ button.native-library-genre-row:focus-visible {
 
 .flow-page__menu-wrap {
   position: relative;
-  z-index: 10;
+  z-index: calc(var(--aurral-z-raised) + 2);
 }
 
 .flow-page__menu-wrap.is-open {
-  z-index: 50;
+  z-index: var(--aurral-z-popover);
 }
 
 .flow-page__menu-wrap.is-open .artist-dropdown {
-  z-index: 50;
+  z-index: var(--aurral-z-popover);
 }
 
 .flow-page__btn-label--wide {
@@ -12281,7 +12283,7 @@ button.native-library-genre-row:focus-visible {
 
 .playlist-modal:has(.playlist-import) {
   max-width: min(38rem, calc(100vw - 2rem));
-  max-height: min(90vh, 42rem);
+  max-height: min(90dvh, 42rem);
   display: flex;
   flex-direction: column;
 }
@@ -12415,7 +12417,7 @@ button.native-library-genre-row:focus-visible {
 .playlist-import__playlist-list {
   display: flex;
   flex-direction: column;
-  max-height: min(14rem, 32vh);
+  max-height: min(14rem, 32dvh);
   overflow: auto;
 }
 
@@ -12446,7 +12448,7 @@ button.native-library-genre-row:focus-visible {
 
 .playlist-import__playlist-option:focus-visible {
   position: relative;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   outline: 2px solid var(--aurral-ring);
   outline-offset: -2px;
 }
@@ -12865,7 +12867,7 @@ button.native-library-genre-row:focus-visible {
 }
 
 .app-loading--screen {
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 ::view-transition-group(*),
@@ -13259,7 +13261,7 @@ button.native-library-genre-row:focus-visible {
   position: fixed;
   right: 1rem;
   bottom: 1rem;
-  z-index: 50;
+  z-index: var(--aurral-z-toast);
   width: 100%;
   max-width: 24rem;
   padding: 1rem;
@@ -13313,7 +13315,7 @@ button.native-library-genre-row:focus-visible {
 
 .onboarding-page {
   display: flex;
-  min-height: 100vh;
+  min-height: 100dvh;
   align-items: center;
   justify-content: center;
   padding: 2rem 1rem;
@@ -13342,7 +13344,7 @@ button.native-library-genre-row:focus-visible {
 
 .onboarding-card {
   position: relative;
-  z-index: 0;
+  z-index: var(--aurral-z-base);
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -13353,7 +13355,7 @@ button.native-library-genre-row:focus-visible {
 
 .onboarding-brand-mark {
   position: absolute;
-  z-index: 2;
+  z-index: calc(var(--aurral-z-raised) + 1);
   pointer-events: none;
 }
 
@@ -13535,7 +13537,7 @@ button.native-library-genre-row:focus-visible {
 .artist-image-overlay {
   position: absolute;
   inset: 0;
-  z-index: 10;
+  z-index: var(--aurral-z-raised);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -13575,7 +13577,7 @@ button.native-library-genre-row:focus-visible {
   position: absolute;
   left: 50%;
   top: 50%;
-  z-index: 20;
+  z-index: calc(var(--aurral-z-raised) + 2);
   display: inline-flex;
   width: 2.75rem;
   height: 2.75rem;
@@ -13687,7 +13689,7 @@ button.native-library-genre-row:focus-visible {
 .playlist-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: var(--aurral-z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -13766,7 +13768,7 @@ button.native-library-genre-row:focus-visible {
 
 .playlist-modal__edit-panel {
   position: relative;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   display: flex;
   min-width: 0;
   min-height: 13rem;
@@ -13790,7 +13792,7 @@ button.native-library-genre-row:focus-visible {
 .playlist-modal__cover-menu-backdrop {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
 }
 
 .playlist-modal__cover-wrap {
@@ -13860,7 +13862,7 @@ button.native-library-genre-row:focus-visible {
   position: absolute;
   top: 0.4rem;
   right: 0.4rem;
-  z-index: 2;
+  z-index: calc(var(--aurral-z-raised) + 1);
 }
 
 .playlist-modal__cover-menu-trigger {
@@ -13880,7 +13882,7 @@ button.native-library-genre-row:focus-visible {
 
 .global-player {
   position: relative;
-  z-index: 35;
+  z-index: var(--aurral-z-player);
   flex-shrink: 0;
   margin-top: 0.5rem;
   background: var(--aurral-chrome);
@@ -13889,7 +13891,7 @@ button.native-library-genre-row:focus-visible {
 .global-player::before {
   content: "";
   position: absolute;
-  z-index: -1;
+  z-index: var(--aurral-z-below);
   inset: 0;
   background-color: color-mix(in srgb, var(--player-tint, transparent) 32%, transparent);
   mask-image: linear-gradient(90deg, #000, transparent 55%);
@@ -14130,7 +14132,7 @@ button.native-library-genre-row:focus-visible {
 
 .global-player__progress {
   position: relative;
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   grid-column: 2;
   grid-row: 1;
   width: 100%;
@@ -14202,7 +14204,7 @@ button.native-library-genre-row:focus-visible {
   position: absolute;
   right: 0;
   bottom: calc(100% + 0.25rem);
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   display: flex;
   width: var(--player-queue-width);
   height: var(--player-queue-height, min(36rem, 70dvh));
@@ -14314,7 +14316,7 @@ button.native-library-genre-row:focus-visible {
 }
 
 .player-queue__item.is-dragging {
-  z-index: 1;
+  z-index: var(--aurral-z-raised);
   background: var(--aurral-surface-raised);
   box-shadow: var(--aurral-shadow-popover);
 }
@@ -14598,7 +14600,7 @@ button.native-library-genre-row:focus-visible {
   .now-playing-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 70;
+    z-index: var(--aurral-z-modal);
     display: block;
     background: transparent;
     transition: background-color var(--aurral-duration-slow) var(--aurral-ease-out);
@@ -15633,7 +15635,7 @@ button.native-library-genre-row:focus-visible {
 .login-page {
   min-height: 100dvh;
   align-items: flex-start;
-  padding: clamp(3rem, 12vh, 7rem) 1.5rem 3rem;
+  padding: clamp(3rem, 12dvh, 7rem) 1.5rem 3rem;
 }
 
 .login-card {
@@ -15867,7 +15869,7 @@ button.native-library-genre-row:focus-visible {
 .onboarding-page {
   min-height: 100dvh;
   align-items: flex-start;
-  padding: clamp(2rem, 10vh, 5rem) 1rem 3rem;
+  padding: clamp(2rem, 10dvh, 5rem) 1rem 3rem;
 }
 
 .onboarding-card-shell {
