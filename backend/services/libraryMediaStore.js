@@ -924,7 +924,9 @@ export function findLegacyKeyedLibraryFiles(source) {
 
 const CARRIED_ARTIST_METADATA_KEYS = ["monitored", "monitor", "monitorOption", "monitorNewItems", "mbidSource"];
 
-function moveLegacyAlbumPlays(album, targets) {
+// Plays move to the album whose title they name as soon as it has split off.
+// The shared row's last split also takes what no title claims.
+function moveLegacyAlbumPlays(album, targets, { final }) {
   const counts = new Map();
   const count = (userId, target, plays, playedAt) => {
     const key = `${userId}:${target.id}`;
@@ -940,16 +942,22 @@ function moveLegacyAlbumPlays(album, targets) {
     const target = targets.find((entry) =>
       isSameLibraryName(entry.title, event.album) && isSameLibraryName(entry.album_artist, event.artist))
       || targets.find((entry) => isSameLibraryName(entry.title, event.album))
-      || targets[0];
+      || (final ? targets[0] : null);
+    if (!target) continue;
     db.prepare("UPDATE play_events SET album_key = ? WHERE id = ?").run(target.identity_key, event.id);
     count(event.user_id, target, 1, event.played_at);
     movedByUser.set(event.user_id, (movedByUser.get(event.user_id) || 0) + 1);
   }
-  for (const stats of db.prepare(
-    "SELECT user_id, play_count, last_played_at FROM play_album_stats WHERE album_key = ?",
-  ).all(album.identity_key)) {
-    const unmatched = stats.play_count - (movedByUser.get(stats.user_id) || 0);
-    if (unmatched > 0) count(stats.user_id, targets[0], unmatched, stats.last_played_at);
+  const takePlays = db.prepare(
+    "UPDATE play_album_stats SET play_count = MAX(play_count - ?, 0) WHERE user_id = ? AND album_key = ?",
+  );
+  for (const [userId, moved] of movedByUser) takePlays.run(moved, userId, album.identity_key);
+  if (final) {
+    for (const stats of db.prepare(
+      "SELECT user_id, play_count, last_played_at FROM play_album_stats WHERE album_key = ? AND play_count > 0",
+    ).all(album.identity_key)) {
+      count(stats.user_id, targets[0], stats.play_count, stats.last_played_at);
+    }
   }
   const addPlays = db.prepare(
     `INSERT INTO play_album_stats (user_id, album_key, play_count, last_played_at)
@@ -961,12 +969,13 @@ function moveLegacyAlbumPlays(album, targets) {
   for (const entry of counts.values()) {
     addPlays.run(entry.userId, entry.target.identity_key, entry.plays, entry.playedAt);
   }
-  db.prepare("DELETE FROM play_album_stats WHERE album_key = ?").run(album.identity_key);
+  if (final) db.prepare("DELETE FROM play_album_stats WHERE album_key = ?").run(album.identity_key);
 }
 
 // A scan files what shared a legacy key under rows of its own. Each of those
-// rows gets the shared row's favorites. Once no file is left on the shared
-// row, they also get its plays, monitoring, and queue places, and it goes.
+// rows gets the shared row's favorites, monitoring, and the plays naming it,
+// since a split can take more than one scan. Once no file is left on the
+// shared row, the rest of its plays and its queue places move, and it goes.
 export function splitLegacyKeyedLibraryRows(moves) {
   const targetsOf = (from, to) => {
     const targets = new Map();
@@ -995,12 +1004,12 @@ export function splitLegacyKeyedLibraryRows(moves) {
       const { row: track, targets } = rows("library_tracks", fromId, toIds);
       if (!track || !targets.length) continue;
       for (const target of targets) copyLibraryStars("song", track.identity_key, target.identity_key);
-      if (db.prepare("SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1").get(track.id)) continue;
       if (track.monitored === 1) {
         for (const target of targets) {
           db.prepare("UPDATE library_tracks SET monitored = 1 WHERE id = ?").run(target.id);
         }
       }
+      if (db.prepare("SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1").get(track.id)) continue;
       moveQueuedLibrarySong(track.identity_key, targets[0].identity_key);
       db.prepare("DELETE FROM subsonic_stars WHERE entity_kind = 'song' AND entity_key = ?")
         .run(track.identity_key);
@@ -1011,11 +1020,11 @@ export function splitLegacyKeyedLibraryRows(moves) {
       const { row: album, targets } = rows("library_albums", fromId, toIds);
       if (!album || !targets.length) continue;
       for (const target of targets) copyLibraryStars("album", album.identity_key, target.identity_key);
-      if (db.prepare(
+      const final = !db.prepare(
         `SELECT 1 FROM library_media_files WHERE album_id = ?
          UNION ALL SELECT 1 FROM library_album_tracks WHERE album_id = ? LIMIT 1`,
-      ).get(album.id, album.id)) continue;
-      moveLegacyAlbumPlays(album, targets);
+      ).get(album.id, album.id);
+      moveLegacyAlbumPlays(album, targets, { final });
       const monitored = dbHelpers.parseJSON(album.metadata_json)?.monitored === true;
       for (const target of targets) {
         db.prepare(
@@ -1040,6 +1049,7 @@ export function splitLegacyKeyedLibraryRows(moves) {
           ).run(target.id, target.id);
         }
       }
+      if (!final) continue;
       db.prepare("DELETE FROM subsonic_stars WHERE entity_kind = 'album' AND entity_key = ?")
         .run(album.identity_key);
       clearLibraryManagement("album", album.id);
@@ -1050,7 +1060,6 @@ export function splitLegacyKeyedLibraryRows(moves) {
       const { row: artist, targets } = rows("library_artists", fromId, toIds);
       if (!artist || !targets.length) continue;
       for (const target of targets) copyLibraryStars("artist", artist.identity_key, target.identity_key);
-      if (db.prepare("SELECT 1 FROM library_albums WHERE artist_id = ? LIMIT 1").get(artist.id)) continue;
       const metadata = dbHelpers.parseJSON(artist.metadata_json) || {};
       for (const target of targets) {
         const targetMetadata = dbHelpers.parseJSON(target.metadata_json) || {};
@@ -1069,6 +1078,7 @@ export function splitLegacyKeyedLibraryRows(moves) {
            FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?`,
         ).run(target.id, artist.id);
       }
+      if (db.prepare("SELECT 1 FROM library_albums WHERE artist_id = ? LIMIT 1").get(artist.id)) continue;
       db.prepare("DELETE FROM subsonic_stars WHERE entity_kind = 'artist' AND entity_key = ?")
         .run(artist.identity_key);
       clearLibraryManagement("artist", artist.id);

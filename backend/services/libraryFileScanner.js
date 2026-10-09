@@ -322,9 +322,7 @@ export async function scanMusicRoot({
   const reconcilePaths = changed?.reconcilePaths || null;
   const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   const unseenPaths = requestedFiles ? null : getAvailableLibraryMediaPaths(source);
-  const legacyKeyed = changed
-    ? { paths: new Set(), albumIds: new Set() }
-    : findLegacyKeyedLibraryFiles(source);
+  const legacyKeyed = findLegacyKeyedLibraryFiles(source);
   const legacyMoves = [];
   const seenPaths = new Set();
   const failedPaths = new Set();

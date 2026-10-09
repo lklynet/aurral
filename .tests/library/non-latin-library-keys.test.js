@@ -45,12 +45,14 @@ async function writeLibrary(files) {
     tagsByPath.set(filePath, tags);
   }
   const reads = [];
-  const scan = () => scanMusicRoot({
+  const scan = ({ unreadable = [], ...options } = {}) => scanMusicRoot({
     rootPath: root,
     metadataReader: async (filePath) => {
       reads.push(filePath);
+      if (unreadable.includes(filePath)) throw new Error("unreadable");
       return { common: tagsByPath.get(filePath), format: {} };
     },
+    ...options,
   });
   return { scan, reads, paths: [...tagsByPath.keys()] };
 }
@@ -321,4 +323,43 @@ test("a rescan keeps a merged artist that MusicBrainz matched for its own albums
   reads.length = 0;
   await scan();
   assert.deepEqual(reads, []);
+});
+
+const libraryState = (user) => {
+  const starred = subsonic.getStarred(user);
+  return {
+    starredArtists: starred.artist.map((entry) => entry.name).sort(),
+    starredAlbums: starred.album.map((entry) => entry.name).sort(),
+    monitoredAlbums: getLibrary().albums.filter((album) => album.monitored).map((album) => album.title).sort(),
+  };
+};
+
+test("a scan of one changed file gives its own rows the merged rows' favorites and monitoring", async () => {
+  const { scan, paths } = await writeLibrary(MERGED_FILES);
+  const { user } = await seedMergedLibrary(paths);
+  await writeFile(paths[0], "changed fixture");
+
+  await scan({ changedPaths: [paths[0]] });
+
+  assert.deepEqual(libraryState(user), {
+    starredArtists: ["宇多田ヒカル", "椎名林檎"],
+    starredAlbums: ["初恋", "無罪モラトリアム"],
+    monitoredAlbums: ["初恋", "無罪モラトリアム"],
+  });
+});
+
+test("a split that takes two scans keeps each album's plays and monitoring", async () => {
+  const { scan, paths } = await writeLibrary(MERGED_FILES);
+  const { user } = await seedMergedLibrary(paths);
+
+  await scan({ unreadable: [paths[1]] });
+  await scan();
+
+  assert.deepEqual(rowCounts(), { artists: 2, albums: 2, tracks: 2 });
+  assert.deepEqual(playCounts(), { 初恋: 2, 無罪モラトリアム: 1 });
+  assert.deepEqual(libraryState(user), {
+    starredArtists: ["宇多田ヒカル", "椎名林檎"],
+    starredAlbums: ["初恋", "無罪モラトリアム"],
+    monitoredAlbums: ["初恋", "無罪モラトリアム"],
+  });
 });
