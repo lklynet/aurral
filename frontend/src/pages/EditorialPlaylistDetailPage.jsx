@@ -106,13 +106,13 @@ export default function EditorialPlaylistDetailPage() {
   };
 
   const renderState = (content, role) => (
-    <main className="library-page native-library-page collection-page">
+    <div className="library-page native-library-page collection-page">
       <div className="native-library-content">
         <div className="native-library-state" role={role}>
           {content}
         </div>
       </div>
-    </main>
+    </div>
   );
 
   if (isPending && !shown) {

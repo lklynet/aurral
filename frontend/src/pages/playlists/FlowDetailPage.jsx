@@ -73,7 +73,7 @@ export default function FlowDetailPage() {
 
   if (!flow) {
     return (
-      <main className="library-page native-library-page playlist-page">
+      <div className="library-page native-library-page playlist-page">
         <div className="native-library-content">
           {loading && !status ? (
             <SkeletonStatus label="Loading flow" className="native-library-detail">
@@ -98,7 +98,7 @@ export default function FlowDetailPage() {
             </div>
           )}
         </div>
-      </main>
+      </div>
     );
   }
 

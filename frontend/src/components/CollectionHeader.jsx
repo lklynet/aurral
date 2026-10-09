@@ -11,14 +11,14 @@ export function useCollectionTint(src) {
 export function CollectionPage({ tintSrc, tintColor = null, className = "", children }) {
   const tint = useCollectionTint(tintSrc) || tintColor;
   return (
-    <main
+    <div
       className={`library-page native-library-page collection-page${className ? ` ${className}` : ""}`}
       style={tint ? { "--collection-tint": tint } : undefined}
     >
       <div className="native-library-content">
         <div className="native-library-detail">{children}</div>
       </div>
-    </main>
+    </div>
   );
 }
 

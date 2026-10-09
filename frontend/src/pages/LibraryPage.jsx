@@ -2800,7 +2800,7 @@ function LibraryPage() {
 
   if (isDetail) {
     return (
-      <main
+      <div
         className={`library-page native-library-page${libraryAlbum || libraryArtist ? " collection-page" : ""}`}
         style={detailTint ? { "--collection-tint": detailTint } : undefined}
       >
@@ -2812,7 +2812,7 @@ function LibraryPage() {
         {!loading && !error && (libraryAlbum || libraryArtist) && (
           <div className="native-library-content">{renderLibraryDetail()}</div>
         )}
-      </main>
+      </div>
     );
   }
 
@@ -2861,7 +2861,7 @@ function LibraryPage() {
   const hasActiveFilters = Boolean(selectedGenre);
 
   return (
-    <main className="library-page native-library-page">
+    <div className="library-page native-library-page">
       {renderLibraryModals()}
       <header className={`native-library-header${section === "home" ? " native-library-header--home" : ""}`}>
         <div className="native-library-title-row">
@@ -3100,7 +3100,7 @@ function LibraryPage() {
           </TooltipButton>
         </nav>
       )}
-    </main>
+    </div>
   );
 }
 

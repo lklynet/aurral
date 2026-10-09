@@ -172,7 +172,7 @@ export default function FlowsPage() {
   };
 
   return (
-    <main className="library-page native-library-page playlist-page">
+    <div className="library-page native-library-page playlist-page">
       <header className="native-library-header">
         <div className="native-library-title-row">
           <div className="native-library-title">
@@ -186,6 +186,6 @@ export default function FlowsPage() {
         </div>
       </header>
       <div className="native-library-content">{renderContent()}</div>
-    </main>
+    </div>
   );
 }
