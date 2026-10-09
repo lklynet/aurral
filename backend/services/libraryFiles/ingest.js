@@ -38,7 +38,7 @@ async function* walkAudioFiles(directory) {
   try {
     entries = await fs.readdir(directory, { withFileTypes: true });
   } catch {
-    return;
+    throw new IngestSourceError(`Aurral cannot read ${directory}. Give Aurral access to it, or move it out of the folder.`);
   }
   entries.sort((left, right) => left.name.localeCompare(right.name));
   for (const entry of entries) {

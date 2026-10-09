@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { copyFile, link, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, link, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -274,10 +274,22 @@ test("files Aurral cannot place are skipped with a reason and left alone", async
   assert.equal(await exists(loose), true);
 });
 
-test("the source check rejects the Downloads Folder and flags a Lidarr root folder", async () => {
+test("the source check rejects the Downloads Folder and unreadable folders, and flags a Lidarr root folder", async () => {
   await mkdir(root, { recursive: true });
   await assert.rejects(checkIngestSource({ sourcePath: path.join(root) }), /already in the Downloads Folder/);
   await assert.rejects(checkIngestSource({ sourcePath: isolatedState.baseDir }), /Downloads Folder is inside/);
+  if (process.getuid?.() !== 0) {
+    const source = newSource();
+    await makeTrack(path.join(source, "Readable", "Album", "01.flac"), { title: "x" });
+    const locked = path.join(source, "Locked");
+    await mkdir(locked);
+    await chmod(locked, 0o000);
+    try {
+      await assert.rejects(checkIngestSource({ sourcePath: source }), /cannot read .*Locked/);
+    } finally {
+      await chmod(locked, 0o755);
+    }
+  }
 
   const lidarrRoot = path.join(isolatedState.baseDir, "lidarr-music");
   const track = await makeTrack(path.join(lidarrRoot, "Artist", "Album", "01.flac"), { title: "x" });
