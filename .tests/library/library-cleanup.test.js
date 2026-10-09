@@ -133,6 +133,29 @@ test("rename gives a file Aurral's name and keeps its Library row, jobs, and lyr
   assert.equal(downloadTracker.getJob(jobId).finalPath, newPath);
 });
 
+test("a second-disc file takes the disc in its name once, and first-disc and undisced names stay", async () => {
+  const albumDir = path.join(root, "Bush", "Sixteen Stone");
+  const tags = { artist: "Bush", album: "Sixteen Stone", title: "Bomb", track: "3" };
+  const firstDisc = await makeTrack(path.join(albumDir, "03 - Bomb.flac"), { ...tags, disc: "1" });
+  const secondDisc = await makeTrack(path.join(albumDir, "03 - Bomb (2).flac"), { ...tags, disc: "2" });
+  const undisced = await makeTrack(path.join(albumDir, "05 - Swim.flac"), { ...tags, title: "Swim", track: "5" });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const before = mediaAt(secondDisc);
+  const jobId = downloadTracker.addJob({ artistName: "Bush", trackName: "Bomb", trackNumber: 3 }, "library");
+  downloadTracker.setDone(jobId, secondDisc, "Sixteen Stone");
+
+  const { items } = await cleanUp();
+
+  const renamed = path.join(albumDir, "2-03 - Bomb.flac");
+  const renames = (list) => list.filter((item) => item.target).map((item) => [item.status, item.target]);
+  assert.deepEqual(renames(items), [["done", path.relative(root, renamed)]]);
+  assert.equal(await exists(secondDisc), false);
+  assert.equal(mediaAt(renamed)?.id, before.id);
+  assert.equal(downloadTracker.getJob(jobId).finalPath, renamed);
+  for (const kept of [firstDisc, undisced]) assert.equal(mediaAt(kept)?.available, 1);
+  assert.deepEqual(renames((await cleanUp()).items), []);
+});
+
 test("a rename a restart interrupted still refreshes the playlists that use the file", async (t) => {
   const oldPath = await makeTrack(path.join(root, "loose", "track.flac"), {
     artist: "Resume Artist", album: "Resume Album", title: "Song", track: "2",

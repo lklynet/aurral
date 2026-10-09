@@ -14,12 +14,15 @@ export function sanitizePathPart(value, fallback = "Unknown") {
   return text || fallback;
 }
 
-// "07 - Title.flac" when the album position is known, so a folder lists in
-// album order and two tracks with one title keep distinct names.
+// "07 - Title.flac" when the album position is known, or "2-07 - Title.flac"
+// past the first disc, so a folder lists in album order and two tracks with
+// one title keep distinct names.
 export function buildTrackFileName(job, ext) {
   const title = sanitizePathPart(job?.trackName, "Unknown Track");
-  const position = normalizePositiveInteger(job?.trackNumber);
-  return `${position ? `${String(position).padStart(2, "0")} - ` : ""}${title}${ext}`;
+  const track = normalizePositiveInteger(job?.trackNumber);
+  const disc = normalizePositiveInteger(job?.discNumber);
+  const position = track ? `${disc > 1 ? `${disc}-` : ""}${String(track).padStart(2, "0")} - ` : "";
+  return `${position}${title}${ext}`;
 }
 
 export function normalizePositiveInteger(value) {
@@ -111,6 +114,7 @@ export function buildResolvedJobTrack(job, payloadTrack = {}) {
     releaseYear: job.releaseYear || track.releaseYear,
     durationMs: job.durationMs ?? track.durationMs ?? null,
     trackNumber: normalizePositiveInteger(job.trackNumber ?? track.trackNumber),
+    discNumber: normalizePositiveInteger(job.discNumber ?? track.discNumber),
     albumTrackCount: normalizePositiveInteger(job.albumTrackCount ?? track.albumTrackCount),
     albumTrackTitles: normalizeStringList(
       (job.albumTrackTitles?.length ? job.albumTrackTitles : null) || track.albumTrackTitles,
@@ -246,6 +250,7 @@ export async function writeAudioMetadata(filePath, metadata = {}) {
     recordingMbid: metadata.trackMbid,
     year: metadata.releaseYear,
     trackNumber: metadata.trackNumber,
+    discNumber: metadata.discNumber,
   }, { identity: buildAurralIdentity(metadata) });
 }
 

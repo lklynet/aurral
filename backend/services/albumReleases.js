@@ -18,6 +18,7 @@ export function jobReleaseTrack(job) {
     artistAliases: job.artistAliases || [],
     durationMs: job.durationMs,
     trackNumber: job.trackNumber,
+    discNumber: job.discNumber,
     recordingMbid: job.trackMbid,
   };
 }
@@ -38,6 +39,7 @@ export async function loadAlbumReleases(albumMbid) {
           title: track.title,
           durationMs: track.durationMs,
           trackNumber: track.trackPosition ?? track.trackNumber,
+          discNumber: track.mediumNumber ?? null,
           recordingMbid: track.recordingId,
           recordingMbidAliases: track.oldRecordingIds || [],
         })),
@@ -94,6 +96,7 @@ export function releaseTracksForJobs(release, jobs) {
       ...jobReleaseTrack(job),
       durationMs: track?.durationMs || job.durationMs,
       trackNumber: track ? track.trackNumber : null,
+      discNumber: track ? track.discNumber : null,
       onRelease: Boolean(track),
     };
   });
@@ -123,7 +126,7 @@ export function candidateReleasesForJobs(jobs, releases = []) {
     }),
   ].filter((release) => {
     const key = release.tracks
-      .map((track) => `${track.trackNumber ?? ""}:${Math.round(Number(track.durationMs || 0) / 1000)}`)
+      .map((track) => `${track.discNumber ?? ""}-${track.trackNumber ?? ""}:${Math.round(Number(track.durationMs || 0) / 1000)}`)
       .join("|");
     if (seen.has(key)) return false;
     seen.add(key);

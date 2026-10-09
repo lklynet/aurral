@@ -85,6 +85,7 @@ async function planAlbum(albumId, context) {
       albumName: album.title,
       trackName: file.title,
       trackNumber: file.track_number,
+      discNumber: file.disc_number,
     }, path.extname(file.path));
     const rename = target !== path.resolve(file.path);
     if (rename && !isPathInsideRoot(target, context.root)) {

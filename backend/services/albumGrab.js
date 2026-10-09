@@ -162,7 +162,9 @@ export async function finishAlbumGrab(payload, {
     try {
       const ext = path.extname(match.filePath).toLowerCase() || ".flac";
       const destination = joinUnderRoot(playlistRoot, peerPayload.destination);
-      const placed = { ...job, trackNumber: match.trackNumber || job.trackNumber };
+      const placed = match.trackNumber
+        ? { ...job, trackNumber: match.trackNumber, discNumber: match.discNumber }
+        : job;
       const finalPath = path.join(destination, buildTrackFileName(placed, ext));
       const committed = await withPipelineCommitLock(peerPayload, async () => {
         const committedFinalPath = await commitDownloadedFile(match.filePath, finalPath);

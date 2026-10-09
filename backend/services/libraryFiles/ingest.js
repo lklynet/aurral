@@ -247,7 +247,7 @@ async function planItem(operation, item, plannedTargets, albums) {
   }
   const target = buildLibraryTrackPath(
     root,
-    { artistName: match.artistName, albumName: match.albumName, trackName: record.title, trackNumber: record.trackNumber },
+    { artistName: match.artistName, albumName: match.albumName, trackName: record.title, trackNumber: record.trackNumber, discNumber: record.discNumber },
     path.extname(item.sourcePath),
   );
   if (!isPathInsideRoot(target, root)) {

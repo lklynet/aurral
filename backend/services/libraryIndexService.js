@@ -32,7 +32,7 @@ function getAurralJobMetadataByPath() {
   const rows = db
     .prepare(
       `SELECT final_path, artist_name, album_name, track_name,
-        artist_mbid, album_mbid, track_mbid, release_year, track_number
+        artist_mbid, album_mbid, track_mbid, release_year, track_number, disc_number
        FROM playlist_download_jobs
        WHERE status = 'done' AND final_path IS NOT NULL
        ORDER BY completed_at DESC, created_at DESC`,
@@ -51,6 +51,7 @@ function getAurralJobMetadataByPath() {
       trackMbid: row.track_mbid,
       releaseYear: row.release_year,
       trackNumber: row.track_number,
+      discNumber: row.disc_number,
     });
   }
   return byPath;

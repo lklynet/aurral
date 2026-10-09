@@ -4,6 +4,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { basename, join } from "node:path";
 import { mkdir, rm, stat } from "node:fs/promises";
+import { parseFile } from "music-metadata";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
 const execFileAsync = promisify(execFile);
@@ -75,6 +76,31 @@ test("one Usenet NZB fills two sibling jobs", async (t) => {
   const activity = (await getAurralHistoryRequests()).filter((item) => album.ids.includes(item.jobId));
   assert.equal(activity.length, 2);
   assert.ok(activity.every((item) => item.downloadMethod === "album" && item.actualDownloadSource === "usenet"));
+});
+
+test("a Usenet download of a second-disc track takes the disc in its name", async (t) => {
+  const folder = join(state.baseDir, "usenet-disc-two");
+  await mkdir(folder, { recursive: true });
+  await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
+    "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac",
+    "-metadata", "title=Bomb", "-metadata", "artist=The Band", join(folder, "Bomb.flac")]);
+  const jobId = downloadTracker.addJob({ artistName: "The Band", albumName: "Disc Album", trackName: "Bomb",
+    trackNumber: 3, discNumber: 2, durationMs: 1000 }, "library");
+  const client = getDownloadClient("nzbget");
+  t.mock.method(prowlarrClient, "downloadNzb", async () => Buffer.from("<nzb></nzb>"));
+  t.mock.method(client, "appendNzb", async () => ({ nzbId: "nzb-disc-two" }));
+  t.mock.method(client, "getHistoryItem", async () => ({ Status: "SUCCESS", FinalDir: folder }));
+  const candidate = { raw: { release: { title: "The Band - Bomb", guid: "release-disc-two",
+    downloadUrl: "https://nzb.test/disc-two" } }, score: 10, resolvedAlbumName: "Disc Album" };
+  const fail = { failOrTryNextSource: (_, __, reason) => { throw new Error(reason); } };
+  let payload = { source: "usenet", phase: "download", jobId, playlistId: "library", playlistGeneration: 0,
+    destination: "The Band/Disc Album", candidates: [candidate], candidateIndex: 0 };
+  while (payload?.phase) payload = await processUsenetPipelinePayload(payload, fail);
+  const job = downloadTracker.getJob(jobId);
+  assert.equal(job.status, "done");
+  assert.equal(basename(job.finalPath), "2-03 - Bomb.flac");
+  const { common } = await parseFile(job.finalPath);
+  assert.deepEqual([common.disk.no, common.track.no], [2, 3]);
 });
 
 test("one Soulseek batch fills two sibling jobs", async (t) => {
