@@ -109,6 +109,9 @@ export const getLibraryFileOperationItems = (id, { status = [], offset = 0, limi
 export const cancelLibraryFileOperation = (id) =>
   postData(`/library/files/operations/${encodeURIComponent(id)}/cancel`);
 
+export const removeLibraryFileOperationSources = (id) =>
+  postData(`/library/files/operations/${encodeURIComponent(id)}/remove-sources`);
+
 export const getLibraryTrackFiles = (trackId, options = {}) =>
   getData(`/library/tracks/${encodeURIComponent(trackId)}/files`, options);
 

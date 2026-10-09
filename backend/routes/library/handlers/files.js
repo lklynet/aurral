@@ -6,6 +6,7 @@ import {
   cancelLibraryFileOperation,
   describeLibraryFileOperation,
   describeLibraryFileOperationItems,
+  removeIngestSources,
   startCleanup,
   startIngest,
 } from "../../../services/libraryFiles/operations.js";
@@ -98,5 +99,15 @@ export function registerFiles(router) {
     if (!operation) return;
     cancelLibraryFileOperation(operation.id);
     res.json({ operation: describeLibraryFileOperation(getLibraryFileOperation(operation.id)) });
+  });
+
+  router.post("/files/operations/:id/remove-sources", requireAuth, requireAdmin, async (req, res) => {
+    const operation = findOperation(req, res);
+    if (!operation) return;
+    try {
+      res.json({ operation: describeLibraryFileOperation(await removeIngestSources(operation.id)) });
+    } catch (error) {
+      sendError(res, error);
+    }
   });
 }

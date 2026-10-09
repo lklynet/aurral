@@ -2,16 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import { DotLoader } from "./DotLoader";
-import { cancelLibraryFileOperation, getLibraryFileOperationItems } from "../utils/api/endpoints/library.js";
+import {
+  cancelLibraryFileOperation,
+  getLibraryFileOperationItems,
+  removeLibraryFileOperationSources,
+} from "../utils/api/endpoints/library.js";
 import { ACTIVE_LIBRARY_FILE_STATUSES, libraryFilesQueryKey } from "../hooks/useLibraryFileOperation.js";
 import "./LibraryFileOperation.css";
 
 const PAGE_SIZE = 50;
 
 const GROUPS = [
-  { id: "conflict", label: "Needs review", statuses: ["conflict"] },
-  { id: "skipped", label: "Skipped", statuses: ["skipped"] },
+  { id: "skipped", label: "Skipped", statuses: ["skipped", "conflict"] },
   { id: "failed", label: "Failed", statuses: ["failed"] },
+  { id: "duplicate", label: "Already in the Library", statuses: ["duplicate"] },
 ];
 
 const RUNNING = { move: "Moving files", copy: "Copying files", hardlink: "Linking files" };
@@ -19,23 +23,33 @@ const RUNNING = { move: "Moving files", copy: "Copying files", hardlink: "Linkin
 const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
 const countOf = (counts, statuses) => statuses.reduce((sum, status) => sum + Number(counts?.[status] || 0), 0);
 
+function describeSkipped(present, others) {
+  if (present && others) return `Skipped ${plural(present, "file")} already in the Library and ${plural(others, "other")}`;
+  if (present) return `Skipped ${plural(present, "file")} already in the Library`;
+  return others ? `Skipped ${plural(others, "file")}` : null;
+}
+
 function describeResult(operation) {
   const counts = operation.counts || {};
+  const skipped = countOf(counts, ["skipped", "conflict"]);
   const parts = operation.kind === "ingest"
     ? [
         counts.done && `Filed ${plural(counts.done, "file")}`,
-        counts.duplicate && `${counts.duplicate} already in the Library`,
+        describeSkipped(Number(counts.duplicate || 0), skipped),
       ]
     : [
         counts.done && `Updated ${plural(counts.done, "file")}`,
         operation.summary?.unchanged && `${operation.summary.unchanged} already in order`,
+        skipped && `${skipped} skipped`,
       ];
-  parts.push(
-    counts.conflict && `${counts.conflict} need${counts.conflict === 1 ? "s" : ""} review`,
-    counts.skipped && `${counts.skipped} skipped`,
-    counts.failed && `${counts.failed} failed`,
-  );
+  parts.push(counts.failed && `${counts.failed} failed`);
   return parts.filter(Boolean).join(" · ");
+}
+
+function describeRunning(operation) {
+  if (operation.kind !== "ingest") return "Cleaning up";
+  if (operation.summary?.removingSources) return "Removing source files";
+  return RUNNING[operation.options?.mode] || "Filing files";
 }
 
 function describeStatus(operation) {
@@ -46,7 +60,7 @@ function describeStatus(operation) {
     case "planning":
       return `Checking files${progress}`;
     case "running":
-      return `${operation.kind === "ingest" ? RUNNING[operation.options?.mode] || "Filing files" : "Cleaning up"}${progress}`;
+      return `${describeRunning(operation)}${progress}`;
     case "complete":
       return result ? `Finished. ${result}.` : "Finished. Nothing needed to change.";
     case "cancelled":
@@ -96,6 +110,39 @@ function StopButton({ operation, onChanged, showError }) {
   );
 }
 
+function RemoveSourcesOffer({ operation, onChanged, showError }) {
+  const [removing, setRemoving] = useState(false);
+  const count = Number(operation.sources?.removable || 0);
+  if (!count) return null;
+  const remove = async () => {
+    setRemoving(true);
+    try {
+      await removeLibraryFileOperationSources(operation.id);
+      await onChanged?.();
+    } catch (error) {
+      showError?.(error?.response?.data?.message || error?.message || "Aurral could not remove the source files. Nothing was removed.");
+    } finally {
+      setRemoving(false);
+    }
+  };
+  return (
+    <div className="library-file-op__offer">
+      <div>
+        <p className="library-file-op__question">
+          Remove {plural(count, "source file")} already in the Library?
+        </p>
+        <p className="library-file-op__notes">
+          Aurral checks each one against the Library&apos;s copy again, then deletes it from the source folder.
+        </p>
+      </div>
+      <button type="button" className="btn btn-danger" disabled={removing} onClick={remove}>
+        {removing ? <DotLoader size="sm" label={null} /> : null}
+        Remove source files
+      </button>
+    </div>
+  );
+}
+
 export default function LibraryFileOperation({ operation, onChanged, showError }) {
   const counts = operation?.counts;
   const groups = useMemo(
@@ -137,6 +184,12 @@ export default function LibraryFileOperation({ operation, onChanged, showError }
           </div>
         ) : null}
       </div>
+      {!busy ? <RemoveSourcesOffer operation={operation} onChanged={onChanged} showError={showError} /> : null}
+      {operation.sources?.removed ? (
+        <p className="library-file-op__notes">
+          Removed {plural(operation.sources.removed, "source file")} already in the Library.
+        </p>
+      ) : null}
       {operation.summary?.monitor === "pending" ? (
         <p className="library-file-op__notes">Aurral monitors this music once the Library scan has found it.</p>
       ) : null}
