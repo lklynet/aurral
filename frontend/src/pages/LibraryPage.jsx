@@ -581,7 +581,21 @@ function LibraryPage() {
     ],
   );
   const libraryQueryKey = libraryQueryOptions.queryKey;
-  const libraryQuery = useQuery(libraryQueryOptions);
+  const libraryQuery = useQuery({
+    ...libraryQueryOptions,
+    placeholderData: (previous, previousQuery) => {
+      const previousView = previousQuery?.queryKey?.[2];
+      const view = libraryQueryOptions.queryKey[2];
+      return previousView &&
+        previousView.preview === view.preview &&
+        previousView.section === view.section &&
+        previousView.albumId === view.albumId &&
+        previousView.artistId === view.artistId
+        ? previous
+        : undefined;
+    },
+  });
+  const libraryUpdating = libraryQuery.isPlaceholderData;
 
   const queryData = libraryQuery.data;
   const isPreviewLibrary = forcePreview || queryData?.isPreview === true;
@@ -3032,7 +3046,12 @@ function LibraryPage() {
         />
       )}
       {!loading && !error && activeCount > 0 && (
-        <div className="native-library-content">{content}</div>
+        <div
+          className={`native-library-content${libraryUpdating ? " query-pending" : ""}`}
+          aria-busy={libraryUpdating || undefined}
+        >
+          {content}
+        </div>
       )}
       {!loading && !error && totalPages > 1 && (
         <nav className="native-library-pagination" aria-label={sectionLabel + " pages"}>

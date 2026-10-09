@@ -320,8 +320,19 @@ function SearchResultsPage() {
       if (!lastPage?.hasMore && !(Number(lastPage?.count) > loaded)) return undefined;
       return loaded;
     },
+    placeholderData: (previous, previousQuery) => {
+      const previousKey = previousQuery?.queryKey;
+      return previousKey &&
+        searchQueryKey[1] !== "unified" &&
+        searchQueryKey[1] !== "discovery" &&
+        previousKey[1] === searchQueryKey[1] &&
+        previousKey[2] === searchQueryKey[2]
+        ? previous
+        : undefined;
+    },
     staleTime: 30_000,
   });
+  const searchUpdating = searchQuery.isPlaceholderData;
 
   const searchPages = searchQuery.data?.pages || EMPTY_SEARCH_PAGES;
   const rawUnifiedResults = isUnifiedSearch ? searchPages[0] || null : null;
@@ -402,7 +413,7 @@ function SearchResultsPage() {
         : Number(searchPages[searchPages.length - 1]?.count ?? results.length);
   const hasMore = fullList
     ? visibleCount < fullList.length
-    : searchQuery.hasNextPage === true;
+    : !searchUpdating && searchQuery.hasNextPage === true;
 
   const albumResultsForTab = useMemo(() => {
     if (!isAlbumSearch) return results;
@@ -1542,7 +1553,10 @@ function SearchResultsPage() {
       )}
 
       {showContent && (
-        <>
+        <div
+          className={searchUpdating ? "query-pending" : undefined}
+          aria-busy={searchUpdating || undefined}
+        >
           {isEmpty ? (
             <div className="search-empty-panel">
               <div className="search-empty-panel__icon" aria-hidden="true">
@@ -1653,7 +1667,7 @@ function SearchResultsPage() {
               )}
             </>
           )}
-        </>
+        </div>
       )}
     </div>
   );

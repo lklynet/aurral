@@ -5334,6 +5334,17 @@ textarea {
   display: contents;
 }
 
+.query-pending {
+  opacity: 0.6;
+  transition: opacity 0.15s ease 0.15s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .query-pending {
+    transition: none;
+  }
+}
+
 .skeleton-line {
   display: block;
   height: 0.75rem;
