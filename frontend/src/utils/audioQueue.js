@@ -333,6 +333,25 @@ export function queueReducer(state, action) {
       if (current == null || currentIndex < 0) return state;
       return { ...state, queue, playbackOrder, isShuffleEnabled, currentIndex };
     }
+    case "RESTORE_QUEUE": {
+      if (state.currentIndex >= 0 || !Array.isArray(action.queue) || action.queue.length === 0) {
+        return state;
+      }
+      const [queue, nextEntryId] = withEntryIds(state, action.queue);
+      return playAt(
+        {
+          ...state,
+          queue,
+          nextEntryId,
+          playbackOrder: action.playbackOrder,
+          source: action.source ?? null,
+          isShuffleEnabled: action.isShuffleEnabled === true,
+          repeatMode: action.repeatMode ?? state.repeatMode,
+        },
+        action.currentIndex,
+        false,
+      );
+    }
     case "SET_ERROR":
       return { ...state, error: action.error };
     case "CLEAR_ERROR":

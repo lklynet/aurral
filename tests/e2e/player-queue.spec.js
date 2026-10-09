@@ -31,8 +31,8 @@ function silentWav(seconds, sampleRate = 8000) {
 const wav = silentWav(TRACK_SECONDS);
 const gaplessWav = silentWav(GAPLESS_TRACK_SECONDS);
 
-function routeEditorialPlaylist(page, id, name, seconds, prefix = "") {
-  return page.route(`**/api/discover/editorial/${id}`, (route) =>
+function routeEditorialPlaylist(target, id, name, seconds, prefix = "") {
+  return target.route(`**/api/discover/editorial/${id}`, (route) =>
     route.fulfill({
       json: {
         id,
@@ -53,10 +53,10 @@ function routeEditorialPlaylist(page, id, name, seconds, prefix = "") {
   );
 }
 
-test.beforeEach(async ({ page }) => {
-  await routeEditorialPlaylist(page, PLAYLIST_ID, PLAYLIST_NAME, TRACK_SECONDS);
-  await routeEditorialPlaylist(page, GAPLESS_PLAYLIST_ID, GAPLESS_PLAYLIST_NAME, GAPLESS_TRACK_SECONDS, "gapless-");
-  await page.route("**/e2e-audio/*.wav", async (route) => {
+test.beforeEach(async ({ page, context }) => {
+  await routeEditorialPlaylist(context, PLAYLIST_ID, PLAYLIST_NAME, TRACK_SECONDS);
+  await routeEditorialPlaylist(context, GAPLESS_PLAYLIST_ID, GAPLESS_PLAYLIST_NAME, GAPLESS_TRACK_SECONDS, "gapless-");
+  await context.route("**/e2e-audio/*.wav", async (route) => {
     const gapless = route.request().url().includes("/gapless-");
     if (gapless) await new Promise((resolve) => setTimeout(resolve, AUDIO_LATENCY_MS));
     const body = gapless ? gaplessWav : wav;
@@ -410,6 +410,103 @@ test("adding to the queue when nothing plays starts the track", async ({ page })
   await page.getByRole("menuitem", { name: "Add to queue" }).click();
   await expect(player.title).toHaveText("Charlie");
   await waitUntilPlaying(player);
+});
+
+test("a reload brings the queue back paused where it was, and closing the player forgets it", async ({ page }) => {
+  const player = playerControls(page);
+  await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
+  await waitUntilPlaying(player);
+  await player.next.click();
+  await expect(player.title).toHaveText("Bravo");
+  await waitUntilPlaying(player);
+  await page.getByRole("button", { name: "Alpha options" }).click();
+  await page.getByRole("menuitem", { name: "Play next" }).click();
+  await player.seek.press("PageUp");
+  await expect(player.seek).toHaveAttribute("aria-valuetext", /^0:3\d of 1:00$/);
+  await player.playPause.click();
+  await expect(player.playPause).toHaveAccessibleName("Play");
+  const savedAt = await player.seek.getAttribute("aria-valuetext");
+
+  await page.reload();
+  await expect(player.title).toHaveText("Bravo");
+  await expect(player.playPause).toHaveAccessibleName("Play");
+  await expect(player.seek).toHaveAttribute("aria-valuetext", savedAt);
+  await player.bar.getByRole("button", { name: "Queue" }).click();
+  const panel = page.getByRole("complementary", { name: "Queue" });
+  await expect(panel.getByText("Playing from E2E queue")).toBeVisible();
+  expect(await upNextTitles(panel)).toEqual(["Alpha", "Charlie", "Delta", "Echo"]);
+  expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain("token=");
+
+  await player.playPause.click();
+  await waitUntilPlaying(player);
+  const elapsed = Number(/^0:(\d\d)/.exec(await player.seek.getAttribute("aria-valuetext"))[1]);
+  expect(elapsed).toBeGreaterThanOrEqual(Number(/^0:(\d\d)/.exec(savedAt)[1]));
+
+  await page.getByRole("button", { name: "Close player" }).click();
+  await expect(player.bar).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: PLAYLIST_NAME })).toBeVisible();
+  await expect(player.bar).toHaveCount(0);
+});
+
+test("a restored track whose file is gone says it is unavailable", async ({ page }) => {
+  const player = playerControls(page);
+  await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
+  await waitUntilPlaying(player);
+  await player.playPause.click();
+  await expect(player.playPause).toHaveAccessibleName("Play");
+
+  await page.route("**/e2e-audio/*.wav", (route) => route.fulfill({ status: 404, body: "" }));
+  await page.reload();
+  await expect(player.bar.getByText(/This track is unavailable/)).toBeVisible();
+  await expect(player.title).toHaveText("Alpha");
+});
+
+test("logging out stops playback and signing back in brings the queue back paused", async ({ page }) => {
+  const username = String(process.env.AURRAL_TEST_USERNAME || "").trim();
+  const password = String(process.env.AURRAL_TEST_PASSWORD || "");
+  test.skip(!username || !password, "Needs AURRAL_TEST_USERNAME and AURRAL_TEST_PASSWORD");
+  const player = playerControls(page);
+  await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
+  await waitUntilPlaying(player);
+  await page.route("**/api/auth/logout", (route) => route.fulfill({ json: { ok: true } }));
+
+  await page.getByRole("button", { name: "User menu" }).click();
+  await page.getByRole("menuitem", { name: "Log out" }).click();
+  await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => navigator.mediaSession.playbackState)).toBe("none");
+
+  await page.getByLabel("Username").fill(username);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(player.title).toHaveText("Alpha");
+  await expect(player.playPause).toHaveAccessibleName("Play");
+});
+
+test("playing in a second tab pauses the first and the queue follows the tab that played last", async ({ page, context }) => {
+  const player = playerControls(page);
+  await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
+  await waitUntilPlaying(player);
+  await player.next.click();
+  await expect(player.title).toHaveText("Bravo");
+  await waitUntilPlaying(player);
+
+  const second = await context.newPage();
+  await second.goto("/");
+  const secondPlayer = playerControls(second);
+  await expect(secondPlayer.title).toHaveText("Bravo");
+  await expect(secondPlayer.playPause).toHaveAccessibleName("Play");
+  await waitUntilPlaying(player);
+
+  await secondPlayer.next.click();
+  await expect(secondPlayer.title).toHaveText("Charlie");
+  await waitUntilPlaying(secondPlayer);
+  await expect(player.playPause).toHaveAccessibleName("Play");
+
+  await page.waitForTimeout(500);
+  await page.reload();
+  await expect(player.title).toHaveText("Charlie");
+  await second.close();
 });
 
 test.describe("on a phone", () => {

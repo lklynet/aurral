@@ -17,6 +17,9 @@ import {
   shouldRestartTrack,
 } from "../utils/audioQueue";
 import { AudioQueueContext } from "./audioQueueContext";
+import { useAuth } from "./AuthContext";
+import { getRequestToken } from "../utils/api/core";
+import { QUEUE_STORAGE_KEY, parseStoredQueue, serializeQueue } from "../utils/queueStorage";
 import { recordPlayEvent } from "../utils/api/endpoints/auth";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists";
 import { createAudioEngine } from "../utils/audioEngine";
@@ -31,6 +34,9 @@ const SHARED_MUTED_KEY = "aurral.preview.muted";
 const SHARED_VOLUME_EVENT = "aurral:shared-volume-change";
 const DEFAULT_VOLUME = 0.7;
 const PRELOAD_LEAD_SECONDS = 20;
+const POSITION_SAVE_MS = 5000;
+const PLAYER_CHANNEL = "aurral.player";
+const PASSIVE_ACTIONS = new Set(["SET_ALBUM_ARTWORK", "SET_ERROR", "RESTORE_QUEUE"]);
 
 function normalizeVolume(value) {
   const parsed = Number.parseFloat(value);
@@ -102,13 +108,45 @@ function trackSignature(state, playbackIndex, track, formatKey) {
   return `${state.queueRevision}:${track.entryId ?? state.playbackOrder[playbackIndex]}:${track.src}:${formatKey}`;
 }
 
+function readStoredQueue(owner) {
+  try {
+    return parseStoredQueue(window.localStorage.getItem(QUEUE_STORAGE_KEY), {
+      owner,
+      token: getRequestToken(),
+    });
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredQueue(value) {
+  try {
+    if (value) window.localStorage.setItem(QUEUE_STORAGE_KEY, value);
+    else window.localStorage.removeItem(QUEUE_STORAGE_KEY);
+  } catch {
+    try {
+      window.localStorage.removeItem(QUEUE_STORAGE_KEY);
+    } catch {}
+  }
+}
+
 export function AudioQueueProvider({ children }) {
   const [engine] = useState(createAudioEngine);
   const playback = useSyncExternalStore(engine.subscribe, engine.getSnapshot, engine.getSnapshot);
+  const { user } = useAuth() ?? {};
+  const owner = user ? String(user.id ?? user.username ?? "local") : null;
+  const ownsQueueRef = useRef(false);
+  const restoredOwnerRef = useRef(null);
+  const resumeAtRef = useRef(null);
+  const channelRef = useRef(null);
 
   const { volume, muted, setVolume, setMuted } = useSharedVolume();
 
-  const [state, dispatch] = useReducer(queueReducer, initialQueueState);
+  const [state, applyAction] = useReducer(queueReducer, initialQueueState);
+  const dispatch = useCallback((action) => {
+    if (!PASSIVE_ACTIONS.has(action.type)) ownsQueueRef.current = true;
+    applyAction(action);
+  }, []);
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -141,14 +179,18 @@ export function AudioQueueProvider({ children }) {
     const signature = trackSignature(s, playbackIndex, track, formatKey);
     if (loadedSignatureRef.current === signature) return;
     loadedSignatureRef.current = signature;
+    const resumeAt = resumeAtRef.current;
+    if (resumeAt?.entryId !== track.entryId) resumeAtRef.current = null;
 
     engine.load({
       src: track.src,
       format: getHowlerFormat(formatKey),
       autoplay,
+      startAt: resumeAt?.entryId === track.entryId ? resumeAt.position : 0,
       onLoadError: () => {
         loadedSignatureRef.current = null;
         if (formatAttemptIndex + 1 >= formatAttempts.length) {
+          resumeAtRef.current = null;
           dispatch({
             type: "SET_ERROR",
             error: "This track is unavailable. Restore the file or refresh the library.",
@@ -171,7 +213,7 @@ export function AudioQueueProvider({ children }) {
         dispatch(action);
       },
     });
-  }, [engine, recordPlay]);
+  }, [dispatch, engine, recordPlay]);
 
   const loadTrackAtIndex = useCallback(
     (playbackIndex, options) => loadTrack(stateRef.current, playbackIndex, options),
@@ -220,15 +262,15 @@ export function AudioQueueProvider({ children }) {
 
   const setShuffleEnabled = useCallback((enabled) => {
     dispatch({ type: "SET_SHUFFLE", enabled });
-  }, []);
+  }, [dispatch]);
 
   const toggleShuffle = useCallback(() => {
     dispatch({ type: "SET_SHUFFLE", enabled: !stateRef.current.isShuffleEnabled });
-  }, []);
+  }, [dispatch]);
 
   const toggleRepeat = useCallback(() => {
     dispatch({ type: "TOGGLE_REPEAT" });
-  }, []);
+  }, [dispatch]);
 
   const playQueue = useCallback((
     tracks,
@@ -246,7 +288,7 @@ export function AudioQueueProvider({ children }) {
       source: nextSource,
     });
     return true;
-  }, []);
+  }, [dispatch]);
 
   const playTrack = useCallback((track, options = {}) => {
     const normalized = normalizeQueueTrack(track);
@@ -274,7 +316,7 @@ export function AudioQueueProvider({ children }) {
     const started = stateRef.current.currentIndex < 0;
     dispatch({ type: "INSERT_TRACKS", tracks: normalized, position, source: nextSource });
     return started ? "started" : "queued";
-  }, []);
+  }, [dispatch]);
 
   const queueNext = useCallback(
     (tracks, options) => insertTracks(tracks, "next", options),
@@ -288,17 +330,17 @@ export function AudioQueueProvider({ children }) {
 
   const removeFromQueue = useCallback((entryId) => {
     dispatch({ type: "REMOVE_ENTRY", entryId });
-  }, []);
+  }, [dispatch]);
 
   const reorderUpcoming = useCallback((entryIds) => {
     dispatch({ type: "REORDER_UPCOMING", entryIds });
-  }, []);
+  }, [dispatch]);
 
   const clearUpcoming = useCallback(() => {
     const { queue, playbackOrder, isShuffleEnabled } = stateRef.current;
     dispatch({ type: "CLEAR_UPCOMING" });
     return () => dispatch({ type: "RESTORE_ORDER", queue, playbackOrder, isShuffleEnabled });
-  }, []);
+  }, [dispatch]);
 
   const togglePlayPause = useCallback(() => {
     if (stateRef.current.queue.length === 0) return;
@@ -318,11 +360,11 @@ export function AudioQueueProvider({ children }) {
       return;
     }
     if (stateRef.current.currentIndex >= 0) loadTrackAtIndex(stateRef.current.currentIndex);
-  }, [engine, loadTrackAtIndex]);
+  }, [dispatch, engine, loadTrackAtIndex]);
 
   const playNext = useCallback(() => {
     dispatch({ type: "NEXT" });
-  }, []);
+  }, [dispatch]);
 
   const updatePositionState = useCallback(
     (position = engine.getPosition()) => {
@@ -359,17 +401,100 @@ export function AudioQueueProvider({ children }) {
       return;
     }
     dispatch({ type: "PREVIOUS" });
-  }, [engine, seek]);
+  }, [dispatch, engine, seek]);
 
   const skipTo = useCallback((playbackIndex) => {
     if (playbackIndex === stateRef.current.currentIndex) return;
     dispatch({ type: "SKIP_TO", index: playbackIndex });
-  }, []);
+  }, [dispatch]);
 
   const clearQueue = useCallback(() => {
     loadedSignatureRef.current = null;
     dispatch({ type: "CLEAR_QUEUE" });
     engine.unload();
+  }, [dispatch, engine]);
+
+  const saveQueue = useCallback(() => {
+    if (!ownsQueueRef.current || !owner || restoredOwnerRef.current !== owner) return;
+    const s = stateRef.current;
+    const track = s.currentIndex >= 0 ? trackAt(s, s.currentIndex) : null;
+    const resumeAt = resumeAtRef.current;
+    let position = 0;
+    if (track && loadedSignatureRef.current?.startsWith(`${s.queueRevision}:${track.entryId}:`)) {
+      position = engine.getPosition();
+    } else if (track && resumeAt?.entryId === track.entryId) {
+      position = resumeAt.position;
+    }
+    writeStoredQueue(serializeQueue(s, { owner, position }));
+  }, [engine, owner]);
+
+  useEffect(() => {
+    if (restoredOwnerRef.current === owner) return;
+    const previousOwner = restoredOwnerRef.current;
+    restoredOwnerRef.current = owner;
+    let cur = stateRef.current;
+    if (previousOwner != null) {
+      ownsQueueRef.current = false;
+      resumeAtRef.current = null;
+      loadedSignatureRef.current = null;
+      engine.unload();
+      cur = queueReducer(cur, { type: "CLEAR_QUEUE" });
+      applyAction({ type: "CLEAR_QUEUE" });
+    }
+    if (!owner || cur.currentIndex >= 0) return;
+    const saved = readStoredQueue(owner);
+    if (!saved) return;
+    const action = { type: "RESTORE_QUEUE", ...saved };
+    const restored = queueReducer(cur, action);
+    const track = trackAt(restored, restored.currentIndex);
+    resumeAtRef.current = track ? { entryId: track.entryId, position: saved.position } : null;
+    applyAction(action);
+  }, [engine, owner]);
+
+  useEffect(() => {
+    saveQueue();
+  }, [saveQueue, state]);
+
+  const isPlayingOrStarting = playback.isPlaying || playback.isStarting;
+
+  useEffect(() => {
+    if (!isPlayingOrStarting) {
+      saveQueue();
+      return undefined;
+    }
+    resumeAtRef.current = null;
+    ownsQueueRef.current = true;
+    channelRef.current?.postMessage({ type: "playing" });
+    const interval = window.setInterval(saveQueue, POSITION_SAVE_MS);
+    return () => window.clearInterval(interval);
+  }, [isPlayingOrStarting, saveQueue]);
+
+  useEffect(() => {
+    const handleHide = () => {
+      if (document.visibilityState === "hidden") saveQueue();
+    };
+    window.addEventListener("pagehide", saveQueue);
+    document.addEventListener("visibilitychange", handleHide);
+    return () => {
+      window.removeEventListener("pagehide", saveQueue);
+      document.removeEventListener("visibilitychange", handleHide);
+    };
+  }, [saveQueue]);
+
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return undefined;
+    const channel = new BroadcastChannel(PLAYER_CHANNEL);
+    channel.onmessage = (event) => {
+      if (event.data?.type !== "playing") return;
+      ownsQueueRef.current = false;
+      const snapshot = engine.getSnapshot();
+      if (snapshot.isPlaying || snapshot.isStarting) engine.pause();
+    };
+    channelRef.current = channel;
+    return () => {
+      channelRef.current = null;
+      channel.close();
+    };
   }, [engine]);
 
   const currentTrack = state.currentIndex >= 0 ? trackAt(state, state.currentIndex) : null;
@@ -396,7 +521,7 @@ export function AudioQueueProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [currentAlbum, currentArtist, missingArtworkMbid]);
+  }, [dispatch, currentAlbum, currentArtist, missingArtworkMbid]);
 
   useEffect(() => {
     const mediaSession = navigator.mediaSession;
@@ -410,8 +535,6 @@ export function AudioQueueProvider({ children }) {
         })
       : null;
   }, [currentTrack]);
-
-  const isPlayingOrStarting = playback.isPlaying || playback.isStarting;
 
   useEffect(() => {
     const mediaSession = navigator.mediaSession;
