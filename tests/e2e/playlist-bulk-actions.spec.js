@@ -127,7 +127,7 @@ test("removing a library track from a playlist waits for its Undo toast to close
 
   await page.goto("/library/tracks");
   await removeFromPlaylist();
-  const toast = page.locator(".app-toast").filter({ hasText: `Removed Library undo track from ${playlist.name}` });
+  const toast = page.locator(".app-toast:not(.app-toast--exiting)").filter({ hasText: `Removed Library undo track from ${playlist.name}` });
   await toast.getByRole("button", { name: "Undo" }).click();
   await expect(page.getByText(`Restored Library undo track to ${playlist.name}`, { exact: true })).toBeVisible();
   expect(submissions).toEqual([]);
