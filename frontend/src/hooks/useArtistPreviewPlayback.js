@@ -36,11 +36,7 @@ export function useArtistPreviewPlayback({ mbid, artistName, enabled = true } = 
         .filter((track) => track?.preview_url)
         .map((track) => normalizePreviewTrack(track, artistName, { artistMbid: mbid }));
       if (tracks.length === 0) return false;
-      return playQueue(tracks, {
-        source,
-        shuffle: false,
-        updateShufflePreference: false,
-      });
+      return playQueue(tracks, { source });
     } finally {
       setIsLoadingPreview(false);
     }

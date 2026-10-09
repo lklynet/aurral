@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useNavigate, useNavigationType, useParams, useSearchParams } from "react-router";
 import {
   ArrowDownAZ,
   ArrowLeft,
@@ -254,6 +254,18 @@ const sameTrackText = (left, right) => {
 
 const TOP_ARTIST_TRACK_LIMIT = 10;
 
+const NAME_SORT = { value: "name", label: "Name" };
+const ARTIST_SORT = { value: "artist", label: "Artist" };
+const NEWEST_SORT = { value: "newest", label: "Recently added" };
+const SORT_OPTIONS_BY_SECTION = {
+  albums: [NAME_SORT, ARTIST_SORT, NEWEST_SORT],
+  tracks: [NAME_SORT, ARTIST_SORT, NEWEST_SORT],
+  artists: [NAME_SORT, NEWEST_SORT],
+  "album-artists": [NAME_SORT, NEWEST_SORT],
+  genres: [NAME_SORT],
+};
+const QUERY_DEBOUNCE_MS = 250;
+
 const wait = (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs));
 
 const trackRating = (track) => {
@@ -345,18 +357,16 @@ function LibraryPage() {
   } = useStaticPlaylists();
   const { playQueue, currentTrack, isPlaying, isLoading, togglePlayPause, matchesSource } =
     useAudioQueue();
-  const [query, setQuery] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortMode, setSortMode] = useState("name");
-  const [sortDirection, setSortDirection] = useState("asc");
-  const [viewMode, setViewMode] = useState("grid");
+  const navigationType = useNavigationType();
+  const urlQuery = searchParams.get("q") || "";
+  const [query, setQuery] = useState(urlQuery);
+  const queryTimerRef = useRef(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [covers, setCovers] = useState({});
   const [pendingFavorite, setPendingFavorite] = useState(null);
   const favoriteMutationInFlightRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [pageIndex, setPageIndex] = useState(1);
   const refreshAttemptRef = useRef(0);
   const [playlistSavingKey, setPlaylistSavingKey] = useState("");
   const [trackDownloadStates, setTrackDownloadStates] = useState({});
@@ -502,31 +512,53 @@ function LibraryPage() {
   const previewQuery = forcePreview ? "?preview=1" : "";
   const sectionLabel = LIBRARY_VIEWS.find((view) => view.id === section)?.label || "Library";
   const librarySource = useMemo(() => ({ type: "native-library", id: "library" }), []);
-  const normalizedQuery = query.trim() ? searchQuery : "";
+  const sortOptions = SORT_OPTIONS_BY_SECTION[section] || [];
+  const requestedSort = searchParams.get("sort");
+  const sortMode = sortOptions.some((option) => option.value === requestedSort)
+    ? requestedSort
+    : NAME_SORT.value;
+  const sortDirection = searchParams.get("dir") === "desc" ? "desc" : "asc";
+  const viewMode = searchParams.get("view") === "list" ? "list" : "grid";
+  const requestedPage = Number(searchParams.get("page"));
+  const pageIndex = Number.isSafeInteger(requestedPage) && requestedPage > 1 ? requestedPage : 1;
+  const normalizedQuery = query.trim() ? urlQuery.trim().toLocaleLowerCase() : "";
 
-  useEffect(() => {
-    const nextQuery = query.trim().toLocaleLowerCase();
-    if (!nextQuery) {
-      setSearchQuery("");
-      return undefined;
+  const updateViewParams = (changes, { replace = false } = {}) => {
+    const next = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(changes)) {
+      if (value) next.set(key, String(value));
+      else next.delete(key);
     }
-    const timer = setTimeout(() => {
-      setSearchQuery(nextQuery);
-      setPageIndex(1);
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [query]);
+    setSearchParams(next, { replace });
+  };
+  const updateViewParamsRef = useRef(updateViewParams);
+  updateViewParamsRef.current = updateViewParams;
+
+  const changeQuery = (value) => {
+    setQuery(value);
+    window.clearTimeout(queryTimerRef.current);
+    const nextQuery = value.trim();
+    const writeQuery = () =>
+      updateViewParamsRef.current({ q: nextQuery, page: null }, { replace: true });
+    if (!nextQuery) writeQuery();
+    else queryTimerRef.current = window.setTimeout(writeQuery, QUERY_DEBOUNCE_MS);
+  };
+
+  useEffect(() => () => window.clearTimeout(queryTimerRef.current), []);
 
   useEffect(() => {
-    setQuery("");
-    setSearchQuery("");
-    setSortMode("name");
-    setSortDirection("asc");
-    setViewMode(section === "tracks" || section === "genres" ? "list" : "grid");
+    if (navigationType === "REPLACE") return;
+    window.clearTimeout(queryTimerRef.current);
+    setQuery(urlQuery);
+  }, [navigationType, urlQuery]);
+
+  useEffect(() => {
     setSearchOpen(false);
     setFiltersOpen(false);
-    setPageIndex(1);
   }, [section]);
+
+  const setPageIndex = (nextPage) =>
+    updateViewParams({ page: nextPage > 1 ? nextPage : null });
 
   const libraryQueryKey = useMemo(
     () => queryKeys.libraryView({
@@ -675,6 +707,17 @@ function LibraryPage() {
         }
       : queryData.nextData;
   }, [isDetail, isPreviewLibrary, queryData, section]);
+  const totalPages =
+    pageData?.kind === tab && tab !== "genres"
+      ? Math.ceil(pageData.total / pageData.pageSize)
+      : 0;
+  const lastPage = Math.max(totalPages, 1);
+
+  useEffect(() => {
+    if (pageData && pageIndex > lastPage) {
+      updateViewParamsRef.current({ page: lastPage > 1 ? lastPage : null }, { replace: true });
+    }
+  }, [lastPage, pageData, pageIndex]);
   const setLibrary = useCallback((updater) => {
     queryClient.setQueryData(libraryQueryKey, (current) => {
       if (!current && !forcePreview) return current;
@@ -1645,17 +1688,10 @@ function LibraryPage() {
         showError("No playable files are available in this selection.");
         return;
       }
-      const startIndex = startTrack
-        ? Math.max(
-            0,
-            playable.findIndex((track) => String(track.id) === String(startTrack.id)),
-          )
-        : 0;
       playQueue(playable, {
-        startIndex: startIndex < 0 ? 0 : startIndex,
+        startTrackId: startTrack?.id ?? null,
         shuffle,
         source: librarySource,
-        updateShufflePreference: false,
       });
     },
     [buildPlayableTrack, librarySource, playQueue, showError],
@@ -1818,28 +1854,6 @@ function LibraryPage() {
             : tab === "tracks"
               ? sortedTracks.length
               : sortedGenres.length;
-  const sortOptions =
-    section === "albums"
-      ? [
-          { value: "name", label: "Name" },
-          { value: "artist", label: "Artist" },
-          { value: "newest", label: "Recently added" },
-        ]
-      : section === "tracks"
-        ? [
-            { value: "name", label: "Name" },
-            { value: "artist", label: "Artist" },
-            { value: "newest", label: "Recently added" },
-          ]
-        : section === "artists" || section === "album-artists"
-          ? [
-              { value: "name", label: "Name" },
-              { value: "newest", label: "Recently added" },
-            ]
-          : section === "genres"
-            ? [{ value: "name", label: "Name" }]
-            : [];
-
   const collectionTracks = useMemo(() => {
     if (libraryAlbum) return getAlbumTracks(libraryAlbum);
     if (section === "favorites") return favoriteTracks;
@@ -1861,13 +1875,7 @@ function LibraryPage() {
 
   const collectionPlayable = collectionTracks.some((track) => firstAvailableFile(track));
 
-  const updateGenreFilter = (genre) => {
-    setPageIndex(1);
-    const next = new URLSearchParams(searchParams);
-    if (genre) next.set("genre", genre);
-    else next.delete("genre");
-    setSearchParams(next);
-  };
+  const updateGenreFilter = (genre) => updateViewParams({ genre, page: null });
 
   const renderTrackList = (tracks, label, { variant = "collection" } = {}) => (
     <TrackList
@@ -2878,15 +2886,12 @@ function LibraryPage() {
       : section === "albums" && selectedGenre
         ? selectedGenre
         : sectionLabel;
-  const totalPages =
-    pageData?.kind === tab && tab !== "genres"
-      ? Math.ceil(pageData.total / pageData.pageSize)
-      : 0;
   const pageCount =
     section === "home"
       ? pageData?.total ?? library.albums.length + ownedLibraryTracks.length
       : activeCount;
   const showToolbar = section !== "home";
+  const isSearchVisible = searchOpen || Boolean(query);
   const hasActiveFilters = Boolean(selectedGenre);
 
   return (
@@ -2929,11 +2934,18 @@ function LibraryPage() {
             )}
             {showToolbar ? (
               <TooltipButton
-                className={`native-library-icon-button${searchOpen ? " is-active" : ""}`}
-                onClick={() => setSearchOpen((value) => !value)}
-                label={searchOpen ? "Close search" : "Search"}
-                aria-label={searchOpen ? "Close search" : "Search " + sectionLabel.toLocaleLowerCase()}
-                aria-pressed={searchOpen}
+                className={`native-library-icon-button${isSearchVisible ? " is-active" : ""}`}
+                onClick={() => {
+                  if (isSearchVisible) {
+                    setSearchOpen(false);
+                    if (query) changeQuery("");
+                    return;
+                  }
+                  setSearchOpen(true);
+                }}
+                label={isSearchVisible ? "Close search" : "Search"}
+                aria-label={isSearchVisible ? "Close search" : "Search " + sectionLabel.toLocaleLowerCase()}
+                aria-pressed={isSearchVisible}
               >
                 <Search aria-hidden="true" />
               </TooltipButton>
@@ -2945,26 +2957,20 @@ function LibraryPage() {
         {showToolbar && (
           <>
             <div className="native-library-toolbar">
-              {searchOpen && (
+              {isSearchVisible && (
                 <label className="native-library-search">
                   <Search aria-hidden="true" />
                   <input
                     type="search"
                     value={query}
-                    onChange={(event) => {
-                      if (!event.target.value.trim()) setPageIndex(1);
-                      setQuery(event.target.value);
-                    }}
+                    onChange={(event) => changeQuery(event.target.value)}
                     placeholder={"Search " + sectionLabel.toLocaleLowerCase()}
                     aria-label={"Search " + sectionLabel.toLocaleLowerCase()}
                     autoFocus
                   />
                   {query && (
                     <TooltipButton
-                      onClick={() => {
-                        setPageIndex(1);
-                        setQuery("");
-                      }}
+                      onClick={() => changeQuery("")}
                       label="Clear search"
                      className="btn">
                       <X aria-hidden="true" />
@@ -2978,10 +2984,15 @@ function LibraryPage() {
                     <span className="sr-only">Sort {sectionLabel.toLocaleLowerCase()} by</span>
                     <select
                       value={sortMode}
-                      onChange={(event) => {
-                        setPageIndex(1);
-                        setSortMode(event.target.value);
-                      }}
+                      onChange={(event) =>
+                        updateViewParams(
+                          {
+                            sort: event.target.value === NAME_SORT.value ? null : event.target.value,
+                            page: null,
+                          },
+                          { replace: true },
+                        )
+                      }
                       aria-label={"Sort " + sectionLabel.toLocaleLowerCase()}
                     >
                       {sortOptions.map((option) => (
@@ -2994,10 +3005,12 @@ function LibraryPage() {
                   <span className="native-library-toolbar-divider" aria-hidden="true" />
                   <TooltipButton
                     className="native-library-icon-button"
-                    onClick={() => {
-                      setPageIndex(1);
-                      setSortDirection((value) => (value === "asc" ? "desc" : "asc"));
-                    }}
+                    onClick={() =>
+                      updateViewParams(
+                        { dir: sortDirection === "asc" ? "desc" : null, page: null },
+                        { replace: true },
+                      )
+                    }
                     label={sortDirection === "asc" ? "Descending" : "Ascending"}
                     aria-label={sortDirection === "asc" ? "Sort descending" : "Sort ascending"}
                   >
@@ -3026,7 +3039,7 @@ function LibraryPage() {
                 <div className="native-library-view-toggle" aria-label="Library view">
                   <TooltipButton
                     className={`native-library-icon-button${viewMode === "grid" ? " is-active" : ""}`}
-                    onClick={() => setViewMode("grid")}
+                    onClick={() => updateViewParams({ view: null }, { replace: true })}
                     label="Grid view"
                     aria-label="Grid view"
                     aria-pressed={viewMode === "grid"}
@@ -3035,7 +3048,7 @@ function LibraryPage() {
                   </TooltipButton>
                   <TooltipButton
                     className={`native-library-icon-button${viewMode === "list" ? " is-active" : ""}`}
-                    onClick={() => setViewMode("list")}
+                    onClick={() => updateViewParams({ view: "list" }, { replace: true })}
                     label="List view"
                     aria-label="List view"
                     aria-pressed={viewMode === "list"}
@@ -3102,7 +3115,7 @@ function LibraryPage() {
         <nav className="native-library-pagination" aria-label={sectionLabel + " pages"}>
           <TooltipButton
             className="native-library-icon-button"
-            onClick={() => setPageIndex((value) => Math.max(1, value - 1))}
+            onClick={() => setPageIndex(pageIndex - 1)}
             disabled={pageIndex === 1}
             label="Previous page"
             aria-label="Previous page"
@@ -3114,7 +3127,7 @@ function LibraryPage() {
           </span>
           <TooltipButton
             className="native-library-icon-button"
-            onClick={() => setPageIndex((value) => Math.min(totalPages, value + 1))}
+            onClick={() => setPageIndex(Math.min(totalPages, pageIndex + 1))}
             disabled={pageIndex === totalPages}
             label="Next page"
             aria-label="Next page"

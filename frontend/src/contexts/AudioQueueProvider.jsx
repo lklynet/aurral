@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useAudioPlayerContext } from "react-use-audio-player";
-import { getFormatLoadAttempts, getHowlerFormat, normalizeQueueTrack } from "../utils/audioQueue";
+import {
+  getFormatLoadAttempts,
+  getHowlerFormat,
+  initialQueueState,
+  normalizeQueueTrack,
+  queueReducer,
+  shouldRestartTrack,
+} from "../utils/audioQueue";
 import { AudioQueueContext } from "./audioQueueContext";
 import { recordPlayEvent } from "../utils/api/endpoints/auth";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists";
@@ -60,106 +67,6 @@ function useSharedVolume() {
   return [volume, setVolume];
 }
 
-function shuffleIds(ids) {
-  const shuffled = [...ids];
-  for (let i = shuffled.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-}
-
-function buildPlaybackOrder(tracks, shuffle) {
-  const indices = tracks.map((_, index) => index);
-  return shuffle ? shuffleIds(indices) : indices;
-}
-
-function queueReducer(state, action) {
-  switch (action.type) {
-    case "PLAY_QUEUE": {
-      const { tracks, startIndex, shuffle, updateShufflePreference, source } = action;
-      const normalized = (Array.isArray(tracks) ? tracks : [])
-        .map((track) => normalizeQueueTrack(track))
-        .filter((track) => track.src);
-      if (normalized.length === 0) return state;
-      const order = buildPlaybackOrder(normalized, shuffle);
-      const boundedStart = Math.max(0, Math.min(startIndex, order.length - 1));
-      return {
-        ...state,
-        queue: normalized,
-        playbackOrder: order,
-        source: source ?? null,
-        currentIndex: boundedStart,
-        error: null,
-        queueRevision: state.queueRevision + 1,
-        isShuffleEnabled: updateShufflePreference ? shuffle : state.isShuffleEnabled,
-      };
-    }
-    case "SET_ALBUM_ARTWORK": {
-      let changed = false;
-      const queue = state.queue.map((track) => {
-        if (track.artwork || track.albumMbid !== action.albumMbid) return track;
-        changed = true;
-        return { ...track, artwork: action.artwork };
-      });
-      return changed ? { ...state, queue } : state;
-    }
-    case "SET_CURRENT_INDEX":
-      return { ...state, currentIndex: action.index, error: null };
-    case "SET_QUEUE_REVISION":
-      return { ...state, error: null, queueRevision: state.queueRevision + 1 };
-    case "SET_ERROR":
-      return { ...state, error: action.error };
-    case "CLEAR_ERROR":
-      return { ...state, error: null };
-    case "SET_SHUFFLE": {
-      if (state.queue.length === 0 || state.currentIndex < 0) {
-        return { ...state, isShuffleEnabled: action.enabled };
-      }
-      const currentQueueIndex = state.playbackOrder[state.currentIndex];
-      const order = buildPlaybackOrder(state.queue, action.enabled);
-      const nextPlaybackIndex = currentQueueIndex != null
-        ? order.findIndex((idx) => idx === currentQueueIndex)
-        : -1;
-      return {
-        ...state,
-        isShuffleEnabled: action.enabled,
-        playbackOrder: order,
-        currentIndex: nextPlaybackIndex >= 0 ? nextPlaybackIndex : state.currentIndex,
-      };
-    }
-    case "TOGGLE_REPEAT": {
-      const modes = ["off", "all", "one"];
-      const nextMode = modes[(modes.indexOf(state.repeatMode) + 1) % modes.length];
-      return { ...state, repeatMode: nextMode };
-    }
-    case "CLEAR_QUEUE":
-      return {
-        queue: [],
-        currentIndex: -1,
-        source: null,
-        error: null,
-        isShuffleEnabled: false,
-        playbackOrder: [],
-        repeatMode: "off",
-        queueRevision: 0,
-      };
-    default:
-      return state;
-  }
-}
-
-const initialQueueState = {
-  queue: [],
-  currentIndex: -1,
-  source: null,
-  error: null,
-  isShuffleEnabled: false,
-  playbackOrder: [],
-  repeatMode: "off",
-  queueRevision: 0,
-};
-
 export function AudioQueueProvider({ children }) {
   const player = useAudioPlayerContext();
   const playerRef = useRef(player);
@@ -184,11 +91,12 @@ export function AudioQueueProvider({ children }) {
     return s.queue[queueIndex] ?? null;
   }, []);
 
-  const loadTrackAtIndex = useCallback((playbackIndex, formatAttemptIndex = 0) => {
+  const loadTrackAtIndex = useCallback((playbackIndex, { formatAttemptIndex = 0, autoplay = true } = {}) => {
     const s = stateRef.current;
     const queueIndex = s.playbackOrder[playbackIndex];
     const track = queueIndex == null ? null : s.queue[queueIndex] ?? null;
-    if (!track?.src) return;    const formatAttempts = getFormatLoadAttempts(track);
+    if (!track?.src) return;
+    const formatAttempts = getFormatLoadAttempts(track);
     const formatKey = formatAttempts[formatAttemptIndex];
     if (!formatKey) return;
     const signature = `${s.queueRevision}:${queueIndex}:${track.src}:${formatKey}`;
@@ -197,7 +105,7 @@ export function AudioQueueProvider({ children }) {
 
     playerRef.current.stop();
     playerRef.current.load(track.src, {
-      autoplay: true,
+      autoplay,
       initialVolume: sharedVolumeRef.current,
       html5: true,
       format: getHowlerFormat(formatKey),
@@ -211,7 +119,10 @@ export function AudioQueueProvider({ children }) {
           playerRef.current.stop();
           return;
         }
-        loadTrackAtIndexRef.current(playbackIndex, formatAttemptIndex + 1);
+        loadTrackAtIndexRef.current(playbackIndex, {
+          formatAttemptIndex: formatAttemptIndex + 1,
+          autoplay,
+        });
       },
       onend: () => {
         const cur = stateRef.current;
@@ -237,22 +148,7 @@ export function AudioQueueProvider({ children }) {
           return;
         }
 
-        const nextIndex = cur.currentIndex + 1;
-        if (nextIndex < cur.playbackOrder.length) {
-          dispatch({ type: "SET_CURRENT_INDEX", index: nextIndex });
-          return;
-        }
-
-        if (cur.repeatMode === "all" && cur.playbackOrder.length > 0) {
-          loadedSignatureRef.current = null;
-          dispatch({ type: "SET_CURRENT_INDEX", index: 0 });
-          dispatch({ type: "SET_QUEUE_REVISION" });
-          return;
-        }
-
-        loadedSignatureRef.current = null;
-        dispatch({ type: "CLEAR_QUEUE" });
-        playerRef.current.stop();
+        dispatch({ type: "NEXT" });
       },
     });
   }, []);
@@ -263,8 +159,8 @@ export function AudioQueueProvider({ children }) {
       loadedSignatureRef.current = null;
       return;
     }
-    loadTrackAtIndex(state.currentIndex);
-  }, [state.currentIndex, state.queueRevision, loadTrackAtIndex]);
+    loadTrackAtIndex(state.currentIndex, { autoplay: state.autoplay });
+  }, [state.autoplay, state.currentIndex, state.queueRevision, loadTrackAtIndex]);
 
   useEffect(() => {
     const activePlayer = playerRef.current;
@@ -290,29 +186,17 @@ export function AudioQueueProvider({ children }) {
 
   const playQueue = useCallback((
     tracks,
-    { startIndex = 0, startTrackId = null, source: nextSource = null, shuffle = false, updateShufflePreference = true } = {},
+    { startTrackId = null, source: nextSource = null, shuffle = false } = {},
   ) => {
     const normalized = (Array.isArray(tracks) ? tracks : [])
       .map((track) => normalizeQueueTrack(track))
       .filter((track) => track.src);
     if (normalized.length === 0) return false;
-    const order = buildPlaybackOrder(normalized, shuffle);
-    let boundedStart = Math.max(0, Math.min(startIndex, order.length - 1));
-    if (startTrackId != null) {
-      const queueIndex = normalized.findIndex(
-        (track) => String(track.id) === String(startTrackId),
-      );
-      if (queueIndex >= 0) {
-        const playbackIndex = order.findIndex((index) => index === queueIndex);
-        if (playbackIndex >= 0) boundedStart = playbackIndex;
-      }
-    }
     dispatch({
       type: "PLAY_QUEUE",
       tracks: normalized,
-      startIndex: boundedStart,
+      startTrackId,
       shuffle,
-      updateShufflePreference,
       source: nextSource,
     });
     return true;
@@ -332,10 +216,9 @@ export function AudioQueueProvider({ children }) {
     return playQueue(contextTracks, {
       startTrackId: normalized.id,
       source: options.source ?? null,
-      shuffle: options.shuffle ?? stateRef.current.isShuffleEnabled,
-      updateShufflePreference: options.updateShufflePreference ?? false,
     });
   }, [playQueue]);
+
   const togglePlayPause = useCallback(() => {
     if (stateRef.current.queue.length === 0) return;
     const activePlayer = playerRef.current;
@@ -360,65 +243,22 @@ export function AudioQueueProvider({ children }) {
   }, [loadTrackAtIndex]);
 
   const playNext = useCallback(() => {
-    const s = stateRef.current;
-    if (s.queue.length === 0) return;
-    if (s.currentIndex < 0) {
-      dispatch({
-        type: "PLAY_QUEUE",
-        tracks: s.queue,
-        startIndex: 0,
-        shuffle: s.isShuffleEnabled,
-        updateShufflePreference: false,
-        source: s.source,
-      });      return;
-    }
-    const nextIndex = s.currentIndex + 1;
-    if (nextIndex < s.playbackOrder.length) {
-      dispatch({ type: "SET_CURRENT_INDEX", index: nextIndex });
-      return;
-    }
-    if (s.repeatMode === "all" && s.playbackOrder.length > 0) {
-      loadedSignatureRef.current = null;
-      dispatch({ type: "SET_CURRENT_INDEX", index: 0 });
-      dispatch({ type: "SET_QUEUE_REVISION" });
-      return;
-    }
-    loadedSignatureRef.current = null;
-    dispatch({ type: "CLEAR_QUEUE" });
-    playerRef.current.stop();
+    dispatch({ type: "NEXT" });
   }, []);
 
   const playPrevious = useCallback(() => {
     const s = stateRef.current;
     if (s.queue.length === 0) return;
-    if (s.currentIndex < 0) {
-      dispatch({
-        type: "PLAY_QUEUE",
-        tracks: s.queue,
-        startIndex: 0,
-        shuffle: s.isShuffleEnabled,
-        updateShufflePreference: false,
-        source: s.source,
-      });      return;
-    }
-    const prevIndex = s.currentIndex - 1;
-    if (prevIndex >= 0) {
-      loadedSignatureRef.current = null;
-      dispatch({ type: "SET_CURRENT_INDEX", index: prevIndex });
+    if (shouldRestartTrack(s, playerRef.current.getPosition())) {
+      playerRef.current.seek(0);
       return;
     }
-    const position = playerRef.current.getPosition();
-    if (position > 3) {
-      playerRef.current.seek(0);
-    }
+    dispatch({ type: "PREVIOUS" });
   }, []);
 
   const skipTo = useCallback((playbackIndex) => {
-    const s = stateRef.current;
-    if (playbackIndex < 0 || playbackIndex >= s.playbackOrder.length) return;
-    if (playbackIndex === s.currentIndex) return;
-    loadedSignatureRef.current = null;
-    dispatch({ type: "SET_CURRENT_INDEX", index: playbackIndex });
+    if (playbackIndex === stateRef.current.currentIndex) return;
+    dispatch({ type: "SKIP_TO", index: playbackIndex });
   }, []);
 
   const clearQueue = useCallback(() => {

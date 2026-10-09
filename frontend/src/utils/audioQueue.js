@@ -128,3 +128,127 @@ export function isDownloadedLibraryAlbum(album, downloadStatuses = {}) {
     !!downloadStatuses[album?.id]
   );
 }
+
+const RESTART_THRESHOLD_SECONDS = 3;
+
+function shuffleIndices(indices) {
+  const shuffled = [...indices];
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+function buildPlaybackOrder(trackCount, shuffle, firstQueueIndex) {
+  const indices = Array.from({ length: trackCount }, (_, index) => index);
+  if (!shuffle) return indices;
+  if (firstQueueIndex == null) return shuffleIndices(indices);
+  return [firstQueueIndex, ...shuffleIndices(indices.filter((index) => index !== firstQueueIndex))];
+}
+
+function playAt(state, index, autoplay) {
+  return {
+    ...state,
+    currentIndex: index,
+    autoplay,
+    error: null,
+    queueRevision: state.queueRevision + 1,
+  };
+}
+
+export const initialQueueState = {
+  queue: [],
+  currentIndex: -1,
+  source: null,
+  error: null,
+  isShuffleEnabled: false,
+  playbackOrder: [],
+  repeatMode: "off",
+  autoplay: true,
+  queueRevision: 0,
+};
+
+export function shouldRestartTrack(state, position) {
+  return position > RESTART_THRESHOLD_SECONDS || (state.currentIndex <= 0 && state.repeatMode !== "all");
+}
+
+export function queueReducer(state, action) {
+  switch (action.type) {
+    case "PLAY_QUEUE": {
+      const { tracks, startTrackId, source } = action;
+      if (!Array.isArray(tracks) || tracks.length === 0) return state;
+      const shuffle = action.shuffle === true || state.isShuffleEnabled;
+      const startQueueIndex = startTrackId == null
+        ? -1
+        : tracks.findIndex((track) => String(track.id) === String(startTrackId));
+      const firstQueueIndex =
+        startQueueIndex >= 0 ? startQueueIndex : action.shuffle === true ? null : 0;
+      const playbackOrder = buildPlaybackOrder(tracks.length, shuffle, firstQueueIndex);
+      return playAt(
+        {
+          ...state,
+          queue: tracks,
+          playbackOrder,
+          source: source ?? null,
+          isShuffleEnabled: shuffle,
+        },
+        shuffle ? 0 : firstQueueIndex ?? 0,
+        true,
+      );
+    }
+    case "SET_ALBUM_ARTWORK": {
+      let changed = false;
+      const queue = state.queue.map((track) => {
+        if (track.artwork || track.albumMbid !== action.albumMbid) return track;
+        changed = true;
+        return { ...track, artwork: action.artwork };
+      });
+      return changed ? { ...state, queue } : state;
+    }
+    case "SKIP_TO":
+      if (action.index < 0 || action.index >= state.playbackOrder.length) return state;
+      return playAt(state, action.index, true);
+    case "NEXT": {
+      if (state.queue.length === 0) return state;
+      const nextIndex = state.currentIndex + 1;
+      if (nextIndex < state.playbackOrder.length) return playAt(state, nextIndex, true);
+      return playAt(state, 0, state.repeatMode === "all");
+    }
+    case "PREVIOUS": {
+      if (state.queue.length === 0) return state;
+      if (state.currentIndex > 0) return playAt(state, state.currentIndex - 1, true);
+      if (state.repeatMode === "all") return playAt(state, state.playbackOrder.length - 1, true);
+      return state;
+    }
+    case "SET_ERROR":
+      return { ...state, error: action.error };
+    case "CLEAR_ERROR":
+      return { ...state, error: null };
+    case "SET_SHUFFLE": {
+      if (state.queue.length === 0 || state.currentIndex < 0) {
+        return { ...state, isShuffleEnabled: action.enabled };
+      }
+      const currentQueueIndex = state.playbackOrder[state.currentIndex];
+      return {
+        ...state,
+        isShuffleEnabled: action.enabled,
+        playbackOrder: buildPlaybackOrder(state.queue.length, action.enabled, currentQueueIndex),
+        currentIndex: action.enabled ? 0 : currentQueueIndex,
+      };
+    }
+    case "TOGGLE_REPEAT": {
+      const modes = ["off", "all", "one"];
+      const nextMode = modes[(modes.indexOf(state.repeatMode) + 1) % modes.length];
+      return { ...state, repeatMode: nextMode };
+    }
+    case "CLEAR_QUEUE":
+      return {
+        ...initialQueueState,
+        isShuffleEnabled: state.isShuffleEnabled,
+        repeatMode: state.repeatMode,
+      };
+    default:
+      return state;
+  }
+}
