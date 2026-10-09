@@ -24,6 +24,8 @@ const [
   { downloadTracker },
   qualityProfileService,
   { playlistManager },
+  { findUniqueLibrarySong },
+  { getPlayQueue, savePlayQueue },
 ] = await setupIsolatedBackend(
   "library-organize",
   "backend/config/db-sqlite.js",
@@ -35,6 +37,8 @@ const [
   "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/qualityProfileService.js",
   "backend/services/playlists/playlistManager.js",
+  "backend/services/subsonicLibraryService.js",
+  "backend/services/subsonicPlayQueueService.js",
 );
 
 const root = resolveDownloadRoot();
@@ -223,9 +227,12 @@ test("an upgrade replaces a hardlinked file without touching its other link", as
   assert.equal(downloadTracker.getJob(jobId).finalPath, libraryPath);
 });
 
-test("an upgrade with MusicBrainz tags keeps the Library track, its favorites, and its monitoring", async () => {
+test("an upgrade with MusicBrainz tags keeps the Library track, its favorites, its monitoring, and saved play queues", async () => {
   const oldPath = await makeTrack(path.join(root, "Tagless", "Album", "01 - Low.mp3"), {
-    artist: "Tagless", album: "Album", title: "Low", track: "1",
+    artist: "Tagless", album: "Album (Old Rip)", title: "Low", track: "1",
+  });
+  await makeTrack(path.join(root, "Tagless", "Album", "02 - High.mp3"), {
+    artist: "Tagless", album: "Album (Old Rip)", title: "High", track: "2",
   });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   const track = db.prepare("SELECT * FROM library_tracks WHERE title = 'Low'").get();
@@ -233,13 +240,16 @@ test("an upgrade with MusicBrainz tags keeps the Library track, its favorites, a
   db.prepare("INSERT INTO users (id, username, password_hash) VALUES (8, 'listener', 'x')").run();
   db.prepare("INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (8, 'song', ?, 1)")
     .run(track.identity_key);
+  const listener = { id: 8, username: "listener" };
+  const queued = findUniqueLibrarySong("Tagless", "Low", listener);
+  savePlayQueue(listener, { ids: [queued.id], current: queued.id, position: 4200, changedBy: "test" });
   const upgraded = await makeTrack(path.join(root, "Tagless", "Album", "01 - Low.flac"), {
     artist: "Tagless", album: "Album", title: "Low", track: "1",
     MUSICBRAINZ_RELEASEGROUPID: releaseGroup, MUSICBRAINZ_TRACKID: recording,
   });
   await scanMusicRoot({ rootPath: root, source: "aurral", filePaths: [upgraded] });
   const jobId = downloadTracker.addJob({ artistName: "Tagless", trackName: "Low" }, "library");
-  downloadTracker.setDone(jobId, oldPath, "Album");
+  downloadTracker.setDone(jobId, oldPath, "Album (Old Rip)");
   const upgradeId = downloadTracker.addUpgradeJob(downloadTracker.getJob(jobId));
 
   await qualityProfileService.finalizeQualityUpgradeSuccess(
@@ -258,5 +268,14 @@ test("an upgrade with MusicBrainz tags keeps the Library track, its favorites, a
     db.prepare("SELECT path FROM library_media_files WHERE track_id = ?").pluck().all(tracks[0].id),
     [upgraded],
   );
-  assert.equal(db.prepare("SELECT COUNT(*) FROM library_albums WHERE title = 'Album'").pluck().get(), 1);
+  const queue = getPlayQueue(listener);
+  assert.deepEqual(queue.entry.map((song) => song.title), ["Low"]);
+  assert.equal(queue.current, queue.entry[0].id);
+  assert.equal(queue.position, 4200);
+  assert.deepEqual(db.prepare("SELECT title FROM library_albums").pluck().all(), ["Album"]);
+  assert.deepEqual(db.prepare(
+    `SELECT document.album_name FROM library_search_documents AS document
+     JOIN library_tracks AS track ON track.id = document.entity_id
+     WHERE document.entity_kind = 'track' ORDER BY track.title`,
+  ).pluck().all().map((name) => name.includes("Old Rip")), [false, false]);
 });

@@ -33,6 +33,7 @@ import { downloadWorker } from "./downloadJobs/downloadWorker.js";
 import { hasPermission } from "../middleware/auth.js";
 import { recordTrackJobQueued } from "./aurralHistoryService.js";
 import { selectCanonicalFile } from "./canonicalFileSelector.js";
+import { subsonicId as idFor } from "./libraryMediaStore.js";
 import { logger } from "./logger.js";
 import { withHonkerLock } from "./honkerDb.js";
 import { removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.js";
@@ -44,8 +45,6 @@ import {
 import { processPlaylistOperation } from "./playlists/playlistOperations.js";
 import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.js";
 
-const idFor = (kind, key) =>
-  `${kind}:${encodeURIComponent(String(key)).replaceAll("%3A", ":")}`;
 const LIBRARY_IMAGE_PROFILE = "library";
 
 const parseId = (value) => {

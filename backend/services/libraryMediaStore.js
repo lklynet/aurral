@@ -136,6 +136,23 @@ function moveLibraryStars(entityKind, fromKey, toKey) {
 
 const moveLibraryArtistStars = (fromKey, toKey) => moveLibraryStars("artist", fromKey, toKey);
 
+export const subsonicId = (kind, key) =>
+  `${kind}:${encodeURIComponent(String(key)).replaceAll("%3A", ":")}`;
+
+function moveQueuedLibrarySong(fromKey, toKey) {
+  const from = subsonicId("song", fromKey);
+  const to = subsonicId("song", toKey);
+  for (const queue of db.prepare("SELECT user_id, song_ids, current_song FROM subsonic_play_queues").all()) {
+    const ids = JSON.parse(queue.song_ids);
+    if (!ids.includes(from) && queue.current_song !== from) continue;
+    db.prepare("UPDATE subsonic_play_queues SET song_ids = ?, current_song = ? WHERE user_id = ?").run(
+      JSON.stringify(ids.map((id) => (id === from ? to : id))),
+      queue.current_song === from ? to : queue.current_song,
+      queue.user_id,
+    );
+  }
+}
+
 function mergeLibraryArtistInto(fallback, resolved, { syncSearch = true } = {}) {
   if (!fallback || !resolved || fallback.id === resolved.id) return false;
   const movedAlbums = syncSearch
@@ -641,6 +658,7 @@ export function rekeyLibraryTrack(trackId, identityKey) {
     if (!track) return null;
     if (track.identity_key === key) return { id, changed: false };
     moveLibraryStars("song", track.identity_key, key);
+    moveQueuedLibrarySong(track.identity_key, key);
     const target = db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
     if (!target) {
       db.prepare("UPDATE library_tracks SET identity_key = ?, updated_at = ? WHERE id = ?").run(key, now(), id);
@@ -715,11 +733,14 @@ export function rekeyLibraryAlbum(albumId, identityKey) {
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(id);
     removeLibrarySearchDocument("album", id);
     touchLibraryAlbum(target.id);
-    return { id: target.id, changed: true };
+    const trackIds = db.prepare("SELECT DISTINCT track_id FROM library_album_tracks WHERE album_id = ?")
+      .pluck().all(target.id);
+    return { id: target.id, changed: true, trackIds };
   }).immediate();
   if (result?.changed) {
     invalidateLibraryManagementCache();
     syncLibrarySearchAlbum(result.id);
+    for (const trackId of result.trackIds || []) syncLibrarySearchTrack(trackId);
     invalidateLibraryCache();
   }
   return result?.id ?? null;
