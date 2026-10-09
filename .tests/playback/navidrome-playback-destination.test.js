@@ -12,7 +12,7 @@ import {
 const [
   isolatedState,
   { db },
-  { userOps },
+  { userOps, dbOps },
   { flowPlaylistConfig },
   { createPlaybackPlaylistIdentity, createPlaybackPlaylistSnapshot },
   { navidromePlaylistPointerStore },
@@ -104,6 +104,7 @@ function rejectMissingPlaylist(client, playlistId) {
 
 test.beforeEach(async () => {
   await resetDatabase(db);
+  dbOps.updateSettings({ pathMappings: [] });
   await fs.rm(downloadRoot, { recursive: true, force: true });
 });
 
@@ -112,9 +113,12 @@ test.after(async () => {
 });
 
 test("ensures the Navidrome library without creating an M3U playlist", async () => {
+  dbOps.updateSettings({ pathMappings: [{ source: "all", remote: "/music-aurral", local: downloadRoot }] });
   const owner = userOps.createUser("jody", "hash", "user");
   const flow = flowPlaylistConfig.createFlow({ name: "Morning Mix", ownerUserId: owner.id });
   const client = createClient({ songs: { Song: { id: "song-1" } } });
+  client.findSong = async (_title, _artist, track) =>
+    track.path === "/music-aurral/Artist/Song.flac" ? { id: "song-1" } : null;
   const destination = new NavidromePlaybackDestination(downloadRoot, { client });
 
   assert.deepEqual(await destination.ensureLibrary(), { ok: true });
@@ -126,7 +130,7 @@ test("ensures the Navidrome library without creating an M3U playlist", async () 
         displayName: flow.name,
         tracks: [
           {
-            path: "/music/Artist/Song.flac",
+            path: path.join(downloadRoot, "Artist", "Song.flac"),
             title: "Song",
             artist: "Artist",
             durationMs: 245600,
@@ -137,7 +141,8 @@ test("ensures the Navidrome library without creating an M3U playlist", async () 
     { ok: true },
   );
 
-  assert.deepEqual(client.calls.ensured, [destination.mediaLibraryRoot.replace(/\\/g, "/")]);
+  assert.deepEqual(client.calls.ensured, ["/music-aurral"]);
+  assert.deepEqual(client.calls.created, [{ name: "jody - Morning Mix", songIds: ["song-1"] }]);
   await assert.rejects(
     fs.access(path.join(destination.libraryRoot, "jody - Morning Mix.m3u")),
   );
@@ -343,6 +348,7 @@ test("preserves an existing API playlist while a new run has no indexed tracks",
 });
 
 test("keeps an M3U fallback when no songs are indexed", async () => {
+  dbOps.updateSettings({ pathMappings: [{ source: "navidrome", remote: "/music-aurral", local: downloadRoot }] });
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Unindexed" });
   const client = createClient();
   const destination = new NavidromePlaybackDestination(downloadRoot, { client });
@@ -351,14 +357,14 @@ test("keeps an M3U fallback when no songs are indexed", async () => {
     createPlaybackPlaylistSnapshot({
       entityId: playlist.id,
       displayName: playlist.name,
-      tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+      tracks: [{ path: path.join(downloadRoot, "song.flac"), title: "Song", artist: "Artist" }],
     }),
   );
 
   assert.deepEqual(client.calls.created, []);
   assert.equal(
     await fs.readFile(path.join(destination.libraryRoot, "Unindexed.m3u"), "utf8"),
-    "#EXTM3U\n#EXTINF:0,Artist - Song\n/music/song.flac\n",
+    "#EXTM3U\n#EXTINF:0,Artist - Song\n/music-aurral/song.flac\n",
   );
 });
 

@@ -112,11 +112,11 @@ Aurral uploads its playlist artwork to Navidrome and updates it when you change 
 
 ### Filesystem paths
 
-The **Aurral Playlists** library must use the same absolute path in Aurral and Navidrome. Mount the Downloads Folder at the same path in both containers.
+Mount the Downloads Folder at the same path in both containers when possible. If the paths differ, add a mapping in **Settings > Download clients > Remote path mappings** with **Applies to** set to **Navidrome**. Set **Remote path** to the folder inside Navidrome and **Local path** to the same folder inside Aurral.
 
 Aurral finds each track in the Navidrome index by its exact file path or by its MusicBrainz recording ID. It never guesses by title. A reused Lidarr track can therefore use a different path in Navidrome, but Navidrome must still have a library for it.
 
-Publishing a playlist does not use path mappings. Aurral uses a remote path mapping with **Applies to** set to **Navidrome** only to read the paths that Navidrome reports during automatic cleanup. See [Playback servers report a different path](/getting-started/storage/#playback-servers-report-a-different-path).
+Aurral uses the mapping to create or update the Navidrome library, find playlist tracks, and write fallback M3U files. Storage health and automatic cleanup also use the mapping. If reused Lidarr tracks have different paths in Navidrome, add a Navidrome mapping for that folder too. See [Playback servers report a different path](/getting-started/storage/#playback-servers-report-a-different-path).
 
 ### Scans and missing tracks
 
