@@ -71,6 +71,7 @@ function Layout({ children, headerActions }) {
   const navigate = useNavigate();
   const navigationType = useNavigationType();
   const scrollPositionsRef = useRef(new Map());
+  const scrolledPathnameRef = useRef(null);
   const sectionNav = useSectionNav();
   const { isDiscoverSectionActive } = useDiscoverRecent();
   const sectionBarRef = useRef(null);
@@ -363,8 +364,14 @@ function Layout({ children, headerActions }) {
   }, [isMobileMenuOpen]);
 
   useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     const node = mainScrollRef.current;
+    const previousPathname = scrolledPathnameRef.current;
+    scrolledPathnameRef.current = location.pathname;
+    if (navigationType === "REPLACE" && previousPathname === location.pathname) {
+      if (node) scrollPositionsRef.current.set(location.key, node.scrollTop);
+      return undefined;
+    }
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     const savedTop =
       navigationType === "POP" ? scrollPositionsRef.current.get(location.key) || 0 : 0;
     let frameId;
@@ -383,7 +390,7 @@ function Layout({ children, headerActions }) {
     return () => {
       if (frameId) window.cancelAnimationFrame(frameId);
     };
-  }, [location.key, navigationType, updateMainScrollbar]);
+  }, [location.key, location.pathname, navigationType, updateMainScrollbar]);
 
   useEffect(() => {
     const update = () => updateMainScrollbar();
