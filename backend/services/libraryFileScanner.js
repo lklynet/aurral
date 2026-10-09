@@ -22,7 +22,7 @@ import {
   getLibraryManagementEntry,
   setLibraryManagement,
 } from "./libraryManagementStore.js";
-import { parseAurralIdentityComment, readCommentIdentity } from "./downloadUtils.js";
+import { readAurralIdentity } from "./downloadUtils.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 
@@ -67,14 +67,7 @@ const normalizeMbid = (value) => text(first(value)) || null;
 
 const normalizeMetadata = (metadata) => metadata?.common || {};
 
-const readEmbeddedAurralIdentity = (metadata) => {
-  const common = normalizeMetadata(metadata);
-  return Object.assign(
-    {},
-    readCommentIdentity(metadata) || {},
-    parseAurralIdentityComment(common.grouping) || {},
-  );
-};
+const readEmbeddedAurralIdentity = (metadata) => readAurralIdentity(metadata) || {};
 
 const applyMetadataEnrichment = (metadata, enrichment = null) => {
   const common = { ...normalizeMetadata(metadata) };

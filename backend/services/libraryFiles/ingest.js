@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { parseFile } from "music-metadata";
@@ -10,15 +11,20 @@ import { invalidateLibraryQueryCache } from "../libraryQueryService.js";
 import { logger, safeLogDiagnostic } from "../logger.js";
 import {
   ALBUM_IMAGE_EXTENSIONS,
+  LINKED_FOLDER_REASON,
   TRANSFER_MODES,
   filesIdentical,
   isSameFile,
+  passesThroughLinkedFolder,
   placeFile,
   probeHardlink,
   removeEmptyDirectories,
   transferSidecars,
 } from "./fileTransfer.js";
+import { writeAudioTags } from "../audioTags.js";
+import { rekeyLibraryAlbum } from "../libraryMediaStore.js";
 import { matchLibraryRecord } from "./libraryMatch.js";
+import { planTagFill } from "./tagFill.js";
 import {
   addLibraryFileOperationItems,
   deleteLibraryFileOperationItems,
@@ -117,7 +123,27 @@ async function listSourceFiles(operation) {
 const unknownIdentity = (record) =>
   record.artistName === "Unknown Artist" || record.albumName === "Unknown Album";
 
-async function planItem(operation, item, plannedTargets) {
+async function planFill(item, record, match, metadata, albums) {
+  const durationS = Number(metadata.format?.duration);
+  return planTagFill({
+    filePath: item.sourcePath,
+    album: {
+      releaseGroupMbid: record.releaseGroupMbid || match.album?.release_group_mbid || null,
+      releaseMbid: record.albumMbid || match.album?.mbid || null,
+      title: match.albumName,
+      year: metadata.common?.year || match.album?.release_date || null,
+    },
+    artist: { name: match.artistName, mbid: match.artistMbid },
+    file: {
+      title: record.title,
+      trackNumber: record.trackNumber || null,
+      discNumber: record.discNumber || null,
+      durationMs: Number.isFinite(durationS) ? Math.round(durationS * 1000) : null,
+    },
+  }, albums);
+}
+
+async function planItem(operation, item, plannedTargets, albums) {
   const { sourcePath: sourceRoot, mode } = operation.options;
   const root = resolveDownloadRoot();
   let metadata;
@@ -188,7 +214,22 @@ async function planItem(operation, item, plannedTargets) {
     };
   }
   plannedTargets.add(target);
-  return { status: "pending", targetPath: target, details: { ...details, action: "file" } };
+  if (!operation.options.fillTags) {
+    return { status: "pending", targetPath: target, details: { ...details, action: "file" } };
+  }
+  const fill = await planFill(item, record, match, metadata, albums);
+  return {
+    status: "pending",
+    targetPath: target,
+    reason: fill.reason || null,
+    details: {
+      ...details,
+      action: "file",
+      ...(fill.tags
+        ? { actions: ["file", "tags"], tags: fill.tags, tagFields: fill.fields, albumId: match.album?.id || null }
+        : {}),
+    },
+  };
 }
 
 export async function planIngest(operation, deadline) {
@@ -200,11 +241,12 @@ export async function planIngest(operation, deadline) {
     `SELECT target_path FROM library_file_operation_items
      WHERE operation_id = ? AND status = 'pending' AND target_path IS NOT NULL`,
   ).pluck().all(operation.id));
+  const albums = new Map();
   while (Date.now() < deadline) {
     const batch = listLibraryFileOperationItems(operation.id, { statuses: ["new"], limit: CHUNK });
     if (!batch.length) return true;
     for (const item of batch) {
-      updateLibraryFileOperationItem(operation.id, item.position, await planItem(operation, item, plannedTargets));
+      updateLibraryFileOperationItem(operation.id, item.position, await planItem(operation, item, plannedTargets, albums));
       if (Date.now() >= deadline) return false;
     }
   }
@@ -261,16 +303,63 @@ const resolvesToSameFile = async (left, right) => {
   return Boolean(a) && a === b;
 };
 
+// A file that gains a release group ID would otherwise start a second copy of
+// the untagged album it joined.
+function keepAlbumTogether(albumId, tags) {
+  if (!albumId || !tags.releaseGroupMbid) return;
+  const album = db.prepare("SELECT release_group_mbid FROM library_albums WHERE id = ?").get(albumId);
+  if (album && !album.release_group_mbid) rekeyLibraryAlbum(albumId, `release-group:${tags.releaseGroupMbid}`);
+}
+
+// Tags are filled in on the Library's copy once it is in place, so the
+// source keeps its own tags.
+async function fillTags(item) {
+  try {
+    await writeAudioTags(item.targetPath, item.details.tags, { fillOnly: true });
+  } catch (error) {
+    return { status: "done", reason: `Filed, but Aurral could not write the tags: ${error?.message || error}` };
+  }
+  keepAlbumTogether(item.details.albumId, item.details.tags);
+  return { status: "done" };
+}
+
+// A restart can stop an ingest after the tags were filled in on the Library's
+// copy. That copy is the source with the planned tags filled in, so the resume
+// finishes it instead of calling it a conflict.
+async function isFilledCopy({ sourcePath, targetPath, details }) {
+  if (!(await fs.stat(sourcePath).catch(() => null)) || !(await fs.stat(targetPath).catch(() => null))) return false;
+  const scratch = path.join(path.dirname(targetPath), `.${randomUUID()}.filled${path.extname(targetPath)}`);
+  try {
+    await fs.copyFile(sourcePath, scratch, fs.constants.COPYFILE_FICLONE);
+    if (!(await writeAudioTags(scratch, details.tags, { fillOnly: true })).length) return false;
+    return await filesIdentical(scratch, targetPath);
+  } catch {
+    return false;
+  } finally {
+    await fs.rm(scratch, { force: true });
+  }
+}
+
 export async function applyIngestItem(operation, item) {
-  if (!isPathInsideRoot(item.targetPath, resolveDownloadRoot())) {
+  const root = resolveDownloadRoot();
+  if (!isPathInsideRoot(item.targetPath, root)) {
     return { status: "failed", reason: "The destination is outside the Downloads Folder." };
+  }
+  if (await passesThroughLinkedFolder(root, item.targetPath)) {
+    return { status: "skipped", reason: LINKED_FOLDER_REASON };
   }
   if (await resolvesToSameFile(item.sourcePath, item.targetPath)) {
     return { status: "failed", reason: "A link in the Downloads Folder leads back to this file, so Aurral left it alone." };
   }
-  return item.details.action === "remove-duplicate"
-    ? removeDuplicateSource(item)
-    : fileItem(operation, item);
+  if (item.details.action === "remove-duplicate") return removeDuplicateSource(item);
+  const tagging = item.details.actions?.includes("tags");
+  if (tagging && await isFilledCopy(item)) {
+    if (operation.options.mode === "move") await fs.rm(item.sourcePath, { force: true });
+    await transferSidecars(item.sourcePath, item.targetPath, operation.options.mode).catch(() => {});
+    return fillTags(item);
+  }
+  const result = await fileItem(operation, item);
+  return result.status === "done" && tagging ? fillTags(item) : result;
 }
 
 export function ingestScanRequest(operation, items) {

@@ -93,8 +93,8 @@ export const getLibraryFiles = () => getData("/library/files");
 export const checkLibraryIngestSource = (sourcePath) =>
   postData("/library/files/ingest/check", { sourcePath });
 
-export const startLibraryIngest = (sourcePath, mode, monitor) =>
-  postData("/library/files/ingest", { sourcePath, mode, monitor });
+export const startLibraryIngest = (sourcePath, mode, { monitor, fillTags }) =>
+  postData("/library/files/ingest", { sourcePath, mode, monitor, fillTags });
 
 export const startLibraryCleanup = () => postData("/library/files/cleanup");
 

@@ -25,7 +25,7 @@ const REVIEW_ITEM_LIMIT = 100;
 const BLOCKER_MESSAGES = {
   schema: "The database has not finished its 2.x upgrade. Restart Aurral to finish it.",
   "stored-data": "Aurral has not finished storing older settings in their current form.",
-  "identity-markers": "Aurral has not finished moving track identity markers to the grouping tag.",
+  "identity-markers": "Aurral has not finished moving track identity markers to their own tag.",
   "download-folder": "Aurral has not finished moving older files in the Downloads Folder into the current layout. Check the logs for errors, then check again.",
   "download-folder-review": "Some older files in the Downloads Folder need your review. Move or delete each file, then check again.",
   "single-password": "Sign-in still uses the old single password. Sign in once to create the admin account.",

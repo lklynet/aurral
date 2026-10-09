@@ -33,10 +33,13 @@ async function enqueue(operationId, { dedupe = true } = {}) {
   enqueueLibraryFileJob({ operationId });
 }
 
-export async function startIngest({ sourcePath, mode, monitor = "none" } = {}) {
+export async function startIngest({ sourcePath, mode, monitor = "none", fillTags = false } = {}) {
   validateIngestOptions({ mode, monitor });
   const source = await resolveIngestSource(sourcePath);
-  const operation = createLibraryFileOperation({ kind: "ingest", options: { sourcePath: source, mode, monitor } });
+  const operation = createLibraryFileOperation({
+    kind: "ingest",
+    options: { sourcePath: source, mode, monitor, fillTags: fillTags === true },
+  });
   await enqueue(operation.id);
   return operation;
 }
@@ -103,6 +106,7 @@ async function applyBatch(operation, handler, deadline) {
     }
   }
   if (operation.kind === "ingest") await requestScan(ingestScanRequest(operation, processed));
+  if (context) await requestScan({ changedPaths: [...context.rescan] });
   return { cancelled };
 }
 
@@ -192,6 +196,8 @@ export function describeLibraryFileOperationItems(operation, options) {
     source: relative(sourceRoot, item.sourcePath),
     target: relative(downloadRoot, item.targetPath),
     actions: item.details.actions || [item.details.action].filter(Boolean),
+    tagFields: item.details.tagFields || [],
+    hardlinked: item.details.hardlinked === true,
     results: item.details.results || null,
   }));
 }

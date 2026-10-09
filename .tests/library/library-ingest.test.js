@@ -261,6 +261,39 @@ test("move never removes a source file that a link in the Downloads Folder leads
   assert.deepEqual(await readFile(only), bytes);
 });
 
+test("never files music through a linked folder in the Downloads Folder, which the Library scan does not follow", async () => {
+  const source = newSource();
+  const only = await makeTrack(path.join(source, "a.flac"), {
+    artist: "Linked", album: "Album", title: "One", track: "1",
+  });
+  const bytes = await readFile(only);
+  const elsewhere = path.join(isolatedState.baseDir, `elsewhere-${sourceCount}`);
+  await mkdir(elsewhere, { recursive: true });
+  await mkdir(root, { recursive: true });
+  await symlink(elsewhere, path.join(root, "Linked"));
+
+  const [item] = await apply(await ingest(source, "move"));
+
+  assert.equal(item.status, "skipped");
+  assert.deepEqual(await readFile(only), bytes);
+  assert.equal(await exists(path.join(elsewhere, "Album")), false);
+});
+
+test("an artist named in another script is filed under its own name, not a different artist's", async () => {
+  await makeTrack(path.join(root, "宇多田ヒカル", "First Love", "01 - Automatic.flac"), {
+    artist: "宇多田ヒカル", album: "First Love", title: "Automatic", track: "1",
+  });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const source = newSource();
+  await makeTrack(path.join(source, "a.flac"), {
+    artist: "椎名林檎", album: "無罪モラトリアム", title: "正しい街", track: "1",
+  });
+
+  const [item] = await apply(await ingest(source, "copy"));
+
+  assert.equal(item.target, path.join("椎名林檎", "無罪モラトリアム", "01 - 正しい街.flac"));
+});
+
 test("a run interrupted after placing a file finishes it on resume", async () => {
   const source = newSource();
   const first = await makeTrack(path.join(source, "Resume", "Album", "a.flac"), {

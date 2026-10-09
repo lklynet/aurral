@@ -163,6 +163,12 @@ When you turn off Lidarr in **Settings > Lidarr > Enabled**, Aurral removes Lida
 
 When a Lidarr root folder is inside the Downloads Folder, Aurral leaves that folder to Lidarr while Lidarr is connected. When the Downloads Folder is inside a Lidarr root folder, the Lidarr scan skips the Downloads Folder.
 
+## Tags
+
+Aurral tags the music it downloads with the title, artist, album artist, album, year, track number, and MusicBrainz IDs, plus its own `AURRAL_IDS` tag. It changes only those tags. Every other tag, such as ratings, lyrics, ReplayGain, grouping, and cover art, stays as it was. If the file was tagged as a different album, Aurral also removes its MusicBrainz release ID, which belongs to that other album. Aurral writes the tags to a copy beside the file and then replaces the file, so a hardlinked file gets its own copy and the other link keeps its tags.
+
+For music from elsewhere, ingest and **Clean up Library** fill in the tags a file lacks. See [Bring your existing music](#bring-your-existing-music) and [Clean up the Library](#clean-up-the-library). Aurral cannot write tags to WavPack (`.wv`), Monkey's Audio (`.ape`), or fragmented MP4 (`.m4a`) files, and leaves their tags as they are.
+
 ## Bring your existing music
 
 To add music from another folder, such as an old library, a Lidarr root folder, or ripped CDs, open **Settings > Library files** and use **Ingest a folder**. Choose the folder and a mode:
@@ -173,7 +179,7 @@ To add music from another folder, such as an old library, a Lidarr root folder, 
 
 Select **Ingest**. Aurral reads each file's tags and files it under the same `Artist/Album/07 - Title` names that downloads use. The ingest runs in the background and continues after a restart. **Stop** ends it after the current file, and files already done stay done. When it finishes, Aurral shows how many files it filed and lists any it left alone, with the reason.
 
-Aurral matches music by its MusicBrainz tags first and by artist and album names second, so music from an artist or album that you already have goes into that artist's or album's folder. Aurral reads tags but never writes them. For the best matches, tag your music with [MusicBrainz Picard](https://picard.musicbrainz.org/) before you ingest it. Aurral never overwrites a file:
+Aurral matches music by its MusicBrainz tags first and by artist and album names second, so music from an artist or album that you already have goes into that artist's or album's folder. **Fill in missing tags**, on by default, has Aurral add MusicBrainz IDs, and any missing title, album artist, track and disc numbers, year, and genre, to the Library's copy of each file it matches to MusicBrainz with confidence. Tags that a file already has never change, and the source file keeps its tags. Aurral never overwrites a file:
 
 - When the Library already has an identical file, Aurral keeps one copy. With Move, it removes the source copy.
 - When a different file is in the way, or the Library already has the track in another file, Aurral leaves the source file where it is and lists it under **Needs review**.
@@ -189,15 +195,15 @@ Ingest never monitors artists, because a monitored artist downloads their albums
 
 When the folder is a Lidarr root folder, Lidarr still points at it. Move takes the files away from Lidarr and breaks its library. Copy and Hardlink leave Lidarr's files where they are.
 
-A hardlinked file shares its data with another file, such as a torrent client's copy. Upgrading gives the Library its own file, so the other link keeps its data. The Library file then uses its own space.
+A hardlinked file shares its data with another file, such as a torrent client's copy. Filling in tags or upgrading gives the Library its own file, so the other link keeps its tags and data. The Library file then uses its own space.
 
 Music that you copy into the Downloads Folder yourself also joins the Library. It keeps its file names until you clean up the Library.
 
 ## Clean up the Library
 
-Downloads and ingested music already get Aurral's names. For music you added by hand, open **Settings > Library files** and select **Clean up Library**. Aurral moves each file in the Downloads Folder to its `Artist/Album/07 - Title` name. When it finishes, it shows how many files changed and lists any it left alone, with the reason. Only one ingest or clean up runs at a time.
+Downloads and ingested music already get Aurral's names and tags. For music you added by hand, open **Settings > Library files** and select **Clean up Library**. Aurral moves each file in the Downloads Folder to its `Artist/Album/07 - Title` name and fills in the tags it is missing, the same way ingest does. Files without a confident MusicBrainz match keep their tags and are listed as skipped. When it finishes, Aurral shows how many files changed and lists any it left alone, with the reason. Only one ingest or clean up runs at a time.
 
-Download jobs, playlists, favorites, and lyrics files follow each file. A file that a media server playlist still uses keeps its old name too, until the playlist updates. Clean up never takes a name that another file has, and it leaves Lidarr's files to Lidarr.
+Download jobs, playlists, favorites, and lyrics files follow each file. A file that a media server playlist still uses keeps its old name too, until the playlist updates. Favorites, play counts, and monitoring follow a track when its new MusicBrainz IDs change its identity. Clean up never takes a name that another file has, and it leaves Lidarr's files to Lidarr.
 
 ## Artists without a MusicBrainz ID
 

@@ -24,6 +24,22 @@ export async function filesIdentical(left, right) {
   return leftDigest === rightDigest;
 }
 
+export const LINKED_FOLDER_REASON =
+  "A folder on the way to its Library name is a link, which the Library scan does not follow, so Aurral left this file where it is.";
+
+// The Library scan does not follow linked folders, so music filed through one
+// would drop out of the Library.
+export async function passesThroughLinkedFolder(root, target) {
+  let current = path.resolve(root);
+  for (const part of path.relative(current, path.dirname(target)).split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    const stat = await fs.lstat(current).catch(() => null);
+    if (!stat) return false;
+    if (stat.isSymbolicLink()) return true;
+  }
+  return false;
+}
+
 export async function isSameFile(left, right) {
   const [a, b] = await Promise.all([fs.stat(left), fs.stat(right)]);
   return a.dev === b.dev && a.ino === b.ino;
