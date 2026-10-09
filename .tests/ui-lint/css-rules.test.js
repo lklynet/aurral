@@ -131,3 +131,37 @@ test("reports malformed stylesheets as source-located findings", () => {
   assert.equal(findings[0].ruleId, "aurral/css-parse-error");
   assert.match(findings[0].message, /broken\.css:1/);
 });
+
+const ruleFindings = (findings, ruleId) =>
+  findings.filter((finding) => finding.ruleId === ruleId).map(({ line }) => line);
+
+test("reports raw motion durations and easings outside the motion tokens", () => {
+  const findings = lintCss(`
+    :root {
+      --aurral-duration-fast: 150ms;
+      --aurral-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    }
+    .card {
+      transition: opacity 0.2s ease;
+      transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+      animation: fade-in 200ms ease-out;
+      transition: opacity var(--aurral-duration-fast) var(--aurral-ease-standard);
+      transition: none;
+      transition-delay: 0s;
+      animation: loader 1.6s var(--aurral-ease-standard) -0.4s infinite;
+      transition-duration: 0.01ms;
+    }
+  `, { filePath: "card.css", tokenNames });
+
+  assert.deepEqual(ruleFindings(findings, "aurral/no-raw-motion"), [7, 8, 9]);
+});
+
+test("flags easing keywords in looping animations while allowing their cycle length", () => {
+  const findings = lintCss(`
+    .loader {
+      animation: loader 1.6s ease-in-out infinite;
+    }
+  `, { filePath: "loader.css", tokenNames });
+
+  assert.deepEqual(ruleFindings(findings, "aurral/no-raw-motion"), [3]);
+});

@@ -69,7 +69,7 @@
   overflow: hidden;
   border-radius: var(--aurral-radius);
   box-shadow: 0 0 0 1px var(--aurral-border);
-  transition: box-shadow 180ms ease;
+  transition: box-shadow var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .theme-settings__mode-card:hover .theme-settings__mode-preview {
@@ -182,7 +182,7 @@
   border: 1px solid var(--aurral-border);
   border-radius: var(--aurral-radius);
   background: var(--aurral-surface);
-  transition: border-color 180ms ease, background-color 180ms ease;
+  transition: border-color var(--aurral-duration-base) var(--aurral-ease-standard), background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .theme-settings__card:hover,

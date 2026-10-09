@@ -141,6 +141,21 @@ export function getClosestToken(name, tokenNames) {
   return closest && closestDistance <= 2 ? closest : null;
 }
 
+const motionProperties = /^(?:transition|transition-duration|transition-timing-function|transition-delay|animation|animation-duration|animation-timing-function)$/;
+const rawEasingPattern = /(?<![\w-])(?:ease|ease-in|ease-out|ease-in-out|linear|step-start|step-end)(?![\w-])|\b(?:cubic-bezier|steps|linear)\s*\(/i;
+const rawDurationPattern = /(?<![\w.#-])-?\d*\.?\d+m?s(?![\w-])/gi;
+const allowedDurations = new Set(["0s", "0ms", "0.01ms"]);
+
+export function findRawMotion(property, value) {
+  if (!motionProperties.test(property)) return null;
+  const withoutVariables = value.replace(/var\([^()]*(?:\([^()]*\)[^()]*)*\)/g, "");
+  if (rawEasingPattern.test(withoutVariables)) return "easing";
+  const looping = property.startsWith("animation") && /\binfinite\b/i.test(value);
+  if (looping) return null;
+  const durations = withoutVariables.match(rawDurationPattern) ?? [];
+  return durations.some((duration) => !allowedDurations.has(duration.toLowerCase())) ? "duration" : null;
+}
+
 function sourceLine(declaration) {
   return declaration.source?.start?.line ?? 1;
 }
@@ -209,6 +224,18 @@ export function lintCss(css, { filePath = "<input>", tokenNames = new Set() } = 
     if (isAurralTokenDefinition(declaration)) return;
 
     const property = declaration.prop.toLowerCase();
+    const rawMotion = findRawMotion(property, declaration.value);
+    if (rawMotion) {
+      findings.push(
+        createFinding(
+          filePath,
+          line,
+          "aurral/no-raw-motion",
+          `uses a raw ${rawMotion} in ${property}; use the --aurral-duration-* and --aurral-ease-* tokens.`,
+        ),
+      );
+    }
+
     const isCustomProperty = property.startsWith("--");
     if (!isCustomProperty && !isColorBearingProperty(property)) return;
     if (!hasStaticColor(declaration.value)) return;

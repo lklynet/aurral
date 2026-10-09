@@ -144,7 +144,7 @@
 }
 
 .settings-inbox-preferences {
-  transition: opacity 0.16s ease;
+  transition: opacity var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .settings-inbox-preferences.is-disabled {
@@ -246,9 +246,9 @@
   font-size: 0.875rem;
   outline: none;
   transition:
-    border-color 0.18s ease,
-    background-color 0.18s ease,
-    outline-color 0.18s ease;
+    border-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    outline-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .arr-input,
@@ -377,10 +377,11 @@
   line-height: 1;
   cursor: pointer;
   transition:
-    background-color 0.15s ease-out,
-    border-color 0.15s ease-out,
-    color 0.15s ease-out,
-    transform 0.1s ease-out;
+    background-color var(--aurral-duration-fast) var(--aurral-ease-out),
+    border-color var(--aurral-duration-fast) var(--aurral-ease-out),
+    color var(--aurral-duration-fast) var(--aurral-ease-out),
+    transform var(--aurral-duration-instant) var(--aurral-ease-out),
+    scale var(--aurral-duration-instant) var(--aurral-ease-out);
 }
 
 .settings-arr .arr-btn:hover:not(:disabled),
@@ -391,7 +392,7 @@
 
 .settings-arr .arr-btn:active:not(:disabled),
 .arr-portal .arr-btn:active:not(:disabled) {
-  transform: scale(0.97);
+  scale: 0.97;
 }
 
 .settings-arr .arr-btn:disabled,
@@ -491,7 +492,7 @@
 .arr-progress__fill {
   height: 100%;
   background: var(--aurral-control-on);
-  transition: width 0.2s ease;
+  transition: width var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .arr-form-help--success {
@@ -746,7 +747,7 @@
   height: 0.875rem;
   flex-shrink: 0;
   color: var(--arr-text-muted);
-  transition: transform 0.15s ease;
+  transition: transform var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .arr-health__section-chevron.is-collapsed {
@@ -1544,7 +1545,6 @@
 @media (prefers-reduced-motion: reduce) {
   .settings-arr .arr-btn:active:not(:disabled),
   .arr-portal .arr-btn:active:not(:disabled) {
-    transform: none;
     opacity: 0.82;
   }
 }
@@ -1842,7 +1842,7 @@
   border-radius: 0.5rem;
   font-size: 0.8125rem;
   font-weight: 550;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background-color var(--aurral-duration-fast) var(--aurral-ease-standard), border-color var(--aurral-duration-fast) var(--aurral-ease-standard), color var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .settings-arr .arr-btn,

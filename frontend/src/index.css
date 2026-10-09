@@ -66,6 +66,38 @@
   --aurral-space-stack: 0.75rem;
   --aurral-space-card: 0.875rem;
   --aurral-space-header: 0.875rem;
+  --aurral-duration-instant: 100ms;
+  --aurral-duration-fast: 150ms;
+  --aurral-duration-base: 200ms;
+  --aurral-duration-slow: 260ms;
+  --aurral-duration-slower: 420ms;
+  --aurral-duration-autofill-hold: 5000s;
+  --aurral-ease-standard: ease;
+  --aurral-ease-out: ease-out;
+  --aurral-ease-in-out: ease-in-out;
+  --aurral-ease-linear: linear;
+  --aurral-ease-emphasized: cubic-bezier(0.22, 1, 0.36, 1);
+  --aurral-ease-spring: cubic-bezier(0.34, 1.28, 0.64, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --aurral-duration-instant: 0.01ms;
+    --aurral-duration-fast: 0.01ms;
+    --aurral-duration-base: 0.01ms;
+    --aurral-duration-slow: 0.01ms;
+    --aurral-duration-slower: 0.01ms;
+  }
+
+  *:active,
+  *:active::before,
+  *:active::after {
+    scale: none !important;
+  }
+
+  html {
+    scroll-behavior: auto !important;
+  }
 }
 
 :root[data-theme="light"] {
@@ -246,15 +278,16 @@ textarea {
   font-weight: 500;
   cursor: pointer;
   transition:
-    border-color 0.2s ease,
-    background-color 0.2s ease,
-    color 0.2s ease,
-    transform 0.2s ease;
+    border-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard),
+    transform var(--aurral-duration-base) var(--aurral-ease-standard),
+    scale var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .btn:active:not(:disabled) {
-  transform: scale(0.97);
-  transition-duration: 0.1s;
+  scale: 0.97;
+  transition-duration: var(--aurral-duration-instant);
 }
 
 .btn:focus {
@@ -514,8 +547,8 @@ textarea {
   color: var(--aurral-text);
   cursor: pointer;
   transition:
-    background-color 0.2s ease,
-    color 0.2s ease;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .btn-add-action:hover:not(:disabled),
@@ -629,9 +662,9 @@ textarea {
   border-radius: var(--aurral-radius-sm);
   color: var(--aurral-text-muted);
   transition:
-    border-color 0.15s ease,
-    background-color 0.15s ease,
-    color 0.15s ease;
+    border-color var(--aurral-duration-fast) var(--aurral-ease-standard),
+    background-color var(--aurral-duration-fast) var(--aurral-ease-standard),
+    color var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .cross-view-link:hover,
@@ -679,8 +712,8 @@ textarea {
   max-width: min(18rem, calc(100vw - 1rem));
   overflow-wrap: anywhere;
   transition:
-    opacity 0.15s ease,
-    transform 0.15s ease;
+    opacity var(--aurral-duration-fast) var(--aurral-ease-standard),
+    transform var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .card {
@@ -708,9 +741,9 @@ textarea {
   line-height: inherit;
   outline: none;
   transition:
-    border-color 0.18s ease,
-    background-color 0.18s ease,
-    outline-color 0.18s ease;
+    border-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    outline-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .input::placeholder {
@@ -735,7 +768,7 @@ textarea {
   background-color: var(--aurral-surface-raised) !important;
   caret-color: var(--aurral-text) !important;
   outline: none;
-  transition: background-color 5000s ease-in-out 0s;
+  transition: background-color var(--aurral-duration-autofill-hold) var(--aurral-ease-in-out) 0s;
 }
 
 .input--tall {
@@ -781,8 +814,8 @@ textarea {
   background: var(--aurral-text);
   margin-top: -3px;
   transition:
-    border-color 0.2s ease,
-    transform 0.2s ease;
+    border-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    transform var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .volume-slider:focus::-webkit-slider-thumb,
@@ -812,8 +845,8 @@ textarea {
   border-radius: 50%;
   background: var(--aurral-text);
   transition:
-    border-color 0.2s ease,
-    transform 0.2s ease;
+    border-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    transform var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .volume-slider:focus::-moz-range-thumb,
@@ -835,7 +868,7 @@ textarea {
 
 ::-webkit-scrollbar-thumb {
   background-color: var(--aurral-text-subtle);
-  transition: background-color 0.2s ease;
+  transition: background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .similar-artists-scroll::-webkit-scrollbar {
@@ -858,7 +891,7 @@ textarea {
   border-radius: 50%;
   background: currentColor;
   opacity: 0.1;
-  animation: aurral-dot-loader-helix 2.6s ease-in-out infinite;
+  animation: aurral-dot-loader-helix 2.6s var(--aurral-ease-in-out) infinite;
 }
 
 .aurral-dot-loader__dot:nth-child(1) {
@@ -915,7 +948,7 @@ textarea {
 
 @media (prefers-reduced-motion: reduce) {
   .aurral-dot-loader__dot {
-    animation: aurral-dot-loader-pulse 3s ease-in-out infinite;
+    animation: aurral-dot-loader-pulse 3s var(--aurral-ease-in-out) infinite;
     animation-delay: 0s !important;
   }
 }
@@ -959,7 +992,7 @@ textarea {
   min-height: 0;
   flex-direction: column;
   padding: var(--aurral-space-outer);
-  transition: margin-left 0.3s ease;
+  transition: margin-left var(--aurral-duration-slow) var(--aurral-ease-standard);
 }
 
 @supports (height: 100dvh) {
@@ -1032,7 +1065,7 @@ textarea {
   border-radius: var(--aurral-radius-round);
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.28s ease;
+  transition: opacity var(--aurral-duration-slow) var(--aurral-ease-standard);
 }
 
 .app-main-scrollbar.is-visible {
@@ -1068,7 +1101,7 @@ textarea {
 }
 
 .app-main__content {
-  animation: fade-in 0.2s ease-out;
+  animation: fade-in var(--aurral-duration-base) var(--aurral-ease-out);
 }
 
 .app-nav-toggle {
@@ -1080,9 +1113,10 @@ textarea {
   border-radius: var(--aurral-radius-sm);
   color: var(--aurral-text-muted);
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    transform 0.1s ease-out;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard),
+    transform var(--aurral-duration-instant) var(--aurral-ease-out),
+    scale var(--aurral-duration-instant) var(--aurral-ease-out);
 }
 
 .app-header-link {
@@ -1094,9 +1128,10 @@ textarea {
   border-radius: var(--aurral-radius-sm);
   color: var(--aurral-text-muted);
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    transform 0.1s ease-out;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard),
+    transform var(--aurral-duration-instant) var(--aurral-ease-out),
+    scale var(--aurral-duration-instant) var(--aurral-ease-out);
 }
 
 .app-nav-toggle:hover,
@@ -1107,7 +1142,7 @@ textarea {
 
 .app-nav-toggle:active,
 .app-header-link:active {
-  transform: scale(0.97);
+  scale: 0.97;
 }
 
 .app-header-actions {
@@ -1202,7 +1237,7 @@ textarea {
   inset: 0;
   z-index: 60;
   background: transparent;
-  transition: background-color 0.24s ease-out;
+  transition: background-color var(--aurral-duration-slow) var(--aurral-ease-out);
 }
 
 .app-mobile-backdrop.is-open {
@@ -1223,7 +1258,7 @@ textarea {
   background: var(--aurral-surface-popover);
   box-shadow: var(--aurral-shadow-modal);
   transform: translateY(100%);
-  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform var(--aurral-duration-slow) var(--aurral-ease-emphasized);
 }
 
 .app-mobile-backdrop.is-open .app-mobile-menu {
@@ -1259,8 +1294,9 @@ textarea {
   font-weight: 600;
   text-align: left;
   transition:
-    background-color 0.15s ease-out,
-    transform 0.1s ease-out;
+    background-color var(--aurral-duration-fast) var(--aurral-ease-out),
+    transform var(--aurral-duration-instant) var(--aurral-ease-out),
+    scale var(--aurral-duration-instant) var(--aurral-ease-out);
 }
 
 .app-mobile-menu__item.is-active {
@@ -1303,8 +1339,9 @@ textarea {
   font-weight: 600;
   letter-spacing: 0.01em;
   transition:
-    color 0.15s ease-out,
-    transform 0.1s ease-out;
+    color var(--aurral-duration-fast) var(--aurral-ease-out),
+    transform var(--aurral-duration-instant) var(--aurral-ease-out),
+    scale var(--aurral-duration-instant) var(--aurral-ease-out);
 }
 
 .app-mobile-nav__item.is-active {
@@ -1317,7 +1354,7 @@ textarea {
 
 .app-mobile-menu__item:active,
 .app-mobile-nav__item:active {
-  transform: scale(0.96);
+  scale: 0.96;
 }
 
 .app-mobile-back {
@@ -1449,9 +1486,10 @@ textarea {
     font-weight: 600;
     white-space: nowrap;
     transition:
-      background-color 0.15s ease-out,
-      color 0.15s ease-out,
-      transform 0.1s ease-out;
+      background-color var(--aurral-duration-fast) var(--aurral-ease-out),
+      color var(--aurral-duration-fast) var(--aurral-ease-out),
+      transform var(--aurral-duration-instant) var(--aurral-ease-out),
+      scale var(--aurral-duration-instant) var(--aurral-ease-out);
   }
 
   .app-section-bar__chip::after {
@@ -1467,7 +1505,7 @@ textarea {
   }
 
   .app-section-bar__chip:active {
-    transform: scale(0.96);
+    scale: 0.96;
   }
 
   .app-shell :is(.app-main-wrap, .app-main) {
@@ -1547,7 +1585,7 @@ textarea {
     box-shadow: 0 0 0 100vmax var(--aurral-scrim) !important;
     backdrop-filter: none !important;
     transform: none !important;
-    animation: aurral-sheet-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: aurral-sheet-in var(--aurral-duration-slow) var(--aurral-ease-emphasized);
   }
 
   :is(
@@ -1680,7 +1718,7 @@ textarea {
     padding-bottom: calc(var(--mobile-sheet-padding, 1.5rem) + env(safe-area-inset-bottom, 0px));
     border-width: 1px 0 0;
     border-radius: 1rem 1rem 0 0;
-    animation: aurral-sheet-in 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: aurral-sheet-in var(--aurral-duration-slow) var(--aurral-ease-emphasized);
   }
 
   body :is(.artist-modal-backdrop, .arr-modal-backdrop, .playlist-modal-backdrop)
@@ -1718,8 +1756,8 @@ textarea {
   background: var(--aurral-chrome);
   overflow: hidden;
   transition:
-    transform 0.3s ease,
-    width 0.3s ease;
+    transform var(--aurral-duration-slow) var(--aurral-ease-standard),
+    width var(--aurral-duration-slow) var(--aurral-ease-standard);
 }
 
 .sidebar-stage-backdrop {
@@ -1781,7 +1819,7 @@ textarea {
   width: 2px;
   border-radius: var(--aurral-radius-round);
   background: transparent;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .sidebar-resize-handle:hover::after,
@@ -1885,9 +1923,10 @@ textarea {
   font-weight: 500;
   line-height: 1.25;
   transition:
-    color 0.15s ease,
-    background-color 0.15s ease,
-    transform 0.1s ease-out;
+    color var(--aurral-duration-fast) var(--aurral-ease-standard),
+    background-color var(--aurral-duration-fast) var(--aurral-ease-standard),
+    transform var(--aurral-duration-instant) var(--aurral-ease-out),
+    scale var(--aurral-duration-instant) var(--aurral-ease-out);
 }
 
 .sidebar-link--full {
@@ -1924,7 +1963,7 @@ textarea {
 }
 
 .sidebar-link:active {
-  transform: scale(0.98);
+  scale: 0.98;
 }
 
 .sidebar-nav-group.is-expanded > .sidebar-link.is-active,
@@ -1954,7 +1993,7 @@ textarea {
   width: 0.4375rem;
   height: 0.4375rem;
   border-radius: var(--aurral-radius-round);
-  animation: sidebar-activity-pulse 2s ease-in-out infinite;
+  animation: sidebar-activity-pulse 2s var(--aurral-ease-in-out) infinite;
 }
 
 .sidebar-link__activity--alert {
@@ -2002,7 +2041,7 @@ textarea {
   transform: translateY(-50%);
   visibility: hidden;
   white-space: nowrap;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .sidebar-link:hover .sidebar-tooltip {
@@ -2039,9 +2078,10 @@ textarea {
   font-weight: 500;
   line-height: 1.3;
   transition:
-    color 0.15s ease,
-    background-color 0.15s ease,
-    transform 0.1s ease-out;
+    color var(--aurral-duration-fast) var(--aurral-ease-standard),
+    background-color var(--aurral-duration-fast) var(--aurral-ease-standard),
+    transform var(--aurral-duration-instant) var(--aurral-ease-out),
+    scale var(--aurral-duration-instant) var(--aurral-ease-out);
 }
 
 .sidebar-subnav-link__alert {
@@ -2050,7 +2090,7 @@ textarea {
   border-radius: var(--aurral-radius-round);
   background: var(--aurral-danger);
   flex-shrink: 0;
-  animation: sidebar-activity-pulse 2s ease-in-out infinite;
+  animation: sidebar-activity-pulse 2s var(--aurral-ease-in-out) infinite;
 }
 
 .sidebar-subnav-link__alert--review {
@@ -2070,7 +2110,7 @@ textarea {
 }
 
 .sidebar-subnav-link:active {
-  transform: scale(0.98);
+  scale: 0.98;
 }
 
 .global-search {
@@ -2126,8 +2166,8 @@ textarea {
   font-weight: 700;
   cursor: pointer;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .global-search__scope-button:focus {
@@ -2315,8 +2355,8 @@ textarea {
   font-size: 0.875rem;
   text-align: left;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .app-profile-menu__item:hover {
@@ -2676,11 +2716,11 @@ textarea {
   border-radius: var(--aurral-radius);
   background: var(--aurral-surface-popover);
   color: var(--aurral-text);
-  animation: app-toast-in 0.2s ease both;
+  animation: app-toast-in var(--aurral-duration-base) var(--aurral-ease-standard) both;
   transition:
-    margin-top 0.3s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.3s ease,
-    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    margin-top var(--aurral-duration-slow) var(--aurral-ease-emphasized),
+    opacity var(--aurral-duration-slow) var(--aurral-ease-standard),
+    transform var(--aurral-duration-slow) var(--aurral-ease-emphasized);
 }
 
 .app-toast + .app-toast {
@@ -2697,7 +2737,7 @@ textarea {
 }
 
 .app-toast--exiting {
-  animation: app-toast-out 0.18s ease both;
+  animation: app-toast-out var(--aurral-duration-base) var(--aurral-ease-standard) both;
   pointer-events: none;
 }
 
@@ -2755,8 +2795,8 @@ textarea {
   font-size: 0.75rem;
   font-weight: 600;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .app-toast__action:hover {
@@ -2785,9 +2825,10 @@ textarea {
   box-shadow: var(--aurral-shadow-toast-close);
   color: var(--aurral-text-muted);
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    transform 0.18s ease;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard),
+    transform var(--aurral-duration-base) var(--aurral-ease-standard),
+    scale var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .app-toast__close:hover {
@@ -2796,7 +2837,7 @@ textarea {
 }
 
 .app-toast__close:active {
-  transform: scale(0.95);
+  scale: 0.95;
 }
 
 .app-toast__close:focus-visible {
@@ -3099,7 +3140,7 @@ textarea {
 
 .artist-details-page {
   color: var(--aurral-text);
-  animation: fade-in 0.2s ease-out;
+  animation: fade-in var(--aurral-duration-base) var(--aurral-ease-out);
 }
 
 .app-main--artist-details .artist-details-page {
@@ -3292,9 +3333,9 @@ textarea {
   font-weight: 600;
   cursor: pointer;
   transition:
-    border-color 0.18s ease,
-    background-color 0.18s ease,
-    color 0.18s ease;
+    border-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-hero .artist-tag {
@@ -3427,8 +3468,8 @@ textarea {
   font-size: 0.875rem;
   text-align: left;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-menu-item:hover:not(:disabled) {
@@ -3541,9 +3582,9 @@ textarea {
   font-size: 0.75rem;
   font-weight: 600;
   transition:
-    border-color 0.18s ease,
-    background-color 0.18s ease,
-    color 0.18s ease;
+    border-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-tab:hover:not(:disabled),
@@ -3574,9 +3615,10 @@ textarea {
   font-weight: 700;
   white-space: nowrap;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    transform 0.15s ease;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard),
+    transform var(--aurral-duration-fast) var(--aurral-ease-standard),
+    scale var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .artist-segmented-button:hover:not(:disabled) {
@@ -3590,7 +3632,7 @@ textarea {
 }
 
 .artist-segmented-button:active:not(:disabled) {
-  transform: scale(0.97);
+  scale: 0.97;
 }
 
 .artist-segmented-button:focus-visible {
@@ -3692,7 +3734,7 @@ textarea {
   text-align: left;
   cursor: pointer;
   border-radius: var(--aurral-radius-sm);
-  transition: background-color 0.18s ease;
+  transition: background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-release-card:hover:not(:disabled),
@@ -4118,7 +4160,7 @@ textarea {
   cursor: pointer;
   border-radius: var(--aurral-radius-sm);
   padding: 0.5rem;
-  transition: background-color 0.18s ease;
+  transition: background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-library-card:hover,
@@ -4263,7 +4305,7 @@ textarea {
   cursor: pointer;
   text-decoration: underline;
   text-decoration-color: transparent;
-  transition: text-decoration-color 0.18s ease;
+  transition: text-decoration-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-about-meta__tag:hover {
@@ -4357,7 +4399,7 @@ textarea {
   cursor: pointer;
   border-radius: var(--aurral-radius-sm);
   padding: 0.5rem;
-  transition: background-color 0.18s ease;
+  transition: background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-similar-card:hover,
@@ -5249,7 +5291,7 @@ textarea {
 
 .artist-discover-page {
   padding-bottom: 2.5rem;
-  animation: fade-in 0.2s ease-out;
+  animation: fade-in var(--aurral-duration-base) var(--aurral-ease-out);
 }
 
 .artist-discover-section {
@@ -5285,7 +5327,7 @@ textarea {
 .discover-skeleton-card__line,
 .skeleton-block {
   background: var(--aurral-surface-raised);
-  animation: discover-skeleton-pulse 1.6s ease-in-out infinite;
+  animation: discover-skeleton-pulse 1.6s var(--aurral-ease-in-out) infinite;
 }
 
 .discover-skeleton-card__cover {
@@ -5336,7 +5378,7 @@ textarea {
 
 .query-pending {
   opacity: 0.6;
-  transition: opacity 0.15s ease 0.15s;
+  transition: opacity var(--aurral-duration-fast) var(--aurral-ease-standard) var(--aurral-duration-fast);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -5565,8 +5607,8 @@ textarea {
   font-size: 0.7rem;
   font-weight: 500;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard);
   cursor: pointer;
 }
 
@@ -5585,8 +5627,8 @@ textarea {
   font-size: 0.75rem;
   font-weight: 500;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard);
   cursor: pointer;
 }
 
@@ -5641,7 +5683,7 @@ textarea {
   cursor: pointer;
   border-radius: 0.5rem;
   padding: 0.25rem 0.25rem 0.5rem;
-  transition: background-color 0.18s ease;
+  transition: background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-discover-card:hover,
@@ -5812,7 +5854,7 @@ textarea {
   line-height: 1.3;
   text-align: left;
   cursor: pointer;
-  transition: color 0.18s ease;
+  transition: color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-discover-card:not(.artist-discover-card--album):not(.artist-discover-card--playlist)
@@ -5883,7 +5925,7 @@ textarea {
   cursor: pointer;
   text-decoration: none;
   padding: 0.5rem;
-  transition: background-color 0.18s ease;
+  transition: background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-show-card--discover:not(.is-disabled):hover,
@@ -6092,7 +6134,7 @@ textarea {
   border: 1px solid var(--aurral-border);
   background: var(--aurral-surface-raised);
   border-radius: var(--aurral-radius);
-  transition: border-color 0.18s ease;
+  transition: border-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-view-all-card--discover:hover .artist-media-cell {
@@ -6220,8 +6262,8 @@ textarea {
   color: inherit;
   text-decoration: none;
   transition:
-    border-color 0.18s ease,
-    background-color 0.18s ease;
+    border-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 @media (max-width: 767px) {
@@ -6385,9 +6427,9 @@ textarea {
   cursor: pointer;
   opacity: 0.72;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    opacity 0.18s ease;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard),
+    opacity var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .discover-news-card__block:hover,
@@ -6591,8 +6633,8 @@ textarea {
   font-size: 0.75rem;
   font-weight: 500;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-nearby-badge:hover,
@@ -6676,8 +6718,8 @@ textarea {
   border-radius: var(--aurral-radius-sm);
   background-color: transparent;
   transition:
-    background-color 0.18s ease,
-    border-color 0.18s ease;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    border-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-customize-section-row--enabled {
@@ -6715,8 +6757,8 @@ textarea {
   cursor: grab;
   touch-action: none;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-customize-drag-handle:hover {
@@ -6824,7 +6866,7 @@ textarea {
   margin-bottom: 0.75rem;
   border-radius: var(--aurral-radius-round);
   background-color: var(--aurral-surface);
-  transition: border-color 0.18s ease;
+  transition: border-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-nearby-zip-editor__field:focus-within {
@@ -6962,7 +7004,7 @@ textarea {
 
 .search-page {
   color: var(--aurral-text);
-  animation: fade-in 0.2s ease-out;
+  animation: fade-in var(--aurral-duration-base) var(--aurral-ease-out);
 }
 
 .search-page__header {
@@ -7043,8 +7085,8 @@ textarea {
   font-weight: 600;
   padding: 0.375rem 0.125rem;
   transition:
-    border-color 0.18s ease,
-    color 0.18s ease;
+    border-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .search-page__filter:hover,
@@ -7098,8 +7140,8 @@ textarea {
   padding: 0;
   text-align: left;
   transition:
-    border-color 0.18s ease,
-    background-color 0.18s ease;
+    border-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .search-top-artist__main:hover {
@@ -7247,9 +7289,9 @@ textarea {
   color: var(--aurral-text);
   opacity: 0.72;
   transition:
-    opacity 0.18s ease,
-    transform 0.18s ease,
-    background-color 0.18s ease;
+    opacity var(--aurral-duration-base) var(--aurral-ease-standard),
+    transform var(--aurral-duration-base) var(--aurral-ease-standard),
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .search-top-artist__main--overlay :is(
@@ -7307,7 +7349,7 @@ textarea {
 
   .app-toast,
   .reload-prompt {
-    animation: fade-in 0.12s linear;
+    animation: fade-in var(--aurral-duration-instant) var(--aurral-ease-linear);
   }
 
   .app-content,
@@ -7320,29 +7362,12 @@ textarea {
 
   .app-mobile-backdrop,
   .app-mobile-menu {
-    transition-duration: 0.12s;
+    transition-duration: var(--aurral-duration-instant);
   }
 
   .app-mobile-menu,
   .app-mobile-backdrop.is-open .app-mobile-menu {
     transform: none;
-  }
-
-  .btn:active:not(:disabled),
-  .app-nav-toggle:active,
-  .app-header-link:active,
-  .app-mobile-menu__item:active,
-  .app-mobile-nav__item:active,
-  .sidebar-link:active,
-  .sidebar-subnav-link:active,
-  .artist-segmented-button:active:not(:disabled),
-  .flow-page__mix-toggle:active:not(:disabled):not([aria-disabled="true"]),
-  .pill-toggle:active::before {
-    transform: none;
-  }
-
-  .pill-toggle[aria-checked="true"]:active::before {
-    transform: translateX(var(--thumb-travel));
   }
 
   .btn:active:not(:disabled),
@@ -7373,7 +7398,7 @@ textarea {
   column-gap: 1rem;
   border-bottom: 1px solid var(--aurral-border);
   padding: 0.75rem 0.5rem;
-  transition: background-color 0.18s ease;
+  transition: background-color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .search-mixed-results__row:hover,
@@ -7667,7 +7692,7 @@ textarea {
 
 .library-page {
   color: var(--aurral-text);
-  animation: fade-in 0.2s ease-out;
+  animation: fade-in var(--aurral-duration-base) var(--aurral-ease-out);
 }
 
 .page-title {
@@ -8142,7 +8167,7 @@ textarea {
   font-size: 0.74rem;
   font-weight: 500;
   text-decoration: none;
-  transition: background 150ms ease, color 150ms ease;
+  transition: background var(--aurral-duration-fast) var(--aurral-ease-standard), color var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .native-library-genre-card:hover,
@@ -8212,7 +8237,7 @@ textarea {
   color: var(--aurral-text-muted);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+  transition: opacity var(--aurral-duration-instant) var(--aurral-ease-standard), background var(--aurral-duration-instant) var(--aurral-ease-standard), color var(--aurral-duration-instant) var(--aurral-ease-standard);
 }
 
 .native-library-card__cover-wrap:hover .native-library-item-menu__trigger,
@@ -8328,7 +8353,7 @@ textarea {
     display: block;
     opacity: 0;
     visibility: hidden;
-    transition: opacity 120ms ease, visibility 0s linear 120ms;
+    transition: opacity var(--aurral-duration-instant) var(--aurral-ease-standard), visibility 0s var(--aurral-ease-linear) var(--aurral-duration-instant);
   }
 
   .native-library-item-menu__panel .artist-menu-submenu:hover .artist-menu-submenu__panel,
@@ -8432,7 +8457,7 @@ textarea {
   color: var(--aurral-text);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition: opacity var(--aurral-duration-instant) var(--aurral-ease-standard);
 }
 
 .native-library-card:hover .native-library-card__play,
@@ -8753,21 +8778,19 @@ button.native-library-card__artist:focus-visible {
 }
 
 .track-playing-indicator.is-playing > span {
-  animation: track-playing-bar 0.9s ease-in-out infinite alternate;
+  animation: track-playing-bar 0.9s var(--aurral-ease-in-out) infinite alternate;
 }
 
 .track-playing-indicator.is-playing > span:nth-child(2) {
-  animation-duration: 0.7s;
-  animation-delay: -0.35s;
+  animation: track-playing-bar 0.7s var(--aurral-ease-in-out) -0.35s infinite alternate;
 }
 
 .track-playing-indicator.is-playing > span:nth-child(3) {
-  animation-duration: 1.1s;
-  animation-delay: -0.6s;
+  animation: track-playing-bar 1.1s var(--aurral-ease-in-out) -0.6s infinite alternate;
 }
 
 .track-playing-indicator.is-loading {
-  animation: track-playing-pulse 0.8s ease-in-out infinite alternate;
+  animation: track-playing-pulse 0.8s var(--aurral-ease-in-out) infinite alternate;
 }
 
 @keyframes track-playing-bar {
@@ -9095,7 +9118,7 @@ button.native-library-genre-row:focus-visible {
   );
   content: "";
   pointer-events: none;
-  transition: background 200ms ease;
+  transition: background var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .collection-header__subtitle {
@@ -9335,7 +9358,7 @@ button.native-library-genre-row:focus-visible {
   background: transparent;
   color: var(--aurral-text-muted);
   opacity: 1;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background var(--aurral-duration-instant) var(--aurral-ease-standard), color var(--aurral-duration-instant) var(--aurral-ease-standard);
 }
 
 .native-library-detail__actions .native-library-favorite:hover,
@@ -9743,7 +9766,7 @@ button.native-library-genre-row:focus-visible {
 .shows-page {
   padding-bottom: 2.5rem;
   color: var(--aurral-text);
-  animation: fade-in 0.2s ease-out;
+  animation: fade-in var(--aurral-duration-base) var(--aurral-ease-out);
 }
 
 .shows-page__header {
@@ -9820,7 +9843,7 @@ button.native-library-genre-row:focus-visible {
 .activity-page {
   padding-bottom: 1.5rem;
   color: var(--aurral-text);
-  animation: fade-in 0.2s ease-out;
+  animation: fade-in var(--aurral-duration-base) var(--aurral-ease-out);
 }
 
 .activity-page__header {
@@ -9875,7 +9898,7 @@ button.native-library-genre-row:focus-visible {
   border-radius: var(--aurral-radius-sm);
   background: var(--aurral-surface-raised);
   color: var(--aurral-text-subtle);
-  transition: border-color 0.16s ease, background-color 0.16s ease;
+  transition: border-color var(--aurral-duration-fast) var(--aurral-ease-standard), background-color var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .activity-toolbar__filter:focus-within {
@@ -9955,7 +9978,7 @@ button.native-library-genre-row:focus-visible {
   padding: 0.55rem 0.25rem;
   border-bottom: 1px solid var(--aurral-border);
   color: var(--aurral-text);
-  transition: background-color 0.16s ease;
+  transition: background-color var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .activity-row:hover,
@@ -10125,7 +10148,7 @@ button.native-library-genre-row:focus-visible {
   gap: 0.2rem;
   min-width: 2.25rem;
   opacity: 0.64;
-  transition: opacity 0.16s ease, background-color 0.16s ease;
+  transition: opacity var(--aurral-duration-fast) var(--aurral-ease-standard), background-color var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .activity-row:hover .activity-row__actions,
@@ -10553,7 +10576,7 @@ button.native-library-genre-row:focus-visible {
   -webkit-text-fill-color: var(--aurral-text) !important;
   background-color: var(--aurral-surface) !important;
   caret-color: var(--aurral-text) !important;
-  transition: background-color 5000s ease-in-out 0s;
+  transition: background-color var(--aurral-duration-autofill-hold) var(--aurral-ease-in-out) 0s;
 }
 
 .login-error {
@@ -10907,7 +10930,7 @@ button.native-library-genre-row:focus-visible {
   padding: 0.5rem 0.625rem 0.75rem;
   border: 0;
   opacity: 1;
-  transition: opacity 120ms ease;
+  transition: opacity var(--aurral-duration-instant) var(--aurral-ease-standard);
 }
 
 .settings-news-category.is-disabled .settings-news-category__feeds {
@@ -11086,7 +11109,7 @@ button.native-library-genre-row:focus-visible {
 .settings-page__link {
   color: var(--aurral-text-muted);
   text-decoration: underline;
-  transition: color 0.18s ease;
+  transition: color var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .settings-page__link:hover {
@@ -11624,7 +11647,7 @@ button.native-library-genre-row:focus-visible {
 
 .flow-page__form-section--dimmed {
   opacity: 0.6;
-  transition: opacity 0.18s ease;
+  transition: opacity var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .flow-page__form-grid {
@@ -11676,7 +11699,7 @@ button.native-library-genre-row:focus-visible {
   line-height: 1.25;
   outline: none;
   border-radius: var(--aurral-radius-sm);
-  transition: outline 0.18s ease;
+  transition: outline var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .flow-page__field-control::placeholder {
@@ -11778,9 +11801,9 @@ button.native-library-genre-row:focus-visible {
   font-weight: 700;
   cursor: pointer;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    opacity 0.18s ease;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard),
+    opacity var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .flow-page__weekday:hover:not([aria-disabled="true"]) {
@@ -11852,10 +11875,11 @@ button.native-library-genre-row:focus-visible {
   font-weight: 700;
   white-space: nowrap;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    opacity 0.18s ease,
-    transform 0.15s ease;
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    color var(--aurral-duration-base) var(--aurral-ease-standard),
+    opacity var(--aurral-duration-base) var(--aurral-ease-standard),
+    transform var(--aurral-duration-fast) var(--aurral-ease-standard),
+    scale var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .flow-page__mix-toggle:hover:not(:disabled):not([aria-disabled="true"]) {
@@ -11864,7 +11888,7 @@ button.native-library-genre-row:focus-visible {
 }
 
 .flow-page__mix-toggle:active:not(:disabled):not([aria-disabled="true"]) {
-  transform: scale(0.97);
+  scale: 0.97;
 }
 
 .flow-page__mix-toggle.is-active {
@@ -12004,7 +12028,7 @@ button.native-library-genre-row:focus-visible {
   font-size: 0.875rem;
   border-radius: var(--aurral-radius-sm);
   overflow: visible;
-  transition: outline 0.18s ease;
+  transition: outline var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .flow-page__form-section .flow-page__token-input {
@@ -12170,8 +12194,8 @@ button.native-library-genre-row:focus-visible {
   cursor: pointer;
   text-decoration: none;
   transition:
-    opacity 0.15s ease,
-    transform 0.15s ease;
+    opacity var(--aurral-duration-fast) var(--aurral-ease-standard),
+    transform var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .flow-page__track-status-dot--link:hover {
@@ -12409,7 +12433,7 @@ button.native-library-genre-row:focus-visible {
   background: transparent;
   color: var(--aurral-text);
   text-align: left;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .playlist-import__playlist-option:last-child {
@@ -12601,8 +12625,8 @@ button.native-library-genre-row:focus-visible {
   text-align: center;
   cursor: pointer;
   transition:
-    border-color 0.15s ease,
-    background-color 0.15s ease;
+    border-color var(--aurral-duration-fast) var(--aurral-ease-standard),
+    background-color var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .playlist-import__dropzone:hover {
@@ -12847,8 +12871,8 @@ button.native-library-genre-row:focus-visible {
 ::view-transition-group(*),
 ::view-transition-old(*),
 ::view-transition-new(*) {
-  animation-duration: 0.25s;
-  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  animation-duration: var(--aurral-duration-slow);
+  animation-timing-function: var(--aurral-ease-emphasized);
 }
 
 ::view-transition-group(shared-artwork) {
@@ -12925,7 +12949,7 @@ button.native-library-genre-row:focus-visible {
   width: 100%;
   max-width: none;
   margin-inline: 0;
-  animation: fade-in 0.2s ease-out;
+  animation: fade-in var(--aurral-duration-base) var(--aurral-ease-out);
 }
 
 .profile-page--settings {
@@ -13139,7 +13163,7 @@ button.native-library-genre-row:focus-visible {
   display: grid;
   width: 100%;
   gap: var(--aurral-space-section);
-  animation: fade-in 0.2s ease-out;
+  animation: fade-in var(--aurral-duration-base) var(--aurral-ease-out);
 }
 
 .blocklist-page__header {
@@ -13241,7 +13265,7 @@ button.native-library-genre-row:focus-visible {
   padding: 1rem;
   background: var(--aurral-surface-raised);
   border-radius: var(--aurral-radius);
-  animation: slide-up 0.24s ease-out;
+  animation: slide-up var(--aurral-duration-slow) var(--aurral-ease-out);
 }
 
 .reload-prompt__content {
@@ -13335,11 +13359,11 @@ button.native-library-genre-row:focus-visible {
 
 .onboarding-brand-mark--animate {
   transition:
-    top 0.42s cubic-bezier(0.34, 1.28, 0.64, 1),
-    left 0.42s cubic-bezier(0.34, 1.28, 0.64, 1),
-    width 0.42s cubic-bezier(0.34, 1.28, 0.64, 1),
-    height 0.42s cubic-bezier(0.34, 1.28, 0.64, 1),
-    opacity 0.2s ease;
+    top var(--aurral-duration-slower) var(--aurral-ease-spring),
+    left var(--aurral-duration-slower) var(--aurral-ease-spring),
+    width var(--aurral-duration-slower) var(--aurral-ease-spring),
+    height var(--aurral-duration-slower) var(--aurral-ease-spring),
+    opacity var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .onboarding-progress {
@@ -13393,7 +13417,7 @@ button.native-library-genre-row:focus-visible {
 }
 
 .onboarding-step-shell--animate {
-  transition: height 0.42s cubic-bezier(0.34, 1.28, 0.64, 1);
+  transition: height var(--aurral-duration-slower) var(--aurral-ease-spring);
 }
 
 .onboarding-step-measure {
@@ -13521,7 +13545,7 @@ button.native-library-genre-row:focus-visible {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .artist-image-media.is-loading {
@@ -13564,9 +13588,9 @@ button.native-library-genre-row:focus-visible {
   pointer-events: none;
   transform: translate(-50%, -50%) scale(0.94);
   transition:
-    opacity 0.16s ease,
-    transform 0.16s ease,
-    background-color 0.16s ease;
+    opacity var(--aurral-duration-fast) var(--aurral-ease-standard),
+    transform var(--aurral-duration-fast) var(--aurral-ease-standard),
+    background-color var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .artist-image-root:hover .artist-image-preview-button,
@@ -13811,7 +13835,7 @@ button.native-library-genre-row:focus-visible {
   font-weight: 600;
   letter-spacing: 0.01em;
   opacity: 0;
-  transition: opacity 0.18s ease;
+  transition: opacity var(--aurral-duration-base) var(--aurral-ease-standard);
   pointer-events: none;
 }
 
@@ -13870,7 +13894,7 @@ button.native-library-genre-row:focus-visible {
   background-color: color-mix(in srgb, var(--player-tint, transparent) 32%, transparent);
   mask-image: linear-gradient(90deg, #000, transparent 55%);
   pointer-events: none;
-  transition: background-color 0.6s ease;
+  transition: background-color var(--aurral-duration-slower) var(--aurral-ease-standard);
 }
 
 .global-player__inner {
@@ -14040,7 +14064,7 @@ button.native-library-genre-row:focus-visible {
   overflow: hidden;
   border-radius: var(--aurral-radius-round);
   background: color-mix(in srgb, var(--aurral-text) 18%, transparent);
-  transition: height 0.12s ease-out;
+  transition: height var(--aurral-duration-instant) var(--aurral-ease-out);
 }
 
 .global-player__progress-buffered,
@@ -14074,7 +14098,7 @@ button.native-library-genre-row:focus-visible {
   content: "";
   opacity: 0;
   transform: scale(0.6);
-  transition: opacity 0.12s ease-out, transform 0.12s ease-out;
+  transition: opacity var(--aurral-duration-instant) var(--aurral-ease-out), transform var(--aurral-duration-instant) var(--aurral-ease-out);
 }
 
 .global-player__progress-wrap:hover .global-player__progress-thumb::after,
@@ -14086,7 +14110,7 @@ button.native-library-genre-row:focus-visible {
 
 .global-player__progress-wrap.is-playing .global-player__progress-fill,
 .global-player__progress-wrap.is-playing .global-player__progress-thumb {
-  transition: transform 0.25s linear;
+  transition: transform var(--aurral-duration-slow) var(--aurral-ease-linear);
 }
 
 .global-player__progress-preview {
@@ -14186,7 +14210,7 @@ button.native-library-genre-row:focus-visible {
   overflow: hidden;
   border-radius: var(--aurral-radius) 0 0 var(--aurral-radius);
   background: var(--aurral-surface);
-  animation: fade-in 0.15s ease-out;
+  animation: fade-in var(--aurral-duration-fast) var(--aurral-ease-out);
 }
 
 @media (min-width: 1024px) {
@@ -14500,7 +14524,7 @@ button.native-library-genre-row:focus-visible {
   }
 
   .global-player__mini-progress.is-playing span {
-    transition: transform 0.25s linear;
+    transition: transform var(--aurral-duration-slow) var(--aurral-ease-linear);
   }
 
   .global-player__mini-open {
@@ -14577,7 +14601,7 @@ button.native-library-genre-row:focus-visible {
     z-index: 70;
     display: block;
     background: transparent;
-    transition: background-color 0.26s ease-out;
+    transition: background-color var(--aurral-duration-slow) var(--aurral-ease-out);
   }
 
   .now-playing-backdrop.is-open {
@@ -14597,7 +14621,7 @@ button.native-library-genre-row:focus-visible {
         var(--aurral-surface) 65%
       );
     transform: translateY(100%);
-    transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: transform var(--aurral-duration-slow) var(--aurral-ease-emphasized);
   }
 
   .now-playing-backdrop.is-open .now-playing {
@@ -14782,7 +14806,7 @@ button.native-library-genre-row:focus-visible {
     border-radius: var(--aurral-radius-round);
     background: transparent;
     color: var(--aurral-text);
-    transition: transform 0.1s ease-out;
+    transition: transform var(--aurral-duration-instant) var(--aurral-ease-out), scale var(--aurral-duration-instant) var(--aurral-ease-out);
   }
 
   .now-playing__control svg {
@@ -14818,7 +14842,7 @@ button.native-library-genre-row:focus-visible {
   }
 
   .now-playing__control:active {
-    transform: scale(0.92);
+    scale: 0.92;
   }
 
   .now-playing__control:disabled {
@@ -14849,7 +14873,7 @@ button.native-library-genre-row:focus-visible {
 }
 .discover-playlists-page {
   color: var(--aurral-text);
-  animation: fade-in 0.2s ease-out;
+  animation: fade-in var(--aurral-duration-base) var(--aurral-ease-out);
 }
 .discover-playlists-page__header {
   display: flex;
