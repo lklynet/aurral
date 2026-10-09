@@ -215,6 +215,9 @@ export function queueReducer(state, action) {
       if (nextIndex < state.playbackOrder.length) return playAt(state, nextIndex, true);
       return playAt(state, 0, state.repeatMode === "all");
     }
+    case "REPLAY":
+      if (state.currentIndex < 0) return state;
+      return playAt(state, state.currentIndex, true);
     case "PREVIOUS": {
       if (state.queue.length === 0) return state;
       if (state.currentIndex > 0) return playAt(state, state.currentIndex - 1, true);

@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { useAudioPlayerContext } from "react-use-audio-player";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   getFormatLoadAttempts,
   getHowlerFormat,
@@ -11,10 +18,12 @@ import {
 import { AudioQueueContext } from "./audioQueueContext";
 import { recordPlayEvent } from "../utils/api/endpoints/auth";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists";
+import { createAudioEngine } from "../utils/audioEngine";
 
 const SHARED_VOLUME_KEY = "aurral.preview.volume";
 const SHARED_VOLUME_EVENT = "aurral:shared-volume-change";
 const DEFAULT_VOLUME = 0.7;
+const PRELOAD_LEAD_SECONDS = 20;
 
 function normalizeVolume(value) {
   const parsed = Number.parseFloat(value);
@@ -67,14 +76,20 @@ function useSharedVolume() {
   return [volume, setVolume];
 }
 
+function trackAt(state, playbackIndex) {
+  const queueIndex = state.playbackOrder[playbackIndex];
+  return queueIndex == null ? null : state.queue[queueIndex] ?? null;
+}
+
+function trackSignature(state, playbackIndex, track, formatKey) {
+  return `${state.queueRevision}:${track.entryId ?? state.playbackOrder[playbackIndex]}:${track.src}:${formatKey}`;
+}
+
 export function AudioQueueProvider({ children }) {
-  const player = useAudioPlayerContext();
-  const playerRef = useRef(player);
-  playerRef.current = player;
+  const [engine] = useState(createAudioEngine);
+  const playback = useSyncExternalStore(engine.subscribe, engine.getSnapshot, engine.getSnapshot);
 
   const [sharedVolume, setSharedVolume] = useSharedVolume();
-  const sharedVolumeRef = useRef(sharedVolume);
-  sharedVolumeRef.current = sharedVolume;
 
   const [state, dispatch] = useReducer(queueReducer, initialQueueState);
   const stateRef = useRef(state);
@@ -82,78 +97,71 @@ export function AudioQueueProvider({ children }) {
 
   const loadedSignatureRef = useRef(null);
 
-  const loadTrackAtIndexRef = useRef(() => {});
+  const loadTrackRef = useRef(() => {});
 
-  const getTrackAt = useCallback((playbackIndex) => {
-    const s = stateRef.current;
-    const queueIndex = s.playbackOrder[playbackIndex];
-    if (queueIndex == null) return null;
-    return s.queue[queueIndex] ?? null;
+  const recordPlay = useCallback((track) => {
+    if (!track.recordHistory) return;
+    recordPlayEvent({
+      trackId: track.id,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      artistMbid: track.artistMbid,
+      albumMbid: track.albumMbid,
+      trackMbid: track.trackMbid,
+      durationMs: track.durationMs,
+      playedAt: Date.now(),
+      source: "native-player",
+    }).catch(() => {});
   }, []);
 
-  const loadTrackAtIndex = useCallback((playbackIndex, { formatAttemptIndex = 0, autoplay = true } = {}) => {
-    const s = stateRef.current;
-    const queueIndex = s.playbackOrder[playbackIndex];
-    const track = queueIndex == null ? null : s.queue[queueIndex] ?? null;
+  const loadTrack = useCallback((s, playbackIndex, { formatAttemptIndex = 0, autoplay = true } = {}) => {
+    const track = trackAt(s, playbackIndex);
     if (!track?.src) return;
     const formatAttempts = getFormatLoadAttempts(track);
     const formatKey = formatAttempts[formatAttemptIndex];
     if (!formatKey) return;
-    const signature = `${s.queueRevision}:${queueIndex}:${track.src}:${formatKey}`;
+    const signature = trackSignature(s, playbackIndex, track, formatKey);
     if (loadedSignatureRef.current === signature) return;
     loadedSignatureRef.current = signature;
 
-    playerRef.current.stop();
-    playerRef.current.load(track.src, {
-      autoplay,
-      initialVolume: sharedVolumeRef.current,
-      html5: true,
+    engine.load({
+      src: track.src,
       format: getHowlerFormat(formatKey),
-      onloaderror: () => {
+      autoplay,
+      onLoadError: () => {
         loadedSignatureRef.current = null;
         if (formatAttemptIndex + 1 >= formatAttempts.length) {
           dispatch({
             type: "SET_ERROR",
             error: "This track is unavailable. Restore the file or refresh the library.",
           });
-          playerRef.current.stop();
+          engine.pause();
           return;
         }
-        loadTrackAtIndexRef.current(playbackIndex, {
+        loadTrackRef.current(stateRef.current, playbackIndex, {
           formatAttemptIndex: formatAttemptIndex + 1,
           autoplay,
         });
       },
-      onend: () => {
+      onEnd: () => {
         const cur = stateRef.current;
         if (cur.currentIndex < 0) return;
-        if (track.recordHistory) {
-          recordPlayEvent({
-            trackId: track.id,
-            title: track.title,
-            artist: track.artist,
-            album: track.album,
-            artistMbid: track.artistMbid,
-            albumMbid: track.albumMbid,
-            trackMbid: track.trackMbid,
-            durationMs: track.durationMs,
-            playedAt: Date.now(),
-            source: "native-player",
-          }).catch(() => {});
-        }
-
-        if (cur.repeatMode === "one") {
-          loadedSignatureRef.current = null;
-          loadTrackAtIndexRef.current(cur.currentIndex);
-          return;
-        }
-
-        dispatch({ type: "NEXT" });
+        recordPlay(track);
+        const action = { type: cur.repeatMode === "one" ? "REPLAY" : "NEXT" };
+        const next = queueReducer(cur, action);
+        if (next.autoplay) loadTrackRef.current(next, next.currentIndex);
+        dispatch(action);
       },
     });
-  }, []);
+  }, [engine, recordPlay]);
 
-  loadTrackAtIndexRef.current = loadTrackAtIndex;
+  const loadTrackAtIndex = useCallback(
+    (playbackIndex, options) => loadTrack(stateRef.current, playbackIndex, options),
+    [loadTrack],
+  );
+
+  loadTrackRef.current = loadTrack;
   useEffect(() => {
     if (state.currentIndex < 0) {
       loadedSignatureRef.current = null;
@@ -163,14 +171,33 @@ export function AudioQueueProvider({ children }) {
   }, [state.autoplay, state.currentIndex, state.queueRevision, loadTrackAtIndex]);
 
   useEffect(() => {
-    const activePlayer = playerRef.current;
-    activePlayer.setVolume(sharedVolume);
-    if (sharedVolume <= 0) {
-      activePlayer.mute();
-      return;
-    }
-    activePlayer.unmute();
-  }, [sharedVolume]);
+    if (!playback.isPlaying) return undefined;
+    const preloadUpcoming = () => {
+      const s = stateRef.current;
+      const { duration } = engine.getSnapshot();
+      if (!duration || duration - engine.getPosition() > PRELOAD_LEAD_SECONDS) return;
+      const next = queueReducer(s, { type: s.repeatMode === "one" ? "REPLAY" : "NEXT" });
+      const track = next.autoplay ? trackAt(next, next.currentIndex) : null;
+      if (!track?.src) {
+        engine.discardPreload();
+        return;
+      }
+      engine.preload({
+        src: track.src,
+        format: getHowlerFormat(getFormatLoadAttempts(track)[0]),
+      });
+    };
+    preloadUpcoming();
+    const interval = window.setInterval(preloadUpcoming, 1000);
+    return () => window.clearInterval(interval);
+  }, [engine, playback.isPlaying, state.currentIndex, state.playbackOrder, state.repeatMode]);
+
+  useEffect(() => () => engine.unload(), [engine]);
+
+  useEffect(() => {
+    engine.setVolume(sharedVolume);
+    engine.setMuted(sharedVolume <= 0);
+  }, [engine, sharedVolume]);
 
   const setShuffleEnabled = useCallback((enabled) => {
     dispatch({ type: "SET_SHUFFLE", enabled });
@@ -221,26 +248,23 @@ export function AudioQueueProvider({ children }) {
 
   const togglePlayPause = useCallback(() => {
     if (stateRef.current.queue.length === 0) return;
-    const activePlayer = playerRef.current;
     if (stateRef.current.error) {
       dispatch({ type: "CLEAR_ERROR" });
       loadedSignatureRef.current = null;
       loadTrackAtIndex(stateRef.current.currentIndex);
       return;
     }
-    if (activePlayer.isPlaying) {
-      activePlayer.pause();
+    const snapshot = engine.getSnapshot();
+    if (snapshot.isPlaying || snapshot.isStarting) {
+      engine.pause();
       return;
     }
-    if (activePlayer.isReady || activePlayer.src) {
-      activePlayer.play();
+    if (loadedSignatureRef.current) {
+      engine.play();
       return;
     }
-    if (stateRef.current.currentIndex >= 0) {
-      loadedSignatureRef.current = null;
-      loadTrackAtIndex(stateRef.current.currentIndex);
-    }
-  }, [loadTrackAtIndex]);
+    if (stateRef.current.currentIndex >= 0) loadTrackAtIndex(stateRef.current.currentIndex);
+  }, [engine, loadTrackAtIndex]);
 
   const playNext = useCallback(() => {
     dispatch({ type: "NEXT" });
@@ -249,12 +273,12 @@ export function AudioQueueProvider({ children }) {
   const playPrevious = useCallback(() => {
     const s = stateRef.current;
     if (s.queue.length === 0) return;
-    if (shouldRestartTrack(s, playerRef.current.getPosition())) {
-      playerRef.current.seek(0);
+    if (shouldRestartTrack(s, engine.getPosition())) {
+      engine.seek(0);
       return;
     }
     dispatch({ type: "PREVIOUS" });
-  }, []);
+  }, [engine]);
 
   const skipTo = useCallback((playbackIndex) => {
     if (playbackIndex === stateRef.current.currentIndex) return;
@@ -264,11 +288,10 @@ export function AudioQueueProvider({ children }) {
   const clearQueue = useCallback(() => {
     loadedSignatureRef.current = null;
     dispatch({ type: "CLEAR_QUEUE" });
-    playerRef.current.stop();
-    playerRef.current.cleanup();
-  }, []);
+    engine.unload();
+  }, [engine]);
 
-  const currentTrack = state.currentIndex >= 0 ? getTrackAt(state.currentIndex) : null;
+  const currentTrack = state.currentIndex >= 0 ? trackAt(state, state.currentIndex) : null;
   const isActive = state.queue.length > 0 && state.currentIndex >= 0;
   const playbackQueue = useMemo(
     () => state.playbackOrder.map((queueIndex) => state.queue[queueIndex]).filter(Boolean),
@@ -315,23 +338,23 @@ export function AudioQueueProvider({ children }) {
   useEffect(() => {
     const mediaSession = navigator.mediaSession;
     if (!mediaSession) return;
-    mediaSession.playbackState = !isActive ? "none" : player.isPlaying ? "playing" : "paused";
-  }, [isActive, player.isPlaying]);
+    mediaSession.playbackState = !isActive ? "none" : playback.isPlaying ? "playing" : "paused";
+  }, [isActive, playback.isPlaying]);
 
   useEffect(() => {
     const mediaSession = navigator.mediaSession;
     if (!mediaSession || !isActive) return undefined;
     const handlers = {
       play: () => {
-        if (!playerRef.current.isPlaying) togglePlayPause();
+        if (!engine.getSnapshot().isPlaying) togglePlayPause();
       },
       pause: () => {
-        if (playerRef.current.isPlaying) togglePlayPause();
+        if (engine.getSnapshot().isPlaying) togglePlayPause();
       },
       nexttrack: playNext,
       previoustrack: playPrevious,
       seekto: (details) => {
-        if (Number.isFinite(details?.seekTime)) playerRef.current.seek(details.seekTime);
+        if (Number.isFinite(details?.seekTime)) engine.seek(details.seekTime);
       },
       stop: clearQueue,
     };
@@ -347,7 +370,7 @@ export function AudioQueueProvider({ children }) {
         } catch {}
       }
     };
-  }, [clearQueue, isActive, playNext, playPrevious, togglePlayPause]);
+  }, [clearQueue, engine, isActive, playNext, playPrevious, togglePlayPause]);
 
   const matchesSource = useCallback(
     (candidate) => {
@@ -368,12 +391,12 @@ export function AudioQueueProvider({ children }) {
       source: state.source,
       playbackError: state.error,
       isActive,
-      isPlaying: player.isPlaying,
-      isLoading: player.isLoading,
-      isPaused: player.isPaused,
-      duration: player.duration,
-      getPosition: player.getPosition,
-      seek: player.seek,
+      isPlaying: playback.isPlaying,
+      isLoading: playback.isLoading,
+      isStarting: playback.isStarting,
+      duration: playback.duration,
+      getPosition: engine.getPosition,
+      seek: engine.seek,
       volume: sharedVolume,
       setVolume: setSharedVolume,
       isShuffleEnabled: state.isShuffleEnabled,
@@ -401,12 +424,11 @@ export function AudioQueueProvider({ children }) {
       playPrevious,
       playQueue,
       playTrack,
-      player.duration,
-      player.getPosition,
-      player.isLoading,
-      player.isPaused,
-      player.isPlaying,
-      player.seek,
+      engine,
+      playback.duration,
+      playback.isLoading,
+      playback.isPlaying,
+      playback.isStarting,
       setSharedVolume,
       setShuffleEnabled,
       sharedVolume,

@@ -4,6 +4,10 @@ const PLAYLIST_ID = "e2e-player-queue";
 const PLAYLIST_NAME = "E2E queue";
 const TRACK_NAMES = ["Alpha", "Bravo", "Charlie", "Delta", "Echo"];
 const TRACK_SECONDS = 60;
+const GAPLESS_PLAYLIST_ID = "e2e-player-gapless";
+const GAPLESS_PLAYLIST_NAME = "E2E gapless";
+const GAPLESS_TRACK_SECONDS = 4;
+const AUDIO_LATENCY_MS = 1000;
 
 function silentWav(seconds, sampleRate = 8000) {
   const dataSize = seconds * sampleRate;
@@ -25,37 +29,46 @@ function silentWav(seconds, sampleRate = 8000) {
 }
 
 const wav = silentWav(TRACK_SECONDS);
+const gaplessWav = silentWav(GAPLESS_TRACK_SECONDS);
 
-test.beforeEach(async ({ page }) => {
-  await page.route(`**/api/discover/editorial/${PLAYLIST_ID}`, (route) =>
+function routeEditorialPlaylist(page, id, name, seconds, prefix = "") {
+  return page.route(`**/api/discover/editorial/${id}`, (route) =>
     route.fulfill({
       json: {
-        id: PLAYLIST_ID,
-        name: PLAYLIST_NAME,
+        id,
+        name,
         description: null,
         artworkUrl: null,
         libraryPlaylistId: null,
-        tracks: TRACK_NAMES.map((name) => ({
-          trackName: name,
+        tracks: TRACK_NAMES.map((trackName) => ({
+          trackName,
           artistName: "E2E Artist",
           albumName: null,
-          durationMs: TRACK_SECONDS * 1000,
-          preview_url: `/e2e-audio/${name}.wav`,
+          durationMs: seconds * 1000,
+          preview_url: `/e2e-audio/${prefix}${trackName}.wav`,
           artworkUrl: null,
         })),
       },
     }),
   );
-  await page.route("**/e2e-audio/*.wav", (route) => {
+}
+
+test.beforeEach(async ({ page }) => {
+  await routeEditorialPlaylist(page, PLAYLIST_ID, PLAYLIST_NAME, TRACK_SECONDS);
+  await routeEditorialPlaylist(page, GAPLESS_PLAYLIST_ID, GAPLESS_PLAYLIST_NAME, GAPLESS_TRACK_SECONDS, "gapless-");
+  await page.route("**/e2e-audio/*.wav", async (route) => {
+    const gapless = route.request().url().includes("/gapless-");
+    if (gapless) await new Promise((resolve) => setTimeout(resolve, AUDIO_LATENCY_MS));
+    const body = gapless ? gaplessWav : wav;
     const match = /bytes=(\d+)-(\d*)/.exec(route.request().headers().range || "");
     const headers = { "content-type": "audio/wav", "accept-ranges": "bytes" };
-    if (!match) return route.fulfill({ status: 200, headers, body: wav });
+    if (!match) return route.fulfill({ status: 200, headers, body });
     const start = Number(match[1]);
-    const end = match[2] ? Number(match[2]) : wav.length - 1;
+    const end = match[2] ? Number(match[2]) : body.length - 1;
     return route.fulfill({
       status: 206,
-      headers: { ...headers, "content-range": `bytes ${start}-${end}/${wav.length}` },
-      body: wav.subarray(start, end + 1),
+      headers: { ...headers, "content-range": `bytes ${start}-${end}/${body.length}` },
+      body: body.subarray(start, end + 1),
     });
   });
   await page.goto(`/discover/playlists/deezer/${PLAYLIST_ID}`);
@@ -196,4 +209,41 @@ test("previous restarts a track after three seconds and goes back from its start
 
   await player.previous.click();
   await expect(player.title).toHaveText("Alpha");
+});
+
+test("the next track starts without waiting for the network when the current one ends", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__mediaEvents = [];
+    const observed = new WeakSet();
+    const load = HTMLMediaElement.prototype.load;
+    HTMLMediaElement.prototype.load = function observeLoad(...args) {
+      if (!observed.has(this)) {
+        observed.add(this);
+        for (const type of ["playing", "ended"]) {
+          this.addEventListener(type, () =>
+            window.__mediaEvents.push({ type, src: this.currentSrc, at: performance.now() }),
+          );
+        }
+      }
+      return load.apply(this, args);
+    };
+  });
+  await page.goto(`/discover/playlists/deezer/${GAPLESS_PLAYLIST_ID}`);
+  const player = playerControls(page);
+  await page.getByRole("button", { name: `Play ${GAPLESS_PLAYLIST_NAME} previews` }).click();
+  await expect(player.title).toHaveText("Alpha");
+  await expect(player.title).toHaveText("Bravo", { timeout: (GAPLESS_TRACK_SECONDS + 4) * 1000 });
+
+  const gap = () =>
+    page.evaluate(() => {
+      const events = window.__mediaEvents;
+      const ended = events.find((event) => event.type === "ended" && event.src.includes("gapless-Alpha"));
+      const started = events.find((event) => event.type === "playing" && event.src.includes("gapless-Bravo"));
+      return ended && started ? Math.round(started.at - ended.at) : null;
+    });
+  await expect.poll(gap, { timeout: AUDIO_LATENCY_MS * 3 }).not.toBeNull();
+  const measured = await gap();
+  test.info().annotations.push({ type: "gap-ms", description: String(measured) });
+  console.log(`gap between tracks: ${measured}ms`);
+  expect(measured).toBeLessThan(150);
 });

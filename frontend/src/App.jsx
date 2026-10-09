@@ -5,7 +5,6 @@ import Layout from "./components/Layout";
 import { checkHealthLive, getBootstrapStatus } from "./utils/api/endpoints/auth.js";
 import { getAppBasePath } from "./utils/basePath.js";
 import { DISCOVERY_MANUAL_REFRESH_KEY } from "./utils/discoverRecentNavigation.js";
-import { AudioPlayerProvider } from "react-use-audio-player";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -350,13 +349,11 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <AuthProvider>
-          <AudioPlayerProvider>
-            <AudioQueueProvider>
-              <AppContent />
-              <ThemeSync />
-              <ReloadPrompt />
-            </AudioQueueProvider>
-          </AudioPlayerProvider>
+          <AudioQueueProvider>
+            <AppContent />
+            <ThemeSync />
+            <ReloadPrompt />
+          </AudioQueueProvider>
         </AuthProvider>
       </ToastProvider>
     </QueryClientProvider>
