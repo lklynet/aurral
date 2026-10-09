@@ -56,6 +56,7 @@ import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
+import { useHiddenPlaylistTracks, usePlaylistBulkActions } from "./playlists/usePlaylistBulkActions.js";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
 import {
   getReleaseGroupCoversBatch,
@@ -83,7 +84,6 @@ import {
 import {
   addStaticPlaylistTracks,
   createStaticPlaylist,
-  deleteStaticPlaylistTrack,
 } from "../utils/api/endpoints/playlists.js";
 import { buildAuthenticatedApiUrl } from "../utils/api/core.js";
 import { mergeAlbumMetadataTracks } from "../utils/libraryTrackHydration.js";
@@ -805,34 +805,30 @@ function LibraryPage() {
     ],
   );
 
+  const { removeTracks: removePlaylistTracks } = usePlaylistBulkActions();
+  const hiddenPlaylistTracks = useHiddenPlaylistTracks();
+  const removablePlaylists = useMemo(
+    () => (hiddenPlaylistTracks.size
+      ? staticPlaylists.map((playlist) => {
+          const hiddenIds = hiddenPlaylistTracks.get(playlist.id);
+          return hiddenIds && Array.isArray(playlist.trackEntries)
+            ? { ...playlist, trackEntries: playlist.trackEntries.filter((entry) => !hiddenIds.has(entry.id)) }
+            : playlist;
+        })
+      : staticPlaylists),
+    [hiddenPlaylistTracks, staticPlaylists],
+  );
+
   const removeLibraryTrackFromPlaylist = useCallback(
-    async (track, target) => {
+    (track, target) => {
       if (!target?.playlistId || !target?.jobId) return;
-      const key = String(track?.id || "");
-      setPlaylistSavingKey(key);
-      setPlaylistsError("");
-      try {
-        const result = await deleteStaticPlaylistTrack(target.playlistId, target.jobId);
-        showSuccess(
-          result?.queued
-            ? `Removal queued for ${track?.title || "track"}`
-            : `Removed ${track?.title || "track"} from playlist`,
-        );
-        const nextPlaylists = await loadStaticPlaylists();
-        if (nextPlaylists) setStaticPlaylists(nextPlaylists);
-      } catch (requestError) {
-        const message =
-          requestError.response?.data?.message ||
-          requestError.response?.data?.error ||
-          requestError.message ||
-          "Failed to remove track from playlist";
-        setPlaylistsError(message);
-        showError(message);
-      } finally {
-        setPlaylistSavingKey("");
-      }
+      const playlist = staticPlaylists.find((candidate) => candidate.id === target.playlistId);
+      removePlaylistTracks(
+        { id: target.playlistId, name: playlist?.name },
+        [{ id: target.jobId, trackName: track?.title }],
+      );
     },
-    [loadStaticPlaylists, setPlaylistsError, setStaticPlaylists, showError, showSuccess],
+    [removePlaylistTracks, staticPlaylists],
   );
 
   const canDeleteArtist = hasPermission("deleteArtist");
@@ -2004,7 +2000,7 @@ function LibraryPage() {
                 />
                 <TrackPlaylistRemoveSubmenu
                   track={track}
-                  playlists={staticPlaylists}
+                  playlists={removablePlaylists}
                   saving={playlistSavingKey === String(track.id)}
                   error={playlistsError}
                   onSelect={(target) => removeLibraryTrackFromPlaylist(track, target)}
