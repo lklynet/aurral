@@ -146,6 +146,7 @@ async function planFill(item, record, match, metadata, albums) {
 }
 
 const SAME_LENGTH_MS = 3000;
+const STOPPED_REASON = "The ingest stopped before Aurral got to this file. Ingest the folder again to file it.";
 const TAKEN_NAME_REASON =
   "A different file already has this name in the Library. Aurral never replaces a file. Rename or remove one of them, then ingest again.";
 
@@ -254,7 +255,7 @@ async function planItem(operation, item, plannedTargets, albums) {
   }
   if (await fs.lstat(target).catch(() => null)) {
     if (await libraryCopy([target])) return identicalCopy(target);
-    const occupant = findLibraryTrackAtPath(target, record);
+    const occupant = findLibraryTrackAtPath(target, { ...record, artistName: match.artistName, albumName: match.albumName });
     if (occupant) return sameRecording([target], occupant.title);
     return { status: "skipped", targetPath: target, reason: TAKEN_NAME_REASON, details };
   }
@@ -509,6 +510,7 @@ export async function finishIngest(operation) {
 // Move keeps a source whose track the Library has in a different file until
 // the user asks to remove it. The ingest then runs again over just those
 // sources, each checked against the Library's copy before it is removed.
+// Files a stopped ingest never reached are skipped, so they stay where they are.
 export function reopenIngestToRemoveSources(id) {
   return db.transaction(() => {
     const operation = getLibraryFileOperation(id);
@@ -517,12 +519,22 @@ export function reopenIngestToRemoveSources(id) {
     }
     const active = getActiveLibraryFileOperation();
     if (active) throw new OperationConflictError(active);
+    if (operation.status === "cancelled" && !operation.summary.finished) {
+      throw Object.assign(new OperationConflictError(operation), {
+        message: "The ingest is still stopping. Try again in a moment.",
+      });
+    }
     const requested = db.prepare(
       `UPDATE library_file_operation_items
        SET status = 'pending', details_json = json_set(details_json, '$.action', 'remove-source'), updated_at = ?
        WHERE operation_id = ? AND status = 'duplicate' AND json_extract(details_json, '$.removable') = 1`,
     ).run(Date.now(), operation.id).changes;
     if (!requested) return false;
+    db.prepare(
+      `UPDATE library_file_operation_items SET status = 'skipped', reason = ?, updated_at = ?
+       WHERE operation_id = ? AND (status = 'new'
+         OR (status = 'pending' AND COALESCE(json_extract(details_json, '$.action'), '') != 'remove-source'))`,
+    ).run(STOPPED_REASON, Date.now(), operation.id);
     updateLibraryFileOperation(operation.id, {
       status: "running",
       summary: { finished: false, removingSources: requested },

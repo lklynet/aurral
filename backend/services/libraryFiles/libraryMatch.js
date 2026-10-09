@@ -80,20 +80,27 @@ export function matchLibraryRecord(record) {
   };
 }
 
-// The Library's own track for the file at this path, when its title, disc,
-// and track number agree with the record.
+// The Library's own track for the file at this path, when its artist, album,
+// title, disc, and track number agree with the record. Different names can
+// share one folder name, so the path alone does not prove it is the same track.
 export function findLibraryTrackAtPath(filePath, record) {
   const track = db.prepare(
-    `SELECT track.title, link.disc_number, link.track_number
+    `SELECT track.title, track.mbid, link.disc_number, link.track_number,
+       album.title AS album_title, artist.name AS artist_name
      FROM library_media_files AS media
      JOIN library_tracks AS track ON track.id = media.track_id
      LEFT JOIN library_album_tracks AS link ON link.track_id = media.track_id AND link.album_id = media.album_id
+     LEFT JOIN library_albums AS album ON album.id = media.album_id
+     LEFT JOIN library_artists AS artist ON artist.id = album.artist_id
      WHERE media.source = 'aurral' AND media.path = ? AND media.available = 1
      LIMIT 1`,
   ).get(filePath);
   const same = track
+    && isSameLibraryName(track.artist_name, record.artistName)
+    && isSameLibraryName(track.album_title, record.albumName)
     && isSameLibraryName(track.title, record.title)
     && (track.track_number || 0) === (record.trackNumber || 0)
-    && (track.disc_number || 1) === (record.discNumber || 1);
+    && (track.disc_number || 1) === (record.discNumber || 1)
+    && !(track.mbid && record.trackMbid && track.mbid !== record.trackMbid);
   return same ? track : null;
 }

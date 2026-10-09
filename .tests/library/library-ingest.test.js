@@ -263,6 +263,60 @@ test("a source whose MusicBrainz tags miss the Library's album is still the trac
   assert.equal(item.target, path.relative(root, library));
 });
 
+test("a Library file at the track's name is not the same track when its artist, album, or recording differs", async () => {
+  const song = { title: "Song", track: "1" };
+  await makeTrack(path.join(root, "Busy", "Album", "01 - Song.flac"), { ...song, artist: "Someone Else", album: "Album" });
+  await makeTrack(path.join(root, "Shared", "Album", "01 - Song.flac"), { ...song, artist: "Shared", album: "Other" });
+  await makeTrack(path.join(root, "Recorded", "Album", "01 - Song.flac"), {
+    ...song, artist: "Recorded", album: "Album", MUSICBRAINZ_TRACKID: "66666666-6666-4666-8666-666666666666",
+  });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const source = newSource();
+  await makeTrack(path.join(source, "busy.flac"), { ...song, artist: "Busy", album: "Album" });
+  await makeTrack(path.join(source, "shared.flac"), { ...song, artist: "Shared", album: "Album" });
+  await makeTrack(path.join(source, "recorded.flac"), {
+    ...song,
+    artist: "Recorded",
+    album: "Album",
+    MUSICBRAINZ_RELEASEGROUPID: "77777777-7777-4777-8777-777777777777",
+    MUSICBRAINZ_TRACKID: "88888888-8888-4888-8888-888888888888",
+  });
+
+  const id = await ingest(source, "move");
+  const items = await apply(id);
+
+  assert.deepEqual(items.map((item) => [item.source, item.status]), [
+    ["busy.flac", "skipped"],
+    ["recorded.flac", "skipped"],
+    ["shared.flac", "skipped"],
+  ]);
+  for (const item of items) assert.match(item.reason, /different file already has this name/);
+  assert.deepEqual(describe(id).sources, { removable: 0, removed: 0 });
+});
+
+test("removing sources after a stopped Move ingest never files the music it stopped before", async () => {
+  await libraryTrack(path.join("Halt", "Album", "01 - Kept.flac"), { artist: "Halt", album: "Album", title: "Kept", track: "1" });
+  const source = newSource();
+  const kept = await makeTrack(path.join(source, "kept", "kept.mp3"), { artist: "Halt", album: "Album", title: "Kept", track: "1" });
+  const waiting = await makeTrack(path.join(source, "waiting", "waiting.flac"), {
+    artist: "Halt", album: "Album", title: "Waiting", track: "2",
+  });
+  const id = await ingest(source, "move");
+  assert.equal(operations.cancelLibraryFileOperation(id), true);
+  await assert.rejects(operations.removeIngestSources(id), /still stopping/);
+  assert.equal((await runUntilSettled(id)).status, "cancelled");
+
+  await operations.removeIngestSources(id);
+  assert.equal((await runUntilSettled(id)).status, "complete");
+
+  assert.equal(await exists(kept), false);
+  assert.equal(await exists(waiting), true);
+  assert.equal(await exists(path.join(root, "Halt", "Album", "02 - Waiting.flac")), false);
+  const items = operations.describeLibraryFileOperationItems(getLibraryFileOperation(id), {});
+  assert.equal(items.find((item) => item.source.endsWith("waiting.flac")).status, "skipped");
+  assert.deepEqual(describe(id).counts, { duplicate: 1, skipped: 1 });
+});
+
 test("a source much longer or shorter than the Library's track is a different recording, held back and never offered for removal", async () => {
   await libraryTrack(path.join("Kweller", "Sha Sha", "03 - Wasted & Ready.flac"), {
     artist: "Kweller", album: "Sha Sha", title: "Wasted & Ready", track: "3",
