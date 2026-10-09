@@ -58,7 +58,9 @@ function DiscoverPage() {
   const {
     data,
     recentlyAdded,
+    recentlyAddedPending,
     recentReleases,
+    recentReleasesPending,
     pendingRecentReleaseIds,
     error,
     libraryLookup,
@@ -166,7 +168,7 @@ function DiscoverPage() {
     topGenres = [],
     basedOn = [],
   } = data || {};
-  const { data: editorialShelf } = useEditorialShelf();
+  const { data: editorialShelf, isPending: editorialShelfPending } = useEditorialShelf();
 
   const nearbyShows = nearbyShowsData?.shows || [];
   const nearbyLocationLabel =
@@ -308,7 +310,21 @@ function DiscoverPage() {
     setDraftSections(DEFAULT_DISCOVER_SECTIONS.map((item) => ({ ...item })));
   };
 
+  const sectionPending = {
+    recentlyAdded: recentlyAddedPending,
+    playlists: editorialShelfPending,
+    recentReleases: recentReleasesPending,
+  };
+
   const renderSection = (id) => {
+    if (sectionPending[id]) {
+      return (
+        <SkeletonStatus key={id} label="Loading section">
+          <SkeletonRail square={SQUARE_ART_SECTIONS.has(id)} />
+        </SkeletonStatus>
+      );
+    }
+
     if (id === "recentlyAdded") {
       if (!sectionAvailability.recentlyAdded) return null;
       return (

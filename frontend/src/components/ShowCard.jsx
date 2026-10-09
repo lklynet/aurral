@@ -86,9 +86,19 @@ function ShowMeta({ showDate, showLocation, className }) {
   );
 }
 
+const titleNamesArtists = (title, artistNames) => {
+  const normalizedTitle = String(title || "").toLocaleLowerCase();
+  return (
+    artistNames.length > 0 &&
+    artistNames.every((name) => normalizedTitle.includes(String(name).toLocaleLowerCase()))
+  );
+};
+
 const ShowCard = memo(({ show }) => {
-  const artistLabel = (show.artistNames || []).join(", ") || "Matched artist";
+  const artistNames = (show.artistNames || []).filter(Boolean);
+  const artistLabel = artistNames.join(", ") || "Matched artist";
   const eventLabel = show.eventName || artistLabel || "Upcoming show";
+  const showArtistLine = !titleNamesArtists(eventLabel, artistNames);
   const eventUrl = getEventUrl(show.url);
   const distanceLabel = formatDistance(show.distance);
   const showDate = formatShowDate(show);
@@ -131,7 +141,9 @@ const ShowCard = memo(({ show }) => {
         <div className="artist-show-card__image--discover-content">
           <div />
           <div className="artist-show-card__image--discover-bottom">
-            <p className="artist-show-card__artist--discover artist-truncate">{artistLabel}</p>
+            {showArtistLine ? (
+              <p className="artist-show-card__artist--discover artist-truncate">{artistLabel}</p>
+            ) : null}
             <h3 className="artist-show-card__title--discover artist-truncate">{eventLabel}</h3>
             <ShowMeta
               showDate={showDate}
@@ -143,7 +155,9 @@ const ShowCard = memo(({ show }) => {
       </div>
       <div className="artist-show-card__body--discover">
         <div className="artist-show-card__body-heading">
-          <p className="artist-show-card__body-artist--discover artist-truncate">{artistLabel}</p>
+          {showArtistLine ? (
+            <p className="artist-show-card__body-artist--discover artist-truncate">{artistLabel}</p>
+          ) : null}
           <h3 className="artist-show-card__body-title--discover">
             <Tooltip content={eventLabel}>
               <span
