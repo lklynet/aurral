@@ -108,6 +108,7 @@ export const ArtistCard = memo(
       <div
         className={`artist-discover-card artist-discover-card--artist${canOpen ? "" : " is-disabled"}`}
         data-artwork-scope
+        data-library-menu-target
       >
         <div className="artist-discover-card__cover" data-artwork>
           <ArtistImage

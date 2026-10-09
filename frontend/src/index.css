@@ -8671,6 +8671,17 @@ textarea {
   position: relative;
 }
 
+[data-library-menu-target] {
+  -webkit-touch-callout: none;
+}
+
+@media (pointer: coarse) {
+  [data-library-menu-target] {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
 .native-library-item-menu {
   position: relative;
   z-index: calc(var(--aurral-z-raised) + 2);

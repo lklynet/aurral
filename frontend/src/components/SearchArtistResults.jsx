@@ -165,6 +165,7 @@ function SearchArtistResults({
             key={artistId || `artist-${index}`}
             className="artist-discover-card artist-discover-card--artist"
             data-artwork-scope
+            data-library-menu-target
           >
             {cover}
 

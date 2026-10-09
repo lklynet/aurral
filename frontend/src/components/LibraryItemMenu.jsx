@@ -6,6 +6,8 @@ import { DotLoader } from "./DotLoader";
 import RouteLink from "./RouteLink";
 
 const MENU_ITEM_SELECTOR = "button:not(:disabled), a[role=menuitem]";
+const LONG_PRESS_MS = 500;
+const LONG_PRESS_SLOP_PX = 10;
 
 let activeMenuCloser = null;
 
@@ -213,13 +215,64 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     if (!contextMenu) return undefined;
     const target = menuRootRef.current?.closest("[data-library-menu-target]");
     if (!target) return undefined;
+    let pressTimer = null;
+    let press = null;
+    let pressOpened = false;
+    const cancelPress = () => {
+      window.clearTimeout(pressTimer);
+      pressTimer = null;
+      press = null;
+    };
     const handleContextMenu = (event) => {
       if (event.defaultPrevented) return;
       event.preventDefault();
+      if (pressOpened) return;
+      if (press) pressOpened = true;
+      cancelPress();
       openAt(event.clientX, event.clientY);
     };
+    const handlePointerDown = (event) => {
+      pressOpened = false;
+      cancelPress();
+      if (event.pointerType === "mouse" || !event.isPrimary) return;
+      press = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      pressTimer = window.setTimeout(() => {
+        const { x, y } = press;
+        cancelPress();
+        pressOpened = true;
+        navigator.vibrate?.(10);
+        openAt(x, y);
+      }, LONG_PRESS_MS);
+    };
+    const handlePointerMove = (event) => {
+      if (!press || event.pointerId !== press.id) return;
+      if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > LONG_PRESS_SLOP_PX) {
+        cancelPress();
+      }
+    };
+    const handleClick = (event) => {
+      if (!pressOpened) return;
+      pressOpened = false;
+      event.preventDefault();
+      event.stopPropagation();
+    };
     target.addEventListener("contextmenu", handleContextMenu);
-    return () => target.removeEventListener("contextmenu", handleContextMenu);
+    target.addEventListener("pointerdown", handlePointerDown);
+    target.addEventListener("pointermove", handlePointerMove);
+    target.addEventListener("pointerup", cancelPress);
+    target.addEventListener("pointercancel", cancelPress);
+    target.addEventListener("click", handleClick, true);
+    window.addEventListener("scroll", cancelPress, true);
+    return () => {
+      cancelPress();
+      target.removeEventListener("contextmenu", handleContextMenu);
+      target.removeEventListener("pointerdown", handlePointerDown);
+      target.removeEventListener("pointermove", handlePointerMove);
+      target.removeEventListener("pointerup", cancelPress);
+      target.removeEventListener("pointercancel", cancelPress);
+      target.removeEventListener("click", handleClick, true);
+      window.removeEventListener("scroll", cancelPress, true);
+    };
   }, [contextMenu, openAt]);
 
   useEffect(() => {
