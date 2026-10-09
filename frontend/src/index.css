@@ -8548,7 +8548,7 @@ button.native-library-card__artist:focus-visible {
   display: none;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--aurral-overlay-base) 45%, transparent);
+  background: color-mix(in srgb, var(--aurral-overlay-base) 55%, transparent);
   color: var(--aurral-overlay-foreground);
 }
 
@@ -8564,6 +8564,8 @@ button.native-library-card__artist:focus-visible {
 }
 
 .native-library-track__cover-indicator .track-playing-indicator {
+  width: 1.125rem;
+  height: 1rem;
   color: inherit;
 }
 
