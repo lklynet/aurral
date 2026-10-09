@@ -1645,14 +1645,8 @@ function LibraryPage() {
         showError("No playable files are available in this selection.");
         return;
       }
-      const startIndex = startTrack
-        ? Math.max(
-            0,
-            playable.findIndex((track) => String(track.id) === String(startTrack.id)),
-          )
-        : 0;
       playQueue(playable, {
-        startIndex: startIndex < 0 ? 0 : startIndex,
+        startTrackId: startTrack?.id ?? null,
         shuffle,
         source: librarySource,
         updateShufflePreference: false,

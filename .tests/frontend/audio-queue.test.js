@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { normalizePlaylistQueueTrack, normalizePreviewTrack } from "../../frontend/src/utils/audioQueue.js";
+import {
+  initialQueueState,
+  normalizePlaylistQueueTrack,
+  normalizePreviewTrack,
+  queueReducer,
+  shouldRestartTrack,
+} from "../../frontend/src/utils/audioQueue.js";
 
 const track = {
   id: "flow-track",
@@ -34,4 +40,91 @@ test("previews and playlist tracks keep their cover so the player and album-art 
 
   const editorialTrack = normalizePlaylistQueueTrack({ ...track, artworkUrl: "https://c/editorial.jpg" });
   assert.equal(editorialTrack.artwork, "https://c/editorial.jpg");
+});
+
+const queueTracks = Array.from({ length: 8 }, (_, index) => ({
+  id: `t${index}`,
+  title: `Track ${index}`,
+  src: `/stream/t${index}`,
+}));
+
+const startQueue = (options = {}) =>
+  queueReducer(initialQueueState, {
+    type: "PLAY_QUEUE",
+    tracks: queueTracks,
+    startTrackId: null,
+    shuffle: false,
+    updateShufflePreference: true,
+    source: null,
+    ...options,
+  });
+
+const currentId = (state) => state.queue[state.playbackOrder[state.currentIndex]].id;
+const remainingIds = (state) =>
+  state.playbackOrder.slice(state.currentIndex).map((index) => state.queue[index].id);
+const allIds = queueTracks.map((track) => track.id);
+
+test("shuffle play starts with the chosen track and still plays every other track once", () => {
+  for (const startTrack of queueTracks) {
+    const state = startQueue({ startTrackId: startTrack.id, shuffle: true });
+    assert.equal(currentId(state), startTrack.id);
+    assert.deepEqual([...remainingIds(state)].sort(), allIds);
+  }
+});
+
+test("shuffle play without a chosen track plays every track and varies the first one", () => {
+  const firstIds = new Set();
+  for (let run = 0; run < 40; run += 1) {
+    const state = startQueue({ shuffle: true });
+    assert.deepEqual([...remainingIds(state)].sort(), allIds);
+    firstIds.add(currentId(state));
+  }
+  assert.ok(firstIds.size > 1);
+});
+
+test("turning shuffle on keeps the current track and queues every other track after it", () => {
+  const playing = startQueue({ startTrackId: "t5" });
+  const shuffled = queueReducer(playing, { type: "SET_SHUFFLE", enabled: true });
+  assert.equal(currentId(shuffled), "t5");
+  assert.deepEqual([...remainingIds(shuffled)].sort(), allIds);
+
+  const unshuffled = queueReducer(shuffled, { type: "SET_SHUFFLE", enabled: false });
+  assert.equal(currentId(unshuffled), "t5");
+  assert.deepEqual(remainingIds(unshuffled), ["t5", "t6", "t7"]);
+});
+
+test("the end of the queue keeps the queue, shuffle, and repeat and waits paused at the start", () => {
+  let state = startQueue({ startTrackId: "t6", shuffle: false });
+  state = queueReducer(state, { type: "SET_SHUFFLE", enabled: true });
+  for (let step = 0; step < queueTracks.length - 1; step += 1) {
+    state = queueReducer(state, { type: "NEXT" });
+    assert.equal(state.autoplay, true);
+  }
+  const lastRevision = state.queueRevision;
+
+  const ended = queueReducer(state, { type: "NEXT" });
+  assert.equal(ended.queue.length, queueTracks.length);
+  assert.equal(ended.currentIndex, 0);
+  assert.equal(currentId(ended), "t6");
+  assert.equal(ended.autoplay, false);
+  assert.equal(ended.isShuffleEnabled, true);
+  assert.ok(ended.queueRevision > lastRevision);
+
+  const repeating = queueReducer(queueReducer(state, { type: "TOGGLE_REPEAT" }), { type: "NEXT" });
+  assert.equal(repeating.repeatMode, "all");
+  assert.equal(repeating.currentIndex, 0);
+  assert.equal(repeating.autoplay, true);
+});
+
+test("previous restarts a track after three seconds and otherwise goes back one track", () => {
+  const middle = startQueue({ startTrackId: "t3" });
+  assert.equal(shouldRestartTrack(middle, 12), true);
+  assert.equal(shouldRestartTrack(middle, 1), false);
+  assert.equal(currentId(queueReducer(middle, { type: "PREVIOUS" })), "t2");
+
+  const first = startQueue();
+  assert.equal(shouldRestartTrack(first, 1), true);
+  const repeatAll = queueReducer(first, { type: "TOGGLE_REPEAT" });
+  assert.equal(shouldRestartTrack(repeatAll, 1), false);
+  assert.equal(currentId(queueReducer(repeatAll, { type: "PREVIOUS" })), "t7");
 });
