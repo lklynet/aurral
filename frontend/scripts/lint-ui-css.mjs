@@ -167,6 +167,15 @@ export function hasStaticViewportHeight(value) {
   return /(?<![\w.-])\d*\.?\d+vh\b/i.test(value);
 }
 
+function isInsideHoverMedia(node) {
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (parent.type === "atrule" && parent.name === "media" && /\(\s*hover\s*:\s*hover\s*\)/.test(parent.params)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function sourceLine(declaration) {
   return declaration.source?.start?.line ?? 1;
 }
@@ -286,6 +295,18 @@ export function lintCss(css, { filePath = "<input>", tokenNames = new Set() } = 
         "aurral/no-hard-coded-color",
         `contains a hard-coded color in ${property}; ${correction}`,
         suggestion,
+      ),
+    );
+  });
+
+  root.walkRules((rule) => {
+    if (!rule.selector.includes(":hover") || isInsideHoverMedia(rule)) return;
+    findings.push(
+      createFinding(
+        filePath,
+        rule.source?.start?.line ?? 1,
+        "aurral/no-ungated-hover",
+        "styles :hover outside @media (hover: hover) and (pointer: fine), so the style sticks after a tap on touch screens.",
       ),
     );
   });

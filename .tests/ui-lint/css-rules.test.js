@@ -197,3 +197,35 @@ test("reports viewport-height units that ignore mobile browser toolbars", () => 
 
   assert.deepEqual(ruleFindings(findings, "aurral/no-vh"), [3, 4]);
 });
+
+test("reports hover styles that would stick after a tap on touch screens", () => {
+  const findings = lintCss(`
+    .card:hover {
+      background: var(--aurral-surface);
+    }
+    .card:focus-visible,
+    .card:is(:hover, .is-open) {
+      background: var(--aurral-surface);
+    }
+    @media (max-width: 767px) {
+      .card:hover {
+        background: var(--aurral-surface);
+      }
+    }
+    @media (hover: hover) and (pointer: fine) {
+      .card:hover {
+        background: var(--aurral-surface);
+      }
+      @media (max-width: 767px) {
+        .row:hover {
+          background: var(--aurral-surface);
+        }
+      }
+    }
+    .card:focus-visible {
+      background: var(--aurral-surface);
+    }
+  `, { filePath: "card.css", tokenNames });
+
+  assert.deepEqual(ruleFindings(findings, "aurral/no-ungated-hover"), [2, 5, 10]);
+});
