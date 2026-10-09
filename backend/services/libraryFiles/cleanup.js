@@ -3,6 +3,7 @@ import path from "node:path";
 import { db } from "../../config/db-sqlite.js";
 import { buildLibraryTrackPath, isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.js";
 import { downloadTracker } from "../downloadJobs/downloadTracker.js";
+import { configuredLidarrFolders, libraryFolderOwner } from "../libraryFolders.js";
 import { moveLibraryMediaFilePath } from "../libraryMediaStore.js";
 import { ALBUM_IMAGE_EXTENSIONS, placeFile, removeEmptyDirectories, transferSidecars } from "./fileTransfer.js";
 import {
@@ -19,7 +20,7 @@ function libraryAlbumIds() {
   ).pluck().all();
 }
 
-function albumFiles(albumId, root) {
+function albumFiles(albumId, { root, lidarrRoots }) {
   const seen = new Set();
   return db.prepare(
     `SELECT media.id, media.path, media.track_id, media.album_id, media.size, media.mtime_ms,
@@ -32,6 +33,7 @@ function albumFiles(albumId, root) {
      ORDER BY link.disc_number, link.track_number, media.path`,
   ).all(albumId).filter((file) => {
     if (seen.has(file.id) || !isPathInsideRoot(path.resolve(file.path), root)) return false;
+    if (libraryFolderOwner(file.path, { downloadRoot: root, lidarrRoots }) !== "aurral") return false;
     seen.add(file.id);
     return true;
   });
@@ -43,7 +45,7 @@ async function planAlbum(albumId, context) {
   const artist = db.prepare("SELECT * FROM library_artists WHERE id = ?").get(album.artist_id);
   const items = [];
   let unchanged = 0;
-  for (const file of albumFiles(albumId, context.root)) {
+  for (const file of albumFiles(albumId, context)) {
     const details = { size: file.size, mtimeMs: file.mtime_ms };
     const target = buildLibraryTrackPath(context.root, {
       artistName: artist?.name,
@@ -81,6 +83,7 @@ export async function planCleanup(operation, deadline) {
   }
   const context = {
     root,
+    lidarrRoots: configuredLidarrFolders(null),
     targets: new Set(db.prepare(
       `SELECT target_path FROM library_file_operation_items
        WHERE operation_id = ? AND status = 'pending' AND target_path IS NOT NULL`,

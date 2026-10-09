@@ -175,6 +175,39 @@ test("rename never takes a name another file has", async () => {
   assert.deepEqual(await readFile(occupant), occupantBytes);
 });
 
+test("Clean up leaves Lidarr's files alone when Lidarr shares the Downloads Folder", async () => {
+  const settings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...settings,
+    integrations: { ...settings.integrations, lidarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key", rootFolderPath: root } },
+  });
+  const lidarrFile = await makeTrack(path.join(root, "Shared Artist", "Shared Album (2001)", "Shared Artist - 01 - Song.flac"), {
+    artist: "Shared Artist", album: "Shared Album", title: "Song", track: "1",
+  });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const bytes = await readFile(lidarrFile);
+
+  const { items } = await cleanUp();
+
+  assert.deepEqual(items, []);
+  assert.deepEqual(await readFile(lidarrFile), bytes);
+  assert.equal(await exists(path.join(root, "Shared Artist", "Shared Album")), false);
+});
+
+test("Clean up never files music into a folder the Library scan skips", async () => {
+  await makeTrack(path.join(root, "loose", "track.flac"), {
+    artist: ".38 Special", album: "...And Justice for All", title: "Song", track: "1",
+  });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+
+  const { items } = await cleanUp();
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+
+  const newPath = path.join(root, "38 Special", "And Justice for All", "01 - Song.flac");
+  assert.equal(items[0].status, "done");
+  assert.equal(mediaAt(newPath)?.available, 1);
+});
+
 test("automatic upgrades reach monitored Library tracks that Aurral did not download, and no others", async () => {
   const mp3 = ["-c:a", "libmp3lame", "-b:a", "128k"];
   const monitored = await makeTrack(path.join(root, "Upgrade", "Album", "01 - Low.mp3"), {

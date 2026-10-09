@@ -69,10 +69,8 @@ export function buildAurralTrackDestination(
   return path.posix.join(...destination);
 }
 
-const folderName = (value, fallback) => {
-  const name = sanitizePathPart(value, fallback);
-  return name === "." || name === ".." ? fallback : name;
-};
+const folderName = (value, fallback) =>
+  sanitizePathPart(sanitizePathPart(value, "").replace(/^\.+/, ""), fallback);
 
 // The Library's naming: Artist/Album/07 - Title.ext under the Downloads Folder.
 export function buildLibraryTrackPath(root, track, ext) {
