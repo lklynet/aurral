@@ -249,9 +249,17 @@ async function fileItem(operation, item) {
   return { status: "done" };
 }
 
+const resolvesToSameFile = async (left, right) => {
+  const [a, b] = await Promise.all([fs.realpath(left).catch(() => null), fs.realpath(right).catch(() => null)]);
+  return Boolean(a) && a === b;
+};
+
 export async function applyIngestItem(operation, item) {
   if (!isPathInsideRoot(item.targetPath, resolveDownloadRoot())) {
     return { status: "failed", reason: "The destination is outside the Downloads Folder." };
+  }
+  if (await resolvesToSameFile(item.sourcePath, item.targetPath)) {
+    return { status: "failed", reason: "A link in the Downloads Folder leads back to this file, so Aurral left it alone." };
   }
   return item.details.action === "remove-duplicate"
     ? removeDuplicateSource(item)

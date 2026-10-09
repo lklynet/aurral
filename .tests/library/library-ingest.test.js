@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmod, copyFile, link, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, link, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -195,6 +195,21 @@ test("hardlink and move leave one file on disk under the Library name", async ()
   assert.equal(await exists(moved), false);
   assert.equal(await exists(path.join(moveSource, "Moved")), false);
   assert.equal(await exists(moveSource), true);
+});
+
+test("move never removes a source file that a link in the Downloads Folder leads back to", async () => {
+  const source = newSource();
+  const only = await makeTrack(path.join(source, "Alias", "Album", "01 - One.flac"), {
+    artist: "Alias", album: "Album", title: "One", track: "1",
+  });
+  const bytes = await readFile(only);
+  await mkdir(root, { recursive: true });
+  await symlink(path.join(source, "Alias"), path.join(root, "Alias"));
+
+  const [item] = await apply(await ingest(source, "move"));
+
+  assert.notEqual(item.status, "done");
+  assert.deepEqual(await readFile(only), bytes);
 });
 
 test("a run interrupted after placing a file finishes it on resume", async () => {
