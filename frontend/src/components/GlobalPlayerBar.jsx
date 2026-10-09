@@ -21,6 +21,7 @@ import TooltipButton from "./TooltipButton";
 import { PlayerQueuePanel, UpNextQueue } from "./PlayerQueue";
 import { useModalDialog } from "../hooks/useModalDialog.js";
 import { PLAYER_SHORTCUTS, usePlayerShortcuts } from "../hooks/usePlayerShortcuts.js";
+import { useNowPlayingTitle } from "../hooks/useDocumentTitle";
 import { useCollectionTint } from "./CollectionHeader";
 
 const SHEET_EXIT_MS = 260;
@@ -50,6 +51,7 @@ function GlobalPlayerBar() {
     isActive,
     isPlaying,
     isLoading,
+    isStarting,
     duration,
     volume,
     muted,
@@ -176,6 +178,12 @@ function GlobalPlayerBar() {
     seekForward: () => seekBy(SEEK_SHORTCUT_SECONDS),
     mute: toggleMute,
   });
+
+  useNowPlayingTitle(
+    isActive && currentTrack && (isPlaying || isStarting)
+      ? [currentTrack.title, currentTrack.artist].filter(Boolean).join(" · ")
+      : "",
+  );
 
   if (!isActive || !currentTrack) {
     return null;

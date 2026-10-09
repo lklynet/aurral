@@ -511,6 +511,32 @@ test("playing in a second tab pauses the first and the queue follows the tab tha
   await second.close();
 });
 
+test("the tab title shows the playing track and goes back to the page title on pause", async ({ page }) => {
+  const player = playerControls(page);
+  await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
+  await waitUntilPlaying(player);
+  await expect(page).toHaveTitle("Alpha · E2E Artist");
+
+  await page.evaluate(() => {
+    window.__titles = [];
+    new MutationObserver(() => window.__titles.push(document.title)).observe(
+      document.querySelector("title"),
+      { childList: true, characterData: true, subtree: true },
+    );
+  });
+  await player.next.click();
+  await expect(page).toHaveTitle("Bravo · E2E Artist");
+  expect(await page.evaluate(() => window.__titles)).toEqual(["Bravo · E2E Artist"]);
+
+  await page.getByRole("navigation").getByRole("link", { name: "Activity" }).first().click();
+  await expect(page).toHaveURL(/\/activity/);
+  await expect(page).toHaveTitle("Bravo · E2E Artist");
+  await player.playPause.click();
+  await expect(page).toHaveTitle(/Activity - Aurral$/);
+  await page.keyboard.press("Space");
+  await expect(page).toHaveTitle("Bravo · E2E Artist");
+});
+
 const RED_COVER = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#c82828"/></svg>';
 
 async function playCoveredPlaylist(page, artworkUrl) {
