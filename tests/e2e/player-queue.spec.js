@@ -380,8 +380,10 @@ test("the queue panel lists up next and track menus queue, reorder, remove, and 
   await expect(page.getByText("Added to queue")).toBeVisible();
   await expect.poll(() => upNextTitles(panel)).toEqual(["Delta", "Bravo", "Charlie", "Delta", "Echo", "Bravo"]);
 
-  await panel.getByRole("button", { name: "Reorder Echo" }).focus();
+  const handleEcho = panel.getByRole("button", { name: "Reorder Echo" });
+  await handleEcho.focus();
   await page.keyboard.press("Space");
+  await expect(handleEcho).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("ArrowUp");
   await expect(page.getByRole("status").filter({ hasText: "Echo moved to position 4 of 6" })).toBeAttached();
   await page.keyboard.press("Space");
@@ -637,8 +639,10 @@ test.describe("on a phone", () => {
     expect(await upNextTitles(sheet)).toEqual(["Bravo", "Charlie", "Delta", "Echo"]);
     await sheet.getByRole("button", { name: "Remove Bravo from queue" }).click();
     await expect.poll(() => upNextTitles(sheet)).toEqual(["Charlie", "Delta", "Echo"]);
-    await sheet.getByRole("button", { name: "Reorder Delta" }).focus();
+    const handleDelta = sheet.getByRole("button", { name: "Reorder Delta" });
+    await handleDelta.focus();
     await page.keyboard.press("Space");
+    await expect(handleDelta).toHaveAttribute("aria-pressed", "true");
     await page.keyboard.press("ArrowUp");
     await expect(page.getByRole("status").filter({ hasText: "Delta moved to position 1 of 3" })).toBeAttached();
     await page.keyboard.press("Space");
