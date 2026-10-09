@@ -117,7 +117,10 @@ import { useQueueTrackActions } from "../hooks/useQueueTrackActions";
 import { LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
 import {
+  LIBRARY_DEFAULT_SORT,
   LIBRARY_PAGE_SIZE,
+  LIBRARY_SORT_OPTIONS,
+  libraryListParams,
   libraryTabForSection,
   libraryViewQueryOptions,
   resolveLibrarySection,
@@ -247,16 +250,6 @@ const sameTrackText = (left, right) => {
 
 const TOP_ARTIST_TRACK_LIMIT = 10;
 
-const NAME_SORT = { value: "name", label: "Name" };
-const ARTIST_SORT = { value: "artist", label: "Artist" };
-const NEWEST_SORT = { value: "newest", label: "Recently added" };
-const SORT_OPTIONS_BY_SECTION = {
-  albums: [NAME_SORT, ARTIST_SORT, NEWEST_SORT],
-  tracks: [NAME_SORT, ARTIST_SORT, NEWEST_SORT],
-  artists: [NAME_SORT, NEWEST_SORT],
-  "album-artists": [NAME_SORT, NEWEST_SORT],
-  genres: [NAME_SORT],
-};
 const QUERY_DEBOUNCE_MS = 250;
 
 const wait = (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs));
@@ -510,15 +503,13 @@ function LibraryPage() {
     () => ({ type: "native-library", id: "library", label: "Library" }),
     [],
   );
-  const sortOptions = SORT_OPTIONS_BY_SECTION[section] || [];
-  const requestedSort = searchParams.get("sort");
-  const sortMode = sortOptions.some((option) => option.value === requestedSort)
-    ? requestedSort
-    : NAME_SORT.value;
-  const sortDirection = searchParams.get("dir") === "desc" ? "desc" : "asc";
+  const sortOptions = LIBRARY_SORT_OPTIONS[section] || [];
+  const {
+    sort: sortMode,
+    direction: sortDirection,
+    pageIndex,
+  } = libraryListParams(section, searchParams);
   const viewMode = searchParams.get("view") === "list" ? "list" : "grid";
-  const requestedPage = Number(searchParams.get("page"));
-  const pageIndex = Number.isSafeInteger(requestedPage) && requestedPage > 1 ? requestedPage : 1;
   const normalizedQuery = query.trim() ? urlQuery.trim().toLocaleLowerCase() : "";
 
   const updateViewParams = (changes, { replace = false } = {}) => {
@@ -2929,7 +2920,7 @@ function LibraryPage() {
                       onChange={(event) =>
                         updateViewParams(
                           {
-                            sort: event.target.value === NAME_SORT.value ? null : event.target.value,
+                            sort: event.target.value === LIBRARY_DEFAULT_SORT ? null : event.target.value,
                             page: null,
                           },
                           { replace: true },

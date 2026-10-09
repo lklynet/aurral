@@ -32,6 +32,14 @@ async function fixture(page, { holdPlaylist } = {}) {
         ],
       });
     }
+    if (path === "/discover/editorial/links") return json({ artistMbid: artist.id, albumMbid: null });
+    if (path === `/artists/${artist.id}/stream`) {
+      const events = { artist: { ...artist, "release-groups": [] }, cover: { images: [] }, library: { exists: false }, complete: {} };
+      return route.fulfill({
+        contentType: "text/event-stream",
+        body: Object.entries(events).map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join(""),
+      });
+    }
     if (path === "/library/lookup/batch") {
       return json(Object.fromEntries((request.postDataJSON()?.mbids || []).map((id) => [id, false])));
     }
@@ -169,4 +177,23 @@ test("route transitions are skipped when reduced motion is requested", async ({ 
   await page.goto("/");
   await openPlaylistAfterPrefetch(page);
   expect(await page.evaluate(() => window.__routeTransitions)).toEqual([]);
+});
+
+test("track artist names are links that resolve in place without a history entry", async ({ page }) => {
+  await fixture(page);
+  await page.goto(playlistPath);
+  const main = page.locator("main");
+  await expect(main.getByText("First Link Track")).toBeVisible();
+
+  const artistLinks = main.getByRole("link", { name: artist.name, exact: true });
+  await expect(artistLinks.first()).toHaveAttribute(
+    "href",
+    `/go/artist?name=${encodeURIComponent(artist.name).replace(/%20/g, "+")}`,
+  );
+  await expect(main.getByRole("button", { name: artist.name, exact: true })).toHaveCount(0);
+
+  await artistLinks.first().click();
+  await expect(page).toHaveURL(new RegExp(`/artist/${artist.id}$`));
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`${playlistPath}$`));
 });

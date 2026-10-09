@@ -11,6 +11,31 @@ import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewDat
 import { queryKeys } from "../queryClient.js";
 
 export const LIBRARY_PAGE_SIZE = 100;
+export const LIBRARY_DEFAULT_SORT = "name";
+
+const NAME_SORT = { value: LIBRARY_DEFAULT_SORT, label: "Name" };
+const ARTIST_SORT = { value: "artist", label: "Artist" };
+const NEWEST_SORT = { value: "newest", label: "Recently added" };
+
+export const LIBRARY_SORT_OPTIONS = {
+  albums: [NAME_SORT, ARTIST_SORT, NEWEST_SORT],
+  tracks: [NAME_SORT, ARTIST_SORT, NEWEST_SORT],
+  artists: [NAME_SORT, NEWEST_SORT],
+  "album-artists": [NAME_SORT, NEWEST_SORT],
+  genres: [NAME_SORT],
+};
+
+export const libraryListParams = (section, searchParams) => {
+  const requestedSort = searchParams.get("sort");
+  const requestedPage = Number(searchParams.get("page"));
+  return {
+    sort: (LIBRARY_SORT_OPTIONS[section] || []).some((option) => option.value === requestedSort)
+      ? requestedSort
+      : LIBRARY_DEFAULT_SORT,
+    direction: searchParams.get("dir") === "desc" ? "desc" : "asc",
+    pageIndex: Number.isSafeInteger(requestedPage) && requestedPage > 1 ? requestedPage : 1,
+  };
+};
 
 const LIBRARY_VIEW_IDS = new Set(LIBRARY_VIEWS.map((view) => view.id));
 

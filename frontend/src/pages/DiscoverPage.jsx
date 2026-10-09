@@ -1,15 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
-  lookupArtistInLibrary,
   lookupArtistsInLibraryBatch,
   readLibraryLookupCache,
 } from "../utils/api/endpoints/library.js";
 import { getMyDiscoverLayout, updateMyDiscoverLayout } from "../utils/api/endpoints/auth.js";
 
-import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { Sparkles, LayoutTemplate } from "lucide-react";
 import { DotLoader } from "../components/DotLoader";
 import { SkeletonRail, SkeletonStatus } from "../components/Skeletons";
+import { resolveLibraryArtistPath } from "../navigation/resolveLinks.js";
 import DiscoveryStatusPill from "../components/DiscoveryStatusPill";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useAuth } from "../contexts/AuthContext";
@@ -46,7 +45,6 @@ const SQUARE_ART_SECTIONS = new Set(["playlists", "recentReleases", "recommended
 function DiscoverPage() {
   useDocumentTitle("Discover");
   const { user: authUser, bootstrap } = useAuth();
-  const navigate = useDiscoverNavigation();
   const { showSuccess, showError } = useToast();
   const newsConfigured = bootstrap?.newsConfigured === true;
   const {
@@ -236,27 +234,13 @@ function DiscoverPage() {
     );
   };
 
-  const handleOpenArtistInLibrary = useCallback(
-    async (artist) => {
-      if (artist.canonicalId) {
-        navigate(`/library/artist/${encodeURIComponent(artist.canonicalId)}`);
-        return true;
-      }
-      const artistId = getArtistId(artist);
-      if (!artistId) return;
-      try {
-        const lookup = await lookupArtistInLibrary(artistId);
-        const canonicalId = lookup?.libraryArtistId;
-        if (!canonicalId) throw new Error("Library artist was not found");
-        navigate(`/library/artist/${encodeURIComponent(canonicalId)}`);
-        return true;
-      } catch (requestError) {
-        showError(requestError?.message || "Failed to open artist in library");
-        return false;
-      }
-    },
-    [navigate, showError],
-  );
+  const getArtistLibraryLink = useCallback((artist) => {
+    if (artist.canonicalId) {
+      return { to: `/library/artist/${encodeURIComponent(artist.canonicalId)}` };
+    }
+    const to = resolveLibraryArtistPath({ mbid: getArtistId(artist), name: artist.name });
+    return to ? { to } : null;
+  }, []);
 
   const discoverArtistIds = useMemo(() => {
     const ids = new Set();
@@ -337,7 +321,7 @@ function DiscoverPage() {
                   <ArtistCard
                     status="available"
                     isInLibrary={true}
-                    onOpenInLibrary={handleOpenArtistInLibrary}
+                    getLibraryLink={getArtistLibraryLink}
                     artist={{
                       id: artistId,
                       canonicalId: artist.canonicalId || artist.id,
@@ -441,7 +425,7 @@ function DiscoverPage() {
                   <ArtistCard
                     artist={artist}
                     isInLibrary={!!libraryLookup[getArtistId(artist)]}
-                    onOpenInLibrary={handleOpenArtistInLibrary}
+                    getLibraryLink={getArtistLibraryLink}
                     onFeedback={handleDiscoveryFeedback}
                     feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
                   />
@@ -627,7 +611,7 @@ function DiscoverPage() {
                     metaText: "",
                   }}
                   isInLibrary={!!libraryLookup[getArtistId(artist)]}
-                  onOpenInLibrary={handleOpenArtistInLibrary}
+                  getLibraryLink={getArtistLibraryLink}
                   onFeedback={handleDiscoveryFeedback}
                   feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
                 />
@@ -660,7 +644,7 @@ function DiscoverPage() {
                       <ArtistCard
                         artist={artist}
                         isInLibrary={!!libraryLookup[getArtistId(artist)]}
-                        onOpenInLibrary={handleOpenArtistInLibrary}
+                        getLibraryLink={getArtistLibraryLink}
                         onFeedback={handleDiscoveryFeedback}
                         feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
                       />

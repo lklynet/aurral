@@ -14,16 +14,12 @@ import { getReleaseGroupCoversBatch } from "../../utils/api/endpoints/artists.js
 import {
   downloadTrackToLibrary,
   fetchLibraryFavorites,
-  getLibraryPage,
-  lookupAlbumsInLibraryBatch,
-  lookupArtistInLibrary,
   updateLibraryFavorites,
 } from "../../utils/api/endpoints/library.js";
 import {
-  libraryRecordId,
-  findLibraryAlbumByName,
-  findLibraryArtistByName,
-} from "../../utils/libraryTrackNavigation.js";
+  resolveLibraryAlbumPath,
+  resolveLibraryArtistPath,
+} from "../../navigation/resolveLinks.js";
 import { useToast } from "../../contexts/ToastContext";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import { PlaylistTracksPanel } from "./components/playlistTrackComponents.jsx";
@@ -270,63 +266,29 @@ export function PlaylistTracks({
         }
       : null;
 
-  const handleNavigateArtist = async (track) => {
-    if (!track?.artistMbid) return;
-    if (isFlow) {
-      const link = getFlowArtistLink(track);
-      navigate(link.to, { state: link.state });
-      return;
-    }
-    let canonicalId = null;
-    try {
-      const lookup = await lookupArtistInLibrary(track.artistMbid);
-      canonicalId = lookup?.artist?.canonicalId || null;
-    } catch {}
-    if (!canonicalId && track.artistName) {
-      try {
-        const page = await getLibraryPage({
-          kind: "artists",
-          page: 1,
-          pageSize: 100,
-          query: track.artistName,
-          // Resolve for navigation even if nothing is available yet.
-          availableOnly: false,
-        });
-        canonicalId = libraryRecordId(findLibraryArtistByName(page?.items, track.artistName));
-      } catch {}
-    }
-    if (canonicalId) navigate(`/library/artist/${encodeURIComponent(canonicalId)}`);
+  const getArtistLink = (track) => {
+    if (!track?.artistMbid) return null;
+    if (isFlow) return getFlowArtistLink(track);
+    return { to: resolveLibraryArtistPath({ mbid: track.artistMbid, name: track.artistName }) };
   };
 
-  const handleNavigateAlbum = async (track) => {
-    if (!track?.albumMbid) return;
-    if (isFlow && track.artistMbid) {
-      const link = getFlowAlbumLink(track);
-      navigate(link.to, { state: link.state });
-      return;
-    }
-    let canonicalId = null;
-    try {
-      const lookup = await lookupAlbumsInLibraryBatch([track.albumMbid]);
-      canonicalId = lookup?.[track.albumMbid]?.canonicalAlbumId || null;
-    } catch {}
-    if (!canonicalId && track.albumName) {
-      try {
-        const page = await getLibraryPage({
-          kind: "albums",
-          page: 1,
-          pageSize: 100,
-          query: track.albumName,
-          // Resolve for navigation even if nothing is available yet.
-          availableOnly: false,
-        });
-        canonicalId = libraryRecordId(
-          findLibraryAlbumByName(page?.items, track.albumName, track.artistName),
-        );
-      } catch {}
-    }
-    if (canonicalId) navigate(`/library/album/${encodeURIComponent(canonicalId)}`);
+  const getAlbumLink = (track) => {
+    if (!track?.albumMbid) return null;
+    if (isFlow && track.artistMbid) return getFlowAlbumLink(track);
+    return {
+      to: resolveLibraryAlbumPath({
+        mbid: track.albumMbid,
+        name: track.albumName,
+        artistName: track.artistName,
+      }),
+    };
   };
+
+  const openLink = (link) => {
+    if (link?.to) navigate(link.to, { state: link.state });
+  };
+  const handleNavigateArtist = (track) => openLink(getArtistLink(track));
+  const handleNavigateAlbum = (track) => openLink(getAlbumLink(track));
 
   const handleAddTrackToLibrary = async (track) => {
     const payload = {
@@ -458,8 +420,8 @@ export function PlaylistTracks({
         onToggleFavorite={handleToggleFavorite}
         onNavigateArtist={handleNavigateArtist}
         onNavigateAlbum={handleNavigateAlbum}
-        getArtistLink={isFlow ? getFlowArtistLink : undefined}
-        getAlbumLink={isFlow ? getFlowAlbumLink : undefined}
+        getArtistLink={getArtistLink}
+        getAlbumLink={getAlbumLink}
         artworkByAlbumMbid={trackArtworkByAlbumMbid}
         showTrackAvailability={showTrackAvailability}
       />

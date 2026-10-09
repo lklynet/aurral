@@ -3,6 +3,9 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffec
 import { Check, ChevronRight, MoreVertical } from "lucide-react";
 import TooltipButton from "./TooltipButton";
 import { DotLoader } from "./DotLoader";
+import RouteLink from "./RouteLink";
+
+const MENU_ITEM_SELECTOR = "button:not(:disabled), a[role=menuitem]";
 
 let activeMenuCloser = null;
 
@@ -268,7 +271,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     if (!open) return;
     const panel = menuRef.current;
     if (!panel) return;
-    const firstItem = [...panel.querySelectorAll("button:not(:disabled)")].find(
+    const firstItem = [...panel.querySelectorAll(MENU_ITEM_SELECTOR)].find(
       (button) => !button.closest(".artist-menu-submenu"),
     );
     (firstItem || panel).focus({ preventScroll: true });
@@ -327,7 +330,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
   const handleMenuKeyDown = (event) => {
     const keys = ["ArrowDown", "ArrowUp", "Home", "End"];
     if (!keys.includes(event.key)) return;
-    const buttons = [...(menuRef.current?.querySelectorAll("button:not(:disabled)") || [])]
+    const buttons = [...(menuRef.current?.querySelectorAll(MENU_ITEM_SELECTOR) || [])]
       .filter((button) => button.checkVisibility());
     if (!buttons.length) return;
     event.preventDefault();
@@ -358,6 +361,29 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
                 items={item.submenuItems}
                 onClose={closeMenu}
               />
+              {item.id === additionalItemsAfter && renderAdditionalItems?.({ closeMenu })}
+            </div>
+          );
+        }
+        if (item.to && !item.disabled) {
+          return (
+            <div key={item.id}>
+              {item.separatorBefore ? <div className="native-library-item-menu__separator" /> : null}
+              <RouteLink
+                to={item.to}
+                state={item.state}
+                role="menuitem"
+                className="artist-menu-item"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  closeMenu();
+                }}
+              >
+                <span className="artist-menu-item__main">
+                  {Icon ? <Icon className="artist-icon-sm" /> : null}
+                  {item.label}
+                </span>
+              </RouteLink>
               {item.id === additionalItemsAfter && renderAdditionalItems?.({ closeMenu })}
             </div>
           );

@@ -3,13 +3,15 @@ import { Ban, Library, MoreVertical, ThumbsDown, ThumbsUp } from "lucide-react";
 import { getDiscoveryFeedbackLabel } from "../utils/discoveryFeedback";
 import { LibraryItemMenu } from "./LibraryItemMenu";
 import TooltipButton from "./TooltipButton";
+import Tooltip from "./Tooltip";
+import RouteLink from "./RouteLink";
 import { DotLoader } from "./DotLoader";
 
 export function ArtistContextMenu({
   artist,
   artistName,
   isInLibrary = false,
-  onOpenInLibrary,
+  getLibraryLink,
   onFeedback,
   feedbackUsed = {},
   className = "",
@@ -18,7 +20,8 @@ export function ArtistContextMenu({
 }) {
   const [pendingAction, setPendingAction] = useState(null);
   const labelName = artistName || artist?.name || artist?.artistName || "artist";
-  const hasLibraryItem = isInLibrary && onOpenInLibrary;
+  const libraryLink = isInLibrary ? getLibraryLink?.(artist) || null : null;
+  const hasLibraryItem = Boolean(libraryLink);
   const feedbackItems = onFeedback ? [
     { id: "more_like_this", icon: ThumbsUp },
     { id: "less_like_this", icon: ThumbsDown },
@@ -33,7 +36,8 @@ export function ArtistContextMenu({
 
   const libraryItems = hasLibraryItem ? [{
     id: "open-library", label: "Open in library", icon: Library,
-    onSelect: () => onOpenInLibrary(artist),
+    to: libraryLink.to,
+    state: libraryLink.state,
   }] : [];
 
   if (!hasLibraryItem && !onFeedback) return null;
@@ -51,9 +55,16 @@ export function ArtistContextMenu({
     return (
       <div className={`${className} artist-context-menu--inline`} onClick={(event) => event.stopPropagation()}>
         {hasLibraryItem ? (
-          <TooltipButton label="Open in library" onClick={() => onOpenInLibrary(artist)} className="btn btn-icon-square artist-context-menu__inline-action is-selected">
-            <Library className="artist-icon-sm" />
-          </TooltipButton>
+          <Tooltip content="Open in library">
+            <RouteLink
+              to={libraryLink.to}
+              state={libraryLink.state}
+              aria-label="Open in library"
+              className="btn btn-icon-square artist-context-menu__inline-action is-selected"
+            >
+              <Library className="artist-icon-sm" />
+            </RouteLink>
+          </Tooltip>
         ) : null}
         {feedbackItems.map((item) => {
           const Icon = item.icon;

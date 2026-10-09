@@ -29,4 +29,5 @@ export const routeModules = {
   discoverPlaylists: trackLoad(() => import("../pages/DiscoverPlaylistsPage")),
   editorialPlaylist: trackLoad(() => import("../pages/EditorialPlaylistDetailPage")),
   news: trackLoad(() => import("../pages/NewsPage")),
+  resolveLink: trackLoad(() => import("../pages/ResolveLinkPage")),
 };

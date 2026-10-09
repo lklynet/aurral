@@ -1,14 +1,12 @@
 import { useMemo, useState } from "react";
-import { Link, useLocation, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ListMusic, Plus } from "lucide-react";
 import {
   addEditorialPlaylistToLibrary,
-  resolveEditorialTrackLinks,
 } from "../utils/api/endpoints/discovery.js";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
-import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { queryClient } from "../queryClient.js";
 import { editorialPlaylistQueryOptions } from "../queryOptions.js";
@@ -23,6 +21,7 @@ import { formatTrackTotal } from "./playlists/playlistPageUtils";
 import { getApiErrorMessage } from "./onboardingUtils";
 import { playlistPath } from "../navigation/playlistPaths";
 import { readRouteSeed } from "../navigation/routeSeed.js";
+import { resolveAlbumPath, resolveArtistPath } from "../navigation/resolveLinks.js";
 import { useTrackSaveActions } from "./useTrackSaveActions";
 
 const mapPreviewTracks = (tracks, playlistId) =>
@@ -43,7 +42,7 @@ const mapPreviewTracks = (tracks, playlistId) =>
 export default function EditorialPlaylistDetailPage() {
   const { playlistId } = useParams();
   const { user, hasPermission } = useAuth();
-  const navigate = useDiscoverNavigation();
+  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const [adding, setAdding] = useState(false);
   const [failedArtwork, setFailedArtwork] = useState(false);
@@ -71,32 +70,20 @@ export default function EditorialPlaylistDetailPage() {
   const playback = usePlaylistTrackPlayback({ tracks, playbackSource });
   const trackSaveActions = useTrackSaveActions();
 
-  const openTrackLink = async (track, kind) => {
-    try {
-      const { artistMbid, albumMbid } = await resolveEditorialTrackLinks({
-        artistName: track.artistName,
-        albumName: kind === "album" ? track.albumName : null,
-        deezerAlbumId: kind === "album" ? track.deezerAlbumId : null,
-      });
-      if (!artistMbid) {
-        showError(`Couldn't find ${track.artistName} in MusicBrainz`);
-        return;
-      }
-      if (kind === "album" && albumMbid) {
-        navigate(`/artist/${artistMbid}/release/${albumMbid}`, {
-          state: {
-            artistName: track.artistName,
-            focusReleaseGroupMbid: albumMbid,
-            focusReleaseGroup: { id: albumMbid, title: track.albumName || "" },
-          },
-        });
-        return;
-      }
-      if (kind === "album") showError(`Couldn't find ${track.albumName}. Opening ${track.artistName} instead.`);
-      navigate(`/artist/${artistMbid}`, { state: { artistName: track.artistName } });
-    } catch (err) {
-      showError(getApiErrorMessage(err, "Couldn't open this link. Try again."));
-    }
+  const getArtistLink = (track) => {
+    const to = resolveArtistPath({ name: track.artistName });
+    return to ? { to } : null;
+  };
+  const getAlbumLink = (track) => {
+    const to = resolveAlbumPath({
+      artistName: track.artistName,
+      albumName: track.albumName,
+      deezerAlbumId: track.deezerAlbumId,
+    });
+    return to ? { to } : null;
+  };
+  const openLink = (link) => {
+    if (link) navigate(link.to);
   };
 
   const handleAdd = async () => {
@@ -232,8 +219,10 @@ export default function EditorialPlaylistDetailPage() {
           loading={false}
           playbackSource={playbackSource}
           emptyMessage="This playlist has no tracks."
-          onNavigateArtist={(track) => openTrackLink(track, "artist")}
-          onNavigateAlbum={(track) => openTrackLink(track, "album")}
+          onNavigateArtist={(track) => openLink(getArtistLink(track))}
+          onNavigateAlbum={(track) => openLink(getAlbumLink(track))}
+          getArtistLink={getArtistLink}
+          getAlbumLink={getAlbumLink}
           {...trackSaveActions}
         />
       ) : (

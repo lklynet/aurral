@@ -121,6 +121,8 @@ function PlaylistTrackKebabMenu({
   onToggleFavorite,
   onNavigateAlbum,
   onNavigateArtist,
+  albumLink = null,
+  artistLink = null,
   canReSearch,
   canManualReSearch,
   searchAction,
@@ -187,6 +189,8 @@ function PlaylistTrackKebabMenu({
           label: "Go to album",
           icon: ExternalLink,
           separatorBefore: true,
+          to: albumLink?.to,
+          state: albumLink?.state,
           onSelect: () => onNavigateAlbum(track),
         }
       : null,
@@ -195,6 +199,8 @@ function PlaylistTrackKebabMenu({
           id: "artist",
           label: "Go to artist",
           icon: UserRound,
+          to: artistLink?.to,
+          state: artistLink?.state,
           onSelect: () => onNavigateArtist(track),
         }
       : null,
@@ -594,6 +600,8 @@ export function PlaylistTracksPanel({
           onToggleFavorite={trackFavoriteId ? onToggleFavorite : null}
           onNavigateAlbum={onNavigateAlbum}
           onNavigateArtist={onNavigateArtist}
+          albumLink={albumLink}
+          artistLink={artistLink}
           canReSearch={canReSearch}
           canManualReSearch={canManualReSearch}
           searchAction={searchAction}

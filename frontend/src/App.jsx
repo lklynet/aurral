@@ -59,6 +59,7 @@ const PlaylistRedirect = lazy(routeModules.playlistRedirect);
 const DiscoverPlaylistsPage = lazy(routeModules.discoverPlaylists);
 const EditorialPlaylistDetailPage = lazy(routeModules.editorialPlaylist);
 const NewsPage = lazy(routeModules.news);
+const ResolveLinkPage = lazy(routeModules.resolveLink);
 
 const PageLoader = () => (
   <SkeletonStatus label="Loading page">
@@ -333,6 +334,7 @@ function AppContent() {
                       />
                       <Route path="/profile" element={<ProfilePage />} />
                       <Route path="/blocklist" element={<BlocklistPage />} />
+                    <Route path="/go/:kind" element={<ResolveLinkPage />} />
                     </Routes>
                   </Suspense>
                 </Layout>

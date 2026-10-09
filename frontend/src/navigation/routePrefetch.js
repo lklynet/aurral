@@ -8,20 +8,27 @@ import {
   releaseGroupDetailsQueryOptions,
 } from "../queryOptions.js";
 import { canPrefetchInBackground } from "../utils/requestScheduling.js";
+import { resolveLinkQueryOptions } from "./resolveLinks.js";
 import { routeModules } from "./routeModules.js";
 
 const FAILURE_COOLDOWN_MS = 30_000;
 
 const libraryView = async (view, search) => {
   if (search.get("preview") === "1") return [];
-  const { libraryViewQueryOptions, resolveLibrarySection } = await import(
+  const { libraryListParams, libraryViewQueryOptions, resolveLibrarySection } = await import(
     "../pages/libraryViewQuery.js"
   );
+  if (view.albumId || view.artistId) return [libraryViewQueryOptions(view)];
+  const section = resolveLibrarySection(view.section);
+  const { sort, direction, pageIndex } = libraryListParams(section, search);
   return [
     libraryViewQueryOptions({
-      ...view,
-      section: resolveLibrarySection(view.section),
-      genre: view.albumId || view.artistId ? "" : search.get("genre") || "",
+      section,
+      pageIndex,
+      sort,
+      direction,
+      query: (search.get("q") || "").trim().toLocaleLowerCase(),
+      genre: search.get("genre") || "",
     }),
   ];
 };
@@ -84,6 +91,11 @@ const ROUTES = [
   { path: "/settings/:tab?", module: routeModules.settings },
   { path: "/profile", module: routeModules.profile },
   { path: "/blocklist", module: routeModules.blocklist },
+  {
+    path: "/go/:kind",
+    module: routeModules.resolveLink,
+    queries: ({ kind }, { search }) => [resolveLinkQueryOptions(kind, search)],
+  },
 ];
 
 const parseTarget = (to) => {
