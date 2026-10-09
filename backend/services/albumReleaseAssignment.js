@@ -99,8 +99,9 @@ export async function assignDownloadedAlbumFiles({
       options: { parseFile: parseAudio, strict: true },
     });
     if (validation.valid) {
-      const trackNumber = release.tracks[pair.trackIndex].trackNumber || null;
-      accepted.push({ jobId: job.id, filePath: entry.filePath, trackNumber, validation });
+      const { trackNumber = null, discNumber = null } = release.tracks[pair.trackIndex];
+      accepted.push({ jobId: job.id, filePath: entry.filePath, trackNumber: trackNumber || null,
+        discNumber: trackNumber ? discNumber || null : null, validation });
       unassignedJobIds.delete(job.id);
     } else {
       rejected.push({ jobId: job.id, reason: validation.reason || "no match" });

@@ -72,7 +72,8 @@ export function buildAurralTrackDestination(
 const folderName = (value, fallback) =>
   sanitizePathPart(sanitizePathPart(value, "").replace(/^\.+/, ""), fallback);
 
-// The Library's naming: Artist/Album/07 - Title.ext under the Downloads Folder.
+// The Library's naming: Artist/Album/07 - Title.ext, or 2-07 - Title.ext past
+// the first disc, under the Downloads Folder.
 export function buildLibraryTrackPath(root, track, ext) {
   return path.resolve(
     root,

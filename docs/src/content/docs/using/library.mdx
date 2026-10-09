@@ -131,7 +131,7 @@ To remove an album or artist, select **Delete album** or **Delete artist** at th
 
 ## Where Aurral keeps files
 
-Aurral keeps permanent tracks in `Artist/Album/Track` folders in the Downloads Folder. When Aurral knows a track's position on the album, it names the file `07 - Title`, so the folder lists in album order.
+Aurral keeps permanent tracks in `Artist/Album/Track` folders in the Downloads Folder. When Aurral knows a track's position on the album, it names the file `07 - Title`, or `2-07 - Title` past the first disc, so the folder lists in album order and a title that repeats on another disc gets its own file.
 
 Flow tracks are temporary. They live under `_flows` and are not part of the Library, with two exceptions:
 
@@ -165,7 +165,7 @@ When a Lidarr root folder is inside the Downloads Folder, Aurral leaves that fol
 
 ## Tags
 
-Aurral tags the music it downloads with the title, artist, album artist, album, year, track number, and MusicBrainz IDs, plus its own `AURRAL_IDS` tag. It changes only those tags. Every other tag, such as ratings, lyrics, ReplayGain, grouping, and cover art, stays as it was. If the file was tagged as a different album, Aurral also removes its MusicBrainz release ID, which belongs to that other album. Aurral writes the tags to a copy beside the file and then replaces the file, so a hardlinked file gets its own copy and the other link keeps its tags.
+Aurral tags the music it downloads with the title, artist, album artist, album, year, track and disc numbers, and MusicBrainz IDs, plus its own `AURRAL_IDS` tag. It changes only those tags. Every other tag, such as ratings, lyrics, ReplayGain, grouping, and cover art, stays as it was. If the file was tagged as a different album, Aurral also removes its MusicBrainz release ID, which belongs to that other album. Aurral writes the tags to a copy beside the file and then replaces the file, so a hardlinked file gets its own copy and the other link keeps its tags.
 
 For music from elsewhere, ingest and **Clean up Library** fill in the tags a file lacks. See [Bring your existing music](#bring-your-existing-music) and [Clean up the Library](#clean-up-the-library). Aurral cannot write tags to WavPack (`.wv`), Monkey's Audio (`.ape`), or fragmented MP4 (`.m4a`) files, and leaves their tags as they are.
 
@@ -203,6 +203,8 @@ Music that you copy into the Downloads Folder yourself also joins the Library. I
 
 Downloads and ingested music already get Aurral's names and tags. For music you added by hand, open **Settings > Library files** and select **Clean up Library**. Aurral moves each file in the Downloads Folder to its `Artist/Album/07 - Title` name and fills in the tags it is missing, the same way ingest does. Files without a confident MusicBrainz match keep their tags and are listed as skipped. When it finishes, Aurral shows how many files changed and lists any it left alone, with the reason. Only one ingest or clean up runs at a time.
 
+Earlier versions of Aurral left the disc out of the name, so Clean up also renames tracks past the first disc from `07 - Title` to `2-07 - Title`.
+
 Download jobs, playlists, favorites, and lyrics files follow each file. A file that a media server playlist still uses keeps its old name too, until the playlist updates. Favorites, play counts, and monitoring follow a track when its new MusicBrainz IDs change its identity. Clean up never takes a name that another file has, and it leaves Lidarr's files to Lidarr.
 
 ## Artists without a MusicBrainz ID
@@ -220,5 +222,4 @@ To fix a wrong or missing link, open the artist menu and select **Edit MusicBrai
 - Aurral hands an album to Lidarr only when Lidarr downloads or monitors it. Aurral never takes albums from Lidarr.
 - When you remove an album and keep its files in the Downloads Folder, the next full scan adds it back, unmonitored. To remove it for good, delete its files too.
 - Lidarr files tagged with a release ID but no release group ID can show up as a second copy of an album that Aurral also has.
-- Aurral's file names have no disc number. On a multi-disc album, two tracks with the same number and title get the same name, so ingest and clean up list the second one for review.
 - When Lidarr is connected and **Show available music only** is on, the Library hides albums that Aurral is still downloading until one track finishes. To show them, turn off the setting in **Settings > Lidarr**.

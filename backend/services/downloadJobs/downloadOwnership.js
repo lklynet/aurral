@@ -70,7 +70,7 @@ function recordTransfer(from, to, fromAttemptId, toAttemptId) {
     track: {
       artistName: to.artistName, trackName: to.trackName, albumName: to.albumName,
       artistMbid: to.artistMbid, albumMbid: to.albumMbid, trackMbid: to.trackMbid,
-      releaseYear: to.releaseYear, durationMs: to.durationMs, trackNumber: to.trackNumber,
+      releaseYear: to.releaseYear, durationMs: to.durationMs, trackNumber: to.trackNumber, discNumber: to.discNumber,
       albumTrackCount: to.albumTrackCount, albumTrackTitles: to.albumTrackTitles || [],
       artistAliases: to.artistAliases || [],
     },

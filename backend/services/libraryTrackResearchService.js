@@ -75,6 +75,7 @@ export function resolveAurralOwnedTrackJob({ trackId, albumId } = {}) {
       releaseYear,
       durationMs: sourceFile.durationMs ?? track?.metadata?.durationMs ?? null,
       trackNumber: albumTrack?.trackNumber || 0,
+      discNumber: albumTrack?.discNumber || null,
       albumTrackCount: album?.trackIds?.length || null,
       artistAliases: Array.isArray(artist?.metadata?.aliases)
         ? artist.metadata.aliases

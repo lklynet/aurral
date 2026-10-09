@@ -195,6 +195,18 @@ test("reuseTrackForPlaylist finds a local file named with its album position", a
   const reprisePath = path.join(repeatedDir, "09 - Theme.flac");
   await fs.writeFile(reprisePath, "audio");
   assert.equal((await reuseTrackForPlaylist(reprise, "library", options)).finalPath, reprisePath);
+
+  const discDir = path.join(downloadRoot, "Numbered Artist", "Two Disc Album");
+  const onDisc = (discNumber) =>
+    ({ artistName: "Numbered Artist", trackName: "Bomb", albumName: "Two Disc Album", trackNumber: 3, discNumber });
+  await fs.mkdir(discDir, { recursive: true });
+  const secondDiscPath = path.join(discDir, "2-03 - Bomb.flac");
+  await fs.writeFile(secondDiscPath, "audio");
+  assert.equal((await reuseTrackForPlaylist(onDisc(1), "library", options)).reused, false);
+  assert.equal((await reuseTrackForPlaylist(onDisc(2), "library", options)).finalPath, secondDiscPath);
+  const firstDiscPath = path.join(discDir, "03 - Bomb.flac");
+  await fs.writeFile(firstDiscPath, "audio");
+  assert.equal((await reuseTrackForPlaylist(onDisc(null), "library", options)).finalPath, firstDiscPath);
 });
 
 test("reuseTrackForPlaylist neutralizes path traversal attempts in track metadata and target playlist", async () => {

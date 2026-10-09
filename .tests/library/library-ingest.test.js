@@ -120,6 +120,30 @@ test("copy files music under Aurral's names, keeps the source, and starts unmoni
   assert.equal(db.prepare("SELECT monitor_mode FROM library_management WHERE entity_kind = 'artist'").get(), undefined);
 });
 
+test("a title on both discs of an album files twice, with the second disc in its name", async () => {
+  const source = newSource();
+  for (const [disc, folder] of [[1, "CD 01"], [2, "CD 02"]]) {
+    await makeTrack(path.join(source, folder, "03 Bomb.flac"), {
+      artist: "Bush", album: "Sixteen Stone", title: "Bomb", track: "3", disc: String(disc),
+    });
+  }
+
+  const items = await apply(await ingest(source, "copy"));
+
+  assert.deepEqual(items.map((item) => [item.status, item.target]), [
+    ["done", path.join("Bush", "Sixteen Stone", "03 - Bomb.flac")],
+    ["done", path.join("Bush", "Sixteen Stone", "2-03 - Bomb.flac")],
+  ]);
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  assert.deepEqual(db.prepare(
+    `SELECT link.disc_number, link.track_number, media.path FROM library_album_tracks AS link
+     JOIN library_media_files AS media ON media.track_id = link.track_id ORDER BY link.disc_number`,
+  ).all().map((row) => [row.disc_number, row.track_number, path.basename(row.path)]), [
+    [1, 3, "03 - Bomb.flac"],
+    [2, 3, "2-03 - Bomb.flac"],
+  ]);
+});
+
 async function ingestBesideExistingTrack(monitor) {
   await makeTrack(path.join(root, "Watch", "Album", "01 - Kept.flac"), {
     artist: "Watch", album: "Album", title: "Kept", track: "1",

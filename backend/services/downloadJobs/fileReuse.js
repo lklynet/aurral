@@ -158,13 +158,15 @@ function sanitizeSafeSegment(value, fallback = "Unknown") {
   return text;
 }
 
-// Downloads are named "Title" or, with a known album position, "07 - Title".
-// An album can repeat a title, so a known position must match too.
-function isTrackFileBaseName(baseName, title, trackNumber) {
+// Downloads are named "Title" or, with a known album position, "07 - Title",
+// or "2-07 - Title" past the first disc. An album can repeat a title, so a
+// known position must match too.
+function isTrackFileBaseName(baseName, title, trackNumber, discNumber) {
   if (baseName === title) return true;
   const position = baseName.endsWith(` - ${title}`)
-    && /^(\d{2,3}) - $/.exec(baseName.slice(0, -title.length));
-  return Boolean(position) && (!trackNumber || Number(position[1]) === trackNumber);
+    && /^(?:(\d+)-)?(\d{2,3}) - $/.exec(baseName.slice(0, -title.length));
+  return Boolean(position) && (!trackNumber
+    || (Number(position[2]) === trackNumber && Number(position[1] || 1) === (discNumber || 1)));
 }
 
 /**
@@ -186,6 +188,7 @@ async function findLocalExistingSource(track, options = {}) {
   const albumDir = sanitizeSafeSegment(track?.albumName, "Unknown Album");
   const expectedBaseName = sanitizeSafeSegment(track?.trackName, "Unknown Track");
   const trackNumber = normalizePositiveInteger(track?.trackNumber);
+  const discNumber = normalizePositiveInteger(track?.discNumber);
 
   // Build candidate directories.
   // Files can land in different locations depending on playlist type
@@ -217,7 +220,7 @@ async function findLocalExistingSource(track, options = {}) {
       for (const file of files) {
         const ext = path.extname(file).toLowerCase();
         const baseName = path.basename(file, ext);
-        if (isTrackFileBaseName(baseName, expectedBaseName, trackNumber) && VALID_AUDIO_EXTENSIONS.has(ext)) {
+        if (isTrackFileBaseName(baseName, expectedBaseName, trackNumber, discNumber) && VALID_AUDIO_EXTENSIONS.has(ext)) {
           const filePath = path.join(destinationDir, file);
           const resolvedFilePath = path.resolve(filePath);
           if (!isPathInsideRoot(resolvedFilePath, root)) continue;

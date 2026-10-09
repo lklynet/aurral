@@ -194,6 +194,7 @@ db.exec(`
     release_year TEXT,
     duration_ms INTEGER,
     track_number INTEGER,
+    disc_number INTEGER,
     album_track_count INTEGER,
     album_track_titles TEXT,
     artist_aliases TEXT,
@@ -861,6 +862,7 @@ for (const [name, type] of [
   ["upgrade_for_job_id", "TEXT"],
   ["manual_replacement_search", "INTEGER NOT NULL DEFAULT 0"],
   ["album_grab_attempted", "INTEGER NOT NULL DEFAULT 0"],
+  ["disc_number", "INTEGER"],
 ]) {
   if (!tableColumns.includes(name)) {
     tryAddColumn(`ALTER TABLE playlist_download_jobs ADD COLUMN ${name} ${type}`);

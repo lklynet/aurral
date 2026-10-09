@@ -249,6 +249,48 @@ test("resolveTrackSearchContext preserves a recording from a non-representative 
   assert.deepEqual(resolved.albumTrackTitles, job.albumTrackTitles);
 });
 
+test("resolveTrackSearchContext learns a track's disc and keeps a known disc for a recording on two discs", async (t) => {
+  const originalSettings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      metadata: { ...originalSettings.integrations.metadata, baseUrl: "https://brainzmash.example.test" },
+    },
+  });
+  clearMetadataProviderCaches();
+  t.after(() => {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(originalSettings);
+  });
+  const track = (mediumnumber, trackposition, trackname, recordingid) =>
+    ({ id: `${recordingid}-${mediumnumber}`, recordingid, trackname, trackposition, mediumnumber, durationms: 200000 });
+  t.mock.method(axios, "get", async () => ({ data: {
+    id: "sixteen-stone",
+    title: "Sixteen Stone",
+    artistid: "bush",
+    artists: [{ id: "bush", artistname: "Bush" }],
+    releases: [{ id: "deluxe", status: "Official", tracks: [
+      track(1, 1, "Swim", "swim"),
+      track(1, 3, "Bomb", "bomb"),
+      track(2, 1, "Swim", "swim-demo"),
+      track(2, 3, "Bomb", "bomb"),
+    ] }],
+  } }));
+  const resolve = (trackMbid, trackNumber, discNumber) => resolveTrackSearchContext({
+    artistName: "Bush", trackName: trackNumber === 1 ? "Swim" : "Bomb", albumName: "Sixteen Stone",
+    artistMbid: "bush", albumMbid: "sixteen-stone", trackMbid, durationMs: 200000, trackNumber, discNumber,
+    albumTrackTitles: ["Swim", "Bomb", "Swim", "Bomb"], artistAliases: ["Bush"],
+  });
+
+  const positions = await Promise.all([
+    resolve("swim-demo", 1, null),
+    resolve("bomb", 3, null),
+    resolve("bomb", 3, 2),
+  ]);
+  assert.deepEqual(positions.map(({ discNumber, trackNumber }) => [discNumber, trackNumber]), [[2, 1], [1, 3], [2, 3]]);
+});
+
 test("resolveTrackSearchContext repairs a stored Last.fm release-track ID", async (t) => {
   const originalSettings = dbOps.getSettings();
   dbOps.updateSettings({

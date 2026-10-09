@@ -535,33 +535,36 @@ test("scanMusicRoot indexes tagged media and ignores Flow output", async () => {
 test("scanMusicRoot derives stable fallback records when tags are missing", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-fallback-"));
   const source = `test-fallback-${process.pid}`;
-  let filePath;
+  const filePaths = [];
   try {
-    filePath = await createAudioFile(root, "Fallback Artist/Fallback Album/02 Fallback Track.mp3");
+    filePaths.push(await createAudioFile(root, "Fallback Artist/Fallback Album/02 Fallback Track.mp3"));
+    filePaths.push(await createAudioFile(root, "Fallback Artist/Fallback Album/2-02 - Fallback Track.mp3"));
     await scanMusicRoot({
       rootPath: root,
       source,
       metadataReader: async () => ({ common: {}, format: {} }),
     });
-    const indexed = db.prepare(
+    const indexed = filePaths.map((filePath) => db.prepare(
       `SELECT artist.name AS artistName, album.title AS albumTitle,
-        track.title AS trackTitle, media.available
+        track.title AS trackTitle, album_track.disc_number AS disc, album_track.track_number AS track, media.available
        FROM library_media_files AS media
        JOIN library_tracks AS track ON track.id = media.track_id
        JOIN library_album_tracks AS album_track ON album_track.track_id = track.id
        JOIN library_albums AS album ON album.id = album_track.album_id
        JOIN library_artists AS artist ON artist.id = album.artist_id
        WHERE media.source = ? AND media.path = ?`,
-    ).get(source, filePath);
+    ).get(source, filePath));
 
-    assert.deepEqual(indexed, {
+    assert.deepEqual(indexed, [1, 2].map((disc) => ({
       artistName: "Fallback Artist",
       albumTitle: "Fallback Album",
       trackTitle: "Fallback Track",
+      disc,
+      track: 2,
       available: 1,
-    });
+    })));
   } finally {
-    if (filePath) deleteIndexedFile(source, filePath);
+    for (const filePath of filePaths) deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
   }
 });

@@ -88,6 +88,7 @@ const applyMetadataEnrichment = (metadata, enrichment = null) => {
     title: trusted.trackName,
     date: trusted.releaseYear,
     track: trusted.trackNumber,
+    disk: trusted.discNumber,
     musicbrainz_artistid: trusted.artistMbid,
     musicbrainz_albumartistid: trusted.artistMbid,
     musicbrainz_albumid: trusted.albumMbid,
@@ -106,12 +107,13 @@ function readPathFallback(filePath, rootPath) {
   const relative = path.relative(rootPath, filePath);
   const segments = relative.split(path.sep).filter(Boolean);
   const fileName = path.basename(filePath, path.extname(filePath));
+  const position = /^(?:(\d{1,2})-(?=\d{2,3}(?:[. _]|$)))?(\d+)(?:[. _-]+|$)/.exec(fileName);
   return {
     artistName: text(segments.at(-3)) || "Unknown Artist",
     albumName: text(segments.at(-2)) || "Unknown Album",
-    title: text(fileName.replace(/^\d+(?:[. _-]+|$)/, "")) || fileName,
-    trackNumber: Number.parseInt(fileName.match(/^\d+/)?.[0] || "0", 10) || 0,
-    discNumber: 1,
+    title: text(position ? fileName.slice(position[0].length) : fileName) || fileName,
+    trackNumber: Number.parseInt(position?.[2] || "0", 10) || 0,
+    discNumber: Number.parseInt(position?.[1] || "1", 10) || 1,
   };
 }
 

@@ -48,7 +48,7 @@ export function recordAlbumGrabQueued(payload, jobs) {
         metadata: {
           ...existing?.metadata, jobId: job.id, playlistId: "library",
           trackName: job.trackName, artistName: job.artistName, albumName: job.albumName,
-          discNumber: position?.discNumber || existing?.metadata?.discNumber || null,
+          discNumber: job.discNumber || position?.discNumber || existing?.metadata?.discNumber || null,
           trackNumber: position?.trackNumber || job.trackNumber, albumGrabId: id, requestedAt,
         },
       });
