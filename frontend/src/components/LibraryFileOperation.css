@@ -14,10 +14,8 @@
   font-size: 0.875rem;
 }
 
-.library-file-op__pct {
+.library-file-op__line .arr-btn {
   margin-left: auto;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
 }
 
 .library-file-op__bar {
@@ -40,8 +38,6 @@
   font-size: 0.8125rem;
 }
 
-.library-file-op__empty,
-.library-file-op__unchanged,
 .library-file-op__range {
   margin: 0;
   color: var(--aurral-text-muted);
@@ -125,27 +121,6 @@
 
 .library-file-op__item + .library-file-op__item {
   border-top: 1px solid var(--aurral-border);
-}
-
-.library-file-op__item-head {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.75rem;
-}
-
-.library-file-op__status {
-  color: var(--aurral-text);
-  font-weight: 700;
-}
-
-.library-file-op__item.is-conflict .library-file-op__status,
-.library-file-op__item.is-failed .library-file-op__status {
-  color: var(--aurral-warning);
-}
-
-.library-file-op__action {
-  color: var(--aurral-text-muted);
 }
 
 .library-file-op__paths {

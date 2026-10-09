@@ -65,11 +65,18 @@ async function runUntilSettled(id) {
   throw new Error("operation did not settle");
 }
 
+async function runUntilChecked(id) {
+  for (let slice = 0; slice < 100; slice += 1) {
+    if (getLibraryFileOperation(id).status !== "planning") return getLibraryFileOperation(id);
+    await operations.runLibraryFileOperation(id);
+  }
+  throw new Error("operation did not finish checking files");
+}
+
 async function cleanUp() {
   const operation = await operations.startCleanup();
-  const ready = await runUntilSettled(operation.id);
-  const preview = operations.describeLibraryFileOperationItems(ready, {});
-  if (ready.status === "ready") assert.equal(await operations.confirmLibraryFileOperation(operation.id), true);
+  const checked = await runUntilChecked(operation.id);
+  const preview = operations.describeLibraryFileOperationItems(checked, {});
   const finished = await runUntilSettled(operation.id);
   assert.equal(finished.status, "complete");
   return { preview, items: operations.describeLibraryFileOperationItems(finished, {}) };
@@ -137,13 +144,12 @@ test("a rename a restart interrupted still refreshes the playlists that use the 
   t.mock.method(playlistManager, "refreshPlaylist", async (playlistId) => { refreshed.push(playlistId); });
 
   const operation = await operations.startCleanup();
-  await runUntilSettled(operation.id);
+  await runUntilChecked(operation.id);
   const newPath = path.join(root, "Resume Artist", "Resume Album", "02 - Song.flac");
   await mkdir(path.dirname(newPath), { recursive: true });
   await link(oldPath, newPath);
   await rm(oldPath);
   downloadTracker.updateFinalPath(jobId, newPath);
-  assert.equal(await operations.confirmLibraryFileOperation(operation.id), true);
   const finished = await runUntilSettled(operation.id);
 
   assert.equal(finished.status, "complete");

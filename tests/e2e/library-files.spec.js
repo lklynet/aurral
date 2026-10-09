@@ -35,13 +35,9 @@ test("ingest a folder as monitored tracks, then clean up the Library", async ({ 
     await expect(page.getByText("2 music files found.")).toBeVisible({ timeout: 15_000 });
     await page.locator("#library-ingest-mode").selectOption("copy");
     await expect(page.locator("#library-ingest-monitor")).toHaveValue("tracks");
-    await page.getByRole("button", { name: "Preview ingest" }).click();
+    await page.getByRole("button", { name: "Ingest", exact: true }).click();
 
-    await expect(page.getByText("Preview ready. Nothing changes until you apply it.")).toBeInViewport({ timeout: 30_000 });
-    await expect(page.getByText(`${artistName}/First Album/01 - Opening.flac`)).toBeVisible();
-    await page.screenshot({ path: test.info().outputPath("ingest-preview.png"), fullPage: true });
-    await page.getByRole("button", { name: "Apply 2 changes" }).click();
-    await expect(page.getByText("Finished.", { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Finished. Filed 2 files.")).toBeInViewport({ timeout: 30_000 });
     await page.screenshot({ path: test.info().outputPath("ingest-finished.png"), fullPage: true });
     expect(fs.readdirSync(path.join(source, "old rip")).sort()).toEqual(["a.flac", "b.flac"]);
 
@@ -66,14 +62,10 @@ test("ingest a folder as monitored tracks, then clean up the Library", async ({ 
     downloadRoot = check.body?.downloadRoot;
     expect(fs.existsSync(path.join(downloadRoot, artistName, "First Album", "02 - Closing.flac"))).toBe(true);
 
-    await page.getByRole("button", { name: "Preview clean up" }).click();
-    const settled = page.getByText(/^(Preview ready\. Nothing changes until you apply it\.|Finished\. Nothing needed to change\.)$/);
-    await expect(settled).toBeInViewport({ timeout: 120_000 });
-    await page.screenshot({ path: test.info().outputPath("cleanup-preview.png"), fullPage: true });
-    if (await page.getByText("Preview ready. Nothing changes until you apply it.").isVisible()) {
-      await page.getByRole("button", { name: "Cancel" }).click();
-      await expect(page.getByText("Cancelled. Changes already made stay.")).toBeVisible({ timeout: 30_000 });
-    }
+    await page.getByRole("button", { name: "Clean up Library" }).click();
+    await expect(page.getByText(/^Finished\./)).toBeVisible({ timeout: 120_000 });
+    await page.screenshot({ path: test.info().outputPath("cleanup-finished.png"), fullPage: true });
+    expect(fs.existsSync(path.join(downloadRoot, artistName, "First Album", "01 - Opening.flac"))).toBe(true);
 
     await page.goto(`/library/artist/${artist.id}`);
     await page.getByRole("button", { name: `${artistName} options` }).first().click();

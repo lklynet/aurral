@@ -4,7 +4,6 @@ import { lidarrClient } from "../../../services/lidarrClient.js";
 import { checkIngestSource } from "../../../services/libraryFiles/ingest.js";
 import {
   cancelLibraryFileOperation,
-  confirmLibraryFileOperation,
   describeLibraryFileOperation,
   describeLibraryFileOperationItems,
   startCleanup,
@@ -91,19 +90,6 @@ export function registerFiles(router) {
       offset,
       limit,
     });
-  });
-
-  router.post("/files/operations/:id/start", requireAuth, requireAdmin, async (req, res) => {
-    const operation = findOperation(req, res);
-    if (!operation) return;
-    if (!(await confirmLibraryFileOperation(operation.id))) {
-      return res.status(409).json({
-        error: "not_ready",
-        message: "Only a finished preview can start.",
-        operation: describeLibraryFileOperation(getLibraryFileOperation(operation.id)),
-      });
-    }
-    res.status(202).json({ operation: describeLibraryFileOperation(getLibraryFileOperation(operation.id)) });
   });
 
   router.post("/files/operations/:id/cancel", requireAuth, requireAdmin, (req, res) => {

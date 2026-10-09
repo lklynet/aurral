@@ -106,9 +106,6 @@ export const getLibraryFileOperationItems = (id, { status = [], offset = 0, limi
     params: { status: status.join(",") || undefined, offset, limit },
   });
 
-export const startLibraryFileOperation = (id) =>
-  postData(`/library/files/operations/${encodeURIComponent(id)}/start`);
-
 export const cancelLibraryFileOperation = (id) =>
   postData(`/library/files/operations/${encodeURIComponent(id)}/cancel`);
 

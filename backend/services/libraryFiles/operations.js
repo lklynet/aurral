@@ -47,14 +47,8 @@ export async function startCleanup() {
   return operation;
 }
 
-export async function confirmLibraryFileOperation(id) {
-  if (!transitionLibraryFileOperation(id, ["ready"], "running")) return false;
-  await enqueue(id, { dedupe: false });
-  return true;
-}
-
 export function cancelLibraryFileOperation(id) {
-  return transitionLibraryFileOperation(id, ["planning", "ready", "running"], "cancelled");
+  return transitionLibraryFileOperation(id, ["planning", "running"], "cancelled");
 }
 
 export async function resumeLibraryFileOperations() {
@@ -112,9 +106,9 @@ async function applyBatch(operation, handler, deadline) {
   return { cancelled };
 }
 
-// One bounded slice of work. The worker queues the next slice until the
-// operation is ready for review, finished, or cancelled, so a restart
-// resumes where it stopped.
+// One bounded slice of work. Each file is checked before anything changes,
+// then the changes are applied. The worker queues the next slice until the
+// operation finishes or is stopped, so a restart resumes where it stopped.
 export async function runLibraryFileOperation(id, { budgetMs = BUDGET_MS } = {}) {
   const operation = getLibraryFileOperation(id);
   const handler = handlers[operation?.kind];
@@ -123,12 +117,9 @@ export async function runLibraryFileOperation(id, { budgetMs = BUDGET_MS } = {})
   try {
     if (operation.status === "planning") {
       if (!(await handler.plan(operation, deadline))) return { done: false };
-      const counts = countLibraryFileOperationItems(id);
-      const next = counts.pending ? "ready" : "complete";
-      if (transitionLibraryFileOperation(id, ["planning"], next)) {
-        updateLibraryFileOperation(id, { summary: { counts } });
-      }
-      return { done: true };
+      const next = countLibraryFileOperationItems(id).pending ? "running" : "complete";
+      transitionLibraryFileOperation(id, ["planning"], next);
+      return { done: next === "complete" };
     }
     if (operation.status === "cancelled") {
       await finish(operation, handler, "cancelled");

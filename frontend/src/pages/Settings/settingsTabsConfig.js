@@ -171,8 +171,6 @@ const SETTINGS_SEARCH_METADATA = {
       Folder: "source folder existing music import",
       Mode: "move copy hardlink",
       Monitor: "monitored unmonitored upgrade tracks albums",
-      "Preview ingest": "ingest import preview",
-      "Preview clean up": "clean up rename organize preview",
     },
   },
   playback: {

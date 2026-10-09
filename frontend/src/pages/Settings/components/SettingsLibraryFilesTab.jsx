@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { FolderInput, FolderSync } from "lucide-react";
 import DownloadFolderField from "../../../components/DownloadFolderField";
 import { DotLoader } from "../../../components/DotLoader";
-import LibraryFileOperation, { LibraryFileOperationActions } from "../../../components/LibraryFileOperation";
+import LibraryFileOperation from "../../../components/LibraryFileOperation";
 import {
   ACTIVE_LIBRARY_FILE_STATUSES,
   refreshLibraryFiles,
@@ -32,13 +32,7 @@ const MONITOR_HELP = {
 const errorMessage = (error, fallback) =>
   error?.response?.data?.message || error?.message || fallback;
 
-function operationTitle(operation) {
-  if (!operation) return "";
-  if (operation.kind === "ingest") return `Ingest from ${operation.options?.sourcePath || "a folder"}`;
-  return "Clean up Library";
-}
-
-function IngestSection({ busy, onStarted, showError }) {
+function IngestSection({ busy, operation, onChanged, showError }) {
   const [sourcePath, setSourcePath] = useState("");
   const [mode, setMode] = useState("copy");
   const [monitor, setMonitor] = useState("tracks");
@@ -79,7 +73,7 @@ function IngestSection({ busy, onStarted, showError }) {
     setStarting(true);
     try {
       await startLibraryIngest(result.sourcePath, mode, monitor);
-      await onStarted();
+      await onChanged();
     } catch (error) {
       showError(errorMessage(error, "The ingest could not start. Nothing was changed."));
     } finally {
@@ -136,9 +130,10 @@ function IngestSection({ busy, onStarted, showError }) {
           onClick={start}
         >
           {starting ? <DotLoader size="sm" label={null} /> : <FolderInput className="artist-icon-xs" aria-hidden />}
-          Preview ingest
+          Ingest
         </button>
       </div>
+      <LibraryFileOperation operation={operation} onChanged={onChanged} showError={showError} />
     </SettingsArrFieldSet>
   );
 }
@@ -148,30 +143,18 @@ export function SettingsLibraryFilesTab({ showError }) {
   const operationId = files.data?.operation?.id ?? null;
   const operationQuery = useLibraryFileOperation(operationId);
   const operation = operationQuery.data || files.data?.operation || null;
-  const active = operation && ACTIVE_LIBRARY_FILE_STATUSES.has(operation.status);
+  const active = Boolean(operation && ACTIVE_LIBRARY_FILE_STATUSES.has(operation.status));
   const [cleaningUp, setCleaningUp] = useState(false);
-  const [following, setFollowing] = useState(false);
-  const operationRef = useRef(null);
-
-  useEffect(() => {
-    if (!following || !operationId) return;
-    operationRef.current?.scrollIntoView({ block: "start" });
-    setFollowing(false);
-  }, [following, operationId]);
 
   const refresh = async () => {
     await refreshLibraryFiles();
-  };
-  const follow = async () => {
-    setFollowing(true);
-    await refresh();
   };
 
   const cleanUp = async () => {
     setCleaningUp(true);
     try {
       await startLibraryCleanup();
-      await follow();
+      await refresh();
     } catch (error) {
       showError(errorMessage(error, "Clean up could not start. Nothing was changed."));
     } finally {
@@ -182,18 +165,12 @@ export function SettingsLibraryFilesTab({ showError }) {
   return (
     <div className="arr-page">
       <div className="arr-form">
-        {operation ? (
-          <div ref={operationRef}>
-            <SettingsArrFieldSet
-              legend={active ? operationTitle(operation) : `Last run: ${operationTitle(operation)}`}
-              actions={<LibraryFileOperationActions operation={operation} onChanged={refresh} showError={showError} />}
-            >
-              <LibraryFileOperation operation={operation} />
-            </SettingsArrFieldSet>
-          </div>
-        ) : null}
-
-        <IngestSection busy={Boolean(active)} onStarted={follow} showError={showError} />
+        <IngestSection
+          busy={active}
+          operation={operation?.kind === "ingest" ? operation : null}
+          onChanged={refresh}
+          showError={showError}
+        />
 
         <SettingsArrFieldSet legend="Clean up Library">
           <div className="arr-info">
@@ -209,9 +186,14 @@ export function SettingsLibraryFilesTab({ showError }) {
               onClick={cleanUp}
             >
               {cleaningUp ? <DotLoader size="sm" label={null} /> : <FolderSync className="artist-icon-xs" aria-hidden />}
-              Preview clean up
+              Clean up Library
             </button>
           </div>
+          <LibraryFileOperation
+            operation={operation?.kind === "cleanup" ? operation : null}
+            onChanged={refresh}
+            showError={showError}
+          />
         </SettingsArrFieldSet>
 
         {files.isError ? (

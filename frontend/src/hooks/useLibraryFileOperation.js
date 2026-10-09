@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "../queryClient.js";
 import { getLibraryFileOperation, getLibraryFiles } from "../utils/api/endpoints/library.js";
 
-export const ACTIVE_LIBRARY_FILE_STATUSES = new Set(["planning", "ready", "running"]);
+export const ACTIVE_LIBRARY_FILE_STATUSES = new Set(["planning", "running"]);
 const POLLING_STATUSES = new Set(["planning", "running"]);
 
 export const libraryFilesQueryKey = ["library-files"];

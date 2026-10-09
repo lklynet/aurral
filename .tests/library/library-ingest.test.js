@@ -55,16 +55,21 @@ async function runUntilSettled(id) {
   throw new Error("operation did not settle");
 }
 
+async function runUntilChecked(id) {
+  for (let slice = 0; slice < 100; slice += 1) {
+    if (getLibraryFileOperation(id).status !== "planning") return getLibraryFileOperation(id);
+    await operations.runLibraryFileOperation(id);
+  }
+  throw new Error("operation did not finish checking files");
+}
+
 async function ingest(sourcePath, mode, monitor) {
   const operation = await operations.startIngest({ sourcePath, mode, monitor });
-  assert.match((await runUntilSettled(operation.id)).status, /^(ready|complete)$/);
+  assert.match((await runUntilChecked(operation.id)).status, /^(running|complete)$/);
   return operation.id;
 }
 
 async function apply(id) {
-  if (getLibraryFileOperation(id).status === "ready") {
-    assert.equal(await operations.confirmLibraryFileOperation(id), true);
-  }
   const finished = await runUntilSettled(id);
   assert.equal(finished.status, "complete");
   return operations.describeLibraryFileOperationItems(finished, {});
@@ -378,10 +383,10 @@ test("a restart while listing files lists each file once", async () => {
      VALUES (?, 0, ?, 'new', 1)`,
   ).run(operation.id, track);
 
-  const ready = await runUntilSettled(operation.id);
+  const checked = await runUntilChecked(operation.id);
 
   assert.deepEqual(
-    operations.describeLibraryFileOperationItems(ready, {}).map((item) => item.status),
+    operations.describeLibraryFileOperationItems(checked, {}).map((item) => item.status),
     ["pending"],
   );
 });
@@ -413,7 +418,6 @@ test("cancelling between slices still tidies what was already filed", async () =
     artist: "Stop", album: "Second", title: "Waiting", track: "1",
   });
   const id = await ingest(source, "move");
-  assert.equal(await operations.confirmLibraryFileOperation(id), true);
   const [first] = operations.describeLibraryFileOperationItems(getLibraryFileOperation(id), {});
   const target = path.join(root, first.target);
   await mkdir(path.dirname(target), { recursive: true });

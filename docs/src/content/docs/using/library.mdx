@@ -171,7 +171,7 @@ To add music from another folder, such as an old library, a Lidarr root folder, 
 - **Copy** copies each file and leaves the source folder as it is.
 - **Hardlink** adds each file to the Downloads Folder without using more space. It works only when the folder and the Downloads Folder are on the same filesystem and mount. When it is not available, Aurral says why.
 
-Select **Preview ingest**. Aurral reads each file's tags and lists where it will file the file, under the same `Artist/Album/07 - Title` names that downloads use. Nothing changes until you select **Apply**. The ingest runs in the background and continues after a restart.
+Select **Ingest**. Aurral reads each file's tags and files it under the same `Artist/Album/07 - Title` names that downloads use. The ingest runs in the background and continues after a restart. **Stop** ends it after the current file, and files already done stay done. When it finishes, Aurral shows how many files it filed and lists any it left alone, with the reason.
 
 Aurral matches music by its MusicBrainz tags first and by artist and album names second, so music from an artist or album that you already have goes into that artist's or album's folder. Aurral reads tags but never writes them. For the best matches, tag your music with [MusicBrainz Picard](https://picard.musicbrainz.org/) before you ingest it. Aurral never overwrites a file:
 
@@ -195,7 +195,7 @@ Music that you copy into the Downloads Folder yourself also joins the Library. I
 
 ## Clean up the Library
 
-Downloads and ingested music already get Aurral's names. For music you added by hand, open **Settings > Library files** and select **Preview clean up**. Aurral lists each file in the Downloads Folder that it would move to its `Artist/Album/07 - Title` name. Nothing changes until you select **Apply**, and the result lists what changed and what needs review. Only one ingest or clean up runs at a time.
+Downloads and ingested music already get Aurral's names. For music you added by hand, open **Settings > Library files** and select **Clean up Library**. Aurral moves each file in the Downloads Folder to its `Artist/Album/07 - Title` name. When it finishes, it shows how many files changed and lists any it left alone, with the reason. Only one ingest or clean up runs at a time.
 
 Download jobs, playlists, favorites, and lyrics files follow each file. A file that a media server playlist still uses keeps its old name too, until the playlist updates. Clean up never takes a name that another file has, and it leaves Lidarr's files to Lidarr.
 

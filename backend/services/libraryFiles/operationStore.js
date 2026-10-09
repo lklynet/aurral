@@ -1,6 +1,6 @@
 import { db, dbHelpers } from "../../config/db-sqlite.js";
 
-export const ACTIVE_OPERATION_STATUSES = ["planning", "ready", "running"];
+export const ACTIVE_OPERATION_STATUSES = ["planning", "running"];
 const FINISHED_STATUSES = new Set(["complete", "failed", "cancelled"]);
 
 const toOperation = (row) => row && {

@@ -173,7 +173,7 @@ export async function applyCleanupItem(operation, item, context) {
   }
   if (!stat) return { status: "failed", reason: "The file is gone.", details };
   if (!matchesExpected(stat)) {
-    return { status: "skipped", reason: "The file changed after the preview. Run Clean up Library again.", details };
+    return { status: "skipped", reason: "The file changed while Aurral was checking it. Run Clean up Library again.", details };
   }
   if (actions.includes("rename") && details.results.rename !== "done") {
     try {
