@@ -390,7 +390,7 @@ function ActivityPage() {
             onClick={() => fetchRequests()}
             className="btn btn-secondary btn--bold btn-min-h"
           >
-            Try Again
+            Try again
           </button>
         </div>
       )}
@@ -411,7 +411,7 @@ function ActivityPage() {
             </p>
             {isQueueView && !hasActivityFilter && (
               <RouteLink to="/" className="btn btn-primary btn--bold btn-min-h">
-                Start Discovering
+                Start discovering
               </RouteLink>
             )}
           </div>

@@ -62,13 +62,13 @@ export function ArtistDetailsAppearsOn({
       <div className="artist-heading-row">
         <div className="artist-min-0">
           <div className="artist-controls-row">
-            <h2 className="artist-section-title">Appears On</h2>
+            <h2 className="artist-section-title">Appears on</h2>
             {loadingAppearsOn && <DotLoader size="sm" label={null} />}
           </div>
         </div>
         {viewAllLink ? (
           <RouteLink to={viewAllLink.to} state={viewAllLink.state} className="artist-link-button">
-            View All
+            View all
             <ArrowRight className="artist-icon-sm" />
           </RouteLink>
         ) : null}

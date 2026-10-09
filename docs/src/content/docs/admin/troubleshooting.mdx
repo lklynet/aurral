@@ -144,7 +144,7 @@ This section applies only when `AUTH_PROXY_ENABLED` or `AUTH_PROXY_HEADER` is se
 - Set `AUTH_PROXY_TRUSTED_IPS` before you expose Aurral.
 - Reload the page. Aurral shows its sign-in page when the browser has no valid session. A reload lets your proxy authenticate again.
 - A short backend restart does not sign out an open tab. If the log repeats `WebSocket server initialized` and `Server running`, the backend keeps restarting. Check the container or the file-watcher process.
-- If an error such as "Error Loading Artist" stays on the page, your proxy answers rejected API calls with a JSON error in Aurral's format. Let the proxy return its own redirect or `401` instead.
+- If an error such as "Error loading artist" stays on the page, your proxy answers rejected API calls with a JSON error in Aurral's format. Let the proxy return its own redirect or `401` instead.
 - For Authelia or another forward-auth proxy, set `AUTH_PROXY_DOMAIN` to your sign-in address.
 - For Authentik, `curl -i https://your-aurral-host/outpost.goauthentik.io/ping` must return `204`. If it returns Aurral HTML or another sign-in redirect, route `/outpost.goauthentik.io` directly to the Authentik outpost. Do not apply `auth_request` to that route.
 - If an Authentik logout returns to Aurral's sign-in page, set `AUTH_PROXY_LOGOUT_URL=https://your-aurral-host/outpost.goauthentik.io/sign_out`. Check the spelling of the variable name.

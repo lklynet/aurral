@@ -103,10 +103,10 @@ export function SettingsSystemTab({ health, settings, updateSettings, showSucces
           <div className="settings-system__row">
             <div className="settings-system__copy">
               <label className="settings-system__label" htmlFor="subsonic-favorite-auto-keep">
-                Favorite Flow tracks
+                Favorite flow tracks
               </label>
               <p className="settings-system__description">
-                Keep a Flow track in the permanent Library when a Subsonic client favorites it.
+                Keep a flow track in the permanent Library when a Subsonic client favorites it.
               </p>
             </div>
             <div className="settings-system__value">
@@ -122,7 +122,7 @@ export function SettingsSystemTab({ health, settings, updateSettings, showSucces
                     },
                   })
                 }
-                aria-label="Keep Flow tracks when favorited through Subsonic"
+                aria-label="Keep flow tracks when favorited through Subsonic"
               />
             </div>
           </div>

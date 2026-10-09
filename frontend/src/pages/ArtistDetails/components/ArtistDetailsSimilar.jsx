@@ -88,7 +88,7 @@ export function ArtistDetailsSimilar({
     <section className="artist-section">
       <div className="artist-similar-header">
         <h2 className="artist-section-title">
-          Fans Also Like
+          Fans also like
           {loadingSimilar && <DotLoader size="sm" label={null} />}
         </h2>
         <div className="artist-scroll-controls">

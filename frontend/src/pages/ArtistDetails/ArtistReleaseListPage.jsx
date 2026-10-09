@@ -60,7 +60,7 @@ const sortOptions = [
 const releaseTabs = [
   { value: "all", label: "All" },
   { value: "albums", label: "Albums" },
-  { value: "singles", label: "EP & Singles" },
+  { value: "singles", label: "EPs & singles" },
   { value: "compilations", label: "Compilations" },
 ];
 

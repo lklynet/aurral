@@ -337,7 +337,7 @@ export const AlbumCard = memo(
 );
 
 AlbumCard.displayName = "AlbumCard";
-export const ViewAllCard = memo(({ to, label = "View All" }) => {
+export const ViewAllCard = memo(({ to, label = "View all" }) => {
   return (
     <RouteLink to={to} className="artist-view-all-card--discover">
       <div className="artist-media-cell">

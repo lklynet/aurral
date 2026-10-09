@@ -86,7 +86,7 @@ export function AddArtistCustomizeModal({
             </div>
 
             <div>
-              <label className="artist-field-label">Root Folder</label>
+              <label className="artist-field-label">Root folder</label>
               <div className="artist-modal-field aurral-radius-round">
                 <select
                   className="artist-modal-select"
@@ -107,7 +107,7 @@ export function AddArtistCustomizeModal({
             </div>
 
             <div>
-              <label className="artist-field-label">Quality Profile</label>
+              <label className="artist-field-label">Quality profile</label>
               <div className="artist-modal-field aurral-radius-round">
                 <select
                   className="artist-modal-select"

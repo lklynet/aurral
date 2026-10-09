@@ -118,7 +118,7 @@ export const formatLifeSpan = (lifeSpan) => {
 
 export const getArtistType = (type) => {
   const types = {
-    Person: "Solo Artist",
+    Person: "Solo artist",
     Group: "Band",
     Orchestra: "Orchestra",
     Choir: "Choir",

@@ -9,7 +9,7 @@ import { DotLoader } from "../components/DotLoader";
 import { SkeletonCardGrid, SkeletonStatus } from "../components/Skeletons";
 
 export default function NewsPage() {
-  useDocumentTitle("Artist News");
+  useDocumentTitle("Artist news");
   const { user, bootstrap } = useAuth();
   const newsConfigured = bootstrap?.newsConfigured === true;
   const [highlightedOnly, setHighlightedOnly] = useState(false);
@@ -43,7 +43,7 @@ export default function NewsPage() {
     <div className="artist-discover-page discover-news-page">
       <header className="discover-news-page__header">
         <div>
-          <h1 className="page-title">Artist News</h1>
+          <h1 className="page-title">Artist news</h1>
         </div>
         {newsConfigured ? (
           <button

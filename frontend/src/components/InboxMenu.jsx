@@ -50,8 +50,8 @@ const FILTER_OPTIONS = [
   { value: "all", label: "All notifications" },
   { value: "release", label: "Releases" },
   { value: "show", label: "Shows" },
-  { value: "news", label: "Library Artist news" },
-  { value: "recommendedNews", label: "Recommended Artist news" },
+  { value: "news", label: "Library artist news" },
+  { value: "recommendedNews", label: "Recommended artist news" },
   { value: "discovery", label: "Discoveries" },
 ];
 
@@ -119,7 +119,7 @@ function InboxItem({ item, onRemove, onOpen, pendingAction }) {
         </button>
       )}
       <span className="app-inbox-menu__item-actions">
-        <Tooltip content="Remove from Inbox">
+        <Tooltip content="Remove from inbox">
           <button
             type="button"
             className="app-inbox-menu__item-action"

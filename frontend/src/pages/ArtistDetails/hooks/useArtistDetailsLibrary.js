@@ -812,7 +812,7 @@ export function useArtistDetailsLibrary({
     }
     return {
       status: "unmonitored",
-      label: "Not Monitored",
+      label: "Not monitored",
       libraryId: album.id,
       albumInfo: album,
     };

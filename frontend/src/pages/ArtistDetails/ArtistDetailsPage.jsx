@@ -276,7 +276,7 @@ function ArtistDetailsPage() {
       return;
     }
     if (deezerArtistId && !/^\d+$/.test(deezerArtistId)) {
-      setIdsError("Deezer Artist ID must be numeric.");
+      setIdsError("Deezer artist ID must be numeric.");
       return;
     }
     setIdsError("");
@@ -481,10 +481,10 @@ function ArtistDetailsPage() {
       <div className="artist-error-panel">
         <div>
           <Music className="artist-error-icon" />
-          <h3 className="artist-error-title">Error Loading Artist</h3>
+          <h3 className="artist-error-title">Error loading artist</h3>
           <p className="artist-error-copy">{error}</p>
           <RouteLink to="/search" className="btn btn-primary artist-hidden-mobile">
-            Back to Search
+            Back to search
           </RouteLink>
         </div>
       </div>
@@ -757,7 +757,7 @@ function EditArtistIdsModal({
       >
         <div className="artist-modal__header">
           <h3 id={titleId} className="artist-modal__title">
-            Edit Artist IDs
+            Edit artist IDs
           </h3>
           <TooltipButton
             type="button"
@@ -791,7 +791,7 @@ function EditArtistIdsModal({
             />
           </div>
           <div>
-            <label className="artist-field-label">Deezer Artist ID</label>
+            <label className="artist-field-label">Deezer artist ID</label>
             <input
               type="text"
               value={values.deezerArtistId}

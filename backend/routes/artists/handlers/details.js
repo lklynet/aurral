@@ -92,7 +92,7 @@ export function registerDetails(router) {
 
     if (deezerArtistId && !/^\d+$/.test(deezerArtistId)) {
       return res.status(400).json({
-        error: "Invalid Deezer Artist ID",
+        error: "Invalid Deezer artist ID",
         message: `"${deezerArtistId}" must be a numeric Deezer artist ID.`,
       });
     }
