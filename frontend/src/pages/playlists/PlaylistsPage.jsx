@@ -20,6 +20,7 @@ import {
   usePlaylistArtwork,
 } from "./playlistPageUtils";
 import { usePlaylistStatus } from "./usePlaylistStatus";
+import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.js";
 import { playlistPath } from "../../navigation/playlistPaths";
 
 const PlaylistImportModal = lazy(() =>
@@ -48,6 +49,7 @@ export default function PlaylistsPage() {
   const { showSuccess, showError } = useToast();
   const { status, loading, error, fetchStatus, getPlaylistStats, staticPlaylists } =
     usePlaylistStatus();
+  const hiddenTracks = useHiddenPlaylistTracks();
   const { artworkUrlFor } = usePlaylistArtwork();
   const [importOpen, setImportOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -90,7 +92,11 @@ export default function PlaylistsPage() {
   };
 
   const describePlaylist = (playlist) => {
-    const parts = [formatTrackTotal(getStaticPlaylistTrackCount(playlist, getPlaylistStats(playlist.id)))];
+    const hiddenCount = hiddenTracks.get(playlist.id)?.size || 0;
+    const parts = [formatTrackTotal(Math.max(
+      0,
+      getStaticPlaylistTrackCount(playlist, getPlaylistStats(playlist.id)) - hiddenCount,
+    ))];
     if (playlist.ownerUsername && (user?.role === "admin" || playlist.ownerUsername !== user?.username)) {
       parts.unshift(playlist.ownerUsername);
     }

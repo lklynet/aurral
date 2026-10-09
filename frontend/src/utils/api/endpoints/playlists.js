@@ -235,8 +235,8 @@ export const syncStaticPlaylistImport = (playlistId) =>
 export const getFlowLidarrImportListUrl = (flowId) =>
   getData(`/playlists/flows/${encodeURIComponent(flowId)}/lidarr-import-list`);
 
-export const removeStaticPlaylistTracks = (playlistId, jobIds) =>
-  postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/track-removals`, { jobIds });
+export const removeStaticPlaylistTracks = (playlistId, jobIds, options) =>
+  postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/track-removals`, { jobIds }, options);
 
 export const moveStaticPlaylistTracks = (playlistId, jobIds, target) =>
   postData(`/playlists/shared-playlists/${encodeURIComponent(playlistId)}/track-moves`, { jobIds, target });

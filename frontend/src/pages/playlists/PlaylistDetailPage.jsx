@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { Clock, Download, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
@@ -37,6 +37,7 @@ import {
 } from "./playlistPageUtils";
 import { countAvailableTracks } from "./trackAvailability.js";
 import { usePlaylistStatus } from "./usePlaylistStatus";
+import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.js";
 
 function updateCachedPlaylist(playlistId, changes) {
   queryClient.setQueryData(queryKeys.playlistStatus, (current) =>
@@ -108,9 +109,14 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
   const { showSuccess, showError } = useToast();
   const { artworkUrlFor } = usePlaylistArtwork();
   const showTrackAvailability = playlist.showTrackAvailability === true;
-  const { tracks, loading, error, refresh } = usePlaylistTracks(playlist.id, {
+  const { tracks: savedTracks, loading, error, refresh } = usePlaylistTracks(playlist.id, {
     pollAvailability: showTrackAvailability,
   });
+  const hiddenTrackIds = useHiddenPlaylistTracks().get(playlist.id);
+  const tracks = useMemo(
+    () => (hiddenTrackIds ? savedTracks.filter((track) => !hiddenTrackIds.has(track.id)) : savedTracks),
+    [hiddenTrackIds, savedTracks],
+  );
   const playbackSource = {
     type: "playlist",
     id: playlist.id,
@@ -128,7 +134,10 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
   const importSource = playlist.importSource || null;
   const isSyncable = SYNCABLE_IMPORT_PROVIDERS.has(importSource?.provider);
   const providerLabel = isSyncable ? getImportedProviderLabel(importSource.provider) : "";
-  const totalTracks = getStaticPlaylistTrackCount(playlist, stats, tracks.length);
+  const totalTracks = Math.max(
+    0,
+    getStaticPlaylistTrackCount(playlist, stats, savedTracks.length) - (savedTracks.length - tracks.length),
+  );
   const trackLabel =
     showTrackAvailability && !loading && !error
       ? `${countAvailableTracks(tracks)}/${totalTracks} available`

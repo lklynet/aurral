@@ -14,7 +14,13 @@ const ToastContext = createContext();
 
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
+  const toastsRef = useRef([]);
   const nextToastIdRef = useRef(0);
+
+  const replaceToasts = useCallback((next) => {
+    toastsRef.current = next;
+    setToasts(next);
+  }, []);
 
   const addToast = useCallback((message, type = "info", duration = 3000) => {
     const id = `${Date.now()}-${nextToastIdRef.current++}`;
@@ -24,16 +30,21 @@ export function ToastProvider({ children }) {
       ("message" in message || "title" in message || "description" in message || "action" in message)
         ? message
         : { message };
-    setToasts((prev) => [
+    const next = [
       { ...content, id, type, duration: content.duration ?? duration },
-      ...prev,
-    ].slice(0, MAX_TOASTS));
+      ...toastsRef.current,
+    ];
+    replaceToasts(next.slice(0, MAX_TOASTS));
+    next.slice(MAX_TOASTS).forEach((toast) => toast.onClose?.());
     return id;
-  }, []);
+  }, [replaceToasts]);
 
   const removeToast = useCallback((id) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
-  }, []);
+    const toast = toastsRef.current.find((entry) => entry.id === id);
+    if (!toast) return;
+    replaceToasts(toastsRef.current.filter((entry) => entry.id !== id));
+    toast.onClose?.();
+  }, [replaceToasts]);
 
   const showSuccess = useCallback(
     (message, duration) => {

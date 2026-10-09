@@ -5,7 +5,6 @@ import { useNavigate } from "react-router";
 import {
   addStaticPlaylistTracks,
   createStaticPlaylist,
-  deleteStaticPlaylistTrack,
   reSearchFlowTrack,
   reSearchStaticPlaylistTrack,
   searchTrackUpgrade,
@@ -21,8 +20,10 @@ import {
   resolveLibraryArtistPath,
 } from "../../navigation/resolveLinks.js";
 import { useToast } from "../../contexts/ToastContext";
+import { showFavoriteRemoved } from "../../utils/favoriteUndo.js";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import { PlaylistTracksPanel } from "./components/playlistTrackComponents.jsx";
+import { trackCountLabel } from "./playlistTrackChanges.js";
 import ManualMissingSearchModal from "../activity/ManualMissingSearchModal.jsx";
 import LibraryInfoModal from "../LibraryInfoModal.jsx";
 import { getTrackSearchAction } from "./trackAvailability.js";
@@ -34,8 +35,6 @@ import {
 
 const errorMessage = (err, fallback) =>
   err?.response?.data?.message || err?.response?.data?.error || err?.message || fallback;
-
-const trackCountLabel = (count) => `${count} track${count === 1 ? "" : "s"}`;
 
 export function PlaylistTracks({
   entry,
@@ -54,7 +53,8 @@ export function PlaylistTracks({
   const isFlow = kind === "flow";
   const bulkActions = usePlaylistBulkActions();
   const navigate = useNavigate();
-  const { showSuccess, showError } = useToast();
+  const toast = useToast();
+  const { showSuccess, showError } = toast;
   const [reSearchingTrackIds, setReSearchingTrackIds] = useState({});
   const [manualReplacement, setManualReplacement] = useState(null);
   const [trackInfo, setTrackInfo] = useState(null);
@@ -62,7 +62,6 @@ export function PlaylistTracks({
   const [playlistMenuError, setPlaylistMenuError] = useState("");
   const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
   const [favoriteTrackSavingKey, setFavoriteTrackSavingKey] = useState("");
-  const [deletingTrackId, setDeletingTrackId] = useState(null);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [trackArtworkByAlbumMbid, setTrackArtworkByAlbumMbid] = useState({});
 
@@ -124,36 +123,28 @@ export function PlaylistTracks({
     await refresh();
   };
 
-  const saveTrackToPlaylist = async (track, target, { moveFromPlaylistId = null } = {}) => {
+  const saveTrackToPlaylist = async (track, target) => {
     const payload = normalizePlaylistTrackEntry(track);
     if (!payload) {
       showError("Track details are incomplete");
       return;
     }
+    if (playlistMenuSavingKey) return;
     setPlaylistMenuError("");
     setPlaylistMenuSavingKey(String(track?.id ?? ""));
+    const targetName = target?.mode === "new"
+      ? String(target?.name || "").trim() || getNextPlaylistName(`${payload.artistName} Picks`)
+      : staticPlaylists.find((playlist) => playlist.id === target?.playlistId)?.name || "the playlist";
     try {
-      let targetName;
       if (target?.mode === "new") {
-        const name =
-          String(target?.name || "").trim() || getNextPlaylistName(`${payload.artistName} Picks`);
-        const response = await createStaticPlaylist({ name, tracks: [payload] });
-        targetName = response?.playlist?.name || name;
+        await createStaticPlaylist({ name: targetName, tracks: [payload] });
       } else {
         await addStaticPlaylistTracks(target.playlistId, { tracks: [payload] });
-        targetName =
-          staticPlaylists.find((playlist) => playlist.id === target?.playlistId)?.name ||
-          "playlist";
       }
-      if (moveFromPlaylistId && track?.id) {
-        await deleteStaticPlaylistTrack(moveFromPlaylistId, track.id);
-        showSuccess(`Track moved to ${targetName}`);
-      } else {
-        showSuccess(`Track added to ${targetName}`);
-      }
-      await refreshAll();
+      showSuccess(`Added ${payload.trackName} to ${targetName}`);
+      void refreshAll();
     } catch (err) {
-      const message = errorMessage(err, "Failed to save track to playlist");
+      const message = `Could not add ${payload.trackName} to ${targetName}. Nothing was added. ${errorMessage(err, "Try again.")}`;
       setPlaylistMenuError(message);
       showError(message);
     } finally {
@@ -167,23 +158,23 @@ export function PlaylistTracks({
       showError("No valid tracks to add");
       return;
     }
+    if (bulkActionLoading) return;
     setBulkActionLoading(true);
+    const targetName = target?.mode === "new"
+      ? String(target?.name || "").trim() || getNextPlaylistName("Playlist")
+      : staticPlaylists.find((playlist) => playlist.id === target?.playlistId)?.name || "the playlist";
     try {
-      let targetName;
       if (target?.mode === "new") {
-        const name = String(target?.name || "").trim() || getNextPlaylistName("Playlist");
-        const response = await createStaticPlaylist({ name, tracks: payloads });
-        targetName = response?.playlist?.name || name;
+        await createStaticPlaylist({ name: targetName, tracks: payloads });
       } else {
         await addStaticPlaylistTracks(target.playlistId, { tracks: payloads });
-        targetName =
-          staticPlaylists.find((playlist) => playlist.id === target?.playlistId)?.name ||
-          "playlist";
       }
       showSuccess(`Added ${trackCountLabel(payloads.length)} to ${targetName}`);
-      await refreshAll();
+      void refreshAll();
     } catch (err) {
-      showError(errorMessage(err, "Failed to add tracks"));
+      showError(
+        `Could not add ${trackCountLabel(payloads.length)} to ${targetName}. Nothing was added. ${errorMessage(err, "Try again.")}`,
+      );
     } finally {
       setBulkActionLoading(false);
     }
@@ -194,24 +185,7 @@ export function PlaylistTracks({
       ? { ...target, name: String(target.name || "").trim() || getNextPlaylistName("Playlist") }
       : target);
 
-  const handleDeleteTrack = async (track) => {
-    const jobId = track?.id;
-    if (!jobId || deletingTrackId === jobId) return;
-    setDeletingTrackId(jobId);
-    try {
-      const result = await deleteStaticPlaylistTrack(entry.id, jobId);
-      showSuccess(
-        result?.queued
-          ? `Removal queued for ${track.trackName || "track"}`
-          : `Removed ${track.trackName || "track"}`,
-      );
-      await refreshAll();
-    } catch (err) {
-      showError(errorMessage(err, "Failed to remove track"));
-    } finally {
-      setDeletingTrackId(null);
-    }
-  };
+  const handleDeleteTrack = (track) => bulkActions.removeTracks(entry, [track]);
 
   const handleReSearchTrack = async (track, forceReplacementSearch = false) => {
     const jobId = track?.id;
@@ -337,23 +311,36 @@ export function PlaylistTracks({
     const nextStarred = !favoriteTrackIds.has(id);
     const favoriteQueryKey = queryKeys.libraryFavorites;
     setFavoriteTrackSavingKey(id);
+    const name = track.trackName || "track";
+    const setStarred = (starred) => queryClient.setQueryData(favoriteQueryKey, (current = {}) => {
+      const songs = Array.isArray(current.song) ? current.song : [];
+      const withoutTrack = songs.filter((song) => String(song?.id || "") !== id);
+      return { ...current, song: starred ? [...withoutTrack, { id }] : withoutTrack };
+    });
     let previous;
     let optimistic;
     try {
       await queryClient.cancelQueries({ queryKey: favoriteQueryKey });
       previous = queryClient.getQueryData(favoriteQueryKey);
-      optimistic = queryClient.setQueryData(favoriteQueryKey, (current = {}) => {
-        const songs = Array.isArray(current.song) ? current.song : [];
-        const withoutTrack = songs.filter((song) => String(song?.id || "") !== id);
-        return { ...current, song: nextStarred ? [...withoutTrack, { id }] : withoutTrack };
-      });
-      await updateLibraryFavorites([id], nextStarred);
-      showSuccess(nextStarred ? "Added to favorites" : "Removed from favorites");
+      optimistic = setStarred(nextStarred);
+      const result = await updateLibraryFavorites([id], nextStarred);
+      if (nextStarred) {
+        showSuccess(`Added ${name} to favorites`);
+      } else {
+        showFavoriteRemoved(toast, {
+          name,
+          removed: result?.removed,
+          restore: () => setStarred(true),
+          revert: () => setStarred(false),
+        });
+      }
     } catch (err) {
       if (optimistic && queryClient.getQueryData(favoriteQueryKey) === optimistic) {
         queryClient.setQueryData(favoriteQueryKey, previous);
       }
-      showError(errorMessage(err, "Failed to update favorites"));
+      showError(
+        `Could not ${nextStarred ? "add" : "remove"} ${name} ${nextStarred ? "to" : "from"} favorites. Nothing changed. ${errorMessage(err, "Try again.")}`,
+      );
     } finally {
       void queryClient.invalidateQueries({ queryKey: favoriteQueryKey }).catch(() => {});
       setFavoriteTrackSavingKey("");
@@ -377,7 +364,7 @@ export function PlaylistTracks({
         activityHint={activityHint}
         emptyMessage={emptyMessage}
         allowBulkEdit={!isFlow}
-        bulkActionLoading={bulkActionLoading || bulkActions.bulkLoading}
+        bulkActionLoading={bulkActionLoading}
         onBulkDelete={isFlow ? undefined : (selected) => bulkActions.removeTracks(entry, selected)}
         onBulkAddToPlaylist={
           isFlow ? undefined : (selected, target) => copyTracks(selected, target)
@@ -394,16 +381,11 @@ export function PlaylistTracks({
         }
         onLoadPlaylists={() => setPlaylistMenuError("")}
         reSearchingTrackIds={reSearchingTrackIds}
-        deletingTrackId={isFlow ? undefined : deletingTrackId}
         onReSearchTrack={handleReSearchTrack}
         onManualReSearchTrack={(track) => track?.id && setManualReplacement(track)}
         onDeleteTrack={isFlow ? undefined : handleDeleteTrack}
         onAddTrackToPlaylist={saveTrackToPlaylist}
-        onMoveTrackToPlaylist={
-          isFlow
-            ? undefined
-            : (track, target) => saveTrackToPlaylist(track, target, { moveFromPlaylistId: entry.id })
-        }
+        onMoveTrackToPlaylist={isFlow ? undefined : (track, target) => moveTracks([track], target)}
         onAddTrackToLibrary={handleAddTrackToLibrary}
         onViewTrackInfo={(track) =>
           setTrackInfo({
