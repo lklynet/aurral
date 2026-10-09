@@ -15583,6 +15583,93 @@ button.native-library-genre-row:focus-visible {
   backdrop-filter: blur(5px);
 }
 
+:is(
+    .artist-modal-backdrop,
+    .playlist-modal-backdrop,
+    .arr-modal-backdrop,
+    .file-browser-modal-backdrop,
+    .app-update-indicator__popover,
+    .app-profile-menu__dropdown,
+    .app-inbox-menu__dropdown,
+    .global-search__suggestions,
+    .flow-page__token-suggestions,
+    .artist-nearby-zip-editor
+  ) {
+  transition:
+    opacity var(--aurral-duration-base) var(--aurral-ease-out),
+    translate var(--aurral-duration-base) var(--aurral-ease-emphasized);
+}
+
+@starting-style {
+  :is(
+      .artist-modal-backdrop,
+      .playlist-modal-backdrop,
+      .arr-modal-backdrop,
+      .file-browser-modal-backdrop
+    ) {
+    opacity: 0;
+  }
+
+  :is(
+      .app-update-indicator__popover,
+      .app-profile-menu__dropdown,
+      .app-inbox-menu__dropdown,
+      .global-search__suggestions,
+      .flow-page__token-suggestions,
+      .artist-nearby-zip-editor
+    ) {
+    opacity: 0;
+    translate: 0 -0.25rem;
+  }
+}
+
+@media (min-width: 768px) {
+  :is(
+      .artist-modal,
+      .artist-customize-modal,
+      .file-browser-modal,
+      .settings-page__modal,
+      .playlist-modal,
+      .arr-modal,
+      .native-library-item-menu__panel,
+      .artist-dropdown,
+      .artist-options-menu,
+      .artist-floating-menu,
+      .artist-playlist-menu
+    ) {
+    transition:
+      opacity var(--aurral-duration-base) var(--aurral-ease-out),
+      translate var(--aurral-duration-base) var(--aurral-ease-emphasized),
+      scale var(--aurral-duration-base) var(--aurral-ease-emphasized);
+  }
+
+  @starting-style {
+    :is(
+        .artist-modal,
+        .artist-customize-modal,
+        .file-browser-modal,
+        .settings-page__modal,
+        .playlist-modal,
+        .arr-modal
+      ) {
+      opacity: 0;
+      translate: 0 0.5rem;
+      scale: 0.98;
+    }
+
+    :is(
+        .native-library-item-menu__panel,
+        .artist-dropdown,
+        .artist-options-menu,
+        .artist-floating-menu,
+        .artist-playlist-menu
+      ) {
+      opacity: 0;
+      scale: 0.97;
+    }
+  }
+}
+
 .app-mobile-backdrop.is-open {
   background: var(--aurral-scrim);
   backdrop-filter: blur(5px);
