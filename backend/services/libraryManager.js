@@ -1667,6 +1667,7 @@ export class LibraryManager {
           releaseYear: album.releaseDate ? String(album.releaseDate).slice(0, 4) : null,
           durationMs: track.metadata?.durationMs,
           trackNumber: relation?.trackNumber || 0,
+          discNumber: relation?.discNumber || null,
           albumTrackCount: albumTracks.length,
           albumTrackTitles,
           artistAliases: artistAliasesFor(track),

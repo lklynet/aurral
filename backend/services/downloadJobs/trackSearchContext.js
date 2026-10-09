@@ -159,10 +159,14 @@ function _flattenReleaseTracks(releaseData) {
   return tracks;
 }
 
-export function matchTrackByTitle(tracks, trackName, trackNumber = null) {
+export function matchTrackByTitle(tracks, trackName, trackNumber = null, discNumber = null) {
   const safeTrackName = String(trackName || "").trim();
   if (!safeTrackName) return null;
   const expectedTrackNumber = Number(trackNumber);
+  const expectedDiscNumber = Number(discNumber) > 0 ? Number(discNumber) : 1;
+  const positionMatch = (track) =>
+    (Number(track.trackNumber) === expectedTrackNumber ? 2 : 0)
+    + (Number(track.discNumber || 1) === expectedDiscNumber ? 1 : 0);
   const best =
     [...(Array.isArray(tracks) ? tracks : [])]
       .map((track) => ({
@@ -173,9 +177,7 @@ export function matchTrackByTitle(tracks, trackName, trackNumber = null) {
         const scoreDifference = right._score - left._score;
         if (scoreDifference !== 0) return scoreDifference;
         if (!Number.isFinite(expectedTrackNumber) || expectedTrackNumber <= 0) return 0;
-        const leftMatches = Number(left.trackNumber) === expectedTrackNumber ? 1 : 0;
-        const rightMatches = Number(right.trackNumber) === expectedTrackNumber ? 1 : 0;
-        return rightMatches - leftMatches;
+        return positionMatch(right) - positionMatch(left);
       })[0] || null;
   if (!best || best._score < 82) return null;
   return best;
@@ -195,6 +197,7 @@ function applyReleaseContext(base, releaseContext) {
     releaseContext?.tracks,
     base.trackName,
     base.trackNumber,
+    base.discNumber,
   );
   const existingTrackMbid = String(base.trackMbid || "").trim().toLowerCase();
   let identityMatchedTrack = null;
@@ -205,6 +208,7 @@ function applyReleaseContext(base, releaseContext) {
       ),
       base.trackName,
       base.trackNumber,
+      base.discNumber,
     );
     if (!identityMatchedTrack) {
       identityMatchedTrack = matchTrackByTitle(
@@ -213,6 +217,7 @@ function applyReleaseContext(base, releaseContext) {
         ),
         base.trackName,
         base.trackNumber,
+        base.discNumber,
       );
     }
   }
@@ -232,6 +237,7 @@ function applyReleaseContext(base, releaseContext) {
       matchedTrack.trackNumber != null && Number.isFinite(Number(matchedTrack.trackNumber))
         ? Number(matchedTrack.trackNumber)
         : null;
+    base.discNumber = base.trackNumber ? matchedTrack.discNumber || null : null;
   }
   base.albumTrackCount = matchedTrack?.releaseTrackCount ?? releaseContext?.albumTrackCount ?? null;
   base.albumTrackTitles = Array.isArray(matchedTrack?.releaseTrackTitles)
@@ -249,6 +255,7 @@ function mapReleaseContextTracks(release) {
     id: track.id || null,
     title: track.title,
     trackNumber: track.trackPosition || track.trackNumber || null,
+    discNumber: track.mediumNumber || null,
     durationMs: track.durationMs || null,
     recordingId: track.recordingId || null,
     releaseTrackCount: source.length || null,
@@ -447,6 +454,7 @@ export async function resolveTrackSearchContext(track) {
     base.albumTrackCount = null;
     base.albumTrackTitles = [];
     base.trackNumber = null;
+    base.discNumber = null;
   }
 
   base.durationMs = pickResolvedDurationMs({

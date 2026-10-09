@@ -27,6 +27,7 @@ function jobMetadata(filePath) {
     trackMbid: job.trackMbid,
     releaseYear: job.releaseYear,
     trackNumber: job.trackNumber,
+    discNumber: job.discNumber,
   } : null;
 }
 

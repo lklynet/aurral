@@ -186,7 +186,8 @@ export function SettingsLibraryFilesTab({ showError }) {
 
         <SettingsArrFieldSet legend="Clean up Library">
           <div className="arr-info">
-            Renames Library files in the Downloads Folder to Aurral&apos;s names, <code>Artist/Album/07 - Title.flac</code>,
+            Renames Library files in the Downloads Folder to Aurral&apos;s names, <code>Artist/Album/07 - Title.flac</code>
+            or <code>2-07 - Title.flac</code> past the first disc,
             and fills in the tags they are missing, for music you added by hand. Playlists, favorites, and media
             servers follow the files. Lidarr&apos;s files stay with Lidarr. Downloads already get these names and tags.
           </div>
