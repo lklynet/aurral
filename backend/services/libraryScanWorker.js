@@ -273,7 +273,12 @@ export function beginLibraryScanJob(jobId, payload) {
       (isCurrentJob && registry.includeLidarr === true);
     const force = payload?.force === true ||
       (isCurrentJob && registry.force === true);
-    const changedPaths = resolveLibraryScanChangedPaths(registry, force);
+    const interrupted = isCurrentJob && registry.inFlightActive === true;
+    const changedPaths = interrupted && !force
+      ? (Array.isArray(registry.inFlightPaths) && Array.isArray(registry.changedPaths)
+        ? mergeChangedPaths(registry.inFlightPaths, registry.changedPaths)
+        : null)
+      : resolveLibraryScanChangedPaths(registry, force);
     if (isCurrentJob) {
       setScanRegistry({
         ...registry,
