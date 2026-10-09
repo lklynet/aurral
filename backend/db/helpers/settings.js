@@ -54,7 +54,6 @@ export function normalizeLibraryFilesSettings(raw) {
   const files = raw && typeof raw === "object" ? raw : {};
   return {
     rename: files.rename === true,
-    retag: files.retag === true,
   };
 }
 

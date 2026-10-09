@@ -55,7 +55,6 @@ const defaultSettings = {
   },
   libraryFiles: {
     rename: false,
-    retag: false,
   },
   reviewTimeoutHours: 0,
   releaseTypes: allReleaseTypes,

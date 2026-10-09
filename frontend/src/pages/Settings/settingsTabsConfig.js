@@ -165,15 +165,14 @@ const SETTINGS_SEARCH_METADATA = {
     sections: ["File naming", "Organize the Library", "Ingest a folder"],
     services: {
       Ingest: "import existing music library folder move copy hardlink Lidarr root",
-      Organize: "rename retag upgrade files media management",
+      Organize: "rename upgrade files media management",
     },
     fields: {
       "Rename files": "naming folders file names Artist Album Title organize",
-      "Write tags": "retag tagging MusicBrainz IDs genre metadata",
       "Upgrade every monitored track": "quality upgrades library tracks cutoff",
       Folder: "source folder existing music import",
       Mode: "move copy hardlink",
-      "Preview changes": "organize rename retag upgrade preview",
+      "Preview changes": "organize rename upgrade preview",
       "Preview ingest": "ingest import preview",
     },
   },

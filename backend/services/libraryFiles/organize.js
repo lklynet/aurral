@@ -1,21 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { parseFile } from "music-metadata";
 import { db } from "../../config/db-sqlite.js";
 import { dbOps } from "../../db/helpers/index.js";
 import { buildLibraryTrackPath, isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.js";
-import { writeLibraryTags } from "../downloadUtils.js";
 import { downloadTracker } from "../downloadJobs/downloadTracker.js";
-import {
-  getLibraryMediaFile,
-  isSameLibraryName,
-  moveLibraryMediaFilePath,
-} from "../libraryMediaStore.js";
-import {
-  getAlbumByMbid,
-  resolveAlbumByArtistAndTitle,
-  selectAlbumRelease,
-} from "../providers/brainzmashProvider.js";
+import { getLibraryMediaFile, moveLibraryMediaFilePath } from "../libraryMediaStore.js";
 import {
   classifyLibraryFileQuality,
   getQualityProfile,
@@ -23,7 +12,6 @@ import {
   queueQualityUpgrade,
 } from "../qualityProfileService.js";
 import { getQualityState, getQualityTier } from "../qualityProfileModel.js";
-import { adoptLibraryFileIdentity } from "./fileIdentity.js";
 import { placeFile, removeEmptyDirectories, transferSidecars } from "./fileTransfer.js";
 import {
   addLibraryFileOperationItems,
@@ -31,9 +19,8 @@ import {
   updateLibraryFileOperationItem,
 } from "./operationStore.js";
 
-export const ORGANIZE_ACTIONS = ["rename", "retag", "upgrade"];
+export const ORGANIZE_ACTIONS = ["rename", "upgrade"];
 const ALBUM_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
-const LENGTH_TOLERANCE_MS = 15000;
 
 export class OrganizeOptionsError extends Error {
   constructor(message) {
@@ -82,107 +69,11 @@ function scopeAlbumIds({ kind, id }) {
   ).pluck().all();
 }
 
-const text = (value) => String(Array.isArray(value) ? value[0] ?? "" : value ?? "").trim();
-const yearOf = (value) => String(value || "").match(/^\d{4}/)?.[0] || "";
-
-async function resolveMusicBrainzAlbum(album, artist) {
-  for (const mbid of [...new Set([album.release_group_mbid, album.mbid].filter(Boolean))]) {
-    const found = await getAlbumByMbid(mbid).catch(() => null);
-    if (found?.id) return found;
-  }
-  const releaseGroup = await resolveAlbumByArtistAndTitle({
-    artistName: artist?.name || album.album_artist || "",
-    albumTitle: album.title,
-    releaseYear: yearOf(album.release_date) || null,
-  });
-  if (!releaseGroup) return null;
-  const found = await getAlbumByMbid(releaseGroup);
-  const artists = Array.isArray(found?.artists) ? found.artists : [];
-  const sameArtist = artist?.mbid
-    ? found?.artistId === artist.mbid || artists.some((entry) => entry.id === artist.mbid)
-    : artists.some((entry) => isSameLibraryName(entry.name, artist?.name));
-  return sameArtist ? found : null;
-}
-
-const atFilePosition = (file) => (entry) => entry.trackNumber === file.track_number
-  && (!file.disc_number || (entry.mediumNumber || 1) === file.disc_number);
-
-function matchMusicBrainzTrack(mbAlbum, file, recordingMbid) {
-  const chosen = selectAlbumRelease(mbAlbum);
-  const releases = [chosen, ...(mbAlbum.releases || []).filter((release) => release !== chosen)].filter(Boolean);
-  if (recordingMbid) {
-    for (const release of releases) {
-      let tracks = (release.tracks || []).filter((entry) =>
-        entry.recordingId === recordingMbid || entry.oldRecordingIds?.includes(recordingMbid));
-      if (tracks.length > 1) tracks = file.track_number ? tracks.filter(atFilePosition(file)) : [];
-      if (tracks.length === 1) return { release, track: tracks[0] };
-      if (tracks.length > 1) return null;
-    }
-    return null;
-  }
-  let candidates = (chosen?.tracks || []).filter((entry) => isSameLibraryName(entry.title, file.title));
-  if (candidates.length > 1 && file.track_number) candidates = candidates.filter(atFilePosition(file));
-  if (candidates.length !== 1) return null;
-  const [track] = candidates;
-  if (file.duration_ms && track.durationMs && Math.abs(file.duration_ms - track.durationMs) > LENGTH_TOLERANCE_MS) {
-    return null;
-  }
-  return { release: chosen, track };
-}
-
-function desiredTags(mbAlbum, { release, track }, current) {
-  const artists = Array.isArray(mbAlbum.artists) ? mbAlbum.artists : [];
-  const albumArtist = artists.find((entry) => entry.id === mbAlbum.artistId) || artists[0] || null;
-  const trackArtist = artists.find((entry) => entry.id === track.artistId);
-  return {
-    title: track.title,
-    artist: trackArtist?.name || text(current.artist) || albumArtist?.name,
-    albumArtist: albumArtist?.name || text(current.albumartist),
-    album: mbAlbum.title,
-    year: yearOf(mbAlbum.releaseDate),
-    trackNumber: track.trackNumber || null,
-    discNumber: track.mediumNumber || 1,
-    genre: (mbAlbum.genres || []).slice(0, 5).join("; "),
-    artistMbid: track.artistId || mbAlbum.artistId,
-    albumArtistMbid: mbAlbum.artistId,
-    releaseGroupMbid: mbAlbum.id,
-    releaseMbid: release.id,
-    recordingMbid: track.recordingId,
-  };
-}
-
-const TAG_FIELDS = [
-  ["Title", (common) => text(common.title), (tags) => tags.title],
-  ["Artist", (common) => text(common.artist), (tags) => tags.artist],
-  ["Album artist", (common) => text(common.albumartist), (tags) => tags.albumArtist],
-  ["Album", (common) => text(common.album), (tags) => tags.album],
-  ["Year", (common) => yearOf(common.date || common.year), (tags) => tags.year],
-  ["Track", (common) => text(common.track?.no), (tags) => text(tags.trackNumber)],
-  ["Disc", (common) => text(common.disk?.no), (tags) => text(tags.discNumber)],
-  ["Genre", (common) => (Array.isArray(common.genre) ? common.genre : []).join("; "), (tags) => tags.genre],
-  [
-    "MusicBrainz IDs",
-    (common) => [
-      common.musicbrainz_artistid, common.musicbrainz_albumartistid, common.musicbrainz_releasegroupid,
-      common.musicbrainz_albumid, common.musicbrainz_recordingid || common.musicbrainz_trackid,
-    ].map(text).join(" "),
-    (tags) => [
-      tags.artistMbid, tags.albumArtistMbid, tags.releaseGroupMbid, tags.releaseMbid, tags.recordingMbid,
-    ].map(text).join(" "),
-  ],
-];
-
-function tagChanges(common, tags) {
-  return TAG_FIELDS
-    .map(([field, read, wanted]) => ({ field, from: read(common), to: text(wanted(tags)) }))
-    .filter((change) => change.to && change.from !== change.to);
-}
-
 function albumFiles(albumId, root) {
   const seen = new Set();
   return db.prepare(
     `SELECT media.id, media.path, media.track_id, media.album_id, media.size, media.mtime_ms,
-       media.duration_ms, media.quality_json, track.title, track.mbid AS track_mbid, track.monitored,
+       media.duration_ms, media.quality_json, track.title, track.monitored,
        link.disc_number, link.track_number
      FROM library_media_files AS media
      JOIN library_tracks AS track ON track.id = media.track_id
@@ -202,55 +93,18 @@ async function planAlbum(operation, albumId, context) {
   if (!album) return { items: [], unchanged: 0 };
   const artist = db.prepare("SELECT * FROM library_artists WHERE id = ?").get(album.artist_id);
   const files = albumFiles(albumId, context.root);
-  let mbAlbum = null;
-  let albumNote = null;
-  if (actions.includes("retag") && files.length) {
-    try {
-      mbAlbum = await resolveMusicBrainzAlbum(album, artist);
-      if (!mbAlbum) albumNote = "No confident MusicBrainz match for this album.";
-    } catch {
-      albumNote = "Aurral could not reach the metadata provider.";
-    }
-  }
   const items = [];
   let unchanged = 0;
   for (const file of files) {
     const planned = [];
     const notes = [];
     const details = { size: file.size, mtimeMs: file.mtime_ms };
-    let names = {
+    const names = {
       artistName: artist?.name,
       albumName: album.title,
       trackName: file.title,
       trackNumber: file.track_number,
     };
-    if (actions.includes("retag")) {
-      if (albumNote) notes.push(albumNote);
-      else {
-        const metadata = await parseFile(file.path, { skipCovers: true, duration: false }).catch(() => null);
-        const common = metadata?.common || {};
-        const recording = text(common.musicbrainz_recordingid || common.musicbrainz_trackid) || file.track_mbid;
-        const match = metadata ? matchMusicBrainzTrack(mbAlbum, file, recording) : null;
-        if (!match) notes.push("No confident MusicBrainz match for this track.");
-        else {
-          const tags = desiredTags(mbAlbum, match, common);
-          const changes = tagChanges(common, tags);
-          if (changes.length) {
-            planned.push("retag");
-            details.tags = tags;
-            details.changes = changes;
-            const stat = await fs.stat(file.path).catch(() => null);
-            if (stat?.nlink > 1) details.hardlinked = true;
-          }
-          names = {
-            artistName: tags.albumArtist,
-            albumName: tags.album,
-            trackName: tags.title,
-            trackNumber: tags.trackNumber,
-          };
-        }
-      }
-    }
     let targetPath = null;
     if (actions.includes("rename")) {
       const target = buildLibraryTrackPath(context.root, names, path.extname(file.path));
@@ -380,7 +234,6 @@ export function createOrganizeContext() {
   let guard = null;
   return {
     playlistIds: new Set(),
-    rescan: new Set(),
     deletionGuard() {
       return guard;
     },
@@ -397,9 +250,8 @@ export async function applyOrganizeItem(operation, item, context) {
   const save = () => updateLibraryFileOperationItem(operation.id, item.position, { details });
   let current = path.resolve(item.sourcePath);
   if (details.results.rename === "done" && item.targetPath) current = item.targetPath;
-  const expected = details.results.retag === "done" ? details.retagged : details;
   const matchesExpected = (fileStat) =>
-    Number(expected.size) === fileStat.size && Number(expected.mtimeMs) === fileStat.mtimeMs;
+    Number(details.size) === fileStat.size && Number(details.mtimeMs) === fileStat.mtimeMs;
   let stat = await fs.stat(current).catch(() => null);
   const placed = !stat && actions.includes("rename") && item.targetPath
     ? await fs.stat(item.targetPath).catch(() => null)
@@ -414,26 +266,6 @@ export async function applyOrganizeItem(operation, item, context) {
   if (!stat) return { status: "failed", reason: "The file is gone.", details };
   if (!matchesExpected(stat)) {
     return { status: "skipped", reason: "The file changed after the preview. Run Organize again.", details };
-  }
-  if (actions.includes("retag") && details.results.retag !== "done") {
-    try {
-      await writeLibraryTags(current, details.tags);
-    } catch (error) {
-      details.results.retag = "failed";
-      return { status: "failed", reason: `Aurral could not write the tags: ${error?.message || error}`, details };
-    }
-    const tagged = await fs.stat(current);
-    details.retagged = { size: tagged.size, mtimeMs: tagged.mtimeMs };
-    details.results.retag = "done";
-    save();
-  }
-  if (actions.includes("retag") && details.results.reindex !== "done") {
-    await adoptLibraryFileIdentity(current).then(() => {
-      details.results.reindex = "done";
-      save();
-    }, () => {
-      context.rescan.add(current);
-    });
   }
   if (actions.includes("rename") && details.results.rename !== "done") {
     try {

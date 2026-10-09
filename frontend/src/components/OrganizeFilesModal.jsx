@@ -7,7 +7,7 @@ import LibraryFileOperation, { LibraryFileOperationActions } from "./LibraryFile
 import { refreshLibraryFiles, useLibraryFileOperation } from "../hooks/useLibraryFileOperation.js";
 import { startLibraryOrganize } from "../utils/api/endpoints/library.js";
 
-const ACTION_NAMES = { rename: "rename files", retag: "write tags", upgrade: "search for upgrades" };
+const ACTION_NAMES = { rename: "rename files", upgrade: "search for upgrades" };
 
 const listActions = (actions) => {
   const names = actions.map((action) => ACTION_NAMES[action]);

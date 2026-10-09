@@ -4,11 +4,9 @@ import { execFile } from "node:child_process";
 import { link, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { parseFile } from "music-metadata";
 
 import {
   cleanupIsolatedState,
-  createMockHttpServer,
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
@@ -24,7 +22,6 @@ const [
   { getLibraryFileOperation },
   { resolveDownloadRoot },
   { downloadTracker },
-  { clearMetadataProviderCaches },
   qualityProfileService,
 ] = await setupIsolatedBackend(
   "library-organize",
@@ -35,55 +32,14 @@ const [
   "backend/services/libraryFiles/operationStore.js",
   "backend/services/downloadPaths.js",
   "backend/services/downloadJobs/downloadTracker.js",
-  "backend/services/providers/brainzmashProvider.js",
   "backend/services/qualityProfileService.js",
 );
 
 const root = resolveDownloadRoot();
 const outside = path.join(isolatedState.baseDir, "seed");
 const releaseGroup = "3f3f3f3f-0000-4000-8000-000000000001";
-const artistMbid = "3f3f3f3f-0000-4000-8000-0000000000aa";
 const recording = "3f3f3f3f-0000-4000-8000-0000000000r1";
 let tone = 300;
-
-const metadataServer = await createMockHttpServer((request, response) => {
-  const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
-  response.setHeader("content-type", "application/json");
-  if (pathname !== `/album/${releaseGroup}`) {
-    response.writeHead(404);
-    response.end(JSON.stringify({ error: "not found" }));
-    return;
-  }
-  response.end(JSON.stringify({
-    id: releaseGroup,
-    title: "Retag Album",
-    artistid: artistMbid,
-    artists: [{ id: artistMbid, artistname: "Retag Artist" }],
-    releasedate: "2011-05-20",
-    genres: ["dream pop", "shoegaze"],
-    releases: [{
-      id: `${releaseGroup}-release`,
-      status: "Official",
-      tracks: [{
-        id: "release-track-1",
-        recordingid: recording,
-        trackname: "Song One",
-        artistid: artistMbid,
-        durationms: 200,
-        trackposition: 1,
-        mediumnumber: 1,
-      }, {
-        id: "release-track-3",
-        recordingid: `${recording}-3`,
-        trackname: "Phœnix",
-        artistid: artistMbid,
-        durationms: 200,
-        trackposition: 3,
-        mediumnumber: 1,
-      }],
-    }],
-  }));
-});
 
 async function makeTrack(filePath, tags = {}, codec = []) {
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -118,15 +74,14 @@ const mediaAt = (filePath) => db.prepare("SELECT * FROM library_media_files WHER
 
 const originalSettings = dbOps.getSettings();
 
-function useSettings({ rename = true, retag = true, libraryTracks = true } = {}) {
+function useSettings({ rename = true, libraryTracks = true } = {}) {
   dbOps.updateSettings({
     ...originalSettings,
-    libraryFiles: { rename, retag },
+    libraryFiles: { rename },
     qualityProfile: { ...originalSettings.qualityProfile, cutoff: "flac-standard", libraryTracks },
     integrations: {
       ...originalSettings.integrations,
       slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
-      metadata: { ...originalSettings.integrations?.metadata, baseUrl: metadataServer.url, enableNarrowFallbacks: false },
     },
   });
 }
@@ -137,13 +92,11 @@ test.beforeEach(async () => {
   resetDatabase(db);
   db.prepare("DELETE FROM library_management").run();
   downloadTracker.clearAll();
-  clearMetadataProviderCaches();
   useSettings();
 });
 
 test.after(async () => {
   dbOps.updateSettings(originalSettings);
-  await metadataServer.close();
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -186,51 +139,8 @@ test("rename never takes a name another file has", async () => {
   assert.deepEqual(await readFile(occupant), occupantBytes);
 });
 
-test("retag writes MusicBrainz tags and genres only to matched files and keeps favorites", async () => {
-  const seed = await makeTrack(path.join(outside, "song-one.flac"), {
-    artist: "retag artist", album: "Retag Album", title: "Song One", track: "1",
-    MUSICBRAINZ_RELEASEGROUPID: releaseGroup,
-  });
-  const matched = path.join(root, "Retag Artist", "Retag Album", "01 - Song One.flac");
-  await mkdir(path.dirname(matched), { recursive: true });
-  await link(seed, matched);
-  const unmatched = await makeTrack(path.join(root, "Retag Artist", "Retag Album", "02 - Mystery.flac"), {
-    artist: "retag artist", album: "Retag Album", title: "Mystery", track: "2",
-    MUSICBRAINZ_RELEASEGROUPID: releaseGroup,
-  });
-  const spelledOut = await makeTrack(path.join(root, "Retag Artist", "Retag Album", "03 - Phoenix.flac"), {
-    artist: "retag artist", album: "Retag Album", title: "Phoenix", track: "3",
-    MUSICBRAINZ_RELEASEGROUPID: releaseGroup,
-  });
-  await scanMusicRoot({ rootPath: root, source: "aurral" });
-  const track = db.prepare("SELECT * FROM library_tracks WHERE title = 'Song One'").get();
-  db.prepare("INSERT INTO users (id, username, password_hash) VALUES (7, 'fan', 'x')").run();
-  db.prepare("INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (7, 'song', ?, 1)")
-    .run(track.identity_key);
-  const seedBytes = await readFile(seed);
-  const unmatchedBytes = await readFile(unmatched);
-
-  const { preview, items } = await organize({ kind: "album", id: albumNamed("Retag Album").id }, ["retag"]);
-
-  const planned = preview.find((item) => item.source.endsWith("01 - Song One.flac"));
-  assert.equal(planned.hardlinked, true);
-  assert.ok(planned.changes.some((change) => change.field === "Genre"));
-  assert.deepEqual(items.map((item) => item.status).sort(), ["done", "done", "skipped"]);
-  assert.equal((await parseFile(spelledOut)).common.title, "Phœnix");
-  const { common } = await parseFile(matched);
-  assert.deepEqual(common.genre, ["dream pop; shoegaze"]);
-  assert.equal(common.musicbrainz_recordingid, recording);
-  assert.equal(common.artist, "Retag Artist");
-  assert.deepEqual(await readFile(seed), seedBytes);
-  assert.notEqual((await stat(seed)).ino, (await stat(matched)).ino);
-  assert.deepEqual(await readFile(unmatched), unmatchedBytes);
-  const starred = db.prepare("SELECT entity_key FROM subsonic_stars WHERE user_id = 7").pluck().get();
-  assert.equal(starred, `recording:${recording}`);
-  assert.equal(db.prepare("SELECT identity_key FROM library_tracks WHERE id = ?").pluck().get(track.id), starred);
-});
-
 test("organize refuses actions that are turned off", async () => {
-  useSettings({ rename: false, retag: false, libraryTracks: false });
+  useSettings({ rename: false, libraryTracks: false });
   await assert.rejects(operations.startOrganize({ scope: { kind: "library" }, actions: ["rename"] }), /Turn on rename/);
 });
 

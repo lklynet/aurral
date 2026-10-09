@@ -30,9 +30,9 @@ function jobMetadata(filePath) {
   } : null;
 }
 
-// A file with new identity tags, from a retag or an upgrade, keeps the
-// Library's track and album rows, with their favorites, play counts, and
-// monitoring, under the identity the scan now reads.
+// An upgraded file with new identity tags keeps the Library's track and
+// album rows, with their favorites, play counts, and monitoring, under the
+// identity the scan now reads.
 export async function adoptLibraryFileIdentity(filePath, { previousPath = filePath } = {}) {
   const root = path.resolve(resolveDownloadRoot());
   const current = path.resolve(filePath);

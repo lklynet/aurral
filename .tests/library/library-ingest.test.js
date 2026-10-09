@@ -219,11 +219,11 @@ test("a run interrupted after placing a file finishes it on resume", async () =>
   assert.equal(await exists(path.join(root, "Resume", "Album", "02 - Two.flac")), true);
 });
 
-test("untagged music joins the album and artist the Library already has", async () => {
-  await makeTrack(path.join(root, "Known Artist", "Known Album", "01 - Tagged.flac"), {
+test("untagged music joins the album and artist the Library already has, however its names are spelled", async () => {
+  await makeTrack(path.join(root, "Known Artist", "Known Æther Album", "01 - Tagged.flac"), {
     artist: "Known Artist",
     album_artist: "Known Artist",
-    album: "Known Album",
+    album: "Known Æther Album",
     title: "Tagged",
     track: "1",
     MUSICBRAINZ_ALBUMARTISTID: "11111111-1111-4111-8111-111111111111",
@@ -231,12 +231,12 @@ test("untagged music joins the album and artist the Library already has", async 
   });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   const source = newSource();
-  await makeTrack(path.join(source, "known artist", "KNOWN ALBUM", "02 untagged.flac"), {
-    artist: "known artist", album: "known album", title: "Untagged", track: "2",
+  await makeTrack(path.join(source, "known artist", "KNOWN AETHER ALBUM", "02 untagged.flac"), {
+    artist: "known artist", album: "known aether album", title: "Untagged", track: "2",
   });
 
   const [item] = await apply(await ingest(source, "copy"));
-  assert.equal(item.target, path.join("Known Artist", "Known Album", "02 - Untagged.flac"));
+  assert.equal(item.target, path.join("Known Artist", "Known Æther Album", "02 - Untagged.flac"));
 
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   const albums = libraryAlbums();

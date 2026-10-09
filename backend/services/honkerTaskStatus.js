@@ -63,7 +63,7 @@ export const QUEUE_DEFINITIONS = [
     queue: "library-files",
     label: "Library Files",
     workerLabel: "Library File Worker",
-    description: "Ingests folders and renames, retags, and upgrades Library files.",
+    description: "Ingests folders and renames and upgrades Library files.",
     worker: "library-files",
   },
   {

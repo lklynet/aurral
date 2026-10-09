@@ -120,7 +120,6 @@ async function applyBatch(operation, handler, deadline) {
     updateLibraryFileOperation(operation.id, {
       summary: { playlistIds: [...new Set([...(summary.playlistIds || []), ...context.playlistIds])] },
     });
-    await requestScan({ changedPaths: [...context.rescan] });
   }
   return { cancelled };
 }
@@ -214,9 +213,7 @@ export function describeLibraryFileOperationItems(operation, options) {
     source: relative(sourceRoot, item.sourcePath),
     target: relative(downloadRoot, item.targetPath),
     actions: item.details.actions || [item.details.action].filter(Boolean),
-    changes: item.details.changes || [],
     quality: item.details.quality || null,
-    hardlinked: item.details.hardlinked === true,
     results: item.details.results || null,
   }));
 }

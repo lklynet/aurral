@@ -29,7 +29,6 @@ const ACTION_LABELS = {
   hardlink: "Hardlink",
   "remove-duplicate": "Remove source copy",
   rename: "Rename",
-  retag: "Retag",
   upgrade: "Upgrade",
 };
 
@@ -86,8 +85,6 @@ function itemStatusLabel(item, operation) {
 function itemNotes(item) {
   const notes = [];
   if (item.reason) notes.push(item.reason);
-  if (item.changes?.length) notes.push(`Tags: ${item.changes.map((change) => change.field).join(", ")}`);
-  if (item.hardlinked) notes.push("Hardlinked: the Library gets its own copy, and the other link keeps its tags");
   if (item.quality && !item.results?.upgrade) notes.push(`Upgrade from ${item.quality}`);
   if (item.results?.upgrade) notes.push(UPGRADE_RESULTS[item.results.upgrade] || item.results.upgrade);
   return notes;

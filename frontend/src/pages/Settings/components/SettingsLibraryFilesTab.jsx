@@ -21,10 +21,10 @@ import { SettingsSelect } from "./SettingsField";
 const MODE_HELP = {
   move: "Moves each file into the Downloads Folder. Empty source folders are removed.",
   copy: "Copies each file. The source folder stays as it is, and the music takes twice the space.",
-  hardlink: "Links each file into the Downloads Folder without using more space. Retagging or upgrading a linked file later gives the Library its own copy.",
+  hardlink: "Links each file into the Downloads Folder without using more space. Upgrading a linked file later gives the Library its own copy.",
 };
 
-const ACTION_NAMES = { rename: "rename files", retag: "write tags", upgrade: "search for upgrades" };
+const ACTION_NAMES = { rename: "rename files", upgrade: "search for upgrades" };
 
 const listActions = (actions) => {
   const names = actions.map((action) => ACTION_NAMES[action]);
@@ -164,7 +164,6 @@ export function SettingsLibraryFilesTab({
   const upgrade = settings.qualityProfile?.libraryTracks === true;
   const actions = [
     libraryFiles.rename === true && "rename",
-    libraryFiles.retag === true && "retag",
     upgrade && "upgrade",
   ].filter(Boolean);
 
@@ -222,17 +221,6 @@ export function SettingsLibraryFilesTab({
             />
           </SettingsArrFormGroup>
           <SettingsArrFormGroup
-            label="Write tags"
-            help="Organize writes MusicBrainz IDs, names, track and disc numbers, year, and genre to files that Aurral matches with confidence. A hardlinked file gets its own copy, so the other link keeps its tags."
-          >
-            <PillToggle
-              className="settings-toggle"
-              checked={libraryFiles.retag === true}
-              onChange={(event) => update({ retag: event.target.checked })}
-              aria-label="Write tags"
-            />
-          </SettingsArrFormGroup>
-          <SettingsArrFormGroup
             label="Upgrade every monitored track"
             help="Upgrades also cover monitored tracks that Aurral did not download, following the quality profile in Download clients."
           >
@@ -252,7 +240,7 @@ export function SettingsLibraryFilesTab({
           <div className="arr-info">
             {actions.length
               ? `Preview how Aurral would ${listActions(actions)} for every Library file in the Downloads Folder. Lidarr's files stay with Lidarr. To organize one artist or album, use its menu in Library.`
-              : "Turn on Rename files, Write tags, or Upgrade every monitored track to organize the Library."}
+              : "Turn on Rename files or Upgrade every monitored track to organize the Library."}
           </div>
           <div className="settings-library-files__actions">
             <button

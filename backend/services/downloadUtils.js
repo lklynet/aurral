@@ -278,30 +278,6 @@ export async function writeAudioMetadata(filePath, metadata = {}) {
   return rewriteAudioTags(filePath, tags);
 }
 
-// Retagging a Library file. It keeps Aurral's identity marker, which says
-// who downloaded the file, and writes the file anew, so a hardlinked file
-// gets its own copy and the other link keeps its tags.
-export async function writeLibraryTags(filePath, tags = {}) {
-  return rewriteAudioTags(filePath, [
-    ["title", tags.title],
-    ["artist", tags.artist],
-    ["album_artist", tags.albumArtist],
-    ["album", tags.album],
-    ["date", tags.year],
-    ["track", normalizePositiveInteger(tags.trackNumber)],
-    ["disc", normalizePositiveInteger(tags.discNumber)],
-    ["genre", tags.genre],
-    ["musicbrainz_artistid", tags.artistMbid],
-    ["musicbrainz_albumartistid", tags.albumArtistMbid],
-    ["musicbrainz_releasegroupid", tags.releaseGroupMbid],
-    ["musicbrainz_albumid", tags.releaseMbid],
-    ["musicbrainz_recordingid", tags.recordingMbid],
-    ["musicbrainz_trackid", tags.recordingMbid],
-  ]
-    .filter(([, value]) => value != null && String(value).trim())
-    .map(([key, value]) => [key, String(value).trim()]));
-}
-
 export async function moveIdentityMarkerToGrouping(filePath, identity) {
   return rewriteAudioTags(filePath, [
     ["grouping", buildAurralIdentityComment(identity)],

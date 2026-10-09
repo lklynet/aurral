@@ -32,7 +32,7 @@ test("ingest a folder from Settings, then organize it from the Library", async (
   try {
     expect((await apiRequest(page, "/api/settings", {
       method: "POST",
-      body: { libraryFiles: { rename: true, retag: false } },
+      body: { libraryFiles: { rename: true } },
     })).ok).toBe(true);
 
     await page.goto("/settings/library-files");

@@ -627,8 +627,8 @@ export function moveLibraryMediaFilePath(source, fromPath, toPath) {
   return moved;
 }
 
-// Retagging can give a file new identity tags. The track keeps its row,
-// favorites, and monitoring, or folds into the track that already has them.
+// An upgrade can bring a file with new identity tags. The track keeps its
+// row, favorites, and monitoring, or folds into the track that already has them.
 export function rekeyLibraryTrack(trackId, identityKey) {
   const key = normalizeText(identityKey);
   const id = Number(trackId);
@@ -722,7 +722,7 @@ export function rekeyLibraryAlbum(albumId, identityKey) {
   return result?.id ?? null;
 }
 
-// Removes an album link a retag left behind, and the album, track, or
+// Removes an album link an upgrade left behind, and the album, track, or
 // artist it emptied.
 export function unlinkLibraryAlbumTrackWithoutMedia(albumId, trackId) {
   const album = Number(albumId);
