@@ -30,7 +30,7 @@ const MONITOR_HELP = {
   albums: "Each ingested track is upgraded, and Aurral downloads the tracks its album is missing.",
 };
 
-const FILL_TAGS_HELP = "Adds MusicBrainz IDs, and any missing title, album artist, track and disc numbers, year, and genre, to the Library's copy of files that Aurral matches to MusicBrainz with confidence. Tags a file already has never change.";
+const FILL_TAGS_HELP = "Adds missing MusicBrainz metadata to the Library's copy. File's existing tags remain untouched.";
 
 const errorMessage = (error, fallback) =>
   error?.response?.data?.message || error?.message || fallback;
