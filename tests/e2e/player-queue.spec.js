@@ -587,9 +587,11 @@ async function playCoveredPlaylist(page, artworkUrl) {
       ? route.fulfill({ status: 404, body: "" })
       : route.fulfill({ headers: { "content-type": "image/svg+xml" }, body: RED_COVER }),
   );
-  await routeEditorialPlaylist(page, "e2e-covered", "E2E covered", TRACK_SECONDS, { artworkUrl });
-  await page.goto("/discover/playlists/deezer/e2e-covered");
-  await page.getByRole("button", { name: "Play E2E covered previews" }).click();
+  const id = artworkUrl.includes("/missing") ? "e2e-uncovered" : "e2e-covered";
+  const name = artworkUrl.includes("/missing") ? "E2E uncovered" : "E2E covered";
+  await routeEditorialPlaylist(page, id, name, TRACK_SECONDS, { artworkUrl });
+  await page.goto(`/discover/playlists/deezer/${id}`);
+  await page.getByRole("button", { name: `Play ${name} previews` }).click();
   await expect(page.locator(".global-player")).toBeAttached();
 }
 
