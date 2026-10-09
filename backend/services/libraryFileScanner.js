@@ -107,7 +107,7 @@ function readPathFallback(filePath, rootPath) {
   const relative = path.relative(rootPath, filePath);
   const segments = relative.split(path.sep).filter(Boolean);
   const fileName = path.basename(filePath, path.extname(filePath));
-  const position = /^(?:(\d{1,2})-(?=\d{2,3}(?:[. _]|$)))?(\d+)(?:[. _-]+|$)/.exec(fileName);
+  const position = /^(?:([1-9])-(?=\d{2,3}(?:[. _]|$)))?(\d+)(?:[. _-]+|$)/.exec(fileName);
   return {
     artistName: text(segments.at(-3)) || "Unknown Artist",
     albumName: text(segments.at(-2)) || "Unknown Album",

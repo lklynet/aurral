@@ -165,8 +165,8 @@ function isTrackFileBaseName(baseName, title, trackNumber, discNumber) {
   if (baseName === title) return true;
   const position = baseName.endsWith(` - ${title}`)
     && /^(?:(\d+)-)?(\d{2,3}) - $/.exec(baseName.slice(0, -title.length));
-  return Boolean(position) && (!trackNumber
-    || (Number(position[2]) === trackNumber && Number(position[1] || 1) === (discNumber || 1)));
+  return Boolean(position) && (!trackNumber || Number(position[2]) === trackNumber)
+    && Number(position[1] || 1) === (discNumber || 1);
 }
 
 /**

@@ -537,8 +537,10 @@ test("scanMusicRoot derives stable fallback records when tags are missing", asyn
   const source = `test-fallback-${process.pid}`;
   const filePaths = [];
   try {
-    filePaths.push(await createAudioFile(root, "Fallback Artist/Fallback Album/02 Fallback Track.mp3"));
-    filePaths.push(await createAudioFile(root, "Fallback Artist/Fallback Album/2-02 - Fallback Track.mp3"));
+    const names = ["02 Fallback Track", "2-03 - Bomb", "01-99 Luftballons", "02-22 Acacia Avenue"];
+    for (const name of names) {
+      filePaths.push(await createAudioFile(root, `Fallback Artist/Fallback Album/${name}.mp3`));
+    }
     await scanMusicRoot({
       rootPath: root,
       source,
@@ -555,12 +557,17 @@ test("scanMusicRoot derives stable fallback records when tags are missing", asyn
        WHERE media.source = ? AND media.path = ?`,
     ).get(source, filePath));
 
-    assert.deepEqual(indexed, [1, 2].map((disc) => ({
+    assert.deepEqual(indexed, [
+      ["Fallback Track", 1, 2],
+      ["Bomb", 2, 3],
+      ["99 Luftballons", 1, 1],
+      ["22 Acacia Avenue", 1, 2],
+    ].map(([trackTitle, disc, track]) => ({
       artistName: "Fallback Artist",
       albumTitle: "Fallback Album",
-      trackTitle: "Fallback Track",
+      trackTitle,
       disc,
-      track: 2,
+      track,
       available: 1,
     })));
   } finally {
