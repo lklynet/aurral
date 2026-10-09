@@ -93,3 +93,52 @@ test("ingest a folder from Settings, then organize it from the Library", async (
     if (downloadRoot) fs.rmSync(path.join(downloadRoot, artistName), { recursive: true, force: true });
   }
 });
+
+test("Preview changes waits for a setting turned on while an earlier save is still running", async ({ page }) => {
+  await openApp(page);
+  const before = await apiRequest(page, "/api/settings");
+  const restore = {
+    libraryFiles: before.body?.libraryFiles || {},
+    qualityProfile: before.body?.qualityProfile || {},
+  };
+  let operationId = null;
+  try {
+    expect((await apiRequest(page, "/api/settings", {
+      method: "POST",
+      body: {
+        libraryFiles: { ...restore.libraryFiles, rename: false },
+        qualityProfile: { ...restore.qualityProfile, libraryTracks: false },
+      },
+    })).ok).toBe(true);
+    await page.goto("/settings/library-files");
+
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    let holding = true;
+    await page.route("**/api/settings", async (route) => {
+      if (route.request().method() === "POST" && holding) {
+        holding = false;
+        await held;
+      }
+      await route.continue();
+    });
+
+    const firstSave = page.waitForRequest((request) => request.method() === "POST" && request.url().endsWith("/api/settings"));
+    await page.getByRole("switch", { name: "Rename files" }).check();
+    await firstSave;
+    await page.getByRole("switch", { name: "Upgrade every monitored track" }).check();
+    const started = page.waitForResponse((response) => response.url().endsWith("/api/library/files/organize"));
+    await page.getByRole("button", { name: "Preview changes" }).click();
+    release();
+
+    const response = await started;
+    operationId = (await response.json().catch(() => null))?.operation?.id || null;
+    expect(response.status(), await response.text()).toBeLessThan(300);
+  } finally {
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    if (operationId) {
+      await apiRequest(page, `/api/library/files/operations/${encodeURIComponent(operationId)}/cancel`, { method: "POST" });
+    }
+    await apiRequest(page, "/api/settings", { method: "POST", body: restore });
+  }
+});

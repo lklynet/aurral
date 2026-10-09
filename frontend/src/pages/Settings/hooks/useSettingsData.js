@@ -536,7 +536,17 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
         settingsRef.current = settingsOverride;
         setSettingsState(settingsOverride);
       }
-      return persistSettings(toSave);
+      const inFlight = saveInFlightRef.current;
+      if (!inFlight) return persistSettings(toSave);
+      return inFlight.then((saved) => {
+        if (!saved) return false;
+        if (saveTimerRef.current) {
+          clearTimeout(saveTimerRef.current);
+          saveTimerRef.current = null;
+        }
+        if (!checkForChanges(settingsRef.current, originalSettingsRef.current)) return true;
+        return persistSettings(settingsRef.current);
+      });
     },
     [persistSettings],
   );
