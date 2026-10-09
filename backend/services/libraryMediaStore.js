@@ -589,12 +589,15 @@ const LETTER_SPELLINGS = { æ: "ae", œ: "oe", ß: "ss", ø: "o", đ: "d", ð: "
 const spellLetters = (value) =>
   normalizeText(value).toLowerCase().replace(/[æœßøđðłþ]/g, (letter) => LETTER_SPELLINGS[letter]);
 
-// Names that reduce to nothing in ASCII, such as Japanese titles, compare as
-// written instead of all matching each other.
+const hasNonLatinLetters = (value) =>
+  /(?![a-z0-9])[\p{L}\p{N}]/u.test(spellLetters(value).normalize("NFKD").replace(/[̀-ͯ]/g, ""));
+
+// Names with letters ASCII cannot spell, such as Japanese titles, compare as
+// written, since their ASCII keys would drop those letters and match each other.
 export function isSameLibraryName(left, right) {
   const a = normalizeKeyPart(spellLetters(left));
   const b = normalizeKeyPart(spellLetters(right));
-  if (a || b) return a === b;
+  if ((a || b) && !hasNonLatinLetters(left) && !hasNonLatinLetters(right)) return a === b;
   const raw = (value) => normalizeText(value).normalize("NFKC").toLowerCase();
   return Boolean(raw(left)) && raw(left) === raw(right);
 }

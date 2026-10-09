@@ -219,7 +219,7 @@ test("a run interrupted after placing a file finishes it on resume", async () =>
   assert.equal(await exists(path.join(root, "Resume", "Album", "02 - Two.flac")), true);
 });
 
-test("untagged music joins the album and artist the Library already has, however its names are spelled", async () => {
+test("untagged music joins the album and artist the Library already has, however its names are spelled, and no other album", async () => {
   await makeTrack(path.join(root, "Known Artist", "Known Æther Album", "01 - Tagged.flac"), {
     artist: "Known Artist",
     album_artist: "Known Artist",
@@ -229,22 +229,37 @@ test("untagged music joins the album and artist the Library already has, however
     MUSICBRAINZ_ALBUMARTISTID: "11111111-1111-4111-8111-111111111111",
     MUSICBRAINZ_RELEASEGROUPID: "22222222-2222-4222-8222-222222222222",
   });
+  await makeTrack(path.join(root, "Known Artist", "春 2024", "01 - Spring.flac"), {
+    artist: "Known Artist",
+    album: "春 2024",
+    title: "Spring",
+    track: "1",
+    MUSICBRAINZ_ALBUMARTISTID: "11111111-1111-4111-8111-111111111111",
+    MUSICBRAINZ_RELEASEGROUPID: "33333333-3333-4333-8333-333333333333",
+  });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   const source = newSource();
   await makeTrack(path.join(source, "known artist", "KNOWN AETHER ALBUM", "02 untagged.flac"), {
     artist: "known artist", album: "known aether album", title: "Untagged", track: "2",
   });
+  await makeTrack(path.join(source, "known artist", "冬 2024", "01 winter.flac"), {
+    artist: "known artist", album: "冬 2024", title: "Winter", track: "1",
+  });
 
-  const [item] = await apply(await ingest(source, "copy"));
-  assert.equal(item.target, path.join("Known Artist", "Known Æther Album", "02 - Untagged.flac"));
+  const items = await apply(await ingest(source, "copy"));
+  assert.deepEqual(items.map((item) => item.target).sort(), [
+    path.join("Known Artist", "Known Æther Album", "02 - Untagged.flac"),
+    path.join("Known Artist", "冬 2024", "01 - Winter.flac"),
+  ]);
 
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   const albums = libraryAlbums();
-  assert.equal(albums.length, 1);
-  assert.equal(
-    db.prepare("SELECT COUNT(*) FROM library_album_tracks WHERE album_id = ?").pluck().get(albums[0].id),
-    2,
-  );
+  assert.deepEqual(albums.map((album) => album.title).sort(), ["Known Æther Album", "冬 2024", "春 2024"]);
+  const trackCount = (title) => db.prepare(
+    "SELECT COUNT(*) FROM library_album_tracks JOIN library_albums ON library_albums.id = album_id WHERE title = ?",
+  ).pluck().get(title);
+  assert.equal(trackCount("Known Æther Album"), 2);
+  assert.equal(trackCount("春 2024"), 1);
 });
 
 test("files Aurral cannot place are skipped with a reason and left alone", async () => {
