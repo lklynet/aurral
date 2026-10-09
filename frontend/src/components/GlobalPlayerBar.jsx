@@ -406,6 +406,7 @@ function GlobalPlayerBar() {
         <div className="global-player__main">
           <div className="global-player__controls">
             <TooltipButton
+              tooltipPlacement="top"
               label={isShuffleEnabled ? "Disable shuffle" : "Enable shuffle"}
               onClick={toggleShuffle}
               className={`btn btn-secondary btn-sm btn-icon global-player__control global-player__shuffle${isShuffleEnabled ? " is-active" : ""}`}
@@ -413,6 +414,7 @@ function GlobalPlayerBar() {
               <Shuffle className="artist-icon-sm" />
             </TooltipButton>
             <TooltipButton
+              tooltipPlacement="top"
               title={`Previous track (${PLAYER_SHORTCUTS.previous.label})`}
               aria-label="Previous track"
               aria-keyshortcuts={PLAYER_SHORTCUTS.previous.keys}
@@ -422,6 +424,7 @@ function GlobalPlayerBar() {
               <SkipBack className="artist-icon-sm" />
             </TooltipButton>
             <TooltipButton
+              tooltipPlacement="top"
               title={`${playPauseLabel} (${PLAYER_SHORTCUTS.playPause.label})`}
               aria-label={playPauseLabel}
               aria-keyshortcuts={PLAYER_SHORTCUTS.playPause.keys}
@@ -432,6 +435,7 @@ function GlobalPlayerBar() {
               {isPlaying ? <Pause className="artist-icon-sm" /> : <Play className="artist-icon-sm" />}
             </TooltipButton>
             <TooltipButton
+              tooltipPlacement="top"
               title={`Next track (${PLAYER_SHORTCUTS.next.label})`}
               aria-label="Next track"
               aria-keyshortcuts={PLAYER_SHORTCUTS.next.keys}
@@ -441,6 +445,7 @@ function GlobalPlayerBar() {
               <SkipForward className="artist-icon-sm" />
             </TooltipButton>
             <TooltipButton
+              tooltipPlacement="top"
               label={
                 repeatMode === "one"
                   ? "Repeat one track"
@@ -464,6 +469,7 @@ function GlobalPlayerBar() {
 
         <div className="global-player__side">
           <TooltipButton
+            tooltipPlacement="top"
             ref={queueTriggerRef}
             title={queueOpen ? "Hide queue" : "Show queue"}
             aria-label="Queue"
@@ -475,6 +481,7 @@ function GlobalPlayerBar() {
             <ListMusic className="artist-icon-sm" />
           </TooltipButton>
           <TooltipButton
+            tooltipPlacement="top"
             title={`${volumePercent <= 0 ? "Unmute" : "Mute"} (${PLAYER_SHORTCUTS.mute.label})`}
             aria-label={volumePercent <= 0 ? "Unmute" : "Mute"}
             aria-keyshortcuts={PLAYER_SHORTCUTS.mute.keys}
@@ -499,6 +506,7 @@ function GlobalPlayerBar() {
             aria-label="Volume"
           />
           <TooltipButton
+            tooltipPlacement="top"
             label="Close player"
             onClick={clearQueue}
             className="btn btn-ghost btn-icon btn-xs global-player__close"

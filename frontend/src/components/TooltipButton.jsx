@@ -9,6 +9,7 @@ const TooltipButton = forwardRef(function TooltipButton(
     type = "button",
     disabled = false,
     title: tooltipTitle,
+    tooltipPlacement,
     "aria-label": ariaLabel,
     ...buttonProps
   },
@@ -17,7 +18,7 @@ const TooltipButton = forwardRef(function TooltipButton(
   const tooltipLabel = tooltipTitle ?? label;
 
   return (
-    <Tooltip content={tooltipLabel}>
+    <Tooltip content={tooltipLabel} placement={tooltipPlacement}>
       <button
         {...buttonProps}
         ref={ref}

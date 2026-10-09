@@ -27,7 +27,7 @@ function needsTooltipLabel(element) {
   );
 }
 
-export default function Tooltip({ content, children }) {
+export default function Tooltip({ content, placement = "side", children }) {
   const tooltipId = useId();
   const tooltipRef = useRef(null);
   const triggerRef = useRef(null);
@@ -47,9 +47,21 @@ export default function Tooltip({ content, children }) {
     const tooltipHeight = tooltip.offsetHeight;
     const edge = 8;
     const gap = 8;
+    const maxLeft = Math.max(edge, window.innerWidth - tooltipWidth - edge);
+
+    if (placement === "top") {
+      const centeredLeft = triggerRect.left + triggerRect.width / 2 - tooltipWidth / 2;
+      const aboveTop = triggerRect.top - gap - tooltipHeight / 2;
+      const belowTop = triggerRect.bottom + gap + tooltipHeight / 2;
+      setTooltipPosition({
+        left: `${Math.min(Math.max(edge, centeredLeft), maxLeft)}px`,
+        top: `${aboveTop - tooltipHeight / 2 >= edge ? aboveTop : belowTop}px`,
+      });
+      return;
+    }
+
     const rightPosition = triggerRect.right + gap;
     const leftPosition = triggerRect.left - gap - tooltipWidth;
-    const maxLeft = Math.max(edge, window.innerWidth - tooltipWidth - edge);
     const left =
       rightPosition + tooltipWidth <= window.innerWidth - edge
         ? rightPosition
@@ -62,7 +74,7 @@ export default function Tooltip({ content, children }) {
     const top = Math.min(Math.max(minTop, centerY), maxTop);
 
     setTooltipPosition({ left: `${left}px`, top: `${top}px` });
-  }, []);
+  }, [placement]);
 
   const showTooltip = useCallback((event, source) => {
     triggerRef.current = event.currentTarget;

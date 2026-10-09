@@ -9250,8 +9250,7 @@ button.native-library-card__artist:focus-visible {
   opacity: 0;
 }
 
-.native-library-track__play:focus-visible,
-.native-library-track.is-active .native-library-track__play {
+.native-library-track__play:focus-visible {
   opacity: 1;
 }
 
@@ -14921,7 +14920,7 @@ button.native-library-genre-row:focus-visible {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.35rem;
+  gap: 0.5rem;
   min-width: 0;
 }
 
