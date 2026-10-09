@@ -23,6 +23,7 @@ const [
   { resolveDownloadRoot },
   { downloadTracker },
   qualityProfileService,
+  { playlistManager },
 ] = await setupIsolatedBackend(
   "library-organize",
   "backend/config/db-sqlite.js",
@@ -33,6 +34,7 @@ const [
   "backend/services/downloadPaths.js",
   "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/qualityProfileService.js",
+  "backend/services/playlists/playlistManager.js",
 );
 
 const root = resolveDownloadRoot();
@@ -120,6 +122,32 @@ test("rename gives a file Aurral's name and keeps its Library row, jobs, and lyr
   assert.equal(await readFile(path.join(root, "Rename Artist", "Rename Album", "03 - Song.lrc"), "utf8"), "[00:00.00]la");
   assert.equal(mediaAt(newPath)?.id, before.id);
   assert.equal(downloadTracker.getJob(jobId).finalPath, newPath);
+});
+
+test("a rename a restart interrupted still refreshes the playlists that use the file", async (t) => {
+  const oldPath = await makeTrack(path.join(root, "loose", "track.flac"), {
+    artist: "Resume Artist", album: "Resume Album", title: "Song", track: "2",
+  });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const jobId = downloadTracker.addJob({ artistName: "Resume Artist", trackName: "Song" }, "static-mix");
+  downloadTracker.setDone(jobId, oldPath, "Resume Album");
+  const refreshed = [];
+  t.mock.method(playlistManager, "refreshPlaylist", async (playlistId) => { refreshed.push(playlistId); });
+
+  const operation = await operations.startOrganize({ scope: { kind: "album", id: albumNamed("Resume Album").id }, actions: ["rename"] });
+  await runUntilSettled(operation.id);
+  const newPath = path.join(root, "Resume Artist", "Resume Album", "02 - Song.flac");
+  await mkdir(path.dirname(newPath), { recursive: true });
+  await link(oldPath, newPath);
+  await rm(oldPath);
+  downloadTracker.updateFinalPath(jobId, newPath);
+  assert.equal(await operations.confirmLibraryFileOperation(operation.id), true);
+  const finished = await runUntilSettled(operation.id);
+
+  assert.equal(finished.status, "complete");
+  assert.equal(operations.describeLibraryFileOperationItems(finished, {})[0].status, "done");
+  assert.ok(mediaAt(newPath));
+  assert.deepEqual(refreshed, ["static-mix"]);
 });
 
 test("rename never takes a name another file has", async () => {

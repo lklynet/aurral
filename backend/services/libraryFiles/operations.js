@@ -115,12 +115,6 @@ async function applyBatch(operation, handler, deadline) {
     }
   }
   if (operation.kind === "ingest") await requestScan(ingestScanRequest(operation, processed));
-  if (context) {
-    const summary = getLibraryFileOperation(operation.id).summary;
-    updateLibraryFileOperation(operation.id, {
-      summary: { playlistIds: [...new Set([...(summary.playlistIds || []), ...context.playlistIds])] },
-    });
-  }
   return { cancelled };
 }
 
@@ -181,7 +175,7 @@ export function describeLibraryFileOperation(operation) {
   if (!operation) return null;
   const counts = countLibraryFileOperationItems(operation.id);
   const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
-  const { cursor, playlistIds: _playlistIds, finished: _finished, ...summary } = operation.summary;
+  const { cursor, finished: _finished, ...summary } = operation.summary;
   return {
     id: operation.id,
     kind: operation.kind,

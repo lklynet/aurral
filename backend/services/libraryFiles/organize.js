@@ -213,26 +213,24 @@ async function renameLibraryFile(from, to, context) {
       throw error;
     }
   }
-  commitRename(from, to, context);
+  commitRename(from, to);
   if (keptOld && await context.deletionGuard().canDelete(from)) await fs.unlink(from).catch(() => {});
   await transferSidecars(from, to, "move").catch(() => {});
 }
 
 // The Library row and every download job follow the file, so playlists,
 // favorites, and media servers keep finding it.
-function commitRename(from, to, context) {
+function commitRename(from, to) {
   moveLibraryMediaFilePath("aurral", from, to);
   for (const job of downloadTracker.getAll()) {
     if (job.status !== "done" || !job.finalPath || path.resolve(job.finalPath) !== from) continue;
     downloadTracker.updateFinalPath(job.id, to);
-    context.playlistIds.add(job.playlistId || job.playlistType);
   }
 }
 
 export function createOrganizeContext() {
   let guard = null;
   return {
-    playlistIds: new Set(),
     deletionGuard() {
       return guard;
     },
@@ -256,7 +254,7 @@ export async function applyOrganizeItem(operation, item, context) {
     ? await fs.stat(item.targetPath).catch(() => null)
     : null;
   if (placed && matchesExpected(placed)) {
-    commitRename(current, item.targetPath, context);
+    commitRename(current, item.targetPath);
     await transferSidecars(current, item.targetPath, "move").catch(() => {});
     details.results.rename = "done";
     current = item.targetPath;
@@ -301,11 +299,12 @@ async function moveAlbumImages(fromDirectory, toDirectory) {
 export async function finishOrganize(operation) {
   const root = path.resolve(resolveDownloadRoot());
   const folders = new Map();
-  const playlistIds = new Set(operation.summary.playlistIds || []);
+  const renamed = new Set();
   for (const row of db.prepare(
     `SELECT source_path, target_path FROM library_file_operation_items
      WHERE operation_id = ? AND status = 'done' AND target_path IS NOT NULL`,
   ).iterate(operation.id)) {
+    renamed.add(path.resolve(row.target_path));
     const folder = path.dirname(row.source_path);
     const targets = folders.get(folder) || new Set();
     targets.add(path.dirname(row.target_path));
@@ -317,6 +316,10 @@ export async function finishOrganize(operation) {
     if (targets.size === 1 && folder !== root) await moveAlbumImages(folder, [...targets][0]);
     await removeEmptyDirectories(folder, root);
   }
+  const playlistIds = new Set(downloadTracker.getAll()
+    .filter((job) => job.status === "done" && job.finalPath && renamed.has(path.resolve(job.finalPath)))
+    .map((job) => job.playlistId || job.playlistType)
+    .filter(Boolean));
   const { playlistManager } = await import("../playlists/playlistManager.js");
   for (const playlistId of playlistIds) {
     await playlistManager.refreshPlaylist(playlistId).catch(() => {});
