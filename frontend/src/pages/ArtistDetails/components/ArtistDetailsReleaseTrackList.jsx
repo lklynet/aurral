@@ -8,6 +8,7 @@ import { useAlbumTrackListToolbar } from "../../../hooks/useAlbumTrackListToolba
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
+import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 
 const releaseTrackId = (track, trackKey, index) =>
   String(track?.id ?? track?.mbid ?? `${trackKey}-${index}`);
@@ -73,6 +74,7 @@ export function ArtistDetailsReleaseTrackList({
   const ownedTrackSet = new Set((Array.isArray(ownedTrackMbids) ? ownedTrackMbids : []).map(String));
   const { currentTrack, isPlaying, isLoading, playTrack, togglePlayPause } = useAudioQueue();
   const { isTrackDownloading } = useActiveDownloads();
+  const getQueueItems = useQueueTrackActions();
 
   if (!release) return null;
   if (loading) {
@@ -113,13 +115,18 @@ export function ArtistDetailsReleaseTrackList({
     const downloading =
       !isOwned &&
       (albumDownloading || isTrackDownloading(track) || isTrackDownloading(membershipTrack));
+    const queueItems = canPlay
+      ? getQueueItems(preview.normalizeTrack(track, index), { source: playbackSource })
+      : [];
     const items = [
+      ...queueItems,
       ...(onAddTrackToLibrary && !isOwned
         ? [
             {
               id: "add-library",
               label: downloading ? "Downloading…" : "Add to library",
               icon: downloading ? DownloadingIcon : Plus,
+              separatorBefore: queueItems.length > 0,
               disabled: downloading || libraryTrackSavingKey === id,
               onSelect: () => onAddTrackToLibrary(track, release),
             },

@@ -1,8 +1,9 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router";
 import {
   ChevronDown,
+  ListMusic,
   Music,
   Pause,
   Play,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import TooltipButton from "./TooltipButton";
+import { PlayerQueuePanel, UpNextQueue } from "./PlayerQueue";
 import { useModalDialog } from "../hooks/useModalDialog.js";
 import { PLAYER_SHORTCUTS, usePlayerShortcuts } from "../hooks/usePlayerShortcuts.js";
 import { useImageGradientColors } from "../utils/imageColors.js";
@@ -41,42 +43,6 @@ function formatTime(seconds) {
   return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
-const UpNextList = memo(function UpNextList({ playbackQueue, currentIndex, repeatMode, skipTo }) {
-  const upNext = playbackQueue
-    .map((track, index) => ({ track, index }))
-    .slice(currentIndex + 1)
-    .concat(
-      repeatMode === "all"
-        ? playbackQueue.map((track, index) => ({ track, index })).slice(0, currentIndex)
-        : [],
-    );
-  if (upNext.length === 0) return null;
-  return (
-    <section className="now-playing__queue" aria-label="Up next">
-      <h3 className="now-playing__queue-title">Up next</h3>
-      <ol className="now-playing__queue-list">
-        {upNext.map(({ track, index }) => (
-          <li key={`${track.id}-${index}`}>
-            <button
-              type="button"
-              className="now-playing__queue-item"
-              onClick={() => skipTo(index)}
-            >
-              <span className="now-playing__queue-copy">
-                <span className="now-playing__queue-name">{track.title}</span>
-                {track.artist ? (
-                  <span className="now-playing__queue-artist">{track.artist}</span>
-                ) : null}
-              </span>
-              <Play className="now-playing__queue-play" aria-hidden="true" />
-            </button>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-});
-
 function GlobalPlayerBar() {
   const {
     currentTrack,
@@ -99,15 +65,20 @@ function GlobalPlayerBar() {
     toggleRepeat,
     seek,
     getPosition,
-    playbackQueue,
-    currentIndex,
-    skipTo,
   } = useAudioQueue();
   const [position, setPosition] = useState(0);
   const [scrubPosition, setScrubPosition] = useState(null);
   const scrubRef = useRef(null);
   const location = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
+  const queuePanelId = useId();
+  const queueTriggerRef = useRef(null);
+  const queueCloseRef = useRef(null);
+  const closeQueue = useCallback(() => {
+    setQueueOpen(false);
+    queueTriggerRef.current?.focus({ preventScroll: true });
+  }, []);
   const [sheetPresence, setSheetPresence] = useState("closed");
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -126,13 +97,35 @@ function GlobalPlayerBar() {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (!isActive) setSheetOpen(false);
+    if (isActive) return;
+    setSheetOpen(false);
+    setQueueOpen(false);
   }, [isActive]);
+
+  useEffect(() => {
+    if (queueOpen) queueCloseRef.current?.focus({ preventScroll: true });
+  }, [queueOpen]);
+
+  useEffect(() => {
+    if (!queueOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.querySelector(".player-queue__item.is-dragging")) return;
+      const panel = document.getElementById(queuePanelId);
+      const target = event.target instanceof Node ? event.target : null;
+      if (!panel?.contains(target) && target !== queueTriggerRef.current) return;
+      event.preventDefault();
+      closeQueue();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [closeQueue, queueOpen, queuePanelId]);
 
   useEffect(() => {
     const desktop = window.matchMedia("(min-width: 768px)");
     const closeOnDesktop = () => {
       if (desktop.matches) setSheetOpen(false);
+      else setQueueOpen(false);
     };
     desktop.addEventListener("change", closeOnDesktop);
     return () => desktop.removeEventListener("change", closeOnDesktop);
@@ -479,16 +472,15 @@ function GlobalPlayerBar() {
                 </button>
               </div>
 
-              <UpNextList
-                playbackQueue={playbackQueue}
-                currentIndex={currentIndex}
-                repeatMode={repeatMode}
-                skipTo={skipTo}
-              />
+              <UpNextQueue className="now-playing__queue" />
             </div>
           </div>
         </div>,
         document.body,
+      ) : null}
+
+      {queueOpen ? (
+        <PlayerQueuePanel id={queuePanelId} onClose={closeQueue} closeRef={queueCloseRef} />
       ) : null}
 
       <div className="global-player__inner">
@@ -584,6 +576,17 @@ function GlobalPlayerBar() {
         </div>
 
         <div className="global-player__side">
+          <TooltipButton
+            ref={queueTriggerRef}
+            title={queueOpen ? "Hide queue" : "Show queue"}
+            aria-label="Queue"
+            aria-expanded={queueOpen}
+            aria-controls={queueOpen ? queuePanelId : undefined}
+            onClick={() => (queueOpen ? closeQueue() : setQueueOpen(true))}
+            className={`btn btn-ghost btn-icon btn-xs global-player__queue-toggle${queueOpen ? " is-active" : ""}`}
+          >
+            <ListMusic className="artist-icon-sm" />
+          </TooltipButton>
           <TooltipButton
             title={`${volumePercent <= 0 ? "Unmute" : "Mute"} (${PLAYER_SHORTCUTS.mute.label})`}
             aria-label={volumePercent <= 0 ? "Unmute" : "Mute"}

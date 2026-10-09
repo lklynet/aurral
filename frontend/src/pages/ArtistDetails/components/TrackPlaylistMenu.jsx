@@ -316,6 +316,7 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
     icon: TriggerIcon = Plus,
     onAddToLibrary,
     librarySaving = false,
+    queueItems = [],
     onLoadPlaylists,
     onSelect,
     onOpenChange,
@@ -418,7 +419,15 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
         isKebab ? (
           <AddActionButton
             ref={buttonRef}
-            label={onAddToLibrary ? "Add to library or playlist" : triggerLabel}
+            label={
+              queueItems.length
+                ? onAddToLibrary
+                  ? "Add to queue, library, or playlist"
+                  : "Add to queue or playlist"
+                : onAddToLibrary
+                  ? "Add to library or playlist"
+                  : triggerLabel
+            }
             icon={Plus}
             isLoading={saving || librarySaving}
             busy={downloading}
@@ -472,6 +481,29 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
         >
           {isKebab ? (
             <>
+              {queueItems.map((item) => {
+                const ItemIcon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="artist-menu-item"
+                    disabled={item.disabled}
+                    onClick={() => {
+                      item.onSelect();
+                      closeMenu();
+                    }}
+                  >
+                    <span className="artist-menu-item__main">
+                      <ItemIcon className="artist-icon-sm" />
+                      {item.label}
+                    </span>
+                  </button>
+                );
+              })}
+              {queueItems.length && (onAddToLibrary || onSelect) ? (
+                <div className="native-library-item-menu__separator" />
+              ) : null}
               {onAddToLibrary ? (
                 <button
                   type="button"

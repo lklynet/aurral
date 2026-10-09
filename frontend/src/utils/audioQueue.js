@@ -147,6 +147,51 @@ function buildPlaybackOrder(trackCount, shuffle, firstQueueIndex) {
   return [firstQueueIndex, ...shuffleIndices(indices.filter((index) => index !== firstQueueIndex))];
 }
 
+function withEntryIds(state, tracks) {
+  let nextEntryId = state.nextEntryId ?? 0;
+  const entries = tracks.map((track) => ({ ...track, entryId: `q${nextEntryId++}` }));
+  return [entries, nextEntryId];
+}
+
+function playbackEntries(state) {
+  return state.playbackOrder.map((queueIndex) => state.queue[queueIndex]);
+}
+
+function currentEntryId(state) {
+  return state.queue[state.playbackOrder[state.currentIndex]]?.entryId ?? null;
+}
+
+function upcomingPositions(state) {
+  if (state.currentIndex < 0) return [];
+  const positions = [];
+  for (let index = state.currentIndex + 1; index < state.playbackOrder.length; index += 1) {
+    positions.push(index);
+  }
+  if (state.repeatMode === "all") {
+    for (let index = 0; index < state.currentIndex; index += 1) positions.push(index);
+  }
+  return positions;
+}
+
+export function getUpcomingTracks(state) {
+  return upcomingPositions(state).map((index) => ({
+    index,
+    track: state.queue[state.playbackOrder[index]],
+  }));
+}
+
+function arrange(state, queue, playback) {
+  const current = currentEntryId(state);
+  const naturalQueue = state.isShuffleEnabled ? queue : playback;
+  const queueIndexById = new Map(naturalQueue.map((track, index) => [track.entryId, index]));
+  return {
+    ...state,
+    queue: naturalQueue,
+    playbackOrder: playback.map((track) => queueIndexById.get(track.entryId)),
+    currentIndex: playback.findIndex((track) => track.entryId === current),
+  };
+}
+
 function playAt(state, index, autoplay) {
   return {
     ...state,
@@ -167,6 +212,7 @@ export const initialQueueState = {
   repeatMode: "off",
   autoplay: true,
   queueRevision: 0,
+  nextEntryId: 0,
 };
 
 export function shouldRestartTrack(state, position) {
@@ -185,10 +231,12 @@ export function queueReducer(state, action) {
       const firstQueueIndex =
         startQueueIndex >= 0 ? startQueueIndex : action.shuffle === true ? null : 0;
       const playbackOrder = buildPlaybackOrder(tracks.length, shuffle, firstQueueIndex);
+      const [queue, nextEntryId] = withEntryIds(state, tracks);
       return playAt(
         {
           ...state,
-          queue: tracks,
+          queue,
+          nextEntryId,
           playbackOrder,
           source: source ?? null,
           isShuffleEnabled: shuffle,
@@ -224,6 +272,67 @@ export function queueReducer(state, action) {
       if (state.repeatMode === "all") return playAt(state, state.playbackOrder.length - 1, true);
       return state;
     }
+    case "INSERT_TRACKS": {
+      const tracks = Array.isArray(action.tracks) ? action.tracks : [];
+      if (tracks.length === 0) return state;
+      if (state.currentIndex < 0 || state.queue.length === 0) {
+        return queueReducer(state, { type: "PLAY_QUEUE", tracks, source: action.source ?? null });
+      }
+      const [entries, nextEntryId] = withEntryIds(state, tracks);
+      const order = playbackEntries(state);
+      const next = action.position === "next";
+      const playbackAt = next ? state.currentIndex + 1 : order.length;
+      const queueAt = next
+        ? state.queue.findIndex((track) => track.entryId === currentEntryId(state)) + 1
+        : state.queue.length;
+      return {
+        ...arrange(
+          state,
+          [...state.queue.slice(0, queueAt), ...entries, ...state.queue.slice(queueAt)],
+          [...order.slice(0, playbackAt), ...entries, ...order.slice(playbackAt)],
+        ),
+        nextEntryId,
+      };
+    }
+    case "REMOVE_ENTRY": {
+      if (!action.entryId || action.entryId === currentEntryId(state)) return state;
+      if (!state.queue.some((track) => track.entryId === action.entryId)) return state;
+      const keep = (track) => track.entryId !== action.entryId;
+      return arrange(state, state.queue.filter(keep), playbackEntries(state).filter(keep));
+    }
+    case "REORDER_UPCOMING": {
+      const order = playbackEntries(state);
+      const upcoming = upcomingPositions(state).map((index) => order[index]);
+      const upcomingById = new Map(upcoming.map((track) => [track.entryId, track]));
+      const entryIds = Array.isArray(action.entryIds) ? action.entryIds : [];
+      if (
+        entryIds.length !== upcoming.length ||
+        new Set(entryIds).size !== entryIds.length ||
+        !entryIds.every((entryId) => upcomingById.has(entryId))
+      ) {
+        return state;
+      }
+      const history = state.repeatMode === "all" ? [] : order.slice(0, state.currentIndex);
+      return arrange(state, state.queue, [
+        ...history,
+        order[state.currentIndex],
+        ...entryIds.map((entryId) => upcomingById.get(entryId)),
+      ]);
+    }
+    case "CLEAR_UPCOMING": {
+      const order = playbackEntries(state);
+      const cleared = new Set(upcomingPositions(state).map((index) => order[index].entryId));
+      if (cleared.size === 0) return state;
+      const keep = (track) => !cleared.has(track.entryId);
+      return arrange(state, state.queue.filter(keep), order.filter(keep));
+    }
+    case "RESTORE_ORDER": {
+      const current = currentEntryId(state);
+      const { queue, playbackOrder, isShuffleEnabled } = action;
+      const currentIndex = playbackOrder.findIndex((queueIndex) => queue[queueIndex]?.entryId === current);
+      if (current == null || currentIndex < 0) return state;
+      return { ...state, queue, playbackOrder, isShuffleEnabled, currentIndex };
+    }
     case "SET_ERROR":
       return { ...state, error: action.error };
     case "CLEAR_ERROR":
@@ -250,6 +359,7 @@ export function queueReducer(state, action) {
         ...initialQueueState,
         isShuffleEnabled: state.isShuffleEnabled,
         repeatMode: state.repeatMode,
+        nextEntryId: state.nextEntryId,
       };
     default:
       return state;

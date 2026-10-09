@@ -25,6 +25,7 @@ import { TrackPlaylistMenu, TrackPlaylistSubmenu } from "../../ArtistDetails/com
 import { LibraryItemMenu } from "../../../components/LibraryItemMenu";
 import { TrackList } from "../../../components/TrackList";
 import { useAlbumTrackListToolbar } from "../../../hooks/useAlbumTrackListToolbar";
+import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 import {
   getTrackAvailability,
   getTrackSearchAction,
@@ -129,6 +130,7 @@ function PlaylistTrackKebabMenu({
   onManualReSearch,
   onDelete,
   playlistMenuProps = null,
+  queueItems = [],
 }) {
   const [openSubmenu, setOpenSubmenu] = useState(null);
   const trackLabel = track?.trackName || "track";
@@ -149,6 +151,7 @@ function PlaylistTrackKebabMenu({
           onSelect: () => onPlay(track),
         }
       : null,
+    ...queueItems,
     onViewInfo
       ? {
           id: "info",
@@ -406,6 +409,7 @@ export function PlaylistTracksPanel({
 
   const { playTrack, togglePlayPause, matchesSource, isPlaying, currentTrack } =
     useAudioQueue();
+  const getQueueItems = useQueueTrackActions();
 
   const sortedTracks = useMemo(
     () => sortPlaylistTracks(tracks, sortKey, sortDirection),
@@ -590,6 +594,7 @@ export function PlaylistTracksPanel({
           onManualReSearch={onManualReSearchTrack}
           onDelete={onDeleteTrack}
           playlistMenuProps={playlistMenuProps}
+          queueItems={canPlay ? getQueueItems(toQueueTrack(track), { source: playbackSource }) : []}
         />
       ),
     };

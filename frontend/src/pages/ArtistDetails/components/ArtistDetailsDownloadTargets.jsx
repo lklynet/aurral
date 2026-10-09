@@ -13,6 +13,7 @@ import { ArtistTrackListToolbar } from "./ArtistTrackListToolbar";
 import { useAlbumTrackListToolbar } from "../../../hooks/useAlbumTrackListToolbar";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
+import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 import { queryKeys } from "../../../queryClient.js";
 
 function PickCover({ pick, albumCovers, fulfilledCoverIds, artistCoverImage }) {
@@ -132,6 +133,7 @@ export function ArtistDetailsDownloadTargets({
 
   const { currentTrack, isPlaying, isLoading, playTrack, togglePlayPause, source } =
     useAudioQueue();
+  const getQueueItems = useQueueTrackActions();
 
   const handlePlay = useCallback(
     (track, options = {}, ...normalizeArgs) => {
@@ -288,8 +290,15 @@ export function ArtistDetailsDownloadTargets({
                         <span className="artist-track-title">
                           {track.title || track.trackName || "Unknown Track"}
                         </span>
-                        {onAddTrackToPlaylist ? (
+                        {onAddTrackToPlaylist || track.preview_url ? (
                           <TrackPlaylistMenu
+                            queueItems={
+                              track.preview_url
+                                ? getQueueItems(normalizeTrack(track, index), {
+                                    source: playbackSource,
+                                  })
+                                : []
+                            }
                             track={
                               resolveMembershipTrack
                                 ? resolveMembershipTrack(track, missingReleasePick.releaseGroup)
@@ -316,8 +325,15 @@ export function ArtistDetailsDownloadTargets({
                                     )
                                 : null
                             }
-                            onSelect={(target) =>
-                              onAddTrackToPlaylist(track, missingReleasePick.releaseGroup, target)
+                            onSelect={
+                              onAddTrackToPlaylist
+                                ? (target) =>
+                                    onAddTrackToPlaylist(
+                                      track,
+                                      missingReleasePick.releaseGroup,
+                                      target,
+                                    )
+                                : undefined
                             }
                           />
                         ) : null}

@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import {
+  getUpcomingTracks,
   getFormatLoadAttempts,
   getHowlerFormat,
   initialQueueState,
@@ -264,6 +265,41 @@ export function AudioQueueProvider({ children }) {
     });
   }, [playQueue]);
 
+  const insertTracks = useCallback((tracks, position, { source: nextSource = null } = {}) => {
+    const normalized = (Array.isArray(tracks) ? tracks : [tracks])
+      .map((track) => normalizeQueueTrack(track))
+      .filter((track) => track.src)
+      .map((track) => ({ ...track, queueSource: nextSource }));
+    if (normalized.length === 0) return false;
+    const started = stateRef.current.currentIndex < 0;
+    dispatch({ type: "INSERT_TRACKS", tracks: normalized, position, source: nextSource });
+    return started ? "started" : "queued";
+  }, []);
+
+  const queueNext = useCallback(
+    (tracks, options) => insertTracks(tracks, "next", options),
+    [insertTracks],
+  );
+
+  const addToQueue = useCallback(
+    (tracks, options) => insertTracks(tracks, "end", options),
+    [insertTracks],
+  );
+
+  const removeFromQueue = useCallback((entryId) => {
+    dispatch({ type: "REMOVE_ENTRY", entryId });
+  }, []);
+
+  const reorderUpcoming = useCallback((entryIds) => {
+    dispatch({ type: "REORDER_UPCOMING", entryIds });
+  }, []);
+
+  const clearUpcoming = useCallback(() => {
+    const { queue, playbackOrder, isShuffleEnabled } = stateRef.current;
+    dispatch({ type: "CLEAR_UPCOMING" });
+    return () => dispatch({ type: "RESTORE_ORDER", queue, playbackOrder, isShuffleEnabled });
+  }, []);
+
   const togglePlayPause = useCallback(() => {
     if (stateRef.current.queue.length === 0) return;
     if (stateRef.current.error) {
@@ -338,10 +374,7 @@ export function AudioQueueProvider({ children }) {
 
   const currentTrack = state.currentIndex >= 0 ? trackAt(state, state.currentIndex) : null;
   const isActive = state.queue.length > 0 && state.currentIndex >= 0;
-  const playbackQueue = useMemo(
-    () => state.playbackOrder.map((queueIndex) => state.queue[queueIndex]).filter(Boolean),
-    [state.playbackOrder, state.queue],
-  );
+  const upcoming = useMemo(() => getUpcomingTracks(state), [state]);
 
   const missingArtworkMbid = currentTrack && !currentTrack.artwork ? currentTrack.albumMbid : null;
   const currentArtist = currentTrack?.artist || "";
@@ -433,20 +466,23 @@ export function AudioQueueProvider({ children }) {
     };
   }, [clearQueue, engine, isActive, playNext, playPrevious, seek, togglePlayPause]);
 
+  const activeSource =
+    currentTrack && "queueSource" in currentTrack ? currentTrack.queueSource : state.source;
+
   const matchesSource = useCallback(
     (candidate) => {
-      if (!candidate || !state.source) return false;
-      if (candidate.type && candidate.type !== state.source.type) return false;
-      if (candidate.id != null && String(candidate.id) !== String(state.source.id)) return false;
+      if (!candidate || !activeSource) return false;
+      if (candidate.type && candidate.type !== activeSource.type) return false;
+      if (candidate.id != null && String(candidate.id) !== String(activeSource.id)) return false;
       return true;
     },
-    [state.source],
+    [activeSource],
   );
 
   const value = useMemo(
     () => ({
       queue: state.queue,
-      playbackQueue,
+      upcoming,
       currentTrack,
       currentIndex: state.currentIndex,
       source: state.source,
@@ -476,10 +512,20 @@ export function AudioQueueProvider({ children }) {
       skipTo,
       toggleShuffle,
       matchesSource,
+      queueNext,
+      addToQueue,
+      removeFromQueue,
+      reorderUpcoming,
+      clearUpcoming,
     }),
     [
+      addToQueue,
       clearQueue,
-      playbackQueue,
+      clearUpcoming,
+      queueNext,
+      removeFromQueue,
+      reorderUpcoming,
+      upcoming,
       skipTo,
       currentTrack,
       isActive,

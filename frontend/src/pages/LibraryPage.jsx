@@ -109,6 +109,7 @@ import {
 import { useArtistMonitoring } from "../components/ArtistMonitoringButtons";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
+import { useQueueTrackActions } from "../hooks/useQueueTrackActions";
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
 import {
@@ -357,6 +358,7 @@ function LibraryPage() {
   } = useStaticPlaylists();
   const { playQueue, currentTrack, isPlaying, isLoading, togglePlayPause, matchesSource } =
     useAudioQueue();
+  const getQueueItems = useQueueTrackActions();
   const navigationType = useNavigationType();
   const urlQuery = searchParams.get("q") || "";
   const [query, setQuery] = useState(urlQuery);
@@ -511,7 +513,10 @@ function LibraryPage() {
   const forcePreview = import.meta.env.DEV && searchParams.get("preview") === "1";
   const previewQuery = forcePreview ? "?preview=1" : "";
   const sectionLabel = LIBRARY_VIEWS.find((view) => view.id === section)?.label || "Library";
-  const librarySource = useMemo(() => ({ type: "native-library", id: "library" }), []);
+  const librarySource = useMemo(
+    () => ({ type: "native-library", id: "library", label: "Library" }),
+    [],
+  );
   const sortOptions = SORT_OPTIONS_BY_SECTION[section] || [];
   const requestedSort = searchParams.get("sort");
   const sortMode = sortOptions.some((option) => option.value === requestedSort)
@@ -1921,6 +1926,9 @@ function LibraryPage() {
           downloadMissingTrack(track).then((result) => {
             if (result?.monitored) updateTrackMonitoringState(track.id, result);
           });
+        const queueItems = file
+          ? getQueueItems(buildPlayableTrack(track), { source: librarySource })
+          : [];
         const trackMenuItems = [
           {
             id: "play",
@@ -1929,6 +1937,7 @@ function LibraryPage() {
             onSelect: () => playTrack(track, tracks),
             disabled: !file || (active && isLoading),
           },
+          ...queueItems,
           {
             id: "info",
             label: "View info",
@@ -2039,7 +2048,7 @@ function LibraryPage() {
           ) : null,
           menu: {
             items: trackMenuItems,
-            additionalItemsAfter: "play",
+            additionalItemsAfter: queueItems.at(-1)?.id ?? "play",
             onMenuOpen: loadStaticPlaylists,
             renderAdditionalItems: ({ closeMenu }) => (
               <>

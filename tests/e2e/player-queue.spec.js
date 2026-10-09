@@ -352,3 +352,81 @@ test("lock-screen controls seek, follow play and pause, and clear with the queue
   await expect.poll(lastPosition).toBeNull();
   expect(await page.evaluate(() => navigator.mediaSession.playbackState)).toBe("none");
 });
+
+async function upNextTitles(region) {
+  return region.locator(".player-queue__list .player-queue__name").allTextContents();
+}
+
+test("the queue panel lists up next and track menus queue, reorder, remove, and clear tracks", async ({ page }) => {
+  const player = playerControls(page);
+  await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
+  await waitUntilPlaying(player);
+
+  const toggle = player.bar.getByRole("button", { name: "Queue" });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  const panel = page.getByRole("complementary", { name: "Queue" });
+  await expect(panel.getByRole("button", { name: "Close queue" })).toBeFocused();
+  await expect(panel.getByText("Playing from E2E queue")).toBeVisible();
+  expect(await upNextTitles(panel)).toEqual(["Bravo", "Charlie", "Delta", "Echo"]);
+
+  await page.getByRole("button", { name: "Delta options" }).click();
+  await page.getByRole("menuitem", { name: "Play next" }).click();
+  await expect(page.getByText("Playing next")).toBeVisible();
+  await page.getByRole("button", { name: "Bravo options" }).click();
+  await page.getByRole("menuitem", { name: "Add to queue" }).click();
+  await expect(page.getByText("Added to queue")).toBeVisible();
+  await expect.poll(() => upNextTitles(panel)).toEqual(["Delta", "Bravo", "Charlie", "Delta", "Echo", "Bravo"]);
+
+  await panel.getByRole("button", { name: "Reorder Echo" }).focus();
+  await page.keyboard.press("Space");
+  await page.keyboard.press("ArrowUp");
+  await expect(page.getByRole("status").filter({ hasText: "Echo moved to position 4 of 6" })).toBeAttached();
+  await page.keyboard.press("Space");
+  await expect.poll(() => upNextTitles(panel)).toEqual(["Delta", "Bravo", "Charlie", "Echo", "Delta", "Bravo"]);
+
+  await panel.getByRole("button", { name: "Remove Charlie from queue" }).click();
+  await expect.poll(() => upNextTitles(panel)).toEqual(["Delta", "Bravo", "Echo", "Delta", "Bravo"]);
+  await expect(player.title).toHaveText("Alpha");
+  await waitUntilPlaying(player);
+
+  await panel.getByRole("button", { name: "Clear" }).click();
+  await expect(panel.getByText(/Nothing is up next/)).toBeVisible();
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(() => upNextTitles(panel)).toEqual(["Delta", "Bravo", "Echo", "Delta", "Bravo"]);
+
+  await player.next.click();
+  await expect(player.title).toHaveText("Delta");
+  await panel.getByRole("button", { name: "Close queue" }).focus();
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(toggle).toBeFocused();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+});
+
+test("adding to the queue when nothing plays starts the track", async ({ page }) => {
+  const player = playerControls(page);
+  await page.getByRole("button", { name: "Charlie options" }).click();
+  await page.getByRole("menuitem", { name: "Add to queue" }).click();
+  await expect(player.title).toHaveText("Charlie");
+  await waitUntilPlaying(player);
+});
+
+test.describe("on a phone", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test("the now playing sheet removes and reorders up next", async ({ page }) => {
+    await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
+    await page.getByRole("button", { name: /^Open now playing: / }).click();
+    const sheet = page.getByRole("dialog", { name: "Now playing" });
+    expect(await upNextTitles(sheet)).toEqual(["Bravo", "Charlie", "Delta", "Echo"]);
+    await sheet.getByRole("button", { name: "Remove Bravo from queue" }).click();
+    await expect.poll(() => upNextTitles(sheet)).toEqual(["Charlie", "Delta", "Echo"]);
+    await sheet.getByRole("button", { name: "Reorder Delta" }).focus();
+    await page.keyboard.press("Space");
+    await page.keyboard.press("ArrowUp");
+    await expect(page.getByRole("status").filter({ hasText: "Delta moved to position 1 of 3" })).toBeAttached();
+    await page.keyboard.press("Space");
+    await expect.poll(() => upNextTitles(sheet)).toEqual(["Delta", "Charlie", "Echo"]);
+  });
+});
