@@ -8526,6 +8526,7 @@ button.native-library-card__artist:focus-visible {
 }
 
 .native-library-track__cover {
+  position: relative;
   display: flex;
   width: 2.35rem;
   height: 2.35rem;
@@ -8539,6 +8540,93 @@ button.native-library-card__artist:focus-visible {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.native-library-track__cover-indicator {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--aurral-overlay-base) 45%, transparent);
+  color: var(--aurral-overlay-foreground);
+}
+
+.track-playing-indicator {
+  display: inline-flex;
+  width: 0.875rem;
+  height: 0.75rem;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  color: var(--aurral-accent);
+  vertical-align: middle;
+}
+
+.native-library-track__cover-indicator .track-playing-indicator {
+  color: inherit;
+}
+
+.track-playing-indicator > span {
+  width: 3px;
+  height: 100%;
+  border-radius: 1px;
+  background: currentColor;
+  transform: scaleY(0.45);
+  transform-origin: bottom;
+}
+
+.track-playing-indicator > span:nth-child(2) {
+  transform: scaleY(0.8);
+}
+
+.track-playing-indicator > span:nth-child(3) {
+  transform: scaleY(0.6);
+}
+
+.track-playing-indicator.is-playing > span {
+  animation: track-playing-bar 0.9s ease-in-out infinite alternate;
+}
+
+.track-playing-indicator.is-playing > span:nth-child(2) {
+  animation-duration: 0.7s;
+  animation-delay: -0.35s;
+}
+
+.track-playing-indicator.is-playing > span:nth-child(3) {
+  animation-duration: 1.1s;
+  animation-delay: -0.6s;
+}
+
+.track-playing-indicator.is-loading {
+  animation: track-playing-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes track-playing-bar {
+  from {
+    transform: scaleY(0.2);
+  }
+
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes track-playing-pulse {
+  from {
+    opacity: 0.35;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track-playing-indicator,
+  .track-playing-indicator > span {
+    animation: none !important;
+  }
 }
 
 .native-library-track__title {
@@ -9443,6 +9531,10 @@ button.native-library-genre-row:focus-visible {
     width: 3rem;
     height: 3rem;
     flex-shrink: 0;
+  }
+
+  .native-library-track__cover-indicator {
+    display: flex;
   }
 
   .native-library-track__title {

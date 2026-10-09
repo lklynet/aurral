@@ -310,8 +310,8 @@ function GlobalPlayerBar() {
     </span>
   );
 
-  const playPauseLabel = isPlaying ? "Pause" : "Play";
-  const PlayPauseIcon = isPlaying ? Pause : Play;
+  const playPauseLabel = isPlaying || isStarting ? "Pause" : "Play";
+  const PlayPauseIcon = isPlaying || isStarting ? Pause : Play;
   const repeatLabel =
     repeatMode === "one"
       ? "Repeat one track"
@@ -350,7 +350,7 @@ function GlobalPlayerBar() {
           type="button"
           className="global-player__mini-control"
           onClick={togglePlayPause}
-          disabled={isLoading}
+          aria-busy={isLoading || undefined}
           aria-label={playPauseLabel}
         >
           <PlayPauseIcon aria-hidden="true" />
@@ -461,7 +461,7 @@ function GlobalPlayerBar() {
                   type="button"
                   className="now-playing__control now-playing__control--primary"
                   onClick={togglePlayPause}
-                  disabled={isLoading}
+                  aria-busy={isLoading || undefined}
                   aria-label={playPauseLabel}
                 >
                   <PlayPauseIcon aria-hidden="true" />
@@ -542,7 +542,7 @@ function GlobalPlayerBar() {
               aria-keyshortcuts={PLAYER_SHORTCUTS.playPause.keys}
               onClick={togglePlayPause}
               className="btn btn-accent btn-sm btn-icon global-player__control global-player__control--primary"
-              disabled={isLoading}
+              aria-busy={isLoading || undefined}
             >
               {isPlaying ? <Pause className="artist-icon-sm" /> : <Play className="artist-icon-sm" />}
             </TooltipButton>

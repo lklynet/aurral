@@ -356,8 +356,9 @@ function LibraryPage() {
     setPlaylistsError,
     loadStaticPlaylists,
   } = useStaticPlaylists();
-  const { playQueue, currentTrack, isPlaying, isLoading, togglePlayPause, matchesSource } =
+  const { playQueue, currentTrack, isPlaying, isLoading, isStarting, togglePlayPause, matchesSource } =
     useAudioQueue();
+  const isRunning = isPlaying || isStarting;
   const getQueueItems = useQueueTrackActions();
   const navigationType = useNavigationType();
   const urlQuery = searchParams.get("q") || "";
@@ -1932,10 +1933,10 @@ function LibraryPage() {
         const trackMenuItems = [
           {
             id: "play",
-            label: active && isPlaying ? "Pause" : "Play",
-            icon: active && isPlaying ? Pause : Play,
+            label: active && isRunning ? "Pause" : "Play",
+            icon: active && isRunning ? Pause : Play,
             onSelect: () => playTrack(track, tracks),
-            disabled: !file || (active && isLoading),
+            disabled: !file,
           },
           ...queueItems,
           {
@@ -2031,10 +2032,10 @@ function LibraryPage() {
           time: formatDuration(trackDurationMs(track)) || "Unavailable",
           timeMissing: !file,
           active,
-          playing: active && isPlaying,
+          playing: active && isRunning,
+          loading: active && isLoading,
           missing: !file,
           onPlay: file ? () => playTrack(track, tracks) : null,
-          playDisabled: active && isLoading,
           trailing: !file ? (
             <TooltipButton
               className="native-library-track__download"
@@ -2524,7 +2525,7 @@ function LibraryPage() {
               <CollectionPlayButtons
                 label={libraryAlbum.title || "album"}
                 disabled={!albumPlayable}
-                isPlaying={albumIsCurrent && isPlaying}
+                isPlaying={albumIsCurrent && isRunning}
                 isShuffleEnabled={false}
                 onPlay={() => (albumIsCurrent ? togglePlayPause() : playTracks(albumTracks))}
                 onShuffle={() => playTracks(albumTracks, null, true)}

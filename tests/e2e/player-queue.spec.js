@@ -537,6 +537,46 @@ test("the tab title shows the playing track and goes back to the page title on p
   await expect(page).toHaveTitle("Bravo · E2E Artist");
 });
 
+test("the playing row shows moving bars, still bars when paused, and can be paused while it loads", async ({ page }) => {
+  let releaseBravo;
+  const bravoHeld = new Promise((resolve) => {
+    releaseBravo = resolve;
+  });
+  await page.route("**/e2e-audio/Bravo.wav", async (route) => {
+    await bravoHeld;
+    await route.fallback();
+  });
+  const player = playerControls(page);
+  const tracks = page.getByRole("list", { name: /tracks/i }).first();
+  const current = tracks.locator('[role="listitem"][aria-current="true"]');
+  const barsMoving = () =>
+    current.first().evaluate((row) =>
+      row.querySelector(".native-library-track__number").getAnimations({ subtree: true }).length > 0,
+    );
+
+  await page.getByRole("button", { name: "Play Bravo", exact: true }).click();
+  await expect(current).toHaveCount(1);
+  await expect(current).toContainText("Bravo");
+  const pauseRow = page.getByRole("button", { name: "Pause Bravo", exact: true });
+  await expect(pauseRow).toBeEnabled();
+  await expect(player.playPause).toHaveAccessibleName("Pause");
+  await expect(player.playPause).toBeEnabled();
+
+  releaseBravo();
+  await waitUntilPlaying(player);
+  await expect.poll(barsMoving).toBe(true);
+
+  await pauseRow.click();
+  await expect(page.getByRole("button", { name: "Play Bravo", exact: true })).toBeVisible();
+  await expect(current).toContainText("Bravo");
+  await expect.poll(barsMoving).toBe(false);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await player.playPause.click();
+  await waitUntilPlaying(player);
+  await expect.poll(barsMoving).toBe(false);
+});
+
 const RED_COVER = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#c82828"/></svg>';
 
 async function playCoveredPlaylist(page, artworkUrl) {

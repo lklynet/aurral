@@ -407,8 +407,9 @@ export function PlaylistTracksPanel({
     setSelectedIds(new Set());
   }, [trackOrderKey]);
 
-  const { playTrack, togglePlayPause, matchesSource, isPlaying, currentTrack } =
+  const { playTrack, togglePlayPause, matchesSource, isPlaying, isLoading, isStarting, currentTrack } =
     useAudioQueue();
+  const isRunning = isPlaying || isStarting;
   const getQueueItems = useQueueTrackActions();
 
   const sortedTracks = useMemo(
@@ -540,7 +541,8 @@ export function PlaylistTracksPanel({
       },
       time: formatTrackDuration(track.durationMs),
       active: isCurrent,
-      playing: isCurrent && isPlaying,
+      playing: isCurrent && isRunning,
+      loading: isCurrent && isLoading,
       missing: showPlaybackControls && !canPlay,
       onPlay: showPlaybackControls ? () => handlePlayTrack(track) : null,
       playDisabled: !canPlay,
@@ -574,7 +576,7 @@ export function PlaylistTracksPanel({
         <PlaylistTrackKebabMenu
           track={track}
           canPlay={canPlay}
-          isPlaying={isCurrent && isPlaying}
+          isPlaying={isCurrent && isRunning}
           onPlay={showPlaybackControls ? handlePlayTrack : null}
           onViewInfo={onViewTrackInfo}
           onAddToLibrary={onAddTrackToLibrary}

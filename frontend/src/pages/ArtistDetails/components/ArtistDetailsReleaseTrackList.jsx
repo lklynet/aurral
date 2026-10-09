@@ -72,7 +72,7 @@ export function ArtistDetailsReleaseTrackList({
   highlightTrackId = null,
 }) {
   const ownedTrackSet = new Set((Array.isArray(ownedTrackMbids) ? ownedTrackMbids : []).map(String));
-  const { currentTrack, isPlaying, isLoading, playTrack, togglePlayPause } = useAudioQueue();
+  const { currentTrack, isPlaying, isLoading, isStarting, playTrack, togglePlayPause } = useAudioQueue();
   const { isTrackDownloading } = useActiveDownloads();
   const getQueueItems = useQueueTrackActions();
 
@@ -139,7 +139,8 @@ export function ArtistDetailsReleaseTrackList({
       title,
       time: formatReleaseTrackDuration(track.length),
       active: isCurrent,
-      playing: isCurrent && (isPlaying || isLoading),
+      playing: isCurrent && (isPlaying || isStarting),
+      loading: isCurrent && isLoading,
       onPlay: canPlay ? () => handlePlay(track, index) : null,
       badge: isOwned ? <SearchLibraryCheck size="discover" /> : null,
       menu: items.length || onAddTrackToPlaylist ? {
