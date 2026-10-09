@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getArtistHeroImage } from "../utils";
 import { withImageCacheBust } from "../../../utils/normalizeMediaUrl";
 import Tooltip from "../../../components/Tooltip";
+import RouteLink from "../../../components/RouteLink";
 
 const normalizeTagName = (value) => String(value || "").trim();
 
@@ -27,7 +28,6 @@ export function ArtistDetailsHero({
   artist,
   coverImages,
   onCoverError,
-  onNavigate,
 }) {
   const heroImage = getArtistHeroImage(coverImages);
   const [imageFailed, setImageFailed] = useState(false);
@@ -78,15 +78,12 @@ export function ArtistDetailsHero({
             <div className="artist-tag-list">
               {visibleTags.map((tag) => (
                 <Tooltip key={tag.key} content={`View artists with tag: ${tag.name}`}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onNavigate?.(`/search?q=${encodeURIComponent(`#${tag.name}`)}&type=tag`)
-                    }
+                  <RouteLink
+                    to={`/search?q=${encodeURIComponent(`#${tag.name}`)}&type=tag`}
                     className="artist-tag"
                   >
                     #{tag.name}
-                  </button>
+                  </RouteLink>
                 </Tooltip>
               ))}
             </div>

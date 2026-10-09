@@ -88,38 +88,18 @@ export function buildLibraryAlbumNavigationItem(
   };
 }
 
-export function navigateToReleaseGroup(
-  navigate,
-  releaseGroup,
-  { artistMbid, artistName, coverUrl = "" } = {},
-) {
+export function getReleaseGroupLink(releaseGroup, { artistMbid, artistName, coverUrl = "" } = {}) {
   const target = getReleaseNavigationTarget(
-    buildReleaseGroupNavigationItem(releaseGroup, {
-      artistMbid,
-      artistName,
-      coverUrl,
-    }),
+    buildReleaseGroupNavigationItem(releaseGroup, { artistMbid, artistName, coverUrl }),
   );
-  if (!target) return false;
-  navigate(target.pathname, { state: target.state });
-  return true;
+  return target ? { to: target.pathname, state: target.state } : null;
 }
 
-export function navigateToLibraryAlbum(
-  navigate,
-  libraryAlbum,
-  { artistMbid, artistName, coverUrl = "" } = {},
-) {
+export function getLibraryAlbumLink(libraryAlbum, { artistMbid, artistName, coverUrl = "" } = {}) {
   const target = getReleaseNavigationTarget(
-    buildLibraryAlbumNavigationItem(libraryAlbum, {
-      artistMbid,
-      artistName,
-      coverUrl,
-    }),
+    buildLibraryAlbumNavigationItem(libraryAlbum, { artistMbid, artistName, coverUrl }),
   );
-  if (!target) return false;
-  navigate(target.pathname, { state: target.state });
-  return true;
+  return target ? { to: target.pathname, state: target.state } : null;
 }
 
 export function getReleaseNavigationTarget(item) {
@@ -155,67 +135,56 @@ function getLibraryResultPath(item) {
   return null;
 }
 
-export function navigateFromSearchResult(navigate, item, { query = "" } = {}) {
-  if (!item || typeof navigate !== "function") return;
+export function getSearchResultLink(item, { query = "" } = {}) {
+  if (!item) return null;
 
   const libraryPath = getLibraryResultPath(item);
-  if (libraryPath) {
-    navigate(libraryPath);
-    return;
-  }
+  if (libraryPath) return { to: libraryPath };
 
   if (item.type === "artist") {
     if (item.id) {
-      navigate(`/artist/${item.id}`, {
-        state: buildArtistFocusState(item),
-      });
-      return;
+      return { to: `/artist/${item.id}`, state: buildArtistFocusState(item) };
     }
-    navigate(`/search?q=${encodeURIComponent(item.name || query)}&filter=artists`);
-    return;
+    return { to: `/search?q=${encodeURIComponent(item.name || query)}&filter=artists` };
   }
 
   if (item.type === "album") {
     const target = getReleaseNavigationTarget(item);
-    if (target) {
-      navigate(target.pathname, { state: target.state });
-      return;
-    }
-    navigate(`/search?q=${encodeURIComponent(item.title || query)}&filter=albums`);
-    return;
+    if (target) return { to: target.pathname, state: target.state };
+    return { to: `/search?q=${encodeURIComponent(item.title || query)}&filter=albums` };
   }
 
   if (item.type === "track") {
     if (item.source === "library" && item.streamPath && !item.albumMbid) {
-      navigate("/library");
-      return;
+      return { to: "/library" };
     }
     const target = getReleaseNavigationTarget(item);
-    if (target) {
-      navigate(target.pathname, { state: target.state });
-      return;
-    }
+    if (target) return { to: target.pathname, state: target.state };
     if (item.artistMbid) {
-      navigate(`/artist/${item.artistMbid}`, {
-        state: buildArtistFocusState(item),
-      });
-      return;
+      return { to: `/artist/${item.artistMbid}`, state: buildArtistFocusState(item) };
     }
-    navigate(
-      `/search?q=${encodeURIComponent(
+    return {
+      to: `/search?q=${encodeURIComponent(
         [item.artistName, item.title].filter(Boolean).join(" ") || query,
       )}&filter=tracks`,
-    );
-    return;
+    };
   }
 
   if (item.type === "playlist" && item.id) {
-    if (item.sourceFlowId) {
-      navigate(flowPath(item.sourceFlowId));
-      return;
-    }
-    navigate(playlistPath(item.id));
+    return { to: item.sourceFlowId ? flowPath(item.sourceFlowId) : playlistPath(item.id) };
   }
+  return null;
+}
+
+export function navigateFromSearchResult(navigate, item, { query = "" } = {}) {
+  if (typeof navigate !== "function") return;
+  const link = getSearchResultLink(item, { query });
+  if (!link) return;
+  if (link.state) {
+    navigate(link.to, { state: link.state });
+    return;
+  }
+  navigate(link.to);
 }
 
 function normalizeSearchText(value) {

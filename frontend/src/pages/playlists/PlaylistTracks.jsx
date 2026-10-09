@@ -253,10 +253,28 @@ export function PlaylistTracks({
     }
   };
 
+  const getFlowArtistLink = (track) =>
+    track?.artistMbid
+      ? { to: `/artist/${track.artistMbid}`, state: { artistName: track.artistName } }
+      : null;
+
+  const getFlowAlbumLink = (track) =>
+    track?.albumMbid && track.artistMbid
+      ? {
+          to: `/artist/${track.artistMbid}/release/${track.albumMbid}`,
+          state: {
+            artistName: track.artistName,
+            focusReleaseGroupMbid: track.albumMbid,
+            focusReleaseGroup: { id: track.albumMbid, title: track.albumName || "" },
+          },
+        }
+      : null;
+
   const handleNavigateArtist = async (track) => {
     if (!track?.artistMbid) return;
     if (isFlow) {
-      navigate(`/artist/${track.artistMbid}`, { state: { artistName: track.artistName } });
+      const link = getFlowArtistLink(track);
+      navigate(link.to, { state: link.state });
       return;
     }
     let canonicalId = null;
@@ -283,13 +301,8 @@ export function PlaylistTracks({
   const handleNavigateAlbum = async (track) => {
     if (!track?.albumMbid) return;
     if (isFlow && track.artistMbid) {
-      navigate(`/artist/${track.artistMbid}/release/${track.albumMbid}`, {
-        state: {
-          artistName: track.artistName,
-          focusReleaseGroupMbid: track.albumMbid,
-          focusReleaseGroup: { id: track.albumMbid, title: track.albumName || "" },
-        },
-      });
+      const link = getFlowAlbumLink(track);
+      navigate(link.to, { state: link.state });
       return;
     }
     let canonicalId = null;
@@ -445,6 +458,8 @@ export function PlaylistTracks({
         onToggleFavorite={handleToggleFavorite}
         onNavigateArtist={handleNavigateArtist}
         onNavigateAlbum={handleNavigateAlbum}
+        getArtistLink={isFlow ? getFlowArtistLink : undefined}
+        getAlbumLink={isFlow ? getFlowAlbumLink : undefined}
         artworkByAlbumMbid={trackArtworkByAlbumMbid}
         showTrackAvailability={showTrackAvailability}
       />

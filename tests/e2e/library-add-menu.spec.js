@@ -216,7 +216,7 @@ test("search results have no artist add button", async ({ page }) => {
   await page.route("**/api/search/unified**", (route) =>
     route.fulfill({ json: { top, catalog: { artists: [top], albums: [], tracks: [] } } }));
   await page.goto("/search?q=Menu");
-  await expect(page.getByRole("button", { name: `Open ${artist.name}`, exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: `Open ${artist.name}`, exact: true }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: /^(Add to|Monitor with) / })).toHaveCount(0);
 });
 

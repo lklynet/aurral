@@ -29,7 +29,8 @@ import ActivityToolbar from "./activity/ActivityToolbar";
 import ActivityMissingPage from "./activity/ActivityMissingPage";
 import ActivityInfoModal from "./activity/ActivityInfoModal";
 
-import { Navigate, useLocation, useNavigate, useParams } from "react-router";
+import { Navigate, useLocation, useParams } from "react-router";
+import RouteLink from "../components/RouteLink";
 import { AlertCircle, Music } from "lucide-react";
 import { DotLoader } from "../components/DotLoader";
 import { queryClient, queryKeys } from "../queryClient.js";
@@ -46,7 +47,6 @@ const HISTORY_EMPTY_STATE = {
 };
 
 function ActivityPage() {
-  const navigate = useNavigate();
   const location = useLocation();
   const { view: viewParam } = useParams();
   const { user } = useAuth();
@@ -244,20 +244,6 @@ function ActivityPage() {
     mutationFn: denyBlockedJob,
   });
 
-  const navigateToArtist = useCallback(
-    (request, isAlbum, artistMbid, artistName, displayName) => {
-      if (!artistMbid || artistMbid === "null" || artistMbid === "undefined") {
-        return;
-      }
-      navigate(isAlbum ? `/artist/${artistMbid}` : `/artist/${request.mbid}`, {
-        state: {
-          artistName: isAlbum ? artistName : displayName,
-        },
-      });
-    },
-    [navigate],
-  );
-
   const handleReSearchAlbum = async (request) => {
     const albumId = request.albumId;
     if (!albumId || reSearchingAlbumIds[albumId]) return;
@@ -328,20 +314,6 @@ function ActivityPage() {
     [currentTrack?.id, playTrack, togglePlayPause],
   );
 
-  const handleRowNavigate = useCallback(
-    (request, { isSlskd, isUsenet, isAurral, isAlbum, artistMbid, artistName, displayName }) => {
-      if ((isSlskd || isUsenet) && request.playlistId) {
-        navigate(`/playlists?selected=${encodeURIComponent(request.playlistId)}`);
-        return;
-      }
-      if (request.href && (isAurral || request.type === "activity")) {
-        navigate(request.href);
-        return;
-      }
-      navigateToArtist(request, isAlbum, artistMbid, artistName, displayName);
-    },
-    [navigate, navigateToArtist],
-  );
 
   const emptyState = isQueueView ? QUEUE_EMPTY_STATE : HISTORY_EMPTY_STATE;
 
@@ -438,13 +410,9 @@ function ActivityPage() {
                 : emptyState.message}
             </p>
             {isQueueView && !hasActivityFilter && (
-              <button
-                type="button"
-                onClick={() => navigate("/")}
-                className="btn btn-primary btn--bold btn-min-h"
-              >
+              <RouteLink to="/" className="btn btn-primary btn--bold btn-min-h">
                 Start Discovering
-              </button>
+              </RouteLink>
             )}
           </div>
         )
@@ -469,7 +437,6 @@ function ActivityPage() {
                   jobErrors={jobErrors}
                   currentTrack={currentTrack}
                   isPlaying={isPlaying}
-                  onNavigate={handleRowNavigate}
                   onReSearch={lidarrConnected ? handleReSearchAlbum : undefined}
                   onApprove={(jobId) => reviewBlockedJob(jobId, "approve")}
                   onDeny={(jobId) => reviewBlockedJob(jobId, "deny")}

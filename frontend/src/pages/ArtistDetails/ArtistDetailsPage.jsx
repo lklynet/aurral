@@ -52,6 +52,7 @@ import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { queryKeys } from "../../queryClient.js";
 import TooltipButton from "../../components/TooltipButton";
 import CrossViewLink from "../../components/CrossViewLink";
+import RouteLink from "../../components/RouteLink";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ArtistDetailsPage() {
@@ -466,12 +467,9 @@ function ArtistDetailsPage() {
           <Music className="artist-error-icon" />
           <h3 className="artist-error-title">Error Loading Artist</h3>
           <p className="artist-error-copy">{error}</p>
-          <button
-            onClick={() => navigate("/search")}
-            className="btn btn-primary artist-hidden-mobile"
-          >
+          <RouteLink to="/search" className="btn btn-primary artist-hidden-mobile">
             Back to Search
-          </button>
+          </RouteLink>
         </div>
       </div>
     );
@@ -494,7 +492,6 @@ function ArtistDetailsPage() {
         artist={artist}
         coverImages={coverImages}
         onCoverError={handleCoverError}
-        onNavigate={(path) => navigate(path)}
       />
 
       <ArtistDetailsActionBar
@@ -606,11 +603,10 @@ function ArtistDetailsPage() {
           requestingAlbum={library.requestingAlbum}
           artistName={artistDisplayName}
           onVisibleCoverIdsChange={setVisibleReleaseGroupCoverIds}
-          onViewAll={() =>
-            navigate(`/artist/${artist.id}/albums`, {
-              state: { artistName: artist.name, inLibrary: existsInLibrary },
-            })
-          }
+          viewAllLink={{
+            to: `/artist/${artist.id}/albums`,
+            state: { artistName: artist.name, inLibrary: existsInLibrary },
+          }}
         />
       )}
 
@@ -630,11 +626,10 @@ function ArtistDetailsPage() {
           requestingAlbum={library.requestingAlbum}
           artistName={artistDisplayName}
           onVisibleCoverIdsChange={setVisibleAppearsOnCoverIds}
-          onViewAll={() =>
-            navigate(`/artist/${artist.id}/appears-on`, {
-              state: { artistName: artist.name, inLibrary: existsInLibrary },
-            })
-          }
+          viewAllLink={{
+            to: `/artist/${artist.id}/appears-on`,
+            state: { artistName: artist.name, inLibrary: existsInLibrary },
+          }}
         />
       )}
 
@@ -645,7 +640,6 @@ function ArtistDetailsPage() {
         lidarrConnected={lidarrManagesArtist}
         existsInLibrary={existsInLibrary}
         coverImages={coverImages}
-        onNavigate={(path) => navigate(path)}
       />
 
       {(loadingSimilar || similarArtists.length > 0) && (
@@ -653,14 +647,6 @@ function ArtistDetailsPage() {
           loadingSimilar={loadingSimilar}
           similarArtists={similarArtists}
           similarArtistsScrollRef={similarArtistsScrollRef}
-          onArtistClick={(id, name, inLibrary = undefined) =>
-            navigate(`/artist/${id}`, {
-              state: {
-                artistName: name,
-                ...(typeof inLibrary === "boolean" ? { inLibrary } : {}),
-              },
-            })
-          }
           onArtistFeedback={handleArtistTasteFeedback}
           artistFeedbackLookup={artistFeedbackLookup}
         />

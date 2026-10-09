@@ -1,4 +1,4 @@
-import { memo, useCallback, useState, useEffect } from "react";
+import { memo, useState, useEffect } from "react";
 import { getReleaseGroupCover, getArtistCover } from "../utils/api/endpoints/artists.js";
 
 import { Music } from "lucide-react";
@@ -12,6 +12,7 @@ import { getAlbumAddAction } from "../utils/albumAddAction";
 import { formatDate } from "../utils/dateTime.js";
 import Tooltip from "../components/Tooltip";
 import RecommendationMeta from "../components/RecommendationMeta";
+import RouteLink from "../components/RouteLink";
 const parseCalendarDate = (value) => {
   if (!value) return null;
   const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -68,48 +69,43 @@ const getRecommendationReason = (artist) => {
   return artist?.discoveryTier === "deeper" ? "A deeper discovery pick" : "Picked for your profile";
 };
 
-const handleCoverKeyDown = (event, onClick) => {
-  if (event.key !== "Enter" && event.key !== " ") return;
-  event.preventDefault();
-  onClick();
-};
+function CardText({ link, label, children }) {
+  if (!link) return <div className="artist-discover-card__text">{children}</div>;
+  return (
+    <RouteLink
+      to={link.to}
+      state={link.state}
+      className="artist-discover-card__text card-link"
+      aria-label={label}
+    >
+      {children}
+    </RouteLink>
+  );
+}
 
 export const ArtistCard = memo(
   ({
     artist,
     isInLibrary,
-    onNavigate,
     onOpenInLibrary,
     onFeedback,
     feedbackUsed = {},
   }) => {
     const navigateTo = artist.navigateTo || artist.id;
     const hasValidMbid = navigateTo && navigateTo !== "null" && navigateTo !== "undefined";
-    const canOpen = Boolean(artist.libraryPath || hasValidMbid);
     const artistMetaText = getRecommendationReason(artist);
-    const handleClick = useCallback(() => {
-      if (artist.libraryPath) {
-        onNavigate(artist.libraryPath);
-        return;
-      }
-      if (hasValidMbid) {
-        onNavigate(`/artist/${navigateTo}`, {
-          state: {
-            artistName: artist.name,
-            inLibrary: isInLibrary,
-          },
-        });
-      }
-    }, [navigateTo, hasValidMbid, artist.libraryPath, artist.name, isInLibrary, onNavigate]);
+    const link = artist.libraryPath
+      ? { to: artist.libraryPath }
+      : hasValidMbid
+        ? {
+            to: `/artist/${navigateTo}`,
+            state: { artistName: artist.name, inLibrary: isInLibrary },
+          }
+        : null;
+    const canOpen = Boolean(link);
     return (
       <div
-        role="button"
-        tabIndex={canOpen ? 0 : -1}
-        onClick={handleClick}
-        onKeyDown={(event) => handleCoverKeyDown(event, handleClick)}
         className={`artist-discover-card artist-discover-card--artist${canOpen ? "" : " is-disabled"}`}
-        aria-label={`Open ${artist.name}`}
-        aria-disabled={!canOpen}
       >
         <div className="artist-discover-card__cover">
           <ArtistImage
@@ -125,7 +121,7 @@ export const ArtistCard = memo(
         </div>
 
         <div className="artist-discover-card__content">
-          <div className="artist-discover-card__text">
+          <CardText link={link} label={`Open ${artist.name}`}>
             <div className="artist-card-title-row--discover">
               <Tooltip content={artist.name}>
                 <span
@@ -148,8 +144,8 @@ export const ArtistCard = memo(
                 </p>
               </Tooltip>
             )}
-          </div>
-          <div onClick={(event) => event.stopPropagation()} role="none">
+          </CardText>
+          <div className="artist-discover-card__menu">
             <ArtistContextMenu
               artist={artist}
               isInLibrary={isInLibrary}
@@ -179,7 +175,6 @@ export const ArtistCard = memo(
       prevProps.feedbackUsed?.more_like_this === nextProps.feedbackUsed?.more_like_this &&
       prevProps.feedbackUsed?.less_like_this === nextProps.feedbackUsed?.less_like_this &&
       prevProps.feedbackUsed?.block_artist === nextProps.feedbackUsed?.block_artist &&
-      prevProps.onNavigate === nextProps.onNavigate &&
       prevProps.onOpenInLibrary === nextProps.onOpenInLibrary &&
       prevProps.onFeedback === nextProps.onFeedback
     );
@@ -190,7 +185,6 @@ ArtistCard.displayName = "ArtistCard";
 export const AlbumCard = memo(
   ({
     album,
-    onNavigate,
     canAddAlbum = false,
     isPending = false,
     onAlbumAction,
@@ -235,40 +229,21 @@ export const AlbumCard = memo(
     const albumArtistText = album.artistName || "Unknown Artist";
     const albumReleaseText = formatReleaseStatus(album.releaseDate);
     const isComplete = (album.statistics?.percentOfTracks || 0) > 0;
-    const handleClick = useCallback(() => {
-      const target = getReleaseNavigationTarget({
-        type: "album",
-        id: releaseGroupMbid,
-        artistMbid,
-        artistName: album.artistName,
-        title: album.albumName,
-        releaseDate: album.releaseDate,
-        coverUrl,
-      });
-      if (target) {
-        onNavigate(target.pathname, { state: target.state });
-      }
-    }, [
-      album.albumName,
-      album.artistName,
-      album.releaseDate,
+    const target = getReleaseNavigationTarget({
+      type: "album",
+      id: releaseGroupMbid,
       artistMbid,
+      artistName: album.artistName,
+      title: album.albumName,
+      releaseDate: album.releaseDate,
       coverUrl,
-      onNavigate,
-      releaseGroupMbid,
-    ]);
-
-    const canOpen = Boolean(releaseGroupMbid && artistMbid);
+    });
+    const link = target ? { to: target.pathname, state: target.state } : null;
+    const canOpen = Boolean(link);
 
     return (
       <div
-        role="button"
-        tabIndex={canOpen ? 0 : -1}
-        onClick={handleClick}
-        onKeyDown={(event) => handleCoverKeyDown(event, handleClick)}
         className={`artist-discover-card artist-discover-card--album${canOpen ? "" : " is-disabled"}`}
-        aria-label={`Open ${album.albumName}`}
-        aria-disabled={!canOpen}
       >
         <div className="artist-discover-card__cover-wrap">
           <div className={`artist-discover-card__cover${canOpen ? "" : " is-disabled"}`}>
@@ -296,10 +271,7 @@ export const AlbumCard = memo(
               </Tooltip>
             </div>
           ) : canAddAlbum && typeof onAlbumAction === "function" ? (
-            <div
-              className="artist-discover-card__action"
-              onClick={(event) => event.stopPropagation()}
-            >
+            <div className="artist-discover-card__action">
               <AddActionButton
                 {...getAlbumAddAction(album, libraryDestination)}
                 onAdd={(managedBy) => onAlbumAction(album, managedBy)}
@@ -312,7 +284,7 @@ export const AlbumCard = memo(
         </div>
 
         <div className="artist-discover-card__content">
-          <div className="artist-discover-card__text">
+          <CardText link={link} label={`Open ${album.albumName}`}>
             <div className="artist-card-title-row--discover">
               <Tooltip content={album.albumName}>
                 <span
@@ -334,7 +306,7 @@ export const AlbumCard = memo(
                 </p>
               </Tooltip>
             )}
-          </div>
+          </CardText>
         </div>
       </div>
     );
@@ -351,7 +323,6 @@ export const AlbumCard = memo(
       prevProps.album.statistics?.percentOfTracks === nextProps.album.statistics?.percentOfTracks &&
       prevProps.canAddAlbum === nextProps.canAddAlbum &&
       prevProps.isPending === nextProps.isPending &&
-      prevProps.onNavigate === nextProps.onNavigate &&
       prevProps.album.managedBy === nextProps.album.managedBy &&
       prevProps.libraryDestination === nextProps.libraryDestination &&
       prevProps.onAlbumAction === nextProps.onAlbumAction
@@ -360,13 +331,13 @@ export const AlbumCard = memo(
 );
 
 AlbumCard.displayName = "AlbumCard";
-export const ViewAllCard = memo(({ onClick, label = "View All" }) => {
+export const ViewAllCard = memo(({ to, label = "View All" }) => {
   return (
-    <button type="button" onClick={onClick} className="artist-view-all-card--discover">
+    <RouteLink to={to} className="artist-view-all-card--discover">
       <div className="artist-media-cell">
         <span className="artist-card-title">{label}</span>
       </div>
-    </button>
+    </RouteLink>
   );
 });
 

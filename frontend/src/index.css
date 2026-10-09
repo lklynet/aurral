@@ -3679,6 +3679,7 @@ textarea {
 }
 
 .artist-release-card {
+  position: relative;
   display: block;
   width: 100%;
   min-width: 0;
@@ -3764,7 +3765,7 @@ textarea {
   bottom: 0.5rem;
   display: flex;
   justify-content: flex-end;
-  z-index: 2;
+  z-index: 20;
 }
 
 .artist-release-card__status,
@@ -3806,6 +3807,7 @@ textarea {
 }
 
 .artist-card-button {
+  display: block;
   width: 100%;
   min-width: 0;
   text-align: left;
@@ -3878,6 +3880,7 @@ textarea {
 }
 
 .artist-release-list-item {
+  position: relative;
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr) auto;
   align-items: center;
@@ -4109,6 +4112,7 @@ textarea {
 }
 
 .artist-library-card {
+  position: relative;
   min-width: calc((100% - 0.75rem) / 2);
   flex: 0 0 calc((100% - 0.75rem) / 2);
   cursor: pointer;
@@ -4137,6 +4141,11 @@ textarea {
   position: absolute;
   right: 0.5rem;
   top: 0.5rem;
+}
+
+.artist-library-card__menu .btn {
+  position: relative;
+  z-index: 16;
 }
 
 .artist-floating-menu {
@@ -4342,6 +4351,7 @@ textarea {
 }
 
 .artist-similar-card {
+  position: relative;
   width: 132px;
   flex-shrink: 0;
   cursor: pointer;
@@ -5577,6 +5587,7 @@ textarea {
   position: absolute;
   right: 0.5rem;
   bottom: 0.5rem;
+  z-index: 20;
 }
 
 .artist-discover-card__action .btn-add-action,
@@ -5630,6 +5641,52 @@ textarea {
   flex-direction: column;
   min-width: 0;
   flex: 1;
+}
+
+.card-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  border-radius: 0.5rem;
+}
+
+.card-link:focus-visible {
+  outline: none;
+}
+
+.card-link:focus-visible::after {
+  outline: 2px solid var(--aurral-ring);
+  outline-offset: 2px;
+}
+
+.card-link :where(
+    .artist-card-title--discover,
+    .artist-card-meta--discover,
+    .artist-release-card__title,
+    .artist-release-card__meta,
+    .search-mixed-results__title,
+    .search-mixed-results__subtitle,
+    .card-link__label
+  ) {
+  position: relative;
+  z-index: 16;
+}
+
+.artist-discover-card__menu,
+.artist-release-list-item .artist-row-actions {
+  position: relative;
+  z-index: 20;
+}
+
+.artist-discover-card:hover .artist-image-preview-button,
+.search-artist-results__item:hover .artist-image-preview-button,
+.search-mixed-results__row:hover .artist-image-preview-button,
+.search-top-artist__main:hover .artist-image-preview-button,
+.artist-similar-card:hover .artist-image-preview-button {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
 }
 
 .artist-card-title-row--discover {
@@ -7207,6 +7264,7 @@ textarea {
 }
 
 .search-mixed-results__row {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(2rem, auto);
   align-items: center;
@@ -7303,6 +7361,8 @@ textarea {
 }
 
 .search-mixed-results__actions {
+  position: relative;
+  z-index: 20;
   display: flex;
   width: auto;
   min-width: 2rem;
@@ -7366,6 +7426,10 @@ textarea {
 
 .search-album-results__item {
   cursor: default;
+}
+
+.search-artist-results__item {
+  position: relative;
 }
 
 .search-album-results__cover-wrap {

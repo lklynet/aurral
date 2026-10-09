@@ -15,6 +15,7 @@ import TooltipButton from "../../components/TooltipButton";
 import { DotLoader } from "../../components/DotLoader";
 import { formatReviewReasonSummary, formatTimelineTime } from "./activityListUtils";
 import Tooltip from "../../components/Tooltip";
+import RouteLink from "../../components/RouteLink";
 
 function getStatusMeta(request) {
   if (request.status === "completed" || request.status === "available") {
@@ -64,7 +65,6 @@ export default function ActivityRequestRow({
   jobErrors,
   currentTrack,
   isPlaying,
-  onNavigate,
   onReSearch,
   onApprove,
   onDeny,
@@ -92,10 +92,18 @@ export default function ActivityRequestRow({
   const displayTitle = getRequestTitle(request);
   const displayMeta = getRequestMeta(request, displayTitle);
   const artistMbid = isAlbum ? request.artistMbid : request.mbid;
-  const canNavigate =
-    ((isSlskd || isUsenet || isYtdlp || isDeemix) && request.playlistId) ||
-    ((isAurral || isActivity) && request.href) ||
-    (artistMbid && artistMbid !== "null" && artistMbid !== "undefined");
+  const hasArtistMbid = Boolean(artistMbid && artistMbid !== "null" && artistMbid !== "undefined");
+  const rowLink =
+    (isSlskd || isUsenet) && request.playlistId
+      ? { to: `/playlists?selected=${encodeURIComponent(request.playlistId)}` }
+      : request.href && (isAurral || isActivity)
+        ? { to: request.href }
+        : hasArtistMbid
+          ? {
+              to: `/artist/${artistMbid}`,
+              state: { artistName: isAlbum ? request.artistName || null : displayTitle },
+            }
+          : null;
   const status = getStatusMeta(request);
   const StatusIcon = status.icon;
   const timelineAt = request.completedAt || request.requestedAt;
@@ -114,19 +122,6 @@ export default function ActivityRequestRow({
     ? formatReviewReasonSummary(request.subtitle)
     : null;
   const rowLabel = `${displayTitle}${displayMeta ? `, ${displayMeta}` : ""}`;
-
-  const navigate = () => {
-    if (!canNavigate) return;
-    onNavigate(request, {
-      isSlskd,
-      isUsenet,
-      isAurral,
-      isAlbum,
-      artistMbid,
-      artistName: request.artistName || null,
-      displayName: displayTitle,
-    });
-  };
 
   return (
     <article className="activity-row">
@@ -156,16 +151,16 @@ export default function ActivityRequestRow({
               {expanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
               <span>{displayTitle}</span>
             </button>
-          ) : canNavigate ? (
+          ) : rowLink ? (
             <Tooltip content={displayTitle}>
-              <button
-                type="button"
+              <RouteLink
+                to={rowLink.to}
+                state={rowLink.state}
                 className="activity-row__title-button"
                 aria-label={`Open ${rowLabel}`}
-                onClick={navigate}
               >
                 {displayTitle}
-              </button>
+              </RouteLink>
             </Tooltip>
           ) : (
             displayTitle

@@ -14,6 +14,8 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { queryClient, queryKeys } from "../queryClient.js";
 import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../components/CollectionHeader";
 import TooltipButton from "../components/TooltipButton";
+import Tooltip from "../components/Tooltip";
+import RouteLink from "../components/RouteLink";
 import { DotLoader } from "../components/DotLoader";
 import { PlaylistTracksPanel, usePlaylistTrackPlayback } from "./playlists/components/playlistTrackComponents.jsx";
 import { formatTrackTotal } from "./playlists/playlistPageUtils";
@@ -97,10 +99,6 @@ export default function EditorialPlaylistDetailPage() {
   };
 
   const handleAdd = async () => {
-    if (playlist?.libraryPlaylistId) {
-      navigate(playlistPath(playlist.libraryPlaylistId), { state: { created: true } });
-      return;
-    }
     setAdding(true);
     try {
       const result = await addEditorialPlaylistToLibrary(playlistId);
@@ -198,21 +196,26 @@ export default function EditorialPlaylistDetailPage() {
               onPlay={playback.handlePlayAll}
               onShuffle={playback.handleShufflePlay}
             />
-            {canAdd ? (
+            {canAdd && inLibrary ? (
+              <Tooltip content={addLabel}>
+                <RouteLink
+                  to={playlistPath(playlist.libraryPlaylistId)}
+                  state={{ created: true }}
+                  className="native-library-favorite is-active"
+                  aria-label={addLabel}
+                >
+                  <Check aria-hidden="true" />
+                </RouteLink>
+              </Tooltip>
+            ) : canAdd ? (
               <TooltipButton
-                className={`native-library-favorite${inLibrary ? " is-active" : ""}`}
+                className="native-library-favorite"
                 onClick={handleAdd}
                 disabled={adding}
                 label={addLabel}
                 aria-label={addLabel}
               >
-                {adding ? (
-                  <DotLoader size="sm" label={null} />
-                ) : inLibrary ? (
-                  <Check aria-hidden="true" />
-                ) : (
-                  <Plus aria-hidden="true" />
-                )}
+                {adding ? <DotLoader size="sm" label={null} /> : <Plus aria-hidden="true" />}
               </TooltipButton>
             ) : null}
           </>

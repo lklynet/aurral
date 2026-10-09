@@ -1,4 +1,5 @@
-import { Navigate, useNavigate, useParams } from "react-router";
+import { Navigate, useParams } from "react-router";
+import RouteLink from "../components/RouteLink";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { Music, MapPin, AlertCircle } from "lucide-react";
 import { DotLoader } from "../components/DotLoader";
@@ -20,7 +21,6 @@ const SHOW_FILTER_MATCHERS = {
 };
 
 function ShowsPage() {
-  const navigate = useNavigate();
   const { filter: filterParam } = useParams();
   const showFilter = normalizeShowsFilter(filterParam);
   const shouldRedirect = filterParam && normalizeShowsFilter(filterParam) !== filterParam;
@@ -101,13 +101,12 @@ function ShowsPage() {
           <p className="search-empty-panel__message">
             Add a Ticketmaster Consumer Key in Settings to enable local show discovery.
           </p>
-          <button
-            type="button"
-            onClick={() => navigate("/settings")}
+          <RouteLink
+            to="/settings"
             className="btn btn-primary btn--bold btn-min-h shows-page__panel-action"
           >
             Open Settings
-          </button>
+          </RouteLink>
         </div>
       ) : showsLoading ? (
         <div className="artist-loading">

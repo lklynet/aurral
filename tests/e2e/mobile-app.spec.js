@@ -66,7 +66,7 @@ test("search results open an artist and the back control returns to them", async
   await search.press("Enter");
   await expect(page).toHaveURL(/\/search\?/);
   await page
-    .getByRole("button", { name: `Open ${release.artistName}`, exact: true })
+    .getByRole("link", { name: `Open ${release.artistName}`, exact: true })
     .first()
     .tap({ timeout: 30_000 });
   await expect(page).toHaveURL(/\/artist\//);

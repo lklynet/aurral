@@ -1,9 +1,10 @@
 import { ChevronRight, ListMusic, Music } from "lucide-react";
 import ArtistImage from "./ArtistImage";
 import SearchLibraryCheck from "./SearchLibraryCheck";
-import { navigateFromSearchResult } from "../utils/searchNavigation";
+import { getSearchResultLink } from "../utils/searchNavigation";
 import { getArtistRecordId } from "../utils/artistTaste";
 import { isAlbumCompleteInLibrary } from "../utils/albumAddAction";
+import RouteLink from "./RouteLink";
 
 function getPrimaryLabel(item) {
   if (item?.type === "artist") return item.name || "";
@@ -106,7 +107,6 @@ function SearchTopArtistCard({
   artistImages,
   albumCovers = {},
   libraryLookup,
-  navigate,
   query = "",
   previewTracks = [],
 }) {
@@ -122,22 +122,32 @@ function SearchTopArtistCard({
       : result.inLibrary || (isArtist && artistId ? libraryLookup[artistId] : false);
   const metaLabel = getMetaLabel(result);
   const previewLabel = getPreviewLabel(result, previewTracks);
-  const navigateToResult = () => navigateFromSearchResult(navigate, result, { query });
-  const handleMainKeyDown = (event) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    navigateToResult();
-  };
+  const link = getSearchResultLink(result, { query });
+  const copy = (
+    <>
+      <span className="search-top-artist__eyebrow">Top result</span>
+      <span className="search-top-artist__title-row">
+        <span className="search-top-artist__name">{label}</span>
+        {isInLibrary && <SearchLibraryCheck />}
+      </span>
+      <span className="search-top-artist__meta-row">
+        <span className="search-top-artist__meta">{metaLabel}</span>
+        {previewLabel ? (
+          <>
+            <span className="search-top-artist__meta-dot" aria-hidden="true">
+              ·
+            </span>
+            <span className="search-top-artist__preview">{previewLabel}</span>
+          </>
+        ) : null}
+      </span>
+    </>
+  );
 
   return (
     <article className="search-top-artist">
       <div
-        role="button"
-        tabIndex={0}
         className={`search-top-artist__main${backdropSrc ? " search-top-artist__main--overlay" : ""}`}
-        onClick={navigateToResult}
-        onKeyDown={handleMainKeyDown}
-        aria-label={`Open ${label}`}
       >
         <span className="search-top-artist__backdrop" aria-hidden="true">
           {backdropSrc ? (
@@ -155,24 +165,18 @@ function SearchTopArtistCard({
             <TopResultArtwork item={result} artistImages={artistImages} albumCovers={albumCovers} isInLibrary={isInLibrary} />
           </span>
 
-          <span className="search-top-artist__copy">
-            <span className="search-top-artist__eyebrow">Top result</span>
-            <span className="search-top-artist__title-row">
-              <span className="search-top-artist__name">{label}</span>
-              {isInLibrary && <SearchLibraryCheck />}
-            </span>
-            <span className="search-top-artist__meta-row">
-              <span className="search-top-artist__meta">{metaLabel}</span>
-              {previewLabel ? (
-                <>
-                  <span className="search-top-artist__meta-dot" aria-hidden="true">
-                    ·
-                  </span>
-                  <span className="search-top-artist__preview">{previewLabel}</span>
-                </>
-              ) : null}
-            </span>
-          </span>
+          {link ? (
+            <RouteLink
+              to={link.to}
+              state={link.state}
+              className="search-top-artist__copy card-link"
+              aria-label={`Open ${label}`}
+            >
+              {copy}
+            </RouteLink>
+          ) : (
+            <span className="search-top-artist__copy">{copy}</span>
+          )}
 
           <span className="search-top-artist__cta" aria-hidden="true">
             <ChevronRight className="search-top-artist__cta-icon" />

@@ -42,12 +42,12 @@ import {
   useCollectionTint,
 } from "../components/CollectionHeader";
 import CrossViewLink from "../components/CrossViewLink";
+import RouteLink from "../components/RouteLink";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
-import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
 import {
   getReleaseGroupCoversBatch,
@@ -339,7 +339,6 @@ function EmptyState({ title, message }) {
 
 function LibraryPage() {
   const navigate = useNavigate();
-  const navigateToDiscover = useDiscoverNavigation();
   const {
     section: routeSection,
     albumId: routeAlbumId,
@@ -1781,9 +1780,14 @@ function LibraryPage() {
     ],
   );
 
+  const libraryArtistPath = (artist) =>
+    artist?.id ? "/library/artist/" + encodeURIComponent(artist.id) + previewQuery : null;
+  const libraryAlbumPath = (album) =>
+    album?.id ? "/library/album/" + encodeURIComponent(album.id) + previewQuery : null;
+
   const handleArtistOpen = (artist) => {
-    if (!artist?.id) return;
-    navigate("/library/artist/" + encodeURIComponent(artist.id) + previewQuery);
+    const path = libraryArtistPath(artist);
+    if (path) navigate(path);
   };
 
   const artistMbidMenuItems = (artist) =>
@@ -1836,8 +1840,8 @@ function LibraryPage() {
   };
 
   const handleAlbumOpen = (album) => {
-    if (!album?.id) return;
-    navigate("/library/album/" + encodeURIComponent(album.id) + previewQuery);
+    const path = libraryAlbumPath(album);
+    if (path) navigate(path);
   };
 
   const handleDiscoverAlbumOpen = (album) => {
@@ -2022,12 +2026,12 @@ function LibraryPage() {
             </span>
           ) : null,
           subtitle: artistName,
-          artist: { label: artistName, onOpen: artist ? () => handleArtistOpen(artist) : null },
-          album: { label: albumName, onOpen: album ? () => handleAlbumOpen(album) : null },
+          artist: { label: artistName, to: libraryArtistPath(artist) },
+          album: { label: albumName, to: libraryAlbumPath(album) },
           cover: {
             src: album ? getAlbumCover(album) : "",
             label: albumName,
-            onOpen: album ? () => handleAlbumOpen(album) : null,
+            to: libraryAlbumPath(album),
           },
           time: formatDuration(trackDurationMs(track)) || "Unavailable",
           timeMissing: !file,
@@ -2097,10 +2101,9 @@ function LibraryPage() {
         key={artist.id}
       >
         <div className="native-library-card__cover-wrap">
-          <button
-            type="button"
+          <RouteLink
+            to={libraryArtistPath(artist)}
             className="native-library-card__cover native-library-card__cover--round"
-            onClick={() => handleArtistOpen(artist)}
             aria-label={"Open " + (artist.name || "artist")}
           >
             {artist.mbid ? (
@@ -2116,7 +2119,7 @@ function LibraryPage() {
             ) : (
               <Cover label={artist.name} round />
             )}
-          </button>
+          </RouteLink>
           <LibraryItemMenu
             label={artist.name || "Artist"}
             items={[
@@ -2167,13 +2170,9 @@ function LibraryPage() {
         <div className="native-library-card__body">
           <div className="native-library-card__title-row">
             <Tooltip content={artist.name}>
-              <button
-                type="button"
-                className="native-library-card__title"
-                onClick={() => handleArtistOpen(artist)}
-              >
+              <RouteLink to={libraryArtistPath(artist)} className="native-library-card__title">
                 {artist.name || "Unknown Artist"}
-              </button>
+              </RouteLink>
             </Tooltip>
             <FavoriteButton
               active={isFavorite}
@@ -2208,14 +2207,13 @@ function LibraryPage() {
     return (
       <article className="native-library-card" data-library-menu-target key={album.id}>
         <div className="native-library-card__cover-wrap">
-          <button
-            type="button"
+          <RouteLink
+            to={libraryAlbumPath(album)}
             className="native-library-card__cover"
-            onClick={() => handleAlbumOpen(album)}
             aria-label={"Open " + (album.title || "album")}
           >
             <Cover src={getAlbumCover(album)} label={album.title} />
-          </button>
+          </RouteLink>
           <TooltipButton
             className="native-library-card__play"
             onClick={() => playAlbum(album)}
@@ -2292,13 +2290,9 @@ function LibraryPage() {
         <div className="native-library-card__body">
           <div className="native-library-card__title-row">
             <Tooltip content={album.title}>
-              <button
-                type="button"
-                className="native-library-card__title"
-                onClick={() => handleAlbumOpen(album)}
-              >
+              <RouteLink to={libraryAlbumPath(album)} className="native-library-card__title">
                 {album.title || "Unknown Album"}
-              </button>
+              </RouteLink>
             </Tooltip>
             <FavoriteButton
               active={isFavorite}
@@ -2308,13 +2302,9 @@ function LibraryPage() {
             />
           </div>
           {artist ? (
-            <button
-              type="button"
-              className="native-library-card__artist"
-              onClick={() => handleArtistOpen(artist)}
-            >
+            <RouteLink to={libraryArtistPath(artist)} className="native-library-card__artist">
               {artist.name}
-            </button>
+            </RouteLink>
           ) : (
             <span className="native-library-card__artist">
               {artist?.name || album.albumArtist || "Unknown Artist"}
@@ -2340,9 +2330,9 @@ function LibraryPage() {
         {count != null && <span>{count}</span>}
       </div>
       {path && (
-        <button type="button" onClick={() => navigate(path)} className="btn">
+        <RouteLink to={path} className="btn">
           {actionLabel}
-        </button>
+        </RouteLink>
       )}
     </div>
   );
@@ -2435,18 +2425,15 @@ function LibraryPage() {
       <div role="list" aria-label="Library genres">
         {sortedGenres.map((genre) => (
           <div role="listitem" key={genre.name}>
-            <button
-              type="button"
+            <RouteLink
               className="native-library-genre-row"
-              onClick={() =>
-                navigate("/library/albums?genre=" + encodeURIComponent(genre.name))
-              }
+              to={"/library/albums?genre=" + encodeURIComponent(genre.name)}
             >
               <strong>{genre.name}</strong>
               <span>{genre.artists}</span>
               <span>{genre.albums}</span>
               <span>{genre.tracks}</span>
-            </button>
+            </RouteLink>
           </div>
         ))}
       </div>
@@ -2475,13 +2462,9 @@ function LibraryPage() {
           title={libraryAlbum.title || "Unknown Album"}
           subtitle={
             artist ? (
-              <button
-                type="button"
-                className="native-library-detail__artist"
-                onClick={() => handleArtistOpen(artist)}
-              >
+              <RouteLink to={libraryArtistPath(artist)} className="native-library-detail__artist">
                 {artist.name}
-              </button>
+              </RouteLink>
             ) : (
               <p>{libraryAlbum.albumArtist || "Unknown Artist"}</p>
             )
@@ -2927,20 +2910,13 @@ function LibraryPage() {
           </div>
           <div className="native-library-header-actions">
             {selectedGenre && (
-              <button
-                type="button"
+              <RouteLink
                 className="btn btn-surface btn-sm"
-                onClick={() =>
-                  navigateToDiscover(
-                    "/search?q=" +
-                      encodeURIComponent("#" + selectedGenre) +
-                      "&type=tag",
-                  )
-                }
+                to={"/search?q=" + encodeURIComponent("#" + selectedGenre) + "&type=tag"}
               >
                 <Sparkles aria-hidden="true" />
                 Explore in Discover
-              </button>
+              </RouteLink>
             )}
             {showToolbar ? (
               <TooltipButton

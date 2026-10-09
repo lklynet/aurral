@@ -48,8 +48,8 @@ test("album-grab rows preserve track controls and survive polling, search, resta
   await expect(partial.getByRole("button", { name: "Approve track", exact: true })).toBeVisible();
   await expect(partial.getByRole("button", { name: "Deny track", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Expand Track-only album" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Open Individual first, Disposable Artist · Track-only album", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open Individual second, Disposable Artist · Track-only album", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open Individual first, Disposable Artist · Track-only album", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open Individual second, Disposable Artist · Track-only album", exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("album-grab-queue.png"), fullPage: true });
 
   await fixture.completeAlbum();

@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import RouteLink from "./RouteLink";
+import Tooltip from "./Tooltip";
 import TooltipButton from "./TooltipButton";
 
 export function DiscoverRail({
   title,
   subtitle,
   mobileTitle,
-  onViewAll,
+  viewAllTo,
   afterTitle,
   headerActions,
   children,
@@ -61,16 +63,16 @@ export function DiscoverRail({
           {subtitle ? (
             <p className="artist-discover-rail__subtitle">{subtitle}</p>
           ) : null}
-          {onViewAll ? (
-            <TooltipButton
-              type="button"
-              onClick={onViewAll}
-              className="btn btn-ghost btn-icon-square"
-              aria-label={`Open ${title}`}
-              title={`Open ${title}`}
-            >
-              <ChevronRight className="artist-icon-lg" />
-            </TooltipButton>
+          {viewAllTo ? (
+            <Tooltip content={`Open ${title}`}>
+              <RouteLink
+                to={viewAllTo}
+                className="btn btn-ghost btn-icon-square"
+                aria-label={`Open ${title}`}
+              >
+                <ChevronRight className="artist-icon-lg" />
+              </RouteLink>
+            </Tooltip>
           ) : null}
           {afterTitle}
         </div>

@@ -37,6 +37,7 @@ import { useDiscoverData } from "./useDiscoverData";
 import { useLibraryNews } from "../hooks/useLibraryNews";
 import { formatDate } from "../utils/dateTime.js";
 import TooltipButton from "../components/TooltipButton";
+import RouteLink from "../components/RouteLink";
 const getArtistId = (artist) => getArtistRecordId(artist);
 
 function DiscoverPage() {
@@ -210,17 +211,27 @@ function DiscoverPage() {
     return names;
   }, [basedOn, recommendations]);
 
-  const navigateToBasedOnArtist = useCallback(
-    (artist) => {
-      const routeId =
-        artist?.id || artist?.mbid || (artist?.name ? encodeURIComponent(artist.name) : "");
-      if (!routeId) return;
-      navigate(`/artist/${routeId}`, {
-        state: { artistName: artist.name },
-      });
-    },
-    [navigate],
-  );
+  const renderBasedOnArtist = (artist, key) => {
+    const routeId =
+      artist?.id || artist?.mbid || (artist?.name ? encodeURIComponent(artist.name) : "");
+    if (!routeId) {
+      return (
+        <span key={key} className="artist-discover-hero__artist-tag">
+          {artist?.name}
+        </span>
+      );
+    }
+    return (
+      <RouteLink
+        key={key}
+        to={`/artist/${routeId}`}
+        state={{ artistName: artist.name }}
+        className="artist-discover-hero__artist-tag"
+      >
+        {artist.name}
+      </RouteLink>
+    );
+  };
 
   const handleOpenArtistInLibrary = useCallback(
     async (artist) => {
@@ -323,7 +334,6 @@ function DiscoverPage() {
                   <ArtistCard
                     status="available"
                     isInLibrary={true}
-                    onNavigate={navigate}
                     onOpenInLibrary={handleOpenArtistInLibrary}
                     artist={{
                       id: artistId,
@@ -370,7 +380,6 @@ function DiscoverPage() {
               >
                 <AlbumCard
                   album={album}
-                  onNavigate={navigate}
                   canAddAlbum={canAddAlbum}
                   isPending={!!pendingRecentReleaseIds[getRecentReleaseKey(album)]}
                   onAlbumAction={handleRecentReleaseAlbumAction}
@@ -389,7 +398,7 @@ function DiscoverPage() {
         <DiscoverRail
           key="news"
           title="Artist News"
-          onViewAll={() => navigate("/discover/news")}
+          viewAllTo="/discover/news"
         >
           {newsLoading && newsArticles.length === 0 ? (
             <div className="discover-news-rail-status artist-discover-shelf-card--news-status">
@@ -421,7 +430,7 @@ function DiscoverPage() {
           <DiscoverRail
             key="recommended"
             title="Recommended"
-            onViewAll={() => navigate("/search?type=recommended")}
+            viewAllTo="/search?type=recommended"
           >
             <>
               {recommendations.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((artist) => (
@@ -429,7 +438,6 @@ function DiscoverPage() {
                   <ArtistCard
                     artist={artist}
                     isInLibrary={!!libraryLookup[getArtistId(artist)]}
-                    onNavigate={navigate}
                     onOpenInLibrary={handleOpenArtistInLibrary}
                     onFeedback={handleDiscoveryFeedback}
                     feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
@@ -437,7 +445,7 @@ function DiscoverPage() {
                 </div>
               ))}
               <div className="artist-discover-shelf-card">
-                <ViewAllCard onClick={() => navigate("/search?type=recommended")} />
+                <ViewAllCard to="/search?type=recommended" />
               </div>
             </>
           </DiscoverRail>
@@ -479,20 +487,12 @@ function DiscoverPage() {
               Not enough listening data yet. Add a few artists you like to get started.
             </p>
             <div className="discover-recommended-empty__actions">
-              <button
-                type="button"
-                onClick={() => navigate("/search")}
-                className="btn btn-primary btn-sm"
-              >
+              <RouteLink to="/search" className="btn btn-primary btn-sm">
                 Search Artists
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate("/library")}
-                className="btn btn-secondary btn-sm"
-              >
+              </RouteLink>
+              <RouteLink to="/library" className="btn btn-secondary btn-sm">
                 Browse Library
-              </button>
+              </RouteLink>
             </div>
           </div>
         </DiscoverRail>
@@ -523,14 +523,13 @@ function DiscoverPage() {
                 Add a Ticketmaster Consumer Key in Settings to enable local show discovery on this
                 page.
               </p>
-              <button
-                type="button"
-                onClick={() => navigate("/settings")}
+              <RouteLink
+                to="/settings"
                 className="btn btn-primary"
                 style={{ marginTop: "1rem" }}
               >
                 Open Settings
-              </button>
+              </RouteLink>
             </div>
           </section>
         );
@@ -562,7 +561,7 @@ function DiscoverPage() {
           <DiscoverRail
             key="recommendedShows"
             title="Shows Near You"
-            onViewAll={() => navigate("/shows")}
+            viewAllTo="/shows"
             headerActions={nearbyHeaderActions}
           >
             <div className="artist-nearby-status">
@@ -580,7 +579,7 @@ function DiscoverPage() {
           <DiscoverRail
             key="recommendedShows"
             title="Shows Near You"
-            onViewAll={() => navigate("/shows")}
+            viewAllTo="/shows"
             headerActions={nearbyHeaderActions}
           >
             <>
@@ -616,7 +615,7 @@ function DiscoverPage() {
         <DiscoverRail
           key="globalTop"
           title="Global Trending"
-          onViewAll={() => navigate("/search?type=trending")}
+          viewAllTo="/search?type=trending"
         >
           <>
             {globalTop.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((artist) => (
@@ -627,7 +626,6 @@ function DiscoverPage() {
                     metaText: "",
                   }}
                   isInLibrary={!!libraryLookup[getArtistId(artist)]}
-                  onNavigate={navigate}
                   onOpenInLibrary={handleOpenArtistInLibrary}
                   onFeedback={handleDiscoveryFeedback}
                   feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
@@ -635,7 +633,7 @@ function DiscoverPage() {
               </div>
             ))}
             <div className="artist-discover-shelf-card">
-              <ViewAllCard onClick={() => navigate("/search?type=trending")} />
+              <ViewAllCard to="/search?type=trending" />
             </div>
           </>
         </DiscoverRail>
@@ -653,7 +651,7 @@ function DiscoverPage() {
                 key={section.genre}
                 title={`Because You Like ${section.genre}`}
                 mobileTitle={section.genre}
-                onViewAll={() => navigate(viewAllPath)}
+                viewAllTo={viewAllPath}
               >
                 <>
                   {section.artists.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((artist) => (
@@ -661,7 +659,6 @@ function DiscoverPage() {
                       <ArtistCard
                         artist={artist}
                         isInLibrary={!!libraryLookup[getArtistId(artist)]}
-                        onNavigate={navigate}
                         onOpenInLibrary={handleOpenArtistInLibrary}
                         onFeedback={handleDiscoveryFeedback}
                         feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
@@ -669,7 +666,7 @@ function DiscoverPage() {
                     </div>
                   ))}
                   <div className="artist-discover-shelf-card">
-                    <ViewAllCard onClick={() => navigate(viewAllPath)} />
+                    <ViewAllCard to={viewAllPath} />
                   </div>
                 </>
               </DiscoverRail>
@@ -738,15 +735,7 @@ function DiscoverPage() {
                   <div className="artist-discover-hero__based-on-intro">Based on:</div>
                   {showFullBasedOnList ? (
                     <div className="artist-discover-hero__artists-expanded">
-                      {heroBasedOn.map((artist, index) => (
-                        <button
-                          key={index}
-                          onClick={() => navigateToBasedOnArtist(artist)}
-                          className="artist-discover-hero__artist-tag"
-                        >
-                          {artist.name}
-                        </button>
-                      ))}
+                      {heroBasedOn.map((artist, index) => renderBasedOnArtist(artist, index))}
                       <button
                         onClick={() => setShowFullBasedOnList(false)}
                         className="artist-discover-hero__view-toggle-badge"
@@ -757,23 +746,12 @@ function DiscoverPage() {
                   ) : (
                     <div className="artist-discover-hero__artists-collapsed">
                       {heroBasedOn.length === 1 ? (
-                        <button
-                          onClick={() => navigateToBasedOnArtist(heroBasedOn[0])}
-                          className="artist-discover-hero__artist-tag"
-                        >
-                          {heroBasedOn[0].name}
-                        </button>
+                        renderBasedOnArtist(heroBasedOn[0], 0)
                       ) : (
                         <>
-                          {heroBasedOn.slice(0, 4).map((artist, index) => (
-                            <button
-                              key={index}
-                              onClick={() => navigateToBasedOnArtist(artist)}
-                              className="artist-discover-hero__artist-tag"
-                            >
-                              {artist.name}
-                            </button>
-                          ))}
+                          {heroBasedOn
+                            .slice(0, 4)
+                            .map((artist, index) => renderBasedOnArtist(artist, index))}
                           {heroBasedOn.length > 4 && (
                             <button
                               onClick={() => setShowFullBasedOnList(true)}
@@ -806,15 +784,13 @@ function DiscoverPage() {
                 <h3 className="artist-discover-hero__tags-section-title">Top tags:</h3>
                 <div className="artist-tag-list--discover">
                   {topGenres.slice(0, 30).map((genre, i) => (
-                    <button
+                    <RouteLink
                       key={i}
-                      onClick={() =>
-                        navigate(`/search?q=${encodeURIComponent(`#${genre}`)}&type=tag`)
-                      }
+                      to={`/search?q=${encodeURIComponent(`#${genre}`)}&type=tag`}
                       className="artist-tag--discover"
                     >
                       #{genre}
-                    </button>
+                    </RouteLink>
                   ))}
                 </div>
               </div>

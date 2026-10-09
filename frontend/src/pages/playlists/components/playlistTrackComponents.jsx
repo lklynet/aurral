@@ -379,6 +379,8 @@ export function PlaylistTracksPanel({
   onToggleFavorite,
   onNavigateArtist,
   onNavigateAlbum,
+  getArtistLink,
+  getAlbumLink,
   onReSearchTrack,
   onManualReSearchTrack,
   playbackSource = null,
@@ -501,6 +503,8 @@ export function PlaylistTracksPanel({
     const canOpenAlbum = Boolean(
       onNavigateAlbum && (track.albumMbid || (track.resolvesLinks && track.albumName)),
     );
+    const artistLink = getArtistLink?.(track) || null;
+    const albumLink = getAlbumLink?.(track) || null;
     const playlistMenuProps = hasPlaylistMenu
       ? {
           track,
@@ -528,15 +532,18 @@ export function PlaylistTracksPanel({
       subtitle: track.artistName,
       artist: {
         label: track.artistName,
+        ...artistLink,
         onOpen: canOpenArtist ? () => onNavigateArtist(track) : null,
       },
       album: {
         label: track.albumName || "",
+        ...albumLink,
         onOpen: canOpenAlbum ? () => onNavigateAlbum(track) : null,
       },
       cover: {
         src: trackCover(track),
         label: track.albumName || track.trackName,
+        ...albumLink,
         onOpen: canOpenAlbum ? () => onNavigateAlbum(track) : null,
       },
       time: formatTrackDuration(track.durationMs),

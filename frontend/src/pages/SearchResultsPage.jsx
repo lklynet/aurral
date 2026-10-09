@@ -55,7 +55,6 @@ import {
   ALBUM_COVER_HYDRATION_CONCURRENCY,
 } from "./searchPageUtils";
 import { Link, useSearchParams } from "react-router";
-import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { artistMatchesGenre } from "./discoverUtils";
 import {
@@ -161,7 +160,6 @@ function SearchResultsPage() {
   const sentinelRef = useRef(null);
   const albumOptionsMenuRef = useRef(null);
   const recommendedToolbarRef = useRef(null);
-  const navigate = useDiscoverNavigation();
   const { hasPermission } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
@@ -1103,13 +1101,12 @@ function SearchResultsPage() {
 
   const searchListProps = useMemo(
     () => ({
-      navigate,
       query: trimmedQuery,
       artistImages,
       albumCovers,
       renderAction: renderSearchResultAction,
     }),
-    [albumCovers, artistImages, navigate, renderSearchResultAction, trimmedQuery],
+    [albumCovers, artistImages, renderSearchResultAction, trimmedQuery],
   );
 
   const searchLibraryFlags = useMemo(() => {
@@ -1565,7 +1562,6 @@ function SearchResultsPage() {
                           artistImages={artistImages}
                           albumCovers={albumCovers}
                           libraryLookup={libraryLookup}
-                          navigate={navigate}
                           query={trimmedQuery}
                         />
                       )}
@@ -1586,7 +1582,6 @@ function SearchResultsPage() {
                       pendingAlbumIds={pendingAlbumIds}
                       onAlbumAction={handleAlbumAction}
                       libraryDestination={libraryDestination}
-                      navigate={navigate}
                       viewMode="grid"
                     />
                   )}
@@ -1597,7 +1592,6 @@ function SearchResultsPage() {
                       type="artist"
                       artistImages={artistImages}
                       libraryLookup={libraryLookup}
-                      navigate={navigate}
                       onArtistFeedback={handleArtistFeedback}
                       artistFeedbackLookup={artistFeedbackLookup}
                       variant="round"
@@ -1612,7 +1606,6 @@ function SearchResultsPage() {
                       pendingAlbumIds={pendingAlbumIds}
                       onAlbumAction={handleAlbumAction}
                       libraryDestination={libraryDestination}
-                      navigate={navigate}
                       viewMode="grid"
                     />
                   )}
@@ -1625,7 +1618,6 @@ function SearchResultsPage() {
                   pendingAlbumIds={pendingAlbumIds}
                   onAlbumAction={handleAlbumAction}
                   libraryDestination={libraryDestination}
-                  navigate={navigate}
                   viewMode={albumViewMode}
                 />
               ) : (
@@ -1634,7 +1626,6 @@ function SearchResultsPage() {
                   type={normalizedType}
                   artistImages={artistImages}
                   libraryLookup={libraryLookup}
-                  navigate={navigate}
                   onArtistFeedback={handleArtistFeedback}
                   artistFeedbackLookup={artistFeedbackLookup}
                   variant={

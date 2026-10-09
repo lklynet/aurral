@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Heart, Pause, Play } from "lucide-react";
 import { LibraryItemMenu } from "./LibraryItemMenu";
 import Tooltip from "./Tooltip";
 import TooltipButton from "./TooltipButton";
+import RouteLink from "./RouteLink";
 
 const SORTABLE_HEADINGS = {
   number: "index",
@@ -52,6 +53,19 @@ function TrackCover({ cover, indicator = null }) {
   const overlay = indicator ? (
     <span className="native-library-track__cover-indicator">{indicator}</span>
   ) : null;
+  if (cover?.to) {
+    return (
+      <RouteLink
+        to={cover.to}
+        state={cover.state}
+        className="native-library-track__cover"
+        aria-label={`Open ${label || "album"}`}
+      >
+        {content}
+        {overlay}
+      </RouteLink>
+    );
+  }
   if (cover?.onOpen) {
     return (
       <button
@@ -75,6 +89,17 @@ function TrackCover({ cover, indicator = null }) {
 
 function TrackLink({ link, className }) {
   if (!link?.label) return <span className={`native-library-track__link ${className}`} />;
+  if (link.to) {
+    return (
+      <RouteLink
+        to={link.to}
+        state={link.state}
+        className={`native-library-track__link ${className}`}
+      >
+        {link.label}
+      </RouteLink>
+    );
+  }
   if (!link.onOpen) {
     return <span className={`native-library-track__link ${className}`}>{link.label}</span>;
   }

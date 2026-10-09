@@ -8,6 +8,7 @@ import listenBrainzLogo from "../../../../images/logos/listenbrainz-color.svg";
 
 import { UUID_REGEX } from "../../../../../lib/uuid.js";
 import Tooltip from "../../../components/Tooltip";
+import RouteLink from "../../../components/RouteLink";
 
 const normalizeHref = (value) => {
   const href = String(value || "").trim();
@@ -84,7 +85,6 @@ export function ArtistDetailsAbout({
   lidarrConnected,
   existsInLibrary,
   coverImages,
-  onNavigate,
 }) {
   const tags = useMemo(() => buildTags(artist), [artist]);
   const visibleTags = tags.slice(0, 5);
@@ -192,13 +192,9 @@ export function ArtistDetailsAbout({
                     <Fragment key={tag.key}>
                       {index > 0 ? <span aria-hidden="true"> · </span> : null}
                       <Tooltip content={`View artists with tag: ${tag.name}`}>
-                        <button
-                          type="button"
-                          className="artist-about-meta__tag"
-                          onClick={() => onNavigate?.(tagSearchPath(tag.name))}
-                        >
+                        <RouteLink to={tagSearchPath(tag.name)} className="artist-about-meta__tag">
                           {tag.name}
-                        </button>
+                        </RouteLink>
                       </Tooltip>
                     </Fragment>
                   ))}
@@ -220,13 +216,9 @@ export function ArtistDetailsAbout({
               <div className="artist-tag-list">
                 {tags.slice(0, 14).map((tag) => (
                   <Tooltip key={tag.key} content={`View artists with tag: ${tag.name}`}>
-                    <button
-                      type="button"
-                      onClick={() => onNavigate?.(tagSearchPath(tag.name))}
-                      className="artist-tag--discover"
-                    >
+                    <RouteLink to={tagSearchPath(tag.name)} className="artist-tag--discover">
                       #{tag.name}
-                    </button>
+                    </RouteLink>
                   </Tooltip>
                 ))}
               </div>
