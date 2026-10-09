@@ -13,7 +13,7 @@ function findArtist(record) {
   }
   const byKey = db.prepare("SELECT * FROM library_artists WHERE identity_key = ?")
     .get(buildFallbackIdentityKey("artist", record.artistName));
-  if (byKey) return byKey;
+  if (byKey && isSameLibraryName(byKey.name, record.artistName)) return byKey;
   const named = db.prepare("SELECT * FROM library_artists WHERE name = ? COLLATE NOCASE ORDER BY id LIMIT 2")
     .all(record.artistName);
   return named.length === 1 ? named[0] : null;

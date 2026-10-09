@@ -11,9 +11,11 @@ import { invalidateLibraryQueryCache } from "../libraryQueryService.js";
 import { logger, safeLogDiagnostic } from "../logger.js";
 import {
   ALBUM_IMAGE_EXTENSIONS,
+  LINKED_FOLDER_REASON,
   TRANSFER_MODES,
   filesIdentical,
   isSameFile,
+  passesThroughLinkedFolder,
   placeFile,
   probeHardlink,
   removeEmptyDirectories,
@@ -339,8 +341,12 @@ async function isFilledCopy({ sourcePath, targetPath, details }) {
 }
 
 export async function applyIngestItem(operation, item) {
-  if (!isPathInsideRoot(item.targetPath, resolveDownloadRoot())) {
+  const root = resolveDownloadRoot();
+  if (!isPathInsideRoot(item.targetPath, root)) {
     return { status: "failed", reason: "The destination is outside the Downloads Folder." };
+  }
+  if (await passesThroughLinkedFolder(root, item.targetPath)) {
+    return { status: "skipped", reason: LINKED_FOLDER_REASON };
   }
   if (await resolvesToSameFile(item.sourcePath, item.targetPath)) {
     return { status: "failed", reason: "A link in the Downloads Folder leads back to this file, so Aurral left it alone." };

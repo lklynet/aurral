@@ -305,6 +305,26 @@ test("clean up fills in a file's tags and gives it Aurral's name in one pass, an
   );
 });
 
+test("clean up fills in tags for a file whose Aurral name already links to it", async () => {
+  const loose = await makeTrack(path.join(root, "loose", "track.flac"), {
+    artist: "Fill Artist", album: "Fill Album", title: "Song One", track: "1",
+  });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const named = path.join(root, "Fill Artist", "Fill Album", "01 - Song One.flac");
+  await mkdir(path.dirname(named), { recursive: true });
+  await link(loose, named);
+
+  const { items } = await checkAndRun(await operations.startCleanup());
+
+  assert.equal(items[0].status, "done");
+  assert.equal(await stat(loose).then(() => true, () => false), false);
+  assert.equal((await parseFile(named)).common.musicbrainz_recordingid, recording(1));
+  assert.deepEqual(
+    db.prepare("SELECT path FROM library_media_files WHERE available = 1").pluck().all(),
+    [named],
+  );
+});
+
 test("a file tagged with one edition gets that edition's track number", async () => {
   const filePath = await makeTrack(path.join(root, "Fill Artist", "Fill Album", "Song Two.flac"), {
     artist: "Fill Artist", album: "Fill Album", title: "Song Two", MUSICBRAINZ_ALBUMID: deluxe,

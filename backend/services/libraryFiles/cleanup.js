@@ -7,7 +7,15 @@ import { writeAudioTags } from "../audioTags.js";
 import { configuredLidarrFolders, libraryFolderOwner } from "../libraryFolders.js";
 import { moveLibraryMediaFilePath } from "../libraryMediaStore.js";
 import { adoptLibraryFileIdentity } from "./fileIdentity.js";
-import { ALBUM_IMAGE_EXTENSIONS, placeFile, removeEmptyDirectories, transferSidecars } from "./fileTransfer.js";
+import {
+  ALBUM_IMAGE_EXTENSIONS,
+  LINKED_FOLDER_REASON,
+  isSameFile,
+  passesThroughLinkedFolder,
+  placeFile,
+  removeEmptyDirectories,
+  transferSidecars,
+} from "./fileTransfer.js";
 import { planTagFill } from "./tagFill.js";
 import {
   addLibraryFileOperationItems,
@@ -218,6 +226,29 @@ export async function applyCleanupItem(operation, item, context) {
   if (!matchesExpected(stat)) {
     return { status: "skipped", reason: "The file changed while Aurral was checking it. Run Clean up Library again.", details };
   }
+  const renaming = actions.includes("rename") && details.results.rename !== "done";
+  if (renaming && await passesThroughLinkedFolder(resolveDownloadRoot(), item.targetPath)) {
+    return { status: "skipped", reason: LINKED_FOLDER_REASON, details };
+  }
+  const rename = async () => {
+    try {
+      await renameLibraryFile(current, item.targetPath, context);
+      details.results.rename = "done";
+      current = item.targetPath;
+      save();
+    } catch (error) {
+      if (error?.code === "EEXIST") return { status: "conflict", reason: error.message, details };
+      details.results.rename = "failed";
+      return { status: "failed", reason: `Aurral could not rename the file: ${error?.code || error?.message}`, details };
+    }
+    return null;
+  };
+  // Tags give the file a new inode, so a name that already links to it is
+  // taken first, or it would no longer be the same file.
+  if (renaming && await isSameFile(current, item.targetPath).catch(() => false)) {
+    const stopped = await rename();
+    if (stopped) return stopped;
+  }
   if (actions.includes("tags") && details.results.tags !== "done") {
     try {
       await writeAudioTags(current, details.tags, { fillOnly: true });
@@ -239,16 +270,8 @@ export async function applyCleanupItem(operation, item, context) {
     });
   }
   if (actions.includes("rename") && details.results.rename !== "done") {
-    try {
-      await renameLibraryFile(current, item.targetPath, context);
-      details.results.rename = "done";
-      current = item.targetPath;
-      save();
-    } catch (error) {
-      if (error?.code === "EEXIST") return { status: "conflict", reason: error.message, details };
-      details.results.rename = "failed";
-      return { status: "failed", reason: `Aurral could not rename the file: ${error?.code || error?.message}`, details };
-    }
+    const stopped = await rename();
+    if (stopped) return stopped;
   }
   return { status: "done", details };
 }
