@@ -13577,6 +13577,17 @@ button.native-library-genre-row:focus-visible {
   background: var(--aurral-chrome);
 }
 
+.global-player::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-color: color-mix(in srgb, var(--player-tint, transparent) 32%, transparent);
+  mask-image: linear-gradient(90deg, #000, transparent 55%);
+  pointer-events: none;
+  transition: background-color 0.6s ease;
+}
+
 .global-player__inner {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(18rem, 2fr) minmax(0, 1fr);
@@ -15767,6 +15778,7 @@ button.native-library-genre-row:focus-visible {
   .app-toast,
   .reload-prompt,
   .global-player,
+  .global-player::before,
   .global-player__mini-progress span,
   .player-queue,
   .now-playing-backdrop,

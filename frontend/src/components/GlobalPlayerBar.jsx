@@ -21,7 +21,7 @@ import TooltipButton from "./TooltipButton";
 import { PlayerQueuePanel, UpNextQueue } from "./PlayerQueue";
 import { useModalDialog } from "../hooks/useModalDialog.js";
 import { PLAYER_SHORTCUTS, usePlayerShortcuts } from "../hooks/usePlayerShortcuts.js";
-import { useImageGradientColors } from "../utils/imageColors.js";
+import { useCollectionTint } from "./CollectionHeader";
 
 const SHEET_EXIT_MS = 260;
 const SHEET_DISMISS_DISTANCE = 120;
@@ -90,7 +90,7 @@ function GlobalPlayerBar() {
     onClose: closeSheet,
     initialFocusRef: sheetCloseRef,
   });
-  const artColors = useImageGradientColors(sheetPresence !== "closed" ? currentTrack?.artwork : null);
+  const artTint = useCollectionTint(currentTrack?.artwork);
 
   useEffect(() => {
     setSheetOpen(false);
@@ -312,7 +312,12 @@ function GlobalPlayerBar() {
         : "Enable repeat";
 
   return (
-    <div className="global-player" role="region" aria-label="Global audio player">
+    <div
+      className="global-player"
+      role="region"
+      aria-label="Global audio player"
+      style={artTint ? { "--player-tint": artTint } : undefined}
+    >
       <div className="global-player__mini">
         <span className="global-player__mini-progress" aria-hidden="true">
           <span style={{ width: `${progress}%` }} />
@@ -366,7 +371,7 @@ function GlobalPlayerBar() {
             tabIndex={-1}
             style={{
               "--now-playing-drag": `${dragOffset}px`,
-              "--now-playing-tint": artColors?.top || "var(--aurral-surface)",
+              "--now-playing-tint": artTint || "var(--aurral-surface)",
             }}
             data-dragging={isDragging || undefined}
             onPointerDown={handleSheetPointerDown}

@@ -31,7 +31,7 @@ function silentWav(seconds, sampleRate = 8000) {
 const wav = silentWav(TRACK_SECONDS);
 const gaplessWav = silentWav(GAPLESS_TRACK_SECONDS);
 
-function routeEditorialPlaylist(target, id, name, seconds, prefix = "") {
+function routeEditorialPlaylist(target, id, name, seconds, { prefix = "", artworkUrl = null } = {}) {
   return target.route(`**/api/discover/editorial/${id}`, (route) =>
     route.fulfill({
       json: {
@@ -46,7 +46,7 @@ function routeEditorialPlaylist(target, id, name, seconds, prefix = "") {
           albumName: null,
           durationMs: seconds * 1000,
           preview_url: `/e2e-audio/${prefix}${trackName}.wav`,
-          artworkUrl: null,
+          artworkUrl,
         })),
       },
     }),
@@ -55,7 +55,9 @@ function routeEditorialPlaylist(target, id, name, seconds, prefix = "") {
 
 test.beforeEach(async ({ page, context }) => {
   await routeEditorialPlaylist(context, PLAYLIST_ID, PLAYLIST_NAME, TRACK_SECONDS);
-  await routeEditorialPlaylist(context, GAPLESS_PLAYLIST_ID, GAPLESS_PLAYLIST_NAME, GAPLESS_TRACK_SECONDS, "gapless-");
+  await routeEditorialPlaylist(context, GAPLESS_PLAYLIST_ID, GAPLESS_PLAYLIST_NAME, GAPLESS_TRACK_SECONDS, {
+    prefix: "gapless-",
+  });
   await context.route("**/e2e-audio/*.wav", async (route) => {
     const gapless = route.request().url().includes("/gapless-");
     if (gapless) await new Promise((resolve) => setTimeout(resolve, AUDIO_LATENCY_MS));
@@ -509,8 +511,58 @@ test("playing in a second tab pauses the first and the queue follows the tab tha
   await second.close();
 });
 
+const RED_COVER = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#c82828"/></svg>';
+
+async function playCoveredPlaylist(page, artworkUrl) {
+  await page.route("**/e2e-art/**", (route) =>
+    route.request().url().includes("/missing")
+      ? route.fulfill({ status: 404, body: "" })
+      : route.fulfill({ headers: { "content-type": "image/svg+xml" }, body: RED_COVER }),
+  );
+  await routeEditorialPlaylist(page, "e2e-covered", "E2E covered", TRACK_SECONDS, { artworkUrl });
+  await page.goto("/discover/playlists/deezer/e2e-covered");
+  await page.getByRole("button", { name: "Play E2E covered previews" }).click();
+  await expect(page.locator(".global-player")).toBeAttached();
+}
+
+function firstColor(page, selector, property, pseudo = null) {
+  return page.evaluate(([target, name, element]) => {
+    const value = getComputedStyle(document.querySelector(target), element)[name];
+    const color = /(?:rgba?|color)\([^)]*\)/.exec(value)?.[0] ?? "transparent";
+    const context = Object.assign(document.createElement("canvas"), { width: 1, height: 1 }).getContext("2d");
+    context.fillStyle = color;
+    context.fillRect(0, 0, 1, 1);
+    return [...context.getImageData(0, 0, 1, 1).data];
+  }, [selector, property, pseudo]);
+}
+
+test("the player bar takes a wash from the cover and stays plain when the cover cannot be read", async ({ page }) => {
+  const wash = () =>
+firstColor(page, ".global-player", "backgroundColor", "::before");
+
+  await playCoveredPlaylist(page, "/e2e-art/red.svg");
+  await waitUntilPlaying(playerControls(page));
+  await expect.poll(async () => {
+    const [red, green, blue, alpha] = await wash();
+    return red > green + 50 && red > blue + 50 && alpha > 0;
+  }).toBe(true);
+
+  await playCoveredPlaylist(page, "/e2e-art/missing.svg");
+  await expect.poll(async () => (await wash())[3]).toBe(0);
+});
+
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test("the now playing sheet stays light in the light theme when the cover cannot be read", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "light" });
+    await playCoveredPlaylist(page, "/e2e-art/missing.svg");
+    await page.getByRole("button", { name: /^Open now playing/ }).click();
+    const sheet = page.getByRole("dialog", { name: "Now playing" });
+    await expect(sheet).toBeVisible();
+    const top = await firstColor(page, ".now-playing", "backgroundImage");
+    expect(Math.min(...top.slice(0, 3))).toBeGreaterThan(200);
+  });
 
   test("the now playing sheet removes and reorders up next", async ({ page }) => {
     await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
