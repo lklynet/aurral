@@ -45,11 +45,18 @@ function fraction(value, duration) {
 }
 
 export function PlayerSeek({ variant }) {
-  const { duration, seek, isPlaying } = useAudioQueue();
+  const { duration, seek, isPlaying, currentTrack } = useAudioQueue();
   const [{ position, buffered }, setPosition] = usePlaybackProgress();
-  const [scrubPosition, setScrubPosition] = useState(null);
+  const trackKey = currentTrack?.entryId ?? currentTrack?.id ?? null;
+  const trackKeyRef = useRef(trackKey);
+  const [scrub, setScrub] = useState(null);
   const [hoverRatio, setHoverRatio] = useState(null);
   const scrubRef = useRef(null);
+  const scrubPosition = scrub?.trackKey === trackKey ? scrub.position : null;
+
+  useEffect(() => {
+    trackKeyRef.current = trackKey;
+  }, [trackKey]);
 
   useEffect(() => () => scrubRef.current?.stop(), []);
 
@@ -66,8 +73,9 @@ export function PlayerSeek({ variant }) {
   const handleChange = (event) => {
     if (!duration) return;
     if (scrubRef.current) {
+      if (scrubRef.current.trackKey !== trackKey) return;
       scrubRef.current.position = clampPosition(event.currentTarget.value);
-      setScrubPosition(scrubRef.current.position);
+      setScrub({ trackKey, position: scrubRef.current.position });
       return;
     }
     seekTo(event.currentTarget.value);
@@ -79,15 +87,15 @@ export function PlayerSeek({ variant }) {
     const finish = () => {
       const scrub = scrubRef.current;
       scrub?.stop();
-      setScrubPosition(null);
-      if (scrub?.position != null) seekTo(scrub.position);
+      setScrub(null);
+      if (scrub?.position != null && scrub.trackKey === trackKeyRef.current) seekTo(scrub.position);
     };
     const stop = () => {
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
       scrubRef.current = null;
     };
-    scrubRef.current = { position: null, stop };
+    scrubRef.current = { position: null, stop, trackKey };
     window.addEventListener("pointerup", finish);
     window.addEventListener("pointercancel", finish);
   };

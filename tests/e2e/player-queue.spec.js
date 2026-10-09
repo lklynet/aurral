@@ -195,6 +195,38 @@ test("dragging the seek slider holds the dragged time and seeks once on release"
   expect(await elapsedSeconds()).toBeLessThanOrEqual(draggedSeconds + 2);
 });
 
+test("releasing a drag after the track changes leaves the new track where it is", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__mediaHandlers = {};
+    const session = navigator.mediaSession;
+    const setActionHandler = session.setActionHandler.bind(session);
+    session.setActionHandler = (action, handler) => {
+      window.__mediaHandlers[action] = handler;
+      setActionHandler(action, handler);
+    };
+  });
+  await page.reload();
+  const player = playerControls(page);
+  await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
+  await waitUntilPlaying(player);
+  const firstTitle = await player.title.innerText();
+
+  const box = await player.seek.boundingBox();
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width * 0.25, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.75, y, { steps: 5 });
+  expect(Number(/^0:(\d\d)/.exec(await player.seek.getAttribute("aria-valuetext"))[1])).toBeGreaterThan(35);
+
+  await page.evaluate(() => window.__mediaHandlers.nexttrack?.({ action: "nexttrack" }));
+  await expect(player.title).not.toHaveText(firstTitle);
+  await page.mouse.move(box.x + box.width * 0.8, y, { steps: 2 });
+  await page.mouse.up();
+
+  await page.waitForTimeout(500);
+  await expect(player.seek).toHaveAttribute("aria-valuetext", /^0:0\d of 1:00$/);
+});
+
 test("hovering the seek bar previews the time and clicking there seeks to it", async ({ page }) => {
   const player = playerControls(page);
   await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
