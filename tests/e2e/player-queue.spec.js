@@ -247,3 +247,65 @@ test("the next track starts without waiting for the network when the current one
   console.log(`gap between tracks: ${measured}ms`);
   expect(measured).toBeLessThan(150);
 });
+
+test("keyboard shortcuts control playback without taking keys from fields and buttons", async ({ page }) => {
+  const player = playerControls(page);
+  await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
+  await waitUntilPlaying(player);
+  const heading = page.getByRole("heading", { name: PLAYLIST_NAME });
+
+  await heading.click();
+  await page.keyboard.press("Space");
+  await expect(player.playPause).toHaveAccessibleName("Play");
+  await player.seek.focus();
+  await player.seek.press("Home");
+  await heading.click();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect(player.seek).toHaveAttribute("aria-valuetext", "0:10 of 1:00");
+  await page.keyboard.press("ArrowLeft");
+  await expect(player.seek).toHaveAttribute("aria-valuetext", "0:05 of 1:00");
+
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect(player.title).toHaveText("Bravo");
+  await waitUntilPlaying(player);
+  await page.keyboard.press("Shift+ArrowLeft");
+  await expect(player.title).toHaveText("Alpha");
+
+  await player.next.focus();
+  await page.keyboard.press("Space");
+  await expect(player.title).toHaveText("Bravo");
+  await waitUntilPlaying(player);
+
+  const search = page.getByRole("textbox", { name: "Search music, artists, or tags" });
+  await search.click();
+  await page.keyboard.type(" m");
+  await expect(search).toHaveValue(" m");
+  await expect(player.playPause).toHaveAccessibleName("Pause");
+  await expect(page.getByRole("button", { name: "Mute" })).toBeVisible();
+
+  await heading.click();
+  await page.keyboard.press("m");
+  await expect(page.getByRole("button", { name: "Unmute" })).toBeVisible();
+  await page.keyboard.press("Control+m");
+  await expect(page.getByRole("button", { name: "Unmute" })).toBeVisible();
+  await page.keyboard.press("m");
+  await expect(page.getByRole("button", { name: "Mute" })).toBeVisible();
+});
+
+test("unmuting after a reload restores the volume from before mute", async ({ page }) => {
+  const player = playerControls(page);
+  const volume = page.getByRole("slider", { name: "Volume" });
+  await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
+  await waitUntilPlaying(player);
+  await volume.fill("40");
+  await page.getByRole("button", { name: "Mute" }).click();
+  await expect(volume).toHaveValue("0");
+
+  await page.reload();
+  await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
+  await waitUntilPlaying(player);
+  await expect(volume).toHaveValue("0");
+  await page.getByRole("button", { name: "Unmute" }).click();
+  await expect(volume).toHaveValue("40");
+});

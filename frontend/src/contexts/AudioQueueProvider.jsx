@@ -21,6 +21,7 @@ import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists";
 import { createAudioEngine } from "../utils/audioEngine";
 
 const SHARED_VOLUME_KEY = "aurral.preview.volume";
+const SHARED_MUTED_KEY = "aurral.preview.muted";
 const SHARED_VOLUME_EVENT = "aurral:shared-volume-change";
 const DEFAULT_VOLUME = 0.7;
 const PRELOAD_LEAD_SECONDS = 20;
@@ -31,28 +32,31 @@ function normalizeVolume(value) {
   return Math.max(0, Math.min(1, parsed));
 }
 
-function readStoredVolume() {
-  if (typeof window === "undefined") return DEFAULT_VOLUME;
-  const stored = window.localStorage.getItem(SHARED_VOLUME_KEY);
-  return stored == null ? DEFAULT_VOLUME : normalizeVolume(stored);
+function readStoredAudio() {
+  if (typeof window === "undefined") return { volume: DEFAULT_VOLUME, muted: false };
+  const storedVolume = window.localStorage.getItem(SHARED_VOLUME_KEY);
+  const storedMuted = window.localStorage.getItem(SHARED_MUTED_KEY);
+  const volume = storedVolume == null ? DEFAULT_VOLUME : normalizeVolume(storedVolume);
+  if (volume <= 0) return { volume: DEFAULT_VOLUME, muted: storedMuted !== "false" };
+  return { volume, muted: storedMuted === "true" };
 }
 
-function writeStoredVolume(value) {
+function writeStoredAudio(audio) {
   if (typeof window === "undefined") return;
-  const nextVolume = normalizeVolume(value);
-  window.localStorage.setItem(SHARED_VOLUME_KEY, String(nextVolume));
-  window.dispatchEvent(new CustomEvent(SHARED_VOLUME_EVENT, { detail: nextVolume }));
+  window.localStorage.setItem(SHARED_VOLUME_KEY, String(audio.volume));
+  window.localStorage.setItem(SHARED_MUTED_KEY, String(audio.muted));
+  window.dispatchEvent(new CustomEvent(SHARED_VOLUME_EVENT));
 }
 
 function useSharedVolume() {
-  const [volume, setVolumeState] = useState(readStoredVolume);
+  const [audio, setAudio] = useState(readStoredAudio);
 
   useEffect(() => {
     const handleVolumeChange = (event) => {
-      if (event.type === "storage" && event.key !== SHARED_VOLUME_KEY) return;
-      setVolumeState(
-        event.type === SHARED_VOLUME_EVENT ? normalizeVolume(event.detail) : readStoredVolume(),
-      );
+      if (event.type === "storage" && ![SHARED_VOLUME_KEY, SHARED_MUTED_KEY].includes(event.key)) {
+        return;
+      }
+      setAudio(readStoredAudio());
     };
 
     window.addEventListener(SHARED_VOLUME_EVENT, handleVolumeChange);
@@ -64,16 +68,23 @@ function useSharedVolume() {
     };
   }, []);
 
-  const setVolume = useCallback((nextVolume) => {
-    const normalized =
-      typeof nextVolume === "function"
-        ? normalizeVolume(nextVolume(readStoredVolume()))
-        : normalizeVolume(nextVolume);
-    setVolumeState(normalized);
-    writeStoredVolume(normalized);
+  const update = useCallback((change) => {
+    const next = { ...readStoredAudio(), ...change };
+    setAudio(next);
+    writeStoredAudio(next);
   }, []);
 
-  return [volume, setVolume];
+  const setVolume = useCallback(
+    (nextVolume) => {
+      const volume = normalizeVolume(nextVolume);
+      update(volume > 0 ? { volume, muted: false } : { muted: true });
+    },
+    [update],
+  );
+
+  const setMuted = useCallback((muted) => update({ muted: Boolean(muted) }), [update]);
+
+  return { ...audio, setVolume, setMuted };
 }
 
 function trackAt(state, playbackIndex) {
@@ -89,7 +100,7 @@ export function AudioQueueProvider({ children }) {
   const [engine] = useState(createAudioEngine);
   const playback = useSyncExternalStore(engine.subscribe, engine.getSnapshot, engine.getSnapshot);
 
-  const [sharedVolume, setSharedVolume] = useSharedVolume();
+  const { volume, muted, setVolume, setMuted } = useSharedVolume();
 
   const [state, dispatch] = useReducer(queueReducer, initialQueueState);
   const stateRef = useRef(state);
@@ -195,9 +206,11 @@ export function AudioQueueProvider({ children }) {
   useEffect(() => () => engine.unload(), [engine]);
 
   useEffect(() => {
-    engine.setVolume(sharedVolume);
-    engine.setMuted(sharedVolume <= 0);
-  }, [engine, sharedVolume]);
+    engine.setVolume(volume);
+    engine.setMuted(muted);
+  }, [engine, muted, volume]);
+
+  const toggleMute = useCallback(() => setMuted(!muted), [muted, setMuted]);
 
   const setShuffleEnabled = useCallback((enabled) => {
     dispatch({ type: "SET_SHUFFLE", enabled });
@@ -397,8 +410,11 @@ export function AudioQueueProvider({ children }) {
       duration: playback.duration,
       getPosition: engine.getPosition,
       seek: engine.seek,
-      volume: sharedVolume,
-      setVolume: setSharedVolume,
+      volume,
+      muted,
+      setVolume,
+      setMuted,
+      toggleMute,
       isShuffleEnabled: state.isShuffleEnabled,
       setShuffleEnabled,
       repeatMode: state.repeatMode,
@@ -429,9 +445,12 @@ export function AudioQueueProvider({ children }) {
       playback.isLoading,
       playback.isPlaying,
       playback.isStarting,
-      setSharedVolume,
+      muted,
+      setMuted,
+      setVolume,
       setShuffleEnabled,
-      sharedVolume,
+      toggleMute,
+      volume,
       state.queue,
       state.currentIndex,
       state.error,

@@ -18,10 +18,12 @@ import {
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import TooltipButton from "./TooltipButton";
 import { useModalDialog } from "../hooks/useModalDialog.js";
+import { PLAYER_SHORTCUTS, usePlayerShortcuts } from "../hooks/usePlayerShortcuts.js";
 import { useImageGradientColors } from "../utils/imageColors.js";
 
 const SHEET_EXIT_MS = 260;
 const SHEET_DISMISS_DISTANCE = 120;
+const SEEK_SHORTCUT_SECONDS = 5;
 const SEEK_KEY_OFFSETS = {
   ArrowLeft: -5,
   ArrowDown: -5,
@@ -84,7 +86,9 @@ function GlobalPlayerBar() {
     isLoading,
     duration,
     volume,
+    muted,
     setVolume,
+    toggleMute,
     isShuffleEnabled,
     repeatMode,
     togglePlayPause,
@@ -102,7 +106,6 @@ function GlobalPlayerBar() {
   const [position, setPosition] = useState(0);
   const [scrubPosition, setScrubPosition] = useState(null);
   const scrubRef = useRef(null);
-  const lastVolumeRef = useRef(volume > 0 ? volume : 0.7);
   const location = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetPresence, setSheetPresence] = useState("closed");
@@ -153,12 +156,6 @@ function GlobalPlayerBar() {
   }, [sheetOpen]);
 
   useEffect(() => {
-    if (volume > 0) {
-      lastVolumeRef.current = volume;
-    }
-  }, [volume]);
-
-  useEffect(() => {
     if (!isActive) {
       setPosition(0);
       return undefined;
@@ -175,12 +172,28 @@ function GlobalPlayerBar() {
 
   useEffect(() => () => scrubRef.current?.stop(), []);
 
+  const seekBy = (offset) => {
+    if (!duration) return;
+    const nextPosition = Math.min(Math.max(getPosition() + offset, 0), duration);
+    seek(nextPosition);
+    setPosition(nextPosition);
+  };
+
+  usePlayerShortcuts(isActive && Boolean(currentTrack), {
+    playPause: togglePlayPause,
+    previous: playPrevious,
+    next: playNext,
+    seekBack: () => seekBy(-SEEK_SHORTCUT_SECONDS),
+    seekForward: () => seekBy(SEEK_SHORTCUT_SECONDS),
+    mute: toggleMute,
+  });
+
   if (!isActive || !currentTrack) {
     return null;
   }
 
   const displayPosition = scrubPosition ?? position;
-  const volumePercent = Math.round(volume * 100);
+  const volumePercent = muted ? 0 : Math.round(volume * 100);
   const progress = duration > 0 ? Math.min((displayPosition / duration) * 100, 100) : 0;
   const artistMbid = String(currentTrack.artistMbid || "").trim();
   const albumMbid = String(currentTrack.albumMbid || "").trim();
@@ -193,20 +206,7 @@ function GlobalPlayerBar() {
 
   const handleVolumeChange = (event) => {
     const nextVolume = Math.min(Math.max(Number(event.target.value) || 0, 0), 100);
-    if (nextVolume > 0) {
-      lastVolumeRef.current = nextVolume / 100;
-    }
     setVolume(nextVolume / 100);
-  };
-
-  const handleToggleMute = () => {
-    if (volume <= 0) {
-      const restored = lastVolumeRef.current > 0 ? lastVolumeRef.current : 0.7;
-      setVolume(restored);
-      return;
-    }
-    lastVolumeRef.current = volume;
-    setVolume(0);
   };
 
   const clampPosition = (value) => Math.min(Math.max(Number(value) || 0, 0), duration);
@@ -272,6 +272,7 @@ function GlobalPlayerBar() {
     onPointerDown: handleSeekPointerDown,
     onKeyDown: handleSeekKeyDown,
     "aria-label": "Playback position",
+    "aria-keyshortcuts": PLAYER_SHORTCUTS.seek.keys,
     "aria-valuetext": `${formatTime(displayPosition)} of ${formatTime(duration)}`,
     disabled: !duration,
   };
@@ -526,14 +527,18 @@ function GlobalPlayerBar() {
               <Shuffle className="artist-icon-sm" />
             </TooltipButton>
             <TooltipButton
-              label="Previous track"
+              title={`Previous track (${PLAYER_SHORTCUTS.previous.label})`}
+              aria-label="Previous track"
+              aria-keyshortcuts={PLAYER_SHORTCUTS.previous.keys}
               onClick={playPrevious}
               className="btn btn-secondary btn-sm btn-icon global-player__control"
             >
               <SkipBack className="artist-icon-sm" />
             </TooltipButton>
             <TooltipButton
-              label={isPlaying ? "Pause" : "Play"}
+              title={`${playPauseLabel} (${PLAYER_SHORTCUTS.playPause.label})`}
+              aria-label={playPauseLabel}
+              aria-keyshortcuts={PLAYER_SHORTCUTS.playPause.keys}
               onClick={togglePlayPause}
               className="btn btn-accent btn-sm btn-icon global-player__control global-player__control--primary"
               disabled={isLoading}
@@ -541,7 +546,9 @@ function GlobalPlayerBar() {
               {isPlaying ? <Pause className="artist-icon-sm" /> : <Play className="artist-icon-sm" />}
             </TooltipButton>
             <TooltipButton
-              label="Next track"
+              title={`Next track (${PLAYER_SHORTCUTS.next.label})`}
+              aria-label="Next track"
+              aria-keyshortcuts={PLAYER_SHORTCUTS.next.keys}
               onClick={playNext}
               className="btn btn-secondary btn-sm btn-icon global-player__control"
             >
@@ -582,8 +589,10 @@ function GlobalPlayerBar() {
 
         <div className="global-player__side">
           <TooltipButton
-            label={volumePercent <= 0 ? "Unmute" : "Mute"}
-            onClick={handleToggleMute}
+            title={`${volumePercent <= 0 ? "Unmute" : "Mute"} (${PLAYER_SHORTCUTS.mute.label})`}
+            aria-label={volumePercent <= 0 ? "Unmute" : "Mute"}
+            aria-keyshortcuts={PLAYER_SHORTCUTS.mute.keys}
+            onClick={toggleMute}
             className="btn btn-ghost btn-icon btn-xs global-player__volume-toggle"
           >
             {volumePercent <= 0 ? (
