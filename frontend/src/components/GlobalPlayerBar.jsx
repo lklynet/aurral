@@ -22,6 +22,14 @@ import { useImageGradientColors } from "../utils/imageColors.js";
 
 const SHEET_EXIT_MS = 260;
 const SHEET_DISMISS_DISTANCE = 120;
+const SEEK_KEY_OFFSETS = {
+  ArrowLeft: -5,
+  ArrowDown: -5,
+  ArrowRight: 5,
+  ArrowUp: 5,
+  PageDown: -30,
+  PageUp: 30,
+};
 
 function formatTime(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -92,6 +100,8 @@ function GlobalPlayerBar() {
     skipTo,
   } = useAudioQueue();
   const [position, setPosition] = useState(0);
+  const [scrubPosition, setScrubPosition] = useState(null);
+  const scrubRef = useRef(null);
   const lastVolumeRef = useRef(volume > 0 ? volume : 0.7);
   const location = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -161,14 +171,17 @@ function GlobalPlayerBar() {
     tick();
     const interval = window.setInterval(tick, 250);
     return () => window.clearInterval(interval);
-  }, [getPosition, isActive, isPlaying]);
+  }, [getPosition, isActive, isLoading, isPlaying]);
+
+  useEffect(() => () => scrubRef.current?.stop(), []);
 
   if (!isActive || !currentTrack) {
     return null;
   }
 
+  const displayPosition = scrubPosition ?? position;
   const volumePercent = Math.round(volume * 100);
-  const progress = duration > 0 ? Math.min((position / duration) * 100, 100) : 0;
+  const progress = duration > 0 ? Math.min((displayPosition / duration) * 100, 100) : 0;
   const artistMbid = String(currentTrack.artistMbid || "").trim();
   const albumMbid = String(currentTrack.albumMbid || "").trim();
   const artistLabel = currentTrack.artist || "";
@@ -196,11 +209,71 @@ function GlobalPlayerBar() {
     setVolume(0);
   };
 
-  const handleSeek = (event) => {
-    if (!duration) return;
-    const nextPosition = Math.min(Math.max(Number(event.currentTarget.value) || 0, 0), duration);
+  const clampPosition = (value) => Math.min(Math.max(Number(value) || 0, 0), duration);
+
+  const seekTo = (value) => {
+    const nextPosition = clampPosition(value);
     seek(nextPosition);
     setPosition(nextPosition);
+  };
+
+  const handleSeekChange = (event) => {
+    if (!duration) return;
+    if (scrubRef.current) {
+      scrubRef.current.position = clampPosition(event.currentTarget.value);
+      setScrubPosition(scrubRef.current.position);
+      return;
+    }
+    seekTo(event.currentTarget.value);
+  };
+
+  const handleSeekPointerDown = (event) => {
+    if (!duration || scrubRef.current) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const finish = () => {
+      const scrub = scrubRef.current;
+      scrub?.stop();
+      setScrubPosition(null);
+      if (scrub?.position != null) seekTo(scrub.position);
+    };
+    const stop = () => {
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      scrubRef.current = null;
+    };
+    scrubRef.current = { position: null, stop };
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  };
+
+  const handleSeekKeyDown = (event) => {
+    if (!duration) return;
+    const offset = SEEK_KEY_OFFSETS[event.key];
+    const target =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? duration
+          : offset == null
+            ? null
+            : displayPosition + offset;
+    if (target == null) return;
+    event.preventDefault();
+    seekTo(target);
+  };
+
+  const seekInputProps = {
+    type: "range",
+    min: 0,
+    max: duration || 0,
+    step: "any",
+    value: Math.min(displayPosition, duration || 0),
+    onChange: handleSeekChange,
+    onPointerDown: handleSeekPointerDown,
+    onKeyDown: handleSeekKeyDown,
+    "aria-label": "Playback position",
+    "aria-valuetext": `${formatTime(displayPosition)} of ${formatTime(duration)}`,
+    disabled: !duration,
   };
 
   const handleSheetPointerDown = (event) => {
@@ -353,20 +426,12 @@ function GlobalPlayerBar() {
 
               <div className="now-playing__progress">
                 <input
-                  type="range"
+                  {...seekInputProps}
                   className="now-playing__seek"
-                  min="0"
-                  max={duration || 0}
-                  step="0.1"
-                  value={Math.min(position, duration || 0)}
-                  onChange={handleSeek}
-                  aria-label="Playback position"
-                  aria-valuetext={`${formatTime(position)} of ${formatTime(duration)}`}
-                  disabled={!duration}
                   style={{ "--seek-percent": `${progress}%` }}
                 />
                 <div className="now-playing__times">
-                  <span>{formatTime(position)}</span>
+                  <span>{formatTime(displayPosition)}</span>
                   <span>{formatTime(duration)}</span>
                 </div>
               </div>
@@ -503,23 +568,12 @@ function GlobalPlayerBar() {
 
           <div className="global-player__progress-wrap">
             <span className="global-player__progress-time global-player__progress-time--current">
-              {formatTime(position)}
+              {formatTime(displayPosition)}
             </span>
             <span className="global-player__progress-track" aria-hidden="true">
               <span className="global-player__progress-fill" style={{ width: `${progress}%` }} />
             </span>
-            <input
-              type="range"
-              className="global-player__progress"
-              min="0"
-              max={duration || 0}
-              step="0.1"
-              value={Math.min(position, duration || 0)}
-              onChange={handleSeek}
-              aria-label="Playback position"
-              aria-valuetext={`${formatTime(position)} of ${formatTime(duration)}`}
-              disabled={!duration}
-            />
+            <input {...seekInputProps} className="global-player__progress" />
             <span className="global-player__progress-time global-player__progress-time--duration">
               {formatTime(duration)}
             </span>
