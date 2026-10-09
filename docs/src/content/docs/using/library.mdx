@@ -167,7 +167,7 @@ When a Lidarr root folder is inside the Downloads Folder, Aurral leaves that fol
 
 Aurral tags the music it downloads with the title, artist, album artist, album, year, track number, and MusicBrainz IDs, plus its own `AURRAL_IDS` tag. It changes only those tags. Every other tag, such as ratings, lyrics, ReplayGain, grouping, and cover art, stays as it was. If the file was tagged as a different album, Aurral also removes its MusicBrainz release ID, which belongs to that other album. Aurral writes the tags to a copy beside the file and then replaces the file, so a hardlinked file gets its own copy and the other link keeps its tags.
 
-For music from elsewhere, ingest and **Clean up Library** fill in the tags a file lacks. See [Bring your existing music](#bring-your-existing-music) and [Clean up the Library](#clean-up-the-library). Aurral cannot write tags to WavPack (`.wv`) or Monkey's Audio (`.ape`) files, and leaves their tags as they are.
+For music from elsewhere, ingest and **Clean up Library** fill in the tags a file lacks. See [Bring your existing music](#bring-your-existing-music) and [Clean up the Library](#clean-up-the-library). Aurral cannot write tags to WavPack (`.wv`), Monkey's Audio (`.ape`), or fragmented MP4 (`.m4a`) files, and leaves their tags as they are.
 
 ## Bring your existing music
 

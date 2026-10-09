@@ -74,6 +74,12 @@ test("moves the identity marker from the comment or grouping tag to its own tag 
   const grouped = await createTaggedFile(path.join(root, "Artist", "Album", "07 Grouped.flac"), "flac", {
     grouping: marker(ids),
   });
+  const commentedFlac = await createTaggedFile(path.join(root, "Artist", "Album", "08 Commented.flac"), "flac", {
+    comment: marker(ids),
+  });
+  const commentedOpus = await createTaggedFile(path.join(root, "Artist", "Album", "09 Commented.opus"), "libopus", {
+    comment: marker(ids),
+  });
   const ownComment = await createTaggedFile(path.join(root, "Artist", "Album", "03 Own.flac"), "flac", {
     comment: "Ripped from my own CD",
   });
@@ -86,6 +92,8 @@ test("moves the identity marker from the comment or grouping tag to its own tag 
   addFinishedJob(m4a, "ytdlp");
   addFinishedJob(mp3, "slskd");
   addFinishedJob(grouped, "usenet");
+  addFinishedJob(commentedFlac, "slskd");
+  addFinishedJob(commentedOpus, "ytdlp");
   addFinishedJob(ownComment, "deemix");
   addFinishedJob(outside, "slskd");
   addFinishedJob(notDownloaded, null);
@@ -97,7 +105,7 @@ test("moves the identity marker from the comment or grouping tag to its own tag 
 
   await processSystemTask({ kind: "identity-marker-migration" });
 
-  for (const filePath of [m4a, mp3, grouped]) {
+  for (const filePath of [m4a, mp3, grouped, commentedFlac, commentedOpus]) {
     const tags = await readTags(filePath);
     assert.equal(tags.grouping, undefined, `${path.basename(filePath)} grouping`);
     assert.deepEqual(await legacyMarkerTagIds(filePath), [], `${path.basename(filePath)} legacy markers`);
@@ -109,7 +117,7 @@ test("moves the identity marker from the comment or grouping tag to its own tag 
   }
   assert.deepEqual(
     (({ checked, moved, failed }) => ({ checked, moved, failed }))(dbOps.getJSONSetting("identityMarkerMigration")),
-    { checked: 4, moved: 3, failed: 0 },
+    { checked: 6, moved: 5, failed: 0 },
   );
 
   await processSystemTask({ kind: "identity-marker-migration" });

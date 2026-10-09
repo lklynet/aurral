@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import taglib from "node-taglib-sharp";
@@ -76,13 +77,37 @@ const FIELDS = {
 export const AUDIO_TAG_FIELDS = Object.keys(FIELDS);
 
 export class UnsupportedTagFormatError extends Error {
-  constructor(filePath) {
-    super(`Aurral cannot write tags to ${path.extname(filePath) || "this kind of"} files`);
+  constructor(filePath, kind = "") {
+    super(`Aurral cannot write tags to ${kind}${path.extname(filePath) || "this kind of"} files`);
     this.code = "TAGS_UNSUPPORTED";
   }
 }
 
+// taglib grows the header of a fragmented MP4 without moving the data offsets
+// its fragments point at, which breaks the audio.
+function isFragmentedMp4(filePath) {
+  const fd = openSync(filePath, "r");
+  try {
+    const size = fstatSync(fd).size;
+    const header = Buffer.alloc(16);
+    for (let offset = 0; offset + 8 <= size;) {
+      readSync(fd, header, 0, 16, offset);
+      const type = header.toString("latin1", 4, 8);
+      if (offset === 0 && type !== "ftyp") return false;
+      if (type === "moof") return true;
+      const boxSize = header.readUInt32BE(0);
+      const length = boxSize === 1 ? Number(header.readBigUInt64BE(8)) : boxSize === 0 ? size - offset : boxSize;
+      if (length < 8) return false;
+      offset += length;
+    }
+    return false;
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function openFile(filePath) {
+  if (isFragmentedMp4(filePath)) throw new UnsupportedTagFormatError(filePath, "fragmented ");
   try {
     return File.createFromPath(filePath, undefined, READ_STYLE);
   } catch (error) {
@@ -142,9 +167,18 @@ function writeIdentity(file, identity) {
 
 const isLegacyMarker = (value) => text(value).startsWith(AURRAL_IDENTITY_PREFIX);
 
+// ffmpeg wrote the old comment marker to Vorbis comments as DESCRIPTION, which
+// taglib does not read as the comment.
+const legacyDescription = (file) =>
+  (file.getTag(TagTypes.Xiph, false)?.getField("DESCRIPTION") || []).some(isLegacyMarker);
+
 function clearLegacyIdentity(file) {
   if (isLegacyMarker(file.tag.grouping)) file.tag.grouping = undefined;
   if (isLegacyMarker(file.tag.comment)) file.tag.comment = undefined;
+  if (legacyDescription(file)) {
+    const xiph = file.getTag(TagTypes.Xiph, false);
+    xiph.setFieldAsStrings("DESCRIPTION", ...xiph.getField("DESCRIPTION").filter((value) => !isLegacyMarker(value)));
+  }
   const id3 = file.getTag(TagTypes.Id3v2, false);
   for (const frame of id3?.getFramesByClassType(Id3v2FrameClassType.UserTextInformationFrame) || []) {
     if (frame.description.toLowerCase() === "comment" && isLegacyMarker(frame.text?.[0])) id3.removeFrame(frame);
@@ -153,7 +187,7 @@ function clearLegacyIdentity(file) {
 
 function hasLegacyIdentity(file) {
   const id3 = file.getTag(TagTypes.Id3v2, false);
-  return isLegacyMarker(file.tag.grouping) || isLegacyMarker(file.tag.comment)
+  return isLegacyMarker(file.tag.grouping) || isLegacyMarker(file.tag.comment) || legacyDescription(file)
     || (id3?.getFramesByClassType(Id3v2FrameClassType.UserTextInformationFrame) || [])
       .some((frame) => frame.description.toLowerCase() === "comment" && isLegacyMarker(frame.text?.[0]));
 }

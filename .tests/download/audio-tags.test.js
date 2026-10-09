@@ -125,3 +125,12 @@ test("tagging a hardlinked download leaves the other link as it was", async () =
   assert.notEqual((await stat(seeding)).ino, (await stat(imported)).ino);
   assert.equal((await parseFile(imported)).common.title, "One More Time");
 });
+
+test("tagging a fragmented M4A leaves the file as it was instead of breaking its audio", async () => {
+  const filePath = makeAudio("fragmented.m4a", ["-c:a", "aac", "-movflags", "frag_keyframe+empty_moov"]);
+  const bytes = await readFile(filePath);
+
+  await assert.rejects(writeAudioMetadata(filePath, job), { code: "TAGS_UNSUPPORTED" });
+
+  assert.deepEqual(await readFile(filePath), bytes);
+});
