@@ -209,6 +209,8 @@ Download jobs, playlists, favorites, and lyrics files follow each file. A file t
 
 Aurral matches Lidarr files to artists by MusicBrainz ID. When a file has no MusicBrainz artist tag, Aurral looks up the artist name on MusicBrainz after each scan. It links the artist only when exactly one MusicBrainz artist has that name or alias. A name that several artists share stays unlinked.
 
+Artists and albums named in another script, such as Japanese, Korean, or Cyrillic, stay apart without MusicBrainz tags. Earlier versions put such artists under one artist and could merge their albums. Run a quick or full scan to split them. Favorites, play counts, and monitoring carry over to the artists, albums, and tracks that split off.
+
 An unlinked artist stays in the Library. Its Discover page can still offer to add or monitor the artist, because Aurral cannot tell that the files belong to that artist.
 
 To fix a wrong or missing link, open the artist menu and select **Edit MusicBrainz ID**. Paste an artist ID or a musicbrainz.org artist link, or remove the ID. If another library artist already has that ID, Aurral merges the two artists. Later scans keep your choice. You cannot edit a Lidarr artist here. Change it in Lidarr.

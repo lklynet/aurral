@@ -7,11 +7,13 @@ import {
   buildIdentityKey,
   findLibraryAlbumByArtistTitle,
   findLibraryAlbumByReleaseMbid,
+  findLegacyKeyedLibraryFiles,
   getLibraryMediaFile,
   getAvailableLibraryMediaPaths,
   linkLibraryAlbumTrack,
   markLibraryMediaFilesUnavailable,
   mergeReleaseKeyedLibraryAlbums,
+  splitLegacyKeyedLibraryRows,
   upsertLibraryAlbum,
   upsertLibraryArtist,
   upsertLibraryMediaFile,
@@ -320,6 +322,10 @@ export async function scanMusicRoot({
   const reconcilePaths = changed?.reconcilePaths || null;
   const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   const unseenPaths = requestedFiles ? null : getAvailableLibraryMediaPaths(source);
+  const legacyKeyed = changed
+    ? { paths: new Set(), albumIds: new Set() }
+    : findLegacyKeyedLibraryFiles(source);
+  const legacyMoves = [];
   const seenPaths = new Set();
   const failedPaths = new Set();
   const missingFilePaths = new Set();
@@ -334,6 +340,7 @@ export async function scanMusicRoot({
           const existing = getLibraryMediaFile({ source, path: filePath });
           if (
             force !== true &&
+            !legacyKeyed.paths.has(filePath) &&
             existing?.available === 1 &&
             Number(existing.size) === stat.size &&
             Number(existing.mtime_ms) === stat.mtimeMs
@@ -351,6 +358,9 @@ export async function scanMusicRoot({
           const downloadedByAurral =
             Boolean(enrichment) || Object.keys(readEmbeddedAurralIdentity(metadata)).length > 0;
           const record = buildMetadataRecord(enrichedMetadata, filePath, resolvedRoot);
+          const legacyArtistId = existing?.album_id && legacyKeyed.paths.has(filePath)
+            ? db.prepare("SELECT artist_id FROM library_albums WHERE id = ?").get(existing.album_id)?.artist_id
+            : null;
           const artist = upsertLibraryArtist({
             identityKey: record.artistKey,
             mbid: record.artistMbid,
@@ -358,9 +368,10 @@ export async function scanMusicRoot({
             metadata: record.artistMetadata,
             syncSearch,
           });
-          const namedAlbum = !record.releaseGroupMbid && !record.albumMbid
+          const titledAlbum = !record.releaseGroupMbid && !record.albumMbid
             ? findLibraryAlbumByArtistTitle(artist.id, record.albumName)
             : null;
+          const namedAlbum = legacyKeyed.albumIds.has(titledAlbum?.id) ? null : titledAlbum;
           const releaseAlbum = findLibraryAlbumByReleaseMbid(record.releaseGroupMbid) || namedAlbum;
           const album = upsertLibraryAlbum({
             identityKey: releaseAlbum?.identity_key || record.albumKey,
@@ -403,6 +414,16 @@ export async function scanMusicRoot({
             quality: record.quality,
             scanId,
           });
+          if (legacyKeyed.paths.has(filePath) && existing) {
+            legacyMoves.push({
+              fromTrackId: existing.track_id,
+              toTrackId: track.id,
+              fromAlbumId: existing.album_id,
+              toAlbumId: album.id,
+              fromArtistId: legacyArtistId,
+              toArtistId: artist.id,
+            });
+          }
           unseenPaths?.delete(filePath);
           seenPaths.add(filePath);
           result.filesIndexed += 1;
@@ -415,6 +436,7 @@ export async function scanMusicRoot({
           }
         }
       }
+      if (legacyMoves.length > 0) splitLegacyKeyedLibraryRows(legacyMoves);
       if (firstFailure) {
         logger.warn("library", "Library scan could not index files", {
           source,

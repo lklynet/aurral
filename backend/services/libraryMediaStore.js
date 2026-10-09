@@ -21,13 +21,32 @@ const stringify = (value) => dbHelpers.stringifyJSON(value) || null;
 
 const normalizeText = (value) => String(value || "").trim();
 
-const normalizeKeyPart = (value) =>
+const LETTER_SPELLINGS = { æ: "ae", œ: "oe", ß: "ss", ø: "o", đ: "d", ð: "d", ł: "l", þ: "th" };
+const spellLetters = (value) =>
+  normalizeText(value).toLowerCase().replace(/[æœßøđðłþ]/g, (letter) => LETTER_SPELLINGS[letter]);
+
+const hasNonLatinLetters = (value) =>
+  /(?![a-z0-9])[\p{L}\p{N}]/u.test(spellLetters(value).normalize("NFKD").replace(/[̀-ͯ]/g, ""));
+
+const asciiKeyPart = (value) =>
   normalizeText(value)
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+
+// A name with letters ASCII cannot spell keeps them as written, or every
+// name written only in such letters, such as Japanese, would share one key.
+const normalizeKeyPart = (value) =>
+  hasNonLatinLetters(value)
+    ? normalizeText(value).normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, " ").trim()
+    : asciiKeyPart(value);
+
+const joinFallbackKey = (keyPart, parts) => {
+  const normalized = parts.map(keyPart).filter(Boolean);
+  return normalized.length ? `name:${normalized.join(":")}` : null;
+};
 
 const LIDARR_METADATA_KEYS = [
   "librarySource",
@@ -84,8 +103,7 @@ export function buildIdentityKey(prefix, value) {
 }
 
 export function buildFallbackIdentityKey(...parts) {
-  const normalized = parts.map(normalizeKeyPart).filter(Boolean);
-  return normalized.length ? `name:${normalized.join(":")}` : null;
+  return joinFallbackKey(normalizeKeyPart, parts);
 }
 
 export function beginLibraryScan({ source, rootPath = null } = {}) {
@@ -121,13 +139,15 @@ export function finishLibraryScan(scanId, {
   );
 }
 
+const copyLibraryStars = (entityKind, fromKey, toKey) => db.prepare(
+  `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
+   SELECT user_id, entity_kind, ?, created_at
+   FROM subsonic_stars
+   WHERE entity_kind = ? AND entity_key = ?`,
+).run(toKey, entityKind, fromKey).changes > 0;
+
 function moveLibraryStars(entityKind, fromKey, toKey) {
-  const copied = db.prepare(
-    `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
-     SELECT user_id, entity_kind, ?, created_at
-     FROM subsonic_stars
-     WHERE entity_kind = ? AND entity_key = ?`,
-  ).run(toKey, entityKind, fromKey).changes > 0;
+  const copied = copyLibraryStars(entityKind, fromKey, toKey);
   const deleted = db.prepare(
     "DELETE FROM subsonic_stars WHERE entity_kind = ? AND entity_key = ?",
   ).run(entityKind, fromKey).changes > 0;
@@ -602,18 +622,11 @@ export function findLibraryAlbumByReleaseMbid(mbid) {
   ).get(releaseMbid) || null;
 }
 
-const LETTER_SPELLINGS = { æ: "ae", œ: "oe", ß: "ss", ø: "o", đ: "d", ð: "d", ł: "l", þ: "th" };
-const spellLetters = (value) =>
-  normalizeText(value).toLowerCase().replace(/[æœßøđðłþ]/g, (letter) => LETTER_SPELLINGS[letter]);
-
-const hasNonLatinLetters = (value) =>
-  /(?![a-z0-9])[\p{L}\p{N}]/u.test(spellLetters(value).normalize("NFKD").replace(/[̀-ͯ]/g, ""));
-
 // Names with letters ASCII cannot spell, such as Japanese titles, compare as
 // written, since their ASCII keys would drop those letters and match each other.
 export function isSameLibraryName(left, right) {
-  const a = normalizeKeyPart(spellLetters(left));
-  const b = normalizeKeyPart(spellLetters(right));
+  const a = asciiKeyPart(spellLetters(left));
+  const b = asciiKeyPart(spellLetters(right));
   if ((a || b) && !hasNonLatinLetters(left) && !hasNonLatinLetters(right)) return a === b;
   const raw = (value) => normalizeText(value).normalize("NFKC").toLowerCase();
   return Boolean(raw(left)) && raw(left) === raw(right);
@@ -829,6 +842,245 @@ export function mergeReleaseKeyedLibraryAlbums() {
   for (const pair of pairs) syncLibrarySearchAlbum(pair.albumId);
   invalidateLibraryCache();
   return pairs.length;
+}
+
+const isAsciiText = (column) => `length(CAST(${column} AS BLOB)) = length(${column})`;
+
+// Whether a stored key is the one scans wrote before key parts kept letters
+// ASCII cannot spell, for names whose key now keeps them. Such keys are ASCII.
+const isLegacyFallbackKey = (key, build) => {
+  const legacy = build(asciiKeyPart);
+  return legacy === key && legacy !== build(normalizeKeyPart);
+};
+
+const legacyAlbumKeyBuilders = ({ album_title: title, album_artist: albumArtist, artist_mbid: artistMbid }) => [
+  albumArtist && ((part) =>
+    joinFallbackKey(part, ["album", joinFallbackKey(part, ["artist", albumArtist]), title])),
+  artistMbid && ((part) => joinFallbackKey(part, ["album", buildIdentityKey("mbid", artistMbid), title])),
+].filter(Boolean);
+
+// Scans once gave every name written only in letters ASCII cannot spell the
+// same key, so such artists, albums, and tracks share rows. These are the
+// files on rows still keyed that way, which a scan reads again.
+export function findLegacyKeyedLibraryFiles(source) {
+  const artistIds = db.prepare(
+    `SELECT id, identity_key, name FROM library_artists
+     WHERE identity_key LIKE 'name:%' AND ${isAsciiText("identity_key")} AND NOT ${isAsciiText("name")}`,
+  ).all()
+    .filter((artist) => hasNonLatinLetters(artist.name) && isLegacyFallbackKey(
+      artist.identity_key,
+      (part) => joinFallbackKey(part, ["artist", artist.name]),
+    ))
+    .map((artist) => artist.id);
+  const albumIds = db.prepare(
+    `SELECT album.id, album.identity_key, album.title AS album_title, album.album_artist,
+       artist.mbid AS artist_mbid
+     FROM library_albums AS album
+     JOIN library_artists AS artist ON artist.id = album.artist_id
+     WHERE album.identity_key LIKE 'name:%' AND ${isAsciiText("album.identity_key")}
+       AND NOT (${isAsciiText("album.title")} AND ${isAsciiText("COALESCE(album.album_artist, '')")})`,
+  ).all()
+    .filter((album) => [album.album_title, album.album_artist].some(hasNonLatinLetters)
+      && legacyAlbumKeyBuilders(album).some((build) => isLegacyFallbackKey(album.identity_key, build)))
+    .map((album) => album.id);
+  const trackIds = db.prepare(
+    `SELECT track.id, track.identity_key, track.title, link.disc_number, link.track_number,
+       album.identity_key AS album_key, album.title AS album_title, album.album_artist,
+       artist.mbid AS artist_mbid
+     FROM library_tracks AS track
+     JOIN library_album_tracks AS link ON link.track_id = track.id
+     JOIN library_albums AS album ON album.id = link.album_id
+     JOIN library_artists AS artist ON artist.id = album.artist_id
+     WHERE track.identity_key LIKE 'name:%' AND ${isAsciiText("track.identity_key")}
+       AND NOT (${isAsciiText("track.title")} AND ${isAsciiText("album.title")}
+         AND ${isAsciiText("COALESCE(album.album_artist, '')")})`,
+  ).all()
+    .filter((row) => [row.title, row.album_title, row.album_artist].some(hasNonLatinLetters)
+      && [() => row.album_key, ...legacyAlbumKeyBuilders(row)].some((albumKey) => isLegacyFallbackKey(
+        row.identity_key,
+        (part) => joinFallbackKey(part, ["track", albumKey(part), row.disc_number, row.track_number, row.title]),
+      )))
+    .map((row) => row.id);
+  if (!artistIds.length && !albumIds.length && !trackIds.length) {
+    return { paths: new Set(), albumIds: new Set() };
+  }
+  const paths = db.prepare(
+    `SELECT path FROM library_media_files
+     WHERE source = ? AND (
+       track_id IN (SELECT value FROM json_each(?))
+       OR album_id IN (SELECT value FROM json_each(?))
+       OR album_id IN (
+         SELECT id FROM library_albums WHERE artist_id IN (SELECT value FROM json_each(?))
+       )
+     )`,
+  ).pluck().all(
+    normalizeText(source),
+    JSON.stringify(trackIds),
+    JSON.stringify(albumIds),
+    JSON.stringify(artistIds),
+  );
+  return { paths: new Set(paths), albumIds: new Set(albumIds) };
+}
+
+const CARRIED_ARTIST_METADATA_KEYS = ["monitored", "monitor", "monitorOption", "monitorNewItems", "mbidSource"];
+
+function moveLegacyAlbumPlays(album, targets) {
+  const counts = new Map();
+  const count = (userId, target, plays, playedAt) => {
+    const key = `${userId}:${target.id}`;
+    const entry = counts.get(key) || { userId, target, plays: 0, playedAt: 0 };
+    entry.plays += plays;
+    entry.playedAt = Math.max(entry.playedAt, Number(playedAt) || 0);
+    counts.set(key, entry);
+  };
+  const movedByUser = new Map();
+  for (const event of db.prepare(
+    "SELECT id, user_id, artist, album, played_at FROM play_events WHERE album_key = ?",
+  ).all(album.identity_key)) {
+    const target = targets.find((entry) =>
+      isSameLibraryName(entry.title, event.album) && isSameLibraryName(entry.album_artist, event.artist))
+      || targets.find((entry) => isSameLibraryName(entry.title, event.album))
+      || targets[0];
+    db.prepare("UPDATE play_events SET album_key = ? WHERE id = ?").run(target.identity_key, event.id);
+    count(event.user_id, target, 1, event.played_at);
+    movedByUser.set(event.user_id, (movedByUser.get(event.user_id) || 0) + 1);
+  }
+  for (const stats of db.prepare(
+    "SELECT user_id, play_count, last_played_at FROM play_album_stats WHERE album_key = ?",
+  ).all(album.identity_key)) {
+    const unmatched = stats.play_count - (movedByUser.get(stats.user_id) || 0);
+    if (unmatched > 0) count(stats.user_id, targets[0], unmatched, stats.last_played_at);
+  }
+  const addPlays = db.prepare(
+    `INSERT INTO play_album_stats (user_id, album_key, play_count, last_played_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (user_id, album_key) DO UPDATE SET
+       play_count = play_album_stats.play_count + excluded.play_count,
+       last_played_at = MAX(play_album_stats.last_played_at, excluded.last_played_at)`,
+  );
+  for (const entry of counts.values()) {
+    addPlays.run(entry.userId, entry.target.identity_key, entry.plays, entry.playedAt);
+  }
+  db.prepare("DELETE FROM play_album_stats WHERE album_key = ?").run(album.identity_key);
+}
+
+// A scan files what shared a legacy key under rows of its own. Each of those
+// rows gets the shared row's favorites. Once no file is left on the shared
+// row, they also get its plays, monitoring, and queue places, and it goes.
+export function splitLegacyKeyedLibraryRows(moves) {
+  const targetsOf = (from, to) => {
+    const targets = new Map();
+    for (const move of moves) {
+      if (move[from] == null || move[to] == null || move[from] === move[to]) continue;
+      if (!targets.has(move[from])) targets.set(move[from], new Set());
+      targets.get(move[from]).add(move[to]);
+    }
+    return targets;
+  };
+  const rows = (table, fromId, toIds) => {
+    const read = db.prepare(`SELECT * FROM ${table} WHERE id = ?`);
+    return { row: read.get(fromId), targets: [...toIds].map((id) => read.get(id)).filter(Boolean) };
+  };
+  const removed = { track: [], album: [], artist: [] };
+  db.transaction(() => {
+    for (const move of moves) {
+      if (move.fromAlbumId == null || move.fromAlbumId === move.toAlbumId) continue;
+      db.prepare(
+        `DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ? AND NOT EXISTS (
+           SELECT 1 FROM library_media_files WHERE album_id = ? AND track_id = ?
+         )`,
+      ).run(move.fromAlbumId, move.toTrackId, move.fromAlbumId, move.toTrackId);
+    }
+    for (const [fromId, toIds] of targetsOf("fromTrackId", "toTrackId")) {
+      const { row: track, targets } = rows("library_tracks", fromId, toIds);
+      if (!track || !targets.length) continue;
+      for (const target of targets) copyLibraryStars("song", track.identity_key, target.identity_key);
+      if (db.prepare("SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1").get(track.id)) continue;
+      if (track.monitored === 1) {
+        for (const target of targets) {
+          db.prepare("UPDATE library_tracks SET monitored = 1 WHERE id = ?").run(target.id);
+        }
+      }
+      moveQueuedLibrarySong(track.identity_key, targets[0].identity_key);
+      db.prepare("DELETE FROM subsonic_stars WHERE entity_kind = 'song' AND entity_key = ?")
+        .run(track.identity_key);
+      db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+      removed.track.push(track.id);
+    }
+    for (const [fromId, toIds] of targetsOf("fromAlbumId", "toAlbumId")) {
+      const { row: album, targets } = rows("library_albums", fromId, toIds);
+      if (!album || !targets.length) continue;
+      for (const target of targets) copyLibraryStars("album", album.identity_key, target.identity_key);
+      if (db.prepare(
+        `SELECT 1 FROM library_media_files WHERE album_id = ?
+         UNION ALL SELECT 1 FROM library_album_tracks WHERE album_id = ? LIMIT 1`,
+      ).get(album.id, album.id)) continue;
+      moveLegacyAlbumPlays(album, targets);
+      const monitored = dbHelpers.parseJSON(album.metadata_json)?.monitored === true;
+      for (const target of targets) {
+        db.prepare(
+          `INSERT INTO library_management
+            (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at)
+           SELECT 'album', ?, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at
+           FROM library_management WHERE entity_kind = 'album' AND entity_id = ?
+           ON CONFLICT (entity_kind, entity_id) DO UPDATE SET
+             monitor_mode = COALESCE(library_management.monitor_mode, excluded.monitor_mode)
+           WHERE library_management.managed_by = excluded.managed_by`,
+        ).run(target.id, album.id);
+        if (monitored) {
+          db.prepare(
+            `UPDATE library_albums
+             SET metadata_json = json_set(
+               CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END,
+               '$.monitored', json('true'))
+             WHERE id = ? AND NOT EXISTS (
+               SELECT 1 FROM library_management
+               WHERE entity_kind = 'album' AND entity_id = ? AND managed_by = 'lidarr'
+             )`,
+          ).run(target.id, target.id);
+        }
+      }
+      db.prepare("DELETE FROM subsonic_stars WHERE entity_kind = 'album' AND entity_key = ?")
+        .run(album.identity_key);
+      clearLibraryManagement("album", album.id);
+      db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+      removed.album.push(album.id);
+    }
+    for (const [fromId, toIds] of targetsOf("fromArtistId", "toArtistId")) {
+      const { row: artist, targets } = rows("library_artists", fromId, toIds);
+      if (!artist || !targets.length) continue;
+      for (const target of targets) copyLibraryStars("artist", artist.identity_key, target.identity_key);
+      if (db.prepare("SELECT 1 FROM library_albums WHERE artist_id = ? LIMIT 1").get(artist.id)) continue;
+      const metadata = dbHelpers.parseJSON(artist.metadata_json) || {};
+      for (const target of targets) {
+        const targetMetadata = dbHelpers.parseJSON(target.metadata_json) || {};
+        const carried = CARRIED_ARTIST_METADATA_KEYS.filter((key) =>
+          metadata[key] !== undefined && targetMetadata[key] === undefined);
+        if (carried.length) {
+          db.prepare("UPDATE library_artists SET metadata_json = ? WHERE id = ?").run(
+            stringify({ ...targetMetadata, ...Object.fromEntries(carried.map((key) => [key, metadata[key]])) }),
+            target.id,
+          );
+        }
+        db.prepare(
+          `INSERT OR IGNORE INTO library_management
+            (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at)
+           SELECT entity_kind, ?, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at
+           FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?`,
+        ).run(target.id, artist.id);
+      }
+      db.prepare("DELETE FROM subsonic_stars WHERE entity_kind = 'artist' AND entity_key = ?")
+        .run(artist.identity_key);
+      clearLibraryManagement("artist", artist.id);
+      db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+      removed.artist.push(artist.id);
+    }
+  }).immediate();
+  for (const [kind, ids] of Object.entries(removed)) {
+    for (const id of ids) removeLibrarySearchDocument(kind, id);
+  }
+  invalidateLibraryManagementCache();
+  invalidateLibraryCache();
 }
 
 export function removeLibraryTrackIfNoAvailableMedia(trackId) {
