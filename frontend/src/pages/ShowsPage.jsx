@@ -2,7 +2,7 @@ import { Navigate, useParams } from "react-router";
 import RouteLink from "../components/RouteLink";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { Music, MapPin, AlertCircle } from "lucide-react";
-import { DotLoader } from "../components/DotLoader";
+import { SkeletonCardGrid, SkeletonStatus } from "../components/Skeletons";
 import NearbyLocationControl from "../components/NearbyLocationControl";
 import ShowCard from "../components/ShowCard";
 import { PageSectionMobileNav } from "../components/PageSectionMobileNav";
@@ -109,9 +109,9 @@ function ShowsPage() {
           </RouteLink>
         </div>
       ) : showsLoading ? (
-        <div className="artist-loading">
-          <DotLoader size="2xl" label={null} />
-        </div>
+        <SkeletonStatus label="Loading shows">
+          <SkeletonCardGrid square />
+        </SkeletonStatus>
       ) : showsError ? (
         <div className="artist-error-panel" role="alert">
           <AlertCircle className="artist-error-icon" aria-hidden="true" />

@@ -43,6 +43,12 @@ import {
 } from "../components/CollectionHeader";
 import CrossViewLink from "../components/CrossViewLink";
 import RouteLink from "../components/RouteLink";
+import {
+  SkeletonCardGrid,
+  SkeletonCollectionHeader,
+  SkeletonRows,
+  SkeletonStatus,
+} from "../components/Skeletons";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
@@ -2693,10 +2699,22 @@ function LibraryPage() {
         </p>
       )}
       {loading && (
-        <div className="native-library-state" role="status">
-          <DotLoader size="xl" label={null} />
-          <span>Loading library…</span>
-        </div>
+        isDetail ? (
+          <SkeletonStatus label="Loading library" className="native-library-content">
+            <section className="native-library-detail">
+              <SkeletonCollectionHeader />
+              <SkeletonRows count={10} />
+            </section>
+          </SkeletonStatus>
+        ) : viewMode === "list" || tab === "tracks" || tab === "genres" ? (
+          <SkeletonStatus label="Loading library">
+            <SkeletonRows count={12} />
+          </SkeletonStatus>
+        ) : (
+          <SkeletonStatus label="Loading library">
+            <SkeletonCardGrid className="native-library-grid" square={tab !== "artists"} />
+          </SkeletonStatus>
+        )
       )}
       {!loading && error && (
         <div className="native-library-state" role="alert">

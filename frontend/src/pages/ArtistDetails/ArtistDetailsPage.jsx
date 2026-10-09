@@ -28,6 +28,7 @@ import { useParams, useLocation } from "react-router";
 import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
 import { Music, X } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
+import { SkeletonRail, SkeletonStatus } from "../../components/Skeletons";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
@@ -454,9 +455,15 @@ function ArtistDetailsPage() {
 
   if (loading) {
     return (
-      <div className="artist-loading">
-        <DotLoader size="2xl" label={null} />
-      </div>
+      <SkeletonStatus label="Loading artist" className="artist-details-page">
+        <section className="artist-hero">
+          <div className="artist-hero__inner">
+            <div className="artist-hero__fallback skeleton-block" />
+          </div>
+        </section>
+        <SkeletonRail />
+        <SkeletonRail />
+      </SkeletonStatus>
     );
   }
 

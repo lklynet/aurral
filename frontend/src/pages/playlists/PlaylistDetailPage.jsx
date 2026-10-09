@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { Clock, Download, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
+import { SkeletonCollectionHeader, SkeletonRows, SkeletonStatus } from "../../components/Skeletons";
 import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../../components/CollectionHeader";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import TooltipButton from "../../components/TooltipButton";
@@ -64,10 +65,10 @@ export default function PlaylistDetailPage() {
       <main className="library-page native-library-page playlist-page">
         <div className="native-library-content">
           {waiting ? (
-            <div className="native-library-state" role="status">
-              <DotLoader size="xl" label={null} />
-              <span>Loading playlist…</span>
-            </div>
+            <SkeletonStatus label="Loading playlist" className="native-library-detail">
+              <SkeletonCollectionHeader />
+              <SkeletonRows count={10} />
+            </SkeletonStatus>
           ) : error && !status ? (
             <div className="native-library-state" role="alert">
               <strong>Playlist unavailable</strong>

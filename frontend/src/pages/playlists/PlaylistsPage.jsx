@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { ListMusic, MoreVertical, Plus, Upload } from "lucide-react";
-import { DotLoader } from "../../components/DotLoader";
+import { SkeletonCardGrid, SkeletonStatus } from "../../components/Skeletons";
 import Tooltip from "../../components/Tooltip";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import { CreatePlaylistModal } from "../../components/PlaylistModals";
@@ -99,10 +99,9 @@ export default function PlaylistsPage() {
   const renderContent = () => {
     if (loading && !status) {
       return (
-        <div className="native-library-state" role="status">
-          <DotLoader size="xl" label={null} />
-          <span>Loading playlists…</span>
-        </div>
+        <SkeletonStatus label="Loading playlists">
+          <SkeletonCardGrid className="native-library-grid" count={8} square />
+        </SkeletonStatus>
       );
     }
     if (error && !status) {

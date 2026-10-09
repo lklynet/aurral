@@ -10,6 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
+import { SkeletonRows, SkeletonStatus } from "../../components/Skeletons";
 import TooltipButton from "../../components/TooltipButton";
 import { useToast } from "../../contexts/ToastContext";
 import { formatDateTime } from "../../utils/dateTime.js";
@@ -402,9 +403,9 @@ export default function ActivityMissingPage() {
           action={searchAllButton}
           placeholder={filterPlaceholder}
         />
-        <div className="activity-page__loading" role="status" aria-label="Loading wanted tracks">
-          <DotLoader size="2xl" label={null} />
-        </div>
+        <SkeletonStatus label="Loading wanted tracks">
+          <SkeletonRows count={8} />
+        </SkeletonStatus>
       </section>
     );
   }

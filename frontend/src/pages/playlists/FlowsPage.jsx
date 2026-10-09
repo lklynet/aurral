@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { AudioWaveform, ChevronDown, Sparkles } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
+import { SkeletonRows, SkeletonStatus } from "../../components/Skeletons";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
@@ -106,10 +107,9 @@ export default function FlowsPage() {
   const renderContent = () => {
     if (loading && !status) {
       return (
-        <div className="native-library-state" role="status">
-          <DotLoader size="xl" label={null} />
-          <span>Loading flows…</span>
-        </div>
+        <SkeletonStatus label="Loading flows">
+          <SkeletonRows count={6} />
+        </SkeletonStatus>
       );
     }
     if (error && !status) {

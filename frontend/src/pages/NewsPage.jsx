@@ -6,6 +6,7 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useLibraryNews } from "../hooks/useLibraryNews";
 import { NewsArticleCard } from "../components/NewsArticleCard";
 import { DotLoader } from "../components/DotLoader";
+import { SkeletonCardGrid, SkeletonStatus } from "../components/Skeletons";
 
 export default function NewsPage() {
   useDocumentTitle("Artist News");
@@ -66,9 +67,9 @@ export default function NewsPage() {
           </RouteLink>
         </section>
       ) : loading && articles.length === 0 ? (
-        <div className="artist-loading">
-          <DotLoader size="2xl" label={null} />
-        </div>
+        <SkeletonStatus label="Loading news">
+          <SkeletonCardGrid className="discover-news-page__grid" count={6} square />
+        </SkeletonStatus>
       ) : articles.length > 0 ? (
         <>
           {refreshWarning ? (

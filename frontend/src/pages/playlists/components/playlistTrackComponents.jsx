@@ -15,6 +15,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { DotLoader, DownloadingIcon } from "../../../components/DotLoader";
+import { SkeletonRows, SkeletonStatus } from "../../../components/Skeletons";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import TooltipButton from "../../../components/TooltipButton";
 import { getPlaylistTrackDisplayNumber, sortPlaylistTracks } from "../../../utils/playlistTrackSort";
@@ -687,10 +688,9 @@ export function PlaylistTracksPanel({
         </div>
       ) : null}
       {loading ? (
-        <div className="native-library-state" role="status">
-          <DotLoader size="lg" label={null} />
-          <span>Loading tracks…</span>
-        </div>
+        <SkeletonStatus label="Loading tracks">
+          <SkeletonRows count={8} />
+        </SkeletonStatus>
       ) : error ? (
         <div className="native-library-state" role="alert">
           <strong>Tracks unavailable</strong>

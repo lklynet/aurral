@@ -12,6 +12,7 @@ import {
 } from "../utils/api/endpoints/playlists.js";
 import { getDiscovery } from "../utils/api/endpoints/discovery.js";
 import { DotLoader } from "../components/DotLoader";
+import { SkeletonCardGrid, SkeletonStatus } from "../components/Skeletons";
 import { getArtistCover, getReleaseGroupCover } from "../utils/api/endpoints/artists.js";
 import { searchCatalog, searchLibrary, searchUnified } from "../utils/api/endpoints/search.js";
 import SearchAlbumResults from "../components/SearchAlbumResults";
@@ -1535,9 +1536,9 @@ function SearchResultsPage() {
       )}
 
       {loading && (
-        <div className="artist-loading">
-          <DotLoader size="2xl" label={null} />
-        </div>
+        <SkeletonStatus label="Loading results">
+          <SkeletonCardGrid />
+        </SkeletonStatus>
       )}
 
       {showContent && (

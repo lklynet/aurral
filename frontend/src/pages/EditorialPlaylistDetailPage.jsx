@@ -16,6 +16,7 @@ import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../comp
 import TooltipButton from "../components/TooltipButton";
 import Tooltip from "../components/Tooltip";
 import RouteLink from "../components/RouteLink";
+import { SkeletonCollectionHeader, SkeletonRows, SkeletonStatus } from "../components/Skeletons";
 import { DotLoader } from "../components/DotLoader";
 import { PlaylistTracksPanel, usePlaylistTrackPlayback } from "./playlists/components/playlistTrackComponents.jsx";
 import { formatTrackTotal } from "./playlists/playlistPageUtils";
@@ -125,12 +126,13 @@ export default function EditorialPlaylistDetailPage() {
   );
 
   if (isPending) {
-    return renderState(
-      <>
-        <DotLoader size="xl" label={null} />
-        <span>Loading playlist…</span>
-      </>,
-      "status",
+    return (
+      <CollectionPage>
+        <SkeletonStatus label="Loading playlist" className="native-library-detail">
+          <SkeletonCollectionHeader />
+          <SkeletonRows count={10} />
+        </SkeletonStatus>
+      </CollectionPage>
     );
   }
 

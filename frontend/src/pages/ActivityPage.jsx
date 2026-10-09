@@ -32,7 +32,7 @@ import ActivityInfoModal from "./activity/ActivityInfoModal";
 import { Navigate, useLocation, useParams } from "react-router";
 import RouteLink from "../components/RouteLink";
 import { AlertCircle, Music } from "lucide-react";
-import { DotLoader } from "../components/DotLoader";
+import { SkeletonRows, SkeletonStatus } from "../components/Skeletons";
 import { queryClient, queryKeys } from "../queryClient.js";
 const ACTIVITY_PAGE_SIZE = 25;
 
@@ -363,9 +363,9 @@ function ActivityPage() {
           onRefresh={handleManualRefresh}
           refreshing={refreshing}
         />
-        <div className="activity-page__loading" role="status" aria-label="Loading activity">
-          <DotLoader size="2xl" label={null} />
-        </div>
+        <SkeletonStatus label="Loading activity">
+          <SkeletonRows count={8} />
+        </SkeletonStatus>
       </div>
     );
   }

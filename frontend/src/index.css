@@ -5282,7 +5282,8 @@ textarea {
 }
 
 .discover-skeleton-card__cover,
-.discover-skeleton-card__line {
+.discover-skeleton-card__line,
+.skeleton-block {
   background: var(--aurral-surface-raised);
   animation: discover-skeleton-pulse 1.6s ease-in-out infinite;
 }
@@ -5319,9 +5320,99 @@ textarea {
 
 @media (prefers-reduced-motion: reduce) {
   .discover-skeleton-card__cover,
-  .discover-skeleton-card__line {
+  .discover-skeleton-card__line,
+  .skeleton-block {
     animation: none;
   }
+}
+
+.discover-skeleton-card--square .discover-skeleton-card__cover {
+  border-radius: var(--aurral-radius);
+}
+
+.skeleton-status__body {
+  display: contents;
+}
+
+.skeleton-line {
+  display: block;
+  height: 0.75rem;
+  border-radius: var(--aurral-radius-sm);
+}
+
+.skeleton-line--xs {
+  width: 3rem;
+}
+
+.skeleton-line--sm {
+  width: 6rem;
+  height: 0.625rem;
+}
+
+.skeleton-line--md {
+  width: min(14rem, 60%);
+}
+
+.skeleton-line--lg {
+  width: min(20rem, 80%);
+}
+
+.skeleton-line--title {
+  width: min(16rem, 70%);
+  height: 1.5rem;
+}
+
+.skeleton-page-header {
+  padding: 0.5rem 0 1.5rem;
+}
+
+.skeleton-rail .artist-discover-rail__header {
+  min-height: 2.5rem;
+  align-items: center;
+}
+
+.skeleton-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 1.25rem;
+}
+
+.skeleton-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.skeleton-row {
+  display: flex;
+  min-height: 3.5rem;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.5rem 0.25rem;
+}
+
+.skeleton-row__art {
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  border-radius: var(--aurral-radius-sm);
+}
+
+.skeleton-row__text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.skeleton-row__meta {
+  flex-shrink: 0;
+}
+
+.skeleton-collection-header__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .discover-recommended-empty {

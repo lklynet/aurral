@@ -3,6 +3,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router";
 import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
 import { DotLoader } from "../../components/DotLoader";
+import { SkeletonCardGrid, SkeletonPageHeader, SkeletonStatus } from "../../components/Skeletons";
 import {
   ArrowDown,
   ArrowUp,
@@ -391,9 +392,10 @@ function ArtistReleaseListPage({ mode = "releases" }) {
 
   if (loading) {
     return (
-      <div className="artist-loading">
-        <DotLoader size="xl" label={null} />
-      </div>
+      <SkeletonStatus label="Loading releases" className="artist-details-page">
+        <SkeletonPageHeader />
+        <SkeletonCardGrid square />
+      </SkeletonStatus>
     );
   }
 

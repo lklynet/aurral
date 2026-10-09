@@ -17,6 +17,7 @@ import ThemeSync from "./components/ThemeSync";
 import UpdateIndicator from "./components/UpdateIndicator";
 import SpotifyReconnectNotice from "./components/SpotifyReconnectNotice";
 import { DotLoader } from "./components/DotLoader";
+import { SkeletonCardGrid, SkeletonPageHeader, SkeletonStatus } from "./components/Skeletons";
 import { useDiscoveryStatus } from "./hooks/useDiscoveryStatus";
 import { buildActivityPath, DEFAULT_ACTIVITY_VIEW } from "./navigation/activityNavConfig";
 import { routeModules } from "./navigation/routeModules.js";
@@ -59,9 +60,10 @@ const EditorialPlaylistDetailPage = lazy(routeModules.editorialPlaylist);
 const NewsPage = lazy(routeModules.news);
 
 const PageLoader = () => (
-  <div className="app-loading">
-    <DotLoader size="xl" />
-  </div>
+  <SkeletonStatus label="Loading page">
+    <SkeletonPageHeader />
+    <SkeletonCardGrid square />
+  </SkeletonStatus>
 );
 
 const ScreenLoader = () => (

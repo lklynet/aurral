@@ -9,6 +9,7 @@ import { getMyDiscoverLayout, updateMyDiscoverLayout } from "../utils/api/endpoi
 import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { Sparkles, LayoutTemplate } from "lucide-react";
 import { DotLoader } from "../components/DotLoader";
+import { SkeletonRail, SkeletonStatus } from "../components/Skeletons";
 import DiscoveryStatusPill from "../components/DiscoveryStatusPill";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useAuth } from "../contexts/AuthContext";
@@ -39,6 +40,8 @@ import { formatDate } from "../utils/dateTime.js";
 import TooltipButton from "../components/TooltipButton";
 import RouteLink from "../components/RouteLink";
 const getArtistId = (artist) => getArtistRecordId(artist);
+
+const SQUARE_ART_SECTIONS = new Set(["playlists", "recentReleases", "recommendedShows", "news"]);
 
 function DiscoverPage() {
   useDocumentTitle("Discover");
@@ -537,11 +540,9 @@ function DiscoverPage() {
 
       if (nearbyShowsLoading && !nearbyShowsData) {
         return (
-          <section key="recommendedShows" className="artist-discover-section">
-            <div className="artist-nearby-status artist-nearby-status--loading">
-              <DotLoader size="xl" label={null} />
-            </div>
-          </section>
+          <SkeletonStatus key="recommendedShows" label="Loading shows near you">
+            <SkeletonRail />
+          </SkeletonStatus>
         );
       }
 
@@ -681,23 +682,37 @@ function DiscoverPage() {
 
   const [showFullBasedOnList, setShowFullBasedOnList] = useState(false);
 
-  if (data === null && !error) {
-    return (
-      <div className="artist-loading--discover">
-        <DotLoader size="2xl" label={null} className="aurral-dot-loader--discover" />
-        <h2 className="artist-error-title--discover">Loading recommendations...</h2>
-      </div>
-    );
-  }
+  const sectionMayRender = (id) =>
+    (id !== "news" || newsConfigured) && (id !== "recommendedShows" || ticketmasterConfigured);
 
-  if (isActuallyUpdating) {
+  if ((data === null && !error) || isActuallyUpdating) {
+    const loadingMessage = isActuallyUpdating
+      ? updateProgressMessage || "Building your recommendations"
+      : "Loading recommendations";
     return (
-      <div className="artist-loading--discover">
-        <DotLoader size="2xl" label={null} className="aurral-dot-loader--discover" />
-        <h2 className="artist-error-title--discover">Building your recommendations...</h2>
-        {updateProgressMessage ? (
-          <p className="artist-error-copy--discover">{updateProgressMessage}</p>
-        ) : null}
+      <div className="artist-discover-page" aria-busy="true">
+        <section className="artist-discover-hero">
+          <div className="artist-discover-hero__content">
+            <div className="artist-discover-hero__header">
+              <div className="artist-discover-hero__title-wrap">
+                <div className="artist-discover-hero__title-row">
+                  <h1 className="page-title">Discover</h1>
+                </div>
+                <p className="discover-recommended-status" role="status">
+                  <DotLoader size="xs" label={null} />
+                  {loadingMessage}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+        <div aria-hidden="true">
+          {discoverSections
+            .filter((section) => section.enabled && sectionMayRender(section.id))
+            .map((section) => (
+              <SkeletonRail key={section.id} square={SQUARE_ART_SECTIONS.has(section.id)} />
+            ))}
+        </div>
       </div>
     );
   }
