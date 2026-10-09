@@ -171,6 +171,57 @@ h4 {
   font-weight: inherit;
 }
 
+h1,
+h2,
+h3,
+h4,
+.artist-card-title,
+.discover-news-card__title {
+  text-wrap: balance;
+}
+
+p,
+dd,
+figcaption,
+blockquote {
+  text-wrap: pretty;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--aurral-text) 24%, transparent);
+  color: var(--aurral-text);
+}
+
+:is(
+    .native-library-count,
+    .native-library-card__meta,
+    .native-library-detail__meta,
+    .library-page__result-count,
+    .artist-card-meta,
+    .artist-release-card__meta,
+    .artist-track-number,
+    .artist-rating-badge__value,
+    .artist-meta-line,
+    .artist-discover-hero__updated,
+    .artist-show-card__detail-text--discover,
+    .artist-show-card__distance-badge--discover,
+    .discover-news-card__meta,
+    .search-top-artist__meta,
+    .global-search__suggestion-meta,
+    .activity-list__date-group,
+    .activity-row__meta,
+    .flow-page__badge--count,
+    .player-queue,
+    .arr-progress__pct,
+    .arr-health__summary-time,
+    .arr-disk-meter__label,
+    .arr-card__meta,
+    .playlist-import__file-meta,
+    .playlist-import__selected-meta
+  ) {
+  font-variant-numeric: tabular-nums;
+}
+
 button,
 input,
 select,
