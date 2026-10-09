@@ -616,6 +616,7 @@ export function AudioQueueProvider({ children }) {
       isStarting: playback.isStarting,
       duration: playback.duration,
       getPosition: engine.getPosition,
+      getBufferedEnd: engine.getBufferedEnd,
       seek,
       volume,
       muted,

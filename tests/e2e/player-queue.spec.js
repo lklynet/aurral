@@ -195,6 +195,35 @@ test("dragging the seek slider holds the dragged time and seeks once on release"
   expect(await elapsedSeconds()).toBeLessThanOrEqual(draggedSeconds + 2);
 });
 
+test("hovering the seek bar previews the time and clicking there seeks to it", async ({ page }) => {
+  const player = playerControls(page);
+  await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
+  await waitUntilPlaying(player);
+  const wrap = page.locator(".global-player__progress-wrap");
+  const preview = wrap.locator(".global-player__progress-preview");
+  const thumbOpacity = () =>
+    page.evaluate(() =>
+      getComputedStyle(document.querySelector(".global-player__progress-thumb"), "::after").opacity,
+    );
+  await expect.poll(thumbOpacity).toBe("0");
+
+  const box = await player.seek.boundingBox();
+  await page.mouse.move(box.x + box.width * 0.25, box.y + box.height / 2);
+  await expect(preview).toHaveText("0:15");
+  await expect.poll(thumbOpacity).toBe("1");
+
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(player.seek).toHaveAttribute("aria-valuetext", /^0:1[56] of 1:00$/);
+
+  await page.mouse.move(box.x + box.width * 0.5, box.y - 80);
+  await expect(preview).toHaveCount(0);
+
+  const width = (selector) => wrap.locator(selector).evaluate((node) => node.getBoundingClientRect().width);
+  await expect.poll(() => width(".global-player__progress-buffered")).toBeGreaterThan(box.width * 0.9);
+  expect(await width(".global-player__progress-fill")).toBeLessThan(box.width * 0.5);
+});
+
 test("previous restarts a track after three seconds and goes back from its start", async ({ page }) => {
   const player = playerControls(page);
   await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();

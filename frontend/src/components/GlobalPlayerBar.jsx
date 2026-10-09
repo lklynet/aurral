@@ -19,6 +19,7 @@ import {
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import TooltipButton from "./TooltipButton";
 import { PlayerQueuePanel, UpNextQueue } from "./PlayerQueue";
+import { PlayerMiniProgress, PlayerSeek } from "./PlayerProgress";
 import { useModalDialog } from "../hooks/useModalDialog.js";
 import { PLAYER_SHORTCUTS, usePlayerShortcuts } from "../hooks/usePlayerShortcuts.js";
 import { useNowPlayingTitle } from "../hooks/useDocumentTitle";
@@ -27,23 +28,6 @@ import { useCollectionTint } from "./CollectionHeader";
 const SHEET_EXIT_MS = 260;
 const SHEET_DISMISS_DISTANCE = 120;
 const SEEK_SHORTCUT_SECONDS = 5;
-const SEEK_KEY_OFFSETS = {
-  ArrowLeft: -5,
-  ArrowDown: -5,
-  ArrowRight: 5,
-  ArrowUp: 5,
-  PageDown: -30,
-  PageUp: 30,
-};
-
-function formatTime(seconds) {
-  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
-  const total = Math.floor(seconds);
-  const mins = Math.floor(total / 60);
-  const secs = total % 60;
-  return `${mins}:${String(secs).padStart(2, "0")}`;
-}
-
 function GlobalPlayerBar() {
   const {
     currentTrack,
@@ -68,9 +52,6 @@ function GlobalPlayerBar() {
     seek,
     getPosition,
   } = useAudioQueue();
-  const [position, setPosition] = useState(0);
-  const [scrubPosition, setScrubPosition] = useState(null);
-  const scrubRef = useRef(null);
   const location = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -150,24 +131,10 @@ function GlobalPlayerBar() {
     };
   }, [sheetOpen]);
 
-  useEffect(() => {
-    if (!isActive) {
-      setPosition(0);
-      return undefined;
-    }
-    const tick = () => setPosition(getPosition());
-    tick();
-    const interval = window.setInterval(tick, 250);
-    return () => window.clearInterval(interval);
-  }, [getPosition, isActive, isLoading, isPlaying]);
-
-  useEffect(() => () => scrubRef.current?.stop(), []);
-
   const seekBy = (offset) => {
     if (!duration) return;
     const nextPosition = Math.min(Math.max(getPosition() + offset, 0), duration);
     seek(nextPosition);
-    setPosition(nextPosition);
   };
 
   usePlayerShortcuts(isActive && Boolean(currentTrack), {
@@ -189,9 +156,7 @@ function GlobalPlayerBar() {
     return null;
   }
 
-  const displayPosition = scrubPosition ?? position;
   const volumePercent = muted ? 0 : Math.round(volume * 100);
-  const progress = duration > 0 ? Math.min((displayPosition / duration) * 100, 100) : 0;
   const artistMbid = String(currentTrack.artistMbid || "").trim();
   const albumMbid = String(currentTrack.albumMbid || "").trim();
   const artistLabel = currentTrack.artist || "";
@@ -204,74 +169,6 @@ function GlobalPlayerBar() {
   const handleVolumeChange = (event) => {
     const nextVolume = Math.min(Math.max(Number(event.target.value) || 0, 0), 100);
     setVolume(nextVolume / 100);
-  };
-
-  const clampPosition = (value) => Math.min(Math.max(Number(value) || 0, 0), duration);
-
-  const seekTo = (value) => {
-    const nextPosition = clampPosition(value);
-    seek(nextPosition);
-    setPosition(nextPosition);
-  };
-
-  const handleSeekChange = (event) => {
-    if (!duration) return;
-    if (scrubRef.current) {
-      scrubRef.current.position = clampPosition(event.currentTarget.value);
-      setScrubPosition(scrubRef.current.position);
-      return;
-    }
-    seekTo(event.currentTarget.value);
-  };
-
-  const handleSeekPointerDown = (event) => {
-    if (!duration || scrubRef.current) return;
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    const finish = () => {
-      const scrub = scrubRef.current;
-      scrub?.stop();
-      setScrubPosition(null);
-      if (scrub?.position != null) seekTo(scrub.position);
-    };
-    const stop = () => {
-      window.removeEventListener("pointerup", finish);
-      window.removeEventListener("pointercancel", finish);
-      scrubRef.current = null;
-    };
-    scrubRef.current = { position: null, stop };
-    window.addEventListener("pointerup", finish);
-    window.addEventListener("pointercancel", finish);
-  };
-
-  const handleSeekKeyDown = (event) => {
-    if (!duration) return;
-    const offset = SEEK_KEY_OFFSETS[event.key];
-    const target =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? duration
-          : offset == null
-            ? null
-            : displayPosition + offset;
-    if (target == null) return;
-    event.preventDefault();
-    seekTo(target);
-  };
-
-  const seekInputProps = {
-    type: "range",
-    min: 0,
-    max: duration || 0,
-    step: "any",
-    value: Math.min(displayPosition, duration || 0),
-    onChange: handleSeekChange,
-    onPointerDown: handleSeekPointerDown,
-    onKeyDown: handleSeekKeyDown,
-    "aria-label": "Playback position",
-    "aria-keyshortcuts": PLAYER_SHORTCUTS.seek.keys,
-    "aria-valuetext": `${formatTime(displayPosition)} of ${formatTime(duration)}`,
-    disabled: !duration,
   };
 
   const handleSheetPointerDown = (event) => {
@@ -303,7 +200,7 @@ function GlobalPlayerBar() {
   const artwork = (className) => (
     <span className={className} aria-hidden="true">
       {currentTrack.artwork ? (
-        <img src={currentTrack.artwork} alt="" loading="lazy" />
+        <img src={currentTrack.artwork} alt="" decoding="async" />
       ) : (
         <Music />
       )}
@@ -327,9 +224,7 @@ function GlobalPlayerBar() {
       style={artTint ? { "--player-tint": artTint } : undefined}
     >
       <div className="global-player__mini">
-        <span className="global-player__mini-progress" aria-hidden="true">
-          <span style={{ width: `${progress}%` }} />
-        </span>
+        <PlayerMiniProgress />
         <button
           type="button"
           className="global-player__mini-open"
@@ -427,17 +322,7 @@ function GlobalPlayerBar() {
                 ) : null}
               </div>
 
-              <div className="now-playing__progress">
-                <input
-                  {...seekInputProps}
-                  className="now-playing__seek"
-                  style={{ "--seek-percent": `${progress}%` }}
-                />
-                <div className="now-playing__times">
-                  <span>{formatTime(displayPosition)}</span>
-                  <span>{formatTime(duration)}</span>
-                </div>
-              </div>
+              <PlayerSeek variant="sheet" />
 
               <div className="now-playing__controls">
                 <button
@@ -574,18 +459,7 @@ function GlobalPlayerBar() {
             </TooltipButton>
           </div>
 
-          <div className="global-player__progress-wrap">
-            <span className="global-player__progress-time global-player__progress-time--current">
-              {formatTime(displayPosition)}
-            </span>
-            <span className="global-player__progress-track" aria-hidden="true">
-              <span className="global-player__progress-fill" style={{ width: `${progress}%` }} />
-            </span>
-            <input {...seekInputProps} className="global-player__progress" />
-            <span className="global-player__progress-time global-player__progress-time--duration">
-              {formatTime(duration)}
-            </span>
-          </div>
+          <PlayerSeek variant="bar" />
         </div>
 
         <div className="global-player__side">
