@@ -149,6 +149,16 @@ test("ingesting as Albums also monitors each ingested track's album", async () =
   assert.deepEqual(await ingestBesideExistingTrack("albums"), { tracks: { Added: 1, Kept: 1 }, album: "monitored" });
 });
 
+test("an ingest that files nothing has nothing to monitor", async () => {
+  const source = newSource();
+  const gone = await makeTrack(path.join(source, "a.flac"), { artist: "Gone", album: "Album", title: "Gone", track: "1" });
+  const id = await ingest(source, "copy", "tracks");
+  await rm(gone);
+  const finished = operations.describeLibraryFileOperation(await runUntilSettled(id));
+  assert.deepEqual([finished.status, finished.counts.failed], ["complete", 1]);
+  assert.equal(finished.summary.monitor, undefined);
+});
+
 test("an ingest refuses a Monitor choice it does not know", async () => {
   await assert.rejects(operations.startIngest({ sourcePath: newSource(), mode: "copy", monitor: "artists" }), /Choose None/);
 });

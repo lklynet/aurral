@@ -313,7 +313,8 @@ export async function finishIngest(operation) {
     const deepestFirst = [...folders.keys()].sort((left, right) => right.length - left.length);
     for (const folder of deepestFirst) await removeEmptyDirectories(folder, sourceRoot);
   }
-  if (operation.options.monitor && operation.options.monitor !== "none") {
+  const filed = items.some((item) => item.status === "done");
+  if (filed && operation.options.monitor && operation.options.monitor !== "none") {
     updateLibraryFileOperation(operation.id, { summary: { monitor: "pending" } });
   }
   return ingestScanRequest(operation, items.map((item) => ({
