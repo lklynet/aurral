@@ -1382,9 +1382,13 @@ function LibraryPage() {
     albumManager === "lidarr" && /^\d+$/.test(String(libraryAlbum?.providerId ?? ""))
       ? libraryAlbum.providerId
       : null;
+  const [lidarrMonitoredOverride, setLidarrMonitoredOverride] = useState(null);
   const albumMonitored =
     albumManager === "aurral" ? albumMonitoring.monitored
-      : lidarrAlbumId ? libraryAlbum.monitored === true
+      : lidarrAlbumId
+        ? lidarrMonitoredOverride?.albumId === lidarrAlbumId
+          ? lidarrMonitoredOverride.monitored
+          : libraryAlbum.monitored === true
         : null;
   const canDownloadLibraryAlbum = (() => {
     if (!canAddTracks || isPreviewLibrary || !libraryAlbum || !hasMissingAlbumTracks) return false;
@@ -1432,21 +1436,26 @@ function LibraryPage() {
   }, [activeManager, getArtistForAlbum, libraryAlbum, reloadLibraryAlbumTracks, setLibrary, showError, showSuccess, updateAlbumMonitoringState]);
 
   const setLidarrAlbumMonitored = useCallback(async (monitored) => {
-    if (!lidarrAlbumId) return;
+    if (!lidarrAlbumId || lidarrMonitoredOverride) return;
     const title = libraryAlbum.title || "Album";
+    setLidarrMonitoredOverride({ albumId: lidarrAlbumId, monitored });
     try {
       await updateLibraryAlbum(lidarrAlbumId, { monitored });
       updateAlbumMonitoringState(libraryAlbum.id, { monitored });
       showSuccess(monitored ? `${title} monitored in Lidarr` : `${title} unmonitored in Lidarr`);
     } catch (requestError) {
       showError(
-        requestError.response?.data?.message ||
-          requestError.response?.data?.error ||
-          requestError.message ||
-          "Could not update album monitoring",
+        `Could not ${monitored ? "monitor" : "unmonitor"} ${title} in Lidarr. Nothing changed. ${
+          requestError.response?.data?.message ||
+            requestError.response?.data?.error ||
+            requestError.message ||
+            "Try again."
+        }`,
       );
+    } finally {
+      setLidarrMonitoredOverride(null);
     }
-  }, [libraryAlbum, lidarrAlbumId, showError, showSuccess, updateAlbumMonitoringState]);
+  }, [libraryAlbum, lidarrAlbumId, lidarrMonitoredOverride, showError, showSuccess, updateAlbumMonitoringState]);
   const lidarrAlbumAction =
     activeManager === "lidarr" && lidarrAlbumId && canChangeMonitoring
       ? getMonitoringMenuAction({ monitored: albumMonitored, hasMissing: hasMissingAlbumTracks })
@@ -1927,7 +1936,7 @@ function LibraryPage() {
           key: track.id,
           number: variant === "release" && trackNumber ? trackNumber : index + 1,
           title: track.title || "Unknown Track",
-          badge: track.monitored === false ? (
+          badge: !trackMonitoring.isMonitored(track) ? (
             <span className="native-library-track__unmonitored" role="img" aria-label="Not monitored">
               <EyeOff aria-hidden="true" />
             </span>

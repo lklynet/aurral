@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Eye, MoreVertical, Plus, SlidersHorizontal } from "lucide-react";
 import AddActionButton from "./AddActionButton";
@@ -30,6 +30,7 @@ export function useArtistMonitoring({
   const { isArtistDownloading } = useActiveDownloads();
   const { showSuccess, showError } = useToast();
   const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
   const monitoringQuery = useQuery({
     queryKey: queryKeys.artistMonitoring(mbid),
     queryFn: ({ signal }) => getArtistMonitoring(mbid, { signal }),
@@ -42,17 +43,30 @@ export function useArtistMonitoring({
   const name = artistName || "this artist";
 
   const choose = async (option) => {
-    if (option === current) return;
+    if (option === current || pendingRef.current) return;
+    const queryKey = queryKeys.artistMonitoring(mbid);
+    const adding = state?.added === false;
+    pendingRef.current = true;
     setPending(true);
+    await queryClient.cancelQueries({ queryKey });
+    const previous = queryClient.getQueryData(queryKey);
+    const optimistic = queryClient.setQueryData(queryKey, (existing) =>
+      existing ? { ...existing, added: true, monitorOption: option } : existing);
     try {
       const response = await updateLibraryArtist(mbid, { monitorOption: option, artistName: name });
+      if (adding) queryClient.setQueryData(queryKeys.libraryLookup(mbid), true);
       showSuccess(describeArtistMonitoringChange({ name, option, response }));
       await queryClient.invalidateQueries({ queryKey: queryKeys.libraryArtist(mbid) });
       await onChanged?.();
     } catch (error) {
-      showError(describeAurralMonitoringError(error, "Could not update monitoring"));
+      if (queryClient.getQueryData(queryKey) === optimistic) queryClient.setQueryData(queryKey, previous);
+      showError(
+        `Could not ${adding ? "add" : "change monitoring for"} ${name}. ${adding ? "Nothing was added." : "Nothing changed."} ${describeAurralMonitoringError(error, "Try again.")}`,
+      );
     } finally {
+      pendingRef.current = false;
       setPending(false);
+      void queryClient.invalidateQueries({ queryKey });
     }
   };
 

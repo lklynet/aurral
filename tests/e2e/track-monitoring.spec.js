@@ -79,6 +79,8 @@ async function fixture(page, library) {
     if (path === "/library/canonical") return json(library.page());
     const trackWrite = path.match(/^\/library\/tracks\/aurral\/(\d+)$/);
     if (trackWrite && request.method() === "PUT") {
+      await library.writeGate;
+      if (library.failWrites) return json({ error: "Fixture write failed" }, 500);
       const { monitored } = request.postDataJSON();
       library.writes.push({ id: Number(trackWrite[1]), monitored });
       const entry = library.tracks.find((candidate) => candidate.id === Number(trackWrite[1]));
@@ -171,4 +173,20 @@ test("a track in an unmonitored album can still be unmonitored on its own", asyn
   await chooseFromTrackMenu(page, "Kept Track", "Stop monitoring track");
   await expect(trackRow(page, "Kept Track").getByRole("img", { name: "Not monitored" })).toBeVisible();
   expect(library.writes).toEqual([{ id: 811, monitored: false }]);
+});
+
+test("stopping monitoring marks the track at once and takes the marker back if the server refuses", async ({ page }) => {
+  const library = createLibrary();
+  let releaseWrite;
+  library.writeGate = new Promise((resolve) => { releaseWrite = resolve; });
+  library.failWrites = true;
+  await fixture(page, library);
+  await page.goto("/library/album/802");
+
+  const row = trackRow(page, "Kept Track");
+  await chooseFromTrackMenu(page, "Kept Track", "Stop monitoring track");
+  await expect(row.getByRole("img", { name: "Not monitored" })).toBeVisible();
+  releaseWrite();
+  await expect(page.getByRole("alert").filter({ hasText: "Could not stop monitoring Kept Track. Nothing changed." })).toBeVisible();
+  await expect(row.getByRole("img", { name: "Not monitored" })).toHaveCount(0);
 });
