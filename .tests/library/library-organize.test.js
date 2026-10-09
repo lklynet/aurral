@@ -72,6 +72,14 @@ const metadataServer = await createMockHttpServer((request, response) => {
         durationms: 200,
         trackposition: 1,
         mediumnumber: 1,
+      }, {
+        id: "release-track-3",
+        recordingid: `${recording}-3`,
+        trackname: "Phœnix",
+        artistid: artistMbid,
+        durationms: 200,
+        trackposition: 3,
+        mediumnumber: 1,
       }],
     }],
   }));
@@ -190,6 +198,10 @@ test("retag writes MusicBrainz tags and genres only to matched files and keeps f
     artist: "retag artist", album: "Retag Album", title: "Mystery", track: "2",
     MUSICBRAINZ_RELEASEGROUPID: releaseGroup,
   });
+  const spelledOut = await makeTrack(path.join(root, "Retag Artist", "Retag Album", "03 - Phoenix.flac"), {
+    artist: "retag artist", album: "Retag Album", title: "Phoenix", track: "3",
+    MUSICBRAINZ_RELEASEGROUPID: releaseGroup,
+  });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   const track = db.prepare("SELECT * FROM library_tracks WHERE title = 'Song One'").get();
   db.prepare("INSERT INTO users (id, username, password_hash) VALUES (7, 'fan', 'x')").run();
@@ -203,7 +215,8 @@ test("retag writes MusicBrainz tags and genres only to matched files and keeps f
   const planned = preview.find((item) => item.source.endsWith("01 - Song One.flac"));
   assert.equal(planned.hardlinked, true);
   assert.ok(planned.changes.some((change) => change.field === "Genre"));
-  assert.deepEqual(items.map((item) => item.status).sort(), ["done", "skipped"]);
+  assert.deepEqual(items.map((item) => item.status).sort(), ["done", "done", "skipped"]);
+  assert.equal((await parseFile(spelledOut)).common.title, "Phœnix");
   const { common } = await parseFile(matched);
   assert.deepEqual(common.genre, ["dream pop; shoegaze"]);
   assert.equal(common.musicbrainz_recordingid, recording);
@@ -270,4 +283,42 @@ test("an upgrade replaces a hardlinked file without touching its other link", as
   assert.deepEqual(await readFile(libraryPath), upgradedBytes);
   assert.equal(await exists(upgraded), false);
   assert.equal(downloadTracker.getJob(jobId).finalPath, libraryPath);
+});
+
+test("an upgrade with MusicBrainz tags keeps the Library track, its favorites, and its monitoring", async () => {
+  const oldPath = await makeTrack(path.join(root, "Tagless", "Album", "01 - Low.mp3"), {
+    artist: "Tagless", album: "Album", title: "Low", track: "1",
+  });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const track = db.prepare("SELECT * FROM library_tracks WHERE title = 'Low'").get();
+  db.prepare("UPDATE library_tracks SET monitored = 1 WHERE id = ?").run(track.id);
+  db.prepare("INSERT INTO users (id, username, password_hash) VALUES (8, 'listener', 'x')").run();
+  db.prepare("INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (8, 'song', ?, 1)")
+    .run(track.identity_key);
+  const upgraded = await makeTrack(path.join(root, "Tagless", "Album", "01 - Low.flac"), {
+    artist: "Tagless", album: "Album", title: "Low", track: "1",
+    MUSICBRAINZ_RELEASEGROUPID: releaseGroup, MUSICBRAINZ_TRACKID: recording,
+  });
+  await scanMusicRoot({ rootPath: root, source: "aurral", filePaths: [upgraded] });
+  const jobId = downloadTracker.addJob({ artistName: "Tagless", trackName: "Low" }, "library");
+  downloadTracker.setDone(jobId, oldPath, "Album");
+  const upgradeId = downloadTracker.addUpgradeJob(downloadTracker.getJob(jobId));
+
+  await qualityProfileService.finalizeQualityUpgradeSuccess(
+    downloadTracker.getJob(upgradeId),
+    upgraded,
+    { tier: "flac-standard" },
+  );
+
+  assert.equal(await exists(oldPath), false);
+  const tracks = db.prepare("SELECT * FROM library_tracks WHERE title = 'Low'").all();
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0].identity_key, `recording:${recording}`);
+  assert.equal(tracks[0].monitored, 1);
+  assert.equal(db.prepare("SELECT entity_key FROM subsonic_stars WHERE user_id = 8").pluck().get(), tracks[0].identity_key);
+  assert.deepEqual(
+    db.prepare("SELECT path FROM library_media_files WHERE track_id = ?").pluck().all(tracks[0].id),
+    [upgraded],
+  );
+  assert.equal(db.prepare("SELECT COUNT(*) FROM library_albums WHERE title = 'Album'").pluck().get(), 1);
 });

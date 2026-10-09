@@ -585,11 +585,15 @@ export function findLibraryAlbumByReleaseMbid(mbid) {
   ).get(releaseMbid) || null;
 }
 
+const LETTER_SPELLINGS = { æ: "ae", œ: "oe", ß: "ss", ø: "o", đ: "d", ð: "d", ł: "l", þ: "th" };
+const spellLetters = (value) =>
+  normalizeText(value).toLowerCase().replace(/[æœßøđðłþ]/g, (letter) => LETTER_SPELLINGS[letter]);
+
 // Names that reduce to nothing in ASCII, such as Japanese titles, compare as
 // written instead of all matching each other.
 export function isSameLibraryName(left, right) {
-  const a = normalizeKeyPart(left);
-  const b = normalizeKeyPart(right);
+  const a = normalizeKeyPart(spellLetters(left));
+  const b = normalizeKeyPart(spellLetters(right));
   if (a || b) return a === b;
   const raw = (value) => normalizeText(value).normalize("NFKC").toLowerCase();
   return Boolean(raw(left)) && raw(left) === raw(right);

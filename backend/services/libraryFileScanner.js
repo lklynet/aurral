@@ -529,4 +529,4 @@ export async function scanMusicRoots({ rootPaths = [], changedPaths = null, ...o
   return result;
 }
 
-export { buildMetadataRecord, readPathFallback, AUDIO_EXTENSIONS };
+export { applyMetadataEnrichment, buildMetadataRecord, readPathFallback, AUDIO_EXTENSIONS };

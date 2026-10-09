@@ -6,17 +6,10 @@ import { dbOps } from "../../db/helpers/index.js";
 import { buildLibraryTrackPath, isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.js";
 import { writeLibraryTags } from "../downloadUtils.js";
 import { downloadTracker } from "../downloadJobs/downloadTracker.js";
-import { buildMetadataRecord, scanMusicRoot } from "../libraryFileScanner.js";
-import { activeLidarrRoots, createLibraryScanExclusion } from "../libraryFolders.js";
 import {
-  findLibraryAlbumByArtistTitle,
-  findLibraryAlbumByReleaseMbid,
   getLibraryMediaFile,
   isSameLibraryName,
   moveLibraryMediaFilePath,
-  rekeyLibraryAlbum,
-  rekeyLibraryTrack,
-  unlinkLibraryAlbumTrackWithoutMedia,
 } from "../libraryMediaStore.js";
 import {
   getAlbumByMbid,
@@ -30,6 +23,7 @@ import {
   queueQualityUpgrade,
 } from "../qualityProfileService.js";
 import { getQualityState, getQualityTier } from "../qualityProfileModel.js";
+import { adoptLibraryFileIdentity } from "./fileIdentity.js";
 import { placeFile, removeEmptyDirectories, transferSidecars } from "./fileTransfer.js";
 import {
   addLibraryFileOperationItems,
@@ -343,57 +337,6 @@ export async function planOrganize(operation, deadline) {
   return true;
 }
 
-function scanExclusion(root) {
-  return createLibraryScanExclusion("aurral", { downloadRoot: root, lidarrRoots: activeLidarrRoots(null) });
-}
-
-function jobMetadata(filePath) {
-  const job = downloadTracker.getAll().find((entry) =>
-    entry.status === "done" && entry.finalPath && path.resolve(entry.finalPath) === filePath);
-  return job ? {
-    artistName: job.artistName,
-    albumName: job.albumName,
-    trackName: job.trackName,
-    artistMbid: job.artistMbid,
-    albumMbid: job.albumMbid,
-    trackMbid: job.trackMbid,
-    releaseYear: job.releaseYear,
-    trackNumber: job.trackNumber,
-  } : null;
-}
-
-// New identity tags keep the track and album rows, with their favorites,
-// play counts, and monitoring, under the identity the scan now reads.
-async function reindexRetaggedFile(filePath, root) {
-  const media = getLibraryMediaFile({ source: "aurral", path: filePath });
-  const metadata = await parseFile(filePath, { skipCovers: true });
-  const record = buildMetadataRecord(metadata, filePath, root);
-  if (media) {
-    const releaseAlbum = findLibraryAlbumByReleaseMbid(record.releaseGroupMbid);
-    const artistId = db.prepare("SELECT artist_id FROM library_albums WHERE id = ?").get(media.album_id)?.artist_id;
-    const namedAlbum = !record.releaseGroupMbid && !record.albumMbid && artistId
-      ? findLibraryAlbumByArtistTitle(artistId, record.albumName)
-      : null;
-    const albumKey = (releaseAlbum || namedAlbum)?.identity_key || record.albumKey;
-    if (media.album_id) rekeyLibraryAlbum(media.album_id, albumKey);
-    rekeyLibraryTrack(media.track_id, record.trackKey);
-  }
-  const before = getLibraryMediaFile({ source: "aurral", path: filePath });
-  const enrichment = jobMetadata(filePath);
-  await scanMusicRoot({
-    rootPath: root,
-    source: "aurral",
-    filePaths: [filePath],
-    force: true,
-    metadataEnricher: () => enrichment,
-    isExcluded: scanExclusion(root),
-  });
-  const after = getLibraryMediaFile({ source: "aurral", path: filePath });
-  if (before?.album_id && after?.album_id && before.album_id !== after.album_id) {
-    unlinkLibraryAlbumTrackWithoutMedia(before.album_id, after.track_id);
-  }
-}
-
 const LINK_FALLBACK = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EMLINK", "EXDEV"]);
 
 async function renameLibraryFile(from, to, context) {
@@ -449,7 +392,6 @@ export function createOrganizeContext() {
 }
 
 export async function applyOrganizeItem(operation, item, context) {
-  const root = path.resolve(resolveDownloadRoot());
   const details = { ...item.details, results: { ...(item.details.results || {}) } };
   const actions = details.actions || [];
   const save = () => updateLibraryFileOperationItem(operation.id, item.position, { details });
@@ -486,7 +428,7 @@ export async function applyOrganizeItem(operation, item, context) {
     save();
   }
   if (actions.includes("retag") && details.results.reindex !== "done") {
-    await reindexRetaggedFile(current, root).then(() => {
+    await adoptLibraryFileIdentity(current).then(() => {
       details.results.reindex = "done";
       save();
     }, () => {

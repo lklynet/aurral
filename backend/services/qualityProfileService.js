@@ -6,6 +6,7 @@ import { dbOps } from "../db/helpers/index.js";
 import { indexUnmonitoredJobs } from "./aurralUnmonitoredJobs.js";
 import { resolveDownloadRoot, isPathInsideRoot } from "./downloadPaths.js";
 import { getEnabledDownloadSources } from "./downloadSourceService.js";
+import { logger, safeLogDiagnostic } from "./logger.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import {
   classifyAudioQuality,
@@ -280,14 +281,25 @@ export async function finalizeQualityUpgradeSuccess(upgradeJob, finalPath, quali
     qualityTier: original.qualityTier,
   };
   let upgradedPath = finalPath;
+  let replaced = false;
   if (oldPath !== finalPath && isAurralOwnedPath(oldPath)) {
     const { createPlaybackDeletionGuard } = await import("./playback/playbackFileRetention.js");
     if (await createPlaybackDeletionGuard().canDelete(oldPath)) {
       await fs.rm(oldPath, { force: true }).catch(() => {});
       upgradedPath = await takeReplacedFileName(oldPath, finalPath);
+      replaced = true;
     }
   }
   const changed = downloadTracker.replaceFinalPath(oldPath, upgradedPath, quality);
+  if (replaced) {
+    const { adoptLibraryFileIdentity } = await import("./libraryFiles/fileIdentity.js");
+    await adoptLibraryFileIdentity(upgradedPath, { previousPath: oldPath }).catch((error) => {
+      logger.warn("quality-upgrade", "The Library could not follow an upgraded file", {
+        jobId: upgradeJob.id,
+        reason: safeLogDiagnostic(error),
+      });
+    });
+  }
   downloadTracker.removeJob(upgradeJob.id);
   const playlistIds = [...new Set(changed.map((job) => job.playlistType).filter(Boolean))];
   const { playlistManager } = await import("./playlists/playlistManager.js");

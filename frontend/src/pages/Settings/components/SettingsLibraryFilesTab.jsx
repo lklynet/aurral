@@ -151,6 +151,14 @@ export function SettingsLibraryFilesTab({
   const operation = operationQuery.data || files.data?.operation || null;
   const active = operation && ACTIVE_LIBRARY_FILE_STATUSES.has(operation.status);
   const [organizing, setOrganizing] = useState(false);
+  const [following, setFollowing] = useState(false);
+  const operationRef = useRef(null);
+
+  useEffect(() => {
+    if (!following || !operationId) return;
+    operationRef.current?.scrollIntoView({ block: "start" });
+    setFollowing(false);
+  }, [following, operationId]);
 
   const libraryFiles = settings.libraryFiles || {};
   const upgrade = settings.qualityProfile?.libraryTracks === true;
@@ -164,13 +172,17 @@ export function SettingsLibraryFilesTab({
   const refresh = async () => {
     await refreshLibraryFiles();
   };
+  const follow = async () => {
+    setFollowing(true);
+    await refresh();
+  };
 
   const organize = async () => {
     setOrganizing(true);
     try {
       if (hasUnsavedChanges && (await handleSaveSettings()) !== true) return;
       await startLibraryOrganize({ kind: "library" }, actions);
-      await refresh();
+      await follow();
     } catch (error) {
       showError(errorMessage(error, "Organize could not start. Nothing was changed."));
     } finally {
@@ -179,18 +191,20 @@ export function SettingsLibraryFilesTab({
   };
 
   const operationSection = operation ? (
-    <SettingsArrFieldSet
-      legend={active ? operationTitle(operation) : `Last run: ${operationTitle(operation)}`}
-      actions={<LibraryFileOperationActions operation={operation} onChanged={refresh} showError={showError} />}
-    >
-      <LibraryFileOperation operation={operation} />
-    </SettingsArrFieldSet>
+    <div ref={operationRef}>
+      <SettingsArrFieldSet
+        legend={active ? operationTitle(operation) : `Last run: ${operationTitle(operation)}`}
+        actions={<LibraryFileOperationActions operation={operation} onChanged={refresh} showError={showError} />}
+      >
+        <LibraryFileOperation operation={operation} />
+      </SettingsArrFieldSet>
+    </div>
   ) : null;
 
   return (
     <div className="arr-page">
       <form onSubmit={handleSaveSettings} className="arr-form" autoComplete="off">
-        {active ? operationSection : null}
+        {operationSection}
         <SettingsArrFieldSet legend="File naming">
           <div className="arr-info">
             Aurral keeps each track at <code>Artist/Album/07 - Title.flac</code> in the Downloads Folder.
@@ -253,9 +267,8 @@ export function SettingsLibraryFilesTab({
           </div>
         </SettingsArrFieldSet>
 
-        <IngestSection busy={Boolean(active)} onStarted={refresh} showError={showError} />
+        <IngestSection busy={Boolean(active)} onStarted={follow} showError={showError} />
 
-        {active ? null : operationSection}
         {files.isError ? (
           <p className="arr-form-help arr-form-help--warning">Could not load library file operations. Reload the page to try again.</p>
         ) : null}
