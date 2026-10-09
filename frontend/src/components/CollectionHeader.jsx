@@ -1,11 +1,11 @@
 import { Pause, Play, Shuffle } from "lucide-react";
-import { FALLBACK_GRADIENT, useImageGradientColors } from "../utils/imageColors";
+import { useArtworkWash } from "../utils/imageColors";
 import TooltipButton from "./TooltipButton";
 import { useSharedArtworkStyle } from "../navigation/viewTransitions.js";
 
 export function useCollectionTint(src) {
-  const colors = useImageGradientColors(src || null);
-  return colors && colors !== FALLBACK_GRADIENT ? colors.top : null;
+  const wash = useArtworkWash(src || null);
+  return wash ? `light-dark(${wash.light}, ${wash.dark})` : null;
 }
 
 export function CollectionPage({ tintSrc, tintColor = null, className = "", children }) {

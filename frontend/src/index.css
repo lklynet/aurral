@@ -3465,13 +3465,16 @@ textarea {
 }
 
 .artist-hero__wash {
+  --artist-scrim: color-mix(in srgb, var(--artwork-wash-dark, var(--aurral-overlay-base)) 34%, var(--aurral-overlay-base));
+
   background: linear-gradient(
     to top,
-    color-mix(in srgb, var(--aurral-overlay-base) 72%, transparent) 0%,
-    color-mix(in srgb, var(--aurral-overlay-base) 50%, transparent) 35%,
-    color-mix(in srgb, var(--aurral-overlay-base) 22%, transparent) 70%,
-    color-mix(in srgb, var(--aurral-overlay-base) 8%, transparent) 100%
+    color-mix(in srgb, var(--artist-scrim) 74%, transparent) 0%,
+    color-mix(in srgb, var(--artist-scrim) 52%, transparent) 35%,
+    color-mix(in srgb, var(--artist-scrim) 22%, transparent) 70%,
+    color-mix(in srgb, var(--artist-scrim) 8%, transparent) 100%
   );
+  transition: background var(--aurral-duration-slow) var(--aurral-ease-standard);
 }
 
 .artist-hero__content {
@@ -15758,7 +15761,7 @@ button.native-library-genre-row:focus-visible {
 }
 
 .artist-details-page .artist-hero__inner {
-  min-height: clamp(20rem, 36vw, 27rem);
+  min-height: var(--artist-hero-height);
   padding: clamp(4rem, 8vw, 6rem) clamp(1rem, 2vw, 1.5rem) 2.25rem;
 }
 
@@ -15777,8 +15780,19 @@ button.native-library-genre-row:focus-visible {
 
 .artist-details-page .artist-action-bar {
   border-bottom-color: var(--aurral-border-strong);
-  background: var(--aurral-surface);
+  background: color-mix(in srgb, var(--artwork-wash, transparent) 30%, var(--aurral-surface));
   backdrop-filter: none;
+}
+
+.artist-details-page {
+  --artist-hero-height: clamp(20rem, 36vw, 27rem);
+
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--artwork-wash, transparent) 30%, transparent) var(--artist-hero-height),
+    transparent calc(var(--artist-hero-height) + 24rem)
+  );
+  background-repeat: no-repeat;
 }
 
 .artist-details-page .artist-section {
@@ -15963,11 +15977,13 @@ button.native-library-genre-row:focus-visible {
 
 @media (max-width: 639px) {
   .artist-details-page {
+    --artist-hero-height: 19rem;
+
     padding-bottom: 3rem;
   }
 
   .artist-details-page .artist-hero__inner {
-    min-height: 19rem;
+    min-height: var(--artist-hero-height);
     padding: 4.5rem 1rem 1.5rem;
   }
 

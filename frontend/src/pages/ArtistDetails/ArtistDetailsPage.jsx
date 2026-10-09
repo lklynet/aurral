@@ -18,9 +18,11 @@ import {
 } from "../../utils/api/endpoints/playlists.js";
 import {
   buildStaticPlaylistTrackPayload,
+  getArtistHeroImage,
   getCoverImage,
   reserveUniquePlaylistName,
 } from "./utils";
+import { useArtworkWash } from "../../utils/imageColors";
 import { useArtistTasteFeedback } from "../../hooks/useArtistTasteFeedback";
 import { useStaticPlaylists } from "../../hooks/useStaticPlaylists";
 
@@ -458,6 +460,8 @@ function ArtistDetailsPage() {
     }
   };
 
+  const heroWash = useArtworkWash(getArtistHeroImage(coverImages));
+
   if (loading) {
     return (
       <SkeletonStatus label="Loading artist" className="artist-details-page">
@@ -499,7 +503,17 @@ function ArtistDetailsPage() {
   };
 
   return (
-    <div className="artist-details-page">
+    <div
+      className="artist-details-page"
+      style={
+        heroWash
+          ? {
+              "--artwork-wash": `light-dark(${heroWash.light}, ${heroWash.dark})`,
+              "--artwork-wash-dark": heroWash.dark,
+            }
+          : undefined
+      }
+    >
       <ArtistDetailsHero
         artist={artist}
         coverImages={coverImages}

@@ -57,6 +57,7 @@ const ArtistImage = ({
   enablePreviewPlayback = false,
   isInLibrary = false,
   loading = "lazy",
+  onImageLoad,
 }) => {
   const [currentSrc, setCurrentSrc] = useState(() => normalizeMediaUrl(src));
   const [isLoading, setIsLoading] = useState(true);
@@ -231,6 +232,7 @@ const ArtistImage = ({
 
   const handleLoad = () => {
     setIsLoading(false);
+    onImageLoad?.(currentSrc);
   };
 
   const handleError = () => {
