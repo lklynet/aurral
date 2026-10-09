@@ -93,7 +93,6 @@ export function ArtistContextMenu({
         triggerLabel={`Artist options for ${labelName}`}
         triggerClassName={buttonClassName}
         triggerIcon={<MoreVertical className="artist-icon-sm" aria-hidden="true" />}
-        contextMenu={false}
         items={[...libraryItems, ...feedbackItems]}
       />
     </div>

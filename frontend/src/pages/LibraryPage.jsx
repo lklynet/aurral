@@ -1568,7 +1568,11 @@ function LibraryPage() {
     (album) => album?.coverUrl || covers[getAlbumCoverId(album)] || "",
     [covers],
   );
-  const albumTint = useCollectionTint(libraryAlbum ? getAlbumCover(libraryAlbum) : null);
+  const [artistHeroImage, setArtistHeroImage] = useState(null);
+  useEffect(() => setArtistHeroImage(null), [libraryArtist?.id]);
+  const detailTint = useCollectionTint(
+    libraryAlbum ? getAlbumCover(libraryAlbum) : libraryArtist ? artistHeroImage : null,
+  );
 
   const buildPlayableTrack = useCallback(
     (track) => {
@@ -2045,6 +2049,7 @@ function LibraryPage() {
                 showLoading={false}
                 enablePreviewPlayback={false}
                 isInLibrary
+                onImageLoad={setArtistHeroImage}
               />
             ) : (
               <Cover label={artist.name} round />
@@ -2795,9 +2800,9 @@ function LibraryPage() {
 
   if (isDetail) {
     return (
-      <main
-        className={`library-page native-library-page${libraryAlbum ? " collection-page" : ""}`}
-        style={libraryAlbum && albumTint ? { "--collection-tint": albumTint } : undefined}
+      <div
+        className={`library-page native-library-page${libraryAlbum || libraryArtist ? " collection-page" : ""}`}
+        style={detailTint ? { "--collection-tint": detailTint } : undefined}
       >
         {renderLibraryModals()}
         {renderStatus()}
@@ -2807,7 +2812,7 @@ function LibraryPage() {
         {!loading && !error && (libraryAlbum || libraryArtist) && (
           <div className="native-library-content">{renderLibraryDetail()}</div>
         )}
-      </main>
+      </div>
     );
   }
 
@@ -2856,7 +2861,7 @@ function LibraryPage() {
   const hasActiveFilters = Boolean(selectedGenre);
 
   return (
-    <main className="library-page native-library-page">
+    <div className="library-page native-library-page">
       {renderLibraryModals()}
       <header className={`native-library-header${section === "home" ? " native-library-header--home" : ""}`}>
         <div className="native-library-title-row">
@@ -3095,7 +3100,7 @@ function LibraryPage() {
           </TooltipButton>
         </nav>
       )}
-    </main>
+    </div>
   );
 }
 

@@ -22,6 +22,7 @@ import TooltipButton from "./TooltipButton";
 import { DotLoader } from "./DotLoader";
 import { queryClient, queryKeys } from "../queryClient.js";
 import Tooltip from "./Tooltip";
+import RelativeTime from "./RelativeTime";
 
 const ITEM_ICONS = {
   release: Music2,
@@ -33,26 +34,10 @@ const ITEM_ICONS = {
 
 const isExternalHref = (href) => /^https?:\/\//i.test(String(href || ""));
 
-const formatInboxDate = (value) => {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  const dateOnly = text.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
-  const date = new Date(dateOnly ? `${dateOnly}T12:00:00` : text);
-  return Number.isFinite(date.getTime())
-    ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(date)
-    : text;
-};
-
 const getInboxSubtitle = (item) => {
   const metadata = item.metadata || {};
   if (item.kind === "release") {
-    return [
-      "New release",
-      metadata.artistName,
-      formatInboxDate(metadata.releaseDate),
-    ]
-      .filter(Boolean)
-      .join(" · ");
+    return ["New release", metadata.artistName].filter(Boolean).join(" · ");
   }
   if (item.kind === "discovery") return ["New artist discovery", item.subtitle].filter(Boolean).join(" · ");
   if (item.kind === "show") return ["Upcoming show", item.subtitle].filter(Boolean).join(" · ");
@@ -65,8 +50,8 @@ const FILTER_OPTIONS = [
   { value: "all", label: "All notifications" },
   { value: "release", label: "Releases" },
   { value: "show", label: "Shows" },
-  { value: "news", label: "Library Artist news" },
-  { value: "recommendedNews", label: "Recommended Artist news" },
+  { value: "news", label: "Library artist news" },
+  { value: "recommendedNews", label: "Recommended artist news" },
   { value: "discovery", label: "Discoveries" },
 ];
 
@@ -80,6 +65,7 @@ function InboxItem({ item, onRemove, onOpen, pendingAction }) {
     item.metadata?.artistName || (item.kind === "discovery" ? item.title : ""),
   ).trim();
   const isPending = Boolean(pendingAction);
+  const releaseDate = item.kind === "release" ? item.metadata?.releaseDate : null;
   const content = (
     <>
       <span className="app-inbox-menu__item-icon" aria-hidden="true">
@@ -89,7 +75,17 @@ function InboxItem({ item, onRemove, onOpen, pendingAction }) {
         <span className="app-inbox-menu__item-title-row">
           <span className="app-inbox-menu__item-title">{item.title}</span>
         </span>
-        {subtitle ? <span className="app-inbox-menu__item-subtitle">{subtitle}</span> : null}
+        {subtitle ? (
+          <span className="app-inbox-menu__item-subtitle">
+            {subtitle}
+            {releaseDate ? (
+              <>
+                {" · "}
+                <RelativeTime value={releaseDate} unit="day" />
+              </>
+            ) : null}
+          </span>
+        ) : null}
       </span>
     </>
   );
@@ -123,7 +119,7 @@ function InboxItem({ item, onRemove, onOpen, pendingAction }) {
         </button>
       )}
       <span className="app-inbox-menu__item-actions">
-        <Tooltip content="Remove from Inbox">
+        <Tooltip content="Remove from inbox">
           <button
             type="button"
             className="app-inbox-menu__item-action"

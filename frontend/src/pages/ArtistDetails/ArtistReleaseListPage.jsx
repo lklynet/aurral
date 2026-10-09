@@ -60,7 +60,7 @@ const sortOptions = [
 const releaseTabs = [
   { value: "all", label: "All" },
   { value: "albums", label: "Albums" },
-  { value: "singles", label: "EP & Singles" },
+  { value: "singles", label: "EPs & singles" },
   { value: "compilations", label: "Compilations" },
 ];
 
@@ -444,10 +444,12 @@ function ArtistReleaseListPage({ mode = "releases" }) {
           </OptionalLink>
           <div className="artist-row-actions">
             {metric.label && (
-              <span className="artist-release-card__metric artist-hidden-mobile">
-                <Star className="artist-star-icon" />
-                {metric.label}
-              </span>
+              <Tooltip content={metric.title}>
+                <span className="artist-release-card__metric artist-hidden-mobile">
+                  <Star className="artist-star-icon" />
+                  {metric.label}
+                </span>
+              </Tooltip>
             )}
             {isComplete ? (
               <Tooltip content="Complete">
@@ -524,10 +526,12 @@ function ArtistReleaseListPage({ mode = "releases" }) {
         </h2>
         <p className="artist-release-card__meta artist-truncate">{metaLabel}</p>
         {metric.label && (
-          <p className="artist-release-card__metric">
-            <Star className="artist-star-icon" />
-            {metric.label}
-          </p>
+          <Tooltip content={metric.title}>
+            <p className="artist-release-card__metric">
+              <Star className="artist-star-icon" />
+              {metric.label}
+            </p>
+          </Tooltip>
         )}
       </article>
     );

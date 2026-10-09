@@ -12,7 +12,7 @@ import Tooltip from "../../../components/Tooltip";
 import RouteLink, { OptionalLink } from "../../../components/RouteLink";
 
 const viewModes = [
-  { value: "popular", label: "Popular Releases" },
+  { value: "popular", label: "Popular releases" },
   { value: "albums", label: "Albums" },
   { value: "singles", label: "Singles & EPs" },
   { value: "compilations", label: "Compilations" },
@@ -116,7 +116,7 @@ export function ArtistDetailsReleaseGroups({
           </div>
         </div>
         <RouteLink to={viewAllLink.to} state={viewAllLink.state} className="artist-link-button">
-          View All
+          View all
           <ArrowRight className="artist-icon-sm" />
         </RouteLink>
       </div>

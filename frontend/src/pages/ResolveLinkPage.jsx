@@ -26,7 +26,7 @@ export default function ResolveLinkPage() {
   if (error || invalid) {
     const notFound = invalid || error?.resolveNotFound === true;
     return (
-      <main className="library-page native-library-page">
+      <div className="library-page native-library-page">
         <div className="native-library-content">
           <div className="native-library-state" role="alert">
             <strong>
@@ -63,18 +63,18 @@ export default function ResolveLinkPage() {
             )}
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="library-page native-library-page">
+    <div className="library-page native-library-page">
       <div className="native-library-content">
         <SkeletonStatus label={name ? `Opening ${name}` : "Opening"}>
           <SkeletonPageHeader />
           <SkeletonRows count={8} />
         </SkeletonStatus>
       </div>
-    </main>
+    </div>
   );
 }

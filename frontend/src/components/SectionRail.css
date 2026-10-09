@@ -1,8 +1,8 @@
 .section-rail {
   --section-rail-step: 0.625rem;
   position: sticky;
-  top: 35vh;
-  z-index: 3;
+  top: 35dvh;
+  z-index: var(--aurral-z-sticky);
   height: 0;
 }
 
@@ -36,7 +36,7 @@
   border-radius: var(--aurral-radius-round);
   background: var(--aurral-text-subtle);
   opacity: 0.7;
-  transition: width 140ms ease, background-color 140ms ease, opacity 140ms ease;
+  transition: width var(--aurral-duration-fast) var(--aurral-ease-standard), background-color var(--aurral-duration-fast) var(--aurral-ease-standard), opacity var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .section-rail__tick.is-active > span {

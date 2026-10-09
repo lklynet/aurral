@@ -190,15 +190,15 @@ function SearchResultsPage() {
   const isUnifiedSearch = normalizedType === "unified" && !!trimmedQuery;
   const pageTitle = useMemo(() => {
     if (normalizedType === "recommended") {
-      return recommendedTag ? `Because You Like ${recommendedTag}` : "Recommended";
+      return recommendedTag ? `Because you like ${recommendedTag}` : "Recommended";
     }
-    if (normalizedType === "trending") return "Global Trending";
+    if (normalizedType === "trending") return "Global trending";
     if (isTagSearch && trimmedQuery) {
       return trimmedQuery.startsWith("#") ? trimmedQuery : `#${trimmedQuery.replace(/^#/, "")}`;
     }
-    if (isAlbumSearch) return trimmedQuery || "Album Results";
-    if (isUnifiedSearch) return trimmedQuery || "Search Results";
-    return trimmedQuery || "Search Results";
+    if (isAlbumSearch) return trimmedQuery || "Album results";
+    if (isUnifiedSearch) return trimmedQuery || "Search results";
+    return trimmedQuery || "Search results";
   }, [normalizedType, recommendedTag, isTagSearch, trimmedQuery, isAlbumSearch, isUnifiedSearch]);
   useDocumentTitle(pageTitle);
   const albumSort = searchParams.get("sort") || DEFAULT_ALBUM_SORT;
@@ -1265,7 +1265,7 @@ function SearchResultsPage() {
                 ? `We couldn't find any results for tag "${trimmedQuery.replace(/^#/, "")}"`
                 : `We couldn't find any results matching "${trimmedQuery}"`;
 
-  const emptyTitle = "No Results Found";
+  const emptyTitle = "No results found";
 
   const discoveryCount = recommendedSearchTerm.trim()
     ? discoveryArtists.length

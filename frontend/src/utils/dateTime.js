@@ -50,3 +50,46 @@ export const formatDateTime = (date, options) => {
     ? `${timePart} ${datePart}`
     : `${datePart} ${timePart}`;
 };
+
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+const relativeFormatters = new Map();
+
+const getRelativeFormatter = () => {
+  const locale = getLocale();
+  if (!relativeFormatters.has(locale)) {
+    relativeFormatters.set(locale, new Intl.RelativeTimeFormat(locale, { numeric: "auto" }));
+  }
+  return relativeFormatters.get(locale);
+};
+
+const startOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+const calendarDaysBetween = (date, now) =>
+  Math.round((startOfDay(date).getTime() - startOfDay(now).getTime()) / DAY);
+
+export const formatRelativeTime = (date, { now = new Date(), unit } = {}) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  const formatter = getRelativeFormatter();
+  const diff = date.getTime() - now.getTime();
+  const distance = Math.abs(diff);
+  if (unit !== "day") {
+    if (distance < 45_000) return formatter.format(0, "second");
+    if (distance < HOUR) return formatter.format(Math.round(diff / MINUTE), "minute");
+    if (distance < DAY) return formatter.format(Math.round(diff / HOUR), "hour");
+  }
+  const days = unit === "day" ? calendarDaysBetween(date, now) : Math.round(diff / DAY);
+  if (Math.abs(days) < 7) return formatter.format(days, "day");
+  if (Math.abs(days) < 30) return formatter.format(Math.round(days / 7), "week");
+  if (Math.abs(days) < 365) return formatter.format(Math.round(days / 30), "month");
+  return formatter.format(Math.round(days / 365), "year");
+};
+
+export const nextRelativeTimeChange = (date, { now = new Date(), unit } = {}) => {
+  const distance = Math.abs(date.getTime() - now.getTime());
+  if (unit !== "day" && distance < HOUR) return 30_000;
+  if (unit !== "day" && distance < DAY) return 5 * MINUTE;
+  const nextMidnight = startOfDay(now).getTime() + DAY;
+  return Math.max(nextMidnight - now.getTime() + 1000, MINUTE);
+};

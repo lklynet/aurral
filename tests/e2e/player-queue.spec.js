@@ -469,6 +469,28 @@ test("the queue panel lists up next and track menus queue, reorder, remove, and 
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
 });
 
+test("with the queue open, player tooltips leave the volume controls uncovered", async ({ page }) => {
+  const player = playerControls(page);
+  await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
+  await waitUntilPlaying(player);
+  const toggle = player.bar.getByRole("button", { name: "Queue" });
+  await toggle.click();
+  await expect(page.getByRole("complementary", { name: "Queue" })).toBeVisible();
+
+  await toggle.hover();
+  const tooltip = page.getByRole("tooltip", { name: "Hide queue" });
+  await expect(tooltip).toBeVisible();
+  const overlaps = (a, b) =>
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  const tip = await tooltip.boundingBox();
+  for (const control of [
+    player.bar.getByRole("button", { name: /^(Mute|Unmute)$/ }),
+    player.bar.getByRole("slider", { name: "Volume" }),
+  ]) {
+    expect(overlaps(tip, await control.boundingBox())).toBe(false);
+  }
+});
+
 test("adding to the queue when nothing plays starts the track", async ({ page }) => {
   const player = playerControls(page);
   await page.getByRole("button", { name: "Charlie options" }).click();
@@ -628,6 +650,15 @@ test("the playing row shows moving bars, still bars when paused, and can be paus
   releaseBravo();
   await waitUntilPlaying(player);
   await expect.poll(barsMoving).toBe(true);
+
+  await page.mouse.move(0, 0);
+  await page.locator("body").focus();
+  await expect(pauseRow).toHaveCSS("opacity", "0");
+  await pauseRow.focus();
+  await expect(pauseRow).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await expect(pauseRow).toHaveCSS("opacity", "1");
 
   await pauseRow.click();
   await expect(page.getByRole("button", { name: "Play Bravo", exact: true })).toBeVisible();

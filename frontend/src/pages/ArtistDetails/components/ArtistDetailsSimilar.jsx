@@ -88,7 +88,7 @@ export function ArtistDetailsSimilar({
     <section className="artist-section">
       <div className="artist-similar-header">
         <h2 className="artist-section-title">
-          Fans Also Like
+          Fans also like
           {loadingSimilar && <DotLoader size="sm" label={null} />}
         </h2>
         <div className="artist-scroll-controls">
@@ -131,7 +131,12 @@ export function ArtistDetailsSimilar({
             {similarArtists.map((similar) => {
               const artistId = getArtistRecordId(similar);
               return (
-                <div key={similar.id} className="artist-similar-card" data-artwork-scope>
+                <div
+                  key={similar.id}
+                  className="artist-similar-card"
+                  data-artwork-scope
+                  data-library-menu-target
+                >
                   <div className="artist-similar-avatar" data-artwork>
                     <ArtistImage
                       src={similar.image}

@@ -1,20 +1,21 @@
 import { useEffect, useState } from "react";
 import { cacheImageLocally } from "./api/endpoints/images.js";
 import { normalizeMediaUrl } from "./normalizeMediaUrl.js";
-import { pickVividColor } from "./themeColor.js";
+import { hexToOklch, oklchToHex, pickVividColor } from "./themeColor.js";
 
 const N = 64;
-const gradientCache = new Map();
+const washCache = new Map();
 const accentCache = new Map();
 const localCopyCache = new Map();
-export const FALLBACK_GRADIENT = { top: "var(--aurral-surface-raised)", bottom: "var(--aurral-surface)" };
+const WASH_LIGHTNESS = { dark: [0.3, 0.52], light: [0.78, 0.9] };
+const NEUTRAL_CHROMA = 0.012;
 
-function avgHex(data, y0, y1) {
+function averageHex(data) {
   let r = 0,
     g = 0,
     b = 0,
     n = 0;
-  for (let i = y0 * N * 4; i < y1 * N * 4; i += 4) {
+  for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] < 128) continue;
     r += data[i];
     g += data[i + 1];
@@ -24,6 +25,15 @@ function avgHex(data, y0, y1) {
   if (!n) return null;
   const h = (v) => Math.round(v / n).toString(16).padStart(2, "0");
   return `#${h(r)}${h(g)}${h(b)}`;
+}
+
+function pickArtworkWash(data) {
+  const vivid = pickVividColor(data);
+  const base = hexToOklch(vivid || averageHex(data));
+  if (!base) return null;
+  const chroma = vivid ? base.c : Math.min(base.c, NEUTRAL_CHROMA);
+  const tone = ([min, max]) => oklchToHex({ l: Math.min(max, Math.max(min, base.l)), c: chroma, h: base.h });
+  return { dark: tone(WASH_LIGHTNESS.dark), light: tone(WASH_LIGHTNESS.light) };
 }
 
 function isCrossOrigin(src) {
@@ -78,33 +88,29 @@ export function extractArtworkAccent(src) {
   return accentCache.get(src);
 }
 
-export async function extractTwoToneGradientFromImage(src) {
+export async function extractArtworkWash(src) {
   if (!src) return null;
-  if (gradientCache.has(src)) return gradientCache.get(src);
+  if (washCache.has(src)) return washCache.get(src);
+  if (washCache.size >= 200) washCache.delete(washCache.keys().next().value);
   const request = readImagePixels(src)
-    .then((data) => {
-      if (!data) return null;
-      const top = avgHex(data, 0, N >> 1);
-      const bottom = avgHex(data, N >> 1, N);
-      return top || bottom ? { top: top || bottom, bottom: bottom || top } : null;
-    })
-    .catch(() => FALLBACK_GRADIENT);
-  gradientCache.set(src, request);
+    .then((data) => (data ? pickArtworkWash(data) : null))
+    .catch(() => null);
+  washCache.set(src, request);
   const result = await request;
-  if (!result) gradientCache.delete(src);
+  if (!result) washCache.delete(src);
   return result;
 }
 
-export function useImageGradientColors(src) {
-  const [colors, setColors] = useState(null);
+export function useArtworkWash(src) {
+  const [wash, setWash] = useState(null);
   useEffect(() => {
-    if (!src) return void setColors(null);
+    if (!src) return void setWash(null);
     let dead = false;
-    setColors(null);
-    extractTwoToneGradientFromImage(src).then((r) => !dead && setColors(r));
+    setWash(null);
+    extractArtworkWash(src).then((r) => !dead && setWash(r));
     return () => {
       dead = true;
     };
   }, [src]);
-  return colors;
+  return wash;
 }

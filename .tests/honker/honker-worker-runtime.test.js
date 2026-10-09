@@ -94,7 +94,7 @@ test("withJobHeartbeat records completed task runs", async () => {
       entry.queue === "library-scan",
   );
   assert.equal(recorded?.status, "completed");
-  assert.match(recorded?.name || "", /Library Scan/);
+  assert.match(recorded?.name || "", /Library scan/);
   assert.ok(status.summary);
   assert.equal(status.summary.healthy, true);
   assert.ok(status.summary.completedCount >= 1);
@@ -263,7 +263,7 @@ test("task status groups scheduled discovery jobs without cancelling them", asyn
   const grouped = status.queue.filter(
     (entry) =>
       entry.queue === "discovery-refresh" &&
-      entry.name === "Discovery Auto Refresh",
+      entry.name === "Discovery auto refresh",
   );
 
   assert.equal(grouped.length, 1);
@@ -293,7 +293,7 @@ test("task status groups duplicate completed system task runs", async () => {
   const grouped = status.queue.filter(
     (entry) =>
       entry.queue === "system-task" &&
-      entry.name === "Discovery Startup Check",
+      entry.name === "Discovery startup check",
   );
 
   assert.equal(grouped.length, 1);

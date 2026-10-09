@@ -202,3 +202,63 @@ test("track artist names are links that resolve in place without a history entry
   await page.goBack();
   await expect(page).toHaveURL(new RegExp(`${playlistPath}$`));
 });
+
+const settleScroll = async (page, locator) => {
+  await locator.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+};
+
+test("right-clicking a Discover artist card opens its menu in place", async ({ page }) => {
+  await fixture(page);
+  await page.goto("/");
+  const artistLink = page.locator("main").getByRole("link", { name: `Open ${artist.name}`, exact: true }).first();
+  await settleScroll(page, artistLink);
+  await artistLink.click({ button: "right" });
+  const menu = page.getByRole("menu", { name: `Artist options for ${artist.name}` });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitemcheckbox", { name: /more like this/i })).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe("/");
+});
+
+test.describe("on a touch screen", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  async function touchPath(page, points, holdMs) {
+    const cdp = await page.context().newCDPSession(page);
+    const [first, ...rest] = points;
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [first] });
+    for (const point of rest) {
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [point] });
+    }
+    await page.waitForTimeout(holdMs);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await cdp.detach();
+  }
+
+  async function artistCardCenter(page) {
+    const artistLink = page.locator("main").getByRole("link", { name: `Open ${artist.name}`, exact: true }).first();
+    await settleScroll(page, artistLink);
+    const box = await artistLink.boundingBox();
+    return { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };
+  }
+
+  test("a long press on a Discover artist card opens its menu without following the link", async ({ page }) => {
+    await fixture(page);
+    await page.goto("/");
+    const point = await artistCardCenter(page);
+    await touchPath(page, [point], 800);
+    const menu = page.getByRole("menu", { name: `Artist options for ${artist.name}` });
+    await expect(menu).toBeVisible();
+    await page.waitForTimeout(300);
+    expect(new URL(page.url()).pathname).toBe("/");
+    expect(await page.evaluate(() => String(window.getSelection()))).toBe("");
+  });
+
+  test("dragging across a Discover artist card does not open its menu", async ({ page }) => {
+    await fixture(page);
+    await page.goto("/");
+    const point = await artistCardCenter(page);
+    await touchPath(page, [point, { x: point.x, y: point.y + 40 }], 800);
+    await expect(page.getByRole("menu", { name: `Artist options for ${artist.name}` })).toHaveCount(0);
+  });
+});

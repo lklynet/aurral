@@ -264,7 +264,7 @@ function ReleasePage() {
     releaseTypeLabel,
     trackCount > 0 ? `${trackCount} track${trackCount === 1 ? "" : "s"}` : null,
     durationLabel,
-    metric.label ? (metric.type === "rating" ? `${metric.label} rating` : metric.label) : null,
+    metric.label ? `${metric.label} ${metric.type === "rating" ? "rating" : "listeners"}` : null,
   ]
     .filter(Boolean)
     .join(" · ");

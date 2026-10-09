@@ -17,9 +17,9 @@
   cursor: pointer;
   font-size: 17px;
   transition:
-    background-color 0.16s ease,
-    box-shadow 0.16s ease,
-    opacity 0.16s ease;
+    background-color var(--aurral-duration-fast) var(--aurral-ease-standard),
+    box-shadow var(--aurral-duration-fast) var(--aurral-ease-standard),
+    opacity var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .pill-toggle::before {
@@ -33,9 +33,10 @@
   background-color: var(--aurral-text-muted);
   box-shadow: var(--aurral-shadow-toggle-thumb);
   transition:
-    transform 0.28s ease,
-    background-color 0.2s ease,
-    box-shadow 0.2s ease;
+    transform var(--aurral-duration-slow) var(--aurral-ease-standard),
+    background-color var(--aurral-duration-base) var(--aurral-ease-standard),
+    box-shadow var(--aurral-duration-base) var(--aurral-ease-standard),
+    scale var(--aurral-duration-slow) var(--aurral-ease-standard);
 }
 
 .pill-toggle[aria-checked="true"] {
@@ -67,11 +68,7 @@
 }
 
 .pill-toggle:active::before {
-  transform: scale(0.94);
-}
-
-.pill-toggle[aria-checked="true"]:active::before {
-  transform: translateX(var(--thumb-travel)) scale(0.94);
+  scale: 0.94;
 }
 
 .pill-toggle:disabled {

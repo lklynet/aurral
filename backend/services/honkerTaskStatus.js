@@ -5,78 +5,78 @@ import { registerHonkerShutdownHandler } from "./honkerWorkerRuntime.js";
 export const QUEUE_DEFINITIONS = [
   {
     queue: "system-task",
-    label: "System Maintenance",
-    workerLabel: "System Maintenance Worker",
+    label: "System maintenance",
+    workerLabel: "System maintenance worker",
     description: "Runs housekeeping, startup checks, and scheduled playlist maintenance.",
     worker: "system-task",
   },
   {
     queue: "release-metadata-refresh",
-    label: "Release Metadata",
-    workerLabel: "Release Metadata Worker",
+    label: "Release metadata",
+    workerLabel: "Release metadata worker",
     description: "Refreshes release catalogues outside playlist processing.",
     worker: "release-metadata-refresh",
   },
   {
     queue: "system-task-maintenance",
-    label: "Background Maintenance",
-    workerLabel: "Background Maintenance Worker",
+    label: "Background maintenance",
+    workerLabel: "Background maintenance worker",
     description: "Runs cleanup, news refreshes, and playlist schedule checks.",
     worker: "system-task-maintenance",
   },
   {
     queue: "system-task-inbox",
-    label: "Inbox Refreshes",
-    workerLabel: "Inbox Refresh Worker",
+    label: "Inbox refreshes",
+    workerLabel: "Inbox refresh worker",
     description: "Refreshes inbox content outside the web process.",
     worker: "system-task-inbox",
   },
   {
     queue: "weekly-flow-operation",
-    label: "Playlist Operations",
-    workerLabel: "Playlist Operation Worker",
+    label: "Playlist operations",
+    workerLabel: "Playlist operation worker",
     description: "Applies playlist edits, manual runs, flow changes, and track actions.",
     worker: "weekly-flow-operation",
   },
   {
     queue: "slskd-pipeline",
-    label: "Download Pipeline",
-    workerLabel: "Download Pipeline Worker",
+    label: "Download pipeline",
+    workerLabel: "Download pipeline worker",
     description: "Searches, downloads, validates, and finalizes playlist tracks.",
     worker: "slskd-pipeline",
   },
   {
     queue: "playlist-mbid-enrichment",
-    label: "Playlist MBID Enrichment",
-    workerLabel: "Playlist MBID Worker",
+    label: "Playlist MBID enrichment",
+    workerLabel: "Playlist MBID worker",
     description: "Finds and fills missing MusicBrainz IDs on imported playlist tracks.",
     worker: "playlist-mbid-enrichment",
   },
   {
     queue: "library-scan",
-    label: "Library Scans",
-    workerLabel: "Library Scan Worker",
+    label: "Library scans",
+    workerLabel: "Library scan worker",
     description: "Refreshes Aurral's view of files after playlist or library changes.",
     worker: "library-scan",
   },
   {
     queue: "discovery-refresh",
-    label: "Discovery Refreshes",
-    workerLabel: "Discovery Refresh Worker",
+    label: "Discovery refreshes",
+    workerLabel: "Discovery refresh worker",
     description: "Refreshes discovery recommendations from library and listening data.",
     worker: "discovery-refresh",
   },
   {
     queue: "discovery-user-refresh",
-    label: "Listening History Refreshes",
-    workerLabel: "Listening History Worker",
+    label: "Listening history refreshes",
+    workerLabel: "Listening history worker",
     description: "Refreshes user listening profiles used by discovery.",
     worker: "discovery-user-refresh",
   },
   {
     queue: "_outbox:notifications",
     label: "Notifications",
-    workerLabel: "Notification Worker",
+    workerLabel: "Notification worker",
     description: "Delivers queued Gotify and webhook notifications.",
     worker: "notification-outbox",
   },
@@ -84,67 +84,67 @@ export const QUEUE_DEFINITIONS = [
 
 export const SYSTEM_TASK_LABELS = {
   "weekly-flow-refresh": {
-    label: "Playlist Schedule Check",
+    label: "Playlist schedule check",
     description: "Queues enabled playlist flows that are due to run.",
   },
   "session-cleanup": {
-    label: "Session Cleanup",
+    label: "Session cleanup",
     description: "Removes expired login sessions from the app database.",
   },
   "weekly-flow-reuse-repair": {
-    label: "Playlist File Reuse Repair",
+    label: "Playlist file reuse repair",
     description: "Repairs reusable playlist file links when source files move.",
   },
   "review-timeout": {
-    label: "Review Timeout",
+    label: "Review timeout",
     description: "Denies songs held for review longer than the maximum review wait.",
   },
   "weekly-flow-startup-reuse-repair": {
-    label: "Startup Playlist Reuse Repair",
+    label: "Startup playlist reuse repair",
     description: "Checks reusable playlist links after Aurral starts.",
   },
   "weekly-flow-startup-check": {
-    label: "Startup Playlist Schedule Check",
+    label: "Startup playlist schedule check",
     description: "Resumes pending playlist work after Aurral starts.",
   },
   "discovery-refresh-check": {
-    label: "Discovery Auto Refresh Check",
+    label: "Discovery auto refresh check",
     description: "Checks whether discovery recommendations need a scheduled refresh.",
   },
   "discovery-bootstrap": {
-    label: "Discovery Startup Check",
+    label: "Discovery startup check",
     description: "Initializes discovery data and schedules the next refresh.",
   },
   "inbox-refresh": {
-    label: "Inbox Refresh",
+    label: "Inbox refresh",
     description: "Refreshes release, show, news, and discovery updates.",
   },
   "stored-data-migration": {
-    label: "Stored Settings Update",
+    label: "Stored settings update",
     description: "Stores older settings, flows, and sign-in data in their current form.",
   },
   "identity-marker-migration": {
-    label: "Track Identity Tag Update",
+    label: "Track identity tag update",
     description: "Moves Aurral's track identity marker from the comment tag to the grouping tag in downloaded files.",
   },
   "upgrade-readiness-check": {
-    label: "Aurral 3.0 Readiness Check",
+    label: "Aurral 3.0 readiness check",
     description: "Checks whether this install has finished the updates Aurral 3.0 needs.",
   },
   "playlist-startup-migration": {
-    label: "Playlist Startup Migration",
+    label: "Playlist startup migration",
     description: "Migrates legacy playlist files and reconciles playlist folders.",
   },
   "lidarr-files-release": {
-    label: "Lidarr Turned Off",
+    label: "Lidarr turned off",
     description: "Downloads Aurral's own copy of playlist and flow songs that used a Lidarr file.",
   },
   "lidarr-retry": {
-    label: "Lidarr Retry",
+    label: "Lidarr retry",
     description: "Retries Lidarr library access after a temporary connection problem.",
   },
   "release-metadata-refresh": {
-    label: "Release Metadata Refresh",
+    label: "Release metadata refresh",
     description: "Refreshes recent and upcoming releases from BrainzMash.",
   },
 };
@@ -362,8 +362,8 @@ function titleize(value) {
   return String(value || "")
     .replace(/^_outbox:/, "")
     .replace(/[-_:]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase())
-    .trim();
+    .trim()
+    .replace(/^\w/, (letter) => letter.toUpperCase());
 }
 
 function queueLabel(queue) {
@@ -387,7 +387,7 @@ function formatPayloadLabel(value) {
 function systemTaskInfo(kind) {
   return (
     SYSTEM_TASK_LABELS[kind] || {
-      label: formatPayloadLabel(kind) || "System Task",
+      label: formatPayloadLabel(kind) || "System task",
       description: queueDescription("system-task"),
     }
   );
@@ -397,30 +397,30 @@ function discoveryRefreshInfo(payload = {}) {
   const reason = String(payload?.reason || "").trim();
   if (reason === "scheduled") {
     return {
-      label: "Discovery Auto Refresh",
+      label: "Discovery auto refresh",
       description: "Refreshes discovery recommendations on the configured schedule.",
     };
   }
   if (reason === "startup" || reason === "startup_incomplete") {
     return {
-      label: "Discovery Startup Refresh",
+      label: "Discovery startup refresh",
       description: "Refreshes discovery data after startup when the cache is missing or stale.",
     };
   }
   if (reason === "interval") {
     return {
-      label: "Discovery Refresh Check",
+      label: "Discovery refresh check",
       description: "Checks whether discovery data is stale enough to refresh.",
     };
   }
   if (reason === "manual") {
     return {
-      label: "Manual Discovery Refresh",
+      label: "Manual discovery refresh",
       description: "Refreshes discovery recommendations after a manual request.",
     };
   }
   return {
-    label: "Discovery Refresh",
+    label: "Discovery refresh",
     description: queueDescription("discovery-refresh"),
   };
 }

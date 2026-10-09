@@ -279,7 +279,7 @@ export function LidarrSettingsSection({
           <SettingsInput
             id="lidarr-api-key"
             type="password"
-            placeholder="Enter Lidarr API Key"
+            placeholder="Enter Lidarr API key"
             autoComplete="off"
             value={settings.integrations?.lidarr?.apiKey || ""}
             onChange={(e) => {

@@ -4,6 +4,7 @@ import {
 import { TAG_COLORS } from "../discoverUtils.js";
 import { shouldTriggerAlbumSearch } from "../../utils/albumAddAction.js";
 import { formatDate } from "../../utils/dateTime.js";
+import { formatCompactNumber } from "../../utils/numberFormat.js";
 
 export const readReleaseListViewMode = () => {
   if (typeof window === "undefined") return "grid";
@@ -117,7 +118,7 @@ export const formatLifeSpan = (lifeSpan) => {
 
 export const getArtistType = (type) => {
   const types = {
-    Person: "Solo Artist",
+    Person: "Solo artist",
     Group: "Band",
     Orchestra: "Orchestra",
     Choir: "Choir",
@@ -324,7 +325,7 @@ export const getReleaseMetric = (releaseGroup) => {
 
   const fans = typeof releaseGroup?.fans === "number" ? releaseGroup.fans : 0;
   return {
-    label: fans > 0 ? fans.toLocaleString() : "",
+    label: fans > 0 ? formatCompactNumber(fans) : "",
     sortValue: fans,
     type: "fans",
     title: fans > 0 ? `${fans.toLocaleString()} listeners` : "",

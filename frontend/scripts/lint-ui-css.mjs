@@ -141,6 +141,41 @@ export function getClosestToken(name, tokenNames) {
   return closest && closestDistance <= 2 ? closest : null;
 }
 
+const motionProperties = /^(?:transition|transition-duration|transition-timing-function|transition-delay|animation|animation-duration|animation-timing-function)$/;
+const rawEasingPattern = /(?<![\w-])(?:ease|ease-in|ease-out|ease-in-out|linear|step-start|step-end)(?![\w-])|\b(?:cubic-bezier|steps|linear)\s*\(/i;
+const rawDurationPattern = /(?<![\w.#-])-?\d*\.?\d+m?s(?![\w-])/gi;
+const allowedDurations = new Set(["0s", "0ms", "0.01ms"]);
+
+export function findRawMotion(property, value) {
+  if (!motionProperties.test(property)) return null;
+  const withoutVariables = value.replace(/var\([^()]*(?:\([^()]*\)[^()]*)*\)/g, "");
+  if (rawEasingPattern.test(withoutVariables)) return "easing";
+  const looping = property.startsWith("animation") && /\binfinite\b/i.test(value);
+  if (looping) return null;
+  const durations = withoutVariables.match(rawDurationPattern) ?? [];
+  return durations.some((duration) => !allowedDurations.has(duration.toLowerCase())) ? "duration" : null;
+}
+
+const zIndexKeywords = new Set(["auto", "inherit", "initial", "unset", "revert", "revert-layer"]);
+
+export function hasRawZIndex(value) {
+  const trimmed = value.trim().toLowerCase();
+  return !zIndexKeywords.has(trimmed) && !/var\(\s*--aurral-z-[\w-]+/.test(trimmed);
+}
+
+export function hasStaticViewportHeight(value) {
+  return /(?<![\w.-])\d*\.?\d+vh\b/i.test(value);
+}
+
+function isInsideHoverMedia(node) {
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (parent.type === "atrule" && parent.name === "media" && /\(\s*hover\s*:\s*hover\s*\)/.test(parent.params)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function sourceLine(declaration) {
   return declaration.source?.start?.line ?? 1;
 }
@@ -209,6 +244,40 @@ export function lintCss(css, { filePath = "<input>", tokenNames = new Set() } = 
     if (isAurralTokenDefinition(declaration)) return;
 
     const property = declaration.prop.toLowerCase();
+    if (hasStaticViewportHeight(declaration.value)) {
+      findings.push(
+        createFinding(
+          filePath,
+          line,
+          "aurral/no-vh",
+          "uses vh, which ignores mobile browser toolbars; use dvh.",
+        ),
+      );
+    }
+
+    if (property === "z-index" && hasRawZIndex(declaration.value)) {
+      findings.push(
+        createFinding(
+          filePath,
+          line,
+          "aurral/no-raw-z-index",
+          "uses a raw z-index; use a --aurral-z-* layer token.",
+        ),
+      );
+    }
+
+    const rawMotion = findRawMotion(property, declaration.value);
+    if (rawMotion) {
+      findings.push(
+        createFinding(
+          filePath,
+          line,
+          "aurral/no-raw-motion",
+          `uses a raw ${rawMotion} in ${property}; use the --aurral-duration-* and --aurral-ease-* tokens.`,
+        ),
+      );
+    }
+
     const isCustomProperty = property.startsWith("--");
     if (!isCustomProperty && !isColorBearingProperty(property)) return;
     if (!hasStaticColor(declaration.value)) return;
@@ -226,6 +295,18 @@ export function lintCss(css, { filePath = "<input>", tokenNames = new Set() } = 
         "aurral/no-hard-coded-color",
         `contains a hard-coded color in ${property}; ${correction}`,
         suggestion,
+      ),
+    );
+  });
+
+  root.walkRules((rule) => {
+    if (!rule.selector.includes(":hover") || isInsideHoverMedia(rule)) return;
+    findings.push(
+      createFinding(
+        filePath,
+        rule.source?.start?.line ?? 1,
+        "aurral/no-ungated-hover",
+        "styles :hover outside @media (hover: hover) and (pointer: fine), so the style sticks after a tap on touch screens.",
       ),
     );
   });

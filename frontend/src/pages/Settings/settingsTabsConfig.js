@@ -70,7 +70,7 @@ const SETTINGS_SEARCH_METADATA = {
     sections: ["Scheduled", "Workers", "Queue"],
     services: {
       "Background tasks": "jobs workers",
-      "Playlist Operations": "playlist flow worker",
+      "Playlist operations": "playlist flow worker",
     },
     fields: {
       Scheduled: "next run interval schedule",

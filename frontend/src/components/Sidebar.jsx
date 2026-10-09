@@ -364,7 +364,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
       {stageBackdropVariant ? <SidebarStageBackdrop variant={stageBackdropVariant} /> : null}
       <div className="sidebar-logo-row">
         <RouteLink to="/" className="sidebar-logo-link">
-          <img src="/arralogo.svg" alt="Aurral Logo" className="sidebar-logo" />
+          <img src="/arralogo.svg" alt="Aurral logo" className="sidebar-logo" />
           {!isIcons && <span className="sidebar-title">Aurral</span>}
         </RouteLink>
       </div>

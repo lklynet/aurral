@@ -34,7 +34,7 @@ function SearchArtistResults({
     const raw = artist?.artistType || artist?.type || null;
     if (!raw) return null;
     const types = {
-      Person: "Solo Artist",
+      Person: "Solo artist",
       Group: "Band",
       Orchestra: "Orchestra",
       Choir: "Choir",
@@ -165,6 +165,7 @@ function SearchArtistResults({
             key={artistId || `artist-${index}`}
             className="artist-discover-card artist-discover-card--artist"
             data-artwork-scope
+            data-library-menu-target
           >
             {cover}
 

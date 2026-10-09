@@ -35,7 +35,7 @@ import {
 } from "./discoverUtils";
 import { useDiscoverData } from "./useDiscoverData";
 import { useLibraryNews } from "../hooks/useLibraryNews";
-import { formatDate } from "../utils/dateTime.js";
+import { formatDate, formatRelativeTime } from "../utils/dateTime.js";
 import TooltipButton from "../components/TooltipButton";
 import RouteLink from "../components/RouteLink";
 const getArtistId = (artist) => getArtistRecordId(artist);
@@ -58,7 +58,9 @@ function DiscoverPage() {
   const {
     data,
     recentlyAdded,
+    recentlyAddedPending,
     recentReleases,
+    recentReleasesPending,
     pendingRecentReleaseIds,
     error,
     libraryLookup,
@@ -166,7 +168,7 @@ function DiscoverPage() {
     topGenres = [],
     basedOn = [],
   } = data || {};
-  const { data: editorialShelf } = useEditorialShelf();
+  const { data: editorialShelf, isPending: editorialShelfPending } = useEditorialShelf();
 
   const nearbyShows = nearbyShowsData?.shows || [];
   const nearbyLocationLabel =
@@ -308,11 +310,25 @@ function DiscoverPage() {
     setDraftSections(DEFAULT_DISCOVER_SECTIONS.map((item) => ({ ...item })));
   };
 
+  const sectionPending = {
+    recentlyAdded: recentlyAddedPending,
+    playlists: editorialShelfPending,
+    recentReleases: recentReleasesPending,
+  };
+
   const renderSection = (id) => {
+    if (sectionPending[id]) {
+      return (
+        <SkeletonStatus key={id} label="Loading section">
+          <SkeletonRail square={SQUARE_ART_SECTIONS.has(id)} />
+        </SkeletonStatus>
+      );
+    }
+
     if (id === "recentlyAdded") {
       if (!sectionAvailability.recentlyAdded) return null;
       return (
-        <DiscoverRail key="recentlyAdded" title="Recently Added">
+        <DiscoverRail key="recentlyAdded" title="Recently added">
           <>
             {recentlyAdded.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((artist) => {
               const artistId = artist.mbid || null;
@@ -330,9 +346,8 @@ function DiscoverPage() {
                       image: getLibraryArtistImage(artist),
                       type: "Artist",
                       metaText: "",
-                      subtitle: `Added ${formatDate(
-                        new Date(artist.added || artist.addedAt),
-                      )}`,
+                      subtitle: `Added ${formatRelativeTime(new Date(artist.added || artist.addedAt), { unit: "day" })}`,
+                      subtitleDetail: formatDate(new Date(artist.added || artist.addedAt)),
                     }}
                   />
                 </div>
@@ -358,7 +373,7 @@ function DiscoverPage() {
     if (id === "recentReleases") {
       if (!sectionAvailability.recentReleases) return null;
       return (
-        <DiscoverRail key="recentReleases" title="Recent & Upcoming Releases">
+        <DiscoverRail key="recentReleases" title="Recent & upcoming releases">
           <>
             {recentReleases.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((album) => (
               <div
@@ -384,7 +399,7 @@ function DiscoverPage() {
       return (
         <DiscoverRail
           key="news"
-          title="Artist News"
+          title="Artist news"
           viewAllTo="/discover/news"
         >
           {newsLoading && newsArticles.length === 0 ? (
@@ -475,7 +490,7 @@ function DiscoverPage() {
             </p>
             <div className="discover-recommended-empty__actions">
               <RouteLink to="/search" className="btn btn-primary btn-sm">
-                Search Artists
+                Search artists
               </RouteLink>
               <RouteLink to="/library" className="btn btn-secondary btn-sm">
                 Browse Library
@@ -507,7 +522,7 @@ function DiscoverPage() {
             <div className="artist-nearby-status">
               <h3 className="artist-nearby-status__title">Ticketmaster not configured</h3>
               <p className="artist-nearby-status__text">
-                Add a Ticketmaster Consumer Key in Settings to enable local show discovery on this
+                Add a Ticketmaster consumer key in Settings to enable local show discovery on this
                 page.
               </p>
               <RouteLink
@@ -545,7 +560,7 @@ function DiscoverPage() {
         return (
           <DiscoverRail
             key="recommendedShows"
-            title="Shows Near You"
+            title="Shows near you"
             viewAllTo="/shows"
             headerActions={nearbyHeaderActions}
           >
@@ -563,7 +578,7 @@ function DiscoverPage() {
         return (
           <DiscoverRail
             key="recommendedShows"
-            title="Shows Near You"
+            title="Shows near you"
             viewAllTo="/shows"
             headerActions={nearbyHeaderActions}
           >
@@ -599,7 +614,7 @@ function DiscoverPage() {
       return (
         <DiscoverRail
           key="globalTop"
-          title="Global Trending"
+          title="Global trending"
           viewAllTo="/search?type=trending"
         >
           <>
@@ -634,7 +649,7 @@ function DiscoverPage() {
             return (
               <DiscoverRail
                 key={section.genre}
-                title={`Because You Like ${section.genre}`}
+                title={`Because you like ${section.genre}`}
                 mobileTitle={section.genre}
                 viewAllTo={viewAllPath}
               >
@@ -708,7 +723,7 @@ function DiscoverPage() {
         <h2 className="artist-error-title--discover">Unable to load discovery</h2>
         <p className="artist-empty-message--discover">{error}</p>
         <button onClick={() => window.location.reload()} className="btn btn-primary">
-          Try Again
+          Try again
         </button>
       </div>
     );

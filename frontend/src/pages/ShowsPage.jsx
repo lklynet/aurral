@@ -71,7 +71,7 @@ function ShowsPage() {
       <header className="shows-page__header">
         <div className="shows-page__title-row">
           <div className="shows-page__title-wrap">
-            <h1 className="page-title">Shows Near You</h1>
+            <h1 className="page-title">Shows near you</h1>
           </div>
           <NearbyLocationControl
             locationMode={locationMode}
@@ -99,7 +99,7 @@ function ShowsPage() {
           </div>
           <h2 className="search-empty-panel__title">Ticketmaster not configured</h2>
           <p className="search-empty-panel__message">
-            Add a Ticketmaster Consumer Key in Settings to enable local show discovery.
+            Add a Ticketmaster consumer key in Settings to enable local show discovery.
           </p>
           <RouteLink
             to="/settings"

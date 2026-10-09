@@ -172,7 +172,7 @@ export default function PlaylistsPage() {
   };
 
   return (
-    <main className="library-page native-library-page playlist-page">
+    <div className="library-page native-library-page playlist-page">
       <header className="native-library-header">
         <div className="native-library-title-row">
           <div className="native-library-title">
@@ -231,6 +231,6 @@ export default function PlaylistsPage() {
           />
         </Suspense>
       ) : null}
-    </main>
+    </div>
   );
 }

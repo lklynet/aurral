@@ -9,7 +9,7 @@ import { ArtistContextMenu } from "../components/ArtistContextMenu";
 import SearchLibraryCheck from "../components/SearchLibraryCheck";
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
 import { getAlbumAddAction } from "../utils/albumAddAction";
-import { formatDate } from "../utils/dateTime.js";
+import { formatDate, formatRelativeTime } from "../utils/dateTime.js";
 import Tooltip from "../components/Tooltip";
 import RecommendationMeta from "../components/RecommendationMeta";
 import RouteLink from "../components/RouteLink";
@@ -31,13 +31,10 @@ const formatReleaseStatus = (releaseDate) => {
   const today = new Date();
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const formattedDate = formatDate(date);
-  if (date.getTime() === todayStart.getTime()) {
-    return "Released today";
+  if (date > todayStart) {
+    return { text: `Releasing ${formattedDate}`, detail: formattedDate };
   }
-  if (date < todayStart) {
-    return `Released ${formattedDate}`;
-  }
-  return `Releasing ${formattedDate}`;
+  return { text: `Released ${formatRelativeTime(date, { unit: "day" })}`, detail: formattedDate };
 };
 
 const getRecommendationReason = (artist) => {
@@ -111,6 +108,7 @@ export const ArtistCard = memo(
       <div
         className={`artist-discover-card artist-discover-card--artist${canOpen ? "" : " is-disabled"}`}
         data-artwork-scope
+        data-library-menu-target
       >
         <div className="artist-discover-card__cover" data-artwork>
           <ArtistImage
@@ -143,7 +141,7 @@ export const ArtistCard = memo(
               className="artist-card-meta--discover"
             />
             {artist.subtitle && (
-              <Tooltip content={artist.subtitle}>
+              <Tooltip content={artist.subtitleDetail || artist.subtitle}>
                 <p className="artist-card-meta--discover" >
                   {artist.subtitle}
                 </p>
@@ -173,6 +171,7 @@ export const ArtistCard = memo(
       prevProps.artist.libraryPath === nextProps.artist.libraryPath &&
       prevProps.artist.canonicalId === nextProps.artist.canonicalId &&
       prevProps.artist.subtitle === nextProps.artist.subtitle &&
+      prevProps.artist.subtitleDetail === nextProps.artist.subtitleDetail &&
       getRecommendationReason(prevProps.artist) === getRecommendationReason(nextProps.artist) &&
       prevProps.artist.matchPercent === nextProps.artist.matchPercent &&
       prevProps.status === nextProps.status &&
@@ -232,7 +231,8 @@ export const AlbumCard = memo(
       fetchCover();
     }, [releaseGroupMbid, artistMbid, album.coverUrl, album.artistName, album.albumName, fetchedCover]);
     const albumArtistText = album.artistName || "Unknown Artist";
-    const albumReleaseText = formatReleaseStatus(album.releaseDate);
+    const albumRelease = formatReleaseStatus(album.releaseDate);
+    const albumReleaseText = albumRelease?.text;
     const isComplete = (album.statistics?.percentOfTracks || 0) > 0;
     const target = getReleaseNavigationTarget({
       type: "album",
@@ -306,7 +306,7 @@ export const AlbumCard = memo(
               </p>
             </Tooltip>
             {albumReleaseText && (
-              <Tooltip content={albumReleaseText}>
+              <Tooltip content={albumRelease.detail}>
                 <p className="artist-card-meta--discover" >
                   {albumReleaseText}
                 </p>
@@ -337,7 +337,7 @@ export const AlbumCard = memo(
 );
 
 AlbumCard.displayName = "AlbumCard";
-export const ViewAllCard = memo(({ to, label = "View All" }) => {
+export const ViewAllCard = memo(({ to, label = "View all" }) => {
   return (
     <RouteLink to={to} className="artist-view-all-card--discover">
       <div className="artist-media-cell">

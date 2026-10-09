@@ -63,7 +63,7 @@ export default function PlaylistDetailPage() {
   if (!playlist) {
     const waiting = (loading && !status) || location.state?.created;
     return (
-      <main className="library-page native-library-page playlist-page">
+      <div className="library-page native-library-page playlist-page">
         <div className="native-library-content">
           {waiting ? (
             <SkeletonStatus label="Loading playlist" className="native-library-detail">
@@ -88,7 +88,7 @@ export default function PlaylistDetailPage() {
             </div>
           )}
         </div>
-      </main>
+      </div>
     );
   }
 
