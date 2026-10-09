@@ -141,6 +141,7 @@ import {
 import { useResponsiveReleaseLimit } from "./ArtistDetails/hooks/useResponsiveReleaseLimit";
 import { queryClient, queryKeys } from "../queryClient.js";
 import Tooltip from "../components/Tooltip";
+import { showFavoriteRemoved } from "../utils/favoriteUndo.js";
 
 const pageSize = LIBRARY_PAGE_SIZE;
 
@@ -332,7 +333,8 @@ function LibraryPage() {
   } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const { bootstrap, hasPermission, user } = useAuth();
-  const { showError, showSuccess } = useToast();
+  const toast = useToast();
+  const { showError, showSuccess } = toast;
   const {
     staticPlaylists,
     setStaticPlaylists,
@@ -1650,27 +1652,41 @@ function LibraryPage() {
         else next.delete(id);
         return next;
       });
+      const name = entity?.name || entity?.title || entity?.trackName;
       try {
         const result = await updateLibraryFavorites([id], nextStarred);
-        if (Array.isArray(result?.changedIds)) {
-          setFavoriteIds((current) => {
-            const next = new Set(current);
-            for (const changedId of result.changedIds) {
-              if (nextStarred) next.add(changedId);
-              else next.delete(changedId);
-            }
-            return next;
+        const changedIds = Array.isArray(result?.changedIds) ? result.changedIds : [];
+        const applyFavorite = (starred) => setFavoriteIds((current) => {
+          const next = new Set(current);
+          for (const changedId of changedIds) {
+            if (starred) next.add(changedId);
+            else next.delete(changedId);
+          }
+          return next;
+        });
+        applyFavorite(nextStarred);
+        if (!nextStarred) {
+          showFavoriteRemoved(toast, {
+            name,
+            removed: result?.removed,
+            restore: () => applyFavorite(true),
+            revert: () => applyFavorite(false),
+            onRestored: () => queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix }),
           });
         }
       } catch (requestError) {
         setFavoriteIds(previous);
-        showError(requestError.response?.data?.message || "Failed to update favorites");
+        showError(
+          `Could not ${nextStarred ? "add" : "remove"} ${name || "this item"} ${nextStarred ? "to" : "from"} favorites. Nothing changed. ${
+            requestError.response?.data?.message || "Try again."
+          }`,
+        );
       } finally {
         favoriteMutationInFlightRef.current = false;
         setPendingFavorite(null);
       }
     },
-    [favoriteIds, isPreviewLibrary, setFavoriteIds, showError],
+    [favoriteIds, isPreviewLibrary, setFavoriteIds, showError, toast],
   );
 
   const playTrack = useCallback(

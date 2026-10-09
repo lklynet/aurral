@@ -133,11 +133,11 @@ export const clearLibraryFavoritesCache = () => {
   latestLibraryFavorites = null;
 };
 
-export const updateLibraryFavorites = (ids, starred) => {
+const writeLibraryFavorites = (send) => {
   const generation = ++libraryFavoritesGeneration;
   const write = libraryFavoritesWrite.then(async () => {
     try {
-      const data = await postData("/library/favorites", { ids, starred });
+      const data = await send();
       if (generation !== libraryFavoritesGeneration) return data;
       try {
         const refreshed = await fetchLibraryFavorites();
@@ -163,6 +163,12 @@ export const updateLibraryFavorites = (ids, starred) => {
   });
   return write;
 };
+
+export const updateLibraryFavorites = (ids, starred) =>
+  writeLibraryFavorites(() => postData("/library/favorites", { ids, starred }));
+
+export const restoreLibraryFavorites = (favorites) =>
+  writeLibraryFavorites(() => postData("/library/favorites/restore", { favorites }));
 
 const normalizeLibraryArtist = (artist) =>
   artist && !artist.foreignArtistId

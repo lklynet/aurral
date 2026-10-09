@@ -46,6 +46,40 @@ test("an album request shows as downloading at once and stops if the server refu
   assert.deepEqual(activeAlbums(), []);
 });
 
+test("undoing an unfavorite sends the removed stars back and reverts if the restore fails", async (t) => {
+  const { vite, requests, waitForRequests } = await openHarness(t);
+  const { showFavoriteRemoved } = await vite.ssrLoadModule("/src/utils/favoriteUndo.js");
+  const toasts = [];
+  const toast = {
+    addToast: (content) => toasts.push(content),
+    showSuccess: (message) => toasts.push({ message }),
+    showError: (message) => toasts.push({ message, error: true }),
+  };
+  let starred = false;
+  const removed = [{ id: "song:favorite-track", starredAt: 1000 }];
+
+  showFavoriteRemoved(toast, {
+    name: "Favorite Track",
+    removed,
+    restore: () => { starred = true; },
+    revert: () => { starred = false; },
+  });
+  assert.equal(toasts[0].message, "Removed Favorite Track from favorites");
+
+  const undone = toasts[0].action.onClick();
+  assert.equal(starred, true);
+  await waitForRequests(1);
+  assert.deepEqual(requests[0].body, { favorites: removed });
+  requests[0].resolve(json({ error: "Database is locked" }, 500));
+  await undone;
+
+  assert.equal(starred, false);
+  assert.deepEqual(toasts.at(-1), {
+    message: "Could not add Favorite Track back to favorites. It is still removed. Try again from its menu.",
+    error: true,
+  });
+});
+
 test("undoing less like this puts back the more like this it replaced, in place", () => {
   const artist = { id: "artist-1", name: "Taste Artist" };
   const block = { id: "b", artistName: "Other", action: "block_artist", createdAt: "2026-01-01T00:00:00.000Z" };
