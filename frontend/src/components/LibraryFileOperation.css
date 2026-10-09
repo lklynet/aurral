@@ -29,7 +29,7 @@
 .library-file-op__fill {
   height: 100%;
   background: var(--aurral-control-on);
-  transition: width 0.2s ease;
+  transition: width var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
 .library-file-op__notice {
@@ -66,13 +66,15 @@
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color var(--aurral-duration-fast) var(--aurral-ease-standard), color var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
-.library-file-op__group:hover,
-.library-file-op__page:hover:not(:disabled) {
-  background: var(--aurral-surface-hover);
-  color: var(--aurral-text);
+@media (hover: hover) and (pointer: fine) {
+  .library-file-op__group:hover,
+  .library-file-op__page:hover:not(:disabled) {
+    background: var(--aurral-surface-hover);
+    color: var(--aurral-text);
+  }
 }
 
 .library-file-op__group[aria-pressed="true"] {
