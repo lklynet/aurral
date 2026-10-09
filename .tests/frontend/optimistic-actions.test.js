@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { startFrontendServer } from "../helpers/frontendServer.js";
 
+import {
+  diffDiscoveryFeedback,
+  previewArtistDiscoveryFeedback,
+  revertDiscoveryFeedback,
+} from "../../frontend/src/utils/discoveryFeedback.js";
+
 const json = (value, status = 200) => new Response(JSON.stringify(value), {
   status,
   headers: { "content-type": "application/json" },
@@ -38,4 +44,25 @@ test("an album request shows as downloading at once and stops if the server refu
   requests[0].resolve(json({ error: "Lidarr is unreachable" }, 502));
   await assert.rejects(request);
   assert.deepEqual(activeAlbums(), []);
+});
+
+test("undoing less like this puts back the more like this it replaced, in place", () => {
+  const artist = { id: "artist-1", name: "Taste Artist" };
+  const block = { id: "b", artistName: "Other", action: "block_artist", createdAt: "2026-01-01T00:00:00.000Z" };
+  const more = { id: "m", artistId: "artist-1", artistName: "Taste Artist", action: "more_like_this", createdAt: "2026-02-01T00:00:00.000Z" };
+  const previous = [more, block];
+
+  const preview = previewArtistDiscoveryFeedback(previous, {
+    artist,
+    action: "less_like_this",
+    isSelected: false,
+    payload: { artistId: "artist-1", artistName: "Taste Artist", action: "less_like_this" },
+  });
+  assert.deepEqual(preview.map((entry) => entry.action), ["less_like_this", "block_artist"]);
+
+  const saved = [{ ...preview[0], id: "l", createdAt: "2026-03-01T00:00:00.000Z" }, block];
+  const change = diffDiscoveryFeedback(previous, saved);
+  assert.deepEqual(change.added.map((entry) => entry.id), ["l"]);
+  assert.deepEqual(change.removed, [more]);
+  assert.deepEqual(revertDiscoveryFeedback(saved, change), previous);
 });
