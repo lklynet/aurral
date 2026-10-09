@@ -12,7 +12,7 @@ import {
   queueQualityUpgrade,
 } from "../qualityProfileService.js";
 import { getQualityState, getQualityTier } from "../qualityProfileModel.js";
-import { placeFile, removeEmptyDirectories, transferSidecars } from "./fileTransfer.js";
+import { ALBUM_IMAGE_EXTENSIONS, placeFile, removeEmptyDirectories, transferSidecars } from "./fileTransfer.js";
 import {
   addLibraryFileOperationItems,
   updateLibraryFileOperation,
@@ -20,7 +20,6 @@ import {
 } from "./operationStore.js";
 
 export const ORGANIZE_ACTIONS = ["rename", "upgrade"];
-const ALBUM_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
 
 export class OrganizeOptionsError extends Error {
   constructor(message) {

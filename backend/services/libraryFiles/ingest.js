@@ -6,12 +6,13 @@ import { buildLibraryTrackPath, isPathInsideRoot, resolveDownloadRoot } from "..
 import { AUDIO_EXTENSIONS, buildMetadataRecord } from "../libraryFileScanner.js";
 import { configuredLidarrFolders, isPathWithin } from "../libraryFolders.js";
 import {
+  ALBUM_IMAGE_EXTENSIONS,
+  TRANSFER_MODES,
   filesIdentical,
   isSameFile,
   placeFile,
   probeHardlink,
   removeEmptyDirectories,
-  TRANSFER_MODES,
   transferSidecars,
 } from "./fileTransfer.js";
 import { matchLibraryRecord } from "./libraryMatch.js";
@@ -23,7 +24,6 @@ import {
   updateLibraryFileOperationItem,
 } from "./operationStore.js";
 
-const ALBUM_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
 const CHUNK = 200;
 
 export class IngestSourceError extends Error {

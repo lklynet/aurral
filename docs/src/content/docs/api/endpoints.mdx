@@ -83,7 +83,7 @@ WebSocket connections.
 | `POST` | `/api/library/artists` | Add an artist |
 | `GET` | `/api/library/artists/:mbid/monitoring` | Get the active manager's monitoring for an artist |
 | `PUT` | `/api/library/artists/:mbid` | Update artist monitoring |
-| `DELETE` | `/api/library/artists/:mbid?manager=aurral\|lidarr` | Delete an artist from Lidarr and Aurral, or from one manager with `manager`. Returns `503` and deletes nothing when Lidarr cannot be reached |
+| `DELETE` | `/api/library/artists/:mbid?manager=aurral\|lidarr` | Delete an artist from Lidarr and Aurral, or from one manager with `manager`. An artist without a MusicBrainz ID takes its Library `id` instead and is deleted from Aurral. Returns `503` and deletes nothing when Lidarr cannot be reached |
 | `POST` | `/api/library/artists/:mbid/refresh` | Refresh an artist in Lidarr |
 | `PUT` | `/api/library/canonical/artists/:id/mbid` | Set a library artist's MusicBrainz ID with `{ "mbid": "…" }`, or clear it with `{ "mbid": null }` |
 | `GET` | `/api/library/albums?artistId=:id&managedBy=aurral\|lidarr` | List an artist's albums. Send the artist's `managedBy` so a Lidarr ID is never read as an Aurral ID |

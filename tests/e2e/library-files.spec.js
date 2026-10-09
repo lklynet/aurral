@@ -68,8 +68,6 @@ test("ingest a folder from Settings, then organize it from the Library", async (
 
     await page.goto(`/library/artist/${artist.id}`);
     await page.getByRole("button", { name: `${artistName} options` }).first().click();
-    const menuItems = await page.getByRole("menuitem").allInnerTexts();
-    test.info().annotations.push({ type: "artist menu", description: menuItems.join(" | ") });
     await page.getByRole("menuitem", { name: "Organize files…" }).click();
     const dialog = page.getByRole("dialog", { name: `Organize ${artistName}` });
     await expect(dialog).toBeVisible();
@@ -79,6 +77,16 @@ test("ingest a folder from Settings, then organize it from the Library", async (
     await page.screenshot({ path: test.info().outputPath("organize-preview.png"), fullPage: true });
     await dialog.getByRole("button", { name: "Done" }).click();
     await expect(dialog).toHaveCount(0);
+
+    await page.getByRole("button", { name: `${artistName} options` }).first().click();
+    await page.getByRole("menuitem", { name: "Delete artist", exact: true }).click();
+    const removal = page.getByRole("alertdialog", { name: "Delete artist" });
+    await removal.getByLabel("Delete artist files").check();
+    await removal.getByRole("button", { name: "Delete artist" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Artist deleted" })).toBeVisible({ timeout: 30_000 });
+    expect(fs.existsSync(path.join(downloadRoot, artistName))).toBe(false);
+    const remaining = await apiRequest(page, "/api/library/artists");
+    expect((remaining.body || []).some((entry) => entry.name === artistName)).toBe(false);
   } finally {
     await apiRequest(page, "/api/settings", { method: "POST", body: { libraryFiles: previousLibraryFiles } });
     fs.rmSync(source, { recursive: true, force: true });

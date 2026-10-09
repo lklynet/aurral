@@ -123,7 +123,7 @@ To look for another recording of a track that Aurral downloaded, right-click the
 
 When you delete a track that Aurral manages, Aurral deletes its file. If no other file exists for the track, Aurral also removes the track, and any album or artist that is left empty. If one of several files cannot be deleted, Aurral keeps the track until a later attempt succeeds.
 
-To remove an album or artist, select **Delete album** or **Delete artist** at the bottom of its menu. Aurral cancels unfinished downloads and removes it from Lidarr too when Lidarr has it. To also delete the music files, select **Delete album files** or **Delete artist files**. Otherwise the files stay on disk.
+To remove an album or artist, select **Delete album** or **Delete artist** at the bottom of its menu. Aurral cancels unfinished downloads and removes it from Lidarr too when Lidarr has it. To also delete the music files, select **Delete album files** or **Delete artist files**. Aurral then also deletes the tracks' lyrics files, and album art and folders that the music leaves empty in the Downloads Folder. Otherwise the files stay on disk.
 
 - You cannot delete one album of an artist that Aurral monitors, because monitoring would add it again. First set the artist's monitoring to **Not monitored**, or delete the whole artist.
 - Deleting an album or artist that Lidarr has needs Lidarr. If Lidarr cannot be reached, nothing is deleted.

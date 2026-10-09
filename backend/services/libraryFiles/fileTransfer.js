@@ -7,6 +7,7 @@ export const TRANSFER_MODES = new Set(["move", "copy", "hardlink"]);
 
 const LINK_UNSUPPORTED = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EMLINK"]);
 const SIDECAR_EXTENSIONS = [".lrc"];
+export const ALBUM_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
 
 async function digest(filePath) {
   const hash = createHash("sha256");
@@ -89,6 +90,25 @@ export async function transferSidecars(source, target, mode) {
       if (error?.code !== "EEXIST") throw error;
     }
   }
+}
+
+export async function removeSidecars(filePath) {
+  const base = filePath.slice(0, -path.extname(filePath).length);
+  for (const extension of SIDECAR_EXTENSIONS) await fs.rm(`${base}${extension}`, { force: true });
+}
+
+// A folder that has only album art left once its music is gone goes too.
+export async function removeEmptiedFolder(directory, stopAt) {
+  const root = path.resolve(stopAt);
+  const folder = path.resolve(directory);
+  if (!folder.startsWith(`${root}${path.sep}`)) return;
+  const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => null);
+  if (!entries) return;
+  if (entries.some((entry) => !entry.isFile() || !ALBUM_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))) {
+    return;
+  }
+  for (const entry of entries) await fs.rm(path.join(folder, entry.name), { force: true });
+  await removeEmptyDirectories(folder, root);
 }
 
 const HARDLINK_REASONS = {

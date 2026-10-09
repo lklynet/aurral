@@ -40,6 +40,7 @@ import {
 } from "./libraryManagementStore.js";
 import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.js";
 import { restoreDownloadJobCancellations } from "./downloadJobs/downloadCancellation.js";
+import { removeEmptiedFolder, removeSidecars } from "./libraryFiles/fileTransfer.js";
 import { removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.js";
 import { resolveDownloadRoot } from "./downloadPaths.js";
 import { activeLidarrRoots, libraryFolderOwner } from "./libraryFolders.js";
@@ -466,6 +467,16 @@ async function deleteAurralLibraryFiles(paths) {
     .map((result) => result.value);
   if (reconciledPaths.length > 0) {
     markLibraryMediaFilesUnavailable("aurral", reconciledPaths);
+  }
+  const emptiedFolders = new Set();
+  for (const filePath of reconciledPaths) {
+    if (libraryFolderOwner(filePath, folders) !== "aurral") continue;
+    if (await fsp.access(filePath).then(() => true, () => false)) continue;
+    await removeSidecars(filePath).catch(() => {});
+    emptiedFolders.add(path.dirname(filePath));
+  }
+  for (const folder of emptiedFolders) {
+    await removeEmptiedFolder(folder, folders.downloadRoot).catch(() => {});
   }
   return deletionResults.find((result) => result.status === "rejected")?.reason || null;
 }
@@ -1455,6 +1466,7 @@ export class LibraryManager {
   }
 
   async deleteArtist(mbid, deleteFiles = false, { manager = null } = {}) {
+    if (/^\d+$/.test(String(mbid))) return this._deleteLibraryArtistById(Number(mbid), deleteFiles, { manager });
     if (manager === "lidarr") return this._deleteLidarrArtist(mbid, deleteFiles);
     if (manager === "aurral") {
       const libraryArtist = libraryArtistFallback(mbid);
@@ -1483,6 +1495,19 @@ export class LibraryManager {
       if (!removed.success) return removed;
     }
     return aurralArtist ? this._deleteAurralArtist(aurralArtist, deleteFiles) : { success: true };
+  }
+
+  // An artist without a MusicBrainz ID, such as one ingested from untagged
+  // files, is found by its Library id. Lidarr only knows artists by ID.
+  async _deleteLibraryArtistById(id, deleteFiles, { manager = null } = {}) {
+    const libraryArtist = getLibraryArtistProjection({ reference: id })
+      .find((artist) => Number(artist.id) === id);
+    if (!libraryArtist) return { success: false, error: "Artist not found in your library", statusCode: 404 };
+    if (libraryArtist.mbid) return this.deleteArtist(libraryArtist.mbid, deleteFiles, { manager });
+    if (manager === "lidarr" || !aurralHoldsArtist(libraryArtist)) {
+      return { success: false, error: "Delete this artist in Lidarr", statusCode: 409 };
+    }
+    return this._deleteAurralArtist(libraryArtist, deleteFiles);
   }
 
   async _deleteLidarrArtist(mbid, deleteFiles) {
@@ -2200,6 +2225,7 @@ export class LibraryManager {
     }
     const result = await this._removeAurralAlbumContents(album, library.tracks, deleteFiles);
     if (result.error) return result;
+    if (!artistState) removeLibraryArtistIfEmpty(album.artistId);
     return { success: true, canonicalId: mappedAlbum.canonicalId };
   }
 

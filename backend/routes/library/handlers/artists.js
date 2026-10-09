@@ -277,8 +277,8 @@ export function registerArtists(router) {
         const { mbid } = req.params;
         const { deleteFiles = false, manager = null } = req.query;
 
-        if (!UUID_REGEX.test(mbid)) {
-          return res.status(400).json({ error: "Invalid MBID format" });
+        if (!UUID_REGEX.test(mbid) && !/^[1-9]\d*$/.test(mbid)) {
+          return res.status(400).json({ error: "Use an artist's MusicBrainz ID or Library id" });
         }
         if (manager !== null && manager !== "aurral" && manager !== "lidarr") {
           return res.status(400).json({ error: "manager must be 'aurral' or 'lidarr'" });
