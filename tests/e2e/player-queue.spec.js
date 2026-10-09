@@ -109,6 +109,31 @@ test("shuffle plays the chosen track first, plays every other track once, and ke
   await expect(player.title).toHaveText(chosen);
 });
 
+test("shuffle stays on after the player closes and shuffles the next queue after its first track", async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0;
+  });
+  await page.reload();
+  const player = playerControls(page);
+  const playAll = page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` });
+  await playAll.click();
+  await waitUntilPlaying(player);
+  await player.shuffle.click();
+  await expect(player.shuffle).toHaveAccessibleName("Disable shuffle");
+  await page.getByRole("button", { name: "Close player" }).click();
+  await expect(player.bar).toHaveCount(0);
+
+  await playAll.click();
+  await expect(player.shuffle).toHaveAccessibleName("Disable shuffle");
+  const played = [await player.title.textContent()];
+  for (let step = 1; step < TRACK_NAMES.length; step += 1) {
+    await player.next.click();
+    await expect(player.title).not.toHaveText(played.at(-1));
+    played.push(await player.title.textContent());
+  }
+  expect(played).toEqual(["Alpha", "Charlie", "Delta", "Echo", "Bravo"]);
+});
+
 test("the seek slider moves by useful steps from the keyboard", async ({ page }) => {
   const player = playerControls(page);
   await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();

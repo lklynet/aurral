@@ -144,8 +144,6 @@ export function ArtistDetailsDownloadTargets({
       playTrack(normalized, {
         source: options.source ?? source,
         queue: options.queue,
-        shuffle: options.shuffle,
-        updateShufflePreference: options.updateShufflePreference,
       });
     },
     [currentTrack?.id, normalizeTrack, playTrack, source, togglePlayPause],

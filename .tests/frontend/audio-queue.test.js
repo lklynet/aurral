@@ -54,7 +54,6 @@ const startQueue = (options = {}) =>
     tracks: queueTracks,
     startTrackId: null,
     shuffle: false,
-    updateShufflePreference: true,
     source: null,
     ...options,
   });
@@ -127,4 +126,48 @@ test("previous restarts a track after three seconds and otherwise goes back one 
   const repeatAll = queueReducer(first, { type: "TOGGLE_REPEAT" });
   assert.equal(shouldRestartTrack(repeatAll, 1), false);
   assert.equal(currentId(queueReducer(repeatAll, { type: "PREVIOUS" })), "t7");
+});
+
+test("shuffle stays on for every queue played next and the order always matches it", () => {
+  const isInOrder = (state) => state.playbackOrder.every((queueIndex, index) => queueIndex === index);
+  const shuffleOn = queueReducer(startQueue(), { type: "SET_SHUFFLE", enabled: true });
+  const orders = new Set();
+  for (let run = 0; run < 40; run += 1) {
+    const chosen = queueReducer(shuffleOn, {
+      type: "PLAY_QUEUE",
+      tracks: queueTracks,
+      startTrackId: "t4",
+      shuffle: false,
+      source: null,
+    });
+    assert.equal(chosen.isShuffleEnabled, true);
+    assert.equal(currentId(chosen), "t4");
+    assert.deepEqual([...remainingIds(chosen)].sort(), allIds);
+    orders.add(chosen.playbackOrder.join());
+
+    const playAll = queueReducer(shuffleOn, {
+      type: "PLAY_QUEUE",
+      tracks: queueTracks,
+      startTrackId: null,
+      shuffle: false,
+      source: null,
+    });
+    assert.equal(playAll.isShuffleEnabled, true);
+    assert.equal(currentId(playAll), "t0");
+    assert.deepEqual([...remainingIds(playAll)].sort(), allIds);
+  }
+  assert.ok(orders.size > 1);
+
+  const inOrder = startQueue({ startTrackId: "t4" });
+  assert.equal(inOrder.isShuffleEnabled, false);
+  assert.ok(isInOrder(inOrder));
+
+  const cleared = queueReducer(queueReducer(shuffleOn, { type: "TOGGLE_REPEAT" }), { type: "CLEAR_QUEUE" });
+  assert.equal(cleared.queue.length, 0);
+  assert.equal(cleared.isShuffleEnabled, true);
+  assert.equal(cleared.repeatMode, "all");
+
+  const shuffleButton = startQueue({ shuffle: true });
+  assert.equal(shuffleButton.isShuffleEnabled, true);
+  assert.equal(isInOrder(queueReducer(shuffleButton, { type: "SET_SHUFFLE", enabled: false })), true);
 });

@@ -1692,7 +1692,6 @@ function LibraryPage() {
         startTrackId: startTrack?.id ?? null,
         shuffle,
         source: librarySource,
-        updateShufflePreference: false,
       });
     },
     [buildPlayableTrack, librarySource, playQueue, showError],

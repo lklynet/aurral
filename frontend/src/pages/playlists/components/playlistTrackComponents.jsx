@@ -404,7 +404,7 @@ export function PlaylistTracksPanel({
     setSelectedIds(new Set());
   }, [trackOrderKey]);
 
-  const { playTrack, togglePlayPause, isShuffleEnabled, matchesSource, isPlaying, currentTrack } =
+  const { playTrack, togglePlayPause, matchesSource, isPlaying, currentTrack } =
     useAudioQueue();
 
   const sortedTracks = useMemo(
@@ -464,7 +464,6 @@ export function PlaylistTracksPanel({
     playTrack(toQueueTrack(track), {
       source: playbackSource,
       queue: playableTracks.map(toQueueTrack),
-      shuffle: isShuffleEnabled,
     });
   };
 

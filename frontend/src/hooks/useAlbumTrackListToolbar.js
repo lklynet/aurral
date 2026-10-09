@@ -30,8 +30,6 @@ export function useAlbumTrackListToolbar({ getQueueTracks, playbackSource }) {
     }
     playQueue(queueTracks, {
       source: playbackSource,
-      shuffle: false,
-      updateShufflePreference: false,
     });
   }, [isCurrentListTrack, isSourceActive, playbackSource, playQueue, queueTracks, togglePlayPause]);
 
@@ -40,7 +38,6 @@ export function useAlbumTrackListToolbar({ getQueueTracks, playbackSource }) {
     playQueue(queueTracks, {
       source: playbackSource,
       shuffle: true,
-      updateShufflePreference: true,
     });
   }, [playbackSource, playQueue, queueTracks]);
 

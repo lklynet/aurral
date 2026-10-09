@@ -176,12 +176,14 @@ export function shouldRestartTrack(state, position) {
 export function queueReducer(state, action) {
   switch (action.type) {
     case "PLAY_QUEUE": {
-      const { tracks, startTrackId, shuffle, updateShufflePreference, source } = action;
+      const { tracks, startTrackId, source } = action;
       if (!Array.isArray(tracks) || tracks.length === 0) return state;
+      const shuffle = action.shuffle === true || state.isShuffleEnabled;
       const startQueueIndex = startTrackId == null
         ? -1
         : tracks.findIndex((track) => String(track.id) === String(startTrackId));
-      const firstQueueIndex = startQueueIndex >= 0 ? startQueueIndex : null;
+      const firstQueueIndex =
+        startQueueIndex >= 0 ? startQueueIndex : action.shuffle === true ? null : 0;
       const playbackOrder = buildPlaybackOrder(tracks.length, shuffle, firstQueueIndex);
       return playAt(
         {
@@ -189,7 +191,7 @@ export function queueReducer(state, action) {
           queue: tracks,
           playbackOrder,
           source: source ?? null,
-          isShuffleEnabled: updateShufflePreference ? shuffle : state.isShuffleEnabled,
+          isShuffleEnabled: shuffle,
         },
         shuffle ? 0 : firstQueueIndex ?? 0,
         true,
@@ -241,7 +243,11 @@ export function queueReducer(state, action) {
       return { ...state, repeatMode: nextMode };
     }
     case "CLEAR_QUEUE":
-      return initialQueueState;
+      return {
+        ...initialQueueState,
+        isShuffleEnabled: state.isShuffleEnabled,
+        repeatMode: state.repeatMode,
+      };
     default:
       return state;
   }

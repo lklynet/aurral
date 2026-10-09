@@ -186,7 +186,7 @@ export function AudioQueueProvider({ children }) {
 
   const playQueue = useCallback((
     tracks,
-    { startTrackId = null, source: nextSource = null, shuffle = false, updateShufflePreference = true } = {},
+    { startTrackId = null, source: nextSource = null, shuffle = false } = {},
   ) => {
     const normalized = (Array.isArray(tracks) ? tracks : [])
       .map((track) => normalizeQueueTrack(track))
@@ -197,7 +197,6 @@ export function AudioQueueProvider({ children }) {
       tracks: normalized,
       startTrackId,
       shuffle,
-      updateShufflePreference,
       source: nextSource,
     });
     return true;
@@ -217,8 +216,6 @@ export function AudioQueueProvider({ children }) {
     return playQueue(contextTracks, {
       startTrackId: normalized.id,
       source: options.source ?? null,
-      shuffle: options.shuffle ?? stateRef.current.isShuffleEnabled,
-      updateShufflePreference: options.updateShufflePreference ?? false,
     });
   }, [playQueue]);
 
