@@ -41,7 +41,7 @@ function operationTitle(operation) {
 function IngestSection({ busy, onStarted, showError }) {
   const [sourcePath, setSourcePath] = useState("");
   const [mode, setMode] = useState("copy");
-  const [monitor, setMonitor] = useState("none");
+  const [monitor, setMonitor] = useState("tracks");
   const [check, setCheck] = useState({ loading: false, result: null, error: "" });
   const [starting, setStarting] = useState(false);
   const requestRef = useRef(0);

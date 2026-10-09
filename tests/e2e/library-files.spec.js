@@ -34,7 +34,7 @@ test("ingest a folder as monitored tracks, then clean up the Library", async ({ 
     await folder.press("Enter");
     await expect(page.getByText("2 music files found.")).toBeVisible({ timeout: 15_000 });
     await page.locator("#library-ingest-mode").selectOption("copy");
-    await page.locator("#library-ingest-monitor").selectOption("tracks");
+    await expect(page.locator("#library-ingest-monitor")).toHaveValue("tracks");
     await page.getByRole("button", { name: "Preview ingest" }).click();
 
     await expect(page.getByText("Preview ready. Nothing changes until you apply it.")).toBeInViewport({ timeout: 30_000 });
