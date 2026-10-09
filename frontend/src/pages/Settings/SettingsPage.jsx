@@ -145,13 +145,7 @@ function SettingsPage() {
         );
       case "library-files":
         return (
-          <SettingsLibraryFilesTab
-            settings={data.settings}
-            updateSettings={data.updateSettings}
-            hasUnsavedChanges={data.hasUnsavedChanges}
-            handleSaveSettings={data.handleSaveSettings}
-            showError={showError}
-          />
+          <SettingsLibraryFilesTab showError={showError} />
         );
       case "tasks":
         return <SettingsTasksTab showError={showError} showSuccess={showSuccess} />;

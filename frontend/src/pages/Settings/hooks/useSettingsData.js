@@ -47,14 +47,10 @@ const defaultSettings = {
     cutoff: "flac-standard",
     automaticUpgrades: false,
     intervalDays: 2,
-    libraryTracks: false,
   },
   missingTrackSearch: {
     enabled: false,
     intervalDays: 1,
-  },
-  libraryFiles: {
-    rename: false,
   },
   reviewTimeoutHours: 0,
   releaseTypes: allReleaseTypes,
@@ -536,17 +532,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
         settingsRef.current = settingsOverride;
         setSettingsState(settingsOverride);
       }
-      const inFlight = saveInFlightRef.current;
-      if (!inFlight) return persistSettings(toSave);
-      return inFlight.then((saved) => {
-        if (!saved) return false;
-        if (saveTimerRef.current) {
-          clearTimeout(saveTimerRef.current);
-          saveTimerRef.current = null;
-        }
-        if (!checkForChanges(settingsRef.current, originalSettingsRef.current)) return true;
-        return persistSettings(settingsRef.current);
-      });
+      return persistSettings(toSave);
     },
     [persistSettings],
   );

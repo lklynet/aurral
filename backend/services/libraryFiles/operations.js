@@ -9,13 +9,7 @@ import {
   resolveIngestSource,
   validateIngestOptions,
 } from "./ingest.js";
-import {
-  applyOrganizeItem,
-  createOrganizeContext,
-  finishOrganize,
-  planOrganize,
-  validateOrganizeOptions,
-} from "./organize.js";
+import { applyCleanupItem, createCleanupContext, finishCleanup, planCleanup } from "./cleanup.js";
 import {
   countLibraryFileOperationItems,
   createLibraryFileOperation,
@@ -39,16 +33,16 @@ async function enqueue(operationId, { dedupe = true } = {}) {
   enqueueLibraryFileJob({ operationId });
 }
 
-export async function startIngest({ sourcePath, mode } = {}) {
-  validateIngestOptions({ mode });
+export async function startIngest({ sourcePath, mode, monitor = "none" } = {}) {
+  validateIngestOptions({ mode, monitor });
   const source = await resolveIngestSource(sourcePath);
-  const operation = createLibraryFileOperation({ kind: "ingest", options: { sourcePath: source, mode } });
+  const operation = createLibraryFileOperation({ kind: "ingest", options: { sourcePath: source, mode, monitor } });
   await enqueue(operation.id);
   return operation;
 }
 
-export async function startOrganize(options = {}) {
-  const operation = createLibraryFileOperation({ kind: "organize", options: validateOrganizeOptions(options) });
+export async function startCleanup() {
+  const operation = createLibraryFileOperation({ kind: "cleanup", options: {} });
   await enqueue(operation.id);
   return operation;
 }
@@ -70,7 +64,7 @@ export async function resumeLibraryFileOperations() {
 
 const handlers = {
   ingest: { plan: planIngest, apply: applyIngestItem, finish: finishIngest },
-  organize: { plan: planOrganize, apply: applyOrganizeItem, finish: finishOrganize },
+  cleanup: { plan: planCleanup, apply: applyCleanupItem, finish: finishCleanup },
 };
 
 async function requestScan(request) {
@@ -91,7 +85,7 @@ async function finish(operation, handler, status) {
 }
 
 async function applyBatch(operation, handler, deadline) {
-  const context = operation.kind === "organize" ? createOrganizeContext() : null;
+  const context = operation.kind === "cleanup" ? createCleanupContext() : null;
   await context?.prepare();
   const processed = [];
   let cancelled = false;
@@ -185,9 +179,9 @@ export function describeLibraryFileOperation(operation) {
     counts,
     progress: operation.status === "planning"
       ? {
-          done: operation.kind === "organize" ? cursor?.next || 0 : total - (counts.new || 0),
-          total: operation.kind === "organize" ? cursor?.albumIds?.length || 0 : total,
-          unit: operation.kind === "organize" ? "albums" : "files",
+          done: operation.kind === "cleanup" ? cursor?.next || 0 : total - (counts.new || 0),
+          total: operation.kind === "cleanup" ? cursor?.albumIds?.length || 0 : total,
+          unit: operation.kind === "cleanup" ? "albums" : "files",
         }
       : { done: total - (counts.pending || 0), total, unit: "files" },
     error: operation.error,
@@ -207,7 +201,6 @@ export function describeLibraryFileOperationItems(operation, options) {
     source: relative(sourceRoot, item.sourcePath),
     target: relative(downloadRoot, item.targetPath),
     actions: item.details.actions || [item.details.action].filter(Boolean),
-    quality: item.details.quality || null,
     results: item.details.results || null,
   }));
 }

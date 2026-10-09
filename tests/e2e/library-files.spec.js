@@ -17,7 +17,7 @@ function makeTrack(file, tags) {
   ]);
 }
 
-test("ingest a folder from Settings, then organize it from the Library", async ({ page }) => {
+test("ingest a folder as monitored tracks, then clean up the Library", async ({ page }) => {
   test.setTimeout(180_000);
   const stamp = Date.now().toString(36);
   const artistName = `Ingest Journey ${stamp}`;
@@ -26,22 +26,15 @@ test("ingest a folder from Settings, then organize it from the Library", async (
   makeTrack(path.join(source, "old rip", "b.flac"), { artist: artistName, album: "First Album", title: "Closing", track: 2 });
 
   await openApp(page);
-  const before = await apiRequest(page, "/api/settings");
-  const previousLibraryFiles = before.body?.libraryFiles || {};
   let downloadRoot = null;
   try {
-    expect((await apiRequest(page, "/api/settings", {
-      method: "POST",
-      body: { libraryFiles: { rename: true } },
-    })).ok).toBe(true);
-
     await page.goto("/settings/library-files");
-    await expect(page.getByRole("switch", { name: "Rename files" })).toBeChecked();
     const folder = page.locator("#library-ingest-source");
     await folder.fill(source);
     await folder.press("Enter");
     await expect(page.getByText("2 music files found.")).toBeVisible({ timeout: 15_000 });
     await page.locator("#library-ingest-mode").selectOption("copy");
+    await page.locator("#library-ingest-monitor").selectOption("tracks");
     await page.getByRole("button", { name: "Preview ingest" }).click();
 
     await expect(page.getByText("Preview ready. Nothing changes until you apply it.")).toBeInViewport({ timeout: 30_000 });
@@ -58,6 +51,13 @@ test("ingest a folder from Settings, then organize it from the Library", async (
       artist = (artists.body || []).find((entry) => entry.name === artistName) || null;
       return artist?.monitored;
     }, { timeout: 60_000 }).toBe(false);
+    await expect.poll(async () => {
+      const albums = await apiRequest(page, `/api/library/albums?artistId=${artist.id}&readPath=canonical`);
+      const album = (albums.body || [])[0];
+      if (!album) return null;
+      const tracks = await apiRequest(page, `/api/library/tracks?albumId=${album.id}&readPath=canonical`);
+      return (tracks.body || []).map((track) => track.monitored);
+    }, { timeout: 60_000 }).toEqual([true, true]);
 
     const check = await apiRequest(page, "/api/library/files/ingest/check", {
       method: "POST",
@@ -66,19 +66,18 @@ test("ingest a folder from Settings, then organize it from the Library", async (
     downloadRoot = check.body?.downloadRoot;
     expect(fs.existsSync(path.join(downloadRoot, artistName, "First Album", "02 - Closing.flac"))).toBe(true);
 
+    await page.getByRole("button", { name: "Preview clean up" }).click();
+    const settled = page.getByText(/^(Preview ready\. Nothing changes until you apply it\.|Finished\. Nothing needed to change\.)$/);
+    await expect(settled).toBeInViewport({ timeout: 120_000 });
+    await page.screenshot({ path: test.info().outputPath("cleanup-preview.png"), fullPage: true });
+    if (await page.getByText("Preview ready. Nothing changes until you apply it.").isVisible()) {
+      await page.getByRole("button", { name: "Cancel" }).click();
+      await expect(page.getByText("Cancelled. Changes already made stay.")).toBeVisible({ timeout: 30_000 });
+    }
+
     await page.goto(`/library/artist/${artist.id}`);
     await page.getByRole("button", { name: `${artistName} options` }).first().click();
-    await page.getByRole("menuitem", { name: "Organize files…" }).click();
-    const dialog = page.getByRole("dialog", { name: `Organize ${artistName}` });
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "Preview changes" }).click();
-    await expect(dialog.getByText("Finished. Nothing needed to change.")).toBeVisible({ timeout: 30_000 });
-    await expect(dialog.getByText("2 files already in order")).toBeVisible();
-    await page.screenshot({ path: test.info().outputPath("organize-preview.png"), fullPage: true });
-    await dialog.getByRole("button", { name: "Done" }).click();
-    await expect(dialog).toHaveCount(0);
-
-    await page.getByRole("button", { name: `${artistName} options` }).first().click();
+    await expect(page.getByRole("menuitem", { name: "Organize files…" })).toHaveCount(0);
     await page.getByRole("menuitem", { name: "Delete artist", exact: true }).click();
     const removal = page.getByRole("alertdialog", { name: "Delete artist" });
     await removal.getByLabel("Delete artist files").check();
@@ -88,57 +87,7 @@ test("ingest a folder from Settings, then organize it from the Library", async (
     const remaining = await apiRequest(page, "/api/library/artists");
     expect((remaining.body || []).some((entry) => entry.name === artistName)).toBe(false);
   } finally {
-    await apiRequest(page, "/api/settings", { method: "POST", body: { libraryFiles: previousLibraryFiles } });
     fs.rmSync(source, { recursive: true, force: true });
     if (downloadRoot) fs.rmSync(path.join(downloadRoot, artistName), { recursive: true, force: true });
-  }
-});
-
-test("Preview changes waits for a setting turned on while an earlier save is still running", async ({ page }) => {
-  await openApp(page);
-  const before = await apiRequest(page, "/api/settings");
-  const restore = {
-    libraryFiles: before.body?.libraryFiles || {},
-    qualityProfile: before.body?.qualityProfile || {},
-  };
-  let operationId = null;
-  try {
-    expect((await apiRequest(page, "/api/settings", {
-      method: "POST",
-      body: {
-        libraryFiles: { ...restore.libraryFiles, rename: false },
-        qualityProfile: { ...restore.qualityProfile, libraryTracks: false },
-      },
-    })).ok).toBe(true);
-    await page.goto("/settings/library-files");
-
-    let release;
-    const held = new Promise((resolve) => { release = resolve; });
-    let holding = true;
-    await page.route("**/api/settings", async (route) => {
-      if (route.request().method() === "POST" && holding) {
-        holding = false;
-        await held;
-      }
-      await route.continue();
-    });
-
-    const firstSave = page.waitForRequest((request) => request.method() === "POST" && request.url().endsWith("/api/settings"));
-    await page.getByRole("switch", { name: "Rename files" }).check();
-    await firstSave;
-    await page.getByRole("switch", { name: "Upgrade every monitored track" }).check();
-    const started = page.waitForResponse((response) => response.url().endsWith("/api/library/files/organize"));
-    await page.getByRole("button", { name: "Preview changes" }).click();
-    release();
-
-    const response = await started;
-    operationId = (await response.json().catch(() => null))?.operation?.id || null;
-    expect(response.status(), await response.text()).toBeLessThan(300);
-  } finally {
-    await page.unrouteAll({ behavior: "ignoreErrors" });
-    if (operationId) {
-      await apiRequest(page, `/api/library/files/operations/${encodeURIComponent(operationId)}/cancel`, { method: "POST" });
-    }
-    await apiRequest(page, "/api/settings", { method: "POST", body: restore });
   }
 });

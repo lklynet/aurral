@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import express from "express";
 
-import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.js";
+import { cleanupIsolatedState, resetDatabase, setupIsolatedBackend } from "../helpers/backendTestHarness.js";
 
 const [
   isolatedState,
@@ -129,6 +129,13 @@ const originalWorkerStart = downloadWorker.start;
 
 test.before(async () => {
   await fs.mkdir(managedRoot, { recursive: true });
+  downloadWorker.start = async () => {};
+});
+
+test.beforeEach(() => {
+  downloadTracker.clearAll();
+  resetDatabase(db);
+  db.prepare("DELETE FROM library_management").run();
   dbOps.updateSettings({
     ...originalSettings,
     downloadFolderPath: managedRoot,
@@ -137,11 +144,6 @@ test.before(async () => {
       slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
     },
   });
-  downloadWorker.start = async () => {};
-});
-
-test.beforeEach(() => {
-  downloadTracker.clearAll();
 });
 
 test.after(async () => {

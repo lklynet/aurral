@@ -375,6 +375,8 @@ const {
       changedPaths,
       force,
     });
+    const { applyIngestMonitoring } = await import("./libraryFiles/ingest.js");
+    await applyIngestMonitoring();
     if (scanResult?.lidarr?.error) {
       throw new Error(`Lidarr library indexing failed: ${scanResult.lidarr.error}`);
     }

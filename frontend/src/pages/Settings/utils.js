@@ -41,9 +41,6 @@ export const normalizeSettings = (savedSettings) => {
       ? savedSettings.reviewTimeoutHours
       : 0,
     pathMappings: Array.isArray(savedSettings.pathMappings) ? savedSettings.pathMappings : [],
-    libraryFiles: {
-      rename: savedSettings.libraryFiles?.rename === true,
-    },
     playlistArtwork: {
       ...playlistArtwork,
       style: playlistArtworkStyle,

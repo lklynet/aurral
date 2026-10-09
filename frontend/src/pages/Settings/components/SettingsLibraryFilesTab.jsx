@@ -3,7 +3,6 @@ import { FolderInput, FolderSync } from "lucide-react";
 import DownloadFolderField from "../../../components/DownloadFolderField";
 import { DotLoader } from "../../../components/DotLoader";
 import LibraryFileOperation, { LibraryFileOperationActions } from "../../../components/LibraryFileOperation";
-import PillToggle from "../../../components/PillToggle";
 import {
   ACTIVE_LIBRARY_FILE_STATUSES,
   refreshLibraryFiles,
@@ -12,8 +11,8 @@ import {
 } from "../../../hooks/useLibraryFileOperation.js";
 import {
   checkLibraryIngestSource,
+  startLibraryCleanup,
   startLibraryIngest,
-  startLibraryOrganize,
 } from "../../../utils/api/endpoints/library.js";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { SettingsSelect } from "./SettingsField";
@@ -24,11 +23,10 @@ const MODE_HELP = {
   hardlink: "Links each file into the Downloads Folder without using more space. Upgrading a linked file later gives the Library its own copy.",
 };
 
-const ACTION_NAMES = { rename: "rename files", upgrade: "search for upgrades" };
-
-const listActions = (actions) => {
-  const names = actions.map((action) => ACTION_NAMES[action]);
-  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0] || "";
+const MONITOR_HELP = {
+  none: "The music is added and left alone. You can monitor it later from Library.",
+  tracks: "Each ingested track is upgraded until it meets the quality profile's cutoff, when Automatic upgrades is on in Download clients.",
+  albums: "Each ingested track is upgraded, and Aurral downloads the tracks its album is missing.",
 };
 
 const errorMessage = (error, fallback) =>
@@ -37,13 +35,13 @@ const errorMessage = (error, fallback) =>
 function operationTitle(operation) {
   if (!operation) return "";
   if (operation.kind === "ingest") return `Ingest from ${operation.options?.sourcePath || "a folder"}`;
-  const scope = operation.options?.scope?.kind;
-  return scope === "artist" ? "Organize an artist" : scope === "album" ? "Organize an album" : "Organize the Library";
+  return "Clean up Library";
 }
 
 function IngestSection({ busy, onStarted, showError }) {
   const [sourcePath, setSourcePath] = useState("");
   const [mode, setMode] = useState("copy");
+  const [monitor, setMonitor] = useState("none");
   const [check, setCheck] = useState({ loading: false, result: null, error: "" });
   const [starting, setStarting] = useState(false);
   const requestRef = useRef(0);
@@ -80,7 +78,7 @@ function IngestSection({ busy, onStarted, showError }) {
   const start = async () => {
     setStarting(true);
     try {
-      await startLibraryIngest(result.sourcePath, mode);
+      await startLibraryIngest(result.sourcePath, mode, monitor);
       await onStarted();
     } catch (error) {
       showError(errorMessage(error, "The ingest could not start. Nothing was changed."));
@@ -93,7 +91,7 @@ function IngestSection({ busy, onStarted, showError }) {
     <SettingsArrFieldSet legend="Ingest a folder">
       <div className="arr-info">
         Bring music from another folder into the Downloads Folder under Aurral&apos;s names. Aurral never
-        overwrites a file. New artists and albums start Not monitored.
+        overwrites a file.
       </div>
       <SettingsArrFormGroup label="Folder" labelFor="library-ingest-source" help={folderHelp} helpWarning={Boolean(check.error)}>
         <DownloadFolderField
@@ -113,6 +111,13 @@ function IngestSection({ busy, onStarted, showError }) {
           <option value="move">Move</option>
           <option value="copy">Copy</option>
           <option value="hardlink" disabled={Boolean(hardlinkUnavailable)}>Hardlink</option>
+        </SettingsSelect>
+      </SettingsArrFormGroup>
+      <SettingsArrFormGroup label="Monitor" labelFor="library-ingest-monitor" help={MONITOR_HELP[monitor]}>
+        <SettingsSelect id="library-ingest-monitor" value={monitor} onChange={(event) => setMonitor(event.target.value)}>
+          <option value="none">None</option>
+          <option value="tracks">Tracks</option>
+          <option value="albums">Albums</option>
         </SettingsSelect>
       </SettingsArrFormGroup>
       {result?.lidarrRoot ? (
@@ -138,19 +143,13 @@ function IngestSection({ busy, onStarted, showError }) {
   );
 }
 
-export function SettingsLibraryFilesTab({
-  settings,
-  updateSettings,
-  hasUnsavedChanges,
-  handleSaveSettings,
-  showError,
-}) {
+export function SettingsLibraryFilesTab({ showError }) {
   const files = useLibraryFiles();
   const operationId = files.data?.operation?.id ?? null;
   const operationQuery = useLibraryFileOperation(operationId);
   const operation = operationQuery.data || files.data?.operation || null;
   const active = operation && ACTIVE_LIBRARY_FILE_STATUSES.has(operation.status);
-  const [organizing, setOrganizing] = useState(false);
+  const [cleaningUp, setCleaningUp] = useState(false);
   const [following, setFollowing] = useState(false);
   const operationRef = useRef(null);
 
@@ -160,14 +159,6 @@ export function SettingsLibraryFilesTab({
     setFollowing(false);
   }, [following, operationId]);
 
-  const libraryFiles = settings.libraryFiles || {};
-  const upgrade = settings.qualityProfile?.libraryTracks === true;
-  const actions = [
-    libraryFiles.rename === true && "rename",
-    upgrade && "upgrade",
-  ].filter(Boolean);
-
-  const update = (patch) => updateSettings({ ...settings, libraryFiles: { ...libraryFiles, ...patch } });
   const refresh = async () => {
     await refreshLibraryFiles();
   };
@@ -176,91 +167,57 @@ export function SettingsLibraryFilesTab({
     await refresh();
   };
 
-  const organize = async () => {
-    setOrganizing(true);
+  const cleanUp = async () => {
+    setCleaningUp(true);
     try {
-      if (hasUnsavedChanges && (await handleSaveSettings()) !== true) return;
-      await startLibraryOrganize({ kind: "library" }, actions);
+      await startLibraryCleanup();
       await follow();
     } catch (error) {
-      showError(errorMessage(error, "Organize could not start. Nothing was changed."));
+      showError(errorMessage(error, "Clean up could not start. Nothing was changed."));
     } finally {
-      setOrganizing(false);
+      setCleaningUp(false);
     }
   };
 
-  const operationSection = operation ? (
-    <div ref={operationRef}>
-      <SettingsArrFieldSet
-        legend={active ? operationTitle(operation) : `Last run: ${operationTitle(operation)}`}
-        actions={<LibraryFileOperationActions operation={operation} onChanged={refresh} showError={showError} />}
-      >
-        <LibraryFileOperation operation={operation} />
-      </SettingsArrFieldSet>
-    </div>
-  ) : null;
-
   return (
     <div className="arr-page">
-      <form onSubmit={handleSaveSettings} className="arr-form" autoComplete="off">
-        {operationSection}
-        <SettingsArrFieldSet legend="File naming">
-          <div className="arr-info">
-            Aurral keeps each track at <code>Artist/Album/07 - Title.flac</code> in the Downloads Folder.
-            Downloads, ingest, and renaming use the same names.
+      <div className="arr-form">
+        {operation ? (
+          <div ref={operationRef}>
+            <SettingsArrFieldSet
+              legend={active ? operationTitle(operation) : `Last run: ${operationTitle(operation)}`}
+              actions={<LibraryFileOperationActions operation={operation} onChanged={refresh} showError={showError} />}
+            >
+              <LibraryFileOperation operation={operation} />
+            </SettingsArrFieldSet>
           </div>
-          <SettingsArrFormGroup
-            label="Rename files"
-            help="Organize moves Library files to Aurral's names. Playlists, favorites, and media servers follow the files."
-          >
-            <PillToggle
-              className="settings-toggle"
-              checked={libraryFiles.rename === true}
-              onChange={(event) => update({ rename: event.target.checked })}
-              aria-label="Rename files"
-            />
-          </SettingsArrFormGroup>
-          <SettingsArrFormGroup
-            label="Upgrade every monitored track"
-            help="Upgrades also cover monitored tracks that Aurral did not download, following the quality profile in Download clients."
-          >
-            <PillToggle
-              className="settings-toggle"
-              checked={upgrade}
-              onChange={(event) => updateSettings({
-                ...settings,
-                qualityProfile: { ...settings.qualityProfile, libraryTracks: event.target.checked },
-              })}
-              aria-label="Upgrade every monitored track"
-            />
-          </SettingsArrFormGroup>
-        </SettingsArrFieldSet>
+        ) : null}
 
-        <SettingsArrFieldSet legend="Organize the Library">
+        <IngestSection busy={Boolean(active)} onStarted={follow} showError={showError} />
+
+        <SettingsArrFieldSet legend="Clean up Library">
           <div className="arr-info">
-            {actions.length
-              ? `Preview how Aurral would ${listActions(actions)} for every Library file in the Downloads Folder. Lidarr's files stay with Lidarr. To organize one artist or album, use its menu in Library.`
-              : "Turn on Rename files or Upgrade every monitored track to organize the Library."}
+            Renames Library files in the Downloads Folder to Aurral&apos;s names, <code>Artist/Album/07 - Title.flac</code>,
+            for music you added by hand. Playlists, favorites, and media servers follow the files. Lidarr&apos;s files
+            stay with Lidarr. Downloads already get these names.
           </div>
           <div className="settings-library-files__actions">
             <button
               type="button"
               className="arr-btn arr-btn--primary"
-              disabled={!actions.length || active || organizing}
-              onClick={organize}
+              disabled={active || cleaningUp}
+              onClick={cleanUp}
             >
-              {organizing ? <DotLoader size="sm" label={null} /> : <FolderSync className="artist-icon-xs" aria-hidden />}
-              Preview changes
+              {cleaningUp ? <DotLoader size="sm" label={null} /> : <FolderSync className="artist-icon-xs" aria-hidden />}
+              Preview clean up
             </button>
           </div>
         </SettingsArrFieldSet>
 
-        <IngestSection busy={Boolean(active)} onStarted={follow} showError={showError} />
-
         {files.isError ? (
           <p className="arr-form-help arr-form-help--warning">Could not load library file operations. Reload the page to try again.</p>
         ) : null}
-      </form>
+      </div>
     </div>
   );
 }

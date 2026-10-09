@@ -20,7 +20,7 @@ const [
   { scanMusicRoot },
   operations,
   { getLibraryFileOperation },
-  { checkIngestSource },
+  { applyIngestMonitoring, checkIngestSource },
   { resolveDownloadRoot },
 ] = await setupIsolatedBackend(
   "library-ingest",
@@ -55,8 +55,8 @@ async function runUntilSettled(id) {
   throw new Error("operation did not settle");
 }
 
-async function ingest(sourcePath, mode) {
-  const operation = await operations.startIngest({ sourcePath, mode });
+async function ingest(sourcePath, mode, monitor) {
+  const operation = await operations.startIngest({ sourcePath, mode, monitor });
   assert.match((await runUntilSettled(operation.id)).status, /^(ready|complete)$/);
   return operation.id;
 }
@@ -107,11 +107,45 @@ test("copy files music under Aurral's names, keeps the source, and starts unmoni
   assert.notEqual((await stat(first)).ino, (await stat(path.join(albumDir, "01 - First_ Song.flac"))).ino);
 
   await scanMusicRoot({ rootPath: root, source: "aurral" });
+  await applyIngestMonitoring();
   const [album] = libraryAlbums();
   assert.equal(album.title, "Copy Album");
   assert.equal(JSON.parse(album.metadata_json).monitored, false);
   assert.deepEqual(db.prepare("SELECT monitored FROM library_tracks").pluck().all(), [0, 0]);
   assert.equal(db.prepare("SELECT monitor_mode FROM library_management WHERE entity_kind = 'artist'").get(), undefined);
+});
+
+async function ingestBesideExistingTrack(monitor) {
+  await makeTrack(path.join(root, "Watch", "Album", "01 - Kept.flac"), {
+    artist: "Watch", album: "Album", title: "Kept", track: "1",
+  });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const source = newSource();
+  await makeTrack(path.join(source, "b.flac"), { artist: "Watch", album: "Album", title: "Added", track: "2" });
+  await apply(await ingest(source, "copy", monitor));
+  await applyIngestMonitoring();
+  const monitored = () => Object.fromEntries(
+    db.prepare("SELECT title, monitored FROM library_tracks ORDER BY title").all().map((row) => [row.title, row.monitored]),
+  );
+  assert.deepEqual(monitored(), { Kept: 0 });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  await applyIngestMonitoring();
+  return {
+    tracks: monitored(),
+    album: db.prepare("SELECT monitor_mode FROM library_management WHERE entity_kind = 'album'").pluck().get(),
+  };
+}
+
+test("ingesting as Tracks monitors the ingested tracks once the scan finds them, and nothing else", async () => {
+  assert.deepEqual(await ingestBesideExistingTrack("tracks"), { tracks: { Added: 1, Kept: 0 }, album: null });
+});
+
+test("ingesting as Albums also monitors each ingested track's album", async () => {
+  assert.deepEqual(await ingestBesideExistingTrack("albums"), { tracks: { Added: 1, Kept: 1 }, album: "monitored" });
+});
+
+test("an ingest refuses a Monitor choice it does not know", async () => {
+  await assert.rejects(operations.startIngest({ sourcePath: newSource(), mode: "copy", monitor: "artists" }), /Choose None/);
 });
 
 test("never overwrites: a different file in the way stays, and the source is listed for review", async () => {

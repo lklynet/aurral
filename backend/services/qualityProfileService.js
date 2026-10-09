@@ -137,7 +137,7 @@ export async function reclassifyQualityJobs({ enqueue = false } = {}) {
 
 const UPGRADE_SOURCE_IDS = new Set(["slskd", "usenet", "deemix"]);
 
-export function hasUpgradeSource() {
+function hasUpgradeSource() {
   return getEnabledDownloadSources().some((source) => UPGRADE_SOURCE_IDS.has(source.id));
 }
 
@@ -165,7 +165,7 @@ export async function queueQualityUpgrade(job) {
   return "queued";
 }
 
-export function classifyLibraryFileQuality(file) {
+function classifyLibraryFileQuality(file) {
   let stored = {};
   try {
     stored = JSON.parse(file.quality_json || "{}") || {};
@@ -182,11 +182,10 @@ export function classifyLibraryFileQuality(file) {
 
 // Monitored Library tracks whose file Aurral did not download have no job
 // yet. Each one below the cutoff gets the Library job an upgrade replaces.
-export function listLibraryUpgradeCandidates({ trackIds = null, profile = getQualityProfile() } = {}) {
+function listLibraryUpgradeCandidates(profile) {
   const jobPaths = new Set(downloadTracker.getAll()
     .filter((job) => job.status === "done" && job.finalPath && !job.upgradeForJobId)
     .map((job) => path.resolve(job.finalPath)));
-  const scope = Array.isArray(trackIds) ? new Set(trackIds.map(Number)) : null;
   const candidates = [];
   for (const file of db.prepare(
     `SELECT media.path, media.track_id, media.album_id, media.quality_json
@@ -195,7 +194,6 @@ export function listLibraryUpgradeCandidates({ trackIds = null, profile = getQua
      WHERE media.source = 'aurral' AND media.available = 1 AND track.monitored = 1
      ORDER BY media.id`,
   ).iterate()) {
-    if (scope && !scope.has(file.track_id)) continue;
     const filePath = path.resolve(file.path);
     if (jobPaths.has(filePath) || !isAurralOwnedPath(filePath)) continue;
     const quality = classifyLibraryFileQuality(file);
@@ -209,7 +207,7 @@ async function queueLibraryTrackUpgrades(limit, profile) {
   if (limit <= 0 || !hasUpgradeSource()) return 0;
   const { resolveAurralOwnedTrackJob } = await import("./libraryTrackResearchService.js");
   let queued = 0;
-  for (const candidate of listLibraryUpgradeCandidates({ profile })) {
+  for (const candidate of listLibraryUpgradeCandidates(profile)) {
     if (queued >= limit) break;
     const job = resolveAurralOwnedTrackJob({ trackId: candidate.trackId, albumId: candidate.albumId });
     if (job && await queueQualityUpgrade(job) === "queued") queued += 1;
@@ -238,7 +236,7 @@ export async function runQualityUpgradeCheck({ force = false, playlistId = null,
     if (!force && Number(current?.qualityUpgradeCheckedAt || 0) > dueBefore) continue;
     if (await queueQualityUpgrade(current) === "queued") queued += 1;
   }
-  if (profile.libraryTracks && (!playlistId || playlistId === "library")) {
+  if (!playlistId || playlistId === "library") {
     queued += await queueLibraryTrackUpgrades(limit - queued, profile);
   }
   return queued;

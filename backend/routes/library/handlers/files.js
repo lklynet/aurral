@@ -1,16 +1,14 @@
 import { noCache } from "../../../middleware/cache.js";
 import { requireAdmin, requireAuth } from "../../../middleware/requirePermission.js";
-import { dbOps } from "../../../db/helpers/index.js";
 import { lidarrClient } from "../../../services/lidarrClient.js";
 import { checkIngestSource } from "../../../services/libraryFiles/ingest.js";
-import { enabledOrganizeActions } from "../../../services/libraryFiles/organize.js";
 import {
   cancelLibraryFileOperation,
   confirmLibraryFileOperation,
   describeLibraryFileOperation,
   describeLibraryFileOperationItems,
+  startCleanup,
   startIngest,
-  startOrganize,
 } from "../../../services/libraryFiles/operations.js";
 import {
   getLatestLibraryFileOperation,
@@ -27,7 +25,7 @@ function sendError(res, error) {
       operation: describeLibraryFileOperation(error.operation),
     });
   }
-  if (error?.code === "INGEST_SOURCE_INVALID" || error?.code === "ORGANIZE_OPTIONS_INVALID") {
+  if (error?.code === "INGEST_SOURCE_INVALID") {
     return res.status(400).json({ error: "invalid_request", message: error.message });
   }
   return res.status(500).json({ error: "library_files_failed", message: error?.message || "Library file operation failed" });
@@ -41,11 +39,7 @@ function findOperation(req, res) {
 
 export function registerFiles(router) {
   router.get("/files", requireAuth, requireAdmin, noCache, (_req, res) => {
-    const settings = dbOps.getSettings();
-    res.json({
-      enabledActions: enabledOrganizeActions(settings),
-      operation: describeLibraryFileOperation(getLatestLibraryFileOperation()),
-    });
+    res.json({ operation: describeLibraryFileOperation(getLatestLibraryFileOperation()) });
   });
 
   router.post("/files/ingest/check", requireAuth, requireAdmin, async (req, res) => {
@@ -58,16 +52,20 @@ export function registerFiles(router) {
 
   router.post("/files/ingest", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const operation = await startIngest({ sourcePath: req.body?.sourcePath, mode: req.body?.mode });
+      const operation = await startIngest({
+        sourcePath: req.body?.sourcePath,
+        mode: req.body?.mode,
+        monitor: req.body?.monitor,
+      });
       res.status(202).json({ operation: describeLibraryFileOperation(operation) });
     } catch (error) {
       sendError(res, error);
     }
   });
 
-  router.post("/files/organize", requireAuth, requireAdmin, async (req, res) => {
+  router.post("/files/cleanup", requireAuth, requireAdmin, async (_req, res) => {
     try {
-      const operation = await startOrganize({ scope: req.body?.scope, actions: req.body?.actions });
+      const operation = await startCleanup();
       res.status(202).json({ operation: describeLibraryFileOperation(operation) });
     } catch (error) {
       sendError(res, error);

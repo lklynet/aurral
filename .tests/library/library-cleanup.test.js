@@ -27,7 +27,7 @@ const [
   { findUniqueLibrarySong },
   { getPlayQueue, savePlayQueue },
 ] = await setupIsolatedBackend(
-  "library-organize",
+  "library-cleanup",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
   "backend/services/libraryFileScanner.js",
@@ -65,8 +65,8 @@ async function runUntilSettled(id) {
   throw new Error("operation did not settle");
 }
 
-async function organize(scope, actions) {
-  const operation = await operations.startOrganize({ scope, actions });
+async function cleanUp() {
+  const operation = await operations.startCleanup();
   const ready = await runUntilSettled(operation.id);
   const preview = operations.describeLibraryFileOperationItems(ready, {});
   if (ready.status === "ready") assert.equal(await operations.confirmLibraryFileOperation(operation.id), true);
@@ -75,16 +75,14 @@ async function organize(scope, actions) {
   return { preview, items: operations.describeLibraryFileOperationItems(finished, {}) };
 }
 
-const albumNamed = (title) => db.prepare("SELECT * FROM library_albums WHERE title = ?").get(title);
 const mediaAt = (filePath) => db.prepare("SELECT * FROM library_media_files WHERE path = ?").get(filePath);
 
 const originalSettings = dbOps.getSettings();
 
-function useSettings({ rename = true, libraryTracks = true } = {}) {
+function useSettings() {
   dbOps.updateSettings({
     ...originalSettings,
-    libraryFiles: { rename },
-    qualityProfile: { ...originalSettings.qualityProfile, cutoff: "flac-standard", libraryTracks },
+    qualityProfile: { ...originalSettings.qualityProfile, cutoff: "flac-standard" },
     integrations: {
       ...originalSettings.integrations,
       slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
@@ -116,7 +114,7 @@ test("rename gives a file Aurral's name and keeps its Library row, jobs, and lyr
   const jobId = downloadTracker.addJob({ artistName: "Rename Artist", trackName: "Song" }, "library");
   downloadTracker.setDone(jobId, oldPath, "Rename Album");
 
-  const { preview, items } = await organize({ kind: "album", id: albumNamed("Rename Album").id }, ["rename"]);
+  const { preview, items } = await cleanUp();
 
   const newPath = path.join(root, "Rename Artist", "Rename Album", "03 - Song.flac");
   assert.deepEqual(preview.map((item) => [item.status, item.target]), [["pending", path.relative(root, newPath)]]);
@@ -138,7 +136,7 @@ test("a rename a restart interrupted still refreshes the playlists that use the 
   const refreshed = [];
   t.mock.method(playlistManager, "refreshPlaylist", async (playlistId) => { refreshed.push(playlistId); });
 
-  const operation = await operations.startOrganize({ scope: { kind: "album", id: albumNamed("Resume Album").id }, actions: ["rename"] });
+  const operation = await operations.startCleanup();
   await runUntilSettled(operation.id);
   const newPath = path.join(root, "Resume Artist", "Resume Album", "02 - Song.flac");
   await mkdir(path.dirname(newPath), { recursive: true });
@@ -158,25 +156,20 @@ test("rename never takes a name another file has", async () => {
   const oldPath = await makeTrack(path.join(root, "Clash", "x.flac"), {
     artist: "Clash", album: "Album", title: "Song", track: "1",
   });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
   const occupant = await makeTrack(path.join(root, "Clash", "Album", "01 - Song.flac"), {
     artist: "Clash", album: "Elsewhere", title: "Song", track: "1",
   });
-  await scanMusicRoot({ rootPath: root, source: "aurral" });
   const occupantBytes = await readFile(occupant);
 
-  const { items } = await organize({ kind: "album", id: albumNamed("Album").id }, ["rename"]);
+  const { items } = await cleanUp();
 
   assert.equal(items[0].status, "conflict");
   assert.equal(await exists(oldPath), true);
   assert.deepEqual(await readFile(occupant), occupantBytes);
 });
 
-test("organize refuses actions that are turned off", async () => {
-  useSettings({ rename: false, libraryTracks: false });
-  await assert.rejects(operations.startOrganize({ scope: { kind: "library" }, actions: ["rename"] }), /Turn on rename/);
-});
-
-test("upgrades reach monitored Library tracks that Aurral did not download", async () => {
+test("automatic upgrades reach monitored Library tracks that Aurral did not download, and no others", async () => {
   const mp3 = ["-c:a", "libmp3lame", "-b:a", "128k"];
   const monitored = await makeTrack(path.join(root, "Upgrade", "Album", "01 - Low.mp3"), {
     artist: "Upgrade", album: "Album", title: "Low", track: "1",
@@ -190,10 +183,6 @@ test("upgrades reach monitored Library tracks that Aurral did not download", asy
   const originalEnqueue = downloadTracker.enqueueDownloadPipeline;
   downloadTracker.enqueueDownloadPipeline = (id) => queued.push(id) > 0;
   try {
-    useSettings({ libraryTracks: false });
-    assert.equal(await qualityProfileService.runQualityUpgradeCheck({ force: true }), 0);
-
-    useSettings({ libraryTracks: true });
     assert.equal(await qualityProfileService.runQualityUpgradeCheck({ force: true }), 1);
     const upgrade = downloadTracker.getJob(queued[0]);
     assert.equal(downloadTracker.getJob(upgrade.upgradeForJobId).finalPath, monitored);

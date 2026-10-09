@@ -50,13 +50,6 @@ function normalizeMissingTrackSearchSettings(raw) {
   };
 }
 
-export function normalizeLibraryFilesSettings(raw) {
-  const files = raw && typeof raw === "object" ? raw : {};
-  return {
-    rename: files.rename === true,
-  };
-}
-
 export const MAX_REVIEW_TIMEOUT_HOURS = 720;
 
 // Hours a song may wait in review before it is denied; 0 waits indefinitely.
@@ -214,7 +207,6 @@ export const dbOps = {
     const reviewTimeoutHours = normalizeReviewTimeoutHours(
       getSettingStmt.get("reviewTimeoutHours")?.value,
     );
-    const libraryFiles = normalizeLibraryFilesSettings(readStoredSettingJson("libraryFiles"));
     const inbox = dbHelpers.parseJSON(getSettingStmt.get("inbox")?.value) || {};
     const blocklist = dbHelpers.parseJSON(
       getSettingStmt.get("blocklist")?.value
@@ -258,7 +250,6 @@ export const dbOps = {
       playlistWorker,
       playlistArtwork,
       missingTrackSearch,
-      libraryFiles,
       reviewTimeoutHours,
       inbox: {
         enabled: inbox.enabled !== false,
@@ -434,12 +425,6 @@ export const dbOps = {
           dbHelpers.stringifyJSON(
             normalizeMissingTrackSearchSettings(settings.missingTrackSearch),
           ),
-        );
-      }
-      if (settings.libraryFiles !== undefined) {
-        upsertSettingStmt.run(
-          "libraryFiles",
-          dbHelpers.stringifyJSON(normalizeLibraryFilesSettings(settings.libraryFiles)),
         );
       }
       if (settings.reviewTimeoutHours !== undefined) {

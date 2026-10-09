@@ -93,11 +93,10 @@ export const getLibraryFiles = () => getData("/library/files");
 export const checkLibraryIngestSource = (sourcePath) =>
   postData("/library/files/ingest/check", { sourcePath });
 
-export const startLibraryIngest = (sourcePath, mode) =>
-  postData("/library/files/ingest", { sourcePath, mode });
+export const startLibraryIngest = (sourcePath, mode, monitor) =>
+  postData("/library/files/ingest", { sourcePath, mode, monitor });
 
-export const startLibraryOrganize = (scope, actions) =>
-  postData("/library/files/organize", { scope, actions });
+export const startLibraryCleanup = () => postData("/library/files/cleanup");
 
 export const getLibraryFileOperation = (id) =>
   getData(`/library/files/operations/${encodeURIComponent(id)}`);

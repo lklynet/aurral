@@ -5,6 +5,9 @@ import { db } from "../../config/db-sqlite.js";
 import { buildLibraryTrackPath, isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.js";
 import { AUDIO_EXTENSIONS, buildMetadataRecord } from "../libraryFileScanner.js";
 import { configuredLidarrFolders, isPathWithin } from "../libraryFolders.js";
+import { getLibraryMediaFile } from "../libraryMediaStore.js";
+import { invalidateLibraryQueryCache } from "../libraryQueryService.js";
+import { logger, safeLogDiagnostic } from "../logger.js";
 import {
   ALBUM_IMAGE_EXTENSIONS,
   TRANSFER_MODES,
@@ -19,6 +22,7 @@ import { matchLibraryRecord } from "./libraryMatch.js";
 import {
   addLibraryFileOperationItems,
   deleteLibraryFileOperationItems,
+  getLibraryFileOperation,
   listLibraryFileOperationItems,
   updateLibraryFileOperation,
   updateLibraryFileOperationItem,
@@ -62,7 +66,7 @@ export async function resolveIngestSource(sourcePath, { downloadRoot = resolveDo
   const source = await fs.realpath(requested);
   const root = await fs.realpath(downloadRoot).catch(() => path.resolve(downloadRoot));
   if (isPathWithin(root, source)) {
-    throw new IngestSourceError("This folder is already in the Downloads Folder. Use Organize to rename files there.");
+    throw new IngestSourceError("This folder is already in the Downloads Folder. Use Clean up Library to rename files there.");
   }
   if (isPathWithin(source, root)) {
     throw new IngestSourceError("The Downloads Folder is inside this folder. Choose a folder outside it.");
@@ -91,8 +95,11 @@ export async function checkIngestSource({ sourcePath, lidarrClient = null } = {}
   };
 }
 
-export function validateIngestOptions({ mode } = {}) {
+const MONITOR_CHOICES = new Set(["none", "tracks", "albums"]);
+
+export function validateIngestOptions({ mode, monitor } = {}) {
   if (!TRANSFER_MODES.has(mode)) throw new IngestSourceError("Choose Move, Copy, or Hardlink.");
+  if (!MONITOR_CHOICES.has(monitor)) throw new IngestSourceError("Choose None, Tracks, or Albums to monitor.");
 }
 
 async function listSourceFiles(operation) {
@@ -306,9 +313,66 @@ export async function finishIngest(operation) {
     const deepestFirst = [...folders.keys()].sort((left, right) => right.length - left.length);
     for (const folder of deepestFirst) await removeEmptyDirectories(folder, sourceRoot);
   }
+  if (operation.options.monitor && operation.options.monitor !== "none") {
+    updateLibraryFileOperation(operation.id, { summary: { monitor: "pending" } });
+  }
   return ingestScanRequest(operation, items.map((item) => ({
     status: item.status,
     sourcePath: item.source_path,
     targetPath: item.target_path,
   })));
+}
+
+const fileExists = (filePath) => fs.lstat(filePath).then(() => true, () => false);
+
+async function monitorIngestedMusic(operation) {
+  const trackIds = new Set();
+  const albumIds = new Set();
+  const targets = db.prepare(
+    "SELECT target_path FROM library_file_operation_items WHERE operation_id = ? AND status = 'done'",
+  ).pluck().all(operation.id);
+  for (const target of targets) {
+    const media = getLibraryMediaFile({ source: "aurral", path: target });
+    if (media?.available === 1) {
+      trackIds.add(media.track_id);
+      if (media.album_id) albumIds.add(media.album_id);
+    } else if (await fileExists(target)) {
+      return;
+    }
+  }
+  const monitorTrack = db.prepare("UPDATE library_tracks SET monitored = 1 WHERE id = ?");
+  db.transaction(() => {
+    for (const trackId of trackIds) monitorTrack.run(trackId);
+  })();
+  invalidateLibraryQueryCache({ persistedGenres: false });
+  if (operation.options.monitor === "albums") {
+    const { libraryManager } = await import("../libraryManager.js");
+    for (const albumId of albumIds) {
+      const result = await libraryManager.setAurralAlbumMonitoring(albumId, { monitored: true });
+      if (result?.error) {
+        logger.warn("library-files", "Ingest could not monitor an album", { albumId, reason: result.error });
+      }
+    }
+  }
+  updateLibraryFileOperation(operation.id, { summary: { monitor: "applied" } });
+}
+
+// The Library learns about ingested files from a scan, so an ingest's Monitor
+// choice waits until the scan has indexed every file it placed.
+export async function applyIngestMonitoring() {
+  const pending = db.prepare(
+    `SELECT id FROM library_file_operations
+     WHERE kind = 'ingest' AND json_extract(summary_json, '$.monitor') = 'pending'
+     ORDER BY id`,
+  ).pluck().all();
+  for (const id of pending) {
+    try {
+      await monitorIngestedMusic(getLibraryFileOperation(id));
+    } catch (error) {
+      logger.warn("library-files", "Ingest could not monitor its music", {
+        operationId: id,
+        reason: safeLogDiagnostic(error),
+      });
+    }
+  }
 }

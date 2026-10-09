@@ -162,18 +162,17 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   "library-files": {
-    sections: ["File naming", "Organize the Library", "Ingest a folder"],
+    sections: ["Ingest a folder", "Clean up Library"],
     services: {
-      Ingest: "import existing music library folder move copy hardlink Lidarr root",
-      Organize: "rename upgrade files media management",
+      Ingest: "import existing music library folder move copy hardlink Lidarr root monitor",
+      "Clean up Library": "rename organize files naming folders media management",
     },
     fields: {
-      "Rename files": "naming folders file names Artist Album Title organize",
-      "Upgrade every monitored track": "quality upgrades library tracks cutoff",
       Folder: "source folder existing music import",
       Mode: "move copy hardlink",
-      "Preview changes": "organize rename upgrade preview",
+      Monitor: "monitored unmonitored upgrade tracks albums",
       "Preview ingest": "ingest import preview",
+      "Preview clean up": "clean up rename organize preview",
     },
   },
   playback: {

@@ -29,13 +29,6 @@ const ACTION_LABELS = {
   hardlink: "Hardlink",
   "remove-duplicate": "Remove source copy",
   rename: "Rename",
-  upgrade: "Upgrade",
-};
-
-const UPGRADE_RESULTS = {
-  queued: "Upgrade search queued",
-  "already-queued": "An upgrade search was already queued",
-  ineligible: "No upgrade search",
 };
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -82,17 +75,8 @@ function itemStatusLabel(item, operation) {
   }[item.status] || item.status;
 }
 
-function itemNotes(item) {
-  const notes = [];
-  if (item.reason) notes.push(item.reason);
-  if (item.quality && !item.results?.upgrade) notes.push(`Upgrade from ${item.quality}`);
-  if (item.results?.upgrade) notes.push(UPGRADE_RESULTS[item.results.upgrade] || item.results.upgrade);
-  return notes;
-}
-
 function OperationItem({ item, operation }) {
   const action = itemActionLabel(item, operation);
-  const notes = itemNotes(item);
   return (
     <li className={`library-file-op__item is-${item.status}`}>
       <div className="library-file-op__item-head">
@@ -108,12 +92,12 @@ function OperationItem({ item, operation }) {
           </>
         ) : null}
       </div>
-      {notes.length ? <p className="library-file-op__notes">{notes.join(". ")}</p> : null}
+      {item.reason ? <p className="library-file-op__notes">{item.reason}</p> : null}
     </li>
   );
 }
 
-export function LibraryFileOperationActions({ operation, onChanged, showError, buttonClassName = "arr-btn", primaryClassName = "arr-btn arr-btn--primary" }) {
+export function LibraryFileOperationActions({ operation, onChanged, showError }) {
   const [pending, setPending] = useState("");
   if (!operation || !ACTIVE_LIBRARY_FILE_STATUSES.has(operation.status)) return null;
   const run = async (kind, request) => {
@@ -132,14 +116,14 @@ export function LibraryFileOperationActions({ operation, onChanged, showError, b
   const changes = Number(operation.counts?.pending || 0);
   return (
     <>
-      <button type="button" className={buttonClassName} disabled={Boolean(pending)} onClick={() => run("cancel", cancelLibraryFileOperation)}>
+      <button type="button" className="arr-btn" disabled={Boolean(pending)} onClick={() => run("cancel", cancelLibraryFileOperation)}>
         {pending === "cancel" ? <DotLoader size="sm" label={null} /> : null}
         {operation.status === "running" ? "Stop" : "Cancel"}
       </button>
       {operation.status === "ready" ? (
         <button
           type="button"
-          className={primaryClassName}
+          className="arr-btn arr-btn--primary"
           disabled={Boolean(pending) || changes === 0}
           onClick={() => run("start", startLibraryFileOperation)}
         >
@@ -198,8 +182,8 @@ export default function LibraryFileOperation({ operation }) {
           </div>
         ) : null}
       </div>
-      {operation.summary?.notice ? (
-        <p className="library-file-op__notice">{operation.summary.notice}</p>
+      {operation.summary?.monitor === "pending" ? (
+        <p className="library-file-op__notice">Aurral monitors this music once the Library scan has found it.</p>
       ) : null}
       {groups.length || unchanged ? (
         <div className="library-file-op__groups" role="group" aria-label="Show files">

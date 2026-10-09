@@ -37,7 +37,6 @@ export function createDefaultQualityProfile(slskd = {}) {
     cutoff: preferred === "mp3" ? "mp3-320" : "flac-standard",
     automaticUpgrades: false,
     intervalDays: 2,
-    libraryTracks: false,
   };
 }
 
@@ -73,7 +72,6 @@ export function normalizeQualityProfile(value, slskd = {}) {
     cutoff,
     automaticUpgrades: raw.automaticUpgrades === true,
     intervalDays: normalizeIntervalDays(raw.intervalDays, 2),
-    libraryTracks: raw.libraryTracks === true,
   };
 }
 

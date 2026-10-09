@@ -102,10 +102,10 @@ WebSocket connections.
 | `POST` | `/api/library/refresh` | Queue a library scan. `mode` is `quick`, the default, or `full` to read every file again |
 | `GET` | `/api/library/refresh` | Read the ID and status of the scheduled library scan |
 | `GET` | `/api/library/refresh/:jobId` | Read the status of a library scan |
-| `GET` | `/api/library/files` | Read the enabled Organize actions and the latest ingest or organize operation. Admin only |
+| `GET` | `/api/library/files` | Read the latest ingest or clean up operation. Admin only |
 | `POST` | `/api/library/files/ingest/check` | Check an ingest folder with `{ "sourcePath": "…" }`: music file count, whether Hardlink works, and any Lidarr root folder it is in |
-| `POST` | `/api/library/files/ingest` | Start an ingest preview with `{ "sourcePath": "…", "mode": "move" \| "copy" \| "hardlink" }`. Returns `409` while another operation runs |
-| `POST` | `/api/library/files/organize` | Start an organize preview with `{ "scope": { "kind": "library" \| "artist" \| "album", "id": … }, "actions": ["rename", "upgrade"] }`. Each action must be turned on in settings |
+| `POST` | `/api/library/files/ingest` | Start an ingest preview with `{ "sourcePath": "…", "mode": "move" \| "copy" \| "hardlink", "monitor": "none" \| "tracks" \| "albums" }`. `monitor` defaults to `none`. Returns `409` while another operation runs |
+| `POST` | `/api/library/files/cleanup` | Start a preview that renames Library files in the Downloads Folder to Aurral's names. Returns `409` while another operation runs |
 | `GET` | `/api/library/files/operations/:id` | Read an operation's status, progress, and counts |
 | `GET` | `/api/library/files/operations/:id/items` | Read an operation's files. Optional `status`, `offset`, and `limit` up to 200 |
 | `POST` | `/api/library/files/operations/:id/start` | Apply a finished preview |

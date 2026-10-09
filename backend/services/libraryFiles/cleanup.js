@@ -1,17 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { db } from "../../config/db-sqlite.js";
-import { dbOps } from "../../db/helpers/index.js";
 import { buildLibraryTrackPath, isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.js";
 import { downloadTracker } from "../downloadJobs/downloadTracker.js";
-import { getLibraryMediaFile, moveLibraryMediaFilePath } from "../libraryMediaStore.js";
-import {
-  classifyLibraryFileQuality,
-  getQualityProfile,
-  hasUpgradeSource,
-  queueQualityUpgrade,
-} from "../qualityProfileService.js";
-import { getQualityState, getQualityTier } from "../qualityProfileModel.js";
+import { moveLibraryMediaFilePath } from "../libraryMediaStore.js";
 import { ALBUM_IMAGE_EXTENSIONS, placeFile, removeEmptyDirectories, transferSidecars } from "./fileTransfer.js";
 import {
   addLibraryFileOperationItems,
@@ -19,48 +11,7 @@ import {
   updateLibraryFileOperationItem,
 } from "./operationStore.js";
 
-export const ORGANIZE_ACTIONS = ["rename", "upgrade"];
-
-export class OrganizeOptionsError extends Error {
-  constructor(message) {
-    super(message);
-    this.code = "ORGANIZE_OPTIONS_INVALID";
-  }
-}
-
-export function enabledOrganizeActions(settings = dbOps.getSettings()) {
-  return ORGANIZE_ACTIONS.filter((action) => (
-    action === "upgrade"
-      ? settings.qualityProfile?.libraryTracks === true
-      : settings.libraryFiles?.[action] === true
-  ));
-}
-
-export function validateOrganizeOptions({ scope, actions } = {}) {
-  const enabled = new Set(enabledOrganizeActions());
-  const requested = [...new Set(Array.isArray(actions) ? actions : [])];
-  if (!requested.length) throw new OrganizeOptionsError("Choose what to organize.");
-  const disabled = requested.filter((action) => !enabled.has(action));
-  if (disabled.length) {
-    throw new OrganizeOptionsError(`Turn on ${disabled.join(" and ")} in Settings > Library files first.`);
-  }
-  const kind = scope?.kind || "library";
-  const id = Number(scope?.id);
-  if (kind !== "library" && !(["artist", "album"].includes(kind) && Number.isSafeInteger(id) && id > 0)) {
-    throw new OrganizeOptionsError("Choose the library, an artist, or an album.");
-  }
-  const table = kind === "artist" ? "library_artists" : "library_albums";
-  if (kind !== "library" && !db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id)) {
-    throw new OrganizeOptionsError(`That ${kind} is not in the Library.`);
-  }
-  return { scope: kind === "library" ? { kind } : { kind, id }, actions: ORGANIZE_ACTIONS.filter((action) => requested.includes(action)) };
-}
-
-function scopeAlbumIds({ kind, id }) {
-  if (kind === "album") return [id];
-  if (kind === "artist") {
-    return db.prepare("SELECT id FROM library_albums WHERE artist_id = ? ORDER BY id").pluck().all(id);
-  }
+function libraryAlbumIds() {
   return db.prepare(
     `SELECT DISTINCT album_id FROM library_media_files
      WHERE source = 'aurral' AND available = 1 AND album_id IS NOT NULL
@@ -72,7 +23,7 @@ function albumFiles(albumId, root) {
   const seen = new Set();
   return db.prepare(
     `SELECT media.id, media.path, media.track_id, media.album_id, media.size, media.mtime_ms,
-       media.duration_ms, media.quality_json, track.title, track.monitored,
+       track.title,
        link.disc_number, link.track_number
      FROM library_media_files AS media
      JOIN library_tracks AS track ON track.id = media.track_id
@@ -86,90 +37,50 @@ function albumFiles(albumId, root) {
   });
 }
 
-async function planAlbum(operation, albumId, context) {
-  const { actions } = operation.options;
+async function planAlbum(albumId, context) {
   const album = db.prepare("SELECT * FROM library_albums WHERE id = ?").get(albumId);
   if (!album) return { items: [], unchanged: 0 };
   const artist = db.prepare("SELECT * FROM library_artists WHERE id = ?").get(album.artist_id);
-  const files = albumFiles(albumId, context.root);
   const items = [];
   let unchanged = 0;
-  for (const file of files) {
-    const planned = [];
-    const notes = [];
+  for (const file of albumFiles(albumId, context.root)) {
     const details = { size: file.size, mtimeMs: file.mtime_ms };
-    const names = {
+    const target = buildLibraryTrackPath(context.root, {
       artistName: artist?.name,
       albumName: album.title,
       trackName: file.title,
       trackNumber: file.track_number,
-    };
-    let targetPath = null;
-    if (actions.includes("rename")) {
-      const target = buildLibraryTrackPath(context.root, names, path.extname(file.path));
-      if (target !== path.resolve(file.path)) {
-        const existing = await fs.lstat(target).catch(() => null);
-        const sameFile = existing && (await fs.stat(file.path).then((stat) =>
-          stat.ino === existing.ino && stat.dev === existing.dev).catch(() => false));
-        if (!isPathInsideRoot(target, context.root)) notes.push("The new name does not fit inside the Downloads Folder.");
-        else if ((existing && !sameFile) || context.targets.has(target)) {
-          items.push({
-            sourcePath: file.path,
-            targetPath: target,
-            status: "conflict",
-            reason: "Another file already has this name.",
-            details,
-          });
-          continue;
-        } else {
-          planned.push("rename");
-          targetPath = target;
-          context.targets.add(target);
-        }
-      }
-    }
-    if (actions.includes("upgrade") && file.monitored === 1 && context.canUpgrade) {
-      const quality = classifyLibraryFileQuality(file);
-      if (getQualityState(quality, context.profile) !== "preferred") {
-        planned.push("upgrade");
-        details.quality = getQualityTier(quality.tier)?.label || "Unknown";
-      }
-    }
-    if (planned.length) {
-      items.push({
-        sourcePath: file.path,
-        targetPath,
-        status: "pending",
-        reason: notes[0] || null,
-        details: { ...details, actions: planned },
-      });
-    } else if (notes.length) {
-      items.push({ sourcePath: file.path, status: "skipped", reason: notes[0], details });
-    } else {
+    }, path.extname(file.path));
+    if (target === path.resolve(file.path)) {
       unchanged += 1;
+      continue;
     }
+    if (!isPathInsideRoot(target, context.root)) {
+      items.push({ sourcePath: file.path, status: "skipped", reason: "The new name does not fit inside the Downloads Folder.", details });
+      continue;
+    }
+    const existing = await fs.lstat(target).catch(() => null);
+    const sameFile = existing && (await fs.stat(file.path).then((stat) =>
+      stat.ino === existing.ino && stat.dev === existing.dev).catch(() => false));
+    if ((existing && !sameFile) || context.targets.has(target)) {
+      items.push({ sourcePath: file.path, targetPath: target, status: "conflict", reason: "Another file already has this name.", details });
+      continue;
+    }
+    context.targets.add(target);
+    items.push({ sourcePath: file.path, targetPath: target, status: "pending", details: { ...details, actions: ["rename"] } });
   }
   return { items, unchanged };
 }
 
-export async function planOrganize(operation, deadline) {
+export async function planCleanup(operation, deadline) {
   const root = path.resolve(resolveDownloadRoot());
   let cursor = operation.summary.cursor;
   if (!cursor) {
-    cursor = { albumIds: scopeAlbumIds(operation.options.scope), next: 0 };
-    const canUpgrade = !operation.options.actions.includes("upgrade") || hasUpgradeSource();
-    updateLibraryFileOperation(operation.id, {
-      summary: {
-        cursor,
-        unchanged: 0,
-        notice: canUpgrade ? null : "Upgrades need Soulseek, Usenet, or Deemix set up as a download client.",
-      },
-    });
+    cursor = { albumIds: libraryAlbumIds(), next: 0 };
+    updateLibraryFileOperation(operation.id, { summary: { cursor, unchanged: 0 } });
   }
   const context = {
     root,
-    profile: getQualityProfile(),
-    canUpgrade: hasUpgradeSource(),
     targets: new Set(db.prepare(
       `SELECT target_path FROM library_file_operation_items
        WHERE operation_id = ? AND status = 'pending' AND target_path IS NOT NULL`,
@@ -178,7 +89,7 @@ export async function planOrganize(operation, deadline) {
   let unchanged = Number(operation.summary.unchanged || 0);
   while (cursor.next < cursor.albumIds.length) {
     if (Date.now() >= deadline) return false;
-    const planned = await planAlbum(operation, cursor.albumIds[cursor.next], context);
+    const planned = await planAlbum(cursor.albumIds[cursor.next], context);
     cursor = { ...cursor, next: cursor.next + 1 };
     unchanged += planned.unchanged;
     db.transaction(() => {
@@ -228,7 +139,7 @@ function commitRename(from, to) {
   }
 }
 
-export function createOrganizeContext() {
+export function createCleanupContext() {
   let guard = null;
   return {
     deletionGuard() {
@@ -241,7 +152,7 @@ export function createOrganizeContext() {
   };
 }
 
-export async function applyOrganizeItem(operation, item, context) {
+export async function applyCleanupItem(operation, item, context) {
   const details = { ...item.details, results: { ...(item.details.results || {}) } };
   const actions = details.actions || [];
   const save = () => updateLibraryFileOperationItem(operation.id, item.position, { details });
@@ -262,7 +173,7 @@ export async function applyOrganizeItem(operation, item, context) {
   }
   if (!stat) return { status: "failed", reason: "The file is gone.", details };
   if (!matchesExpected(stat)) {
-    return { status: "skipped", reason: "The file changed after the preview. Run Organize again.", details };
+    return { status: "skipped", reason: "The file changed after the preview. Run Clean up Library again.", details };
   }
   if (actions.includes("rename") && details.results.rename !== "done") {
     try {
@@ -275,12 +186,6 @@ export async function applyOrganizeItem(operation, item, context) {
       details.results.rename = "failed";
       return { status: "failed", reason: `Aurral could not rename the file: ${error?.code || error?.message}`, details };
     }
-  }
-  if (actions.includes("upgrade") && !details.results.upgrade) {
-    const media = getLibraryMediaFile({ source: "aurral", path: current });
-    const { resolveAurralOwnedTrackJob } = await import("../libraryTrackResearchService.js");
-    const job = media ? resolveAurralOwnedTrackJob({ trackId: media.track_id, albumId: media.album_id }) : null;
-    details.results.upgrade = job ? await queueQualityUpgrade(job) : "ineligible";
   }
   return { status: "done", details };
 }
@@ -296,7 +201,7 @@ async function moveAlbumImages(fromDirectory, toDirectory) {
   }
 }
 
-export async function finishOrganize(operation) {
+export async function finishCleanup(operation) {
   const root = path.resolve(resolveDownloadRoot());
   const folders = new Map();
   const renamed = new Set();
