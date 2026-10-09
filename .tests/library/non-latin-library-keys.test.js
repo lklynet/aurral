@@ -363,3 +363,23 @@ test("a split that takes two scans keeps each album's plays and monitoring", asy
     monitoredAlbums: ["初恋", "無罪モラトリアム"],
   });
 });
+
+test("a scan that stops partway still gives the rows it split off their favorites, plays, and monitoring", async () => {
+  const { scan, reads, paths } = await writeLibrary(MERGED_FILES);
+  const { user } = await seedMergedLibrary(paths);
+  const stopAfterFirstRead = () => {
+    if (reads.length > 0) throw new Error("folder unreadable");
+    return false;
+  };
+
+  await assert.rejects(scan({ isExcluded: stopAfterFirstRead }));
+  await scan();
+
+  assert.deepEqual(rowCounts(), { artists: 2, albums: 2, tracks: 2 });
+  assert.deepEqual(playCounts(), { 初恋: 2, 無罪モラトリアム: 1 });
+  assert.deepEqual(libraryState(user), {
+    starredArtists: ["宇多田ヒカル", "椎名林檎"],
+    starredAlbums: ["初恋", "無罪モラトリアム"],
+    monitoredAlbums: ["初恋", "無罪モラトリアム"],
+  });
+});

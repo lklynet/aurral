@@ -434,7 +434,6 @@ export async function scanMusicRoot({
           }
         }
       }
-      if (legacyMoves.length > 0) splitLegacyKeyedLibraryRows(legacyMoves);
       if (firstFailure) {
         logger.warn("library", "Library scan could not index files", {
           source,
@@ -464,7 +463,11 @@ export async function scanMusicRoot({
       }
       return result;
     };
-    return run();
+    // Files already filed under rows of their own keep what the shared rows
+    // had, even when the walk stops partway.
+    return run().finally(() => {
+      if (legacyMoves.length > 0) splitLegacyKeyedLibraryRows(legacyMoves);
+    });
   });
   return scanResult;
 }
