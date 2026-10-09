@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Link, useLocation, useNavigate, useNavigationType } from "react-router";
+import RouteLink from "./RouteLink";
+import { useLocation, useNavigate, useNavigationType } from "react-router";
 import {
   Menu,
   Sparkles,
@@ -492,7 +493,7 @@ function Layout({ children, headerActions }) {
             aria-label={sectionNav.label}
           >
             {sectionNav.items.map((item) => (
-              <Link
+              <RouteLink
                 key={item.id}
                 to={item.path}
                 replace
@@ -500,7 +501,7 @@ function Layout({ children, headerActions }) {
                 aria-current={item.active ? "page" : undefined}
               >
                 {item.label}
-              </Link>
+              </RouteLink>
             ))}
           </nav>
         ) : null}
@@ -565,7 +566,7 @@ function Layout({ children, headerActions }) {
                   const Icon = item.icon;
                   const active = isActive(item.path);
                   return (
-                    <Link
+                    <RouteLink
                       key={item.path}
                       ref={index === 0 ? mobileMenuInitialFocusRef : undefined}
                       to={item.path}
@@ -574,7 +575,7 @@ function Layout({ children, headerActions }) {
                     >
                       <Icon aria-hidden="true" />
                       <span>{item.label}</span>
-                    </Link>
+                    </RouteLink>
                   );
                 })}
                 {authRequired && canLogOut && (
@@ -601,7 +602,7 @@ function Layout({ children, headerActions }) {
               const Icon = item.icon;
               const active = isActive(item.path);
               return (
-                <Link
+                <RouteLink
                   key={item.path}
                   to={item.path}
                   className={`app-mobile-nav__item${active ? " is-active" : ""}`}
@@ -609,7 +610,7 @@ function Layout({ children, headerActions }) {
                 >
                   <Icon aria-hidden="true" />
                   <span>{item.label}</span>
-                </Link>
+                </RouteLink>
               );
             })}
             <button

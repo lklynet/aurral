@@ -127,3 +127,46 @@ test("a playlist opened directly still loads without card data", async ({ page }
   await expect(page.getByRole("heading", { name: playlist.name, level: 1 })).toBeVisible();
   await expect(page.getByText("First Link Track")).toBeVisible();
 });
+
+const recordTransitions = () => {
+  window.__routeTransitions = [];
+  const start = document.startViewTransition?.bind(document);
+  if (!start) return;
+  document.startViewTransition = (update) => {
+    window.__routeTransitions.push(
+      [...document.querySelectorAll("[style*=view-transition-name]")].map(
+        (node) => node.style.viewTransitionName,
+      ),
+    );
+    return start(update);
+  };
+};
+
+async function openPlaylistAfterPrefetch(page) {
+  const link = page.locator("main").getByRole("link", { name: `Open ${playlist.name}`, exact: true });
+  await expect(link).toBeVisible();
+  const chunk = page.waitForResponse((response) => response.url().includes("EditorialPlaylistDetailPage"));
+  await link.hover();
+  await chunk;
+  await link.click();
+  await expect(page.getByRole("heading", { name: playlist.name, level: 1 })).toBeVisible();
+}
+
+test("opening a card morphs only that card's artwork into the page header", async ({ page }) => {
+  await page.addInitScript(recordTransitions);
+  await fixture(page);
+  await page.goto("/");
+  await openPlaylistAfterPrefetch(page);
+  const transitions = await page.evaluate(() => window.__routeTransitions);
+  expect(transitions).toEqual([["shared-artwork"]]);
+  await expect(page.locator("[style*=view-transition-name]")).toHaveCount(0);
+});
+
+test("route transitions are skipped when reduced motion is requested", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.addInitScript(recordTransitions);
+  await fixture(page);
+  await page.goto("/");
+  await openPlaylistAfterPrefetch(page);
+  expect(await page.evaluate(() => window.__routeTransitions)).toEqual([]);
+});

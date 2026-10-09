@@ -12844,6 +12844,31 @@ button.native-library-genre-row:focus-visible {
   min-height: 100vh;
 }
 
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: 0.25s;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+::view-transition-group(shared-artwork) {
+  overflow: clip;
+}
+
+::view-transition-old(shared-artwork),
+::view-transition-new(shared-artwork) {
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
 .app-status-banner {
   display: flex;
   align-items: flex-start;

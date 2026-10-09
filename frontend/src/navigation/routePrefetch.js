@@ -97,12 +97,26 @@ const coolingDown = (queryKey) => {
   return state?.status === "error" && Date.now() - state.errorUpdatedAt < FAILURE_COOLDOWN_MS;
 };
 
+const matchRoute = (pathname) => {
+  for (const route of ROUTES) {
+    const match = matchPath({ path: route.path, end: true }, pathname);
+    if (match) return { route, match };
+  }
+  return null;
+};
+
+export function isRouteModuleLoaded(to) {
+  const target = parseTarget(to);
+  const matched = target ? matchRoute(target.pathname) : null;
+  return Boolean(matched?.route.module.isLoaded());
+}
+
 export async function prefetchRoute(to, { userId = null } = {}) {
   const target = parseTarget(to);
   if (!target || !canPrefetchInBackground()) return;
-  for (const route of ROUTES) {
-    const match = matchPath({ path: route.path, end: true }, target.pathname);
-    if (!match) continue;
+  const matched = matchRoute(target.pathname);
+  if (matched) {
+    const { route, match } = matched;
     const work = [route.module().catch(() => null)];
     if (route.queries) {
       const options = await Promise.resolve(
@@ -114,6 +128,5 @@ export async function prefetchRoute(to, { userId = null } = {}) {
       }
     }
     await Promise.all(work);
-    return;
   }
 }

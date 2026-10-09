@@ -85,8 +85,8 @@ export function ArtistDetailsAppearsOn({
             coverOptions(releaseGroup),
           );
           return (
-            <article key={releaseGroup.id} className="artist-release-card">
-              <div className="artist-release-card__cover">
+            <article key={releaseGroup.id} className="artist-release-card" data-artwork-scope>
+              <div className="artist-release-card__cover" data-artwork>
                 {coverUrl ? (
                   <img src={coverUrl} alt="" loading="lazy" decoding="async" />
                 ) : (

@@ -44,6 +44,7 @@ import {
 import CrossViewLink from "../components/CrossViewLink";
 import RouteLink from "../components/RouteLink";
 import { readRouteSeed } from "../navigation/routeSeed.js";
+import { useSharedArtworkStyle } from "../navigation/viewTransitions.js";
 import {
   SkeletonCardGrid,
   SkeletonCollectionHeader,
@@ -499,6 +500,7 @@ function LibraryPage() {
   const section = resolveLibrarySection(routeSection);
   const isDetail = Boolean(routeAlbumId || routeArtistId);
   const albumSeed = routeAlbumId ? readRouteSeed(location.state) : null;
+  const sharedArtworkStyle = useSharedArtworkStyle();
   const tab = libraryTabForSection(section);
   const selectedGenre = searchParams.get("genre") || "";
   const forcePreview = import.meta.env.DEV && searchParams.get("preview") === "1";
@@ -2012,12 +2014,14 @@ function LibraryPage() {
       <article
         className="native-library-card native-library-card--artist"
         data-library-menu-target
+        data-artwork-scope
         key={artist.id}
       >
         <div className="native-library-card__cover-wrap">
           <RouteLink
             to={libraryArtistPath(artist)}
             className="native-library-card__cover native-library-card__cover--round"
+            data-artwork
             aria-label={"Open " + (artist.name || "artist")}
           >
             {artist.mbid ? (
@@ -2126,12 +2130,13 @@ function LibraryPage() {
       },
     };
     return (
-      <article className="native-library-card" data-library-menu-target key={album.id}>
+      <article className="native-library-card" data-library-menu-target data-artwork-scope key={album.id}>
         <div className="native-library-card__cover-wrap">
           <RouteLink
             to={libraryAlbumPath(album)}
             state={albumLinkState}
             className="native-library-card__cover"
+            data-artwork
             aria-label={"Open " + (album.title || "album")}
           >
             <Cover src={getAlbumCover(album)} label={album.title} />
@@ -2557,7 +2562,7 @@ function LibraryPage() {
           className="native-library-detail__hero native-library-detail__hero--artist"
           data-library-menu-target
         >
-          <div className="native-library-detail__cover">
+          <div className="native-library-detail__cover" style={sharedArtworkStyle}>
             {libraryArtist.mbid ? (
               <ArtistImage
                 mbid={libraryArtist.mbid}

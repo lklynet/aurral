@@ -1,5 +1,6 @@
 import { PlaylistBulkActionsProvider } from "./pages/playlists/usePlaylistBulkActions.js";
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from "react-router";
+import { createBrowserRouter, Routes, Route, Navigate, useParams } from "react-router";
+import { RouterProvider } from "react-router/dom";
 import { useState, useEffect, Suspense, lazy, useRef } from "react";
 import Layout from "./components/Layout";
 import { checkHealthLive, getBootstrapStatus } from "./utils/api/endpoints/auth.js";
@@ -107,7 +108,6 @@ const PermissionRoute = ({ children, permission }) => {
 };
 
 function AppContent() {
-  const basePath = getAppBasePath();
   const [isHealthy, setIsHealthy] = useState(null);
   const [healthIssue, setHealthIssue] = useState(null);
   const [rootFolderConfigured, setRootFolderConfigured] = useState(false);
@@ -192,7 +192,6 @@ function AppContent() {
   }, [appSocketConnected, isAuthenticated, refreshAuth]);
 
   return (
-    <Router basename={basePath}>
       <Routes>
         <Route
           path="/sso/complete"
@@ -343,8 +342,16 @@ function AppContent() {
           }
         />
       </Routes>
-    </Router>
   );
+}
+
+let appRouter = null;
+
+function AppRouter() {
+  appRouter ??= createBrowserRouter([{ path: "*", element: <AppContent /> }], {
+    basename: getAppBasePath(),
+  });
+  return <RouterProvider router={appRouter} />;
 }
 
 function App() {
@@ -353,7 +360,7 @@ function App() {
       <ToastProvider>
         <AuthProvider>
           <AudioQueueProvider>
-            <AppContent />
+            <AppRouter />
             <ThemeSync />
             <ReloadPrompt />
           </AudioQueueProvider>

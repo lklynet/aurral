@@ -11,8 +11,8 @@ function EditorialPlaylistCard({ playlist }) {
   const [failedArtwork, setFailedArtwork] = useState(false);
   return (
     <div className="artist-discover-shelf-card">
-      <div className="artist-discover-card artist-discover-card--playlist">
-        <div className="artist-discover-card__cover">
+      <div className="artist-discover-card artist-discover-card--playlist" data-artwork-scope>
+        <div className="artist-discover-card__cover" data-artwork>
           {playlist.artworkUrl && !failedArtwork ? (
             <img
               src={playlist.artworkUrl}

@@ -131,8 +131,8 @@ export function ArtistDetailsSimilar({
             {similarArtists.map((similar) => {
               const artistId = getArtistRecordId(similar);
               return (
-                <div key={similar.id} className="artist-similar-card">
-                  <div className="artist-similar-avatar">
+                <div key={similar.id} className="artist-similar-card" data-artwork-scope>
+                  <div className="artist-similar-avatar" data-artwork>
                     <ArtistImage
                       src={similar.image}
                       mbid={getArtistRecordId(similar)}

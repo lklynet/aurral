@@ -3,6 +3,7 @@ import { getArtistHeroImage } from "../utils";
 import { withImageCacheBust } from "../../../utils/normalizeMediaUrl";
 import Tooltip from "../../../components/Tooltip";
 import RouteLink from "../../../components/RouteLink";
+import { useSharedArtworkStyle } from "../../../navigation/viewTransitions.js";
 
 const normalizeTagName = (value) => String(value || "").trim();
 
@@ -36,6 +37,7 @@ export function ArtistDetailsHero({
   const tags = useMemo(() => buildTags(artist), [artist]);
   const visibleTags = tags.slice(0, 8);
   const showImage = displayedImage && !imageFailed;
+  const artworkStyle = useSharedArtworkStyle();
 
   useEffect(() => {
     setImageFailed(false);
@@ -44,7 +46,7 @@ export function ArtistDetailsHero({
 
   return (
     <section className="artist-hero">
-      <div className="artist-hero__inner">
+      <div className="artist-hero__inner" style={artworkStyle}>
         {showImage ? (
           <>
             <img

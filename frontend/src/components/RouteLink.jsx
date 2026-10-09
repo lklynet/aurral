@@ -1,15 +1,37 @@
 import { forwardRef, useEffect, useRef } from "react";
-import { Link } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { useAuth } from "../contexts/AuthContext";
-import { prefetchRoute } from "../navigation/routePrefetch.js";
+import { isRouteModuleLoaded, prefetchRoute } from "../navigation/routePrefetch.js";
+import { markSharedArtwork, routeTransitionsEnabled } from "../navigation/viewTransitions.js";
 
 const HOVER_INTENT_MS = 100;
 
+const isPlainClick = (event, target) =>
+  event.button === 0 &&
+  !event.defaultPrevented &&
+  !event.metaKey &&
+  !event.ctrlKey &&
+  !event.shiftKey &&
+  !event.altKey &&
+  (!target || target === "_self");
+
 const RouteLink = forwardRef(function RouteLink(
-  { to, onPointerEnter, onPointerLeave, onFocus, onTouchStart, onTouchMove, onTouchEnd, ...props },
+  {
+    to,
+    onClick,
+    onPointerEnter,
+    onPointerLeave,
+    onFocus,
+    onTouchStart,
+    onTouchMove,
+    onTouchEnd,
+    ...props
+  },
   ref,
 ) {
   const userId = useAuth()?.user?.id ?? null;
+  const navigate = useNavigate();
+  const location = useLocation();
   const timerRef = useRef(null);
 
   const cancel = () => {
@@ -32,6 +54,26 @@ const RouteLink = forwardRef(function RouteLink(
       ref={ref}
       to={to}
       {...props}
+      onClick={(event) => {
+        onClick?.(event);
+        if (
+          typeof to !== "string" ||
+          props.reloadDocument ||
+          !isPlainClick(event, props.target) ||
+          !routeTransitionsEnabled() ||
+          !isRouteModuleLoaded(to)
+        ) {
+          return;
+        }
+        event.preventDefault();
+        markSharedArtwork(event.currentTarget, to.split(/[?#]/)[0]);
+        void navigate(to, {
+          state: props.state,
+          replace: props.replace ?? to === location.pathname + location.search + location.hash,
+          preventScrollReset: props.preventScrollReset,
+          viewTransition: true,
+        });
+      }}
       onPointerEnter={(event) => {
         onPointerEnter?.(event);
         if (event.pointerType !== "touch") schedule();

@@ -97,3 +97,14 @@ test("a library album prefetch matches the page query whatever its list state", 
   assert.equal(view.library.tracks.length, 1);
   assert.equal(requests.length, prefetched);
 });
+
+test("a route counts as ready only after its page code has loaded", async (t) => {
+  const { vite, prefetchRoute } = await setup(t, () => ({ body: {} }));
+  const { isRouteModuleLoaded } = await vite.ssrLoadModule("/src/navigation/routePrefetch.js");
+
+  assert.equal(isRouteModuleLoaded("/discover/news"), false);
+  await prefetchRoute("/discover/news");
+  assert.equal(isRouteModuleLoaded("/discover/news"), true);
+  assert.equal(isRouteModuleLoaded("/blocklist"), false);
+  assert.equal(isRouteModuleLoaded("https://example.com/discover/news"), false);
+});

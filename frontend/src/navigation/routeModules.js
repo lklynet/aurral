@@ -1,21 +1,32 @@
+const trackLoad = (load) => {
+  let loaded = false;
+  const importModule = () =>
+    load().then((module) => {
+      loaded = true;
+      return module;
+    });
+  importModule.isLoaded = () => loaded;
+  return importModule;
+};
+
 export const routeModules = {
-  search: () => import("../pages/SearchResultsPage"),
-  discover: () => import("../pages/DiscoverPage"),
-  shows: () => import("../pages/ShowsPage"),
-  library: () => import("../pages/LibraryPage"),
-  settings: () => import("../pages/Settings/SettingsPage"),
-  profile: () => import("../pages/ProfilePage"),
-  blocklist: () => import("../pages/BlocklistPage"),
-  artist: () => import("../pages/ArtistDetails/ArtistDetailsPage"),
-  artistReleases: () => import("../pages/ArtistDetails/ArtistReleaseListPage"),
-  release: () => import("../pages/ArtistDetails/ReleasePage"),
-  activity: () => import("../pages/ActivityPage"),
-  playlists: () => import("../pages/playlists/PlaylistsPage"),
-  playlist: () => import("../pages/playlists/PlaylistDetailPage"),
-  flows: () => import("../pages/playlists/FlowsPage"),
-  flow: () => import("../pages/playlists/FlowDetailPage"),
-  playlistRedirect: () => import("../pages/playlists/PlaylistRedirect"),
-  discoverPlaylists: () => import("../pages/DiscoverPlaylistsPage"),
-  editorialPlaylist: () => import("../pages/EditorialPlaylistDetailPage"),
-  news: () => import("../pages/NewsPage"),
+  search: trackLoad(() => import("../pages/SearchResultsPage")),
+  discover: trackLoad(() => import("../pages/DiscoverPage")),
+  shows: trackLoad(() => import("../pages/ShowsPage")),
+  library: trackLoad(() => import("../pages/LibraryPage")),
+  settings: trackLoad(() => import("../pages/Settings/SettingsPage")),
+  profile: trackLoad(() => import("../pages/ProfilePage")),
+  blocklist: trackLoad(() => import("../pages/BlocklistPage")),
+  artist: trackLoad(() => import("../pages/ArtistDetails/ArtistDetailsPage")),
+  artistReleases: trackLoad(() => import("../pages/ArtistDetails/ArtistReleaseListPage")),
+  release: trackLoad(() => import("../pages/ArtistDetails/ReleasePage")),
+  activity: trackLoad(() => import("../pages/ActivityPage")),
+  playlists: trackLoad(() => import("../pages/playlists/PlaylistsPage")),
+  playlist: trackLoad(() => import("../pages/playlists/PlaylistDetailPage")),
+  flows: trackLoad(() => import("../pages/playlists/FlowsPage")),
+  flow: trackLoad(() => import("../pages/playlists/FlowDetailPage")),
+  playlistRedirect: trackLoad(() => import("../pages/playlists/PlaylistRedirect")),
+  discoverPlaylists: trackLoad(() => import("../pages/DiscoverPlaylistsPage")),
+  editorialPlaylist: trackLoad(() => import("../pages/EditorialPlaylistDetailPage")),
+  news: trackLoad(() => import("../pages/NewsPage")),
 };

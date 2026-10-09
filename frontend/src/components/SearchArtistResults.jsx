@@ -90,7 +90,7 @@ function SearchArtistResults({
           .join(" • ");
 
         const cover = (
-          <div className={`artist-discover-card__cover${isList ? " artist-list-cover" : ""}`}>
+          <div className={`artist-discover-card__cover${isList ? " artist-list-cover" : ""}`} data-artwork>
             <ArtistImage
               src={artistImages[artistId] || artist.image || artist.imageUrl}
               mbid={artistId}
@@ -128,6 +128,7 @@ function SearchArtistResults({
             <article
               key={artistId || `artist-${index}`}
               className="artist-release-list-item search-artist-results__item"
+              data-artwork-scope
             >
               {cover}
               <RouteLink
@@ -163,6 +164,7 @@ function SearchArtistResults({
           <article
             key={artistId || `artist-${index}`}
             className="artist-discover-card artist-discover-card--artist"
+            data-artwork-scope
           >
             {cover}
 

@@ -1,4 +1,5 @@
-import { Link, useLocation } from "react-router";
+import { useLocation } from "react-router";
+import RouteLink from "./RouteLink";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   ArrowLeft,
@@ -251,27 +252,27 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
         location.pathname === "/search" && location.search === "?type=trending";
       return (
         <nav className="sidebar-subnav" aria-label={`${item.label} views`}>
-          <Link
+          <RouteLink
             to="/discover/playlists"
             className={`sidebar-subnav-link${location.pathname.startsWith("/discover/playlists") ? " is-active" : ""}`}
             aria-current={location.pathname.startsWith("/discover/playlists") ? "page" : undefined}
           >
             Playlists
-          </Link>
-          <Link
+          </RouteLink>
+          <RouteLink
             to="/search?type=recommended"
             className={`sidebar-subnav-link${isRecommendedActive ? " is-active" : ""}`}
             aria-current={isRecommendedActive ? "page" : undefined}
           >
             Recommended
-          </Link>
-          <Link
+          </RouteLink>
+          <RouteLink
             to="/search?type=trending"
             className={`sidebar-subnav-link${isTrendingActive ? " is-active" : ""}`}
             aria-current={isTrendingActive ? "page" : undefined}
           >
             Trending
-          </Link>
+          </RouteLink>
         </nav>
       );
     }
@@ -287,7 +288,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
               : `${item.basePath}/${entry.id}`);
           const showReviewAlert = item.section === "activity" && entry.id === "queue" && hasReviewAlert;
           return (
-            <Link
+            <RouteLink
               key={entry.id}
               to={targetPath}
               className={`sidebar-subnav-link${active ? " is-active" : ""}`}
@@ -300,7 +301,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
                 />
               ) : null}
               <span>{entry.label}</span>
-            </Link>
+            </RouteLink>
           );
         })}
       </nav>
@@ -326,7 +327,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
       const active = activeSettingsTab === tab.id;
       return (
         <div key={tab.id} className={`sidebar-nav-group${active ? " is-active-row" : ""}`}>
-          <Link
+          <RouteLink
             to={`/settings/${tab.id}`}
             onMouseEnter={(event) => {
               if (isIcons) positionSidebarTooltip(event);
@@ -345,7 +346,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
             </span>
             {!isIcons && <span className="sidebar-link__label">{tab.label}</span>}
             {isIcons && <span className="sidebar-tooltip">{tab.label}</span>}
-          </Link>
+          </RouteLink>
         </div>
       );
     });
@@ -362,10 +363,10 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
     >
       {stageBackdropVariant ? <SidebarStageBackdrop variant={stageBackdropVariant} /> : null}
       <div className="sidebar-logo-row">
-        <Link to="/" className="sidebar-logo-link">
+        <RouteLink to="/" className="sidebar-logo-link">
           <img src="/arralogo.svg" alt="Aurral Logo" className="sidebar-logo" />
           {!isIcons && <span className="sidebar-title">Aurral</span>}
-        </Link>
+        </RouteLink>
       </div>
 
       <div className={`sidebar-body${isIcons ? " sidebar-body--icons" : ""}`}>
@@ -388,7 +389,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
 
               return (
                 <div key={item.path} className={getNavGroupClassName(item, active)}>
-                  <Link
+                  <RouteLink
                     to={item.path}
                     onMouseEnter={(event) => {
                       if (isIcons) positionSidebarTooltip(event);
@@ -424,7 +425,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
                       </span>
                     )}
                     {isIcons && <span className="sidebar-tooltip">{item.label}</span>}
-                  </Link>
+                  </RouteLink>
                   {renderSubnav(item, activeSubnavId)}
                 </div>
               );
@@ -439,7 +440,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
             }`}
           >
             {settingsMode ? (
-              <Link
+              <RouteLink
                 to="/"
                 onMouseEnter={positionSidebarTooltip}
                 onFocus={positionSidebarTooltip}
@@ -451,9 +452,9 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
                 </span>
                 {!isIcons && <span className="sidebar-link__label">Back</span>}
                 {isIcons && <span className="sidebar-tooltip">Back</span>}
-              </Link>
+              </RouteLink>
             ) : isIcons ? (
-              <Link
+              <RouteLink
                 to={`/settings/${DEFAULT_SETTINGS_TAB}`}
                 onMouseEnter={positionSidebarTooltip}
                 onFocus={positionSidebarTooltip}
@@ -471,10 +472,10 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
                   ) : null}
                 </span>
                 <span className="sidebar-tooltip">Settings</span>
-              </Link>
+              </RouteLink>
             ) : (
               <>
-                <Link
+                <RouteLink
                   to={`/settings/${DEFAULT_SETTINGS_TAB}`}
                   className={`sidebar-link sidebar-link--full${isOnSettings ? " is-active" : ""}`}
                   aria-current={isOnSettings ? "page" : undefined}
@@ -492,7 +493,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
                     Settings
                     {hasStorageFailure ? <span className="sr-only"> (storage issues)</span> : null}
                   </span>
-                </Link>
+                </RouteLink>
 
                 {isOnSettings && (
                   <nav className="sidebar-subnav" aria-label="Settings sections">
@@ -500,7 +501,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
                       const tabActive = activeSettingsTab === tab.id;
                       const showStorageAlert = tab.id === "storage-health" && hasStorageFailure;
                       return (
-                        <Link
+                        <RouteLink
                           key={tab.id}
                           to={`/settings/${tab.id}`}
                           className={`sidebar-subnav-link${tabActive ? " is-active" : ""}`}
@@ -510,7 +511,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
                             <span className="sidebar-subnav-link__alert" aria-hidden="true" />
                           ) : null}
                           <span>{tab.label}</span>
-                        </Link>
+                        </RouteLink>
                       );
                     })}
                   </nav>

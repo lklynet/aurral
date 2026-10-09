@@ -326,8 +326,9 @@ export function ArtistDetailsLibraryAlbums({
               key={libraryAlbum.id}
               className="artist-library-card"
               data-cover-id={rgId}
+              data-artwork-scope
             >
-              <div className="artist-release-card__cover">
+              <div className="artist-release-card__cover" data-artwork>
                 {coverUrl ? (
                   <img
                     src={coverUrl}

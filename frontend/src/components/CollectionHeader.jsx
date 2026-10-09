@@ -1,6 +1,7 @@
 import { Pause, Play, Shuffle } from "lucide-react";
 import { FALLBACK_GRADIENT, useImageGradientColors } from "../utils/imageColors";
 import TooltipButton from "./TooltipButton";
+import { useSharedArtworkStyle } from "../navigation/viewTransitions.js";
 
 export function useCollectionTint(src) {
   const colors = useImageGradientColors(src || null);
@@ -54,10 +55,11 @@ export function CollectionPlayButtons({ label, disabled, isPlaying, isShuffleEna
 }
 
 export function CollectionHeader({ cover, kicker, title, subtitle, meta, status, actions, corner }) {
+  const artworkStyle = useSharedArtworkStyle();
   return (
     <header className="native-library-detail__hero collection-header">
       {corner ? <div className="collection-header__corner">{corner}</div> : null}
-      <div className="native-library-detail__cover">{cover}</div>
+      <div className="native-library-detail__cover" style={artworkStyle}>{cover}</div>
       <div className="native-library-detail__body">
         {kicker ? <p className="native-library-kicker">{kicker}</p> : null}
         <h1 className="collection-header__title">{title}</h1>

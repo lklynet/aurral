@@ -110,8 +110,9 @@ export const ArtistCard = memo(
     return (
       <div
         className={`artist-discover-card artist-discover-card--artist${canOpen ? "" : " is-disabled"}`}
+        data-artwork-scope
       >
-        <div className="artist-discover-card__cover">
+        <div className="artist-discover-card__cover" data-artwork>
           <ArtistImage
             src={artist.image || artist.imageUrl}
             mbid={artist.id}
@@ -248,9 +249,10 @@ export const AlbumCard = memo(
     return (
       <div
         className={`artist-discover-card artist-discover-card--album${canOpen ? "" : " is-disabled"}`}
+        data-artwork-scope
       >
         <div className="artist-discover-card__cover-wrap">
-          <div className={`artist-discover-card__cover${canOpen ? "" : " is-disabled"}`}>
+          <div className={`artist-discover-card__cover${canOpen ? "" : " is-disabled"}`} data-artwork>
             {coverUrl ? (
               <img
                 src={coverUrl}

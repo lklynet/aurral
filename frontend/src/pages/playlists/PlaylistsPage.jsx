@@ -141,11 +141,12 @@ export default function PlaylistsPage() {
     return (
       <div className="native-library-grid" role="list" aria-label="Playlists">
         {staticPlaylists.map((playlist) => (
-          <article className="native-library-card" role="listitem" key={playlist.id}>
+          <article className="native-library-card" role="listitem" data-artwork-scope key={playlist.id}>
             <div className="native-library-card__cover-wrap">
               <RouteLink
                 to={playlistPath(playlist.id)}
                 className="native-library-card__cover playlists-page__cover"
+                data-artwork
                 aria-label={`Open ${playlist.name}`}
               >
                 <PlaylistArtworkThumb artworkUrl={artworkUrlFor(playlist.id)} name={playlist.name} />
