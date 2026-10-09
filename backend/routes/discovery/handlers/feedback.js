@@ -3,6 +3,7 @@ import {
   getDiscoveryFeedback,
   addDiscoveryFeedback,
   removeDiscoveryFeedback,
+  restoreDiscoveryFeedback,
   resetDiscoveryFeedback,
 } from "../../../services/discovery/index.js";
 
@@ -34,6 +35,20 @@ export function registerFeedback(router) {
     res.json({
       success: true,
       feedbackList,
+    });
+  });
+
+  router.post("/feedback/restore", requireAuth, (req, res) => {
+    const { removeIds = [], entries = [] } = req.body || {};
+    if (!Array.isArray(removeIds) || !Array.isArray(entries) || removeIds.length + entries.length === 0) {
+      return res.status(400).json({
+        error: "Failed to restore discovery feedback",
+        message: "removeIds or entries is required",
+      });
+    }
+    res.json({
+      success: true,
+      feedbackList: restoreDiscoveryFeedback(req.user.id, { removeIds, entries }),
     });
   });
 

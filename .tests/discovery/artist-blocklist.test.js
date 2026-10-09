@@ -12,10 +12,11 @@ import {
 const isolatedState = await createIsolatedStateDir("artist-blocklist");
 applyIsolatedBackendEnv(isolatedState);
 
-const [{ db }, discovery, flowTrackSourceModule] = await Promise.all([
+const [{ db }, discovery, flowTrackSourceModule, { registerFeedback }] = await Promise.all([
   importFromRepo("backend/config/db-sqlite.js"),
   importFromRepo("backend/services/discovery/index.js"),
   importFromRepo("backend/services/flows/flowTrackSource.js"),
+  importFromRepo("backend/routes/discovery/handlers/feedback.js"),
 ]);
 
 const { FlowTrackSource } = flowTrackSourceModule;
@@ -88,4 +89,49 @@ test("flows exclude only hard-blocked artists", async () => {
   });
 
   assert.deepEqual(plan.primaryTracks.map((track) => track.artistName), ["Soft Dislike"]);
+});
+
+const feedbackRoutes = () => {
+  const routes = new Map();
+  const register = (method) => (path, ...handlers) => routes.set(`${method} ${path}`, handlers.at(-1));
+  registerFeedback({ get: register("GET"), post: register("POST"), delete: register("DELETE") });
+  return (key, req) => {
+    const res = {
+      statusCode: 200,
+      body: null,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(value) {
+        this.body = value;
+        return this;
+      },
+    };
+    routes.get(key)({ user: { id: 7 }, params: {}, body: {}, ...req }, res);
+    return res;
+  };
+};
+
+test("undoing less like this restores the taste it replaced exactly", () => {
+  const call = feedbackRoutes();
+  call("POST /feedback", { body: { artistName: "Blocked Artist", action: "block_artist" } });
+  const more = call("POST /feedback", {
+    body: { artistName: "Taste Artist", action: "more_like_this", tagContext: ["shoegaze"] },
+  }).body.feedback;
+  const before = call("GET /feedback").body.feedback;
+
+  call("DELETE /feedback/:id", { params: { id: more.id } });
+  const less = call("POST /feedback", {
+    body: { artistName: "Taste Artist", action: "less_like_this" },
+  }).body.feedback;
+
+  const rejected = call("POST /feedback/restore", { body: { removeIds: "all" } });
+  assert.equal(rejected.statusCode, 400);
+  assert.deepEqual(call("GET /feedback").body.feedback.map((entry) => entry.id), [less.id, before[1].id]);
+
+  const restored = call("POST /feedback/restore", { body: { removeIds: [less.id], entries: [more] } });
+  assert.equal(restored.statusCode, 200);
+  assert.deepEqual(restored.body.feedbackList, before);
+  assert.deepEqual(call("GET /feedback").body.feedback, before);
 });
