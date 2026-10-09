@@ -474,7 +474,7 @@ async function handleDeemixFinalize(payload, helpers) {
         });
       });
     const committedFinalPath = await commitDownloadedFile(filePath, finalPath, {
-      reuseExisting: !payload.manualReplacementSearch,
+      reuseExisting: !payload.upgradeForJobId,
     });
     return finalizePipelineJobSuccess({
       downloadTracker,

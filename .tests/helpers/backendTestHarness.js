@@ -31,6 +31,8 @@ const RESET_TABLES = [
   "musicbrainz_artist_mbid_cache",
   "artist_overrides",
   "lidarr_artist_id_map",
+  "library_file_operation_items",
+  "library_file_operations",
   "library_media_files",
   "library_album_tracks",
   "library_tracks",

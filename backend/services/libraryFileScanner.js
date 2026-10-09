@@ -5,6 +5,7 @@ import { db } from "../config/db-sqlite.js";
 import {
   buildFallbackIdentityKey,
   buildIdentityKey,
+  findLibraryAlbumByArtistTitle,
   findLibraryAlbumByReleaseMbid,
   getLibraryMediaFile,
   getAvailableLibraryMediaPaths,
@@ -364,13 +365,16 @@ export async function scanMusicRoot({
             metadata: record.artistMetadata,
             syncSearch,
           });
-          const releaseAlbum = findLibraryAlbumByReleaseMbid(record.releaseGroupMbid);
+          const namedAlbum = !record.releaseGroupMbid && !record.albumMbid
+            ? findLibraryAlbumByArtistTitle(artist.id, record.albumName)
+            : null;
+          const releaseAlbum = findLibraryAlbumByReleaseMbid(record.releaseGroupMbid) || namedAlbum;
           const album = upsertLibraryAlbum({
             identityKey: releaseAlbum?.identity_key || record.albumKey,
             mbid: releaseAlbum?.mbid || record.albumMbid,
             releaseGroupMbid: releaseAlbum?.release_group_mbid || record.releaseGroupMbid,
             artistId: artist.id,
-            title: record.albumName,
+            title: namedAlbum?.title || record.albumName,
             albumArtist: record.albumArtist,
             releaseDate: record.releaseDate,
             metadata: record.albumMetadata,
@@ -525,4 +529,4 @@ export async function scanMusicRoots({ rootPaths = [], changedPaths = null, ...o
   return result;
 }
 
-export { buildMetadataRecord, readPathFallback, AUDIO_EXTENSIONS };
+export { applyMetadataEnrichment, buildMetadataRecord, readPathFallback, AUDIO_EXTENSIONS };

@@ -3,6 +3,7 @@ import {
   Compass,
   Database,
   Download,
+  FolderCog,
   HardDrive,
   ListChecks,
   Monitor,
@@ -20,6 +21,7 @@ export const SETTINGS_TABS = [
   { id: "lidarr", label: "Lidarr", icon: Server },
   { id: "indexers", label: "Indexers", icon: DatabaseSearch },
   { id: "download-clients", label: "Download clients", icon: Download },
+  { id: "library-files", label: "Library files", icon: FolderCog },
   { id: "playback", label: "Playback", icon: Music },
   { id: "connect", label: "Connect", icon: Bell },
   { id: "rss-news", label: "RSS news", icon: Rss },
@@ -157,6 +159,18 @@ const SETTINGS_SEARCH_METADATA = {
       "Completed download path": "NZBGet import folder",
       "Add NZBs paused": "NZBGet pause queue",
       "Clean up after runs": "SABnzbd history cleanup",
+    },
+  },
+  "library-files": {
+    sections: ["Ingest a folder", "Clean up Library"],
+    services: {
+      Ingest: "import existing music library folder move copy hardlink Lidarr root monitor",
+      "Clean up Library": "rename organize files naming folders media management",
+    },
+    fields: {
+      Folder: "source folder existing music import",
+      Mode: "move copy hardlink",
+      Monitor: "monitored unmonitored upgrade tracks albums",
     },
   },
   playback: {

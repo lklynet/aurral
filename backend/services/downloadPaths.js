@@ -5,6 +5,7 @@ import {
   resolveDefaultDownloadRoot,
   resolveEnvDownloadFolder,
 } from "./downloadFolderConfig.js";
+import { buildTrackFileName, sanitizePathPart } from "./downloadUtils.js";
 
 export const PLAYLIST_FILES_DIR = "aurral-weekly-flow";
 export const AURRAL_FLOWS_DIR = "_flows";
@@ -66,6 +67,22 @@ export function buildAurralTrackDestination(
   const destination = [String(artistDir || "Unknown Artist"), String(albumDir || "Unknown Album")];
   if (ephemeral) destination.unshift(AURRAL_FLOWS_DIR, String(playlistId || ""));
   return path.posix.join(...destination);
+}
+
+const folderName = (value, fallback) =>
+  sanitizePathPart(sanitizePathPart(value, "").replace(/^\.+/, ""), fallback);
+
+// The Library's naming: Artist/Album/07 - Title.ext under the Downloads Folder.
+export function buildLibraryTrackPath(root, track, ext) {
+  return path.resolve(
+    root,
+    buildAurralTrackDestination(
+      null,
+      folderName(track?.artistName, "Unknown Artist"),
+      folderName(track?.albumName, "Unknown Album"),
+    ),
+    buildTrackFileName(track, String(ext || "").toLowerCase()),
+  );
 }
 
 export function isPathInsideRoot(candidatePath, rootPath) {

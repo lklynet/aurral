@@ -88,6 +88,27 @@ export const updateLibraryArtistMbid = async (artistId, mbid) => {
   return result;
 };
 
+export const getLibraryFiles = () => getData("/library/files");
+
+export const checkLibraryIngestSource = (sourcePath) =>
+  postData("/library/files/ingest/check", { sourcePath });
+
+export const startLibraryIngest = (sourcePath, mode, monitor) =>
+  postData("/library/files/ingest", { sourcePath, mode, monitor });
+
+export const startLibraryCleanup = () => postData("/library/files/cleanup");
+
+export const getLibraryFileOperation = (id) =>
+  getData(`/library/files/operations/${encodeURIComponent(id)}`);
+
+export const getLibraryFileOperationItems = (id, { status = [], offset = 0, limit = 50 } = {}) =>
+  getData(`/library/files/operations/${encodeURIComponent(id)}/items`, {
+    params: { status: status.join(",") || undefined, offset, limit },
+  });
+
+export const cancelLibraryFileOperation = (id) =>
+  postData(`/library/files/operations/${encodeURIComponent(id)}/cancel`);
+
 export const getLibraryTrackFiles = (trackId, options = {}) =>
   getData(`/library/tracks/${encodeURIComponent(trackId)}/files`, options);
 

@@ -367,6 +367,58 @@ test("removing an Aurral artist without files keeps them on disk", async () => {
   assert.equal(await exists(tracks[1].filePath), true);
 });
 
+function withoutMusicBrainzId(artist) {
+  db.prepare("UPDATE library_artists SET mbid = NULL, identity_key = ? WHERE id = ?")
+    .run(`name:artist:untagged ${artist.id}`, artist.id);
+  return { ...artist, mbid: null };
+}
+
+test("an ingested artist without a MusicBrainz ID is deleted with its files", async () => {
+  const created = await createAurralAlbum();
+  const artist = withoutMusicBrainzId(created.artist);
+  const albumDir = path.dirname(created.tracks[0].filePath);
+  await fs.writeFile(path.join(albumDir, "1.lrc"), "[00:00.00]la");
+  await fs.writeFile(path.join(albumDir, "cover.jpg"), "art");
+  const other = libraryStore.upsertLibraryArtist({
+    identityKey: "mbid:dddddddd-dddd-4ddd-8ddd-000000000001",
+    mbid: "dddddddd-dddd-4ddd-8ddd-000000000001",
+    name: String(artist.id),
+    metadata: { id: artist.id },
+  });
+
+  const response = await callRoute("DELETE /artists/:mbid", { mbid: String(artist.id) }, true);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(artistRow(artist.id), undefined);
+  assert.equal(albumRow(created.album.id), undefined);
+  assert.equal(await exists(albumDir), false);
+  assert.ok(artistRow(other.id));
+});
+
+test("removing the last album of an artist Aurral does not follow removes the artist", async () => {
+  const unfollowed = await createAurralAlbum();
+  const followed = await createAurralAlbum();
+  makeMonitoredArtist(followed.artist, "none");
+
+  assert.equal((await removeAlbum(unfollowed.album, true)).statusCode, 200);
+  assert.equal((await removeAlbum(followed.album, true)).statusCode, 200);
+
+  assert.equal(artistRow(unfollowed.artist.id), undefined);
+  assert.ok(artistRow(followed.artist.id));
+});
+
+test("an artist without a MusicBrainz ID that Lidarr manages is left to Lidarr", async () => {
+  const created = await createAurralAlbum();
+  const artist = withoutMusicBrainzId(created.artist);
+  managementStore.setLibraryManagement({ entityKind: "album", entityId: created.album.id, managedBy: "lidarr" });
+
+  const response = await callRoute("DELETE /artists/:mbid", { mbid: String(artist.id) }, true);
+
+  assert.equal(response.statusCode, 409);
+  assert.ok(artistRow(artist.id));
+  for (const track of created.tracks) assert.equal(await exists(track.filePath), true);
+});
+
 test("a failed artist removal stops monitoring and finishes on retry", async () => {
   const provider = await useFailingSlskd();
   const first = await createAurralAlbum();

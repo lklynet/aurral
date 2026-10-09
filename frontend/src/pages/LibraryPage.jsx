@@ -103,6 +103,7 @@ import {
 } from "../utils/aurralAlbumStatus.js";
 import {
   canRemoveLibraryAlbum,
+  canRemoveLibraryArtist,
   resolveAlbumManager,
 } from "../utils/libraryDestination.js";
 import { describeAlbumRequestResult } from "../utils/albumAddAction.js";
@@ -901,7 +902,7 @@ function LibraryPage() {
     try {
       if (!isPreviewLibrary) {
         if (removal.kind === "artist") {
-          await deleteArtistFromLibrary(entity.mbid, deleteFiles);
+          await deleteArtistFromLibrary(entity.mbid || entity.id, deleteFiles);
         } else if (removal.kind === "album" && resolveAlbumManager(entity) === "aurral") {
           await deleteAurralAlbumFromLibrary(entity.canonicalId || entity.id, deleteFiles);
         } else if (removal.kind === "album" && /^\d+$/.test(String(entity.providerId ?? ""))) {
@@ -2087,7 +2088,7 @@ function LibraryPage() {
                 onSelect: () => handleDiscoverArtistOpen(artist),
                 disabled: !artist.mbid,
               },
-              ...(canDeleteArtist && artist.mbid
+              ...(canDeleteArtist && canRemoveLibraryArtist(artist)
                 ? [
                     {
                       id: "delete",
@@ -2657,7 +2658,7 @@ function LibraryPage() {
                     onSelect: () => toggleFavorite("artist", libraryArtist),
                   },
                   ...libraryArtistMonitoringItems,
-                  ...(canDeleteArtist && libraryArtist.mbid
+                  ...(canDeleteArtist && canRemoveLibraryArtist(libraryArtist)
                     ? [{
                         id: "delete",
                         label: "Delete artist",

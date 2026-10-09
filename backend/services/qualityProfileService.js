@@ -1,10 +1,12 @@
 import fs from "fs/promises";
 import path from "path";
 import { parseFile } from "music-metadata";
+import { db } from "../config/db-sqlite.js";
 import { dbOps } from "../db/helpers/index.js";
 import { indexUnmonitoredJobs } from "./aurralUnmonitoredJobs.js";
 import { resolveDownloadRoot, isPathInsideRoot } from "./downloadPaths.js";
 import { getEnabledDownloadSources } from "./downloadSourceService.js";
+import { logger, safeLogDiagnostic } from "./logger.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import {
   classifyAudioQuality,
@@ -163,6 +165,56 @@ export async function queueQualityUpgrade(job) {
   return "queued";
 }
 
+function classifyLibraryFileQuality(file) {
+  let stored = {};
+  try {
+    stored = JSON.parse(file.quality_json || "{}") || {};
+  } catch {}
+  return classifyAudioQuality({
+    format: {
+      codec: stored.format,
+      bitrate: stored.bitrate,
+      sampleRate: stored.sampleRate,
+      bitsPerSample: stored.bitsPerSample,
+    },
+  }, file.path);
+}
+
+// Monitored Library tracks whose file Aurral did not download have no job
+// yet. Each one below the cutoff gets the Library job an upgrade replaces.
+function listLibraryUpgradeCandidates(profile) {
+  const jobPaths = new Set(downloadTracker.getAll()
+    .filter((job) => job.status === "done" && job.finalPath && !job.upgradeForJobId)
+    .map((job) => path.resolve(job.finalPath)));
+  const candidates = [];
+  for (const file of db.prepare(
+    `SELECT media.path, media.track_id, media.album_id, media.quality_json
+     FROM library_media_files AS media
+     JOIN library_tracks AS track ON track.id = media.track_id
+     WHERE media.source = 'aurral' AND media.available = 1 AND track.monitored = 1
+     ORDER BY media.id`,
+  ).iterate()) {
+    const filePath = path.resolve(file.path);
+    if (jobPaths.has(filePath) || !isAurralOwnedPath(filePath)) continue;
+    const quality = classifyLibraryFileQuality(file);
+    if (getQualityState(quality, profile) === "preferred") continue;
+    candidates.push({ trackId: file.track_id, albumId: file.album_id, path: filePath, quality });
+  }
+  return candidates;
+}
+
+async function queueLibraryTrackUpgrades(limit, profile) {
+  if (limit <= 0 || !hasUpgradeSource()) return 0;
+  const { resolveAurralOwnedTrackJob } = await import("./libraryTrackResearchService.js");
+  let queued = 0;
+  for (const candidate of listLibraryUpgradeCandidates(profile)) {
+    if (queued >= limit) break;
+    const job = resolveAurralOwnedTrackJob({ trackId: candidate.trackId, albumId: candidate.albumId });
+    if (job && await queueQualityUpgrade(job) === "queued") queued += 1;
+  }
+  return queued;
+}
+
 export async function runQualityUpgradeCheck({ force = false, playlistId = null, limit = 25 } = {}) {
   const profile = getQualityProfile();
   if (!force && !profile.automaticUpgrades) return 0;
@@ -184,7 +236,33 @@ export async function runQualityUpgradeCheck({ force = false, playlistId = null,
     if (!force && Number(current?.qualityUpgradeCheckedAt || 0) > dueBefore) continue;
     if (await queueQualityUpgrade(current) === "queued") queued += 1;
   }
+  if (!playlistId || playlistId === "library") {
+    queued += await queueLibraryTrackUpgrades(limit - queued, profile);
+  }
   return queued;
+}
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// An upgrade with the old file's name lands beside it as "07 - Title (2)".
+// Once the old file is gone, the upgrade takes its name back. A hardlinked
+// old file only loses this link, so its other copy is never touched.
+async function takeReplacedFileName(oldPath, newPath) {
+  const directory = path.dirname(oldPath);
+  const base = path.basename(oldPath, path.extname(oldPath));
+  const extension = path.extname(newPath);
+  if (path.dirname(newPath) !== directory) return newPath;
+  if (!new RegExp(`^${escapeRegExp(base)} \\(\\d+\\)${escapeRegExp(extension)}$`).test(path.basename(newPath))) {
+    return newPath;
+  }
+  const target = path.join(directory, `${base}${extension}`);
+  try {
+    await fs.link(newPath, target);
+    await fs.unlink(newPath);
+    return target;
+  } catch {
+    return newPath;
+  }
 }
 
 export async function finalizeQualityUpgradeSuccess(upgradeJob, finalPath, quality) {
@@ -200,18 +278,31 @@ export async function finalizeQualityUpgradeSuccess(upgradeJob, finalPath, quali
     playlistType: original.playlistType,
     qualityTier: original.qualityTier,
   };
-  const changed = downloadTracker.replaceFinalPath(oldPath, finalPath, quality);
+  let upgradedPath = finalPath;
+  let replaced = false;
+  if (oldPath !== finalPath && isAurralOwnedPath(oldPath)) {
+    const { createPlaybackDeletionGuard } = await import("./playback/playbackFileRetention.js");
+    if (await createPlaybackDeletionGuard().canDelete(oldPath)) {
+      await fs.rm(oldPath, { force: true }).catch(() => {});
+      upgradedPath = await takeReplacedFileName(oldPath, finalPath);
+      replaced = true;
+    }
+  }
+  const changed = downloadTracker.replaceFinalPath(oldPath, upgradedPath, quality);
+  if (replaced) {
+    const { adoptLibraryFileIdentity } = await import("./libraryFiles/fileIdentity.js");
+    await adoptLibraryFileIdentity(upgradedPath, { previousPath: oldPath }).catch((error) => {
+      logger.warn("quality-upgrade", "The Library could not follow an upgraded file", {
+        jobId: upgradeJob.id,
+        reason: safeLogDiagnostic(error),
+      });
+    });
+  }
   downloadTracker.removeJob(upgradeJob.id);
   const playlistIds = [...new Set(changed.map((job) => job.playlistType).filter(Boolean))];
   const { playlistManager } = await import("./playlists/playlistManager.js");
   for (const playlistId of playlistIds) await playlistManager.refreshPlaylist(playlistId);
   playlistManager.scheduleScanLibrary();
-  if (oldPath !== finalPath && isAurralOwnedPath(oldPath)) {
-    const { createPlaybackDeletionGuard } = await import("./playback/playbackFileRetention.js");
-    if (await createPlaybackDeletionGuard().canDelete(oldPath)) {
-      await fs.rm(oldPath, { force: true }).catch(() => {});
-    }
-  }
   const { recordTrackJobActivity } = await import("./aurralHistoryService.js");
   recordTrackJobActivity({
     jobId: upgradeJob.id,

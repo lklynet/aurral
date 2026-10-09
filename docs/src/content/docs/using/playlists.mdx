@@ -106,7 +106,7 @@ An existing file stays available when it is below the cutoff. Aurral replaces it
 
 If an upgrade search for a track is already queued, Aurral says so. Any user who can open the playlist can start these searches. Manual searches work when automatic upgrades are off.
 
-To schedule upgrades, turn on **Automatic upgrades** in the quality profile. It is off by default. **Upgrade interval** sets the days between checks for each track, from 1 to 365. The default is 2 days.
+To schedule upgrades, turn on **Automatic upgrades** in the quality profile. It is off by default. **Upgrade interval** sets the days between checks for each track, from 1 to 365. The default is 2 days. Automatic upgrades cover every monitored Library track in the Downloads Folder, including music that Aurral did not download.
 
 Upgrade downloads wait behind downloads of missing tracks. Aurral searches slskd, Usenet, and deemix for upgrades, in your source priority order. It stops at the first source that gives a valid, better file. It then waits for the next interval before it tries that track again. Aurral does not use yt-dlp for upgrades.
 

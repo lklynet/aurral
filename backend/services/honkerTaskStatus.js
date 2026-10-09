@@ -60,6 +60,13 @@ export const QUEUE_DEFINITIONS = [
     worker: "library-scan",
   },
   {
+    queue: "library-files",
+    label: "Library Files",
+    workerLabel: "Library File Worker",
+    description: "Ingests folders and renames and upgrades Library files.",
+    worker: "library-files",
+  },
+  {
     queue: "discovery-refresh",
     label: "Discovery refreshes",
     workerLabel: "Discovery refresh worker",

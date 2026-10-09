@@ -1,7 +1,6 @@
 import {
   enqueueHonkerStartupTasks,
   configureHonkerQueueWake,
-  getHonkerDb,
   getHonkerQueueByName,
   hasClaimableHonkerJobs,
   hasExpiredHonkerClaims,
@@ -9,6 +8,7 @@ import {
   listBackgroundGroupsWithWork,
   startHonkerScheduler,
 } from "./honkerDb.js";
+import { recoverExitedWorkerJobs, recoverJobsClaimedBeforeStart } from "./backgroundJobRecovery.js";
 import { createBackgroundProcessSupervisor } from "./backgroundProcessSupervisor.js";
 import { ISOLATED_QUEUE_GROUPS, isQueueOwnedByGroup } from "./backgroundWorkerQueues.js";
 import { getHonkerWorkerStatuses, isHonkerShuttingDown, registerHonkerShutdownHandler } from "./honkerWorkerRuntime.js";
@@ -43,6 +43,7 @@ const WORKER_STARTS = {
   "system-task-maintenance": ["./systemTaskWorker.js", "startMaintenanceTaskWorker"],
   "system-task-inbox": ["./systemTaskWorker.js", "startInboxTaskWorker"],
   "library-scan": ["./libraryScanWorker.js", "startLibraryScanWorker"],
+  "library-files": ["./libraryFiles/libraryFileWorker.js", "startLibraryFileWorker"],
   "_outbox:notifications": ["./notificationOutboxWorker.js", "startNotificationOutboxWorker"],
   "_outbox:play-events": ["./playEventOutboxWorker.js", "startPlayEventOutboxWorker"],
   "slskd-pipeline": ["./downloadPipelineWorker.js", "startDownloadPipelineWorker"],
@@ -218,63 +219,14 @@ export function hasQueuedBackgroundWork(group = supervisedGroup) {
     isQueueOwnedByGroup(worker.queue, group) && hasClaimableHonkerJobs(worker.queue));
 }
 
-export async function recoverExitedWorkerJobs(group, pid, logger = console, reason = null) {
-  if (!Number.isInteger(pid) || pid <= 0) return;
-  const workerId = `aurral-${pid}`;
-  const database = getHonkerDb();
-  const rows = database.query(
-    "SELECT id, queue, payload FROM _honker_live WHERE worker_id = ? AND state = 'processing'",
-    [workerId],
-  );
-  for (const row of rows) {
-    if (ISOLATED_QUEUE_GROUPS[row.queue] !== group) continue;
-    try {
-      if (row.queue === "library-scan") {
-        const { restoreLibraryScanAfterWorkerExit } = await import("./libraryScanWorker.js");
-        restoreLibraryScanAfterWorkerExit(row.id);
-      }
-      if (row.queue === "discovery-user-refresh") {
-        try {
-          const { markInterruptedUserDiscoveryRefresh } = await import("./discovery/provider.js");
-          const userId = Number(JSON.parse(row.payload || "{}").userId);
-          if (Number.isInteger(userId) && userId > 0) {
-            markInterruptedUserDiscoveryRefresh(userId, reason || "Background worker process exited");
-          }
-        } catch (error) {
-          logger.warn?.("[AppRuntime] Could not update discovery status:", error?.message || error);
-        }
-      }
-      try {
-        const { recordHonkerTaskRunFinished } = await import("./honkerTaskStatus.js");
-        const runs = database.query(
-          "SELECT id FROM honker_task_runs WHERE job_id = ? AND worker_id = ? AND status = 'running'",
-          [row.id, workerId],
-        );
-        for (const run of runs) {
-          recordHonkerTaskRunFinished(run.id, "failed", reason || "Background worker process exited");
-        }
-      } catch (error) {
-        logger.warn?.(`[AppRuntime] Could not update ${row.queue} task history:`, error?.message || error);
-      }
-      // Honker registers retry on its queue connection, not on the raw query connection.
-      getHonkerQueueByName(row.queue)._retry(
-        row.id, workerId, 1, reason || "Background worker process exited",
-      );
-    } catch (error) {
-      logger.warn?.(`[AppRuntime] Could not requeue ${row.queue} job ${row.id}:`, error?.message || error);
-    }
-  }
-  if (group === "downloads") {
-    const { downloadTracker } = await import("./downloadJobs/downloadTracker.js");
-    downloadTracker.resetDownloadingToPending();
-  }
-}
-
 export function startBackgroundWorkers({ logger = console } = {}) {
   if (backgroundWorkersStarted || process.env.AURRAL_TEST_SERVER === "1") {
     return false;
   }
   backgroundWorkersStarted = true;
+  recoverJobsClaimedBeforeStart(logger).catch((error) => {
+    logger.warn?.("[AppRuntime] Could not recover jobs from before the restart:", error?.message || error);
+  });
   import("./honkerTaskStatus.js")
     .then(({ clearStaleHonkerJobs }) => clearStaleHonkerJobs())
     .then((result) => {

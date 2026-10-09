@@ -13,6 +13,7 @@ const COMPONENTS_BY_TAB = {
     "QualityProfileModal.jsx",
     "PathMappingModal.jsx",
   ],
+  "library-files": ["SettingsLibraryFilesTab.jsx"],
   playback: ["SettingsPlaybackSection.jsx"],
   connect: ["SettingsConnectTab.jsx"],
   "rss-news": ["SettingsRssNewsTab.jsx"],

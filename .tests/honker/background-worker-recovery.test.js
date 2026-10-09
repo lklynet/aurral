@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { test } from "node:test";
-import { recoverExitedWorkerJobs } from "../../backend/services/appRuntime.js";
-import { getLibraryScanQueue } from "../../backend/services/honkerDb.js";
+import { recoverExitedWorkerJobs, recoverJobsClaimedBeforeStart } from "../../backend/services/backgroundJobRecovery.js";
+import { getHonkerDb, getLibraryScanQueue } from "../../backend/services/honkerDb.js";
 import {
   beginLibraryScanJob,
   onLibraryScanSuccess,
@@ -61,6 +61,60 @@ test("a worker exit preserves a full rescan requested during the active scan", a
   assert.equal(registry.force, true);
   assert.equal("changedPaths" in registry, false);
   assert.equal(queue.getJob(jobId)?.state, "pending");
+});
+
+test("a scan claimed before Aurral restarted runs again at startup with the files it was scanning", async (t) => {
+  const queue = getLibraryScanQueue();
+  const earlier = queue.enqueue({ force: false });
+  const current = queue.enqueue({ force: false });
+  t.after(() => {
+    queue.cancel(earlier);
+    queue.cancel(current);
+  });
+  assert.equal(queue.claimOne("aurral-900000004")?.id, earlier);
+  assert.equal(queue.claimOne("aurral-900000005")?.id, current);
+  getHonkerDb().query(
+    "UPDATE _honker_live SET claim_expires_at = claim_expires_at - ? WHERE id = ?",
+    [Math.ceil(process.uptime()) + 60, earlier],
+  );
+  const inFlightPath = path.resolve("test-library", "ingested.flac");
+  const pendingPath = path.resolve("test-library", "queued.flac");
+  dbOps.setJSONSetting("pendingLibraryScanJob", {
+    jobId: earlier,
+    includeLidarr: false,
+    changedPaths: [pendingPath],
+    inFlightActive: true,
+    inFlightPaths: [inFlightPath],
+  });
+
+  await recoverJobsClaimedBeforeStart({ warn() {} });
+
+  assert.equal(queue.getJob(earlier)?.state, "pending");
+  assert.equal(queue.getJob(current)?.state, "processing");
+  assert.deepEqual(
+    beginLibraryScanJob(earlier, { force: false, includeLidarr: false }).changedPaths,
+    [pendingPath, inFlightPath],
+  );
+});
+
+test("a scan retried after its claim expired scans the files the interrupted attempt was scanning", () => {
+  const queue = getLibraryScanQueue();
+  const jobId = queue.enqueue({ force: false });
+  const inFlightPath = path.resolve("test-library", "interrupted.flac");
+  const pendingPath = path.resolve("test-library", "afterwards.flac");
+  dbOps.setJSONSetting("pendingLibraryScanJob", {
+    jobId,
+    includeLidarr: false,
+    changedPaths: [pendingPath],
+    inFlightActive: true,
+    inFlightPaths: [inFlightPath],
+  });
+  try {
+    const scan = beginLibraryScanJob(jobId, { force: false, includeLidarr: false });
+    assert.deepEqual(scan.changedPaths, [inFlightPath, pendingPath]);
+  } finally {
+    queue.cancel(jobId);
+  }
 });
 
 test("scan start and completion preserve requests received while a scan is active", () => {

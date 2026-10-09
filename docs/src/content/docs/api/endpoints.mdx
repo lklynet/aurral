@@ -83,7 +83,7 @@ WebSocket connections.
 | `POST` | `/api/library/artists` | Add an artist |
 | `GET` | `/api/library/artists/:mbid/monitoring` | Get the active manager's monitoring for an artist |
 | `PUT` | `/api/library/artists/:mbid` | Update artist monitoring |
-| `DELETE` | `/api/library/artists/:mbid?manager=aurral\|lidarr` | Delete an artist from Lidarr and Aurral, or from one manager with `manager`. Returns `503` and deletes nothing when Lidarr cannot be reached |
+| `DELETE` | `/api/library/artists/:mbid?manager=aurral\|lidarr` | Delete an artist from Lidarr and Aurral, or from one manager with `manager`. An artist without a MusicBrainz ID takes its Library `id` instead and is deleted from Aurral. Returns `503` and deletes nothing when Lidarr cannot be reached |
 | `POST` | `/api/library/artists/:mbid/refresh` | Refresh an artist in Lidarr |
 | `PUT` | `/api/library/canonical/artists/:id/mbid` | Set a library artist's MusicBrainz ID with `{ "mbid": "…" }`, or clear it with `{ "mbid": null }` |
 | `GET` | `/api/library/albums?artistId=:id&managedBy=aurral\|lidarr` | List an artist's albums. Send the artist's `managedBy` so a Lidarr ID is never read as an Aurral ID |
@@ -102,6 +102,13 @@ WebSocket connections.
 | `POST` | `/api/library/refresh` | Queue a library scan. `mode` is `quick`, the default, or `full` to read every file again |
 | `GET` | `/api/library/refresh` | Read the ID and status of the scheduled library scan |
 | `GET` | `/api/library/refresh/:jobId` | Read the status of a library scan |
+| `GET` | `/api/library/files` | Read the latest ingest or clean up operation. Admin only |
+| `POST` | `/api/library/files/ingest/check` | Check an ingest folder with `{ "sourcePath": "…" }`: music file count, whether Hardlink works, and any Lidarr root folder it is in |
+| `POST` | `/api/library/files/ingest` | Start an ingest with `{ "sourcePath": "…", "mode": "move" \| "copy" \| "hardlink", "monitor": "none" \| "tracks" \| "albums" }`. `monitor` defaults to `none`. Returns `409` while another operation runs |
+| `POST` | `/api/library/files/cleanup` | Start renaming Library files in the Downloads Folder to Aurral's names. Returns `409` while another operation runs |
+| `GET` | `/api/library/files/operations/:id` | Read an operation's status, progress, and counts |
+| `GET` | `/api/library/files/operations/:id/items` | Read an operation's files. Optional `status`, `offset`, and `limit` up to 200 |
+| `POST` | `/api/library/files/operations/:id/cancel` | Stop an ingest or clean up after the current file. Files already done stay done |
 | `GET` | `/api/library/canonical` | Read one page of Library items. Requires a supported `kind`, and `pageSize` from 1 to 100 |
 | `GET` | `/api/library/favorites` | Read the current user's library favorites |
 | `POST` | `/api/library/favorites` | Add or remove a library favorite. Requires a user session |
