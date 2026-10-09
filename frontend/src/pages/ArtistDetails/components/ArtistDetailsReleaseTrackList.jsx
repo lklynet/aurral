@@ -8,6 +8,7 @@ import { useAlbumTrackListToolbar } from "../../../hooks/useAlbumTrackListToolba
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
+import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 
 const releaseTrackId = (track, trackKey, index) =>
   String(track?.id ?? track?.mbid ?? `${trackKey}-${index}`);
@@ -71,8 +72,9 @@ export function ArtistDetailsReleaseTrackList({
   highlightTrackId = null,
 }) {
   const ownedTrackSet = new Set((Array.isArray(ownedTrackMbids) ? ownedTrackMbids : []).map(String));
-  const { currentTrack, isPlaying, isLoading, playTrack, togglePlayPause } = useAudioQueue();
+  const { currentTrack, isPlaying, isLoading, isStarting, playTrack, togglePlayPause } = useAudioQueue();
   const { isTrackDownloading } = useActiveDownloads();
+  const getQueueItems = useQueueTrackActions();
 
   if (!release) return null;
   if (loading) {
@@ -113,13 +115,18 @@ export function ArtistDetailsReleaseTrackList({
     const downloading =
       !isOwned &&
       (albumDownloading || isTrackDownloading(track) || isTrackDownloading(membershipTrack));
+    const queueItems = canPlay
+      ? getQueueItems(preview.normalizeTrack(track, index), { source: playbackSource })
+      : [];
     const items = [
+      ...queueItems,
       ...(onAddTrackToLibrary && !isOwned
         ? [
             {
               id: "add-library",
               label: downloading ? "Downloading…" : "Add to library",
               icon: downloading ? DownloadingIcon : Plus,
+              separatorBefore: queueItems.length > 0,
               disabled: downloading || libraryTrackSavingKey === id,
               onSelect: () => onAddTrackToLibrary(track, release),
             },
@@ -132,7 +139,8 @@ export function ArtistDetailsReleaseTrackList({
       title,
       time: formatReleaseTrackDuration(track.length),
       active: isCurrent,
-      playing: isCurrent && (isPlaying || isLoading),
+      playing: isCurrent && (isPlaying || isStarting),
+      loading: isCurrent && isLoading,
       onPlay: canPlay ? () => handlePlay(track, index) : null,
       badge: isOwned ? <SearchLibraryCheck size="discover" /> : null,
       menu: items.length || onAddTrackToPlaylist ? {

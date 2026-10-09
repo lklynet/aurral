@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { Clock, Download, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
+import { SkeletonCollectionHeader, SkeletonRows, SkeletonStatus } from "../../components/Skeletons";
 import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../../components/CollectionHeader";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import TooltipButton from "../../components/TooltipButton";
@@ -36,6 +37,7 @@ import {
 } from "./playlistPageUtils";
 import { countAvailableTracks } from "./trackAvailability.js";
 import { usePlaylistStatus } from "./usePlaylistStatus";
+import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.js";
 
 function updateCachedPlaylist(playlistId, changes) {
   queryClient.setQueryData(queryKeys.playlistStatus, (current) =>
@@ -64,10 +66,10 @@ export default function PlaylistDetailPage() {
       <main className="library-page native-library-page playlist-page">
         <div className="native-library-content">
           {waiting ? (
-            <div className="native-library-state" role="status">
-              <DotLoader size="xl" label={null} />
-              <span>Loading playlist…</span>
-            </div>
+            <SkeletonStatus label="Loading playlist" className="native-library-detail">
+              <SkeletonCollectionHeader />
+              <SkeletonRows count={10} />
+            </SkeletonStatus>
           ) : error && !status ? (
             <div className="native-library-state" role="alert">
               <strong>Playlist unavailable</strong>
@@ -107,9 +109,14 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
   const { showSuccess, showError } = useToast();
   const { artworkUrlFor } = usePlaylistArtwork();
   const showTrackAvailability = playlist.showTrackAvailability === true;
-  const { tracks, loading, error, refresh } = usePlaylistTracks(playlist.id, {
+  const { tracks: savedTracks, loading, error, refresh } = usePlaylistTracks(playlist.id, {
     pollAvailability: showTrackAvailability,
   });
+  const hiddenTrackIds = useHiddenPlaylistTracks().get(playlist.id);
+  const tracks = useMemo(
+    () => (hiddenTrackIds ? savedTracks.filter((track) => !hiddenTrackIds.has(track.id)) : savedTracks),
+    [hiddenTrackIds, savedTracks],
+  );
   const playbackSource = {
     type: "playlist",
     id: playlist.id,
@@ -127,7 +134,10 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
   const importSource = playlist.importSource || null;
   const isSyncable = SYNCABLE_IMPORT_PROVIDERS.has(importSource?.provider);
   const providerLabel = isSyncable ? getImportedProviderLabel(importSource.provider) : "";
-  const totalTracks = getStaticPlaylistTrackCount(playlist, stats, tracks.length);
+  const totalTracks = Math.max(
+    0,
+    getStaticPlaylistTrackCount(playlist, stats, savedTracks.length) - (savedTracks.length - tracks.length),
+  );
   const trackLabel =
     showTrackAvailability && !loading && !error
       ? `${countAvailableTracks(tracks)}/${totalTracks} available`

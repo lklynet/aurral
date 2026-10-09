@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
+import RouteLink from "../../components/RouteLink";
 import { ListMusic, MoreVertical, Plus, Upload } from "lucide-react";
-import { DotLoader } from "../../components/DotLoader";
+import { SkeletonCardGrid, SkeletonStatus } from "../../components/Skeletons";
 import Tooltip from "../../components/Tooltip";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import { CreatePlaylistModal } from "../../components/PlaylistModals";
@@ -19,6 +20,7 @@ import {
   usePlaylistArtwork,
 } from "./playlistPageUtils";
 import { usePlaylistStatus } from "./usePlaylistStatus";
+import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.js";
 import { playlistPath } from "../../navigation/playlistPaths";
 
 const PlaylistImportModal = lazy(() =>
@@ -47,6 +49,7 @@ export default function PlaylistsPage() {
   const { showSuccess, showError } = useToast();
   const { status, loading, error, fetchStatus, getPlaylistStats, staticPlaylists } =
     usePlaylistStatus();
+  const hiddenTracks = useHiddenPlaylistTracks();
   const { artworkUrlFor } = usePlaylistArtwork();
   const [importOpen, setImportOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -89,7 +92,11 @@ export default function PlaylistsPage() {
   };
 
   const describePlaylist = (playlist) => {
-    const parts = [formatTrackTotal(getStaticPlaylistTrackCount(playlist, getPlaylistStats(playlist.id)))];
+    const hiddenCount = hiddenTracks.get(playlist.id)?.size || 0;
+    const parts = [formatTrackTotal(Math.max(
+      0,
+      getStaticPlaylistTrackCount(playlist, getPlaylistStats(playlist.id)) - hiddenCount,
+    ))];
     if (playlist.ownerUsername && (user?.role === "admin" || playlist.ownerUsername !== user?.username)) {
       parts.unshift(playlist.ownerUsername);
     }
@@ -99,10 +106,9 @@ export default function PlaylistsPage() {
   const renderContent = () => {
     if (loading && !status) {
       return (
-        <div className="native-library-state" role="status">
-          <DotLoader size="xl" label={null} />
-          <span>Loading playlists…</span>
-        </div>
+        <SkeletonStatus label="Loading playlists">
+          <SkeletonCardGrid className="native-library-grid" count={8} square />
+        </SkeletonStatus>
       );
     }
     if (error && !status) {
@@ -141,21 +147,22 @@ export default function PlaylistsPage() {
     return (
       <div className="native-library-grid" role="list" aria-label="Playlists">
         {staticPlaylists.map((playlist) => (
-          <article className="native-library-card" role="listitem" key={playlist.id}>
+          <article className="native-library-card" role="listitem" data-artwork-scope key={playlist.id}>
             <div className="native-library-card__cover-wrap">
-              <Link
+              <RouteLink
                 to={playlistPath(playlist.id)}
                 className="native-library-card__cover playlists-page__cover"
+                data-artwork
                 aria-label={`Open ${playlist.name}`}
               >
                 <PlaylistArtworkThumb artworkUrl={artworkUrlFor(playlist.id)} name={playlist.name} />
-              </Link>
+              </RouteLink>
               <SyncedBadge importSource={playlist.importSource} />
             </div>
             <div className="native-library-card__body">
-              <Link to={playlistPath(playlist.id)} className="native-library-card__title playlists-page__title">
+              <RouteLink to={playlistPath(playlist.id)} className="native-library-card__title playlists-page__title">
                 {playlist.name}
-              </Link>
+              </RouteLink>
               <span className="native-library-card__meta">{describePlaylist(playlist)}</span>
             </div>
           </article>

@@ -201,20 +201,37 @@ export function useDiscoverData() {
 
   const handleDiscoveryFeedback = useCallback(
     async (artist, action, options = {}) => {
-      const saved = await submitFeedback(artist, action, options);
-      if (saved && action === "block_artist" && !options.isSelected) {
-        setData((current) => {
-          if (!current) return current;
-          const keepArtist = (candidate) => !artistsShareDiscoveryIdentity(candidate, artist);
-          const next = {
-            ...current,
-            recommendations: (current.recommendations || []).filter(keepArtist),
-            globalTop: (current.globalTop || []).filter(keepArtist),
-          };
-          return next;
-        });
+      if (action !== "block_artist" || options.isSelected) {
+        return submitFeedback(artist, action, options);
       }
-      return saved;
+      const hidden = {};
+      setData((current) => {
+        if (!current) return current;
+        const next = { ...current };
+        for (const key of ["recommendations", "globalTop"]) {
+          const list = current[key] || [];
+          hidden[key] = list
+            .map((candidate, index) => ({ candidate, index }))
+            .filter(({ candidate }) => artistsShareDiscoveryIdentity(candidate, artist));
+          next[key] = list.filter((candidate) => !artistsShareDiscoveryIdentity(candidate, artist));
+        }
+        return next;
+      });
+      const restoreCards = () => setData((current) => {
+        if (!current) return current;
+        const next = { ...current };
+        for (const [key, entries] of Object.entries(hidden)) {
+          const list = [...(current[key] || [])];
+          for (const { candidate, index } of entries) {
+            if (!list.some((existing) => artistsShareDiscoveryIdentity(existing, candidate))) {
+              list.splice(Math.min(index, list.length), 0, candidate);
+            }
+          }
+          next[key] = list;
+        }
+        return next;
+      });
+      return submitFeedback(artist, action, { ...options, onRevert: restoreCards });
     },
     [setData, submitFeedback],
   );

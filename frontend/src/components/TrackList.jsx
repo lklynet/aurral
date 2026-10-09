@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Heart, Pause, Play } from "lucide-react";
 import { LibraryItemMenu } from "./LibraryItemMenu";
 import Tooltip from "./Tooltip";
 import TooltipButton from "./TooltipButton";
+import RouteLink from "./RouteLink";
 
 const SORTABLE_HEADINGS = {
   number: "index",
@@ -26,7 +27,18 @@ export function FavoriteButton({ active, pending, label, onClick, className = ""
   );
 }
 
-function TrackCover({ cover }) {
+function PlayingIndicator({ row }) {
+  const state = row.loading ? "loading" : row.playing ? "playing" : "paused";
+  return (
+    <span className={`track-playing-indicator is-${state}`} aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
+function TrackCover({ cover, indicator = null }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [cover?.src]);
   const label = cover?.label || "";
@@ -38,6 +50,22 @@ function TrackCover({ cover }) {
         {label.trim().charAt(0).toUpperCase() || "—"}
       </span>
     );
+  const overlay = indicator ? (
+    <span className="native-library-track__cover-indicator">{indicator}</span>
+  ) : null;
+  if (cover?.to) {
+    return (
+      <RouteLink
+        to={cover.to}
+        state={cover.state}
+        className="native-library-track__cover"
+        aria-label={`Open ${label || "album"}`}
+      >
+        {content}
+        {overlay}
+      </RouteLink>
+    );
+  }
   if (cover?.onOpen) {
     return (
       <button
@@ -47,14 +75,31 @@ function TrackCover({ cover }) {
         aria-label={`Open ${label || "album"}`}
       >
         {content}
+        {overlay}
       </button>
     );
   }
-  return <span className="native-library-track__cover">{content}</span>;
+  return (
+    <span className="native-library-track__cover">
+      {content}
+      {overlay}
+    </span>
+  );
 }
 
 function TrackLink({ link, className }) {
   if (!link?.label) return <span className={`native-library-track__link ${className}`} />;
+  if (link.to) {
+    return (
+      <RouteLink
+        to={link.to}
+        state={link.state}
+        className={`native-library-track__link ${className}`}
+      >
+        {link.label}
+      </RouteLink>
+    );
+  }
   if (!link.onOpen) {
     return <span className={`native-library-track__link ${className}`}>{link.label}</span>;
   }
@@ -145,6 +190,7 @@ export function TrackList({
               }
               data-library-menu-target={row.menu || row.menuElement ? true : undefined}
               role="listitem"
+              aria-current={row.active ? "true" : undefined}
             >
               {selection ? (
                 <span className="native-library-track__select">
@@ -173,9 +219,14 @@ export function TrackList({
                 <span aria-hidden="true" />
               )}
               <span className="native-library-track__number" aria-hidden="true">
-                {row.number}
+                {row.active ? <PlayingIndicator row={row} /> : row.number}
               </span>
-              {isCollection ? <TrackCover cover={row.cover} /> : null}
+              {isCollection ? (
+                <TrackCover
+                  cover={row.cover}
+                  indicator={row.active ? <PlayingIndicator row={row} /> : null}
+                />
+              ) : null}
               <Tooltip content={row.title}>
                 {row.onPlay && !row.playDisabled && !selection ? (
                   <button type="button" className="native-library-track__title" onClick={row.onPlay}>

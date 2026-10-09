@@ -13,7 +13,6 @@ import {
 } from "../../utils/api/endpoints/library.js";
 import {
   getReleaseGroupCover,
-  getReleaseGroupDetails,
   getReleaseGroupTracks,
 } from "../../utils/api/endpoints/artists.js";
 import { useStaticPlaylists } from "../../hooks/useStaticPlaylists";
@@ -40,6 +39,7 @@ import {
 import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../../components/CollectionHeader";
 import { withImageCacheBust } from "../../utils/normalizeMediaUrl.js";
 import { queryClient, queryKeys } from "../../queryClient.js";
+import { releaseGroupDetailsQueryOptions } from "../../queryOptions.js";
 import {
   buildStaticPlaylistTrackPayload,
   buildLastfmAlbumUrl,
@@ -121,12 +121,7 @@ function ReleasePage() {
     [locationState, releaseMbid],
   );
 
-  const releaseDetailsQuery = useQuery({
-    queryKey: queryKeys.releaseGroupDetails(releaseMbid),
-    queryFn: ({ signal }) => getReleaseGroupDetails(releaseMbid, { signal }),
-    enabled: Boolean(releaseMbid),
-    staleTime: 5 * 60 * 1000,
-  });
+  const releaseDetailsQuery = useQuery(releaseGroupDetailsQueryOptions(releaseMbid));
   const release = useMemo(
     () => mergeReleaseDetails(baseRelease, releaseDetailsQuery.data),
     [baseRelease, releaseDetailsQuery.data],

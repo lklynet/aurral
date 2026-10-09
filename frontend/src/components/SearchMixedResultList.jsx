@@ -1,15 +1,10 @@
 import { Music } from "lucide-react";
 import ArtistImage from "./ArtistImage";
-import { getSearchResultKey, navigateFromSearchResult } from "../utils/searchNavigation";
+import { getSearchResultKey, getSearchResultLink } from "../utils/searchNavigation";
 import { getPlaylistArtworkUrl } from "../utils/api/endpoints/playlists.js";
 import { getArtistRecordId } from "../utils/artistTaste";
+import RouteLink from "./RouteLink";
 import Tooltip from "./Tooltip";
-
-const handleMainKeyDown = (event, onClick) => {
-  if (event.key !== "Enter" && event.key !== " ") return;
-  event.preventDefault();
-  onClick();
-};
 
 function getSearchPlaylistArtworkUrl(playlist) {
   if (!playlist) return null;
@@ -101,7 +96,6 @@ function ResultThumbnail({ item, artistImages, albumCovers }) {
 
 function SearchMixedResultList({
   items,
-  navigate,
   query = "",
   artistImages = {},
   albumCovers = {},
@@ -116,41 +110,41 @@ function SearchMixedResultList({
         const primaryLabel = getPrimaryLabel(item);
         const secondaryLabel = getSecondaryLabel(item);
         const action = renderAction ? renderAction(item) : null;
-        const handleOpen = () =>
-          navigateFromSearchResult(navigate, item, {
-            query,
-          });
+        const link = getSearchResultLink(item, { query });
+        const copy = (
+          <>
+            <Tooltip content={primaryLabel}>
+              <span className="search-mixed-results__title">{primaryLabel}</span>
+            </Tooltip>
+            {secondaryLabel ? (
+              <Tooltip content={secondaryLabel}>
+                <span className="search-mixed-results__subtitle">{secondaryLabel}</span>
+              </Tooltip>
+            ) : null}
+          </>
+        );
 
         return (
           <li key={getSearchResultKey(item, index)}>
             <div className="search-mixed-results__row">
-              <div
-                role="button"
-                tabIndex={0}
-                className="search-mixed-results__main"
-                onClick={handleOpen}
-                onKeyDown={(event) => handleMainKeyDown(event, handleOpen)}
-                aria-label={`Open ${primaryLabel}`}
-              >
+              <div className="search-mixed-results__main">
                 <ResultThumbnail
                   item={item}
                   artistImages={artistImages}
                   albumCovers={albumCovers}
                 />
-                <span className="search-mixed-results__copy">
-                  <Tooltip content={primaryLabel}>
-                    <span className="search-mixed-results__title" >
-                      {primaryLabel}
-                    </span>
-                  </Tooltip>
-                  {secondaryLabel ? (
-                    <Tooltip content={secondaryLabel}>
-                      <span className="search-mixed-results__subtitle" >
-                        {secondaryLabel}
-                      </span>
-                    </Tooltip>
-                  ) : null}
-                </span>
+                {link ? (
+                  <RouteLink
+                    to={link.to}
+                    state={link.state}
+                    className="search-mixed-results__copy card-link"
+                    aria-label={`Open ${primaryLabel}`}
+                  >
+                    {copy}
+                  </RouteLink>
+                ) : (
+                  <span className="search-mixed-results__copy">{copy}</span>
+                )}
               </div>
               {typeLabel ? (
                 <span className="search-mixed-results__type-col">
@@ -159,12 +153,7 @@ function SearchMixedResultList({
               ) : (
                 <span className="search-mixed-results__type-col" />
               )}
-              <span
-                className="search-mixed-results__actions"
-                onClick={(event) => event.stopPropagation()}
-              >
-                {action}
-              </span>
+              <span className="search-mixed-results__actions">{action}</span>
             </div>
           </li>
         );

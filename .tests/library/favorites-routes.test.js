@@ -289,3 +289,47 @@ test("library pages filter, count, and paginate in the read query", () => {
   assert.equal(response.body.hasMore, false);
   assert.equal(response.body.items[0].title, "Favorite Album");
 });
+
+test("unfavoriting returns the removed stars so restoring keeps their original time", () => {
+  const first = `song:${encodeURIComponent("favorite-track")}`;
+  const second = `song:${encodeURIComponent("favorite-track-two")}`;
+  const starResponse = responseFor();
+  getRoute("POST /favorites")({ user, body: { ids: [first, second], starred: true } }, starResponse);
+  assert.equal(starResponse.statusCode, 200);
+  db.prepare("UPDATE subsonic_stars SET created_at = 1000 WHERE user_id = ? AND entity_key = ?")
+    .run(user.id, "favorite-track");
+  db.prepare("UPDATE subsonic_stars SET created_at = 2000 WHERE user_id = ? AND entity_key = ?")
+    .run(user.id, "favorite-track-two");
+  const storedSongs = () => db.prepare(
+    "SELECT entity_key, created_at FROM subsonic_stars WHERE user_id = ? AND entity_kind = 'song' ORDER BY created_at",
+  ).all(user.id);
+
+  const unstarResponse = responseFor();
+  getRoute("POST /favorites")({ user, body: { ids: [first], starred: false } }, unstarResponse);
+  assert.equal(unstarResponse.statusCode, 200);
+  assert.deepEqual(unstarResponse.body.removed, [{ id: first, starredAt: 1000 }]);
+  assert.deepEqual(storedSongs(), [{ entity_key: "favorite-track-two", created_at: 2000 }]);
+
+  const rejected = responseFor();
+  getRoute("POST /favorites/restore")(
+    { user, body: { favorites: [{ id: first, starredAt: "soon" }] } },
+    rejected,
+  );
+  assert.equal(rejected.statusCode, 400);
+  assert.deepEqual(storedSongs(), [{ entity_key: "favorite-track-two", created_at: 2000 }]);
+
+  const restoreResponse = responseFor();
+  getRoute("POST /favorites/restore")(
+    { user, body: { favorites: unstarResponse.body.removed } },
+    restoreResponse,
+  );
+  assert.equal(restoreResponse.statusCode, 200);
+  assert.deepEqual(storedSongs(), [
+    { entity_key: "favorite-track", created_at: 1000 },
+    { entity_key: "favorite-track-two", created_at: 2000 },
+  ]);
+
+  const cleanup = responseFor();
+  getRoute("POST /favorites")({ user, body: { ids: [first, second], starred: false } }, cleanup);
+  assert.deepEqual(storedSongs(), []);
+});

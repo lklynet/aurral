@@ -12,6 +12,7 @@ import {
 } from "../utils/api/endpoints/playlists.js";
 import { getDiscovery } from "../utils/api/endpoints/discovery.js";
 import { DotLoader } from "../components/DotLoader";
+import { SkeletonCardGrid, SkeletonStatus } from "../components/Skeletons";
 import { getArtistCover, getReleaseGroupCover } from "../utils/api/endpoints/artists.js";
 import { searchCatalog, searchLibrary, searchUnified } from "../utils/api/endpoints/search.js";
 import SearchAlbumResults from "../components/SearchAlbumResults";
@@ -55,7 +56,6 @@ import {
   ALBUM_COVER_HYDRATION_CONCURRENCY,
 } from "./searchPageUtils";
 import { Link, useSearchParams } from "react-router";
-import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { artistMatchesGenre } from "./discoverUtils";
 import {
@@ -161,7 +161,6 @@ function SearchResultsPage() {
   const sentinelRef = useRef(null);
   const albumOptionsMenuRef = useRef(null);
   const recommendedToolbarRef = useRef(null);
-  const navigate = useDiscoverNavigation();
   const { hasPermission } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
@@ -321,8 +320,19 @@ function SearchResultsPage() {
       if (!lastPage?.hasMore && !(Number(lastPage?.count) > loaded)) return undefined;
       return loaded;
     },
+    placeholderData: (previous, previousQuery) => {
+      const previousKey = previousQuery?.queryKey;
+      return previousKey &&
+        searchQueryKey[1] !== "unified" &&
+        searchQueryKey[1] !== "discovery" &&
+        previousKey[1] === searchQueryKey[1] &&
+        previousKey[2] === searchQueryKey[2]
+        ? previous
+        : undefined;
+    },
     staleTime: 30_000,
   });
+  const searchUpdating = searchQuery.isPlaceholderData;
 
   const searchPages = searchQuery.data?.pages || EMPTY_SEARCH_PAGES;
   const rawUnifiedResults = isUnifiedSearch ? searchPages[0] || null : null;
@@ -403,7 +413,7 @@ function SearchResultsPage() {
         : Number(searchPages[searchPages.length - 1]?.count ?? results.length);
   const hasMore = fullList
     ? visibleCount < fullList.length
-    : searchQuery.hasNextPage === true;
+    : !searchUpdating && searchQuery.hasNextPage === true;
 
   const albumResultsForTab = useMemo(() => {
     if (!isAlbumSearch) return results;
@@ -1103,13 +1113,12 @@ function SearchResultsPage() {
 
   const searchListProps = useMemo(
     () => ({
-      navigate,
       query: trimmedQuery,
       artistImages,
       albumCovers,
       renderAction: renderSearchResultAction,
     }),
-    [albumCovers, artistImages, navigate, renderSearchResultAction, trimmedQuery],
+    [albumCovers, artistImages, renderSearchResultAction, trimmedQuery],
   );
 
   const searchLibraryFlags = useMemo(() => {
@@ -1538,13 +1547,16 @@ function SearchResultsPage() {
       )}
 
       {loading && (
-        <div className="artist-loading">
-          <DotLoader size="2xl" label={null} />
-        </div>
+        <SkeletonStatus label="Loading results">
+          <SkeletonCardGrid />
+        </SkeletonStatus>
       )}
 
       {showContent && (
-        <>
+        <div
+          className={searchUpdating ? "query-pending" : undefined}
+          aria-busy={searchUpdating || undefined}
+        >
           {isEmpty ? (
             <div className="search-empty-panel">
               <div className="search-empty-panel__icon" aria-hidden="true">
@@ -1565,7 +1577,6 @@ function SearchResultsPage() {
                           artistImages={artistImages}
                           albumCovers={albumCovers}
                           libraryLookup={libraryLookup}
-                          navigate={navigate}
                           query={trimmedQuery}
                         />
                       )}
@@ -1586,7 +1597,6 @@ function SearchResultsPage() {
                       pendingAlbumIds={pendingAlbumIds}
                       onAlbumAction={handleAlbumAction}
                       libraryDestination={libraryDestination}
-                      navigate={navigate}
                       viewMode="grid"
                     />
                   )}
@@ -1597,7 +1607,6 @@ function SearchResultsPage() {
                       type="artist"
                       artistImages={artistImages}
                       libraryLookup={libraryLookup}
-                      navigate={navigate}
                       onArtistFeedback={handleArtistFeedback}
                       artistFeedbackLookup={artistFeedbackLookup}
                       variant="round"
@@ -1612,7 +1621,6 @@ function SearchResultsPage() {
                       pendingAlbumIds={pendingAlbumIds}
                       onAlbumAction={handleAlbumAction}
                       libraryDestination={libraryDestination}
-                      navigate={navigate}
                       viewMode="grid"
                     />
                   )}
@@ -1625,7 +1633,6 @@ function SearchResultsPage() {
                   pendingAlbumIds={pendingAlbumIds}
                   onAlbumAction={handleAlbumAction}
                   libraryDestination={libraryDestination}
-                  navigate={navigate}
                   viewMode={albumViewMode}
                 />
               ) : (
@@ -1634,7 +1641,6 @@ function SearchResultsPage() {
                   type={normalizedType}
                   artistImages={artistImages}
                   libraryLookup={libraryLookup}
-                  navigate={navigate}
                   onArtistFeedback={handleArtistFeedback}
                   artistFeedbackLookup={artistFeedbackLookup}
                   variant={
@@ -1661,7 +1667,7 @@ function SearchResultsPage() {
               )}
             </>
           )}
-        </>
+        </div>
       )}
     </div>
   );

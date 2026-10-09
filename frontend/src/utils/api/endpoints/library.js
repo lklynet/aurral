@@ -11,7 +11,7 @@ import {
   queryKeys,
 } from "../../../queryClient.js";
 import { getLibraryOwnerConflict } from "../../libraryDestination.js";
-import { addActiveDownload } from "../../activeDownloads.js";
+import { addActiveDownload, normalizeActiveDownloads } from "../../activeDownloads.js";
 
 const buildStreamUrl = (path) => buildAuthenticatedApiUrl(path);
 const SLOW_LIBRARY_REQUEST_TIMEOUT_MS = 90000;
@@ -133,11 +133,11 @@ export const clearLibraryFavoritesCache = () => {
   latestLibraryFavorites = null;
 };
 
-export const updateLibraryFavorites = (ids, starred) => {
+const writeLibraryFavorites = (send) => {
   const generation = ++libraryFavoritesGeneration;
   const write = libraryFavoritesWrite.then(async () => {
     try {
-      const data = await postData("/library/favorites", { ids, starred });
+      const data = await send();
       if (generation !== libraryFavoritesGeneration) return data;
       try {
         const refreshed = await fetchLibraryFavorites();
@@ -163,6 +163,12 @@ export const updateLibraryFavorites = (ids, starred) => {
   });
   return write;
 };
+
+export const updateLibraryFavorites = (ids, starred) =>
+  writeLibraryFavorites(() => postData("/library/favorites", { ids, starred }));
+
+export const restoreLibraryFavorites = (favorites) =>
+  writeLibraryFavorites(() => postData("/library/favorites/restore", { favorites }));
 
 const normalizeLibraryArtist = (artist) =>
   artist && !artist.foreignArtistId
@@ -336,13 +342,26 @@ export const addLibraryAlbum = async (
   });
 
 export const requestAlbumFromSearch = async (payload) => {
-  const result = await postData("/library/albums/request", payload, {
-    timeout: SLOW_LIBRARY_REQUEST_TIMEOUT_MS,
-  });
+  const started = { albumMbid: payload?.albumMbid, artistMbid: payload?.artistMbid };
+  const previous = queryClient.getQueryData(queryKeys.activeDownloads);
+  const optimistic = queryClient.setQueryData(queryKeys.activeDownloads, (current) =>
+    addActiveDownload(current, started));
+  let result;
+  try {
+    result = await postData("/library/albums/request", payload, {
+      timeout: SLOW_LIBRARY_REQUEST_TIMEOUT_MS,
+    });
+  } catch (error) {
+    if (queryClient.getQueryData(queryKeys.activeDownloads) === optimistic) {
+      queryClient.setQueryData(queryKeys.activeDownloads, previous ?? normalizeActiveDownloads(previous));
+    }
+    void refreshActiveDownloads();
+    throw error;
+  }
   if (result?.status === "available") {
     void refreshActiveDownloads();
   } else {
-    markDownloadStarted({ albumMbid: payload?.albumMbid, artistMbid: payload?.artistMbid });
+    markDownloadStarted(started);
   }
   return result;
 };

@@ -98,6 +98,25 @@ export const removeDiscoveryFeedback = (userId = "global", feedbackId) => {
   return next;
 };
 
+const feedbackTime = (entry) => {
+  const time = new Date(entry?.createdAt || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+};
+
+export const restoreDiscoveryFeedback = (userId = "global", { removeIds = [], entries = [] } = {}) => {
+  const removing = new Set(
+    (Array.isArray(removeIds) ? removeIds : []).map((id) => String(id || "").trim()).filter(Boolean),
+  );
+  const next = getDiscoveryFeedback(userId).filter((entry) => !removing.has(entry.id));
+  for (const entry of normalizeFeedbackList(entries)) {
+    if (!entry.id || !entry.createdAt || next.some((existing) => existing.id === entry.id)) continue;
+    const index = next.findIndex((existing) => feedbackTime(existing) <= feedbackTime(entry));
+    next.splice(index < 0 ? next.length : index, 0, entry);
+  }
+  dbOps.setJSONSetting(getDiscoveryFeedbackKey(userId), next.slice(0, 200));
+  return getDiscoveryFeedback(userId);
+};
+
 export const resetDiscoveryFeedback = (userId = "global") => {
   const blockedArtists = getDiscoveryFeedback(userId).filter(
     (entry) => entry.action === "block_artist",

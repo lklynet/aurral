@@ -1,11 +1,19 @@
 import { PlaylistBulkActionsProvider } from "./pages/playlists/usePlaylistBulkActions.js";
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from "react-router";
+import {
+  createBrowserRouter,
+  createRoutesFromElements,
+  Navigate,
+  Outlet,
+  Route,
+  useOutletContext,
+  useParams,
+} from "react-router";
+import { RouterProvider } from "react-router/dom";
 import { useState, useEffect, Suspense, lazy, useRef } from "react";
 import Layout from "./components/Layout";
 import { checkHealthLive, getBootstrapStatus } from "./utils/api/endpoints/auth.js";
 import { getAppBasePath } from "./utils/basePath.js";
 import { DISCOVERY_MANUAL_REFRESH_KEY } from "./utils/discoverRecentNavigation.js";
-import { AudioPlayerProvider } from "react-use-audio-player";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -18,8 +26,10 @@ import ThemeSync from "./components/ThemeSync";
 import UpdateIndicator from "./components/UpdateIndicator";
 import SpotifyReconnectNotice from "./components/SpotifyReconnectNotice";
 import { DotLoader } from "./components/DotLoader";
+import { SkeletonCardGrid, SkeletonPageHeader, SkeletonStatus } from "./components/Skeletons";
 import { useDiscoveryStatus } from "./hooks/useDiscoveryStatus";
 import { buildActivityPath, DEFAULT_ACTIVITY_VIEW } from "./navigation/activityNavConfig";
+import { routeModules } from "./navigation/routeModules.js";
 import { getBootstrapPollIntervalMs } from "./utils/requestScheduling.js";
 
 function LegacyHistoryRedirect() {
@@ -38,30 +48,32 @@ function ActivityRootRedirect() {
 const Login = lazy(() => import("./pages/Login"));
 const SsoComplete = lazy(() => import("./pages/SsoComplete"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
-const SearchResultsPage = lazy(() => import("./pages/SearchResultsPage"));
-const DiscoverPage = lazy(() => import("./pages/DiscoverPage"));
-const ShowsPage = lazy(() => import("./pages/ShowsPage"));
-const LibraryPage = lazy(() => import("./pages/LibraryPage"));
-const SettingsPage = lazy(() => import("./pages/Settings/SettingsPage"));
-const ProfilePage = lazy(() => import("./pages/ProfilePage"));
-const BlocklistPage = lazy(() => import("./pages/BlocklistPage"));
-const ArtistDetailsPage = lazy(() => import("./pages/ArtistDetails/ArtistDetailsPage"));
-const ArtistReleaseListPage = lazy(() => import("./pages/ArtistDetails/ArtistReleaseListPage"));
-const ReleasePage = lazy(() => import("./pages/ArtistDetails/ReleasePage"));
-const ActivityPage = lazy(() => import("./pages/ActivityPage"));
-const PlaylistsPage = lazy(() => import("./pages/playlists/PlaylistsPage"));
-const PlaylistDetailPage = lazy(() => import("./pages/playlists/PlaylistDetailPage"));
-const FlowsPage = lazy(() => import("./pages/playlists/FlowsPage"));
-const FlowDetailPage = lazy(() => import("./pages/playlists/FlowDetailPage"));
-const PlaylistRedirect = lazy(() => import("./pages/playlists/PlaylistRedirect"));
-const DiscoverPlaylistsPage = lazy(() => import("./pages/DiscoverPlaylistsPage"));
-const EditorialPlaylistDetailPage = lazy(() => import("./pages/EditorialPlaylistDetailPage"));
-const NewsPage = lazy(() => import("./pages/NewsPage"));
+const SearchResultsPage = lazy(routeModules.search);
+const DiscoverPage = lazy(routeModules.discover);
+const ShowsPage = lazy(routeModules.shows);
+const LibraryPage = lazy(routeModules.library);
+const SettingsPage = lazy(routeModules.settings);
+const ProfilePage = lazy(routeModules.profile);
+const BlocklistPage = lazy(routeModules.blocklist);
+const ArtistDetailsPage = lazy(routeModules.artist);
+const ArtistReleaseListPage = lazy(routeModules.artistReleases);
+const ReleasePage = lazy(routeModules.release);
+const ActivityPage = lazy(routeModules.activity);
+const PlaylistsPage = lazy(routeModules.playlists);
+const PlaylistDetailPage = lazy(routeModules.playlist);
+const FlowsPage = lazy(routeModules.flows);
+const FlowDetailPage = lazy(routeModules.flow);
+const PlaylistRedirect = lazy(routeModules.playlistRedirect);
+const DiscoverPlaylistsPage = lazy(routeModules.discoverPlaylists);
+const EditorialPlaylistDetailPage = lazy(routeModules.editorialPlaylist);
+const NewsPage = lazy(routeModules.news);
+const ResolveLinkPage = lazy(routeModules.resolveLink);
 
 const PageLoader = () => (
-  <div className="app-loading">
-    <DotLoader size="xl" />
-  </div>
+  <SkeletonStatus label="Loading page">
+    <SkeletonPageHeader />
+    <SkeletonCardGrid square />
+  </SkeletonStatus>
 );
 
 const ScreenLoader = () => (
@@ -105,13 +117,12 @@ const PermissionRoute = ({ children, permission }) => {
 };
 
 function AppContent() {
-  const basePath = getAppBasePath();
   const [isHealthy, setIsHealthy] = useState(null);
   const [healthIssue, setHealthIssue] = useState(null);
   const [rootFolderConfigured, setRootFolderConfigured] = useState(false);
   const [appVersion, setAppVersion] = useState(null);
   const healthCheckInFlightRef = useRef(false);
-  const { isAuthenticated, user, bootstrap, refreshAuth } = useAuth();
+  const { isAuthenticated, bootstrap, refreshAuth } = useAuth();
   const { showSuccess, showError } = useToast();
 
   const { status: discoveryStatus, isConnected: appSocketConnected } = useDiscoveryStatus({
@@ -190,159 +201,176 @@ function AppContent() {
   }, [appSocketConnected, isAuthenticated, refreshAuth]);
 
   return (
-    <Router basename={basePath}>
-      <Routes>
-        <Route
-          path="/sso/complete"
-          element={
-            <Suspense fallback={<ScreenLoader />}>
-              <SsoComplete />
-            </Suspense>
-          }
-        />
-        <Route
-          path="/*"
-          element={
-            <DiscoverRecentProvider>
-              <ProtectedRoute>
-                <PlaylistBulkActionsProvider>
-                <Layout
-                  headerActions={
-                    <UpdateIndicator
-                      currentVersion={appVersion}
-                      visible={!user || user.role === "admin"}
-                    />
-                  }
-                >
-                  <SpotifyReconnectNotice />
-                  {healthIssue === "lidarr" && isHealthy && (
-                    <div className="app-status-banner app-status-banner--warning">
-                      <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
-                      <p className="app-status-banner__text app-status-banner__text--warning">
-                        Lidarr is busy. Library data may be stale until it catches up.
-                      </p>
-                    </div>
-                  )}
-
-                  {healthIssue === "degraded" && (
-                    <div className="app-status-banner app-status-banner--warning">
-                      <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
-                      <p className="app-status-banner__text app-status-banner__text--warning">
-                        Aurral is responding slowly.{" "}
-                        {bootstrap?.lidarrConfigured ? "Lidarr may be busy. Try again in a minute." : "Try again in a minute."}
-                      </p>
-                    </div>
-                  )}
-
-                  {healthIssue === "backend" && isHealthy === false && (
-                    <div className="app-status-banner app-status-banner--error">
-                      <XCircle className="app-status-banner__icon app-status-banner__icon--error" />
-                      <p className="app-status-banner__text app-status-banner__text--error">
-                        Unable to connect to the Aurral backend. Please check your configuration.
-                      </p>
-                    </div>
-                  )}
-
-                  {isHealthy && !rootFolderConfigured && (
-                    <div className="app-status-banner app-status-banner--warning">
-                      <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
-                      <p className="app-status-banner__text app-status-banner__text--warning">
-                        The Downloads Folder is not set. Choose one in Settings → Download clients.
-                      </p>
-                    </div>
-                  )}
-                  <Suspense fallback={<PageLoader />}>
-                    <Routes>
-                      <Route path="/" element={<DiscoverPage />} />
-                      <Route path="/shows" element={<Navigate to="/shows/all" replace />} />
-                      <Route path="/shows/:filter" element={<ShowsPage />} />
-                      <Route path="/search" element={<SearchResultsPage />} />
-                      <Route path="/discover" element={<Navigate to="/" replace />} />
-                      <Route path="/discover/playlists/deezer/:playlistId" element={<EditorialPlaylistDetailPage />} />
-                      <Route path="/discover/playlists" element={<DiscoverPlaylistsPage />} />
-                      <Route path="/discover/news" element={<NewsPage />} />
-                      <Route
-                        path="/library/playlists"
-                        element={
-                          <PermissionRoute permission="accessFlow">
-                            <PlaylistsPage />
-                          </PermissionRoute>
-                        }
-                      />
-                      <Route
-                        path="/library/playlists/:playlistId"
-                        element={
-                          <PermissionRoute permission="accessFlow">
-                            <PlaylistDetailPage />
-                          </PermissionRoute>
-                        }
-                      />
-                      <Route path="/library/album/:albumId" element={<LibraryPage />} />
-                      <Route path="/library/artist/:artistId" element={<LibraryPage />} />
-                      <Route path="/library/:section?" element={<LibraryPage />} />
-                      <Route
-                        path="/flows"
-                        element={
-                          <PermissionRoute permission="accessFlow">
-                            <FlowsPage />
-                          </PermissionRoute>
-                        }
-                      />
-                      <Route
-                        path="/flows/:flowId"
-                        element={
-                          <PermissionRoute permission="accessFlow">
-                            <FlowDetailPage />
-                          </PermissionRoute>
-                        }
-                      />
-                      <Route
-                        path="/playlists"
-                        element={
-                          <PermissionRoute permission="accessFlow">
-                            <PlaylistRedirect />
-                          </PermissionRoute>
-                        }
-                      />
-                      <Route path="/flow" element={<Navigate to="/flows" replace />} />
-                      <Route path="/downloads" element={<Navigate to="/activity/queue" replace />} />
-                      <Route path="/requests" element={<Navigate to="/activity/queue" replace />} />
-                      <Route path="/history" element={<Navigate to="/activity/history" replace />} />
-                      <Route path="/history/:legacyTab" element={<LegacyHistoryRedirect />} />
-                      <Route path="/activity" element={<ActivityRootRedirect />} />
-                      <Route path="/activity/:view" element={<ActivityPage />} />
-                      <Route path="/activity/:view/:source" element={<ActivitySourceRedirect />} />
-                      <Route
-                        path="/artist/:mbid/albums"
-                        element={<ArtistReleaseListPage mode="releases" />}
-                      />
-                      <Route path="/artist/:mbid/release/:releaseMbid" element={<ReleasePage />} />
-                      <Route
-                        path="/artist/:mbid/appears-on"
-                        element={<ArtistReleaseListPage mode="appearsOn" />}
-                      />
-                      <Route path="/artist/:mbid" element={<ArtistDetailsPage />} />
-                      <Route
-                        path="/settings/:tab?"
-                        element={
-                          <PermissionRoute permission="accessSettings">
-                            <SettingsPage />
-                          </PermissionRoute>
-                        }
-                      />
-                      <Route path="/profile" element={<ProfilePage />} />
-                      <Route path="/blocklist" element={<BlocklistPage />} />
-                    </Routes>
-                  </Suspense>
-                </Layout>
-                </PlaylistBulkActionsProvider>
-              </ProtectedRoute>
-            </DiscoverRecentProvider>
-          }
-        />
-      </Routes>
-    </Router>
+    <Outlet context={{ appVersion, healthIssue, isHealthy, rootFolderConfigured }} />
   );
+}
+
+function ProtectedLayout() {
+  const { appVersion, healthIssue, isHealthy, rootFolderConfigured } = useOutletContext();
+  const { user, bootstrap } = useAuth();
+
+  return (
+    <DiscoverRecentProvider>
+      <ProtectedRoute>
+        <PlaylistBulkActionsProvider>
+          <Layout
+            headerActions={
+              <UpdateIndicator
+                currentVersion={appVersion}
+                visible={!user || user.role === "admin"}
+              />
+            }
+          >
+            <SpotifyReconnectNotice />
+            {healthIssue === "lidarr" && isHealthy && (
+              <div className="app-status-banner app-status-banner--warning">
+                <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
+                <p className="app-status-banner__text app-status-banner__text--warning">
+                  Lidarr is busy. Library data may be stale until it catches up.
+                </p>
+              </div>
+            )}
+
+            {healthIssue === "degraded" && (
+              <div className="app-status-banner app-status-banner--warning">
+                <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
+                <p className="app-status-banner__text app-status-banner__text--warning">
+                  Aurral is responding slowly.{" "}
+                  {bootstrap?.lidarrConfigured ? "Lidarr may be busy. Try again in a minute." : "Try again in a minute."}
+                </p>
+              </div>
+            )}
+
+            {healthIssue === "backend" && isHealthy === false && (
+              <div className="app-status-banner app-status-banner--error">
+                <XCircle className="app-status-banner__icon app-status-banner__icon--error" />
+                <p className="app-status-banner__text app-status-banner__text--error">
+                  Unable to connect to the Aurral backend. Please check your configuration.
+                </p>
+              </div>
+            )}
+
+            {isHealthy && !rootFolderConfigured && (
+              <div className="app-status-banner app-status-banner--warning">
+                <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
+                <p className="app-status-banner__text app-status-banner__text--warning">
+                  The Downloads Folder is not set. Choose one in Settings → Download clients.
+                </p>
+              </div>
+            )}
+            <Suspense fallback={<PageLoader />}>
+              <Outlet />
+            </Suspense>
+          </Layout>
+        </PlaylistBulkActionsProvider>
+      </ProtectedRoute>
+    </DiscoverRecentProvider>
+  );
+}
+
+const appRoutes = createRoutesFromElements(
+  <Route element={<AppContent />}>
+    <Route
+      path="/sso/complete"
+      element={
+        <Suspense fallback={<ScreenLoader />}>
+          <SsoComplete />
+        </Suspense>
+      }
+    />
+    <Route element={<ProtectedLayout />}>
+      <Route path="/" element={<DiscoverPage />} />
+      <Route path="/shows" element={<Navigate to="/shows/all" replace />} />
+      <Route path="/shows/:filter" element={<ShowsPage />} />
+      <Route path="/search" element={<SearchResultsPage />} />
+      <Route path="/discover" element={<Navigate to="/" replace />} />
+      <Route path="/discover/playlists/deezer/:playlistId" element={<EditorialPlaylistDetailPage />} />
+      <Route path="/discover/playlists" element={<DiscoverPlaylistsPage />} />
+      <Route path="/discover/news" element={<NewsPage />} />
+      <Route
+        path="/library/playlists"
+        element={
+          <PermissionRoute permission="accessFlow">
+            <PlaylistsPage />
+          </PermissionRoute>
+        }
+      />
+      <Route
+        path="/library/playlists/:playlistId"
+        element={
+          <PermissionRoute permission="accessFlow">
+            <PlaylistDetailPage />
+          </PermissionRoute>
+        }
+      />
+      <Route path="/library/album/:albumId" element={<LibraryPage />} />
+      <Route path="/library/artist/:artistId" element={<LibraryPage />} />
+      <Route path="/library/:section?" element={<LibraryPage />} />
+      <Route
+        path="/flows"
+        element={
+          <PermissionRoute permission="accessFlow">
+            <FlowsPage />
+          </PermissionRoute>
+        }
+      />
+      <Route
+        path="/flows/:flowId"
+        element={
+          <PermissionRoute permission="accessFlow">
+            <FlowDetailPage />
+          </PermissionRoute>
+        }
+      />
+      <Route
+        path="/playlists"
+        element={
+          <PermissionRoute permission="accessFlow">
+            <PlaylistRedirect />
+          </PermissionRoute>
+        }
+      />
+      <Route path="/flow" element={<Navigate to="/flows" replace />} />
+      <Route path="/downloads" element={<Navigate to="/activity/queue" replace />} />
+      <Route path="/requests" element={<Navigate to="/activity/queue" replace />} />
+      <Route path="/history" element={<Navigate to="/activity/history" replace />} />
+      <Route path="/history/:legacyTab" element={<LegacyHistoryRedirect />} />
+      <Route path="/activity" element={<ActivityRootRedirect />} />
+      <Route path="/activity/:view" element={<ActivityPage />} />
+      <Route path="/activity/:view/:source" element={<ActivitySourceRedirect />} />
+      <Route
+        path="/artist/:mbid/albums"
+        element={<ArtistReleaseListPage mode="releases" />}
+      />
+      <Route path="/artist/:mbid/release/:releaseMbid" element={<ReleasePage />} />
+      <Route
+        path="/artist/:mbid/appears-on"
+        element={<ArtistReleaseListPage mode="appearsOn" />}
+      />
+      <Route path="/artist/:mbid" element={<ArtistDetailsPage />} />
+      <Route
+        path="/settings/:tab?"
+        element={
+          <PermissionRoute permission="accessSettings">
+            <SettingsPage />
+          </PermissionRoute>
+        }
+      />
+      <Route path="/profile" element={<ProfilePage />} />
+      <Route path="/blocklist" element={<BlocklistPage />} />
+      <Route path="/go/:kind" element={<ResolveLinkPage />} />
+      <Route path="*" element={null} />
+    </Route>
+  </Route>,
+);
+
+let appRouter = null;
+
+function AppRouter() {
+  appRouter ??= createBrowserRouter(appRoutes, {
+    basename: getAppBasePath(),
+  });
+  return <RouterProvider router={appRouter} />;
 }
 
 function App() {
@@ -350,13 +378,11 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <AuthProvider>
-          <AudioPlayerProvider>
-            <AudioQueueProvider>
-              <AppContent />
-              <ThemeSync />
-              <ReloadPrompt />
-            </AudioQueueProvider>
-          </AudioPlayerProvider>
+          <AudioQueueProvider>
+            <AppRouter />
+            <ThemeSync />
+            <ReloadPrompt />
+          </AudioQueueProvider>
         </AuthProvider>
       </ToastProvider>
     </QueryClientProvider>

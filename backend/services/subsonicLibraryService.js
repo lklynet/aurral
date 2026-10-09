@@ -1092,20 +1092,44 @@ export function unstarMany(user, values) {
   );
   const rows = starredRows(user);
   const libraryRows = libraryStarRows(user, rows);
+  const removed = [];
   const removeStars = db.transaction(() => {
-    let changed = false;
     rows.forEach((row, index) => {
       const libraryRow = libraryRows[index];
       if (
-        targetKeys.has(`${row.entity_kind}:${row.entity_key}`) ||
-        targetKeys.has(`${libraryRow.entity_kind}:${libraryRow.entity_key}`)
+        (targetKeys.has(`${row.entity_kind}:${row.entity_key}`) ||
+          targetKeys.has(`${libraryRow.entity_kind}:${libraryRow.entity_key}`)) &&
+        removeStarStmt.run(user.id, row.entity_kind, row.entity_key).changes > 0
       ) {
-        changed = removeStarStmt.run(user.id, row.entity_kind, row.entity_key).changes > 0 || changed;
+        removed.push({ id: idFor(row.entity_kind, row.entity_key), starredAt: Number(row.created_at) || Date.now() });
       }
     });
-    if (changed) touchStars(user.id);
+    if (removed.length) touchStars(user.id);
   });
   removeStars();
+  return removed;
+}
+
+export function restoreStars(user, entries) {
+  const parsed = (Array.isArray(entries) ? entries : []).map((entry) => ({
+    target: starTarget(entry?.id),
+    starredAt: Number(entry?.starredAt),
+  }));
+  if (
+    !parsed.length ||
+    !user?.id ||
+    parsed.some(({ target, starredAt }) => !target || !Number.isSafeInteger(starredAt) || starredAt <= 0)
+  ) {
+    return false;
+  }
+  const addStars = db.transaction(() => {
+    let changed = false;
+    for (const { target, starredAt } of parsed) {
+      changed = addStarStmt.run(user.id, target.kind, target.key, starredAt).changes > 0 || changed;
+    }
+    if (changed) touchStars(user.id);
+  });
+  addStars();
   return true;
 }
 

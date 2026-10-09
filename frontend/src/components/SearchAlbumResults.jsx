@@ -1,10 +1,11 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { Music } from "lucide-react";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import AddActionButton from "./AddActionButton";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { getAlbumAddAction, isAlbumCompleteInLibrary } from "../utils/albumAddAction";
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
+import { OptionalLink } from "./RouteLink";
 import Tooltip from "./Tooltip";
 
 function isAlbumActionDisabled(album, isPending, canAddAlbum) {
@@ -79,34 +80,24 @@ function SearchAlbumResults({
   pendingAlbumIds,
   onAlbumAction,
   libraryDestination,
-  navigate,
   viewMode = "grid",
 }) {
-  const openAlbum = useCallback(
-    (album) => {
-      const target = getReleaseNavigationTarget({ ...album, type: "album" });
-      if (target) {
-        navigate(target.pathname, { state: target.state });
-        return;
-      }
-      if (album.artistMbid) {
-        navigate(`/artist/${album.artistMbid}/albums`, {
-          state: { artistName: album.artistName },
-        });
-      }
-    },
-    [navigate],
-  );
-
-  const openArtist = useCallback(
-    (album) => {
-      if (!album.artistMbid) return;
-      navigate(`/artist/${album.artistMbid}`, {
+  const albumLink = (album) => {
+    const target = getReleaseNavigationTarget({ ...album, type: "album" });
+    if (target) return { to: target.pathname, state: target.state };
+    if (album.artistMbid) {
+      return {
+        to: `/artist/${album.artistMbid}/albums`,
         state: { artistName: album.artistName },
-      });
-    },
-    [navigate],
-  );
+      };
+    }
+    return null;
+  };
+
+  const artistLink = (album) =>
+    album.artistMbid
+      ? { to: `/artist/${album.artistMbid}`, state: { artistName: album.artistName } }
+      : null;
 
   const renderAlbum = (album) => {
     const isPending = !!pendingAlbumIds[album.id];
@@ -114,6 +105,8 @@ function SearchAlbumResults({
     const releaseYear = getReleaseYear(album.releaseDate);
     const releaseTypeLabel = getReleaseTypeLabel(album);
     const releaseMeta = [releaseYear, releaseTypeLabel].filter(Boolean).join(" · ");
+    const openAlbum = albumLink(album);
+    const openArtist = artistLink(album);
 
     if (viewMode === "list") {
       return (
@@ -121,11 +114,10 @@ function SearchAlbumResults({
           key={album.id}
           className="artist-release-list-item search-album-results__item"
         >
-          <button
-            type="button"
+          <OptionalLink
+            link={openAlbum}
             className="search-album-results__cover-link"
             aria-label={`Open ${album.title}`}
-            onClick={() => openAlbum(album)}
           >
             <div className="artist-media-cell artist-list-cover">
               {coverSrc ? (
@@ -136,26 +128,18 @@ function SearchAlbumResults({
                 </div>
               )}
             </div>
-          </button>
+          </OptionalLink>
           <div className="artist-min-0">
             <h2 className="artist-release-card__title artist-truncate">
-              <button
-                type="button"
-                className="search-album-results__title-link"
-                onClick={() => openAlbum(album)}
-              >
+              <OptionalLink link={openAlbum} className="search-album-results__title-link">
                 {album.title}
-              </button>
+              </OptionalLink>
             </h2>
             <div className="artist-release-card__meta artist-truncate">
               {album.artistName ? (
-                <button
-                  type="button"
-                  className="artist-link-button"
-                  onClick={() => openArtist(album)}
-                >
+                <OptionalLink link={openArtist} className="artist-link-button">
                   {album.artistName}
-                </button>
+                </OptionalLink>
               ) : null}
               {album.artistName && releaseMeta ? " · " : null}
               {releaseMeta ? <span>{releaseMeta}</span> : null}
@@ -180,11 +164,10 @@ function SearchAlbumResults({
         className="artist-release-card search-album-results__item"
       >
         <div className="search-album-results__cover-wrap">
-          <button
-            type="button"
+          <OptionalLink
+            link={openAlbum}
             className="artist-release-card__cover search-album-results__cover-link"
             aria-label={`Open ${album.title}`}
-            onClick={() => openAlbum(album)}
           >
             {coverSrc ? (
               <AlbumCover src={coverSrc} alt="" />
@@ -193,7 +176,7 @@ function SearchAlbumResults({
                 <Music className="artist-icon-lg" aria-hidden="true" />
               </div>
             )}
-          </button>
+          </OptionalLink>
           <div className="artist-release-card__action">
             <AlbumAction
               album={album}
@@ -206,23 +189,15 @@ function SearchAlbumResults({
         </div>
         <Tooltip content={album.title}>
           <h2 className="artist-release-card__title artist-truncate" >
-            <button
-              type="button"
-              className="search-album-results__title-link"
-              onClick={() => openAlbum(album)}
-            >
+            <OptionalLink link={openAlbum} className="search-album-results__title-link">
               {album.title}
-            </button>
+            </OptionalLink>
           </h2>
         </Tooltip>
         {album.artistName ? (
-          <button
-            type="button"
-            className="artist-card-button"
-            onClick={() => openArtist(album)}
-          >
+          <OptionalLink link={openArtist} className="artist-card-button">
             <p className="artist-release-card__meta artist-truncate">{album.artistName}</p>
-          </button>
+          </OptionalLink>
         ) : null}
         {releaseMeta && <p className="artist-release-card__meta artist-truncate">{releaseMeta}</p>}
       </article>

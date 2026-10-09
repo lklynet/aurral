@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getUpcomingTracks,
   initialQueueState,
   normalizePlaylistQueueTrack,
   normalizePreviewTrack,
@@ -170,4 +171,90 @@ test("shuffle stays on for every queue played next and the order always matches 
   const shuffleButton = startQueue({ shuffle: true });
   assert.equal(shuffleButton.isShuffleEnabled, true);
   assert.equal(isInOrder(queueReducer(shuffleButton, { type: "SET_SHUFFLE", enabled: false })), true);
+});
+
+const extra = (id) => ({ id, title: id, src: `/stream/${id}` });
+const upcomingIds = (state) => getUpcomingTracks(state).map(({ track }) => track.id);
+const entryOf = (state, id) => state.queue.find((track) => track.id === id).entryId;
+const insert = (state, ids, position) =>
+  queueReducer(state, { type: "INSERT_TRACKS", tracks: ids.map(extra), position });
+
+test("play next goes right after the current track and add to queue goes last, without restarting it", () => {
+  const playing = startQueue({ startTrackId: "t5" });
+  const queued = insert(insert(playing, ["x"], "next"), ["y"], "end");
+  assert.equal(currentId(queued), "t5");
+  assert.equal(queued.queueRevision, playing.queueRevision);
+  assert.deepEqual(upcomingIds(queued), ["x", "t6", "t7", "y"]);
+  assert.equal(currentId(queueReducer(queued, { type: "NEXT" })), "x");
+});
+
+test("with shuffle on, play next is next in the shuffle and stays next when shuffle turns off", () => {
+  const shuffled = startQueue({ startTrackId: "t2", shuffle: true });
+  const queued = insert(insert(shuffled, ["x"], "next"), ["y"], "end");
+  assert.equal(upcomingIds(queued)[0], "x");
+  assert.equal(upcomingIds(queued).at(-1), "y");
+  assert.deepEqual([...upcomingIds(queued)].sort(), [...allIds.filter((id) => id !== "t2"), "x", "y"].sort());
+
+  const unshuffled = queueReducer(queued, { type: "SET_SHUFFLE", enabled: false });
+  assert.equal(currentId(unshuffled), "t2");
+  assert.deepEqual(upcomingIds(unshuffled), ["x", "t3", "t4", "t5", "t6", "t7", "y"]);
+});
+
+test("adding to an empty queue starts playing the added track", () => {
+  const started = insert(initialQueueState, ["x"], "end");
+  assert.equal(currentId(started), "x");
+  assert.equal(started.autoplay, true);
+  assert.ok(started.queueRevision > initialQueueState.queueRevision);
+});
+
+test("removing and reordering up next keeps the current track playing", () => {
+  const playing = startQueue({ startTrackId: "t4" });
+  const removed = queueReducer(playing, { type: "REMOVE_ENTRY", entryId: entryOf(playing, "t6") });
+  assert.deepEqual(upcomingIds(removed), ["t5", "t7"]);
+  assert.equal(currentId(removed), "t4");
+  assert.equal(removed.queueRevision, playing.queueRevision);
+  assert.equal(queueReducer(removed, { type: "REMOVE_ENTRY", entryId: entryOf(removed, "t4") }), removed);
+
+  const reordered = queueReducer(removed, {
+    type: "REORDER_UPCOMING",
+    entryIds: [entryOf(removed, "t7"), entryOf(removed, "t5")],
+  });
+  assert.deepEqual(upcomingIds(reordered), ["t7", "t5"]);
+  assert.equal(currentId(queueReducer(reordered, { type: "PREVIOUS" })), "t3");
+  assert.equal(
+    queueReducer(removed, { type: "REORDER_UPCOMING", entryIds: [entryOf(removed, "t7")] }),
+    removed,
+  );
+
+  const shuffled = startQueue({ startTrackId: "t4", shuffle: true });
+  const [first, ...rest] = getUpcomingTracks(shuffled).map(({ track }) => track.entryId);
+  const moved = queueReducer(shuffled, { type: "REORDER_UPCOMING", entryIds: [...rest, first] });
+  assert.equal(getUpcomingTracks(moved).at(-1).track.entryId, first);
+  assert.deepEqual(
+    upcomingIds(queueReducer(moved, { type: "SET_SHUFFLE", enabled: false })),
+    ["t5", "t6", "t7"],
+  );
+});
+
+test("clearing up next keeps the current track and undo brings the cleared tracks back", () => {
+  const playing = startQueue({ startTrackId: "t3" });
+  const cleared = queueReducer(playing, { type: "CLEAR_UPCOMING" });
+  assert.equal(currentId(cleared), "t3");
+  assert.deepEqual(upcomingIds(cleared), []);
+  assert.equal(currentId(queueReducer(cleared, { type: "PREVIOUS" })), "t2");
+  assert.equal(cleared.queueRevision, playing.queueRevision);
+
+  const undone = queueReducer(cleared, {
+    type: "RESTORE_ORDER",
+    queue: playing.queue,
+    playbackOrder: playing.playbackOrder,
+    isShuffleEnabled: playing.isShuffleEnabled,
+  });
+  assert.deepEqual(upcomingIds(undone), ["t4", "t5", "t6", "t7"]);
+  assert.equal(currentId(undone), "t3");
+
+  const repeating = queueReducer(playing, { type: "TOGGLE_REPEAT" });
+  assert.deepEqual(upcomingIds(repeating), ["t4", "t5", "t6", "t7", "t0", "t1", "t2"]);
+  const clearedLoop = queueReducer(repeating, { type: "CLEAR_UPCOMING" });
+  assert.deepEqual(clearedLoop.queue.map((track) => track.id), ["t3"]);
 });

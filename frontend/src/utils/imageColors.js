@@ -7,7 +7,7 @@ const N = 64;
 const gradientCache = new Map();
 const accentCache = new Map();
 const localCopyCache = new Map();
-export const FALLBACK_GRADIENT = { top: "#343434", bottom: "#171717" };
+export const FALLBACK_GRADIENT = { top: "var(--aurral-surface-raised)", bottom: "var(--aurral-surface)" };
 
 function avgHex(data, y0, y1) {
   let r = 0,

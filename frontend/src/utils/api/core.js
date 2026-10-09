@@ -76,6 +76,9 @@ async function request(config) {
         init.body = JSON.stringify(config.data);
       }
     }
+    if (config.keepalive && (typeof init.body !== "string" || init.body.length < 60_000)) {
+      init.keepalive = true;
+    }
     const res = await fetch(url, init);
 
     if (res.type === "opaqueredirect") {

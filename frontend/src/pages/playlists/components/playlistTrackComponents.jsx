@@ -15,6 +15,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { DotLoader, DownloadingIcon } from "../../../components/DotLoader";
+import { SkeletonRows, SkeletonStatus } from "../../../components/Skeletons";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import TooltipButton from "../../../components/TooltipButton";
 import { getPlaylistTrackDisplayNumber, sortPlaylistTracks } from "../../../utils/playlistTrackSort";
@@ -25,6 +26,7 @@ import { TrackPlaylistMenu, TrackPlaylistSubmenu } from "../../ArtistDetails/com
 import { LibraryItemMenu } from "../../../components/LibraryItemMenu";
 import { TrackList } from "../../../components/TrackList";
 import { useAlbumTrackListToolbar } from "../../../hooks/useAlbumTrackListToolbar";
+import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 import {
   getTrackAvailability,
   getTrackSearchAction,
@@ -119,6 +121,8 @@ function PlaylistTrackKebabMenu({
   onToggleFavorite,
   onNavigateAlbum,
   onNavigateArtist,
+  albumLink = null,
+  artistLink = null,
   canReSearch,
   canManualReSearch,
   searchAction,
@@ -129,6 +133,7 @@ function PlaylistTrackKebabMenu({
   onManualReSearch,
   onDelete,
   playlistMenuProps = null,
+  queueItems = [],
 }) {
   const [openSubmenu, setOpenSubmenu] = useState(null);
   const trackLabel = track?.trackName || "track";
@@ -149,6 +154,7 @@ function PlaylistTrackKebabMenu({
           onSelect: () => onPlay(track),
         }
       : null,
+    ...queueItems,
     onViewInfo
       ? {
           id: "info",
@@ -183,6 +189,8 @@ function PlaylistTrackKebabMenu({
           label: "Go to album",
           icon: ExternalLink,
           separatorBefore: true,
+          to: albumLink?.to,
+          state: albumLink?.state,
           onSelect: () => onNavigateAlbum(track),
         }
       : null,
@@ -191,6 +199,8 @@ function PlaylistTrackKebabMenu({
           id: "artist",
           label: "Go to artist",
           icon: UserRound,
+          to: artistLink?.to,
+          state: artistLink?.state,
           onSelect: () => onNavigateArtist(track),
         }
       : null,
@@ -376,6 +386,8 @@ export function PlaylistTracksPanel({
   onToggleFavorite,
   onNavigateArtist,
   onNavigateAlbum,
+  getArtistLink,
+  getAlbumLink,
   onReSearchTrack,
   onManualReSearchTrack,
   playbackSource = null,
@@ -404,8 +416,10 @@ export function PlaylistTracksPanel({
     setSelectedIds(new Set());
   }, [trackOrderKey]);
 
-  const { playTrack, togglePlayPause, matchesSource, isPlaying, currentTrack } =
+  const { playTrack, togglePlayPause, matchesSource, isPlaying, isLoading, isStarting, currentTrack } =
     useAudioQueue();
+  const isRunning = isPlaying || isStarting;
+  const getQueueItems = useQueueTrackActions();
 
   const sortedTracks = useMemo(
     () => sortPlaylistTracks(tracks, sortKey, sortDirection),
@@ -496,6 +510,8 @@ export function PlaylistTracksPanel({
     const canOpenAlbum = Boolean(
       onNavigateAlbum && (track.albumMbid || (track.resolvesLinks && track.albumName)),
     );
+    const artistLink = getArtistLink?.(track) || null;
+    const albumLink = getAlbumLink?.(track) || null;
     const playlistMenuProps = hasPlaylistMenu
       ? {
           track,
@@ -523,20 +539,24 @@ export function PlaylistTracksPanel({
       subtitle: track.artistName,
       artist: {
         label: track.artistName,
+        ...artistLink,
         onOpen: canOpenArtist ? () => onNavigateArtist(track) : null,
       },
       album: {
         label: track.albumName || "",
+        ...albumLink,
         onOpen: canOpenAlbum ? () => onNavigateAlbum(track) : null,
       },
       cover: {
         src: trackCover(track),
         label: track.albumName || track.trackName,
+        ...albumLink,
         onOpen: canOpenAlbum ? () => onNavigateAlbum(track) : null,
       },
       time: formatTrackDuration(track.durationMs),
       active: isCurrent,
-      playing: isCurrent && isPlaying,
+      playing: isCurrent && isRunning,
+      loading: isCurrent && isLoading,
       missing: showPlaybackControls && !canPlay,
       onPlay: showPlaybackControls ? () => handlePlayTrack(track) : null,
       playDisabled: !canPlay,
@@ -570,7 +590,7 @@ export function PlaylistTracksPanel({
         <PlaylistTrackKebabMenu
           track={track}
           canPlay={canPlay}
-          isPlaying={isCurrent && isPlaying}
+          isPlaying={isCurrent && isRunning}
           onPlay={showPlaybackControls ? handlePlayTrack : null}
           onViewInfo={onViewTrackInfo}
           onAddToLibrary={onAddTrackToLibrary}
@@ -580,6 +600,8 @@ export function PlaylistTracksPanel({
           onToggleFavorite={trackFavoriteId ? onToggleFavorite : null}
           onNavigateAlbum={onNavigateAlbum}
           onNavigateArtist={onNavigateArtist}
+          albumLink={albumLink}
+          artistLink={artistLink}
           canReSearch={canReSearch}
           canManualReSearch={canManualReSearch}
           searchAction={searchAction}
@@ -590,6 +612,7 @@ export function PlaylistTracksPanel({
           onManualReSearch={onManualReSearchTrack}
           onDelete={onDeleteTrack}
           playlistMenuProps={playlistMenuProps}
+          queueItems={canPlay ? getQueueItems(toQueueTrack(track), { source: playbackSource }) : []}
         />
       ),
     };
@@ -673,10 +696,9 @@ export function PlaylistTracksPanel({
         </div>
       ) : null}
       {loading ? (
-        <div className="native-library-state" role="status">
-          <DotLoader size="lg" label={null} />
-          <span>Loading tracks…</span>
-        </div>
+        <SkeletonStatus label="Loading tracks">
+          <SkeletonRows count={8} />
+        </SkeletonStatus>
       ) : error ? (
         <div className="native-library-state" role="alert">
           <strong>Tracks unavailable</strong>

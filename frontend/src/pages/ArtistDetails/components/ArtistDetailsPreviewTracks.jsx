@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { getArtistTopSongVideo } from "../../../utils/api/endpoints/artists.js";
 import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
+import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
+import { normalizePreviewTrack } from "../../../utils/audioQueue";
 
 import { Pause, Play } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
@@ -28,6 +30,7 @@ export function ArtistDetailsPreviewTracks({
     () => (Array.isArray(previewTracks) ? previewTracks[0] : null),
     [previewTracks],
   );
+  const getQueueItems = useQueueTrackActions();
   const [topSongVideo, setTopSongVideo] = useState(null);
   const [loadingVideo, setLoadingVideo] = useState(false);
 
@@ -112,9 +115,17 @@ export function ArtistDetailsPreviewTracks({
                     <p className="artist-track-title">{track.title}</p>
                     <p className="artist-track-subtitle">{track.album || "Preview available"}</p>
                   </div>
-                  {onAddTrackToPlaylist ? (
+                  {onAddTrackToPlaylist || track.preview_url ? (
                     <div className="artist-relative">
                       <TrackPlaylistMenu
+                        queueItems={
+                          track.preview_url
+                            ? getQueueItems(
+                                normalizePreviewTrack(track, artistName, { artistMbid: mbid }),
+                                { source: { type: "artist-all", id: mbid, label: artistName } },
+                              )
+                            : []
+                        }
                         track={resolveMembershipTrack ? resolveMembershipTrack(track) : track}
                         menuVariant="preview-tracks"
                         triggerVariant="kebab"
@@ -130,7 +141,11 @@ export function ArtistDetailsPreviewTracks({
                             ? () => onAddTrackToLibrary(track, null, trackId)
                             : null
                         }
-                        onSelect={(target) => onAddTrackToPlaylist(track, target)}
+                        onSelect={
+                          onAddTrackToPlaylist
+                            ? (target) => onAddTrackToPlaylist(track, target)
+                            : undefined
+                        }
                       />
                     </div>
                   ) : null}

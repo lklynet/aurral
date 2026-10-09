@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { useDiscoverNavigation } from "../../../hooks/useDiscoverNavigation";
 import { ArrowRight, Music, Star } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import AddActionButton from "../../../components/AddActionButton";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
-import { navigateToReleaseGroup } from "../../../utils/searchNavigation";
+import { getReleaseGroupLink } from "../../../utils/searchNavigation";
 import { getPopularReleaseGroups, getReleaseGroupCoverUrl, getReleaseMetric, getReleaseYear } from "../utils";
 import { getAlbumAddAction } from "../../../utils/albumAddAction";
 import { useResponsiveReleaseLimit } from "../hooks/useResponsiveReleaseLimit";
 import Tooltip from "../../../components/Tooltip";
+import RouteLink, { OptionalLink } from "../../../components/RouteLink";
 
 const viewModes = [
   { value: "popular", label: "Popular Releases" },
@@ -65,10 +65,9 @@ export function ArtistDetailsReleaseGroups({
   requestingAlbum,
   artistName,
   onVisibleCoverIdsChange,
-  onViewAll,
+  viewAllLink,
 }) {
   const { isAlbumDownloading } = useActiveDownloads();
-  const navigate = useDiscoverNavigation();
   const [viewMode, setViewMode] = useState("popular");
   const [releaseGridRef, previewLimit] = useResponsiveReleaseLimit();
   const releaseGroups = useMemo(() => artist["release-groups"] || [], [artist]);
@@ -86,13 +85,12 @@ export function ArtistDetailsReleaseGroups({
     resolved: fulfilledCoverIds?.has(releaseGroup.id),
   });
 
-  const openRelease = (releaseGroup) => {
-    navigateToReleaseGroup(navigate, releaseGroup, {
+  const releaseLink = (releaseGroup, coverUrl) =>
+    getReleaseGroupLink(releaseGroup, {
       artistMbid: artist?.id,
       artistName: artistName || artist?.name || "",
-      coverUrl: getReleaseGroupCoverUrl(releaseGroup, albumCovers, coverOptions(releaseGroup)),
+      coverUrl,
     });
-  };
 
   if (releaseGroups.length === 0 && !loadingReleases) return null;
 
@@ -117,10 +115,10 @@ export function ArtistDetailsReleaseGroups({
             ))}
           </div>
         </div>
-        <button type="button" onClick={onViewAll} className="artist-link-button">
+        <RouteLink to={viewAllLink.to} state={viewAllLink.state} className="artist-link-button">
           View All
           <ArrowRight className="artist-icon-sm" />
-        </button>
+        </RouteLink>
       </div>
 
       <div ref={releaseGridRef} className="artist-release-grid">
@@ -133,12 +131,8 @@ export function ArtistDetailsReleaseGroups({
             coverOptions(releaseGroup),
           );
           return (
-            <article
-              key={releaseGroup.id}
-              className="artist-release-card"
-              onClick={() => openRelease(releaseGroup)}
-            >
-              <div className="artist-release-card__cover">
+            <article key={releaseGroup.id} className="artist-release-card" data-artwork-scope>
+              <div className="artist-release-card__cover" data-artwork>
                 {coverUrl ? (
                   <img src={coverUrl} alt="" loading="lazy" decoding="async" />
                 ) : (
@@ -155,7 +149,7 @@ export function ArtistDetailsReleaseGroups({
                       </span>
                     </Tooltip>
                   ) : canAddAlbum ? (
-                    <div onClick={(event) => event.stopPropagation()}>
+                    <div>
                       <AddActionButton
                         {...getAlbumAddAction(
                           { status: status?.status, managedBy: status?.albumInfo?.managedBy },
@@ -172,7 +166,11 @@ export function ArtistDetailsReleaseGroups({
                   ) : null}
                 </div>
               </div>
-              <h3 className="artist-release-card__title artist-clamp-2">{releaseGroup.title}</h3>
+              <h3 className="artist-release-card__title artist-clamp-2">
+                <OptionalLink link={releaseLink(releaseGroup, coverUrl)} className="card-link">
+                  {releaseGroup.title}
+                </OptionalLink>
+              </h3>
               <p className="artist-release-card__meta artist-truncate">
                 {[getReleaseYear(releaseGroup), releaseGroup["primary-type"]]
                   .filter(Boolean)

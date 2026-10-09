@@ -12,6 +12,7 @@ import {
 import {
   getStarredIdentityKeys,
   getStarredWithLibrary,
+  restoreStars,
   starMany,
   unstarMany,
 } from "../../../services/subsonicLibraryService.js";
@@ -200,7 +201,15 @@ export function registerLibraryIndex(router) {
     if (!changed) {
       return res.status(400).json({ error: "Invalid favorite target" });
     }
-    return res.json({ changedIds: ids });
+    return res.json({ changedIds: ids, ...(req.body.starred ? {} : { removed: changed }) });
+  });
+
+  router.post("/favorites/restore", requireAuth, requireUserAccount, noCache, (req, res) => {
+    const favorites = req.body?.favorites;
+    if (!Array.isArray(favorites) || favorites.length > 500 || !restoreStars(req.user, favorites)) {
+      return res.status(400).json({ error: "favorites must list removed favorites to restore" });
+    }
+    return res.json({ restoredIds: favorites.map((entry) => entry.id) });
   });
 }
 

@@ -3,6 +3,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router";
 import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
 import { DotLoader } from "../../components/DotLoader";
+import { SkeletonCardGrid, SkeletonPageHeader, SkeletonStatus } from "../../components/Skeletons";
 import {
   ArrowDown,
   ArrowUp,
@@ -24,7 +25,8 @@ import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { useArtistDetailsStream } from "./hooks/useArtistDetailsStream";
 import { useArtistDetailsLibrary } from "./hooks/useArtistDetailsLibrary";
 import { useArtistSearchFocus } from "./hooks/useArtistSearchFocus";
-import { navigateToReleaseGroup } from "../../utils/searchNavigation";
+import { getReleaseGroupLink } from "../../utils/searchNavigation";
+import { OptionalLink } from "../../components/RouteLink";
 import {
   getCoverImage,
   getReleaseGroupCoverUrl,
@@ -381,22 +383,19 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     setSortMenuOpen(false);
   };
 
-  const openRelease = (releaseGroup) => {
-    navigateToReleaseGroup(navigate, releaseGroup, {
+  const releaseLink = (releaseGroup, coverUrl) =>
+    getReleaseGroupLink(releaseGroup, {
       artistMbid: mbid,
       artistName: artistDisplayName,
-      coverUrl: getReleaseGroupCoverUrl(releaseGroup, albumCovers, {
-        artistFallback: artistCoverImage,
-        resolved: fulfilledCoverIds?.has(releaseGroup.id),
-      }),
+      coverUrl,
     });
-  };
 
   if (loading) {
     return (
-      <div className="artist-loading">
-        <DotLoader size="xl" label={null} />
-      </div>
+      <SkeletonStatus label="Loading releases" className="artist-details-page">
+        <SkeletonPageHeader />
+        <SkeletonCardGrid square />
+      </SkeletonStatus>
     );
   }
 
@@ -426,11 +425,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
 
     if (viewMode === "list") {
       return (
-        <div
-          key={releaseGroup.id}
-          className="artist-release-list-item"
-          onClick={() => openRelease(releaseGroup)}
-        >
+        <div key={releaseGroup.id} className="artist-release-list-item">
           <div className="artist-media-cell artist-list-cover">
             {cover ? (
               <img src={cover} alt="" loading="lazy" />
@@ -440,10 +435,13 @@ function ArtistReleaseListPage({ mode = "releases" }) {
               </div>
             )}
           </div>
-          <div className="artist-min-0">
+          <OptionalLink
+            link={releaseLink(releaseGroup, cover)}
+            className="artist-min-0 card-link"
+          >
             <h2 className="artist-release-card__title artist-truncate">{releaseGroup.title}</h2>
             <p className="artist-release-card__meta artist-truncate">{metaLabel}</p>
-          </div>
+          </OptionalLink>
           <div className="artist-row-actions">
             {metric.label && (
               <span className="artist-release-card__metric artist-hidden-mobile">
@@ -459,7 +457,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
                 </span>
               </Tooltip>
             ) : canAddAlbum ? (
-              <div onClick={(event) => event.stopPropagation()}>
+              <div>
                 <AddActionButton
                   {...getAlbumAddAction(
                     { status: status?.status, managedBy: status?.albumInfo?.managedBy },
@@ -480,11 +478,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     }
 
     return (
-      <article
-        key={releaseGroup.id}
-        className="artist-release-card"
-        onClick={() => openRelease(releaseGroup)}
-      >
+      <article key={releaseGroup.id} className="artist-release-card">
         <div className="artist-release-card__cover">
           {cover ? (
             <img src={cover} alt="" loading="lazy" decoding="async" />
@@ -502,7 +496,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
                 </span>
               </Tooltip>
             ) : canAddAlbum ? (
-              <div onClick={(event) => event.stopPropagation()}>
+              <div>
                 <AddActionButton
                   {...getAlbumAddAction(
                     { status: status?.status, managedBy: status?.albumInfo?.managedBy },
@@ -519,13 +513,15 @@ function ArtistReleaseListPage({ mode = "releases" }) {
             ) : null}
           </div>
         </div>
-        <Tooltip content={releaseGroup.title}>
-          <h2
-            className={`artist-release-card__title ${isAppearsOn ? "artist-clamp-2" : "artist-truncate"}`}
-          >
-            {releaseGroup.title}
-          </h2>
-        </Tooltip>
+        <h2
+          className={`artist-release-card__title ${isAppearsOn ? "artist-clamp-2" : "artist-truncate"}`}
+        >
+          <OptionalLink link={releaseLink(releaseGroup, cover)} className="card-link">
+            <Tooltip content={releaseGroup.title}>
+              <span className="card-link__label">{releaseGroup.title}</span>
+            </Tooltip>
+          </OptionalLink>
+        </h2>
         <p className="artist-release-card__meta artist-truncate">{metaLabel}</p>
         {metric.label && (
           <p className="artist-release-card__metric">

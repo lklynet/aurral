@@ -192,7 +192,24 @@ export function useArtistDetailsLibrary({
   const refreshArtistMutation = useMutation({ mutationFn: refreshLibraryArtist });
   const addArtistMutation = useMutation({
     mutationFn: addArtistToLibrary,
+    onMutate: async (payload) => {
+      const queryKey = queryKeys.artistMonitoring(payload.foreignArtistId);
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData(queryKey);
+      const optimistic = queryClient.setQueryData(queryKey, (current) =>
+        current
+          ? { ...current, added: true, monitorOption: payload.monitorOption || current.monitorOption || "none" }
+          : current);
+      return { queryKey, previous, optimistic };
+    },
+    onError: (_error, _payload, context) => {
+      if (context && queryClient.getQueryData(context.queryKey) === context.optimistic) {
+        queryClient.setQueryData(context.queryKey, context.previous);
+      }
+    },
     onSuccess: () => invalidateLibraryQueries(),
+    onSettled: (_data, _error, payload) =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.artistMonitoring(payload.foreignArtistId) }),
   });
   const requestAlbumMutation = useMutation({
     mutationFn: requestAlbumFromSearch,
@@ -398,6 +415,7 @@ export function useArtistDetailsLibrary({
       showError("Artist information not available");
       return;
     }
+    if (addArtistMutation.isPending) return false;
     setCustomizeAddError(null);
     try {
       const result = await addArtistMutation.mutateAsync(buildArtistAddPayload({
@@ -436,8 +454,8 @@ export function useArtistDetailsLibrary({
         showInfo(`${artist.name}: ${conflict.message}`);
         return false;
       }
-      const message = `Could not add the artist: ${
-          err.response?.data?.message || err.response?.data?.error || err.message
+      const message = `Could not add ${artist.name}. Nothing was added. ${
+          err.response?.data?.message || err.response?.data?.error || err.message || "Try again."
         }`;
       if (showAddCustomizeModal) setCustomizeAddError(message);
       else showError(message);
@@ -459,6 +477,7 @@ export function useArtistDetailsLibrary({
   };
 
   const handleRequestAlbum = async (albumId, title, managedBy = libraryDestination.primary) => {
+    if (requestingAlbum) return;
     setRequestingAlbum(albumId);
     try {
       if (!artist?.id || !artist?.name) {
@@ -525,8 +544,8 @@ export function useArtistDetailsLibrary({
         return;
       }
       showError(
-        `Could not download the album: ${
-          err.response?.data?.message || err.response?.data?.error || err.message
+        `Could not request ${title}. Nothing was added. ${
+          err.response?.data?.message || err.response?.data?.error || err.message || "Try again."
         }`,
       );
     } finally {
@@ -702,15 +721,22 @@ export function useArtistDetailsLibrary({
         setLibraryAlbums((prev) => prev.filter((a) => a.id !== libraryAlbum.id));
         showSuccess(`Successfully deleted ${title} and files`);
       } else {
-        await updateAlbumMutation.mutateAsync({
-          id: libraryAlbum.id,
-          data: { monitored: false },
-        });
+        const setMonitored = (monitored) => setLibraryAlbums((prev) =>
+          prev.map((a) => (a.id === libraryAlbum.id ? { ...a, monitored } : a)));
         unmonitoredAtRef.current[libraryAlbum.id] = Date.now();
-        setLibraryAlbums((prev) =>
-          prev.map((a) => (a.id === libraryAlbum.id ? { ...a, monitored: false } : a)),
-        );
-        showSuccess(`Successfully unmonitored ${title}`);
+        setMonitored(false);
+        setShowDeleteAlbumModal(null);
+        try {
+          await updateAlbumMutation.mutateAsync({
+            id: libraryAlbum.id,
+            data: { monitored: false },
+          });
+        } catch (err) {
+          delete unmonitoredAtRef.current[libraryAlbum.id];
+          setMonitored(libraryAlbum.monitored);
+          throw err;
+        }
+        showSuccess(`Stopped monitoring ${title}`);
       }
       setShowDeleteAlbumModal(null);
     } catch (err) {
@@ -720,9 +746,9 @@ export function useArtistDetailsLibrary({
           ? "delete"
           : "unmonitor";
       showError(
-        `Failed to ${action} album: ${
-          err.response?.data?.message || err.response?.data?.error || err.message
-        }`,
+        `Could not ${action} ${title}. ${action === "unmonitor" ? "Nothing changed." : "Review the album before trying again."} ${
+          err.response?.data?.message || err.response?.data?.error || err.message || ""
+        }`.trim(),
       );
     } finally {
       setRemovingAlbum(null);

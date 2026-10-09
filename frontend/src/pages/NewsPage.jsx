@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Newspaper } from "lucide-react";
-import { useNavigate } from "react-router";
+import RouteLink from "../components/RouteLink";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useLibraryNews } from "../hooks/useLibraryNews";
 import { NewsArticleCard } from "../components/NewsArticleCard";
 import { DotLoader } from "../components/DotLoader";
+import { SkeletonCardGrid, SkeletonStatus } from "../components/Skeletons";
 
 export default function NewsPage() {
   useDocumentTitle("Artist News");
-  const navigate = useNavigate();
   const { user, bootstrap } = useAuth();
   const newsConfigured = bootstrap?.newsConfigured === true;
   const [highlightedOnly, setHighlightedOnly] = useState(false);
@@ -62,14 +62,14 @@ export default function NewsPage() {
           <Newspaper aria-hidden="true" />
           <h2>Enable News</h2>
           <p>Enable the RSS news feed in Settings to see recent stories about artists in your library.</p>
-          <button type="button" className="btn btn-primary btn--bold" onClick={() => navigate("/settings/rss-news")}>
+          <RouteLink to="/settings/rss-news" className="btn btn-primary btn--bold">
             Open News settings
-          </button>
+          </RouteLink>
         </section>
       ) : loading && articles.length === 0 ? (
-        <div className="artist-loading">
-          <DotLoader size="2xl" label={null} />
-        </div>
+        <SkeletonStatus label="Loading news">
+          <SkeletonCardGrid className="discover-news-page__grid" count={6} square />
+        </SkeletonStatus>
       ) : articles.length > 0 ? (
         <>
           {refreshWarning ? (

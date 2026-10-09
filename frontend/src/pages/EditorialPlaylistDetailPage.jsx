@@ -1,24 +1,27 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ListMusic, Plus } from "lucide-react";
 import {
   addEditorialPlaylistToLibrary,
-  getEditorialPlaylist,
-  resolveEditorialTrackLinks,
 } from "../utils/api/endpoints/discovery.js";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
-import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { queryClient, queryKeys } from "../queryClient.js";
+import { queryClient } from "../queryClient.js";
+import { editorialPlaylistQueryOptions } from "../queryOptions.js";
 import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../components/CollectionHeader";
 import TooltipButton from "../components/TooltipButton";
+import Tooltip from "../components/Tooltip";
+import RouteLink from "../components/RouteLink";
+import { SkeletonCollectionHeader, SkeletonRows, SkeletonStatus } from "../components/Skeletons";
 import { DotLoader } from "../components/DotLoader";
 import { PlaylistTracksPanel, usePlaylistTrackPlayback } from "./playlists/components/playlistTrackComponents.jsx";
 import { formatTrackTotal } from "./playlists/playlistPageUtils";
 import { getApiErrorMessage } from "./onboardingUtils";
 import { playlistPath } from "../navigation/playlistPaths";
+import { readRouteSeed } from "../navigation/routeSeed.js";
+import { resolveAlbumPath, resolveArtistPath } from "../navigation/resolveLinks.js";
 import { useTrackSaveActions } from "./useTrackSaveActions";
 
 const mapPreviewTracks = (tracks, playlistId) =>
@@ -39,18 +42,17 @@ const mapPreviewTracks = (tracks, playlistId) =>
 export default function EditorialPlaylistDetailPage() {
   const { playlistId } = useParams();
   const { user, hasPermission } = useAuth();
-  const navigate = useDiscoverNavigation();
+  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const [adding, setAdding] = useState(false);
   const [failedArtwork, setFailedArtwork] = useState(false);
-  const queryKey = queryKeys.editorialPlaylist(user?.id, playlistId);
+  const playlistQueryOptions = editorialPlaylistQueryOptions(user?.id, playlistId);
+  const { queryKey } = playlistQueryOptions;
 
-  const { data: playlist, error, isPending, refetch } = useQuery({
-    queryKey,
-    queryFn: ({ signal }) => getEditorialPlaylist(playlistId, { signal }),
-    staleTime: 5 * 60 * 1000,
-  });
-  useDocumentTitle(playlist?.name || "Playlist");
+  const { data: playlist, error, isPending, refetch } = useQuery(playlistQueryOptions);
+  const seed = readRouteSeed(useLocation().state);
+  const shown = playlist || (isPending && seed?.name ? seed : null);
+  useDocumentTitle(shown?.name || "Playlist");
 
   const tracks = useMemo(
     () => mapPreviewTracks(playlist?.tracks, playlistId),
@@ -68,39 +70,23 @@ export default function EditorialPlaylistDetailPage() {
   const playback = usePlaylistTrackPlayback({ tracks, playbackSource });
   const trackSaveActions = useTrackSaveActions();
 
-  const openTrackLink = async (track, kind) => {
-    try {
-      const { artistMbid, albumMbid } = await resolveEditorialTrackLinks({
-        artistName: track.artistName,
-        albumName: kind === "album" ? track.albumName : null,
-        deezerAlbumId: kind === "album" ? track.deezerAlbumId : null,
-      });
-      if (!artistMbid) {
-        showError(`Couldn't find ${track.artistName} in MusicBrainz`);
-        return;
-      }
-      if (kind === "album" && albumMbid) {
-        navigate(`/artist/${artistMbid}/release/${albumMbid}`, {
-          state: {
-            artistName: track.artistName,
-            focusReleaseGroupMbid: albumMbid,
-            focusReleaseGroup: { id: albumMbid, title: track.albumName || "" },
-          },
-        });
-        return;
-      }
-      if (kind === "album") showError(`Couldn't find ${track.albumName}. Opening ${track.artistName} instead.`);
-      navigate(`/artist/${artistMbid}`, { state: { artistName: track.artistName } });
-    } catch (err) {
-      showError(getApiErrorMessage(err, "Couldn't open this link. Try again."));
-    }
+  const getArtistLink = (track) => {
+    const to = resolveArtistPath({ name: track.artistName });
+    return to ? { to } : null;
+  };
+  const getAlbumLink = (track) => {
+    const to = resolveAlbumPath({
+      artistName: track.artistName,
+      albumName: track.albumName,
+      deezerAlbumId: track.deezerAlbumId,
+    });
+    return to ? { to } : null;
+  };
+  const openLink = (link) => {
+    if (link) navigate(link.to);
   };
 
   const handleAdd = async () => {
-    if (playlist?.libraryPlaylistId) {
-      navigate(playlistPath(playlist.libraryPlaylistId), { state: { created: true } });
-      return;
-    }
     setAdding(true);
     try {
       const result = await addEditorialPlaylistToLibrary(playlistId);
@@ -129,17 +115,18 @@ export default function EditorialPlaylistDetailPage() {
     </main>
   );
 
-  if (isPending) {
-    return renderState(
-      <>
-        <DotLoader size="xl" label={null} />
-        <span>Loading playlist…</span>
-      </>,
-      "status",
+  if (isPending && !shown) {
+    return (
+      <CollectionPage>
+        <SkeletonStatus label="Loading playlist" className="native-library-detail">
+          <SkeletonCollectionHeader />
+          <SkeletonRows count={10} />
+        </SkeletonStatus>
+      </CollectionPage>
     );
   }
 
-  if (error || !playlist) {
+  if (!shown) {
     const notFound = error?.response?.status === 404;
     return renderState(
       <>
@@ -163,18 +150,20 @@ export default function EditorialPlaylistDetailPage() {
     );
   }
 
-  const inLibrary = Boolean(playlist.libraryPlaylistId);
+  const ready = Boolean(playlist);
+  const inLibrary = Boolean(playlist?.libraryPlaylistId);
   const canAdd = hasPermission("accessFlow");
   const addLabel = inLibrary ? "Open synced playlist" : "Add synced playlist";
-  const showArtwork = Boolean(playlist.artworkUrl) && !failedArtwork;
+  const showArtwork = Boolean(shown.artworkUrl) && !failedArtwork;
+  const trackTotal = ready ? tracks.length : Number(shown.trackCount);
 
   return (
-    <CollectionPage tintSrc={showArtwork ? playlist.artworkUrl : null}>
+    <CollectionPage tintSrc={showArtwork ? shown.artworkUrl : null}>
       <CollectionHeader
         cover={
           showArtwork ? (
             <img
-              src={playlist.artworkUrl}
+              src={shown.artworkUrl}
               alt=""
               loading="eager"
               onError={() => setFailedArtwork(true)}
@@ -185,49 +174,62 @@ export default function EditorialPlaylistDetailPage() {
             </div>
           )
         }
-        title={playlist.name}
-        subtitle={playlist.description || null}
-        meta={formatTrackTotal(tracks.length)}
+        title={shown.name}
+        subtitle={shown.description || null}
+        meta={Number.isFinite(trackTotal) ? formatTrackTotal(trackTotal) : null}
         actions={
           <>
             <CollectionPlayButtons
-              label={`${playlist.name} previews`}
-              disabled={playback.disabled}
+              label={`${shown.name} previews`}
+              disabled={!ready || playback.disabled}
               isPlaying={playback.isListPlaying}
               isShuffleEnabled={playback.isShuffleEnabled}
               onPlay={playback.handlePlayAll}
               onShuffle={playback.handleShufflePlay}
             />
-            {canAdd ? (
+            {canAdd && inLibrary ? (
+              <Tooltip content={addLabel}>
+                <RouteLink
+                  to={playlistPath(playlist.libraryPlaylistId)}
+                  state={{ created: true }}
+                  className="native-library-favorite is-active"
+                  aria-label={addLabel}
+                >
+                  <Check aria-hidden="true" />
+                </RouteLink>
+              </Tooltip>
+            ) : canAdd ? (
               <TooltipButton
-                className={`native-library-favorite${inLibrary ? " is-active" : ""}`}
+                className="native-library-favorite"
                 onClick={handleAdd}
-                disabled={adding}
+                disabled={!ready || adding}
                 label={addLabel}
                 aria-label={addLabel}
               >
-                {adding ? (
-                  <DotLoader size="sm" label={null} />
-                ) : inLibrary ? (
-                  <Check aria-hidden="true" />
-                ) : (
-                  <Plus aria-hidden="true" />
-                )}
+                {adding ? <DotLoader size="sm" label={null} /> : <Plus aria-hidden="true" />}
               </TooltipButton>
             ) : null}
           </>
         }
       />
-      <PlaylistTracksPanel
-        label={`${playlist.name} tracks`}
-        tracks={tracks}
-        loading={false}
-        playbackSource={playbackSource}
-        emptyMessage="This playlist has no tracks."
-        onNavigateArtist={(track) => openTrackLink(track, "artist")}
-        onNavigateAlbum={(track) => openTrackLink(track, "album")}
-        {...trackSaveActions}
-      />
+      {ready ? (
+        <PlaylistTracksPanel
+          label={`${playlist.name} tracks`}
+          tracks={tracks}
+          loading={false}
+          playbackSource={playbackSource}
+          emptyMessage="This playlist has no tracks."
+          onNavigateArtist={(track) => openLink(getArtistLink(track))}
+          onNavigateAlbum={(track) => openLink(getAlbumLink(track))}
+          getArtistLink={getArtistLink}
+          getAlbumLink={getAlbumLink}
+          {...trackSaveActions}
+        />
+      ) : (
+        <SkeletonStatus label="Loading tracks">
+          <SkeletonRows count={Math.min(trackTotal || 10, 12)} />
+        </SkeletonStatus>
+      )}
     </CollectionPage>
   );
 }

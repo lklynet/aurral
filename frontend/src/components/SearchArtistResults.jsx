@@ -5,13 +5,13 @@ import { getArtistFeedbackFlags } from "../utils/discoveryFeedback";
 import { getArtistRecordId } from "../utils/artistTaste";
 import Tooltip from "./Tooltip";
 import RecommendationMeta from "./RecommendationMeta";
+import RouteLink from "./RouteLink";
 
 function SearchArtistResults({
   artists,
   type,
   artistImages,
   libraryLookup,
-  navigate,
   onArtistFeedback,
   artistFeedbackLookup,
   variant = "square",
@@ -50,17 +50,11 @@ function SearchArtistResults({
     return String(value).trim() || null;
   };
 
-  const openArtist = (artist) => {
-    const artistId = getArtistRecordId(artist);
-    navigate(`/artist/${artistId}`, {
-      state: {
-        artistName: artist.name,
-        ...(typeof libraryLookup[artistId] === "boolean"
-          ? { inLibrary: libraryLookup[artistId] }
-          : {}),
-      },
-    });
-  };
+  const artistLinkState = (artist, artistId) => ({
+    artistName: artist.name,
+    artistImage: artistImages[artistId] || artist.image || artist.imageUrl || undefined,
+    ...(typeof libraryLookup[artistId] === "boolean" ? { inLibrary: libraryLookup[artistId] } : {}),
+  });
 
   const isList = variant === "list";
   const gridClassName = isList
@@ -96,7 +90,7 @@ function SearchArtistResults({
           .join(" • ");
 
         const cover = (
-          <div className={`artist-discover-card__cover${isList ? " artist-list-cover" : ""}`}>
+          <div className={`artist-discover-card__cover${isList ? " artist-list-cover" : ""}`} data-artwork>
             <ArtistImage
               src={artistImages[artistId] || artist.image || artist.imageUrl}
               mbid={artistId}
@@ -111,8 +105,10 @@ function SearchArtistResults({
           </div>
         );
 
+        const artistPath = `/artist/${artistId}`;
+        const linkState = artistLinkState(artist, artistId);
         const contextMenu = (
-          <div onClick={(event) => event.stopPropagation()} role="none">
+          <div className="artist-discover-card__menu">
             <ArtistContextMenu
               artist={artist}
               isInLibrary={!!libraryLookup[artistId]}
@@ -132,17 +128,15 @@ function SearchArtistResults({
             <article
               key={artistId || `artist-${index}`}
               className="artist-release-list-item search-artist-results__item"
-              onClick={() => openArtist(artist)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  openArtist(artist);
-                }
-              }}
-              tabIndex={0}
+              data-artwork-scope
             >
               {cover}
-              <div className="artist-min-0">
+              <RouteLink
+                to={artistPath}
+                state={linkState}
+                className="artist-min-0 card-link"
+                aria-label={`Open ${artist.name}`}
+              >
                 <Tooltip content={artist.name}>
                   <h2 className="artist-release-card__title artist-truncate" >
                     {artist.name}
@@ -160,7 +154,7 @@ function SearchArtistResults({
                     </p>
                   </Tooltip>
                 ) : null}
-              </div>
+              </RouteLink>
               {contextMenu}
             </article>
           );
@@ -170,19 +164,17 @@ function SearchArtistResults({
           <article
             key={artistId || `artist-${index}`}
             className="artist-discover-card artist-discover-card--artist"
-            onClick={() => openArtist(artist)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                openArtist(artist);
-              }
-            }}
-            tabIndex={0}
+            data-artwork-scope
           >
             {cover}
 
             <div className="artist-discover-card__content">
-              <div className="artist-discover-card__text">
+              <RouteLink
+                to={artistPath}
+                state={linkState}
+                className="artist-discover-card__text card-link"
+                aria-label={`Open ${artist.name}`}
+              >
                 <div className="artist-card-title-row--discover">
                   <Tooltip content={artist.name}>
                     <h3
@@ -205,7 +197,7 @@ function SearchArtistResults({
                     </p>
                   </Tooltip>
                 ) : null}
-              </div>
+              </RouteLink>
 
               {contextMenu}
             </div>
