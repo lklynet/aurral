@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ListMusic, Plus } from "lucide-react";
 import {
@@ -22,6 +22,7 @@ import { PlaylistTracksPanel, usePlaylistTrackPlayback } from "./playlists/compo
 import { formatTrackTotal } from "./playlists/playlistPageUtils";
 import { getApiErrorMessage } from "./onboardingUtils";
 import { playlistPath } from "../navigation/playlistPaths";
+import { readRouteSeed } from "../navigation/routeSeed.js";
 import { useTrackSaveActions } from "./useTrackSaveActions";
 
 const mapPreviewTracks = (tracks, playlistId) =>
@@ -50,7 +51,9 @@ export default function EditorialPlaylistDetailPage() {
   const { queryKey } = playlistQueryOptions;
 
   const { data: playlist, error, isPending, refetch } = useQuery(playlistQueryOptions);
-  useDocumentTitle(playlist?.name || "Playlist");
+  const seed = readRouteSeed(useLocation().state);
+  const shown = playlist || (isPending && seed?.name ? seed : null);
+  useDocumentTitle(shown?.name || "Playlist");
 
   const tracks = useMemo(
     () => mapPreviewTracks(playlist?.tracks, playlistId),
@@ -125,7 +128,7 @@ export default function EditorialPlaylistDetailPage() {
     </main>
   );
 
-  if (isPending) {
+  if (isPending && !shown) {
     return (
       <CollectionPage>
         <SkeletonStatus label="Loading playlist" className="native-library-detail">
@@ -136,7 +139,7 @@ export default function EditorialPlaylistDetailPage() {
     );
   }
 
-  if (error || !playlist) {
+  if (!shown) {
     const notFound = error?.response?.status === 404;
     return renderState(
       <>
@@ -160,18 +163,20 @@ export default function EditorialPlaylistDetailPage() {
     );
   }
 
-  const inLibrary = Boolean(playlist.libraryPlaylistId);
+  const ready = Boolean(playlist);
+  const inLibrary = Boolean(playlist?.libraryPlaylistId);
   const canAdd = hasPermission("accessFlow");
   const addLabel = inLibrary ? "Open synced playlist" : "Add synced playlist";
-  const showArtwork = Boolean(playlist.artworkUrl) && !failedArtwork;
+  const showArtwork = Boolean(shown.artworkUrl) && !failedArtwork;
+  const trackTotal = ready ? tracks.length : Number(shown.trackCount);
 
   return (
-    <CollectionPage tintSrc={showArtwork ? playlist.artworkUrl : null}>
+    <CollectionPage tintSrc={showArtwork ? shown.artworkUrl : null}>
       <CollectionHeader
         cover={
           showArtwork ? (
             <img
-              src={playlist.artworkUrl}
+              src={shown.artworkUrl}
               alt=""
               loading="eager"
               onError={() => setFailedArtwork(true)}
@@ -182,14 +187,14 @@ export default function EditorialPlaylistDetailPage() {
             </div>
           )
         }
-        title={playlist.name}
-        subtitle={playlist.description || null}
-        meta={formatTrackTotal(tracks.length)}
+        title={shown.name}
+        subtitle={shown.description || null}
+        meta={Number.isFinite(trackTotal) ? formatTrackTotal(trackTotal) : null}
         actions={
           <>
             <CollectionPlayButtons
-              label={`${playlist.name} previews`}
-              disabled={playback.disabled}
+              label={`${shown.name} previews`}
+              disabled={!ready || playback.disabled}
               isPlaying={playback.isListPlaying}
               isShuffleEnabled={playback.isShuffleEnabled}
               onPlay={playback.handlePlayAll}
@@ -210,7 +215,7 @@ export default function EditorialPlaylistDetailPage() {
               <TooltipButton
                 className="native-library-favorite"
                 onClick={handleAdd}
-                disabled={adding}
+                disabled={!ready || adding}
                 label={addLabel}
                 aria-label={addLabel}
               >
@@ -220,16 +225,22 @@ export default function EditorialPlaylistDetailPage() {
           </>
         }
       />
-      <PlaylistTracksPanel
-        label={`${playlist.name} tracks`}
-        tracks={tracks}
-        loading={false}
-        playbackSource={playbackSource}
-        emptyMessage="This playlist has no tracks."
-        onNavigateArtist={(track) => openTrackLink(track, "artist")}
-        onNavigateAlbum={(track) => openTrackLink(track, "album")}
-        {...trackSaveActions}
-      />
+      {ready ? (
+        <PlaylistTracksPanel
+          label={`${playlist.name} tracks`}
+          tracks={tracks}
+          loading={false}
+          playbackSource={playbackSource}
+          emptyMessage="This playlist has no tracks."
+          onNavigateArtist={(track) => openTrackLink(track, "artist")}
+          onNavigateAlbum={(track) => openTrackLink(track, "album")}
+          {...trackSaveActions}
+        />
+      ) : (
+        <SkeletonStatus label="Loading tracks">
+          <SkeletonRows count={Math.min(trackTotal || 10, 12)} />
+        </SkeletonStatus>
+      )}
     </CollectionPage>
   );
 }

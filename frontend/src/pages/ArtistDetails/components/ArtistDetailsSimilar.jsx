@@ -153,6 +153,7 @@ export function ArtistDetailsSimilar({
                       to={`/artist/${similar.id}`}
                       state={{
                         artistName: similar.name,
+                        artistImage: similar.image || undefined,
                         ...(typeof libraryLookup[artistId] === "boolean"
                           ? { inLibrary: libraryLookup[artistId] }
                           : {}),

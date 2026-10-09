@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate, useNavigationType, useParams, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useNavigationType, useParams, useSearchParams } from "react-router";
 import {
   ArrowDownAZ,
   ArrowLeft,
@@ -43,6 +43,7 @@ import {
 } from "../components/CollectionHeader";
 import CrossViewLink from "../components/CrossViewLink";
 import RouteLink from "../components/RouteLink";
+import { readRouteSeed } from "../navigation/routeSeed.js";
 import {
   SkeletonCardGrid,
   SkeletonCollectionHeader,
@@ -329,6 +330,7 @@ function EmptyState({ title, message }) {
 
 function LibraryPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     section: routeSection,
     albumId: routeAlbumId,
@@ -496,6 +498,7 @@ function LibraryPage() {
 
   const section = resolveLibrarySection(routeSection);
   const isDetail = Boolean(routeAlbumId || routeArtistId);
+  const albumSeed = routeAlbumId ? readRouteSeed(location.state) : null;
   const tab = libraryTabForSection(section);
   const selectedGenre = searchParams.get("genre") || "";
   const forcePreview = import.meta.env.DEV && searchParams.get("preview") === "1";
@@ -2101,11 +2104,19 @@ function LibraryPage() {
       ? describeAurralAlbumStatus(aurralAlbumStatuses[aurralAlbumStatusKey(album.id)] || {})
       : null;
     const cardStatus = aurralState?.status === "complete" ? null : aurralState;
+    const albumLinkState = {
+      seed: {
+        title: album.title || "",
+        artistName: artist?.name || album.albumArtist || "",
+        coverUrl: getAlbumCover(album) || null,
+      },
+    };
     return (
       <article className="native-library-card" data-library-menu-target key={album.id}>
         <div className="native-library-card__cover-wrap">
           <RouteLink
             to={libraryAlbumPath(album)}
+            state={albumLinkState}
             className="native-library-card__cover"
             aria-label={"Open " + (album.title || "album")}
           >
@@ -2187,7 +2198,11 @@ function LibraryPage() {
         <div className="native-library-card__body">
           <div className="native-library-card__title-row">
             <Tooltip content={album.title}>
-              <RouteLink to={libraryAlbumPath(album)} className="native-library-card__title">
+              <RouteLink
+                to={libraryAlbumPath(album)}
+                state={albumLinkState}
+                className="native-library-card__title"
+              >
                 {album.title || "Unknown Album"}
               </RouteLink>
             </Tooltip>
@@ -2700,12 +2715,25 @@ function LibraryPage() {
       )}
       {loading && (
         isDetail ? (
-          <SkeletonStatus label="Loading library" className="native-library-content">
+          <div className="native-library-content">
             <section className="native-library-detail">
-              <SkeletonCollectionHeader />
-              <SkeletonRows count={10} />
+              {routeAlbumId && albumSeed?.title ? (
+                <CollectionHeader
+                  cover={<Cover src={albumSeed.coverUrl} label={albumSeed.title} />}
+                  kicker="Album"
+                  title={albumSeed.title}
+                  subtitle={albumSeed.artistName ? <p>{albumSeed.artistName}</p> : null}
+                  actions={
+                    <CollectionPlayButtons label={albumSeed.title} disabled isPlaying={false} />
+                  }
+                />
+              ) : null}
+              <SkeletonStatus label="Loading library">
+                {routeAlbumId && albumSeed?.title ? null : <SkeletonCollectionHeader />}
+                <SkeletonRows count={10} />
+              </SkeletonStatus>
             </section>
-          </SkeletonStatus>
+          </div>
         ) : viewMode === "list" || tab === "tracks" || tab === "genres" ? (
           <SkeletonStatus label="Loading library">
             <SkeletonRows count={12} />

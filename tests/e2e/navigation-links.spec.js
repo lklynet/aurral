@@ -6,7 +6,7 @@ const artist = { id: "nav-link-artist", name: "Link Test Artist", tags: [], genr
 const playlist = { id: "908622995", name: "Link Test Mix", trackCount: 2, artworkUrl: null };
 const playlistPath = `/discover/playlists/deezer/${playlist.id}`;
 
-async function fixture(page) {
+async function fixture(page, { holdPlaylist } = {}) {
   const requests = [];
   await page.routeWebSocket("**/ws**", (socket) => socket.close());
   await page.route("**/api/**", async (route) => {
@@ -23,11 +23,12 @@ async function fixture(page) {
     if (path === "/discover") return json({ recommendations: [artist], configured: true });
     if (path === "/discover/editorial") return json({ forYou: [playlist], genres: [] });
     if (path === `/discover/editorial/${playlist.id}`) {
+      await holdPlaylist;
       return json({
         ...playlist,
         tracks: [
-          { id: "t1", title: "First Link Track", artistName: artist.name, albumName: "Link Album" },
-          { id: "t2", title: "Second Link Track", artistName: artist.name, albumName: "Link Album" },
+          { trackName: "First Link Track", artistName: artist.name, albumName: "Link Album" },
+          { trackName: "Second Link Track", artistName: artist.name, albumName: "Link Album" },
         ],
       });
     }
@@ -101,4 +102,28 @@ test("hovering a card prefetches its page and the click reuses it", async ({ pag
   await playlistLink.click();
   await expect(page.getByRole("heading", { name: playlist.name })).toBeVisible();
   expect(detailRequests()).toBe(1);
+});
+
+test("a playlist opened from its card shows its header before the tracks load", async ({ page }) => {
+  let release;
+  await fixture(page, { holdPlaylist: new Promise((resolve) => { release = resolve; }) });
+  await page.goto("/");
+  await page.locator("main").getByRole("link", { name: `Open ${playlist.name}`, exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: playlist.name, level: 1 })).toBeVisible();
+  await expect(page.getByText(`${playlist.trackCount} tracks`, { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: `Play ${playlist.name} previews` })).toBeDisabled();
+  await expect(page.getByRole("status").filter({ hasText: "Loading tracks" })).toHaveCount(1);
+  await expect(page.getByText("First Link Track")).toHaveCount(0);
+
+  release();
+  await expect(page.getByText("First Link Track")).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Loading tracks" })).toHaveCount(0);
+});
+
+test("a playlist opened directly still loads without card data", async ({ page }) => {
+  await fixture(page);
+  await page.goto(playlistPath);
+  await expect(page.getByRole("heading", { name: playlist.name, level: 1 })).toBeVisible();
+  await expect(page.getByText("First Link Track")).toBeVisible();
 });

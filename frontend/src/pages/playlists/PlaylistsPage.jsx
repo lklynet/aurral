@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
+import RouteLink from "../../components/RouteLink";
 import { ListMusic, MoreVertical, Plus, Upload } from "lucide-react";
 import { SkeletonCardGrid, SkeletonStatus } from "../../components/Skeletons";
 import Tooltip from "../../components/Tooltip";
@@ -142,19 +143,19 @@ export default function PlaylistsPage() {
         {staticPlaylists.map((playlist) => (
           <article className="native-library-card" role="listitem" key={playlist.id}>
             <div className="native-library-card__cover-wrap">
-              <Link
+              <RouteLink
                 to={playlistPath(playlist.id)}
                 className="native-library-card__cover playlists-page__cover"
                 aria-label={`Open ${playlist.name}`}
               >
                 <PlaylistArtworkThumb artworkUrl={artworkUrlFor(playlist.id)} name={playlist.name} />
-              </Link>
+              </RouteLink>
               <SyncedBadge importSource={playlist.importSource} />
             </div>
             <div className="native-library-card__body">
-              <Link to={playlistPath(playlist.id)} className="native-library-card__title playlists-page__title">
+              <RouteLink to={playlistPath(playlist.id)} className="native-library-card__title playlists-page__title">
                 {playlist.name}
-              </Link>
+              </RouteLink>
               <span className="native-library-card__meta">{describePlaylist(playlist)}</span>
             </div>
           </article>

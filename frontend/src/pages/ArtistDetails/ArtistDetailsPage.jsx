@@ -29,6 +29,7 @@ import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
 import { Music, X } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
 import { SkeletonRail, SkeletonStatus } from "../../components/Skeletons";
+import { normalizeMediaUrl } from "../../utils/normalizeMediaUrl";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
@@ -116,6 +117,10 @@ function ArtistDetailsPage() {
     ],
     initialLibraryHint,
     appearsOnLimit: ARTIST_DETAILS_APPEARS_ON_LIMIT,
+    seedImage:
+      typeof locationState?.artistImage === "string"
+        ? normalizeMediaUrl(locationState.artistImage) || null
+        : null,
   });
   const canAddArtist = hasPermission("addArtist");
   const {

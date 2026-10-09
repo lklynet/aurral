@@ -99,7 +99,11 @@ export const ArtistCard = memo(
       : hasValidMbid
         ? {
             to: `/artist/${navigateTo}`,
-            state: { artistName: artist.name, inLibrary: isInLibrary },
+            state: {
+              artistName: artist.name,
+              inLibrary: isInLibrary,
+              artistImage: artist.image || artist.imageUrl || undefined,
+            },
           }
         : null;
     const canOpen = Boolean(link);

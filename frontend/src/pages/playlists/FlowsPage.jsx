@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
+import RouteLink from "../../components/RouteLink";
 import { useQuery } from "@tanstack/react-query";
 import { AudioWaveform, ChevronDown, Sparkles } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
@@ -142,7 +143,7 @@ export default function FlowsPage() {
           });
           return (
             <li key={flow.id} className="flows-list__row">
-              <Link to={flowPath(flow.id)} className="flows-list__link">
+              <RouteLink to={flowPath(flow.id)} className="flows-list__link">
                 <PlaylistArtworkThumb
                   artworkUrl={artworkUrlFor(flow.id)}
                   name={flow.name}
@@ -161,7 +162,7 @@ export default function FlowsPage() {
                     )}
                   </span>
                 </span>
-              </Link>
+              </RouteLink>
               <FlowEnabledSwitch flow={flow} onChanged={fetchStatus} />
             </li>
           );

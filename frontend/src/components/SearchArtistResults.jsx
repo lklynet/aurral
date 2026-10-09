@@ -52,6 +52,7 @@ function SearchArtistResults({
 
   const artistLinkState = (artist, artistId) => ({
     artistName: artist.name,
+    artistImage: artistImages[artistId] || artist.image || artist.imageUrl || undefined,
     ...(typeof libraryLookup[artistId] === "boolean" ? { inLibrary: libraryLookup[artistId] } : {}),
   });
 

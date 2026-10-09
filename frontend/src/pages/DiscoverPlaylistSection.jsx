@@ -30,6 +30,13 @@ function EditorialPlaylistCard({ playlist }) {
         <div className="artist-discover-card__content">
           <RouteLink
             to={editorialPlaylistPath(playlist.id)}
+            state={{
+              seed: {
+                name: playlist.name,
+                artworkUrl: playlist.artworkUrl || null,
+                trackCount: playlist.trackCount,
+              },
+            }}
             className="artist-discover-card__text card-link"
             aria-label={`Open ${playlist.name}`}
           >
