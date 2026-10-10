@@ -185,8 +185,8 @@ function mergeLibraryArtistInto(fallback, resolved, { syncSearch = true } = {}) 
     .run(resolved.id, fallback.id).changes > 0 || changed;
   const copiedManagement = db.prepare(`
     INSERT OR IGNORE INTO library_management
-      (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at)
-    SELECT entity_kind, ?, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at
+      (entity_kind, entity_id, managed_by, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at)
+    SELECT entity_kind, ?, managed_by, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at
     FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?
   `).run(resolved.id, fallback.id).changes > 0;
   const removedManagement = db.prepare(
@@ -1073,8 +1073,8 @@ export function splitLegacyKeyedLibraryRows(moves) {
         }
         db.prepare(
           `INSERT OR IGNORE INTO library_management
-            (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at)
-           SELECT entity_kind, ?, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at
+            (entity_kind, entity_id, managed_by, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at)
+           SELECT entity_kind, ?, managed_by, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at
            FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?`,
         ).run(target.id, artist.id);
       }

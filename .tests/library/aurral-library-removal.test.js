@@ -283,28 +283,21 @@ test("album removal stops before changing anything when downloads cannot be canc
   }
 });
 
-test("album removal is refused while Aurral monitors the artist, and Lidarr albums are refused", async () => {
+test("removing an album of a monitored artist records an exclusion, and Lidarr albums are refused", async () => {
   const { artist, album, tracks } = await createAurralAlbum();
-  managementStore.setLibraryManagement({
-    entityKind: "artist",
-    entityId: artist.id,
-    managedBy: "aurral",
-    monitorMode: "all",
-  });
+  makeMonitoredArtist(artist);
 
-  const monitored = await removeAlbum(album, true);
-  assert.equal(monitored.statusCode, 409);
-  assert.equal(monitored.body.code, "artist_monitored");
-  assert.notEqual(albumRow(album.id), undefined);
-  assert.equal(await exists(tracks[0].filePath), true);
-
-  managementStore.setLibraryManagement({
-    entityKind: "artist",
-    entityId: artist.id,
-    managedBy: "aurral",
-    monitorMode: "none",
-  });
-  assert.equal((await removeAlbum(album, false)).statusCode, 200);
+  const removed = await removeAlbum(album, true);
+  assert.equal(removed.statusCode, 200);
+  assert.equal(removed.body.excluded, true);
+  assert.equal(albumRow(album.id), undefined);
+  assert.equal(await exists(tracks[0].filePath), false);
+  assert.deepEqual(
+    libraryManager.listMonitoringExclusions({ artistMbid: artist.mbid })
+      .map(({ kind, mbid, title }) => ({ kind, mbid, title })),
+    [{ kind: "album", mbid: album.mbid, title: album.title }],
+  );
+  assert.ok(managementStore.getLibraryManagementEntry("artist", artist.id)?.monitorRules);
 
   const lidarr = await createAurralAlbum({ trackCount: 1 });
   managementStore.setLibraryManagement({ entityKind: "album", entityId: lidarr.album.id, managedBy: "lidarr" });
@@ -315,12 +308,14 @@ test("album removal is refused while Aurral monitors the artist, and Lidarr albu
   assert.notEqual(albumRow(lidarr.album.id), undefined);
 });
 
-function makeMonitoredArtist(artist, monitorMode = "all") {
+function makeMonitoredArtist(artist, monitored = true) {
+  const now = Date.now();
   managementStore.setLibraryManagement({
     entityKind: "artist",
     entityId: artist.id,
     managedBy: "aurral",
-    monitorMode,
+    monitorMode: monitored ? "all" : "none",
+    monitorRules: monitored ? { default: true, catalogAt: now, newSince: now } : null,
   });
 }
 
@@ -348,7 +343,7 @@ test("removing a monitored Aurral artist clears its albums, files, and monitorin
   const planned = [];
   t.mock.method(libraryManager, "planAurralArtistMonitoring", async (artist) => {
     planned.push(artist.mbid);
-    return { releases: [] };
+    return { releases: [], topTracks: [] };
   });
   await libraryManager.reconcileAurralMonitoring();
   assert.equal(planned.includes(first.artist.mbid), false);
@@ -356,7 +351,7 @@ test("removing a monitored Aurral artist clears its albums, files, and monitorin
 
 test("removing an Aurral artist without files keeps them on disk", async () => {
   const { artist, album, tracks } = await createAurralAlbum();
-  makeMonitoredArtist(artist, "none");
+  makeMonitoredArtist(artist, false);
 
   const response = await removeArtist(artist, false);
 
@@ -398,7 +393,7 @@ test("an ingested artist without a MusicBrainz ID is deleted with its files", as
 test("removing the last album of an artist Aurral does not follow removes the artist", async () => {
   const unfollowed = await createAurralAlbum();
   const followed = await createAurralAlbum();
-  makeMonitoredArtist(followed.artist, "none");
+  makeMonitoredArtist(followed.artist, false);
 
   assert.equal((await removeAlbum(unfollowed.album, true)).statusCode, 200);
   assert.equal((await removeAlbum(followed.album, true)).statusCode, 200);
@@ -437,6 +432,7 @@ test("a failed artist removal stops monitoring and finishes on retry", async () 
     const artistState = managementStore.getLibraryManagementEntry("artist", first.artist.id);
     assert.equal(artistState?.managedBy, "aurral");
     assert.equal(artistState?.monitorMode, "none");
+    assert.equal(artistState?.monitorRules, null);
 
     provider.status = 204;
     const retried = await removeArtist(first.artist, true);

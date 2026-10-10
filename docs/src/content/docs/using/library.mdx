@@ -66,18 +66,28 @@ Monitoring decides what Aurral or Lidarr does by itself. It works at three level
 
 ### Artists
 
-An artist's monitoring decides which of its albums download by themselves. On a Discover artist page, select **Monitor** and choose an option. The button then shows the option. On a Library artist page, the same choices are in the artist's menu under **Monitor**. Every artist starts **Not monitored**, so you never add an artist first.
+An artist's monitoring decides which of its releases download by themselves. On a Discover artist page, select **Monitor** and make a choice. The button then shows it. On a Library artist page, the same choices are in the artist's menu. Every artist starts **Not monitored**, so you never add an artist first.
 
-- With Lidarr, choosing an option for an artist that Aurral does not have adds it to Lidarr with your Lidarr defaults. An artist that Aurral already has keeps Aurral's options. Lidarr also offers **Existing albums** and **Missing albums**. To choose the root folder, quality profile, tag, or monitoring for one artist before it is added, select **Customize add…** in the menu. If you change an artist's monitoring in Lidarr itself, the option shows **Custom**. When Lidarr monitors or downloads an album that Aurral has tracks from, Lidarr takes the album over. See [Albums and tracks](#albums-and-tracks).
-- Without Lidarr, Aurral monitors the artist. Aurral keeps monitoring its own artists after you connect Lidarr.
+- With Lidarr, Lidarr monitors the artist with its own options: **All albums**, **Future albums**, **Latest album**, **First album**, **Existing albums**, and **Missing albums**. Choosing one for an artist that Aurral does not have adds it to Lidarr with your Lidarr defaults. To choose the root folder, quality profile, tag, or monitoring for one artist before it is added, select **Customize add…** in the menu. If you change an artist's monitoring in Lidarr itself, the option shows **Custom**. When Lidarr monitors or downloads an album that Aurral has tracks from, Lidarr takes the album over. See [Albums and tracks](#albums-and-tracks).
+- Without Lidarr, Aurral monitors the artist with its own rules. Aurral keeps monitoring its own artists after you connect Lidarr.
 
-Aurral looks only for official albums and EPs. It skips singles, live albums, compilations, and other releases with a secondary type. Aurral's options are:
+#### Aurral's monitoring rules
 
-- **All albums** downloads every album that is not complete.
-- **Latest album** and **First album** download the newest or the oldest album.
-- **Future albums** downloads only albums released after you start monitoring.
+An artist that Aurral manages is **Monitored** or **Not monitored**. A monitored artist follows the default rules, unless you give it its own. To see or change an artist's rules, select **Monitoring rules…** in its monitoring menu and turn off **Use the default rules**. While you change the rules, Aurral lists the releases and top tracks it would download, and what it skips and why. An artist with its own rules shows **Custom rules**.
 
-After you choose an Aurral option, Aurral reports how many albums it queued and why it skipped the others. If Aurral cannot load the artist's releases, it tells you and keeps the old option. The artist's option never changes whether its albums are monitored. Aurral checks the artists it monitors for new releases once a day.
+An admin sets the default rules in **Settings > Monitoring > Default rules**. Before a change is saved, Aurral shows how many artists use the default and what it would download for them. A change applies to those artists from the moment you save it.
+
+- **Back catalogue** takes the releases that are already out: **Everything**, everything **Since a year**, the **Latest releases**, up to 10, or **Nothing**. It counts what was out when you saved the rules, so **Latest releases** keeps the same releases when the artist puts out another one.
+- **New releases** downloads the releases that come out after you start monitoring.
+- **Release types** chooses albums, EPs, and singles. **Also include** adds releases with a secondary type, such as live albums, compilations, soundtracks, remixes, demos, DJ mixes, and mixtapes. Aurral only takes official releases.
+- **Edition** chooses the **Standard** tracklist or the **Expanded** edition. See [Follow an Aurral album download](#follow-an-aurral-album-download).
+- **Top tracks** downloads up to 50 of the artist's most popular songs that its releases don't already bring. The list comes from Last.fm when you set a Last.fm API key, and from Deezer otherwise.
+
+The default rules take every album and EP and the new releases. Aurral skips a single, EP, or other release when every song on it is already in your Library or on another release it downloads. A studio album is never skipped this way.
+
+After you change an artist's monitoring, Aurral reports what it queued and why it skipped the rest. If Aurral cannot load the artist's releases, it tells you and keeps the old rules. Aurral checks the artists it monitors for new releases and top tracks once a day.
+
+Artists that an earlier version monitored with **All albums** use the default rules. **Future albums** and **Latest album** became rules that do the same. Artists on **First album** are now **Not monitored**, and the album they downloaded stays monitored.
 
 A Library artist's menu also has **Delete artist**. See [Remove tracks, albums, and artists](#remove-tracks-albums-and-artists).
 
@@ -92,15 +102,16 @@ With Lidarr connected, **Download album** on an album that Aurral does not have 
 - To get the rest of an album, open its Library page and select the download button next to **Add to favorites**. On an Aurral album, Aurral looks up the full track list and downloads what is missing. On a Lidarr album, Lidarr searches for it.
 - To get one missing track, select the download button on its row. Aurral downloads the track, even on an album that Lidarr manages.
 - To stop monitoring an album, open the album's menu and select **Stop monitoring album**. This stops monitoring every track on it.
-- To stop monitoring one track, open its menu on the album page and select **Stop monitoring track**. Use this to keep a file you are happy with from being upgraded. An unmonitored track shows a crossed-out eye. Lidarr cannot monitor single tracks, so tracks whose files come from Lidarr have no track monitoring.
+- To stop monitoring one track, open its menu on the album page and select **Stop monitoring track**. An unmonitored track shows a crossed-out eye. Lidarr cannot monitor single tracks, so tracks whose files come from Lidarr have no track monitoring.
+- To keep a file you are happy with, select **Keep this file** in the track's menu. Aurral stops upgrading it and cancels an upgrade that is under way, but keeps monitoring the track. To let Aurral upgrade it again, select **Allow upgrades**.
 
-If the album or track has unfinished downloads, Aurral asks you to confirm. It then cancels those downloads and keeps every finished file. To monitor something again, download it. When nothing is missing, the menu offers **Monitor track** or **Monitor album** instead. An album you unmonitored stays unmonitored when you change the artist's option later.
+If the album or track has unfinished downloads, Aurral asks you to confirm. It then cancels those downloads and keeps every finished file. To monitor something again, download it. When nothing is missing, the menu offers **Monitor track** or **Monitor album** instead. An album you unmonitored stays unmonitored when you change the artist's monitoring later.
 
 **Wanted** does not list unmonitored tracks. **Retry** on an album skips the tracks you unmonitored. **Re-search** on one track still works when it is unmonitored.
 
 ### Search again for missing tracks
 
-Aurral can search again for missing tracks that you monitor. This is off by default. To turn it on, open **Settings > Download clients > Quality profile** and go to **Missing tracks**.
+Aurral can search again for missing tracks that you monitor. This is off by default. To turn it on, open **Settings > Monitoring** and turn on **Search again for missing tracks**.
 
 Aurral checks once a day and searches every album with a monitored missing track whose **Search interval** has passed since its last search or download. It skips unmonitored tracks. After you cancel an album's downloads, Aurral leaves that album alone until you select **Retry**.
 
@@ -109,6 +120,8 @@ Aurral checks once a day and searches every album with a monitored missing track
 A monitored album shows its download state on its page, such as **Queued**, **Downloading**, **Partially available**, or **Needs attention**. An album is complete when every track you monitor is available.
 
 Aurral asks for the tracklist that most releases of the album share, in the order most of them share. That is usually the standard edition rather than a deluxe edition, a box set, or a pressing that swaps tracks. If the album download turns out to be a whole shorter edition, the album is complete. Aurral stops monitoring the tracks that only the longer edition has and does not search for them. To get one of them, select the download button on its row.
+
+When the artist's rules choose the **Expanded** edition, Aurral asks for the longest edition that keeps every standard track and is at most twice as long, such as a deluxe edition but not a box set. If the album download is the shorter edition, Aurral keeps searching for the extra tracks one by one.
 
 - To stop unfinished tracks, select **Cancel downloads**. Finished tracks stay in the Library.
 - To search again for cancelled and failed tracks, select **Retry**.
@@ -125,7 +138,7 @@ When you delete a track that Aurral manages, Aurral deletes its file. If no othe
 
 To remove an album or artist, select **Delete album** or **Delete artist** at the bottom of its menu. Aurral cancels unfinished downloads and removes it from Lidarr too when Lidarr has it. To also delete the music files, select **Delete album files** or **Delete artist files**. Aurral then also deletes the tracks' lyrics files, and album art and folders that the music leaves empty in the Downloads Folder. Otherwise the files stay on disk.
 
-- You cannot delete one album of an artist that Aurral monitors, because monitoring would add it again. First set the artist's monitoring to **Not monitored**, or delete the whole artist.
+- When you delete an album, the artist's monitoring leaves it out from then on. Deleting a track file also keeps the track out of the artist's top tracks. To let monitoring download it again, request it yourself or select **Allow again** in the artist's **Monitoring rules…** or in **Settings > Monitoring**.
 - Deleting an album or artist that Lidarr has needs Lidarr. If Lidarr cannot be reached, nothing is deleted.
 - Aurral deletes files only in the Downloads Folder. A file in a Lidarr root folder stays, even when a playlist used it.
 

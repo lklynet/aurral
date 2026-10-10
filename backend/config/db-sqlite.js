@@ -1142,6 +1142,84 @@ db.transaction(() => {
   `);
 }).immediate();
 
+tryAddColumn("ALTER TABLE library_management ADD COLUMN monitor_rules TEXT");
+tryAddColumn("ALTER TABLE library_tracks ADD COLUMN keep_file INTEGER NOT NULL DEFAULT 0");
+db.exec(`
+  CREATE TABLE IF NOT EXISTS library_monitoring_exclusions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    exclusion_key TEXT NOT NULL,
+    mbid TEXT,
+    artist_mbid TEXT,
+    artist_name TEXT,
+    title TEXT NOT NULL,
+    normalized_title TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE (kind, exclusion_key)
+  );
+  CREATE INDEX IF NOT EXISTS idx_library_monitoring_exclusions_artist
+    ON library_monitoring_exclusions (artist_mbid);
+`);
+
+// Aurral artists move from one monitor mode to monitoring rules. "all" uses
+// the default rules, which match it. "first" never followed new releases, so
+// its album stays monitored and the artist stops being monitored.
+const aurralMonitoringRulesMigrationKey = "migration:aurral-monitoring-rules-v1";
+db.transaction(() => {
+  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(aurralMonitoringRulesMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  const artists = db.prepare(`
+    SELECT management.entity_id AS id, management.monitor_mode AS mode, management.updated_at AS updatedAt,
+      CASE WHEN json_valid(artist.metadata_json)
+        THEN json_extract(artist.metadata_json, '$.monitorStartedAt') END AS startedAt
+    FROM library_management AS management
+    JOIN library_artists AS artist ON artist.id = management.entity_id
+    WHERE management.entity_kind = 'artist'
+      AND management.managed_by = 'aurral'
+      AND management.monitor_rules IS NULL
+      AND COALESCE(management.monitor_mode, 'none') != 'none'
+  `).all();
+  const rulesFor = (catalog) => ({
+    catalog,
+    sinceYear: null,
+    latestCount: 1,
+    newReleases: true,
+    types: ["album", "ep"],
+    extraTypes: [],
+    edition: "standard",
+    topTracks: 0,
+  });
+  const setRules = db.prepare(
+    "UPDATE library_management SET monitor_rules = ? WHERE entity_kind = 'artist' AND entity_id = ?",
+  );
+  const stopMonitoring = db.prepare(`
+    UPDATE library_management SET monitor_mode = 'none'
+    WHERE entity_kind = 'artist' AND entity_id = ?
+  `);
+  const markUnmonitored = db.prepare(`
+    UPDATE library_artists
+    SET metadata_json = json_set(metadata_json, '$.monitored', json('false'), '$.monitor', 'none',
+      '$.monitorOption', 'none', '$.addOptions.monitor', 'none')
+    WHERE id = ? AND json_valid(metadata_json)
+  `);
+  for (const artist of artists) {
+    const mode = String(artist.mode).trim().toLowerCase();
+    if (mode === "first") {
+      stopMonitoring.run(artist.id);
+      markUnmonitored.run(artist.id);
+      continue;
+    }
+    const since = mode === "future"
+      ? Number(artist.startedAt) || Number(artist.updatedAt) || Date.now()
+      : Number(artist.updatedAt) || Date.now();
+    const stored = mode === "future" || mode === "latest"
+      ? { default: false, rules: rulesFor(mode === "future" ? "none" : "latest") }
+      : { default: true };
+    setRules.run(JSON.stringify({ ...stored, catalogAt: since, newSince: since }), artist.id);
+  }
+}).immediate();
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS playlist_download_jobs_revision (
     id INTEGER PRIMARY KEY CHECK (id = 1),

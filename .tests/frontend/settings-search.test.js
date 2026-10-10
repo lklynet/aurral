@@ -14,6 +14,7 @@ const COMPONENTS_BY_TAB = {
     "PathMappingModal.jsx",
   ],
   "library-files": ["SettingsLibraryFilesTab.jsx"],
+  monitoring: ["SettingsMonitoringTab.jsx"],
   playback: ["SettingsPlaybackSection.jsx"],
   connect: ["SettingsConnectTab.jsx"],
   "rss-news": ["SettingsRssNewsTab.jsx"],

@@ -14,6 +14,7 @@ import {
   getLibraryForTrackIds,
   getLibraryPage,
   getLibraryTrack,
+  getLibraryTrackOwnership,
   invalidateLibraryQueryCache,
 } from "./libraryQueryService.js";
 import { selectCanonicalFile } from "./canonicalFileSelector.js";
@@ -48,6 +49,7 @@ import { removePlaylistTracksWithoutDownloads } from "./playlists/trackRemoval.j
 import {
   cancelAurralAlbumJobs,
   cancelAurralTrackJobs,
+  cancelFileUpgradeJobs,
   cancelLibraryTrackJobs,
   findAurralAlbumJobs,
   jobMatchesTrack,
@@ -58,12 +60,33 @@ import {
   isAnyDownloadSourceConfigured,
 } from "./downloadSourceService.js";
 import {
+  isStudioAlbum,
+  legacyMonitorMode,
   listAurralArtistReleases,
   MONITORED_AURRAL_ALBUM_CONDITION,
   monitoredTrackCondition,
-  resolveAurralMonitorMode,
-  selectAurralReleases,
+  monitoringFromLegacyMode,
+  monitoringToken,
+  nextArtistMonitoring,
+  nextMonitoringDefaults,
+  normalizeMonitorRules,
+  resolveArtistMonitoring,
+  selectMonitoredReleases,
 } from "./aurralMonitoring.js";
+import {
+  addMonitoringExclusion,
+  clearAlbumMonitoringExclusion,
+  clearArtistMonitoringExclusions,
+  getAurralArtistMonitoring,
+  getMonitoringDefaults,
+  indexArtistExclusions,
+  isAlbumMonitoringExcluded,
+  listMonitoringExclusions,
+  saveMonitoringDefaults,
+  setAurralArtistMonitoringState,
+} from "./aurralMonitoringStore.js";
+import { getArtistTopTracks } from "./musicDataSource/index.js";
+import { getNormalizedText } from "./providers/brainzmashRanking.js";
 import { enqueueSystemTaskJob } from "./honkerDb.js";
 import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.js";
 import {
@@ -112,6 +135,8 @@ const isMonitoredTrack = (trackId) => Boolean(monitoredTrackStmt.get(Number(trac
 
 const setTrackMonitoredStmt = db.prepare("UPDATE library_tracks SET monitored = ? WHERE id = ?");
 
+const setTrackKeepFileStmt = db.prepare("UPDATE library_tracks SET keep_file = ? WHERE id = ?");
+
 const trackIdByMbidStmt = db.prepare("SELECT id FROM library_tracks WHERE mbid = ? ORDER BY id LIMIT 1");
 
 const trackOnOtherAlbumStmt = db.prepare(
@@ -122,6 +147,63 @@ const setAlbumTracksMonitoredStmt = db.prepare(`
   UPDATE library_tracks SET monitored = ?
   WHERE id IN (SELECT track_id FROM library_album_tracks WHERE album_id = ?)
 `);
+
+const recordingElsewhereStmt = db.prepare(`
+  SELECT 1 FROM library_tracks AS track
+  JOIN library_album_tracks AS link ON link.track_id = track.id
+  JOIN library_albums AS album ON album.id = link.album_id
+  WHERE track.mbid = ?
+    AND COALESCE(album.release_group_mbid, album.mbid, '') != ?
+    AND (track.monitored = 1 OR EXISTS (
+      SELECT 1 FROM library_media_files AS media
+      WHERE media.track_id = track.id AND media.available = 1
+    ))
+  LIMIT 1
+`);
+
+const invalidMonitoring = (message) => ({ error: message, statusCode: 400, code: "invalid_monitor_rules" });
+
+// A request names monitoring as { monitored, useDefault, rules }. Older clients
+// send one monitor option instead, which maps to the same choices.
+function resolveAurralMonitoringRequest({ monitoring, monitorOption } = {}) {
+  if (monitoring !== undefined && monitoring !== null) {
+    if (typeof monitoring !== "object" || typeof monitoring.monitored !== "boolean") {
+      return invalidMonitoring("monitoring.monitored must be true or false");
+    }
+    if (!monitoring.monitored) return { request: null };
+    if (monitoring.useDefault !== false) return { request: { useDefault: true, rules: null } };
+    const normalized = normalizeMonitorRules(monitoring.rules);
+    return normalized.error ? normalized : { request: { useDefault: false, rules: normalized.rules } };
+  }
+  const option = String(monitorOption ?? "none").trim().toLowerCase() || "none";
+  const legacy = monitoringFromLegacyMode(option);
+  if (legacy === undefined) {
+    return {
+      error: `Aurral monitoring does not support the "${option}" mode`,
+      statusCode: 400,
+      code: "unsupported_monitor_mode",
+    };
+  }
+  return { request: legacy };
+}
+
+const describeAurralMonitoring = (effective, defaults) => ({
+  monitored: Boolean(effective),
+  monitorOption: legacyMonitorMode(effective),
+  useDefault: effective ? effective.useDefault : true,
+  rules: effective?.rules || null,
+  defaultRules: defaults.rules,
+});
+
+const summarizeMonitoringPlan = (plan, queued) => ({
+  queued,
+  releaseGroupIds: plan.releases.map((release) => release.id),
+  releases: plan.releases,
+  topTracks: plan.topTracks,
+  skipped: plan.skipped,
+  skippedTracks: plan.skippedTracks,
+  topTracksError: plan.topTracksError,
+});
 
 async function serializeMonitoringUpdate(updates, id, update) {
   const previous = updates.get(id) || Promise.resolve();
@@ -253,6 +335,7 @@ function mapLibraryTrack(track, album) {
     managedBy: album?.managedBy || null,
     monitorMode: album?.monitorMode || null,
     monitored: track.monitored !== false,
+    keepFile: track.keepFile === true,
     sources: track.sources,
     size: Number(file?.size || 0),
     quality:
@@ -697,8 +780,8 @@ export class LibraryManager {
     }
 
     const existing = libraryArtistFallback(normalizedMbid);
-    const resolvedMode = resolveAurralMonitorMode(options.monitorOption);
-    if (resolvedMode.error) return resolvedMode;
+    const resolvedMonitoring = resolveAurralMonitoringRequest(options);
+    if (resolvedMonitoring.error) return resolvedMonitoring;
     if (existing) {
       if (!existing.managedBy) {
         setLibraryManagement({
@@ -841,6 +924,7 @@ export class LibraryManager {
         managedBy,
         quality: options.quality || settings.quality || "standard",
         monitorOption: options.monitorOption || "none",
+        monitoring: options.monitoring ?? null,
         albumOnly: options.albumOnly === true,
         albumMbid: options.albumMbid || null,
         rootFolderPath: null,
@@ -1082,6 +1166,7 @@ export class LibraryManager {
       albumMbid: options.albumMbid,
       triggerSearch: options.triggerSearch === true,
       monitorOption: requestedMonitorOption,
+      monitoring: options.monitoring,
       rootFolderPath: options.rootFolderPath,
       qualityProfileId: options.qualityProfileId,
       tagId: options.tagId,
@@ -1089,8 +1174,9 @@ export class LibraryManager {
     if (artist?.error) {
       return artist;
     }
-    if (options.managedBy === "aurral" && !albumOnly && requestedMonitorOption !== "none") {
-      return this.setAurralArtistMonitoring(mbid, requestedMonitorOption);
+    if (options.managedBy === "aurral" && !albumOnly) {
+      const { request } = resolveAurralMonitoringRequest(options);
+      if (request) return this.setAurralArtistMonitoring(mbid, request);
     }
     if (options.managedBy !== "aurral" && !albumOnly && requestedMonitorOption !== "none") {
       const albums = await this.getAlbums(artist.id, null, {
@@ -1538,7 +1624,7 @@ export class LibraryManager {
     if (!album) {
       return { error: "Album was not found in the library", statusCode: 404 };
     }
-    if (options.monitoringMode && !this._canAcquireMonitoredAlbum(options.artistMbid, album.releaseGroupMbid || album.mbid, options.monitoringMode)) {
+    if (options.monitoringToken && !this._canAcquireMonitoredAlbum(options.artistMbid, album.releaseGroupMbid || album.mbid, options.monitoringToken)) {
       return { status: "skipped" };
     }
 
@@ -1573,8 +1659,8 @@ export class LibraryManager {
     const trackedJobIds = [];
     let blockedTracks = 0;
     const canChangeJobs = () =>
-      !options.monitoringMode ||
-      this._canAcquireMonitoredAlbum(options.artistMbid, albumMbid, options.monitoringMode);
+      !options.monitoringToken ||
+      this._canAcquireMonitoredAlbum(options.artistMbid, albumMbid, options.monitoringToken);
     const applyJobChange = (change, trackId) => {
       const result = db.transaction(() => {
         if (!canChangeJobs()) return { skipped: true };
@@ -1585,7 +1671,7 @@ export class LibraryManager {
     };
 
     for (const track of missingTracks) {
-      if (options.monitoringMode && !this._canAcquireMonitoredAlbum(options.artistMbid, album.releaseGroupMbid || album.mbid, options.monitoringMode)) {
+      if (options.monitoringToken && !this._canAcquireMonitoredAlbum(options.artistMbid, album.releaseGroupMbid || album.mbid, options.monitoringToken)) {
         return { status: "skipped" };
       }
       const relation = (track.albums || []).find((entry) => entry.albumId === album.id);
@@ -1612,7 +1698,7 @@ export class LibraryManager {
           });
           continue;
         }
-        if (options.monitoringMode && !this._canAcquireMonitoredAlbum(options.artistMbid, album.releaseGroupMbid || album.mbid, options.monitoringMode)) {
+        if (options.monitoringToken && !this._canAcquireMonitoredAlbum(options.artistMbid, album.releaseGroupMbid || album.mbid, options.monitoringToken)) {
           return { status: "skipped" };
         }
         if (!sourceConfigured) {
@@ -1727,56 +1813,142 @@ export class LibraryManager {
     };
   }
 
-  async planAurralArtistMonitoring(artist, mode, { monitorStartedAt = null } = {}) {
-    if (mode === "none" || (mode === "future" && !monitorStartedAt)) {
-      return { mode, releaseGroupIds: [], releases: [], skipped: [] };
+  async _releaseTracks(releaseGroupMbid, edition) {
+    const album = await getMetadataAlbumByMbid(releaseGroupMbid);
+    const release = selectAlbumRelease(album, { edition });
+    return (Array.isArray(release?.tracks) ? release.tracks : [])
+      .map((track) => ({
+        recording: String(track?.recordingId || track?.id || "").trim(),
+        title: String(track?.title || "").trim(),
+      }))
+      .filter((track) => track.recording);
+  }
+
+  // A release other than a studio album is skipped when every recording on it
+  // is already in the Library or on a release this plan downloads, such as a
+  // single that the album also has.
+  async planAurralArtistMonitoring(artist, effective) {
+    const plan = { releases: [], topTracks: [], skipped: [], skippedTracks: [], topTracksError: null };
+    if (!effective || !artist?.mbid) return plan;
+    const { rules } = effective;
+    let releases = [];
+    if (rules.catalog !== "none" || rules.newReleases) {
+      try {
+        releases = await listAurralArtistReleases(artist.mbid);
+      } catch (error) {
+        logger.warn("library", "Aurral monitoring could not load artist releases", {
+          artistMbid: artist.mbid,
+          message: error?.message || String(error),
+        });
+        return {
+          error: "Artist releases are unavailable; monitoring was not changed",
+          statusCode: 503,
+          code: "metadata_unavailable",
+        };
+      }
     }
-    let releases;
+    const exclusions = indexArtistExclusions(artist.mbid);
+    const skip = (release, reason) =>
+      plan.skipped.push({ releaseGroupId: release.id, title: release.title, reason });
+    const candidates = [];
+    for (const release of selectMonitoredReleases(releases, rules, effective)) {
+      const existing = libraryAlbumForReference(release.id);
+      const override = existing ? getLibraryManagementEntry("album", Number(existing.id)) : null;
+      if (exclusions.isAlbumExcluded(release.id)) skip(release, "excluded");
+      else if (existing?.managedBy === "lidarr") skip(release, "managed_by_lidarr");
+      else if (override?.monitorMode === "unmonitored") skip(release, "unmonitored");
+      else if (existing && existing.statistics.percentOfTracks >= 100) skip(release, "complete");
+      else candidates.push({ release, existing: Boolean(existing) });
+    }
+    const needsTracklists = rules.topTracks > 0 || candidates.some(({ release }) => !isStudioAlbum(release));
+    const plannedRecordings = new Set();
+    const plannedTitles = new Set();
+    for (const { release, existing } of candidates) {
+      const studioAlbum = isStudioAlbum(release);
+      let tracks = [];
+      if (needsTracklists) {
+        try {
+          tracks = await this._releaseTracks(release.id, rules.edition);
+        } catch (error) {
+          if (!studioAlbum) {
+            skip(release, "metadata_unavailable");
+            continue;
+          }
+        }
+      }
+      const covered = !studioAlbum && tracks.length > 0 && tracks.every(({ recording }) =>
+        plannedRecordings.has(recording) || recordingElsewhereStmt.get(recording, release.id));
+      if (covered) {
+        skip(release, "covered");
+        continue;
+      }
+      for (const track of tracks) {
+        plannedRecordings.add(track.recording);
+        plannedTitles.add(getNormalizedText(track.title));
+      }
+      plan.releases.push({
+        id: release.id,
+        title: release.title,
+        type: release.type || null,
+        secondaryTypes: release.secondaryTypes || [],
+        releaseDate: release.firstReleaseDate || null,
+        existing,
+      });
+    }
+    if (rules.topTracks > 0) await this._planTopTracks(artist, rules, plan, { exclusions, plannedTitles });
+    return plan;
+  }
+
+  async _planTopTracks(artist, rules, plan, { exclusions, plannedTitles }) {
+    let entries;
     try {
-      releases = await listAurralArtistReleases(artist.mbid);
+      entries = await getArtistTopTracks({ name: artist.name, mbid: artist.mbid }, { limit: rules.topTracks });
     } catch (error) {
-      logger.warn("library", "Aurral monitoring could not load artist releases", {
+      logger.warn("library", "Aurral monitoring could not load top tracks", {
         artistMbid: artist.mbid,
         message: error?.message || String(error),
       });
-      return {
-        error: "Artist releases are unavailable; monitoring was not changed",
-        statusCode: 503,
-        code: "metadata_unavailable",
-      };
+      plan.topTracksError = "Top tracks are unavailable right now. Aurral tries again tomorrow.";
+      return;
     }
-    const selected = [];
-    const skipped = [];
-    for (const release of selectAurralReleases(releases, mode, { monitorStartedAt })) {
-      const existing = libraryAlbumForReference(release.id);
-      const override = existing
-        ? getLibraryManagementEntry("album", Number(existing.id))
-        : null;
-      if (existing?.managedBy === "lidarr") {
-        skipped.push({ releaseGroupId: release.id, reason: "managed_by_lidarr" });
-      } else if (override?.monitorMode === "unmonitored") {
-        skipped.push({ releaseGroupId: release.id, reason: "unmonitored" });
-      } else if (existing && existing.statistics.percentOfTracks >= 100) {
-        skipped.push({ releaseGroupId: release.id, reason: "complete" });
-      } else {
-        selected.push({ id: release.id, title: release.title, existing: Boolean(existing) });
+    const { findQueuedLibraryTrackJob } = await import("./libraryTrackRequests.js");
+    const seen = new Set();
+    for (const entry of (Array.isArray(entries) ? entries : []).slice(0, rules.topTracks)) {
+      const title = String(entry?.name || "").trim();
+      const key = getNormalizedText(title);
+      if (!title || seen.has(key)) continue;
+      seen.add(key);
+      const mbid = String(entry.mbid || "").trim() || null;
+      const byTitle = { artistName: artist.name, trackName: title };
+      const reason = exclusions.isTrackExcluded({ mbid, title })
+        ? "excluded"
+        : (mbid && getLibraryTrackOwnership({ ...byTitle, trackMbid: mbid })) || getLibraryTrackOwnership(byTitle)
+          ? "in_library"
+          : plannedTitles.has(key)
+            ? "on_release"
+            : (mbid && findQueuedLibraryTrackJob({ ...byTitle, trackMbid: mbid })) || findQueuedLibraryTrackJob(byTitle)
+              ? "queued"
+              : null;
+      if (reason) plan.skippedTracks.push({ title, reason });
+      else {
+        plan.topTracks.push({
+          title,
+          albumName: String(entry.albumName || "").trim() || null,
+          mbid,
+          durationMs: Number(entry.durationMs) || null,
+        });
       }
     }
-    return {
-      mode,
-      releaseGroupIds: selected.map((release) => release.id),
-      releases: selected,
-      skipped,
-    };
   }
 
-  _enqueueAurralReleaseAcquisition(artist, plan) {
-    if (!plan.releases?.length) return false;
+  _enqueueAurralMonitoringApply(artist, effective, plan) {
+    if (!plan.releases.length && !plan.topTracks.length) return false;
     enqueueSystemTaskJob({
       kind: "aurral-monitoring-apply",
       artistMbid: artist.mbid,
-      monitoringMode: plan.mode,
+      token: monitoringToken(effective),
       releaseGroups: plan.releases.map(({ id, title }) => ({ id, title })),
+      topTracks: plan.topTracks,
     });
     return true;
   }
@@ -1786,12 +1958,16 @@ export class LibraryManager {
     const manager = artist?.managedBy === "aurral" ? "aurral" : await getActiveLibraryManager();
     const inAurral = aurralHoldsArtist(artist);
     if (manager === "aurral") {
+      const defaults = getMonitoringDefaults();
+      const effective = artist?.managedBy === "aurral"
+        ? getAurralArtistMonitoring(Number(artist.id), defaults)
+        : null;
       return {
         manager,
         added: Boolean(artist),
-        monitorOption: artist?.managedBy === "aurral" ? artist.monitorMode || "none" : "none",
         inAurral,
         error: null,
+        ...describeAurralMonitoring(effective, defaults),
       };
     }
     const state = { manager, added: false, monitorOption: "none", inAurral, error: null };
@@ -1812,17 +1988,17 @@ export class LibraryManager {
     return state;
   }
 
-  async setArtistMonitoring(mbid, { monitorOption = "none", artistName = null, user = null } = {}) {
+  async setArtistMonitoring(mbid, { monitorOption, monitoring, artistName = null, user = null } = {}) {
     const option = String(monitorOption || "none");
     const name = String(artistName || libraryArtistFallback(mbid)?.name || "").trim();
     const forbidden = { error: "Permission required: addArtist", statusCode: 403, code: "forbidden" };
 
     const existingArtist = libraryArtistFallback(mbid);
     if (existingArtist?.managedBy === "aurral" || await getActiveLibraryManager() === "aurral") {
-      const resolvedMode = resolveAurralMonitorMode(option);
-      if (resolvedMode.error) return resolvedMode;
+      const resolved = resolveAurralMonitoringRequest({ monitoring, monitorOption });
+      if (resolved.error) return resolved;
       const artist = existingArtist;
-      if (option === "none" && artist?.managedBy !== "aurral") {
+      if (!resolved.request && artist?.managedBy !== "aurral") {
         return { ...(artist || { mbid }), monitored: false, monitorOption: "none" };
       }
       if (!artist) {
@@ -1830,9 +2006,16 @@ export class LibraryManager {
         const created = await this._addAurralArtist(mbid, name);
         if (created?.error) return created;
       }
-      return this.setAurralArtistMonitoring(mbid, option);
+      return this.setAurralArtistMonitoring(mbid, resolved.request);
     }
 
+    if (monitoring != null) {
+      return {
+        error: "Lidarr manages this artist's monitoring. Choose a Lidarr monitor option.",
+        statusCode: 400,
+        code: "lidarr_monitoring",
+      };
+    }
     if (!LIDARR_MONITOR_OPTIONS.has(option)) {
       return { error: `Lidarr does not support the "${option}" mode`, statusCode: 400, code: "unsupported_monitor_mode" };
     }
@@ -1888,90 +2071,164 @@ export class LibraryManager {
     return mapped;
   }
 
-  async setAurralArtistMonitoring(mbid, requestedMode) {
-    const resolvedMode = resolveAurralMonitorMode(requestedMode);
-    if (resolvedMode.error) return resolvedMode;
-    const { mode } = resolvedMode;
+  async setAurralArtistMonitoring(mbid, request) {
     const artist = libraryArtistFallback(mbid);
     if (!artist) {
       return { error: "Artist not found in the library", statusCode: 404 };
     }
     return serializeMonitoringUpdate(_artistMonitoringUpdates, Number(artist.id), async () => {
       const currentArtist = libraryArtistFallback(artist.id);
-      const plan = await this.planAurralArtistMonitoring(currentArtist, mode);
+      const artistId = Number(currentArtist.id);
+      const defaults = getMonitoringDefaults();
+      const previous = currentArtist.managedBy === "aurral" ? getAurralArtistMonitoring(artistId, defaults) : null;
+      const stored = request ? nextArtistMonitoring(previous, request, defaults) : null;
+      const effective = resolveArtistMonitoring(stored, defaults);
+      const plan = await this.planAurralArtistMonitoring(currentArtist, effective);
       if (plan.error) return plan;
+      const legacyMode = legacyMonitorMode(effective);
       db.transaction(() => {
         const storedArtist = db.prepare(
           "SELECT identity_key, metadata_json FROM library_artists WHERE id = ?",
-        ).get(Number(currentArtist.id));
+        ).get(artistId);
         const metadata = JSON.parse(storedArtist.metadata_json || "{}") || {};
-        const monitorStartedAt = mode === "future"
-          ? currentArtist.monitorMode === "future"
-            ? metadata.monitorStartedAt || getLibraryManagementEntry("artist", Number(currentArtist.id))?.updatedAt || Date.now()
-            : Date.now()
-          : null;
-        if (currentArtist.managedBy !== "aurral" || currentArtist.monitorMode !== mode) {
-          setLibraryManagement({
-            entityKind: "artist",
-            entityId: Number(currentArtist.id),
-            managedBy: "aurral",
-            monitorMode: mode,
-          });
-        }
+        setAurralArtistMonitoringState(artistId, stored, defaults);
         upsertLibraryArtist({
           identityKey: storedArtist.identity_key,
           mbid: currentArtist.mbid,
           name: currentArtist.name,
           metadata: {
             ...metadata,
-            monitored: mode !== "none",
-            monitor: mode,
-            monitorOption: mode,
-            monitorStartedAt,
-            addOptions: { ...metadata.addOptions, monitor: mode },
+            monitored: Boolean(stored),
+            monitor: legacyMode,
+            monitorOption: legacyMode,
+            monitorStartedAt: effective?.newSince ?? null,
+            addOptions: { ...metadata.addOptions, monitor: legacyMode },
           },
         });
       }).immediate();
-      const queued = this._enqueueAurralReleaseAcquisition(currentArtist, plan);
-      const { releases: _releases, ...summary } = plan;
+      const queued = this._enqueueAurralMonitoringApply(currentArtist, effective, plan);
       return {
-        ...(libraryArtistFallback(currentArtist.id) || currentArtist),
-        monitored: mode !== "none",
-        monitorOption: mode,
-        monitoring: { ...summary, queued },
+        ...(libraryArtistFallback(artistId) || currentArtist),
+        ...describeAurralMonitoring(effective, defaults),
+        monitoring: summarizeMonitoringPlan(plan, queued),
       };
     });
   }
 
-  _canAcquireMonitoredAlbum(artistMbid, albumMbid, expectedMode = null) {
+  async previewAurralArtistMonitoring(mbid, { monitoring, artistName = null } = {}) {
+    const resolved = resolveAurralMonitoringRequest({ monitoring });
+    if (resolved.error) return resolved;
+    const artist = libraryArtistFallback(mbid);
+    if (artist?.managedBy === "lidarr") {
+      return { error: "Lidarr manages this artist's monitoring", statusCode: 409, code: "lidarr_monitoring" };
+    }
+    const defaults = getMonitoringDefaults();
+    const previous = artist?.managedBy === "aurral" ? getAurralArtistMonitoring(Number(artist.id), defaults) : null;
+    const stored = resolved.request ? nextArtistMonitoring(previous, resolved.request, defaults) : null;
+    const effective = resolveArtistMonitoring(stored, defaults);
+    const plan = await this.planAurralArtistMonitoring(
+      artist || { mbid, name: String(artistName || "").trim() },
+      effective,
+    );
+    if (plan.error) return plan;
+    return {
+      ...describeAurralMonitoring(effective, defaults),
+      monitoring: summarizeMonitoringPlan(plan, false),
+    };
+  }
+
+  _defaultMonitoringArtists() {
+    return [...getManagedByMap("artist").entries()].filter(
+      ([, entry]) => entry.managedBy === "aurral" && entry.monitorRules?.default === true,
+    );
+  }
+
+  getMonitoringDefaultsState() {
+    const defaults = getMonitoringDefaults();
+    return {
+      rules: defaults.rules,
+      updatedAt: defaults.updatedAt || null,
+      artistCount: this._defaultMonitoringArtists().length,
+    };
+  }
+
+  async previewMonitoringDefaults(rules) {
+    const normalized = normalizeMonitorRules(rules);
+    if (normalized.error) return normalized;
+    const next = nextMonitoringDefaults(getMonitoringDefaults(), normalized.rules);
+    const artists = this._defaultMonitoringArtists();
+    const preview = { rules: normalized.rules, artistCount: artists.length, releaseCount: 0, trackCount: 0, failedArtistCount: 0 };
+    if (next.updatedAt === getMonitoringDefaults().updatedAt) return preview;
+    await mapWithConcurrency(artists, 4, async ([artistId, entry]) => {
+      const artist = libraryArtistFallback(artistId);
+      if (!artist?.mbid) return;
+      const plan = await this.planAurralArtistMonitoring(artist, resolveArtistMonitoring(entry.monitorRules, next));
+      if (plan.error) {
+        preview.failedArtistCount += 1;
+        return;
+      }
+      preview.releaseCount += plan.releases.filter((release) => !release.existing).length;
+      preview.trackCount += plan.topTracks.length;
+    });
+    return preview;
+  }
+
+  setMonitoringDefaults(rules) {
+    const normalized = normalizeMonitorRules(rules);
+    if (normalized.error) return normalized;
+    const previous = getMonitoringDefaults();
+    const next = nextMonitoringDefaults(previous, normalized.rules);
+    if (next !== previous) {
+      db.transaction(() => {
+        saveMonitoringDefaults(next);
+        for (const [artistId, entry] of this._defaultMonitoringArtists()) {
+          setAurralArtistMonitoringState(artistId, entry.monitorRules, next);
+        }
+      }).immediate();
+      enqueueSystemTaskJob({ kind: "aurral-monitoring-reconcile" });
+    }
+    return this.getMonitoringDefaultsState();
+  }
+
+  listMonitoringExclusions(options) {
+    return listMonitoringExclusions(options);
+  }
+
+  albumWantsExpandedEdition(albumMbid) {
+    return libraryForAlbum(albumMbid).albums[0]?.metadata?.edition === "expanded";
+  }
+
+  _albumEdition(artist) {
+    const effective = artist ? getAurralArtistMonitoring(Number(artist.id)) : null;
+    return (effective?.rules || getMonitoringDefaults().rules).edition;
+  }
+
+  _canAcquireMonitoredAlbum(artistMbid, albumMbid, expectedToken = null) {
     const artist = libraryArtistFallback(artistMbid);
-    const artistState = artist && getLibraryManagementEntry("artist", Number(artist.id));
-    if (artistState?.managedBy !== "aurral" || !artistState.monitorMode || artistState.monitorMode === "none") return false;
-    if (expectedMode && artistState.monitorMode !== expectedMode) return false;
+    const effective = artist ? getAurralArtistMonitoring(Number(artist.id)) : null;
+    if (!effective) return false;
+    if (expectedToken && monitoringToken(effective) !== expectedToken) return false;
+    if (isAlbumMonitoringExcluded(albumMbid)) return false;
     const album = libraryAlbumForReference(albumMbid);
     const albumState = album && getLibraryManagementEntry("album", Number(album.id));
     return album?.managedBy !== "lidarr" && albumState?.monitorMode !== "unmonitored";
   }
 
-  async acquireAurralReleases({ artistMbid, releaseGroups = [], monitoringMode = null } = {}) {
+  async acquireAurralReleases({ artistMbid, releaseGroups = [], topTracks = [], token = null } = {}) {
     const results = [];
     const artist = libraryArtistFallback(artistMbid);
-    const expectedMode = monitoringMode || getLibraryManagementEntry("artist", Number(artist?.id))?.monitorMode;
+    const effective = artist ? getAurralArtistMonitoring(Number(artist.id)) : null;
+    const expectedToken = token || monitoringToken(effective);
     for (const release of releaseGroups) {
-      if (!this._canAcquireMonitoredAlbum(artistMbid, release.id, expectedMode)) {
-        results.push({ releaseGroupId: release.id, status: "skipped" });
-        continue;
-      }
-      const existing = libraryAlbumForReference(release.id);
-      const override = existing ? getLibraryManagementEntry("album", Number(existing.id)) : null;
-      if (existing?.managedBy === "lidarr" || override?.monitorMode === "unmonitored") {
+      if (!this._canAcquireMonitoredAlbum(artistMbid, release.id, expectedToken)) {
         results.push({ releaseGroupId: release.id, status: "skipped" });
         continue;
       }
       try {
         const album = await this._addAurralAlbum(artistMbid, release.id, release.title, {
           artistMbid,
-          monitoringMode: expectedMode,
+          monitoringToken: expectedToken,
+          edition: effective?.rules.edition,
         });
         if (album?.error) {
           logger.warn("library", "Aurral monitoring could not acquire an album", {
@@ -1993,42 +2250,71 @@ export class LibraryManager {
         results.push({ releaseGroupId: release.id, status: "failed" });
       }
     }
+    if (artist && topTracks.length > 0) await this._acquireTopTracks(artist, topTracks, expectedToken);
     return results;
   }
 
+  async _acquireTopTracks(artist, topTracks, token) {
+    const { requestLibraryTrack } = await import("./libraryTrackRequests.js");
+    const exclusions = indexArtistExclusions(artist.mbid);
+    for (const track of topTracks) {
+      if (monitoringToken(getAurralArtistMonitoring(Number(artist.id))) !== token) return;
+      if (exclusions.isTrackExcluded(track)) continue;
+      try {
+        await requestLibraryTrack({
+          artistName: artist.name,
+          trackName: track.title,
+          albumName: track.albumName || null,
+          artistMbid: artist.mbid,
+          trackMbid: track.mbid || null,
+          durationMs: track.durationMs || undefined,
+        }, { automatic: true });
+      } catch (error) {
+        logger.warn("library", "Aurral monitoring could not queue a top track", {
+          artistMbid: artist.mbid,
+          title: track.title,
+          message: error?.message || String(error),
+        });
+      }
+    }
+  }
+
   async reconcileAurralMonitoring() {
+    const defaults = getMonitoringDefaults();
     const monitoredArtists = [...getManagedByMap("artist").entries()].filter(
-      ([, entry]) => entry.managedBy === "aurral" && entry.monitorMode && entry.monitorMode !== "none",
+      ([, entry]) => entry.managedBy === "aurral" && entry.monitorRules,
     );
     let queuedAlbums = 0;
+    let queuedTracks = 0;
     let failedArtists = 0;
-    const monitorStartStmt = db.prepare(
-      `SELECT CASE WHEN json_valid(metadata_json)
-        THEN json_extract(metadata_json, '$.monitorStartedAt')
-        ELSE NULL END AS monitorStartedAt
-       FROM library_artists WHERE id = ?`,
-    );
     for (const [artistId, entry] of monitoredArtists) {
       const artist = libraryArtistFallback(artistId);
       if (!artist?.mbid) continue;
-      const plan = await this.planAurralArtistMonitoring(artist, entry.monitorMode, {
-        monitorStartedAt: monitorStartStmt.get(artistId)?.monitorStartedAt || entry.updatedAt,
-      });
+      const effective = resolveArtistMonitoring(entry.monitorRules, defaults);
+      const plan = await this.planAurralArtistMonitoring(artist, effective);
       if (plan.error) {
         failedArtists += 1;
         continue;
       }
       const newReleases = plan.releases.filter((release) => !release.existing);
-      if (newReleases.length === 0) continue;
-      await this.acquireAurralReleases({ artistMbid: artist.mbid, releaseGroups: newReleases, monitoringMode: entry.monitorMode });
+      const topTracks = plan.topTracks || [];
+      if (newReleases.length === 0 && topTracks.length === 0) continue;
+      await this.acquireAurralReleases({
+        artistMbid: artist.mbid,
+        releaseGroups: newReleases,
+        topTracks,
+        token: monitoringToken(effective),
+      });
       queuedAlbums += newReleases.length;
+      queuedTracks += topTracks.length;
     }
     logger.info("library", "Aurral monitoring reconciliation finished", {
       artists: monitoredArtists.length,
       queuedAlbums,
+      queuedTracks,
       failedArtists,
     });
-    return { artists: monitoredArtists.length, queuedAlbums, failedArtists };
+    return { artists: monitoredArtists.length, queuedAlbums, queuedTracks, failedArtists };
   }
 
   _resolveAurralAlbum(canonicalId) {
@@ -2078,6 +2364,7 @@ export class LibraryManager {
       this._setAurralAlbumMonitored(album, monitored);
       if (monitored) {
         const albumMbid = album.releaseGroupMbid || album.mbid;
+        clearAlbumMonitoringExclusion(albumMbid);
         const result = albumMbid && album.metadata?.trackListComplete !== true
           ? await this._addAurralAlbum(album.artistId, albumMbid, album.title)
           : await this._finishAurralAlbum(album.id);
@@ -2172,6 +2459,31 @@ export class LibraryManager {
     });
   }
 
+  async setTrackKeepFile(canonicalId, { keepFile } = {}) {
+    if (typeof keepFile !== "boolean") {
+      return { error: "keepFile must be true or false", statusCode: 400, code: "invalid_keep_file" };
+    }
+    const reference = String(canonicalId ?? "").trim();
+    const trackId = Number(reference);
+    if (!/^\d+$/.test(reference) || !Number.isSafeInteger(trackId) || trackId <= 0) {
+      return {
+        error: "canonicalId must be a positive integer",
+        statusCode: 400,
+        code: "invalid_canonical_id",
+      };
+    }
+    const track = getLibraryForTrackIds({ ids: [trackId] }).tracks.find((entry) => entry.id === trackId);
+    if (!track) {
+      return { error: "Track was not found in the library", statusCode: 404, code: "not_found" };
+    }
+    setTrackKeepFileStmt.run(keepFile ? 1 : 0, trackId);
+    invalidateLibraryQueryCache({ persistedGenres: false });
+    const cancellation = keepFile
+      ? await cancelFileUpgradeJobs(track.files.map((file) => file.path).filter(Boolean))
+      : { cancelledJobIds: [], cleanupFailed: false };
+    return { canonicalId: String(trackId), keepFile, ...cancellation };
+  }
+
   // Monitoring belongs to the recording, so a track another album also has
   // stays monitored.
   unmonitorAlbumOnlyTracks(albumMbid, trackMbids = []) {
@@ -2215,19 +2527,19 @@ export class LibraryManager {
   async deleteAurralAlbum(canonicalId, deleteFiles = false) {
     const resolved = this._resolveAurralAlbum(canonicalId);
     if (resolved.error) return resolved;
-    const { album, library, mappedAlbum } = resolved;
+    const { album, artist, library, mappedAlbum } = resolved;
     const artistState = getLibraryManagementEntry("artist", Number(album.artistId));
-    if (artistState?.managedBy === "aurral" && artistState.monitorMode && artistState.monitorMode !== "none") {
-      return {
-        error: "The album was not removed. Aurral monitors this artist and would add it again. Set the artist's monitoring to None, then remove the album.",
-        statusCode: 409,
-        code: "artist_monitored",
-      };
-    }
     const result = await this._removeAurralAlbumContents(album, library.tracks, deleteFiles);
     if (result.error) return result;
+    const excluded = addMonitoringExclusion({
+      kind: "album",
+      mbid: album.releaseGroupMbid || album.mbid,
+      artistMbid: artist?.mbid,
+      artistName: artist?.name,
+      title: album.title,
+    });
     if (!artistState) removeLibraryArtistIfEmpty(album.artistId);
-    return { success: true, canonicalId: mappedAlbum.canonicalId };
+    return { success: true, canonicalId: mappedAlbum.canonicalId, excluded };
   }
 
   async _removeAurralAlbumContents(album, libraryTracks, deleteFiles) {
@@ -2283,6 +2595,7 @@ export class LibraryManager {
         entityId: Number(artist.id),
         managedBy: "aurral",
         monitorMode: "none",
+        monitorRules: null,
       });
     }
     const library = libraryForArtist(artist.id);
@@ -2295,6 +2608,7 @@ export class LibraryManager {
     }
     if (ownsArtist) {
       clearLibraryManagement("artist", Number(artist.id));
+      clearArtistMonitoringExclusions(artist.mbid);
       removeLibraryArtistIfEmpty(artist.id);
     }
     logger.info("library", `[LibraryManager] Removed Aurral artist "${artist.name}"`);
@@ -2310,7 +2624,7 @@ export class LibraryManager {
     if (!normalizedAlbumMbid) {
       return { error: "releaseGroupMbid is required", statusCode: 400 };
     }
-    if (options.monitoringMode && !this._canAcquireMonitoredAlbum(options.artistMbid, normalizedAlbumMbid, options.monitoringMode)) {
+    if (options.monitoringToken && !this._canAcquireMonitoredAlbum(options.artistMbid, normalizedAlbumMbid, options.monitoringToken)) {
       return { status: "skipped" };
     }
 
@@ -2329,7 +2643,8 @@ export class LibraryManager {
     if (storedOwner && storedOwner !== "aurral") {
       return buildAlbumConflict({ ...storedAlbum, managedBy: storedOwner, mbid: normalizedAlbumMbid });
     }
-    const userRequest = !options.monitoringMode;
+    const userRequest = !options.monitoringToken;
+    if (userRequest) clearAlbumMonitoringExclusion(normalizedAlbumMbid);
     const wasMonitored = Boolean(existing) && isMonitoredAurralAlbum(existing.id);
     const existingAlbum = existing ? libraryForAlbum(existing.id).albums[0] : null;
     const existingHasTracks = existingAlbum?.trackIds?.length > 0;
@@ -2364,7 +2679,7 @@ export class LibraryManager {
         code: "metadata_unavailable",
       });
     }
-    if (options.monitoringMode && !this._canAcquireMonitoredAlbum(options.artistMbid, normalizedAlbumMbid, options.monitoringMode)) {
+    if (options.monitoringToken && !this._canAcquireMonitoredAlbum(options.artistMbid, normalizedAlbumMbid, options.monitoringToken)) {
       return { status: "skipped" };
     }
     if (metadata?.id && String(metadata.id).trim().toLowerCase() !== normalizedAlbumMbid.toLowerCase()) {
@@ -2388,7 +2703,8 @@ export class LibraryManager {
       });
     }
 
-    const selectedRelease = selectAlbumRelease(metadata);
+    const edition = options.edition || this._albumEdition(artist);
+    const selectedRelease = selectAlbumRelease(metadata, { edition });
     const tracks = (Array.isArray(selectedRelease?.tracks) ? selectedRelease.tracks : [])
       .map((track) => ({
         ...track,
@@ -2445,6 +2761,7 @@ export class LibraryManager {
           added: existing?.metadata?.added || new Date().toISOString(),
           monitored: options.monitored !== false,
           trackListComplete: true,
+          edition,
           monitor: monitorMode || "none",
           monitorOption: monitorMode || "none",
           albumType: metadata?.type || "Album",
@@ -2488,9 +2805,9 @@ export class LibraryManager {
       });
       return albumRecord;
     };
-    const albumRecord = options.monitoringMode
+    const albumRecord = options.monitoringToken
       ? db.transaction(() => {
-        if (!this._canAcquireMonitoredAlbum(options.artistMbid, normalizedAlbumMbid, options.monitoringMode)) {
+        if (!this._canAcquireMonitoredAlbum(options.artistMbid, normalizedAlbumMbid, options.monitoringToken)) {
           return null;
         }
         return saveAlbum();
@@ -3120,6 +3437,15 @@ export class LibraryManager {
             return { success: false, code: "failed", error: error.message };
           }
           removeLibraryTrackIfNoAvailableMedia(id);
+          const artist = library.artists?.find((entry) =>
+            library.albums?.some((album) => album.artistId === entry.id && album.trackIds?.includes(track.id)));
+          addMonitoringExclusion({
+            kind: "track",
+            mbid: track.mbid,
+            artistMbid: artist?.mbid,
+            artistName: track.artistName || artist?.name,
+            title: track.title,
+          });
           return { success: true };
         } catch (error) {
           logger.error("library", `[LibraryManager] Failed to delete Aurral track file: ${error.message}`);

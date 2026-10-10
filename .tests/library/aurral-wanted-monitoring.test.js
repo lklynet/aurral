@@ -15,6 +15,7 @@ const [
   { downloadTracker },
   { downloadWorker },
   { registerJobs },
+  { registerTracks },
 ] = await setupIsolatedBackend(
   "aurral-wanted-monitoring",
   "backend/config/db-sqlite.js",
@@ -24,6 +25,7 @@ const [
   "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/downloadJobs/downloadWorker.js",
   "backend/routes/playlists/handlers/jobs.js",
+  "backend/routes/library/handlers/tracks.js",
 );
 
 const app = express();
@@ -34,6 +36,7 @@ app.use((req, _res, next) => {
 });
 const router = express.Router();
 registerJobs(router);
+registerTracks(router);
 app.use(router);
 const server = await new Promise((resolve) => {
   const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
@@ -120,6 +123,17 @@ async function request(route, options) {
   assert.equal(response.status, 200, JSON.stringify(body));
   return body;
 }
+
+const keepFile = (jobId) => {
+  const { id } = db.prepare("SELECT id FROM library_tracks WHERE mbid = ?").get(downloadTracker.getJob(jobId).trackMbid);
+  return request(`/tracks/aurral/${id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ keepFile: true }),
+  });
+};
+
+const upgradeJobsOf = (jobId) => downloadTracker.getAll().filter((job) => job.upgradeForJobId === jobId);
 
 const upgradedJobIds = () =>
   new Set(downloadTracker.getAll().filter((job) => job.upgradeForJobId).map((job) => job.upgradeForJobId));
@@ -224,4 +238,31 @@ test("Search all in Wanted skips unmonitored tracks and keeps monitored tracks o
     ].map((jobId) => upgraded.has(jobId)),
     [true, false, false, true, false, false, true],
   );
+});
+
+test("Keep this file stops upgrades of that file and cancels the upgrade already queued", async () => {
+  const kept = await createLibraryJob();
+  const other = await createLibraryJob();
+  const keptBeforeCheck = await createLibraryJob();
+  const keptLibraryFile = await createLibraryJob();
+  const keptLibraryFileMbid = downloadTracker.getJob(keptLibraryFile).trackMbid;
+  await keepFile(keptBeforeCheck);
+  await keepFile(keptLibraryFile);
+  downloadTracker.removeJob(keptLibraryFile);
+
+  const first = await request("/quality-upgrades", { method: "POST" });
+  assert.equal(first.queued, 2);
+  assert.deepEqual([kept, other, keptBeforeCheck].map((jobId) => upgradeJobsOf(jobId).length), [1, 1, 0]);
+  assert.deepEqual(downloadTracker.getAll().filter((job) => job.trackMbid === keptLibraryFileMbid), []);
+
+  const result = await keepFile(kept);
+  assert.equal(result.keepFile, true);
+  assert.deepEqual(result.cancelledJobIds, [upgradeJobsOf(kept)[0].id]);
+  assert.equal(upgradeJobsOf(kept)[0].status, "cancelled");
+  assert.notEqual(upgradeJobsOf(other)[0].status, "cancelled");
+  assert.equal(downloadTracker.getJob(kept).status, "done");
+
+  const second = await request("/quality-upgrades", { method: "POST" });
+  assert.equal(second.queued, 0);
+  assert.equal(upgradeJobsOf(kept).length, 1);
 });

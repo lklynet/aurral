@@ -1,3 +1,4 @@
+import path from "node:path";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { cancelDownloadJobs } from "./downloadJobs/downloadCancellation.js";
 import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.js";
@@ -209,6 +210,20 @@ export async function cancelLibraryTrackJobs(track) {
       ACTIVE_JOB_STATUSES.has(job.status) &&
       jobMatchesTrack(job, track) &&
       (Boolean(job.trackMbid) || normalizeKey(job.artistName) === normalizeKey(track.artistName))),
+    null,
+  );
+}
+
+export async function cancelFileUpgradeJobs(filePaths) {
+  const paths = new Set(filePaths.map((filePath) => path.resolve(filePath)));
+  const upgradedPath = (job) => downloadTracker.getJob(job.upgradeForJobId)?.finalPath;
+  return cancelActiveAurralJobs(
+    downloadTracker.getAll().filter((job) =>
+      job.upgradeForJobId &&
+      !job.manualReplacementSearch &&
+      ACTIVE_JOB_STATUSES.has(job.status) &&
+      upgradedPath(job) &&
+      paths.has(path.resolve(upgradedPath(job)))),
     null,
   );
 }

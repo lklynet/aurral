@@ -81,10 +81,12 @@ export function registerTracks(router) {
     requirePermission("changeMonitoring"),
     async (req, res) => {
       try {
-        const result = await libraryManager.setAurralTrackMonitoring(
-          req.params.canonicalId,
-          { monitored: req.body?.monitored },
-        );
+        const result = req.body?.keepFile !== undefined
+          ? await libraryManager.setTrackKeepFile(req.params.canonicalId, { keepFile: req.body.keepFile })
+          : await libraryManager.setAurralTrackMonitoring(
+            req.params.canonicalId,
+            { monitored: req.body?.monitored },
+          );
         if (result?.error) {
           const { error, statusCode, ...details } = result;
           return res.status(statusCode || 500).json({ ...details, error });

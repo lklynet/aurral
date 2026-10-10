@@ -89,6 +89,7 @@ export function registerArtists(router) {
         artistName,
         quality,
         monitorOption,
+        monitoring,
         rootFolderPath,
         qualityProfileId,
         tagId,
@@ -137,6 +138,7 @@ export function registerArtists(router) {
           managedBy,
           quality,
           monitorOption,
+          monitoring,
           rootFolderPath,
           qualityProfileId,
           tagId,
@@ -248,6 +250,7 @@ export function registerArtists(router) {
 
         const artist = await libraryManager.setArtistMonitoring(mbid, {
           monitorOption: req.body?.monitorOption,
+          monitoring: req.body?.monitoring,
           artistName: req.body?.artistName,
           user: req.user,
         });

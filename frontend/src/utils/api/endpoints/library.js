@@ -314,6 +314,34 @@ export const deleteArtistFromLibrary = (mbid, deleteFiles = false, manager = nul
 export const getArtistMonitoring = (mbid, { signal } = {}) =>
   getData(`/library/artists/${encodeURIComponent(mbid)}/monitoring`, { signal });
 
+export const previewArtistMonitoring = (mbid, { monitoring, artistName }, { signal } = {}) =>
+  postData(
+    `/library/artists/${encodeURIComponent(mbid)}/monitoring/preview`,
+    { monitoring, artistName },
+    { signal, timeout: SLOW_LIBRARY_REQUEST_TIMEOUT_MS },
+  );
+
+export const getMonitoringDefaults = ({ signal } = {}) =>
+  getData("/library/monitoring/defaults", { signal });
+
+export const previewMonitoringDefaults = (rules, { signal } = {}) =>
+  postData("/library/monitoring/defaults/preview", { rules }, {
+    signal,
+    timeout: SLOW_LIBRARY_REQUEST_TIMEOUT_MS,
+  });
+
+export const saveMonitoringDefaults = (rules) =>
+  putData("/library/monitoring/defaults", { rules });
+
+export const getMonitoringExclusions = ({ artistMbid = null, signal } = {}) =>
+  getData("/library/monitoring/exclusions", {
+    params: artistMbid ? { artistMbid } : {},
+    signal,
+  });
+
+export const removeMonitoringExclusion = (id) =>
+  deleteData(`/library/monitoring/exclusions/${encodeURIComponent(id)}`);
+
 export const deleteLidarrAlbumFromLibrary = (mbid, deleteFiles = false) =>
   deleteData(`/library/albums/lidarr/${encodeURIComponent(mbid)}`, {
     params: { deleteFiles },
@@ -487,6 +515,9 @@ export const setAurralAlbumMonitoring = (canonicalId, monitored) =>
 
 export const setAurralTrackMonitoring = (canonicalId, monitored) =>
   refreshActiveDownloadsAfter(putData(`/library/tracks/aurral/${encodeURIComponent(canonicalId)}`, { monitored }));
+
+export const setAurralTrackKeepFile = (canonicalId, keepFile) =>
+  refreshActiveDownloadsAfter(putData(`/library/tracks/aurral/${encodeURIComponent(canonicalId)}`, { keepFile }));
 
 export const refreshLibraryArtist = (mbid) =>
   postData(`/library/artists/${mbid}/refresh`);

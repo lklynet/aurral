@@ -97,8 +97,3 @@ export const buildAlbumRequestPayload = ({
   managedBy,
   triggerSearch,
 });
-
-export const getMonitorOptionsForManager = (options, managedBy) =>
-  normalizeLibraryManager(managedBy) === "aurral"
-    ? options.filter((option) => option.value !== "existing" && option.value !== "missing")
-    : options;

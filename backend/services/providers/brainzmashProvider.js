@@ -401,8 +401,10 @@ function median(values) {
 // of the standard edition far outnumber deluxe editions and box sets, which
 // can run to 90 tracks, and misprints that swap tracks. A tie goes to the
 // longer tracklist, and among its releases a single disc, numbered like CD
-// and digital copies, comes first.
-export function selectAlbumRelease(album) {
+// and digital copies, comes first. The expanded edition is the longest one
+// that keeps every standard track and is at most twice as long, which leaves
+// out box sets.
+export function selectAlbumRelease(album, { edition = "standard" } = {}) {
   const releases = Array.isArray(album?.releases) ? album.releases : [];
   const withTracks = releases.filter((release) => Array.isArray(release?.tracks) && release.tracks.length > 0);
   const official = withTracks.filter((release) => String(release?.status || "").toLowerCase() === "official");
@@ -410,6 +412,19 @@ export function selectAlbumRelease(album) {
   if (pool.length === 0) return releases[0] || null;
   const [trackCount] = [...tally(pool, (release) => release.tracks.length)]
     .sort(([leftCount, left], [rightCount, right]) => right - left || rightCount - leftCount)[0];
+  const standard = chooseTracklist(pool, trackCount);
+  if (edition !== "expanded") return standard;
+  const keepsTrack = (release) => (track) => release.tracks.some((candidate) =>
+    (candidate.recordingId && candidate.recordingId === track.recordingId) ||
+    getNormalizedText(candidate.title) === getNormalizedText(track.title));
+  const longer = pool.filter((release) => release.tracks.length > trackCount &&
+    release.tracks.length <= trackCount * 2 &&
+    standard.tracks.every(keepsTrack(release)));
+  if (longer.length === 0) return standard;
+  return chooseTracklist(longer, Math.max(...longer.map((release) => release.tracks.length)));
+}
+
+function chooseTracklist(pool, trackCount) {
   const sameCount = pool.filter((release) => release.tracks.length === trackCount);
   const orders = new Map(sameCount.map((release) => [release, runningOrder(release)]));
   const orderCounts = tally(sameCount, (release) => orders.get(release));

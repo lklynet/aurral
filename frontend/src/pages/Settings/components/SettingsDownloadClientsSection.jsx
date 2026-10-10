@@ -92,7 +92,6 @@ export function SettingsDownloadClientsSection({
   const qualityEnabled = new Set(
     Array.isArray(qualityProfile.enabled) ? qualityProfile.enabled : qualityOrder,
   );
-  const missingTrackSearch = settings.missingTrackSearch || {};
   const clientDefinitions = downloadClientSettings
     ? Object.values(downloadClientSettings)
     : [];
@@ -134,13 +133,6 @@ export function SettingsDownloadClientsSection({
     updateSettings({
       ...settings,
       qualityProfile: { ...qualityProfile, ...patch },
-    });
-  };
-
-  const updateMissingTrackSearch = (patch) => {
-    updateSettings({
-      ...settings,
-      missingTrackSearch: { ...missingTrackSearch, ...patch },
     });
   };
 
@@ -264,7 +256,7 @@ export function SettingsDownloadClientsSection({
 
       <SettingsArrFieldSet legend="Quality profile">
         <div className="arr-info">
-          Choose formats, order, upgrades, and searches for missing tracks.
+          Choose formats, their order, and upgrades.
         </div>
         <IntegrationCard
           title="Default"
@@ -446,8 +438,6 @@ export function SettingsDownloadClientsSection({
         <QualityProfileModal
           profile={{ ...qualityProfile, order: qualityOrder, enabled: [...qualityEnabled] }}
           onChange={updateQualityProfile}
-          missingTrackSearch={missingTrackSearch}
-          onMissingTrackSearchChange={updateMissingTrackSearch}
           onClose={() => setActiveModal(null)}
         />
       )}

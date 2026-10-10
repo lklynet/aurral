@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Lock, LockOpen } from "lucide-react";
 
 import { useToast } from "../contexts/ToastContext";
-import { setAurralTrackMonitoring } from "../utils/api/endpoints/library.js";
+import { setAurralTrackKeepFile, setAurralTrackMonitoring } from "../utils/api/endpoints/library.js";
 import {
   describeTrackMonitoringResult,
   getMonitoringMenuAction,
@@ -15,10 +15,37 @@ const errorMessage = (error) =>
   error?.message ||
   "Try again.";
 
-export function useAurralTrackMonitoring({ canChange, onChanged }) {
+const trackTitle = (track) => track?.title || track?.trackName || "this track";
+
+export function useAurralTrackMonitoring({ canChange, onChanged, onKeepFileChanged }) {
   const { showSuccess, showError } = useToast();
   const [pending, setPending] = useState(null);
+  const [keepPending, setKeepPending] = useState(null);
   const [confirming, setConfirming] = useState(null);
+
+  const isKept = (track) =>
+    keepPending && String(keepPending.id) === String(track?.id) ? keepPending.keepFile : track?.keepFile === true;
+
+  const setKeepFile = async (track, keepFile) => {
+    if (keepPending) return;
+    setKeepPending({ id: track.id, keepFile });
+    try {
+      const result = await setAurralTrackKeepFile(track.id, keepFile);
+      const cancelled = result?.cancelledJobIds?.length || 0;
+      showSuccess(
+        keepFile
+          ? `Keeping ${trackTitle(track)}. Aurral won't replace it with an upgrade${cancelled ? ", and the upgrade in progress was cancelled" : ""}.`
+          : `Aurral can upgrade ${trackTitle(track)} again.`,
+      );
+      await onKeepFileChanged?.(track.id, result);
+    } catch (error) {
+      showError(
+        `Could not ${keepFile ? "keep" : "allow upgrades for"} ${trackTitle(track)}. Nothing changed. ${errorMessage(error)}`,
+      );
+    } finally {
+      setKeepPending(null);
+    }
+  };
 
   const isMonitored = (track) =>
     pending && String(pending.id) === String(track?.id) ? pending.monitored : track?.monitored !== false;
@@ -34,7 +61,7 @@ export function useAurralTrackMonitoring({ canChange, onChanged }) {
       await onChanged?.(track.id, result);
     } catch (error) {
       showError(
-        `Could not ${nextMonitored ? "monitor" : "stop monitoring"} ${track.title || track.trackName || "this track"}. Nothing changed. ${errorMessage(error)}`,
+        `Could not ${nextMonitored ? "monitor" : "stop monitoring"} ${trackTitle(track)}. Nothing changed. ${errorMessage(error)}`,
       );
     } finally {
       setPending(null);
@@ -59,8 +86,22 @@ export function useAurralTrackMonitoring({ canChange, onChanged }) {
     };
   };
 
+  const getKeepFileItem = (track, { aurral = false, hasFile = false } = {}) => {
+    if (!aurral || !hasFile || !canChange || !Number.isInteger(Number(track?.id))) return null;
+    const kept = isKept(track);
+    return {
+      id: "keep-file",
+      label: kept ? "Allow upgrades" : "Keep this file",
+      icon: kept ? LockOpen : Lock,
+      disabled: keepPending !== null,
+      closeBeforeSelect: true,
+      onSelect: () => setKeepFile(track, !kept),
+    };
+  };
+
   return {
     getMenuItem,
+    getKeepFileItem,
     isMonitored,
     dialog: (
       <ConfirmModal
