@@ -172,6 +172,8 @@ function GlobalPlayerBar() {
       {
         kind: "track",
         trackMbid: currentTrack.trackMbid,
+        libraryTrackId: currentTrack.libraryTrackId,
+        libraryAlbumId: currentTrack.libraryAlbumId,
         albumMbid,
         artistMbid,
         title: currentTrack.title,

@@ -20,6 +20,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./queryClient";
 import { DiscoverRecentProvider } from "./contexts/DiscoverRecentProvider";
 import { AudioQueueProvider } from "./contexts/AudioQueueProvider";
+import { ShareProvider } from "./contexts/ShareContext";
 import { AlertTriangle, XCircle } from "lucide-react";
 import ReloadPrompt from "./components/ReloadPrompt";
 import ThemeSync from "./components/ThemeSync";
@@ -379,9 +380,11 @@ function App() {
       <ToastProvider>
         <AuthProvider>
           <AudioQueueProvider>
-            <AppRouter />
-            <ThemeSync />
-            <ReloadPrompt />
+            <ShareProvider>
+              <AppRouter />
+              <ThemeSync />
+              <ReloadPrompt />
+            </ShareProvider>
           </AudioQueueProvider>
         </AuthProvider>
       </ToastProvider>

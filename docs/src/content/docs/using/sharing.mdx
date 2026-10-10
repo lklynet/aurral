@@ -1,6 +1,6 @@
 ---
 title: Sharing
-description: Send an artist, album, or track to friends without exposing your server.
+description: Send an artist, album, or track to friends, and let them play it from your Library without exposing your server.
 ---
 
 You can share an artist, album, or track with anyone, even if your Aurral is only on your home network.
@@ -9,7 +9,7 @@ You can share an artist, album, or track with anyone, even if your Aurral is onl
 - **Album:** open the album page and select the share button.
 - **Track:** while a track plays, select the share button in the player.
 
-On a phone, or a browser with a share menu, Aurral opens that menu so you can pick an app. Otherwise it copies the link. If the browser blocks copying, which can happen when you open Aurral over plain `http://`, select **Open link** and copy the address from the new tab.
+Each opens a share window. Select **Share link** to send a link right away. On a phone, or a browser with a share menu, Aurral opens that menu so you can pick an app. Otherwise it copies the link. If the browser blocks copying, which can happen when you open Aurral over plain `http://`, select **Open link** and copy the address from the new tab.
 
 ## What your friend sees
 
@@ -17,6 +17,27 @@ The link opens a page on aurral.org with the cover art, the title, and links to 
 
 If your friend runs Aurral too, they can select **Open in my Aurral** to go to the same artist or album on their own server and add it there. Their browser remembers their Aurral address, and it is never sent to aurral.org.
 
+## Let them listen to your copy
+
+Turn on **Play from my Aurral** in the share window to let anyone with the link play the full music from your Library. The switch is available when your Library has at least one track of what you are sharing.
+
+- **Allow downloads** adds a download button for each track, and **Download all** for an album or artist. Downloads are the original files, so a whole artist can be large.
+- **Expires** sets when the link stops working: in 1 day, 7 days, or 30 days, or never.
+
+Select **Create link**, then **Share link** to send it.
+
+An artist link includes every album of that artist in your Library, including albums you add later. Music in flows is never shared.
+
+Your music travels from your server to your friend through a temporary Cloudflare tunnel that Aurral opens while at least one link is live. Your friend's browser connects to Cloudflare, so your home address stays hidden. Nothing else on your server is reachable through the tunnel. The Docker image includes the `cloudflared` program this needs. If you run Aurral another way, install `cloudflared` yourself. A link can take a minute to start working after Aurral starts.
+
+Your server has to be running for the link to play. If it is off, or the link has expired or been stopped, the page says the music isn't available to listen to right now and still shows the other links.
+
+Cloudflare offers these tunnels for free without an uptime guarantee, so treat listen links as a convenience.
+
+### Stop sharing
+
+Your links are listed in **Profile → Shared links**, with when each expires and whether it allows downloads. Select **Copy link** to send one again, or **Stop sharing** to end it right away. When no links are left, Aurral closes the tunnel.
+
 ## What a link contains
 
-A share link holds only the item's name, its artist and album names, and its MusicBrainz IDs. It contains nothing about you or your server: no address, username, file path, or library contents. Anyone with the link can read those names, so treat it like any message you send.
+A share link holds the item's name, its artist and album names, and its MusicBrainz IDs. A listen link also holds a random code that identifies your Aurral to aurral.org and a random code for that link. It contains nothing else about you or your server: no address, username, file path, or library contents. Anyone with the link can read those names, and anyone with a listen link can play it until it expires, so treat it like any message you send.

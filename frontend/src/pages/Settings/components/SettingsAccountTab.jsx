@@ -4,6 +4,7 @@ import { SettingsInput, SettingsSelect } from "./SettingsField";
 import PillToggle from "../../../components/PillToggle";
 import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
 import { ConnectedAccountsSection } from "./ConnectedAccountsSection";
+import { SharedLinksSection } from "./SharedLinksSection";
 import { ThemeSettings } from "./ThemeSettings";
 
 import { Link } from "react-router";
@@ -225,6 +226,12 @@ export function SettingsAccountTab({
         />
 
         <PlexSelfLinkSection
+          className={profileVariant ? "profile-settings__section" : ""}
+          showSuccess={showSuccess}
+          showError={showError}
+        />
+
+        <SharedLinksSection
           className={profileVariant ? "profile-settings__section" : ""}
           showSuccess={showSuccess}
           showError={showError}

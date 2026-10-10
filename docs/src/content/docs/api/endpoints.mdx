@@ -292,6 +292,15 @@ no feed could be refreshed.
 | `POST` | `/api/inbox/read-all` | Mark the current user's Inbox items as read |
 | `PATCH` | `/api/inbox/:id` | Read, save, unsave, dismiss, or add an Inbox item |
 
+## Shared links
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/share-links` | List the current user's live listen links |
+| `GET` | `/api/share-links/availability` | Count the Library tracks a track, album, or artist would share |
+| `POST` | `/api/share-links` | Create a listen link with an expiry and an optional download permission |
+| `DELETE` | `/api/share-links/:id` | Stop sharing a link |
+
 ## Playlists and flows
 
 The prefix is `/api/playlists`. The older `/api/weekly-flow` prefix

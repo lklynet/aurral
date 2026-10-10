@@ -1,3 +1,5 @@
+import { getInstance, INSTANCE_ID_PATTERN, SHARE_TOKEN_PATTERN, TUNNEL_URL_PATTERN } from "../_shareInstances.js";
+
 const PAYLOAD_VERSION = 1;
 const MAX_NAME_BYTES = 160;
 const MAX_PAYLOAD_BYTES = 3 + 3 * 16 + 3 * MAX_NAME_BYTES + 2;
@@ -14,6 +16,9 @@ const KINDS = {
 const OG_TYPES = { artist: "website", album: "music.album", track: "music.song" };
 const DEEZER_TIMEOUT_MS = 2500;
 const PAGE_CACHE_SECONDS = 3600;
+const LISTEN_TIMEOUT_MS = 5000;
+const TRACK_PATH_PATTERN = /^tracks\/\d+\/\d+$/;
+const LISTEN_HEADINGS = { track: "Listen to the full track", album: "Listen to the full album" };
 
 function fromBase64Url(segment) {
   if (!segment || segment.length > MAX_PAYLOAD_LENGTH || !/^[A-Za-z0-9_-]+$/.test(segment)) return null;
@@ -161,6 +166,104 @@ async function findOnDeezer(item) {
   }
 }
 
+function parseListen(segment) {
+  const [instanceId, token, extra] = String(segment || "").split(".");
+  if (extra !== undefined || !INSTANCE_ID_PATTERN.test(instanceId || "") || !SHARE_TOKEN_PATTERN.test(token || "")) {
+    return null;
+  }
+  return { instanceId, token };
+}
+
+const text = (value) => (typeof value === "string" ? value : "");
+const count = (value) => (Number.isFinite(value) && value > 0 ? Math.round(value) : null);
+
+async function loadListen(db, listen) {
+  try {
+    const instance = await getInstance(db, listen.instanceId);
+    const tunnelUrl = instance?.tunnel_url;
+    if (!tunnelUrl || !TUNNEL_URL_PATTERN.test(tunnelUrl)) return null;
+    const base = `${tunnelUrl}/share/${listen.token}`;
+    const response = await fetch(base, {
+      headers: { Accept: "application/json" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(LISTEN_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const body = await response.json();
+    const tracks = (Array.isArray(body?.tracks) ? body.tracks : [])
+      .filter((track) => TRACK_PATH_PATTERN.test(text(track?.path)))
+      .map((track) => ({
+        url: `${base}/${track.path}`,
+        title: text(track.title) || "Untitled",
+        albumTitle: text(track.albumTitle),
+        trackNumber: count(track.trackNumber),
+        durationMs: count(track.durationMs),
+      }));
+    if (!tracks.length) return null;
+    return {
+      base,
+      kind: text(body.kind),
+      tracks,
+      allowDownload: body.allowDownload === true,
+      expiresAt: count(body.expiresAt),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatDuration(ms) {
+  if (!ms) return "";
+  const seconds = Math.round(ms / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function listenSection(listen) {
+  const single = listen.tracks.length === 1;
+  const expiry = listen.expiresAt
+    ? `<p class="note">Available until ${escapeHtml(
+        new Date(listen.expiresAt).toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+          timeZone: "UTC",
+        }),
+      )}.</p>`
+    : "";
+  const downloadAll =
+    listen.allowDownload && !single
+      ? `<a class="button primary" href="${escapeHtml(`${listen.base}/download`)}" download>Download all</a>`
+      : "";
+  const singleDownload =
+    listen.allowDownload && single
+      ? `<a class="button" href="${escapeHtml(`${listen.tracks[0].url}/download`)}" download>Download</a>`
+      : "";
+  const rows = single
+    ? ""
+    : `<ol class="tracks">${listen.tracks
+        .map(
+          (track, index) => `<li class="track-row">
+            <button type="button" class="track" data-src="${escapeHtml(`${track.url}/stream`)}" aria-current="${index === 0 ? "true" : "false"}">
+              <span class="track-number">${track.trackNumber ?? index + 1}</span>
+              <span class="track-text">
+                <span class="track-title">${escapeHtml(track.title)}</span>
+                ${listen.kind === "artist" && track.albumTitle ? `<span class="track-album">${escapeHtml(track.albumTitle)}</span>` : ""}
+              </span>
+              <span class="track-duration">${escapeHtml(formatDuration(track.durationMs))}</span>
+            </button>
+            ${listen.allowDownload ? `<a class="track-download" href="${escapeHtml(`${track.url}/download`)}" download aria-label="Download ${escapeHtml(track.title)}">Download</a>` : ""}
+          </li>`,
+        )
+        .join("")}</ol>`;
+  return `<section class="player" aria-labelledby="player-title" data-player>
+    <p class="section-title" id="player-title">${LISTEN_HEADINGS[listen.kind] || "Listen"}</p>
+    <audio controls preload="metadata" src="${escapeHtml(`${listen.tracks[0].url}/stream`)}" aria-labelledby="player-title"></audio>
+    ${rows}
+    ${downloadAll}${singleDownload}
+    ${expiry}
+  </section>`;
+}
+
 function searchQuery(item) {
   if (item.kind === "artist") return item.artistName;
   return `${item.artistName} ${item.title}`;
@@ -305,6 +408,39 @@ audio { width: 100%; }
   padding: 4px 0;
   align-self: flex-start;
 }
+.player { display: flex; flex-direction: column; gap: 12px; }
+.player .section-title { margin-bottom: 0; }
+.note { color: var(--text-subtle); font-size: 13px; }
+.unavailable { color: var(--text-muted); font-size: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; }
+.tracks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 420px; overflow-y: auto; }
+.track-row { display: flex; align-items: center; gap: 4px; }
+.track {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  font: 400 15px / 1.3 var(--font-sans);
+  text-align: left;
+}
+.track[aria-current="true"] { background: var(--hover); font-weight: 600; }
+.track-number, .track-duration { color: var(--text-subtle); font-size: 13px; font-variant-numeric: tabular-nums; }
+.track-number { min-width: 20px; text-align: right; }
+.track-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.track-title { overflow-wrap: anywhere; }
+.track-album { color: var(--text-subtle); font-size: 13px; }
+.track-download { color: var(--text-muted); font-size: 13px; padding: 12px 8px; }
+@media (hover: hover) and (pointer: fine) {
+  .track:hover { background: var(--hover); }
+  .track-download:hover { color: var(--text); }
+}
 footer { color: var(--text-subtle); font-size: 13px; padding: 24px; text-align: center; }
 footer a { color: var(--text-muted); text-decoration: underline; text-underline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -368,6 +504,22 @@ const SCRIPT = `
     });
   });
   render();
+  const player = document.querySelector("[data-player]");
+  if (player) {
+    const audio = player.querySelector("audio");
+    const tracks = Array.from(player.querySelectorAll("[data-src]"));
+    let current = 0;
+    const select = (index) => {
+      current = index;
+      tracks.forEach((track, position) => track.setAttribute("aria-current", String(position === index)));
+      audio.src = tracks[index].dataset.src;
+      audio.play().catch(() => {});
+    };
+    tracks.forEach((track, index) => track.addEventListener("click", () => select(index)));
+    audio.addEventListener("ended", () => {
+      if (current + 1 < tracks.length) select(current + 1);
+    });
+  }
 })();
 `;
 
@@ -441,7 +593,7 @@ function notFoundPage(url, nonce) {
   });
 }
 
-function sharePage(item, deezer, url, nonce) {
+function sharePage(item, deezer, url, nonce, listen) {
   const { heading, kicker, byline } = describe(item);
   const coverArt =
     item.kind !== "artist" && item.albumMbid
@@ -459,7 +611,13 @@ function sharePage(item, deezer, url, nonce) {
   const art = image
     ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(item.kind === "artist" ? heading : `${heading} cover`)}" data-fallback="${escapeHtml(initial)}" />`
     : `<span aria-hidden="true">${escapeHtml(initial)}</span>`;
-  const preview = deezer.preview
+  const unavailable =
+    listen === null
+      ? `<p class="unavailable" role="status">This isn&#39;t available to listen to right now.</p>`
+      : "";
+  const preview = listen
+    ? listenSection(listen)
+    : deezer.preview
     ? `<div>
         <p class="preview-label" id="preview-label">30-second preview</p>
         <audio controls preload="none" src="${escapeHtml(deezer.preview)}" aria-labelledby="preview-label"></audio>
@@ -486,6 +644,7 @@ function sharePage(item, deezer, url, nonce) {
         <h1>${escapeHtml(heading)}</h1>
         ${byline ? `<p class="byline">${escapeHtml(byline)}</p>` : ""}
       </div>
+      ${unavailable}
       ${preview}
       <section aria-labelledby="listen-title">
         <p class="section-title" id="listen-title">Listen on</p>
@@ -507,25 +666,31 @@ function sharePage(item, deezer, url, nonce) {
   });
 }
 
-export async function onRequest({ request, params }) {
+export async function onRequest({ request, params, env }) {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
   }
   const segments = Array.isArray(params?.path) ? params.path : [params?.path].filter(Boolean);
   if (!segments.length) return Response.redirect(new URL("/", request.url).toString(), 302);
   const nonce = crypto.randomUUID().replace(/-/g, "");
-  const item = segments.length === 1 ? decodeSharePayload(segments[0]) : null;
+  const [payload, listenSegment] = segments.length === 1 ? segments[0].split("~") : [];
+  const item = payload ? decodeSharePayload(payload) : null;
+  const listenRequest = listenSegment === undefined ? undefined : parseListen(listenSegment);
   if (!item) {
     return new Response(notFoundPage(request.url, nonce), {
       status: 404,
       headers: { "Content-Type": "text/html; charset=utf-8", ...securityHeaders(nonce) },
     });
   }
-  const deezer = await findOnDeezer(item);
-  return new Response(sharePage(item, deezer, request.url, nonce), {
+  const [deezer, listen] = await Promise.all([
+    findOnDeezer(item),
+    listenRequest === undefined ? undefined : listenRequest && loadListen(env?.SHARE_DB, listenRequest),
+  ]);
+  return new Response(sharePage(item, deezer, request.url, nonce, listen), {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": `public, max-age=${PAGE_CACHE_SECONDS}`,
+      "Cache-Control":
+        listen === undefined ? `public, max-age=${PAGE_CACHE_SECONDS}` : "private, no-store",
       ...securityHeaders(nonce),
     },
   });

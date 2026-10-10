@@ -2,6 +2,8 @@ FROM node:26.10.0-trixie-slim@sha256:ec7758ee051e457b468b32bde57b0879010b325bb98
 
 FROM mwader/static-ffmpeg:9.0.2@sha256:7d9bdaaf887f7e6ce6151f67325c344074b5ff1fb75316011c3376503e449a7b AS ffmpeg
 
+FROM cloudflare/cloudflared:2026.10.0@sha256:9b49eed8f62806d5d45ddf59ecefb5710429598ea6d3fcccd2af938f621b2b07 AS cloudflared
+
 FROM node-base AS builder
 
 WORKDIR /app
@@ -62,11 +64,12 @@ ENV LD_PRELOAD=libjemalloc.so.2 \
     MALLOC_CONF=background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000
 
 COPY --from=ffmpeg /ffmpeg /ffprobe /usr/local/bin/
+COPY --from=cloudflared /usr/local/bin/cloudflared /usr/local/bin/
 
 ADD --chmod=755 --checksum=sha256:1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6 \
     https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp \
     /usr/local/bin/yt-dlp
-RUN yt-dlp --version && ffmpeg -version && ffprobe -version
+RUN yt-dlp --version && ffmpeg -version && ffprobe -version && cloudflared --version
 
 COPY package*.json ./
 COPY backend/package*.json ./backend/
