@@ -320,6 +320,8 @@ const filesOfTrack = (title) => db.prepare(
 
 test("a copy the Library scan files with a track the Library already had is taken back out, and the source stays", async () => {
   const { kept, source, file, filed } = await sourceTheScanJoinsToALibraryTrack();
+  const keptLyrics = kept.replace(/\.flac$/, ".lrc");
+  await writeFile(keptLyrics, "[00:00.00]kept");
   const id = await ingest(source, "copy", "tracks");
   const [placed] = await apply(id);
   assert.equal(placed.status, "done");
@@ -333,16 +335,22 @@ test("a copy the Library scan files with a track the Library already had is take
   assert.equal(await exists(filed), false);
   assert.equal(await exists(file), true);
   assert.equal(await exists(kept), true);
+  assert.equal(await readFile(keptLyrics, "utf8"), "[00:00.00]kept");
   assert.deepEqual(describe(id).counts, { duplicate: 1 });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   assert.deepEqual(filesOfTrack("Song"), [kept]);
   assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE title = 'Song'").pluck().get(), 0);
 });
 
-test("a moved file the Library scan files with a track the Library already had goes back to its source with its art, offered for removal", async () => {
+test("a moved file the Library scan files with a track the Library already had goes back to its source with its art and lyrics, offered for removal, and the Library keeps its own", async () => {
   const { kept, source, file, filed } = await sourceTheScanJoinsToALibraryTrack({ keptFolder: "Earlier Rip" });
   const art = path.join(path.dirname(file), "cover.jpg");
   await writeFile(art, "art");
+  const lyrics = file.replace(/\.mp3$/, ".lrc");
+  await writeFile(lyrics, "[00:00.00]la");
+  const libraryArt = path.join(path.dirname(filed), "folder.jpg");
+  await mkdir(path.dirname(libraryArt), { recursive: true });
+  await writeFile(libraryArt, "library art");
   const id = await ingest(source, "move");
   await apply(id);
   assert.equal(await exists(file), false);
@@ -354,7 +362,8 @@ test("a moved file the Library scan files with a track the Library already had g
 
   assert.equal(await exists(file), true);
   assert.equal(await readFile(art, "utf8"), "art");
-  assert.equal(await exists(path.dirname(filed)), false);
+  assert.equal(await readFile(lyrics, "utf8"), "[00:00.00]la");
+  assert.deepEqual(await readdir(path.dirname(filed)), ["folder.jpg"]);
   const queued = dbOps.getJSONSetting("pendingLibraryScanJob");
   assert.equal(queued.includeLidarr, true);
   assert.equal(queued.changedPaths.includes(file), true);

@@ -24,9 +24,7 @@ import {
   passesThroughLinkedFolder,
   placeFile,
   probeHardlink,
-  removeEmptiedFolder,
   removeEmptyDirectories,
-  removeSidecars,
   transferSidecars,
 } from "./fileTransfer.js";
 import { writeAudioTags } from "../audioTags.js";
@@ -405,8 +403,8 @@ async function fileItem(operation, item) {
       return { status: "failed", reason: `Aurral could not ${mode} this file: ${error?.code || error?.message}` };
     }
   }
-  await transferSidecars(source, target, mode).catch(() => {});
-  return { status: "done" };
+  const sidecars = await transferSidecars(source, target, mode).catch(() => []);
+  return { status: "done", details: { ...item.details, sidecars } };
 }
 
 const resolvesToSameFile = async (left, right) => {
@@ -467,11 +465,11 @@ export async function applyIngestItem(operation, item) {
   const tagging = item.details.actions?.includes("tags");
   if (tagging && await isFilledCopy(item)) {
     if (operation.options.mode === "move") await fs.rm(item.sourcePath, { force: true });
-    await transferSidecars(item.sourcePath, item.targetPath, operation.options.mode).catch(() => {});
-    return fillTags(item);
+    const sidecars = await transferSidecars(item.sourcePath, item.targetPath, operation.options.mode).catch(() => []);
+    return { ...(await fillTags(item)), details: { ...item.details, sidecars } };
   }
   const result = await fileItem(operation, item);
-  return result.status === "done" && tagging ? fillTags(item) : result;
+  return result.status === "done" && tagging ? { ...(await fillTags(item)), details: result.details } : result;
 }
 
 export function ingestScanRequest(operation, items) {
@@ -494,10 +492,12 @@ export async function finishIngest(operation) {
   const folders = new Map();
   const unfiled = new Set();
   const items = db.prepare(
-    "SELECT source_path, target_path, status, details_json FROM library_file_operation_items WHERE operation_id = ?",
+    "SELECT position, source_path, target_path, status, details_json FROM library_file_operation_items WHERE operation_id = ?",
   ).all(operation.id);
+  const filedFrom = new Map();
   for (const item of items) {
     const folder = path.dirname(item.source_path);
+    if (item.status === "done") filedFrom.set(folder, [...(filedFrom.get(folder) || []), item]);
     const kept = mode === "move" && item.status === "duplicate" && JSON.parse(item.details_json || "{}").removable === true;
     if (!["done", "duplicate"].includes(item.status) || !item.target_path || kept) {
       unfiled.add(folder);
@@ -511,15 +511,20 @@ export async function finishIngest(operation) {
     if (targets.size !== 1 || unfiled.has(folder)) continue;
     const [target] = targets;
     const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => []);
+    const art = [];
     for (const entry of entries) {
       if (!entry.isFile() || !ALBUM_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
       const from = path.join(folder, entry.name);
       const to = path.join(target, entry.name);
-      await placeFile(from, to, mode).catch(async (error) => {
+      await placeFile(from, to, mode).then(() => art.push(entry.name), async (error) => {
         if (mode === "move" && error?.code === "EEXIST" && await filesIdentical(from, to).catch(() => false)) {
           await fs.rm(from, { force: true });
         }
       });
+    }
+    if (!art.length) continue;
+    for (const item of filedFrom.get(folder) || []) {
+      updateLibraryFileOperationItem(operation.id, item.position, { details: { ...JSON.parse(item.details_json || "{}"), art } });
     }
   }
   if (mode === "move") {
@@ -600,15 +605,18 @@ async function rescan(changedPaths, { includeLidarr }) {
   scheduleLibraryScan({ includeLidarr, changedPaths });
 }
 
-// Album art that Move brought along goes back with the last music in its folder.
-async function returnAlbumArt(folder, sourceFolder) {
+// Album art this ingest brought along goes with the last music it filed in a
+// folder: Move returns it to the source, and Copy and Hardlink remove theirs.
+async function takeBackAlbumArt(folder, sourceFolder, art, mode) {
   const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => null);
   if (!entries) return;
   if (entries.some((entry) => !entry.isFile() || !ALBUM_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))) {
     return;
   }
-  for (const entry of entries) {
-    await placeFile(path.join(folder, entry.name), path.join(sourceFolder, entry.name), "move").catch(() => {});
+  for (const name of art || []) {
+    const from = path.join(folder, name);
+    if (mode === "move") await placeFile(from, path.join(sourceFolder, name), "move").catch(() => {});
+    else await fs.rm(from, { force: true });
   }
   await removeEmptyDirectories(folder, resolveDownloadRoot());
 }
@@ -630,10 +638,14 @@ async function takeBackDouble(operation, item, media, removed) {
   const title = db.prepare("SELECT title FROM library_tracks WHERE id = ?").pluck().get(media.track_id) || details.title;
   const verdict = await compareWithLibrary(await readRecording(item.target_path), kept, title);
   if (verdict.reason) return null;
+  const sidecars = (details.sidecars || []).map((extension) => [
+    `${item.target_path.slice(0, -path.extname(item.target_path).length)}${extension}`,
+    `${item.source_path.slice(0, -path.extname(item.source_path).length)}${extension}`,
+  ]);
   if (operation.options.mode === "move") {
     if (await fileExists(item.source_path)) return null;
     await placeFile(item.target_path, item.source_path, "move");
-    await transferSidecars(item.target_path, item.source_path, "move").catch(() => {});
+    for (const [from, to] of sidecars) await placeFile(from, to, "move").catch(() => {});
     updateLibraryFileOperationItem(operation.id, item.position, {
       status: "duplicate",
       targetPath: verdict.targetPath,
@@ -642,7 +654,7 @@ async function takeBackDouble(operation, item, media, removed) {
     });
   } else {
     await fs.unlink(item.target_path);
-    await removeSidecars(item.target_path);
+    for (const [from] of sidecars) await fs.rm(from, { force: true });
     updateLibraryFileOperationItem(operation.id, item.position, {
       status: "duplicate",
       targetPath: verdict.targetPath,
@@ -650,12 +662,8 @@ async function takeBackDouble(operation, item, media, removed) {
     });
   }
   removed.add(item.target_path);
-  if (operation.options.mode === "move") {
-    await returnAlbumArt(path.dirname(item.target_path), path.dirname(item.source_path));
-    return [item.target_path, item.source_path];
-  }
-  await removeEmptiedFolder(path.dirname(item.target_path), resolveDownloadRoot());
-  return [item.target_path];
+  await takeBackAlbumArt(path.dirname(item.target_path), path.dirname(item.source_path), details.art, operation.options.mode);
+  return operation.options.mode === "move" ? [item.target_path, item.source_path] : [item.target_path];
 }
 
 async function monitorTracks(operation, placed) {
