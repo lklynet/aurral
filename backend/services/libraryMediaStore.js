@@ -793,6 +793,8 @@ export function unlinkLibraryAlbumTrackWithoutMedia(albumId, trackId) {
       && !db.prepare("SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1").get(track)) {
       db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track);
       removeLibrarySearchDocument("track", track);
+    } else {
+      syncLibrarySearchTrack(track);
     }
     if (!db.prepare("SELECT 1 FROM library_album_tracks WHERE album_id = ? LIMIT 1").get(album)
       && !db.prepare("SELECT 1 FROM library_media_files WHERE album_id = ? AND available = 1 LIMIT 1").get(album)) {
@@ -934,6 +936,13 @@ function repairLibraryFileAlbums() {
   ).run().changes;
 }
 
+const unlinkAlbumTrackStmt = db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?");
+const trackLinkedStmt = db.prepare("SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1");
+const trackHasFileStmt = db.prepare("SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1");
+const deleteTrackStmt = db.prepare("DELETE FROM library_tracks WHERE id = ?");
+
+// A track takes its twin's identity only when nothing plays it under its
+// own: a tagged recording with files on another album stays that recording.
 function foldLibraryAlbum(album, tracks, target) {
   const targetTracks = albumTracksStmt.all(target.id);
   const dropped = [];
@@ -943,9 +952,10 @@ function foldLibraryAlbum(album, tracks, target) {
       discNumber: track.disc_number,
       trackNumber: track.track_number,
     });
-    if (match && match.id !== track.id && (!track.has_files || isNameKey(track.identity_key))) {
+    if (match?.id === track.id) continue;
+    if (match && (isNameKey(track.identity_key) || !trackHasFileStmt.get(track.id))) {
       rekeyLibraryTrack(track.id, match.identity_key);
-    } else if (!match && !track.has_files) {
+    } else if (!track.has_files) {
       dropped.push(track.id);
     }
   }
@@ -957,17 +967,14 @@ function foldLibraryAlbum(album, tracks, target) {
   for (const trackId of dropped) unlinkLibraryAlbumTrackWithoutMedia(target.id, trackId);
 }
 
-const unlinkAlbumTrackStmt = db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?");
-const trackLinkedStmt = db.prepare("SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1");
-const trackHasFileStmt = db.prepare("SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1");
-const deleteTrackStmt = db.prepare("DELETE FROM library_tracks WHERE id = ?");
-
 function removeEmptyLibraryAlbum(album, tracks) {
   for (const track of tracks) {
     unlinkAlbumTrackStmt.run(album.id, track.id);
     if (!trackLinkedStmt.get(track.id) && !trackHasFileStmt.get(track.id)) {
       deleteTrackStmt.run(track.id);
       removeLibrarySearchDocument("track", track.id);
+    } else {
+      syncLibrarySearchTrack(track.id);
     }
   }
   deleteLibraryAlbumRow(album.id, album.artist_id);

@@ -168,6 +168,14 @@ test("the Library lists what can be played and what Aurral is fetching, with or 
   }
 });
 
+test("a source filter lists and counts only albums and artists with playable files from that source", () => {
+  for (const kind of ["albums", "artists"]) {
+    const page = callLibraryPage({ kind, page: "1", pageSize: "50", source: "lidarr" });
+    assert.deepEqual(titles(page), [kind === "albums" ? "Owned Album" : "Owns Some"]);
+    assert.equal(page.total, 1);
+  }
+});
+
 test("an explicit availableOnly query param overrides the Library's rule", () => {
   const playable = callLibraryPage({ kind: "albums", page: "1", pageSize: "50", availableOnly: "true" });
   assert.deepEqual(titles(playable), ["Owned Album"]);

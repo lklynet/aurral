@@ -10,6 +10,7 @@ import {
   getLibrary,
   getLibraryIndexLastModified,
   getLibraryPage,
+  getLibrarySearchPage,
   invalidateLibraryQueryCache,
 } from "../../backend/services/libraryQueryService.js";
 import {
@@ -1088,6 +1089,54 @@ test("a scan removes albums nobody can play or asked for, and keeps the ones Aur
   } finally {
     removeArtistsNamed(`Owners ${process.pid}`);
     removeArtistsNamed(`Catalogue Only ${process.pid}`);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("songs a catalogue album shares with other albums keep their identity and stop matching its title when it folds or goes", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-shared-recording-"));
+  const source = `test-shared-recording-${process.pid}`;
+  const artist = `Shared Recording ${process.pid}`;
+  const blueTitle = `Blue ${process.pid}`;
+  const vaultTitle = `Vault ${process.pid}`;
+  const tags = {};
+  const blue = await createAudioFile(root, `${artist}/Blue/04 Buddy Holly.flac`);
+  const hit = await createAudioFile(root, `${artist}/Hits/01 Buddy Holly.flac`);
+  const rarity = await createAudioFile(root, `${artist}/Hits/02 Susanne.flac`);
+  const hitsGroup = "2a3b4c5d-6e7f-4a8b-8c9d-0e1f2a3b4c5d";
+  tags[blue] = tagged(artist, blueTitle, "Buddy Holly", 4,
+    "0e1f2a3b-4c5d-4e6f-8a7b-8c9d0e1f2a3b", "1f2a3b4c-5d6e-4f7a-8b8c-9d0e1f2a3b4c");
+  tags[hit] = tagged(artist, "Greatest Hits", "Buddy Holly", 1, hitsGroup, "3b4c5d6e-7f8a-4b9c-8d0e-1f2a3b4c5d6e");
+  tags[rarity] = tagged(artist, "Greatest Hits", "Susanne", 2, hitsGroup, "6e7f8a9b-0c1d-4e2f-8a3b-4c5d6e7f8a9b");
+  const reader = async (filePath) => tags[filePath];
+  const searchedTracks = (query) => getLibrarySearchPage({ query }).tracks.tracks.map((track) => Number(track.id));
+  try {
+    await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
+    const before = Object.fromEntries(Object.keys(tags).map((filePath) => [filePath, fileRows(source, filePath)]));
+    const artistId = db.prepare("SELECT artist_id FROM library_albums WHERE id = ?").pluck().get(before[hit].albumId);
+    for (const [title, releaseGroup, filePath, trackNumber] of [
+      [vaultTitle, "5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a", rarity, 1],
+      [blueTitle, "4c5d6e7f-8a9b-4c0d-8e1f-2a3b4c5d6e7f", hit, 4],
+    ]) {
+      const catalogue = upsertLibraryAlbum({
+        identityKey: `release-group:${releaseGroup}`,
+        artistId,
+        title,
+        metadata: { foreignAlbumId: releaseGroup, monitored: true },
+      });
+      linkLibraryAlbumTrack({ albumId: catalogue.id, trackId: before[filePath].trackId, discNumber: 1, trackNumber });
+    }
+    assert.deepEqual(searchedTracks(vaultTitle), [before[rarity].trackId]);
+    assert.deepEqual(searchedTracks(blueTitle).sort(), [before[blue].trackId, before[hit].trackId].sort());
+
+    await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
+
+    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [[blueTitle, 1], ["Greatest Hits", 2]]);
+    for (const filePath of Object.keys(tags)) assert.deepEqual(fileRows(source, filePath), before[filePath]);
+    assert.deepEqual(searchedTracks(vaultTitle), []);
+    assert.deepEqual(searchedTracks(blueTitle), [before[blue].trackId]);
+  } finally {
+    for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
   }
 });

@@ -1294,6 +1294,7 @@ const aurralFetching = (alias) => `CASE WHEN json_valid(${alias}.metadata_json)
 
 const visibleAlbum = (sourceFilter) => {
   const playable = pageMediaExists("albums", sourceFilter, true);
+  if (sourceFilter) return playable;
   return { sql: `(${playable.sql} OR ${aurralFetching("album")})`, parameters: playable.parameters };
 };
 
