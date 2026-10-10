@@ -375,8 +375,8 @@ const {
       changedPaths,
       force,
     });
-    const { applyIngestMonitoring } = await import("./libraryFiles/ingest.js");
-    await applyIngestMonitoring();
+    const { settleIngestedMusic } = await import("./libraryFiles/ingest.js");
+    await settleIngestedMusic();
     if (scanResult?.lidarr?.error) {
       throw new Error(`Lidarr library indexing failed: ${scanResult.lidarr.error}`);
     }

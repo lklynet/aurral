@@ -99,11 +99,36 @@ const laterAlbum = {
   }],
 };
 
+const twoDiscGroup = "4f4f4f4f-0000-4000-8000-000000000005";
+const twoDiscRecording = "4f4f4f4f-0000-4000-8000-0000000000c1";
+const twoDiscAlbum = {
+  id: twoDiscGroup,
+  title: "Two Disc Album",
+  artistid: artistMbid,
+  artists: [{ id: artistMbid, artistname: "Fill Artist" }],
+  releasedate: "1992-08-04",
+  genres: [],
+  releases: [{
+    id: "4f4f4f4f-0000-4000-8000-0000000000e6",
+    status: "Official",
+    tracks: [{
+      id: "two-disc-track",
+      recordingid: twoDiscRecording,
+      trackname: "Hey Jealousy",
+      artistid: artistMbid,
+      durationms: 200,
+      trackposition: 1,
+      mediumnumber: 2,
+    }],
+  }],
+};
+
 const metadataServer = await createMockHttpServer((request, response) => {
   const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
   response.setHeader("content-type", "application/json");
   if (pathname === `/album/${releaseGroup}`) return response.end(JSON.stringify(album));
   if (pathname === `/album/${laterReleaseGroup}`) return response.end(JSON.stringify(laterAlbum));
+  if (pathname === `/album/${twoDiscGroup}`) return response.end(JSON.stringify(twoDiscAlbum));
   if (pathname === "/search/album") {
     return response.end(JSON.stringify([album, laterAlbum].map((entry) => ({
       id: entry.id,
@@ -222,6 +247,33 @@ test("ingest tells apart albums that share a title by their year", async () => {
   const tagsOf = async (name) => (await parseFile(path.join(root, "Fill Artist", "Fill Album", name))).common;
   assert.equal((await tagsOf("02 - Song Two.flac")).musicbrainz_releasegroupid, releaseGroup);
   assert.equal((await tagsOf("01 - Song Three.flac")).musicbrainz_releasegroupid, laterReleaseGroup);
+});
+
+test("a source whose disc number differs from the Library's is matched by the MusicBrainz IDs it would get, with or without filling them in", async () => {
+  const kept = await makeTrack(path.join(root, "Fill Artist", "Two Disc Album", "01 - Hey Jealousy.flac"), {
+    artist: "Fill Artist",
+    album: "Two Disc Album",
+    title: "Hey Jealousy",
+    track: "1",
+    disc: "1",
+    MUSICBRAINZ_RELEASEGROUPID: twoDiscGroup,
+    MUSICBRAINZ_TRACKID: twoDiscRecording,
+  });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+
+  for (const fillTags of [true, false]) {
+    const source = path.join(isolatedState.baseDir, `source-${sources += 1}`);
+    const sourceFile = await makeTrack(path.join(source, "Fill Artist_Two Disc Album_02-01_Hey Jealousy.flac"), {
+      artist: "Fill Artist", album: "Two Disc Album", title: "Hey Jealousy", track: "1", disc: "2",
+    });
+
+    const operation = await operations.startIngest({ sourcePath: source, mode: "copy", fillTags });
+    const { items } = await checkAndRun(operation);
+
+    assert.deepEqual([items[0].status, items[0].target], ["duplicate", path.relative(root, kept)]);
+    assert.equal(await stat(sourceFile).then(() => true), true);
+  }
+  assert.equal(await stat(path.join(root, "Fill Artist", "Two Disc Album", "2-01 - Hey Jealousy.flac")).catch(() => null), null);
 });
 
 test("an ingest a restart stopped after filling in tags finishes on resume", async () => {

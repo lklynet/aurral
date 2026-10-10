@@ -1,3 +1,4 @@
+import { readdirSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import {
@@ -58,15 +59,50 @@ export function remapLegacyPath(finalPath, playlistRoot = resolveDownloadRoot())
   return resolved;
 }
 
+const folderKey = (name) => name.normalize("NFKC").toLowerCase()
+  .replace(/[\u2018\u2019\u02bc`]/g, "'")
+  .replace(/[\u2010-\u2015]/g, "-");
+
+function existingEntryName(directory, name, isKind) {
+  let entries;
+  try {
+    entries = readdirSync(directory, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  if (entries.some((entry) => entry.name === name && isKind(entry))) return name;
+  const key = folderKey(name);
+  return entries
+    .filter((entry) => isKind(entry) && folderKey(entry.name) === key)
+    .map((entry) => entry.name)
+    .sort()[0] || null;
+}
+
+// Names that differ only in case or quote and dash style are one folder, so a
+// change in how a name is written never starts a second folder beside it.
+const existingFolderName = (directory, name) =>
+  existingEntryName(directory, name, (entry) => entry.isDirectory()) || name;
+
+// The file already at this name, however its case or quotes are written.
+export function findLibraryFileVariant(filePath) {
+  const name = existingEntryName(path.dirname(filePath), path.basename(filePath), (entry) => !entry.isDirectory());
+  return name ? path.join(path.dirname(filePath), name) : null;
+}
+
+export const libraryPathKey = (filePath) => folderKey(path.resolve(filePath));
+
 export function buildAurralTrackDestination(
   playlistId,
   artistDir,
   albumDir,
-  { ephemeral = false } = {},
+  { ephemeral = false, root } = {},
 ) {
-  const destination = [String(artistDir || "Unknown Artist"), String(albumDir || "Unknown Album")];
-  if (ephemeral) destination.unshift(AURRAL_FLOWS_DIR, String(playlistId || ""));
-  return path.posix.join(...destination);
+  const artist = String(artistDir || "Unknown Artist");
+  const album = String(albumDir || "Unknown Album");
+  if (ephemeral) return path.posix.join(AURRAL_FLOWS_DIR, String(playlistId || ""), artist, album);
+  const base = root || resolveDownloadRoot();
+  const artistName = existingFolderName(base, artist);
+  return path.posix.join(artistName, existingFolderName(path.join(base, artistName), album));
 }
 
 const folderName = (value, fallback) =>
@@ -81,6 +117,7 @@ export function buildLibraryTrackPath(root, track, ext) {
       null,
       folderName(track?.artistName, "Unknown Artist"),
       folderName(track?.albumName, "Unknown Album"),
+      { root },
     ),
     buildTrackFileName(track, String(ext || "").toLowerCase()),
   );

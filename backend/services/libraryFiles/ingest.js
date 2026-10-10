@@ -3,7 +3,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { parseFile } from "music-metadata";
 import { db } from "../../config/db-sqlite.js";
-import { buildLibraryTrackPath, isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.js";
+import {
+  buildLibraryTrackPath,
+  findLibraryFileVariant,
+  isPathInsideRoot,
+  libraryPathKey,
+  resolveDownloadRoot,
+} from "../downloadPaths.js";
 import { AUDIO_EXTENSIONS, buildMetadataRecord } from "../libraryFileScanner.js";
 import { configuredLidarrFolders, isPathWithin } from "../libraryFolders.js";
 import { getLibraryMediaFile } from "../libraryMediaStore.js";
@@ -18,7 +24,9 @@ import {
   passesThroughLinkedFolder,
   placeFile,
   probeHardlink,
+  removeEmptiedFolder,
   removeEmptyDirectories,
+  removeSidecars,
   transferSidecars,
 } from "./fileTransfer.js";
 import { writeAudioTags } from "../audioTags.js";
@@ -196,6 +204,31 @@ async function compareWithLibrary(source, candidates, title) {
   return { targetPath: (same.find((copy) => copy.lossless === source.lossless) || same[0]).targetPath };
 }
 
+const plannedIdentity = (record, tags = {}) => {
+  const planned = {
+    ...record,
+    trackMbid: record.trackMbid || tags.recordingMbid || null,
+    releaseGroupMbid: record.releaseGroupMbid || tags.releaseGroupMbid || null,
+    albumMbid: record.albumMbid || tags.releaseMbid || null,
+  };
+  const changed = ["trackMbid", "releaseGroupMbid", "albumMbid"].some((field) => planned[field] !== record[field]);
+  return changed ? planned : null;
+};
+
+// A source's own tags can miss the Library's copy of its track, such as when
+// they number the disc differently. The MusicBrainz IDs the ingest would fill
+// in are what the Library scan matches the filed copy by, so the ingest looks
+// the track up by them too, whether or not it writes them.
+async function placeRecord(item, record, metadata, albums) {
+  const match = matchLibraryRecord(record);
+  if (match.files.length) return { match, fill: null };
+  const fill = await planFill(item, record, match, metadata, albums);
+  const planned = plannedIdentity(record, fill.tags);
+  const byIds = planned ? matchLibraryRecord(planned) : null;
+  const better = byIds && (byIds.files.length || (byIds.album && !match.album));
+  return { match: better ? byIds : match, fill };
+}
+
 async function planItem(operation, item, plannedTargets, albums) {
   const { sourcePath: sourceRoot, mode } = operation.options;
   const root = resolveDownloadRoot();
@@ -214,7 +247,7 @@ async function planItem(operation, item, plannedTargets, albums) {
       reason: "Aurral could not tell the artist and album. Tag the file, or put it in an Artist/Album folder.",
     };
   }
-  const match = matchLibraryRecord(record);
+  const { match, fill } = await placeRecord(item, record, metadata, albums);
   const details = {
     artistName: match.artistName,
     albumName: match.albumName,
@@ -253,13 +286,14 @@ async function planItem(operation, item, plannedTargets, albums) {
   if (!isPathInsideRoot(target, root)) {
     return { status: "skipped", reason: "The file's name does not fit inside the Downloads Folder.", details };
   }
-  if (await fs.lstat(target).catch(() => null)) {
-    if (await libraryCopy([target])) return identicalCopy(target);
-    const occupant = findLibraryTrackAtPath(target, { ...record, artistName: match.artistName, albumName: match.albumName });
-    if (occupant) return sameRecording([target], occupant.title);
-    return { status: "skipped", targetPath: target, reason: TAKEN_NAME_REASON, details };
+  const taken = findLibraryFileVariant(target);
+  if (taken) {
+    if (await libraryCopy([taken])) return identicalCopy(taken);
+    const occupant = findLibraryTrackAtPath(taken, { ...record, artistName: match.artistName, albumName: match.albumName });
+    if (occupant) return sameRecording([taken], occupant.title);
+    return { status: "skipped", targetPath: taken, reason: TAKEN_NAME_REASON, details };
   }
-  if (plannedTargets.has(target)) {
+  if (plannedTargets.has(libraryPathKey(target))) {
     const claim = [record.discNumber > 1 && `disc ${record.discNumber}`, record.trackNumber && `track ${record.trackNumber}`]
       .filter(Boolean)
       .join(", ");
@@ -270,11 +304,10 @@ async function planItem(operation, item, plannedTargets, albums) {
       details,
     };
   }
-  plannedTargets.add(target);
+  plannedTargets.add(libraryPathKey(target));
   if (!operation.options.fillTags) {
     return { status: "pending", targetPath: target, details: { ...details, action: "file" } };
   }
-  const fill = await planFill(item, record, match, metadata, albums);
   return {
     status: "pending",
     targetPath: target,
@@ -297,7 +330,7 @@ export async function planIngest(operation, deadline) {
   const plannedTargets = new Set(db.prepare(
     `SELECT target_path FROM library_file_operation_items
      WHERE operation_id = ? AND status = 'pending' AND target_path IS NOT NULL`,
-  ).pluck().all(operation.id));
+  ).pluck().all(operation.id).map(libraryPathKey));
   const albums = new Map();
   while (Date.now() < deadline) {
     const batch = listLibraryFileOperationItems(operation.id, { statuses: ["new"], limit: CHUNK });
@@ -495,9 +528,14 @@ export async function finishIngest(operation) {
   }
   const filed = items.some((item) => item.status === "done");
   const monitor = filed && !operation.summary.monitor && operation.options.monitor && operation.options.monitor !== "none";
-  if (monitor || operation.summary.removingSources) {
+  const doubles = filed && !operation.summary.doubles;
+  if (monitor || doubles || operation.summary.removingSources) {
     updateLibraryFileOperation(operation.id, {
-      summary: { removingSources: null, ...(monitor ? { monitor: "pending" } : {}) },
+      summary: {
+        removingSources: null,
+        ...(monitor ? { monitor: "pending" } : {}),
+        ...(doubles ? { doubles: "pending" } : {}),
+      },
     });
   }
   return ingestScanRequest(operation, items.map((item) => ({
@@ -556,21 +594,56 @@ export function countIngestSources(operation) {
 
 const fileExists = (filePath) => fs.lstat(filePath).then(() => true, () => false);
 
-async function monitorIngestedMusic(operation) {
-  const trackIds = new Set();
-  const albumIds = new Set();
-  const targets = db.prepare(
-    "SELECT target_path FROM library_file_operation_items WHERE operation_id = ? AND status = 'done'",
-  ).pluck().all(operation.id);
-  for (const target of targets) {
-    const media = getLibraryMediaFile({ source: "aurral", path: target });
-    if (media?.available === 1) {
-      trackIds.add(media.track_id);
-      if (media.album_id) albumIds.add(media.album_id);
-    } else if (await fileExists(target)) {
-      return;
-    }
+async function rescan(changedPaths) {
+  if (!changedPaths.length) return;
+  const { scheduleLibraryScan } = await import("../libraryScanWorker.js");
+  scheduleLibraryScan({ includeLidarr: false, changedPaths });
+}
+
+// Where a filed copy is the second file of its track on its album, the same
+// recording the Library already had, the ingest takes it back out: Copy and
+// Hardlink remove it, since the source still has it, and Move returns it to
+// the source folder to be offered for removal like any source the Library has.
+async function takeBackDouble(operation, item, media, removed) {
+  const others = db.prepare(
+    `SELECT path FROM library_media_files
+     WHERE track_id = ? AND album_id IS ? AND source = 'aurral' AND available = 1 AND path != ?
+     ORDER BY id`,
+  ).pluck().all(media.track_id, media.album_id, item.target_path).filter((other) => !removed.has(other));
+  const kept = [];
+  for (const other of others) if (await fileExists(other)) kept.push(other);
+  if (!kept.length) return null;
+  const details = JSON.parse(item.details_json || "{}");
+  const title = db.prepare("SELECT title FROM library_tracks WHERE id = ?").pluck().get(media.track_id) || details.title;
+  const verdict = await compareWithLibrary(await readRecording(item.target_path), kept, title);
+  if (verdict.reason) return null;
+  if (operation.options.mode === "move") {
+    if (await fileExists(item.source_path)) return null;
+    await placeFile(item.target_path, item.source_path, "move");
+    await transferSidecars(item.target_path, item.source_path, "move").catch(() => {});
+    updateLibraryFileOperationItem(operation.id, item.position, {
+      status: "duplicate",
+      targetPath: verdict.targetPath,
+      reason: "The Library already has this track in a different file.",
+      details: { ...details, removable: true },
+    });
+  } else {
+    await fs.unlink(item.target_path);
+    await removeSidecars(item.target_path);
+    updateLibraryFileOperationItem(operation.id, item.position, {
+      status: "duplicate",
+      targetPath: verdict.targetPath,
+      reason: "The Library already had this track in a different file, so Aurral removed the copy it filed.",
+    });
   }
+  removed.add(item.target_path);
+  await removeEmptiedFolder(path.dirname(item.target_path), resolveDownloadRoot());
+  return item.target_path;
+}
+
+async function monitorTracks(operation, placed) {
+  const trackIds = new Set(placed.map(({ media }) => media.track_id));
+  const albumIds = new Set(placed.map(({ media }) => media.album_id).filter(Boolean));
   const monitorTrack = db.prepare("UPDATE library_tracks SET monitored = 1 WHERE id = ?");
   db.transaction(() => {
     for (const trackId of trackIds) monitorTrack.run(trackId);
@@ -585,22 +658,60 @@ async function monitorIngestedMusic(operation) {
       }
     }
   }
-  updateLibraryFileOperation(operation.id, { summary: { monitor: "applied" } });
 }
 
-// The Library learns about ingested files from a scan, so an ingest's Monitor
-// choice waits until the scan has indexed every file it placed.
-export async function applyIngestMonitoring() {
+async function settleIngest(operation) {
+  const items = db.prepare(
+    `SELECT position, source_path, target_path, details_json FROM library_file_operation_items
+     WHERE operation_id = ? AND status = 'done' ORDER BY position`,
+  ).all(operation.id);
+  let placed = [];
+  for (const item of items) {
+    const media = getLibraryMediaFile({ source: "aurral", path: item.target_path });
+    if (media?.available === 1) placed.push({ item, media });
+    else if (await fileExists(item.target_path)) return;
+  }
+  if (operation.summary.doubles === "pending") {
+    const removed = new Set();
+    const changed = [];
+    for (const entry of placed) {
+      try {
+        const taken = await takeBackDouble(operation, entry.item, entry.media, removed);
+        if (taken) changed.push(taken);
+      } catch (error) {
+        logger.warn("library-files", "Ingest could not take back a file the Library already had", {
+          operationId: operation.id,
+          path: entry.item.target_path,
+          reason: safeLogDiagnostic(error),
+        });
+      }
+    }
+    placed = placed.filter(({ item }) => !removed.has(item.target_path));
+    updateLibraryFileOperation(operation.id, { summary: { doubles: "checked" } });
+    await rescan(changed);
+  }
+  if (operation.summary.monitor === "pending") {
+    await monitorTracks(operation, placed);
+    updateLibraryFileOperation(operation.id, { summary: { monitor: "applied" } });
+  }
+}
+
+// The Library learns about ingested files from a scan, so the check for
+// tracks it already had and the ingest's Monitor choice wait until the scan
+// has indexed every file the ingest placed.
+export async function settleIngestedMusic() {
   const pending = db.prepare(
     `SELECT id FROM library_file_operations
-     WHERE kind = 'ingest' AND json_extract(summary_json, '$.monitor') = 'pending'
+     WHERE kind = 'ingest' AND status IN ('complete', 'cancelled') AND (
+       json_extract(summary_json, '$.monitor') = 'pending'
+       OR json_extract(summary_json, '$.doubles') = 'pending')
      ORDER BY id`,
   ).pluck().all();
   for (const id of pending) {
     try {
-      await monitorIngestedMusic(getLibraryFileOperation(id));
+      await settleIngest(getLibraryFileOperation(id));
     } catch (error) {
-      logger.warn("library-files", "Ingest could not monitor its music", {
+      logger.warn("library-files", "Ingest could not finish checking its music", {
         operationId: id,
         reason: safeLogDiagnostic(error),
       });
