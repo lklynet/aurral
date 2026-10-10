@@ -15387,10 +15387,10 @@ button.native-library-genre-row:focus-visible {
   }
 
   .now-playing__header {
-    display: flex;
+    display: grid;
     flex-shrink: 0;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
-    justify-content: space-between;
     padding: calc(env(safe-area-inset-top, 0px) + 0.5rem) 0.5rem 0.25rem;
     touch-action: none;
   }
@@ -15401,6 +15401,11 @@ button.native-library-genre-row:focus-visible {
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
+  }
+
+  .now-playing__header-actions {
+    display: flex;
+    justify-self: end;
   }
 
   .now-playing__icon-button {

@@ -6,6 +6,7 @@ import {
   Pencil,
   Play,
   RefreshCw,
+  Share,
   ThumbsDown,
   ThumbsUp,
 } from "lucide-react";
@@ -14,6 +15,7 @@ import { getDiscoveryFeedbackLabel } from "../../../utils/discoveryFeedback";
 import TooltipButton from "../../../components/TooltipButton";
 import Tooltip from "../../../components/Tooltip";
 import { ArtistMonitoringButtons } from "../../../components/ArtistMonitoringButtons";
+import { useShareAction } from "../../../hooks/useShareAction";
 
 export function ArtistDetailsActionBar({
   library,
@@ -34,6 +36,7 @@ export function ArtistDetailsActionBar({
   tasteActionPending = null,
 }) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const share = useShareAction();
   const isPreviewPlaying = isArtistPlaybackActive;
 
   const renderLibraryAction = () => {
@@ -120,6 +123,20 @@ export function ArtistDetailsActionBar({
                   aria-label="Close artist actions"
                 />
                 <div className="artist-dropdown artist-dropdown--right">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      void share({ kind: "artist", artistMbid: mbid, artistName }, artistName);
+                    }}
+                    disabled={!artistName}
+                    className="artist-menu-item"
+                  >
+                    <span className="artist-menu-item__main">
+                      <Share className="artist-icon-sm" />
+                      Share artist
+                    </span>
+                  </button>
                   {onTasteFeedback && (
                     <>
                       <button
