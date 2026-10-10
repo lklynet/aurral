@@ -594,10 +594,23 @@ export function countIngestSources(operation) {
 
 const fileExists = (filePath) => fs.lstat(filePath).then(() => true, () => false);
 
-async function rescan(changedPaths) {
+async function rescan(changedPaths, { includeLidarr }) {
   if (!changedPaths.length) return;
   const { scheduleLibraryScan } = await import("../libraryScanWorker.js");
-  scheduleLibraryScan({ includeLidarr: false, changedPaths });
+  scheduleLibraryScan({ includeLidarr, changedPaths });
+}
+
+// Album art that Move brought along goes back with the last music in its folder.
+async function returnAlbumArt(folder, sourceFolder) {
+  const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => null);
+  if (!entries) return;
+  if (entries.some((entry) => !entry.isFile() || !ALBUM_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))) {
+    return;
+  }
+  for (const entry of entries) {
+    await placeFile(path.join(folder, entry.name), path.join(sourceFolder, entry.name), "move").catch(() => {});
+  }
+  await removeEmptyDirectories(folder, resolveDownloadRoot());
 }
 
 // Where a filed copy is the second file of its track on its album, the same
@@ -637,8 +650,12 @@ async function takeBackDouble(operation, item, media, removed) {
     });
   }
   removed.add(item.target_path);
+  if (operation.options.mode === "move") {
+    await returnAlbumArt(path.dirname(item.target_path), path.dirname(item.source_path));
+    return [item.target_path, item.source_path];
+  }
   await removeEmptiedFolder(path.dirname(item.target_path), resolveDownloadRoot());
-  return item.target_path;
+  return [item.target_path];
 }
 
 async function monitorTracks(operation, placed) {
@@ -677,7 +694,7 @@ async function settleIngest(operation) {
     for (const entry of placed) {
       try {
         const taken = await takeBackDouble(operation, entry.item, entry.media, removed);
-        if (taken) changed.push(taken);
+        if (taken) changed.push(...taken);
       } catch (error) {
         logger.warn("library-files", "Ingest could not take back a file the Library already had", {
           operationId: operation.id,
@@ -688,7 +705,7 @@ async function settleIngest(operation) {
     }
     placed = placed.filter(({ item }) => !removed.has(item.target_path));
     updateLibraryFileOperation(operation.id, { summary: { doubles: "checked" } });
-    await rescan(changed);
+    await rescan(changed, { includeLidarr: operation.options.mode === "move" });
   }
   if (operation.summary.monitor === "pending") {
     await monitorTracks(operation, placed);

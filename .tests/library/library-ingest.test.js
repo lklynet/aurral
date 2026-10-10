@@ -22,6 +22,7 @@ const [
   { getLibraryFileOperation },
   { settleIngestedMusic, checkIngestSource },
   { resolveDownloadRoot },
+  { clearScheduledLibraryScan },
 ] = await setupIsolatedBackend(
   "library-ingest",
   "backend/config/db-sqlite.js",
@@ -31,6 +32,7 @@ const [
   "backend/services/libraryFiles/operationStore.js",
   "backend/services/libraryFiles/ingest.js",
   "backend/services/downloadPaths.js",
+  "backend/services/libraryScanWorker.js",
 );
 
 const root = resolveDownloadRoot();
@@ -296,8 +298,8 @@ test("music joins the folders and names already on disk when the Library writes 
 
 // Two albums with one title leave an untagged source without an album to
 // match, but the scan still files its copy with the Library's track.
-async function sourceTheScanJoinsToALibraryTrack() {
-  const kept = await libraryTrack(path.join("Twice", "Album", "01 - Song.flac"), {
+async function sourceTheScanJoinsToALibraryTrack({ keptFolder = "Album" } = {}) {
+  const kept = await libraryTrack(path.join("Twice", keptFolder, "01 - Song.flac"), {
     artist: "Twice", album: "Album", title: "Song", track: "1",
   });
   await libraryTrack(path.join("Twice", "Album (Tagged)", "01 - Other.flac"), {
@@ -337,17 +339,25 @@ test("a copy the Library scan files with a track the Library already had is take
   assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE title = 'Song'").pluck().get(), 0);
 });
 
-test("a moved file the Library scan files with a track the Library already had goes back to its source, offered for removal", async () => {
-  const { kept, source, file, filed } = await sourceTheScanJoinsToALibraryTrack();
+test("a moved file the Library scan files with a track the Library already had goes back to its source with its art, offered for removal", async () => {
+  const { kept, source, file, filed } = await sourceTheScanJoinsToALibraryTrack({ keptFolder: "Earlier Rip" });
+  const art = path.join(path.dirname(file), "cover.jpg");
+  await writeFile(art, "art");
   const id = await ingest(source, "move");
   await apply(id);
   assert.equal(await exists(file), false);
+  assert.equal(await readFile(path.join(path.dirname(filed), "cover.jpg"), "utf8"), "art");
   await scanMusicRoot({ rootPath: root, source: "aurral" });
+  clearScheduledLibraryScan();
 
   await settleIngestedMusic();
 
   assert.equal(await exists(file), true);
-  assert.equal(await exists(filed), false);
+  assert.equal(await readFile(art, "utf8"), "art");
+  assert.equal(await exists(path.dirname(filed)), false);
+  const queued = dbOps.getJSONSetting("pendingLibraryScanJob");
+  assert.equal(queued.includeLidarr, true);
+  assert.equal(queued.changedPaths.includes(file), true);
   assert.deepEqual(describe(id).sources, { removable: 1, removed: 0 });
   await operations.removeIngestSources(id);
   assert.equal((await runUntilSettled(id)).status, "complete");
