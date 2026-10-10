@@ -29,7 +29,7 @@ function targetFromInput(input) {
     const targetRef = text(input.libraryAlbumId) || text(input.albumMbid);
     return targetRef ? { kind, targetRef, albumRef: null } : null;
   }
-  const targetRef = text(input.artistMbid);
+  const targetRef = text(input.libraryArtistId) || text(input.artistMbid);
   return targetRef ? { kind, targetRef, albumRef: null } : null;
 }
 

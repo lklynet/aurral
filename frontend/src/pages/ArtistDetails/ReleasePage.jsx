@@ -609,7 +609,6 @@ function ReleasePage() {
                   {
                     kind: "album",
                     albumMbid: releaseMbid,
-                    libraryAlbumId: libraryInfo?.canonicalAlbumId,
                     artistMbid,
                     title: releaseTitle,
                     artistName,

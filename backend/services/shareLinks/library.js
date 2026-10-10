@@ -1,5 +1,6 @@
 import {
   getLibraryForAlbumReferences,
+  getLibraryForArtistReferences,
   getLibraryForArtists,
   getLibraryTrack,
 } from "../libraryQueryService.js";
@@ -26,7 +27,11 @@ function loadLibrary({ kind, targetRef, albumRef }) {
   if (kind === "album") {
     return getLibraryForAlbumReferences({ references: [targetRef], availableOnly: true });
   }
-  if (kind === "artist") return getLibraryForArtists({ mbids: [targetRef], availableOnly: true });
+  if (kind === "artist") {
+    return isPositiveId(targetRef)
+      ? getLibraryForArtistReferences({ references: [targetRef], availableOnly: true })
+      : getLibraryForArtists({ mbids: [targetRef], availableOnly: true });
+  }
   return { artists: [], albums: [], tracks: [] };
 }
 
