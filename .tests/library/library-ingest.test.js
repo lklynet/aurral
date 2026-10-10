@@ -342,6 +342,24 @@ test("a copy the Library scan files with a track the Library already had is take
   assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE title = 'Song'").pluck().get(), 0);
 });
 
+test("a filed track that shares its recording with another track of the album stays after the Library scan", async () => {
+  const silence = { artist: "Silent", album: "Album", title: "[silence]", MUSICBRAINZ_TRACKID: "aaaaaaaa-0000-4000-8000-0000000000a1" };
+  const first = await libraryTrack(path.join("Silent", "Album", "01 - [silence].flac"), { ...silence, track: "1" });
+  const source = newSource();
+  await makeTrack(path.join(source, "Silent", "Album", "silence.flac"), { ...silence, track: "2" });
+  const id = await ingest(source, "copy", "tracks");
+  const [placed] = await apply(id);
+  assert.equal(placed.status, "done");
+  const filed = path.resolve(root, placed.target);
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  assert.deepEqual(filesOfTrack("[silence]"), [first, filed]);
+
+  await settleIngestedMusic();
+
+  assert.equal(await exists(filed), true);
+  assert.deepEqual(describe(id).counts, { done: 1 });
+});
+
 test("a copy taken back out is recorded and rescanned even when its lyrics cannot be removed", async () => {
   const { source, file, filed } = await sourceTheScanJoinsToALibraryTrack();
   await writeFile(file.replace(/\.mp3$/, ".lrc"), "[00:00.00]la");

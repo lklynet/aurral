@@ -30,7 +30,7 @@ import {
 import { writeAudioTags } from "../audioTags.js";
 import { rekeyLibraryAlbum } from "../libraryMediaStore.js";
 import { findLibraryTrackAtPath, matchLibraryRecord } from "./libraryMatch.js";
-import { SAME_LENGTH_MS, formatGap, readRecording } from "./recordings.js";
+import { SAME_LENGTH_MS, differentTracks, formatGap, readRecording } from "./recordings.js";
 import { planTagFill } from "./tagFill.js";
 import {
   addLibraryFileOperationItems,
@@ -199,12 +199,17 @@ const plannedIdentity = (record, tags = {}) => {
 // they number the disc differently. The MusicBrainz IDs the ingest would fill
 // in are what the Library scan matches the filed copy by, so the ingest looks
 // the track up by them too, whether or not it writes them.
-async function placeRecord(item, record, metadata, albums) {
-  const match = matchLibraryRecord(record);
+async function placeRecord(item, record, metadata, albums, recording) {
+  const sameTrack = async (found) => {
+    const files = [];
+    for (const file of found.files) if (!differentTracks(recording, await readRecording(file))) files.push(file);
+    return { ...found, files };
+  };
+  const match = await sameTrack(matchLibraryRecord(record));
   if (match.files.length) return { match, fill: null };
   const fill = await planFill(item, record, match, metadata, albums);
   const planned = plannedIdentity(record, fill.tags);
-  const byIds = planned ? matchLibraryRecord(planned) : null;
+  const byIds = planned ? await sameTrack(matchLibraryRecord(planned)) : null;
   const better = byIds && (byIds.files.length || (byIds.album && !match.album));
   return { match: better ? byIds : match, fill };
 }
@@ -227,7 +232,8 @@ async function planItem(operation, item, plannedTargets, albums) {
       reason: "Aurral could not tell the artist and album. Tag the file, or put it in an Artist/Album folder.",
     };
   }
-  const { match, fill } = await placeRecord(item, record, metadata, albums);
+  const recording = await readRecording(item.sourcePath, metadata);
+  const { match, fill } = await placeRecord(item, record, metadata, albums, recording);
   const details = {
     artistName: match.artistName,
     albumName: match.albumName,
@@ -245,7 +251,7 @@ async function planItem(operation, item, plannedTargets, albums) {
     ? { status: "pending", targetPath, details: { ...details, action: "remove-duplicate" } }
     : { status: "duplicate", targetPath, reason: "The Library already has this file.", details };
   const sameRecording = async (candidates, title) => {
-    const verdict = await compareWithLibrary(await readRecording(item.sourcePath, metadata), candidates, title);
+    const verdict = await compareWithLibrary(recording, candidates, title);
     if (verdict.reason) return { status: "skipped", targetPath: verdict.targetPath, reason: verdict.reason, details };
     return {
       status: "duplicate",
@@ -564,12 +570,15 @@ async function takeBackDouble(operation, item, media, removed) {
      WHERE track_id = ? AND album_id IS ? AND source = 'aurral' AND available = 1 AND path != ?
      ORDER BY id`,
   ).pluck().all(media.track_id, media.album_id, item.target_path).filter((other) => !removed.has(other));
+  const filed = await readRecording(item.target_path);
   const kept = [];
-  for (const other of others) if (await fileExists(other)) kept.push(other);
+  for (const other of others) {
+    if (await fileExists(other) && !differentTracks(filed, await readRecording(other))) kept.push(other);
+  }
   if (!kept.length) return null;
   const details = JSON.parse(item.details_json || "{}");
   const title = db.prepare("SELECT title FROM library_tracks WHERE id = ?").pluck().get(media.track_id) || details.title;
-  const verdict = await compareWithLibrary(await readRecording(item.target_path), kept, title);
+  const verdict = await compareWithLibrary(filed, kept, title);
   if (verdict.reason) return null;
   const sidecars = (details.sidecars || []).map((extension) => [
     `${item.target_path.slice(0, -path.extname(item.target_path).length)}${extension}`,

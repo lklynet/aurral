@@ -19,7 +19,7 @@ import {
   removeEmptyDirectories,
   transferSidecars,
 } from "./fileTransfer.js";
-import { SAME_LENGTH_MS, compareQuality, formatGap, readRecording } from "./recordings.js";
+import { SAME_LENGTH_MS, compareQuality, differentTracks, formatGap, readRecording } from "./recordings.js";
 import { planTagFill } from "./tagFill.js";
 import {
   addLibraryFileOperationItems,
@@ -124,6 +124,12 @@ async function compareCopies(filePath, holderPath) {
     return { same: true, keepHolder: true, reason: "An exact copy of this file already has this name." };
   }
   const [mine, theirs] = await Promise.all([readRecording(filePath), readRecording(holderPath)]);
+  if (differentTracks(mine, theirs)) {
+    return {
+      same: false,
+      reason: `Another file of this recording already has this name, but this one is track ${mine.trackNumber} and that one is track ${theirs.trackNumber}, so they are different tracks. Check their tags.`,
+    };
+  }
   if (mine.durationMs == null || theirs.durationMs == null) {
     return {
       same: false,
