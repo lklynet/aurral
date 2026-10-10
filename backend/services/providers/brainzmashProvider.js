@@ -26,6 +26,7 @@ import {
 import { selectBestAlbumImage } from "../imageService.js";
 import createRateLimiter from "../apiClients/rateLimiter.js";
 import { runSharedInflight } from "../sharedInflight.js";
+import { logger, safeLogDiagnostic } from "../logger.js";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   getMetadataProviderBudget,
@@ -41,16 +42,20 @@ const METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS = 5_000;
 const METADATA_RATE_LIMIT_MAX_COOLDOWN_MS = 60_000;
 const METADATA_FORBIDDEN_COOLDOWN_MS = 5 * 60_000;
 const METADATA_CACHE_MAX_ENTRIES = 20_000;
+const METADATA_HOT_CACHE_TTL_SECONDS = 60;
+const METADATA_HOT_CACHE_MAX_ENTRIES = 50;
+const METADATA_STORE_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const MIN_ALBUM_SEARCH_WINDOW = 25;
 const METADATA_REQUEST_MIN_INTERVAL_MS = 100;
 const METADATA_REQUEST_TIMEOUT_MS = 8000;
 const METADATA_MAX_QUEUED_REQUESTS = Math.floor(
   METADATA_REQUEST_TIMEOUT_MS / METADATA_REQUEST_MIN_INTERVAL_MS,
 ) - 1;
-const providerCache = createCache(
-  METADATA_ENTITY_CACHE_TTL_SECONDS,
-  METADATA_CACHE_MAX_ENTRIES,
+const metadataHotCache = createCache(
+  METADATA_HOT_CACHE_TTL_SECONDS,
+  METADATA_HOT_CACHE_MAX_ENTRIES,
 );
+let nextMetadataStoreCleanupAt = 0;
 const metadataNotFoundCache = createCache(
   METADATA_NOT_FOUND_CACHE_TTL_SECONDS,
   METADATA_CACHE_MAX_ENTRIES,
@@ -63,7 +68,8 @@ const providerRequestLimiter = createRateLimiter(METADATA_REQUEST_MIN_INTERVAL_M
 const METADATA_MAX_RETRIES = 1;
 
 export function clearMetadataProviderCaches() {
-  providerCache.flushAll();
+  metadataHotCache.flushAll();
+  dbOps.clearMetadataResponses();
   metadataNotFoundCache.flushAll();
   releaseCache.flushAll();
   providerInflightRequests.clear();
@@ -206,6 +212,41 @@ function getMetadataCachePolicy(path) {
   };
 }
 
+function readCachedMetadata(cacheKey) {
+  let entry = metadataHotCache.get(cacheKey);
+  if (!entry) {
+    entry = dbOps.getMetadataResponse(cacheKey);
+    if (!entry) return null;
+    metadataHotCache.set(cacheKey, entry);
+  }
+  const now = Date.now();
+  if (entry.staleUntil < now) return null;
+  return { value: entry.value, stale: entry.freshUntil < now };
+}
+
+function storeMetadata(cacheKey, value, { freshTtlSeconds, staleTtlSeconds }) {
+  const now = Date.now();
+  const freshUntil = now + freshTtlSeconds * 1000;
+  const entry = { value, freshUntil, staleUntil: freshUntil + staleTtlSeconds * 1000 };
+  metadataHotCache.set(cacheKey, entry);
+  try {
+    dbOps.setMetadataResponse(cacheKey, entry);
+    if (now >= nextMetadataStoreCleanupAt) {
+      nextMetadataStoreCleanupAt = now + METADATA_STORE_CLEANUP_INTERVAL_MS;
+      dbOps.cleanMetadataResponses(METADATA_CACHE_MAX_ENTRIES);
+    }
+  } catch (error) {
+    logger.warn("metadata", "Could not store metadata response", {
+      reason: safeLogDiagnostic(error),
+    });
+  }
+}
+
+function forgetMetadata(cacheKey) {
+  metadataHotCache.delete(cacheKey);
+  dbOps.deleteMetadataResponse(cacheKey);
+}
+
 function refreshMetadata(cacheKey, path, params, { signal } = {}) {
   const baseUrl = getMetadataBaseUrl();
   const cachePolicy = getMetadataCachePolicy(path);
@@ -255,12 +296,7 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
           },
           { signal: sharedSignal, timeoutMs: METADATA_REQUEST_TIMEOUT_MS },
         );
-        providerCache.set(
-          cacheKey,
-          response.data,
-          cachePolicy.freshTtlSeconds,
-          cachePolicy.staleTtlSeconds,
-        );
+        storeMetadata(cacheKey, response.data, cachePolicy);
         metadataNotFoundCache.delete(cacheKey);
         healthState.lastSuccessAt = healthState.lastCheckedAt;
         healthState.lastFailureReason = "";
@@ -279,7 +315,7 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
           throw error;
         }
         if (error?.response?.status === 404 && isEntityMetadataPath(path)) {
-          providerCache.delete(cacheKey);
+          forgetMetadata(cacheKey);
           metadataNotFoundCache.set(cacheKey, true);
         }
         if (attempt === METADATA_MAX_RETRIES || !isRetryable(error)) throw error;
@@ -307,7 +343,7 @@ async function request(path, params = {}, { signal, forceRefresh = false } = {})
   if (!forceRefresh && metadataNotFoundCache.get(cacheKey)) {
     throw createMetadataNotFoundError();
   }
-  const cached = forceRefresh ? null : providerCache.getWithStale(cacheKey);
+  const cached = forceRefresh ? null : readCachedMetadata(cacheKey);
   if (cached) {
     if (cached.stale) {
       void refreshMetadata(cacheKey, path, params).catch(() => {});

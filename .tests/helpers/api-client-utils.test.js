@@ -96,6 +96,21 @@ test("TTL cache serves stale values during the configured stale window", () => {
   });
 });
 
+test("TTL cache releases expired entries before they push out live ones", () => {
+  let now = 1_000;
+  const cache = createCache(300, 3, { now: () => now });
+  cache.set("live", 1, 3600);
+  cache.set("stale", 2, 10, 600);
+  cache.set("expired", 3, 10);
+
+  now += 120_000;
+  cache.set("new", 4);
+
+  assert.equal(cache.get("live"), 1);
+  assert.deepEqual(cache.getWithStale("stale"), { value: 2, stale: true });
+  assert.equal(cache.get("new"), 4);
+});
+
 test("TTL cache removes values after the stale window", () => {
   let now = 1_000;
   const cache = createCache(300, 2, { now: () => now });

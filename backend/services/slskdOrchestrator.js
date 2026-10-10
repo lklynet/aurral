@@ -716,7 +716,10 @@ async function advanceSlskdSearch(payload, job, queries, resolvedTrack, searchOp
   const isCancelled = () => !isPipelinePayloadActive(payload);
   const enough = (results) => hasSlskdSearchCandidates(results, resolvedTrack, searchOptions);
   const activeSearch = payload.activeSearch?.query === queries[index] ? payload.activeSearch : null;
-  if (payload.activeSearch && !activeSearch) await stopSearch(payload.activeSearch.id);
+  if (payload.activeSearch && !activeSearch) {
+    searchMonitors.delete(payload.activeSearch.id);
+    await stopSearch(payload.activeSearch.id);
+  }
   if (activeSearch) {
     let result;
     try {
@@ -733,7 +736,10 @@ async function advanceSlskdSearch(payload, job, queries, resolvedTrack, searchOp
       });
       result = { done: true, data: null };
     }
-    if (isCancelled()) return { cancelled: true };
+    if (isCancelled()) {
+      searchMonitors.delete(activeSearch.id);
+      return { cancelled: true };
+    }
     if (!result.done) {
       return { payload: { ...payload, searchQueryIndex: index,
         delaySeconds: Math.max(1, Math.ceil(result.waitMs / 1000)) } };
