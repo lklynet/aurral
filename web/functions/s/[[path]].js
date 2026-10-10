@@ -1,5 +1,7 @@
 const PAYLOAD_VERSION = 1;
-const MAX_PAYLOAD_LENGTH = 700;
+const MAX_NAME_BYTES = 160;
+const MAX_PAYLOAD_BYTES = 3 + 3 * 16 + 3 * MAX_NAME_BYTES + 2;
+const MAX_PAYLOAD_LENGTH = Math.ceil((MAX_PAYLOAD_BYTES * 4) / 3);
 const KINDS = {
   1: { kind: "artist", ids: ["artistMbid"], names: ["artistName"] },
   2: { kind: "album", ids: ["albumMbid", "artistMbid"], names: ["title", "artistName"] },
@@ -103,7 +105,11 @@ const DEEZER_SEARCHES = {
   track: {
     path: "track",
     query: (item) => `${item.artistName} track:"${item.title.replace(/"/g, "")}"`,
-    score: (item, result) => releaseScore(item, result?.title, result?.artist?.name),
+    score: (item, result) =>
+      matchScore(item.artistName, result?.artist?.name) === 2 &&
+      [result?.title, result?.title_short].some((title) => matchScore(item.title, title) === 2)
+        ? 2
+        : 0,
     pick: (result, score, item) => ({
       link: result.link,
       art: result.album?.cover_xl || result.album?.cover_big,
