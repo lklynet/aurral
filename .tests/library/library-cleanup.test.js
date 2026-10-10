@@ -248,7 +248,7 @@ test("a second copy of a track is a duplicate, removed only when asked, and play
   assert.deepEqual(describe(id).sources, { removable: 0, removed: 1 });
 });
 
-test("the better copy of a track keeps its name, and a copy of a different length stays a conflict", async () => {
+test("the better copy of a track keeps its name, and a copy of a different length or another track of one recording stays a conflict", async () => {
   const tags = { artist: "Swap", album: "Album", title: "Song", track: "1" };
   const worse = await makeTrack(path.join(root, "Swap", "Album", "01 - Song.mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "96k"]);
   const middle = await makeTrack(path.join(root, "Swap", "Album", "song (2).mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "192k"]);
@@ -257,7 +257,11 @@ test("the better copy of a track keeps its name, and a copy of a different lengt
   const longTags = { artist: "Long", album: "Album", title: "Song", track: "1" };
   const short = await makeTrack(path.join(root, "Long", "Album", "01 - Song.flac"), longTags);
   const long = await makeTrack(path.join(root, "Long", "Album", "song.flac"), longTags, [], { seconds: 5 });
+  const silence = { artist: "Silent", album: "Album", title: "[silence]", MUSICBRAINZ_TRACKID: "3f3f3f3f-0000-4000-8000-0000000000s1" };
+  const firstSilence = await makeTrack(path.join(root, "Silent", "Album", "01 - [silence].flac"), { ...silence, track: "1" });
+  const secondSilence = await makeTrack(path.join(root, "Silent", "Album", "02 - [silence].flac"), { ...silence, track: "2" });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
+  assert.equal(mediaAt(firstSilence).track_id, mediaAt(secondSilence).track_id);
   const swapTrack = db.prepare(
     "SELECT track.id FROM library_tracks AS track JOIN library_media_files AS media ON media.track_id = track.id WHERE media.path = ?",
   ).pluck().get(worse);
@@ -271,6 +275,8 @@ test("the better copy of a track keeps its name, and a copy of a different lengt
   assert.equal(itemFor(middle).target, path.relative(root, worse));
   assert.equal(itemFor(long).status, "conflict");
   assert.match(itemFor(long).reason, /longer/);
+  assert.equal(itemFor(secondSilence).status, "conflict");
+  assert.match(itemFor(secondSilence).reason, /different tracks/);
 
   assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
   await operations.removeDuplicateFiles(id);
@@ -282,6 +288,8 @@ test("the better copy of a track keeps its name, and a copy of a different lengt
   assert.equal(db.prepare("SELECT track_id FROM library_media_files WHERE path = ? AND available = 1").pluck().get(worse), swapTrack);
   assert.equal(await exists(long), true);
   assert.equal(await exists(short), true);
+  assert.equal(await exists(firstSilence), true);
+  assert.equal(await exists(secondSilence), true);
 });
 
 test("removing duplicates finishes a removal a restart interrupted, and a failed name transfer keeps playlists on the better copy", async (t) => {

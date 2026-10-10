@@ -11,11 +11,18 @@ export async function readRecording(filePath, metadata = null) {
       durationMs: seconds > 0 ? Math.round(seconds * 1000) : null,
       lossless: parsed.format?.lossless === true,
       bitrate: Number(parsed.format?.bitrate) || 0,
+      trackNumber: Number(parsed.common?.track?.no) || null,
     };
   } catch {
-    return { durationMs: null, lossless: false, bitrate: 0 };
+    return { durationMs: null, lossless: false, bitrate: 0, trackNumber: null };
   }
 }
+
+// MusicBrainz can give one recording to several tracks of a release, such as
+// a run of silent tracks. Files whose tags number them differently are
+// different tracks, not copies, whatever the Library merged them into.
+export const differentTracks = (left, right) =>
+  left.trackNumber > 0 && right.trackNumber > 0 && left.trackNumber !== right.trackNumber;
 
 export const formatGap = (ms) => {
   const seconds = Math.round(Math.abs(ms) / 1000);
