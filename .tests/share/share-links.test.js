@@ -170,6 +170,14 @@ await seedAlbum({
   tracks: [{ title: "Unrelated", number: 1, file: "01 Unrelated.flac" }],
 });
 
+const localArtist = media.upsertLibraryArtist({ identityKey: "name:home recorder", name: "Home Recorder" });
+await seedAlbum({
+  artist: localArtist,
+  mbid: "76666666-6666-4666-8666-666666666666",
+  title: "Demos",
+  tracks: [{ title: "Basement Take", number: 1, file: "01 Basement Take.flac" }],
+});
+
 const api = express();
 api.use(express.json());
 api.use((req, res, next) => {
@@ -408,6 +416,14 @@ test("Profile shows the tunnel as unreachable while aurral.org refuses it", asyn
   db.prepare("DELETE FROM share_links").run();
   await listener.syncShareListener();
   await writeFile(launchLog, "");
+});
+
+test("an artist without a MusicBrainz ID shares from its Library ID", async () => {
+  const link = await createLink({ kind: "artist", libraryArtistId: String(localArtist.id) });
+  assert.equal(link.title, "Home Recorder");
+  const response = await fetch(await shareUrl(link));
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).tracks.map((track) => track.title), ["Basement Take"]);
 });
 
 test("only Library items can be shared to listen", async () => {

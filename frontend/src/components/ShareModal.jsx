@@ -24,7 +24,7 @@ const errorMessage = (error, fallback) =>
 
 function libraryRefs(item) {
   return Object.fromEntries(
-    ["kind", "trackMbid", "albumMbid", "artistMbid", "libraryTrackId", "libraryAlbumId"]
+    ["kind", "trackMbid", "albumMbid", "artistMbid", "libraryTrackId", "libraryAlbumId", "libraryArtistId"]
       .map((field) => [field, item?.[field] == null ? "" : String(item[field]).trim()])
       .filter(([, value]) => value),
   );

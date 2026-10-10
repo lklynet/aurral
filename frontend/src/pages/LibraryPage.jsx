@@ -22,6 +22,7 @@ import {
   RefreshCw,
   ScanSearch,
   Search,
+  Share,
   Sparkles,
   Trash2,
   UserRound,
@@ -55,6 +56,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useLibraryShareAction } from "../hooks/useShareAction";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
 import { useHiddenPlaylistTracks, usePlaylistBulkActions } from "./playlists/usePlaylistBulkActions.js";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
@@ -335,6 +337,7 @@ function LibraryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { bootstrap, hasPermission, user } = useAuth();
   const toast = useToast();
+  const shareLibrary = useLibraryShareAction();
   const { showError, showSuccess } = toast;
   const {
     staticPlaylists,
@@ -1757,6 +1760,47 @@ function LibraryPage() {
     }
   };
 
+  const shareLibraryItem = (kind, entity, { artist = null, album = null } = {}) => {
+    if (kind === "artist") {
+      shareLibrary(
+        { kind, libraryArtistId: entity.id, artistMbid: entity.mbid, artistName: entity.name },
+        entity.name,
+      );
+      return;
+    }
+    const artistName = artist?.name || entity.artistName || entity.albumArtist || album?.albumArtist;
+    const item =
+      kind === "album"
+        ? {
+            kind,
+            libraryAlbumId: entity.id,
+            albumMbid: entity.releaseGroupMbid || entity.mbid,
+            artistMbid: artist?.mbid,
+            title: entity.title,
+            artistName,
+          }
+        : {
+            kind,
+            libraryTrackId: entity.id,
+            libraryAlbumId: album?.id,
+            trackMbid: entity.mbid || entity.trackMbid,
+            albumMbid: album?.releaseGroupMbid || album?.mbid,
+            artistMbid: artist?.mbid,
+            title: entity.title,
+            artistName,
+            albumTitle: album?.title,
+          };
+    shareLibrary(item, entity.title);
+  };
+
+  const shareMenuItem = (kind, entity, context) => ({
+    id: "share",
+    label: `Share ${kind}`,
+    icon: Share,
+    onSelect: () => shareLibraryItem(kind, entity, context),
+    disabled: isPreviewLibrary,
+  });
+
   const openLibraryInfo = (kind, entity, context = {}) => {
     setLibraryInfo({ kind, entity, ...context });
   };
@@ -1884,6 +1928,7 @@ function LibraryPage() {
             icon: Info,
             onSelect: () => openLibraryInfo("track", track, { artist, album, trackNumber }),
           },
+          shareMenuItem("track", track, { artist, album }),
           {
             id: "favorite",
             label: isFavorite ? "Remove from favorites" : "Add to favorites",
@@ -2073,6 +2118,7 @@ function LibraryPage() {
                 icon: Info,
                 onSelect: () => openLibraryInfo("artist", artist),
               },
+              shareMenuItem("artist", artist),
               ...artistMbidMenuItems(artist),
               {
                 id: "favorite",
@@ -2192,6 +2238,7 @@ function LibraryPage() {
                 icon: Info,
                 onSelect: () => openLibraryInfo("album", album, { artist }),
               },
+              shareMenuItem("album", album, { artist }),
               {
                 id: "favorite",
                 label: isFavorite ? "Remove from favorites" : "Add to favorites",
@@ -2517,6 +2564,7 @@ function LibraryPage() {
                     icon: Info,
                     onSelect: () => openLibraryInfo("album", libraryAlbum, { artist }),
                   },
+                  shareMenuItem("album", libraryAlbum, { artist }),
                   {
                     id: "favorite",
                     label: favoriteIds.has(favoriteId("album", libraryAlbum))
@@ -2648,6 +2696,7 @@ function LibraryPage() {
                     icon: Info,
                     onSelect: () => openLibraryInfo("artist", libraryArtist),
                   },
+                  shareMenuItem("artist", libraryArtist),
                   ...artistMbidMenuItems(libraryArtist),
                   {
                     id: "favorite",

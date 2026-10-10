@@ -24,7 +24,7 @@ import { PlayerMiniProgress, PlayerSeek } from "./PlayerProgress";
 import { useModalDialog } from "../hooks/useModalDialog.js";
 import { PLAYER_SHORTCUTS, usePlayerShortcuts } from "../hooks/usePlayerShortcuts.js";
 import { useNowPlayingTitle } from "../hooks/useDocumentTitle";
-import { useShareAction } from "../hooks/useShareAction.js";
+import { useLibraryShareAction, useShareAction } from "../hooks/useShareAction.js";
 import { useCollectionTint } from "./CollectionHeader";
 
 const SHEET_EXIT_MS = 260;
@@ -54,7 +54,8 @@ function GlobalPlayerBar() {
     seek,
     getPosition,
   } = useAudioQueue();
-  const share = useShareAction();
+  const sharePlain = useShareAction();
+  const shareLibrary = useLibraryShareAction();
   const location = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -168,7 +169,7 @@ function GlobalPlayerBar() {
   const albumPath = artistMbid && albumMbid ? `/artist/${artistMbid}/release/${albumMbid}` : "";
   const canShareTrack = Boolean(currentTrack.title && artistLabel);
   const shareTrack = () =>
-    share(
+    (currentTrack.libraryTrackId ? shareLibrary : sharePlain)(
       {
         kind: "track",
         trackMbid: currentTrack.trackMbid,
