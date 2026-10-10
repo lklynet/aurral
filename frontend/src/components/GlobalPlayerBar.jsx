@@ -9,6 +9,7 @@ import {
   Play,
   Repeat,
   Repeat1,
+  Share,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -23,6 +24,7 @@ import { PlayerMiniProgress, PlayerSeek } from "./PlayerProgress";
 import { useModalDialog } from "../hooks/useModalDialog.js";
 import { PLAYER_SHORTCUTS, usePlayerShortcuts } from "../hooks/usePlayerShortcuts.js";
 import { useNowPlayingTitle } from "../hooks/useDocumentTitle";
+import { useShareAction } from "../hooks/useShareAction.js";
 import { useCollectionTint } from "./CollectionHeader";
 
 const SHEET_EXIT_MS = 260;
@@ -52,6 +54,7 @@ function GlobalPlayerBar() {
     seek,
     getPosition,
   } = useAudioQueue();
+  const share = useShareAction();
   const location = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -163,6 +166,20 @@ function GlobalPlayerBar() {
   const albumLabel = currentTrack.album || "";
   const artistPath = artistMbid ? `/artist/${artistMbid}` : "";
   const albumPath = artistMbid && albumMbid ? `/artist/${artistMbid}/release/${albumMbid}` : "";
+  const canShareTrack = Boolean(currentTrack.title && artistLabel);
+  const shareTrack = () =>
+    share(
+      {
+        kind: "track",
+        trackMbid: currentTrack.trackMbid,
+        albumMbid,
+        artistMbid,
+        title: currentTrack.title,
+        artistName: artistLabel,
+        albumTitle: albumLabel,
+      },
+      currentTrack.title,
+    );
   const metaLink = (label, path) =>
     label ? path ? <Link to={path} className="global-player__link">{label}</Link> : label : null;
 
@@ -293,14 +310,26 @@ function GlobalPlayerBar() {
                 <ChevronDown aria-hidden="true" />
               </button>
               <span className="now-playing__eyebrow">Now playing</span>
-              <button
-                type="button"
-                className="now-playing__icon-button"
-                onClick={clearQueue}
-                aria-label="Stop and clear queue"
-              >
-                <X aria-hidden="true" />
-              </button>
+              <span className="now-playing__header-actions">
+                {canShareTrack ? (
+                  <button
+                    type="button"
+                    className="now-playing__icon-button"
+                    onClick={shareTrack}
+                    aria-label="Share track"
+                  >
+                    <Share aria-hidden="true" />
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="now-playing__icon-button"
+                  onClick={clearQueue}
+                  aria-label="Stop and clear queue"
+                >
+                  <X aria-hidden="true" />
+                </button>
+              </span>
             </div>
 
             <div className="now-playing__body">
@@ -468,6 +497,16 @@ function GlobalPlayerBar() {
         </div>
 
         <div className="global-player__side">
+          {canShareTrack ? (
+            <TooltipButton
+              tooltipPlacement="top"
+              label="Share track"
+              onClick={shareTrack}
+              className="btn btn-ghost btn-icon btn-xs"
+            >
+              <Share className="artist-icon-sm" />
+            </TooltipButton>
+          ) : null}
           <TooltipButton
             tooltipPlacement="top"
             ref={queueTriggerRef}

@@ -367,17 +367,6 @@ export const buildAurralPick = ({ releaseGroups = [], getAlbumStatus } = {}) => 
   };
 };
 
-export const encodeLastfmPathSegment = (value) =>
-  encodeURIComponent(String(value || "").trim())
-    .replace(/%20/g, "+")
-    .replace(/%26/g, "&");
-
-export const buildLastfmArtistUrl = (artistName) =>
-  `https://www.last.fm/music/${encodeLastfmPathSegment(artistName)}`;
-
-export const buildLastfmAlbumUrl = (artistName, albumTitle) =>
-  `${buildLastfmArtistUrl(artistName)}/${encodeLastfmPathSegment(albumTitle)}`;
-
 export const isLibraryPlaybackTrack = (track) =>
   track?.previewProvider === "lidarr" || !!track?.streamPath;
 
