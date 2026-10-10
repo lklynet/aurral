@@ -1578,6 +1578,31 @@ test("a rescan forgets files gone from a folder that still holds music, includin
   }
 });
 
+test("a rescan of one folder leaves the songs of another folder's files in the Library", async () => {
+  const roots = await Promise.all([
+    mkdtemp(path.join(tmpdir(), "aurral-library-scanned-")),
+    mkdtemp(path.join(tmpdir(), "aurral-library-elsewhere-")),
+  ]);
+  const source = `test-elsewhere-${process.pid}`;
+  const artist = `Elsewhere ${process.pid}`;
+  const tags = {};
+  try {
+    for (const [root, album] of [[roots[0], "Scanned"], [roots[1], "Elsewhere"]]) {
+      tags[await createAudioFile(root, `${artist}/${album}/01 Song.flac`)] = untagged(artist, album, "Song");
+    }
+    const reader = async (filePath) => tags[filePath];
+    for (const root of roots) await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
+
+    await scanMusicRoot({ rootPath: roots[0], source, metadataReader: reader });
+
+    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["Elsewhere", 1], ["Scanned", 1]]);
+  } finally {
+    for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
+    removeArtistsNamed(artist);
+    await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
+  }
+});
+
 test("a partial rescan preserves the last known-good file availability", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-partial-"));
   const source = `test-partial-${process.pid}`;

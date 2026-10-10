@@ -478,7 +478,9 @@ export async function scanMusicRoot({
         });
       }
       if (unseenPaths && result.filesFailed === 0) {
-        await forgetMissingFiles(source, resolvedRoot, unseenPaths);
+        const unseen = [...unseenPaths];
+        await forgetMissingFiles(source, resolvedRoot, unseen.filter((filePath) => isPathWithin(resolvedRoot, filePath)));
+        markLibraryMediaFilesUnavailable(source, unseen.filter((filePath) => !isPathWithin(resolvedRoot, filePath)));
       }
       if (requestedFiles) {
         const scopes = reconcilePaths || requestedFiles;
