@@ -1197,6 +1197,45 @@ test("a song whose files are gone leaves an album that still plays unless someon
   }
 });
 
+test("an untagged track several albums list becomes each album's own tagged track for that album's files", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-shared-untagged-"));
+  const source = `test-shared-untagged-${process.pid}`;
+  const elsewhere = `test-shared-untagged-elsewhere-${process.pid}`;
+  const artist = `Shared Untagged ${process.pid}`;
+  const tags = {};
+  const first = await createAudioFile(root, `${artist}/First/01 Song.flac`);
+  const second = await createAudioFile(root, `${artist}/Second/01 Song.flac`);
+  tags[first] = tagged(artist, "First", "Song", 1, "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d", "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e");
+  tags[second] = tagged(artist, "Second", "Song", 1, "c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f", "d4e5f6a7-b8c9-4d0e-8f2a-3b4c5d6e7f8a");
+  const scan = () => scanMusicRoot({ rootPath: root, source, metadataReader: async (filePath) => tags[filePath] });
+  const copies = [];
+  try {
+    await scan();
+    const rows = [fileRows(source, first), fileRows(source, second)];
+    const artistId = db.prepare("SELECT artist_id FROM library_albums WHERE id = ?").pluck().get(rows[0].albumId);
+    const leftover = upsertLibraryAlbum({ identityKey: `name:album:shared untagged ${process.pid}`, artistId, title: "First", syncSearch: false });
+    const shared = upsertLibraryTrack({ identityKey: `name:track:shared untagged ${process.pid}:song`, title: "Song", syncSearch: false });
+    for (const albumId of [leftover.id, ...rows.map((row) => row.albumId)]) {
+      linkLibraryAlbumTrack({ albumId, trackId: shared.id, discNumber: 1, trackNumber: 1, syncSearch: false });
+    }
+    for (const row of rows) {
+      const copy = path.join(root, "elsewhere", `${row.albumId}.mp3`);
+      upsertLibraryMediaFile({ trackId: shared.id, albumId: row.albumId, source: elsewhere, path: copy });
+      copies.push(copy);
+    }
+
+    await scan();
+
+    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["First", 1], ["Second", 1]]);
+    assert.deepEqual(filesOnTrack(rows[0].trackId), [first, copies[0]].sort());
+    assert.deepEqual(filesOnTrack(rows[1].trackId), [second, copies[1]].sort());
+  } finally {
+    for (const copy of copies) deleteIndexedFile(elsewhere, copy);
+    for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a scan that removes an album moves the Library's last-modified time forward, so clients drop it", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-removal-time-"));
   const artistName = `Removal Time ${process.pid}`;

@@ -941,6 +941,22 @@ const trackLinkedStmt = db.prepare("SELECT 1 FROM library_album_tracks WHERE tra
 const trackHasFileStmt = db.prepare("SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1");
 const deleteTrackStmt = db.prepare("DELETE FROM library_tracks WHERE id = ?");
 
+const moveAlbumFilesStmt = db.prepare(
+  "UPDATE library_media_files SET track_id = ?, updated_at = ? WHERE track_id = ? AND album_id = ?",
+);
+
+// A track becomes the matching track for one album. A track other albums
+// still list stays itself there, and only this album's files move.
+function becomeAlbumTrack(albumId, track, match) {
+  unlinkAlbumTrackStmt.run(albumId, track.id);
+  if (!trackLinkedStmt.get(track.id)) {
+    rekeyLibraryTrack(track.id, match.identity_key);
+    return;
+  }
+  moveAlbumFilesStmt.run(match.id, now(), track.id, albumId);
+  syncLibrarySearchTrack(track.id);
+}
+
 // A track takes its twin's identity only when nothing plays it under its
 // own: a tagged recording with files on another album stays that recording.
 function foldLibraryAlbum(album, tracks, target) {
@@ -954,7 +970,7 @@ function foldLibraryAlbum(album, tracks, target) {
     });
     if (match?.id === track.id) continue;
     if (match && (isNameKey(track.identity_key) || !trackHasFileStmt.get(track.id))) {
-      rekeyLibraryTrack(track.id, match.identity_key);
+      becomeAlbumTrack(album.id, track, match);
     } else if (!track.has_files) {
       dropped.push(track.id);
     }
@@ -1054,8 +1070,7 @@ function foldUntaggedLibraryTracks() {
         trackNumber: track.track_number,
       });
       if (!match) continue;
-      unlinkAlbumTrackStmt.run(albumId, track.id);
-      rekeyLibraryTrack(track.id, match.identity_key);
+      becomeAlbumTrack(albumId, track, match);
       changed += 1;
     }
   }
