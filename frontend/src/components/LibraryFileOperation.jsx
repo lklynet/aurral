@@ -190,8 +190,12 @@ export default function LibraryFileOperation({ operation, onChanged, showError }
           Removed {plural(operation.sources.removed, "source file")} already in the Library.
         </p>
       ) : null}
-      {operation.summary?.monitor === "pending" ? (
-        <p className="library-file-op__notes">Aurral monitors this music once the Library scan has found it.</p>
+      {operation.summary?.monitor === "pending" || operation.summary?.doubles === "pending" ? (
+        <p className="library-file-op__notes">
+          {operation.summary?.monitor === "pending"
+            ? "Once the Library scan has found this music, Aurral checks it for tracks the Library already had and monitors the rest."
+            : "Once the Library scan has found this music, Aurral checks it for tracks the Library already had."}
+        </p>
       ) : null}
       {groups.length ? (
         <div className="library-file-op__groups" role="group" aria-label="Files Aurral left alone">

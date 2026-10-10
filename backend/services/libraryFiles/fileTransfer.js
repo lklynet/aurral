@@ -97,15 +97,18 @@ export async function placeFile(source, target, mode) {
 export async function transferSidecars(source, target, mode) {
   const sourceBase = source.slice(0, -path.extname(source).length);
   const targetBase = target.slice(0, -path.extname(target).length);
+  const placed = [];
   for (const extension of SIDECAR_EXTENSIONS) {
     const from = `${sourceBase}${extension}`;
     if (!(await fs.lstat(from).catch(() => null))?.isFile()) continue;
     try {
       await placeFile(from, `${targetBase}${extension}`, mode);
+      placed.push(extension);
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
     }
   }
+  return placed;
 }
 
 export async function removeSidecars(filePath) {

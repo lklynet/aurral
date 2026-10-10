@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmod, copyFile, link, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, copyFile, link, mkdir, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -20,8 +20,9 @@ const [
   { scanMusicRoot },
   operations,
   { getLibraryFileOperation },
-  { applyIngestMonitoring, checkIngestSource },
+  { settleIngestedMusic, checkIngestSource },
   { resolveDownloadRoot },
+  { clearScheduledLibraryScan },
 ] = await setupIsolatedBackend(
   "library-ingest",
   "backend/config/db-sqlite.js",
@@ -31,6 +32,7 @@ const [
   "backend/services/libraryFiles/operationStore.js",
   "backend/services/libraryFiles/ingest.js",
   "backend/services/downloadPaths.js",
+  "backend/services/libraryScanWorker.js",
 );
 
 const root = resolveDownloadRoot();
@@ -112,7 +114,7 @@ test("copy files music under Aurral's names, keeps the source, and starts unmoni
   assert.notEqual((await stat(first)).ino, (await stat(path.join(albumDir, "01 - First_ Song.flac"))).ino);
 
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  await applyIngestMonitoring();
+  await settleIngestedMusic();
   const [album] = libraryAlbums();
   assert.equal(album.title, "Copy Album");
   assert.equal(JSON.parse(album.metadata_json).monitored, false);
@@ -152,13 +154,13 @@ async function ingestBesideExistingTrack(monitor) {
   const source = newSource();
   await makeTrack(path.join(source, "b.flac"), { artist: "Watch", album: "Album", title: "Added", track: "2" });
   await apply(await ingest(source, "copy", monitor));
-  await applyIngestMonitoring();
+  await settleIngestedMusic();
   const monitored = () => Object.fromEntries(
     db.prepare("SELECT title, monitored FROM library_tracks ORDER BY title").all().map((row) => [row.title, row.monitored]),
   );
   assert.deepEqual(monitored(), { Kept: 0 });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  await applyIngestMonitoring();
+  await settleIngestedMusic();
   return {
     tracks: monitored(),
     album: db.prepare("SELECT monitor_mode FROM library_management WHERE entity_kind = 'album'").pluck().get(),
@@ -266,6 +268,110 @@ test("a track the Library has in a different file is skipped as already in the L
   assert.equal(await exists(path.join(moveSource, "Held", "Album", "cover.jpg")), true);
   assert.deepEqual(await readFile(library), libraryBytes);
   assert.equal(await exists(path.join(root, "Held", "Album", "01 - Song.mp3")), false);
+});
+
+test("music joins the folders and names already on disk when the Library writes them in a different case", async () => {
+  await libraryTrack(path.join("Cloud Nothings", "Turning On", "01 - Intro.flac"), {
+    artist: "CLOUD NOTHINGS", album: "TURNING ON", title: "Intro", track: "1",
+  });
+  const unindexed = await makeTrack(path.join(root, "Cloud Nothings", "Turning On", "03 - closer.flac"), {
+    title: "Something Else",
+  });
+  const before = await readFile(unindexed);
+  const source = newSource();
+  await makeTrack(path.join(source, "b.flac"), { artist: "Cloud Nothings", album: "Turning On", title: "Opening", track: "2" });
+  const closer = await makeTrack(path.join(source, "c.flac"), {
+    artist: "Cloud Nothings", album: "Turning On", title: "Closer", track: "3",
+  });
+
+  const items = await apply(await ingest(source, "copy"));
+
+  assert.deepEqual(items.map((item) => [item.status, item.target]), [
+    ["done", path.join("Cloud Nothings", "Turning On", "02 - Opening.flac")],
+    ["skipped", path.join("Cloud Nothings", "Turning On", "03 - closer.flac")],
+  ]);
+  assert.deepEqual(await readdir(root), ["Cloud Nothings"]);
+  assert.deepEqual(await readdir(path.join(root, "Cloud Nothings")), ["Turning On"]);
+  assert.deepEqual(await readFile(unindexed), before);
+  assert.equal(await exists(closer), true);
+});
+
+// Two albums with one title leave an untagged source without an album to
+// match, but the scan still files its copy with the Library's track.
+async function sourceTheScanJoinsToALibraryTrack({ keptFolder = "Album" } = {}) {
+  const kept = await libraryTrack(path.join("Twice", keptFolder, "01 - Song.flac"), {
+    artist: "Twice", album: "Album", title: "Song", track: "1",
+  });
+  await libraryTrack(path.join("Twice", "Album (Tagged)", "01 - Other.flac"), {
+    artist: "Twice", album: "Album", title: "Other", track: "1",
+    MUSICBRAINZ_RELEASEGROUPID: "99999999-9999-4999-8999-999999999999",
+  });
+  const source = newSource();
+  const file = await makeTrack(path.join(source, "Twice", "Album", "song.mp3"), {
+    artist: "Twice", album: "Album", title: "Song", track: "1",
+  });
+  return { kept, source, file, filed: path.join(root, "Twice", "Album", "01 - Song.mp3") };
+}
+
+const filesOfTrack = (title) => db.prepare(
+  `SELECT media.path FROM library_media_files AS media JOIN library_tracks AS track ON track.id = media.track_id
+   WHERE track.title = ? AND media.available = 1 ORDER BY media.path`,
+).pluck().all(title);
+
+test("a copy the Library scan files with a track the Library already had is taken back out, and the source stays", async () => {
+  const { kept, source, file, filed } = await sourceTheScanJoinsToALibraryTrack();
+  const keptLyrics = kept.replace(/\.flac$/, ".lrc");
+  await writeFile(keptLyrics, "[00:00.00]kept");
+  const id = await ingest(source, "copy", "tracks");
+  const [placed] = await apply(id);
+  assert.equal(placed.status, "done");
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  assert.deepEqual(filesOfTrack("Song"), [kept, filed]);
+
+  await settleIngestedMusic();
+
+  const [item] = operations.describeLibraryFileOperationItems(getLibraryFileOperation(id), {});
+  assert.deepEqual([item.status, item.target], ["duplicate", path.relative(root, kept)]);
+  assert.equal(await exists(filed), false);
+  assert.equal(await exists(file), true);
+  assert.equal(await exists(kept), true);
+  assert.equal(await readFile(keptLyrics, "utf8"), "[00:00.00]kept");
+  assert.deepEqual(describe(id).counts, { duplicate: 1 });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  assert.deepEqual(filesOfTrack("Song"), [kept]);
+  assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE title = 'Song'").pluck().get(), 0);
+});
+
+test("a moved file the Library scan files with a track the Library already had goes back to its source with its art and lyrics, offered for removal, and the Library keeps its own", async () => {
+  const { kept, source, file, filed } = await sourceTheScanJoinsToALibraryTrack({ keptFolder: "Earlier Rip" });
+  const art = path.join(path.dirname(file), "cover.jpg");
+  await writeFile(art, "art");
+  const lyrics = file.replace(/\.mp3$/, ".lrc");
+  await writeFile(lyrics, "[00:00.00]la");
+  const libraryArt = path.join(path.dirname(filed), "folder.jpg");
+  await mkdir(path.dirname(libraryArt), { recursive: true });
+  await writeFile(libraryArt, "library art");
+  const id = await ingest(source, "move");
+  await apply(id);
+  assert.equal(await exists(file), false);
+  assert.equal(await readFile(path.join(path.dirname(filed), "cover.jpg"), "utf8"), "art");
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  clearScheduledLibraryScan();
+
+  await settleIngestedMusic();
+
+  assert.equal(await exists(file), true);
+  assert.equal(await readFile(art, "utf8"), "art");
+  assert.equal(await readFile(lyrics, "utf8"), "[00:00.00]la");
+  assert.deepEqual(await readdir(path.dirname(filed)), ["folder.jpg"]);
+  const queued = dbOps.getJSONSetting("pendingLibraryScanJob");
+  assert.equal(queued.includeLidarr, true);
+  assert.equal(queued.changedPaths.includes(file), true);
+  assert.deepEqual(describe(id).sources, { removable: 1, removed: 0 });
+  await operations.removeIngestSources(id);
+  assert.equal((await runUntilSettled(id)).status, "complete");
+  assert.equal(await exists(file), false);
+  assert.equal(await exists(kept), true);
 });
 
 test("a source whose MusicBrainz tags miss the Library's album is still the track at its Library name", async () => {
@@ -397,7 +503,7 @@ test("removing kept sources checks each against the Library again, removes empti
   await apply(id);
   assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  await applyIngestMonitoring();
+  await settleIngestedMusic();
   const unmonitorFour = db.prepare("UPDATE library_tracks SET monitored = 0 WHERE title = 'Four'");
   assert.equal(unmonitorFour.run().changes, 1);
 
@@ -427,7 +533,7 @@ test("removing kept sources checks each against the Library again, removes empti
   await operations.removeIngestSources(id);
   assert.deepEqual(describe(id), after);
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  await applyIngestMonitoring();
+  await settleIngestedMusic();
   assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE title = 'Four'").pluck().get(), 0);
 });
 
