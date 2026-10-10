@@ -475,6 +475,11 @@ const metadata = {
   },
 };
 
+const songAt = (filePath) => ({
+  ...metadata,
+  common: { ...metadata.common, title: path.basename(filePath, path.extname(filePath)), musicbrainz_recordingid: undefined },
+});
+
 async function createAudioFile(root, relativePath) {
   const filePath = path.join(root, relativePath);
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -1141,6 +1146,49 @@ test("songs a catalogue album shares with other albums keep their identity and s
   }
 });
 
+test("a song whose files are gone leaves an album that still plays unless someone asked for it, and comes back with its file", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-missing-"));
+  const source = `test-missing-${process.pid}`;
+  const artist = `Missing ${process.pid}`;
+  const tags = {};
+  const file = async (album, title, track, extension = "flac") => {
+    const filePath = await createAudioFile(root, `${artist}/${album}/${track} ${title}.${extension}`);
+    tags[filePath] = untagged(artist, album, title, track);
+    return filePath;
+  };
+  const headlight = await file("Horse", "One Headlight", 1);
+  const lostCopy = await file("Horse", "One Headlight", 1, "m4a");
+  const marlenas = await file("Horse", "Three Marlenas", 2);
+  const wanted = await file("Horse", "The Difference", 3);
+  await file("Requested", "Kept", 1);
+  const requestedMissing = await file("Requested", "Coming", 2);
+  const lonely = await file("Unplugged", "Lonely", 1);
+  const scan = () => scanMusicRoot({ rootPath: root, source, metadataReader: async (filePath) => tags[filePath] });
+  try {
+    await scan();
+    const unwanted = [headlight, marlenas, requestedMissing, lonely].map((filePath) => fileRows(source, filePath).trackId);
+    db.prepare(`UPDATE library_tracks SET monitored = 0 WHERE id IN (${unwanted.map(() => "?").join(",")})`).run(...unwanted);
+    setLibraryManagement({ entityKind: "album", entityId: fileRows(source, requestedMissing).albumId, managedBy: "aurral", monitorMode: "monitored" });
+    const lostTrack = fileRows(source, marlenas).trackId;
+    for (const filePath of [lostCopy, marlenas, wanted, requestedMissing, lonely]) await rm(filePath);
+
+    await scan();
+
+    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["Horse", 2], ["Requested", 2], ["Unplugged", 1]]);
+    assert.deepEqual(filesOnTrack(fileRows(source, headlight).trackId), [headlight]);
+    assert.deepEqual(filesOnTrack(lostTrack), []);
+    assert.deepEqual([wanted, requestedMissing, lonely].map((filePath) => Boolean(fileRows(source, filePath))), [true, true, true]);
+
+    await file("Horse", "Three Marlenas", 2);
+    await scan();
+
+    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["Horse", 3], ["Requested", 2], ["Unplugged", 1]]);
+  } finally {
+    for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a file row naming an album its track is not on shows on the track's album when that empty album goes", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-stray-"));
   const source = `test-stray-${process.pid}`;
@@ -1341,20 +1389,20 @@ test("a successful rescan marks removed files unavailable without removing media
     await scanMusicRoot({
       rootPath: root,
       source,
-      metadataReader: async () => metadata,
+      metadataReader: async (filePath) => songAt(filePath),
     });
     await rm(filePath);
 
     await scanMusicRoot({
       rootPath: root,
       source,
-      metadataReader: async () => metadata,
+      metadataReader: async (filePath) => songAt(filePath),
     });
     const snapshot = getLibrarySnapshot();
     const file = snapshot.files.find((entry) => entry.path === filePath);
 
     assert.equal(file?.available, 0);
-    assert.equal(snapshot.tracks.some((track) => track.title === "First Step"), true);
+    assert.equal(snapshot.tracks.some((track) => track.title === "01 Track"), true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -1444,13 +1492,13 @@ test("a targeted rescan marks a deleted changed file unavailable", async () => {
   let filePath;
   try {
     filePath = await createAudioFile(root, "Artist/Album/01 Track.flac");
-    await scanMusicRoot({ rootPath: root, source, metadataReader: async () => metadata });
+    await scanMusicRoot({ rootPath: root, source, metadataReader: async (filePath) => songAt(filePath) });
     await rm(filePath);
     await scanMusicRoot({
       rootPath: root,
       source,
       changedPaths: [filePath],
-      metadataReader: async () => metadata,
+      metadataReader: async (filePath) => songAt(filePath),
     });
 
     assert.equal(
@@ -1492,14 +1540,14 @@ test("a targeted directory rescan marks only removed descendants unavailable", a
     filePaths.push(await createAudioFile(root, "Artist/Removed Album/01 First.flac"));
     filePaths.push(await createAudioFile(root, "Artist/Removed Album/02 Second.flac"));
     filePaths.push(await createAudioFile(root, "Artist/Kept Album/01 Kept.flac"));
-    await scanMusicRoot({ rootPath: root, source, metadataReader: async () => metadata });
+    await scanMusicRoot({ rootPath: root, source, metadataReader: async (filePath) => songAt(filePath) });
 
     await rm(removedDirectory, { recursive: true });
     await scanMusicRoot({
       rootPath: root,
       source,
       changedPaths: [removedDirectory],
-      metadataReader: async () => metadata,
+      metadataReader: async (filePath) => songAt(filePath),
     });
 
     const files = getLibrarySnapshot().files;

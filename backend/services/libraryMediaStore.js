@@ -967,17 +967,65 @@ function foldLibraryAlbum(album, tracks, target) {
   for (const trackId of dropped) unlinkLibraryAlbumTrackWithoutMedia(target.id, trackId);
 }
 
-function removeEmptyLibraryAlbum(album, tracks) {
-  for (const track of tracks) {
-    unlinkAlbumTrackStmt.run(album.id, track.id);
-    if (!trackLinkedStmt.get(track.id) && !trackHasFileStmt.get(track.id)) {
-      deleteTrackStmt.run(track.id);
-      removeLibrarySearchDocument("track", track.id);
-    } else {
-      syncLibrarySearchTrack(track.id);
-    }
+function unlinkFilelessAlbumTrack(albumId, trackId) {
+  unlinkAlbumTrackStmt.run(albumId, trackId);
+  if (!trackLinkedStmt.get(trackId) && !trackHasFileStmt.get(trackId)) {
+    deleteTrackStmt.run(trackId);
+    removeLibrarySearchDocument("track", trackId);
+  } else {
+    syncLibrarySearchTrack(trackId);
   }
+}
+
+function removeEmptyLibraryAlbum(album, tracks) {
+  for (const track of tracks) unlinkFilelessAlbumTrack(album.id, track.id);
   deleteLibraryAlbumRow(album.id, album.artist_id);
+}
+
+const ALBUM_PLAYS = `EXISTS (
+  SELECT 1 FROM library_album_tracks AS play_link
+  JOIN library_media_files AS play_file
+    ON play_file.track_id = play_link.track_id AND play_file.available = 1
+    AND (play_file.album_id = play_link.album_id OR play_file.album_id IS NULL)
+  WHERE play_link.album_id = album.id
+)`;
+
+const deleteMissingFilesStmt = db.prepare(
+  "DELETE FROM library_media_files WHERE track_id = ? AND available = 0 AND (album_id = ? OR album_id IS NULL)",
+);
+
+// A file the scan no longer finds is a copy nobody needs once its song plays
+// from another. On an album that still plays, a song whose files are all gone
+// leaves the album unless Aurral or Lidarr was asked for the album or the
+// song. An album with nothing left to play keeps its songs, so a drive that
+// was missing comes back as it was.
+function dropMissingLibraryFiles() {
+  const copies = db.prepare(
+    `DELETE FROM library_media_files
+     WHERE available = 0 AND EXISTS (
+       SELECT 1 FROM library_media_files AS live
+       WHERE live.track_id = library_media_files.track_id AND live.available = 1
+     )`,
+  ).run().changes;
+  const missing = db.prepare(
+    `SELECT link.album_id AS albumId, link.track_id AS trackId
+     FROM library_album_tracks AS link
+     JOIN library_tracks AS track ON track.id = link.track_id
+     JOIN library_albums AS album ON album.id = link.album_id
+     WHERE track.monitored = 0
+       AND NOT EXISTS (
+         SELECT 1 FROM library_media_files AS media
+         WHERE media.track_id = link.track_id AND media.available = 1
+           AND (media.album_id = link.album_id OR media.album_id IS NULL)
+       )
+       AND ${ALBUM_PLAYS} AND NOT ${ALBUM_IS_OWNED}`,
+  ).all();
+  for (const { albumId, trackId } of missing) {
+    deleteMissingFilesStmt.run(trackId, albumId);
+    unlinkFilelessAlbumTrack(albumId, trackId);
+    touchLibraryAlbum(albumId);
+  }
+  return copies + missing.length;
 }
 
 // An untagged copy of a track its album already lists with MusicBrainz IDs
@@ -1029,7 +1077,7 @@ export function reconcileLibraryAlbums() {
 }
 
 function reconcileAlbums() {
-  let changed = repairLibraryFileAlbums();
+  let changed = repairLibraryFileAlbums() + dropMissingLibraryFiles();
   const albums = db.prepare(
     `SELECT album.*, ${ALBUM_IS_OWNED} AS owned, ${ALBUM_HAS_FILES} AS has_files
      FROM library_albums AS album

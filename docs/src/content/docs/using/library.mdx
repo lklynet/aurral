@@ -17,7 +17,7 @@ To filter the current section, use the search field in the toolbar.
 
 ## Play and browse
 
-Select a track or album to play it in the built-in player. An artist or album page shows its tracks, playback controls, and favorites. A track without a file stays in the list but cannot play. Missing album tracks appear dimmed.
+Select a track or album to play it in the built-in player. An artist or album page shows its tracks, playback controls, and favorites. Missing album tracks appear dimmed and cannot play. An album lists its missing tracks when Aurral or Lidarr is getting the album for you, or when you monitor the track. See [How the Library finds new files](#how-the-library-finds-new-files) for what happens to the rest.
 
 While the player is open, press **Space** to play or pause, **←** and **→** to move 5 seconds, **Shift+←** and **Shift+→** for the previous or next track, and **M** to mute. The keys do nothing while you type in a field.
 
@@ -163,6 +163,7 @@ Each album appears once, and each song appears once on its album:
 - When a file gains MusicBrainz tags, the scan keeps its album and track, with their favorites, play counts, and monitoring.
 - After each scan, Aurral folds an album that untagged files split off, or that its files left behind, into the album with the same title. Favorites and play counts move with it. An untagged copy of a song the album already has becomes a second file of that song, which [Clean up](#clean-up-the-library) can remove.
 - Aurral removes albums that have no files and that neither you, Aurral, nor Lidarr asked for, such as albums an earlier Lidarr connection listed without downloading. Their favorites and play counts stay saved and come back if the album returns. Albums you asked Aurral or Lidarr for stay, with or without files.
+- When a file is deleted, its song leaves an album that still plays, unless Aurral or Lidarr is getting the album for you or you monitor the song. A copy of a song that still plays from another file is forgotten. If none of an album's files can be found, as when a drive is disconnected, the album keeps its songs and plays again when the files come back.
 
 When a scan finishes, an open Library page reloads. **Recently added** sorting on albums, tracks, and artists and the home page use the time that a file entered the Library, not the release date.
 

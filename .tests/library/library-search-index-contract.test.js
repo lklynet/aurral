@@ -112,7 +112,7 @@ test("targeted configured rescans update related searches and preserve failed or
   await rm(files[0]);
   await scan([files[0]]);
   assert.equal(read("Updated First").total, 0);
-  assert.equal(read("Updated First", false).total, 1);
+  assert.equal(read("Updated First", false).total, 0);
   assert.equal(read("Second Song").total, 1);
   await writeAudio(0, "Renamed Album", "Restored First", "Folk");
   await scan([files[0]]);

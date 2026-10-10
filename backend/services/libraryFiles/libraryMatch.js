@@ -34,7 +34,7 @@ function findAlbum(record, artist) {
     if (byRelease) return byRelease;
   }
   if (record.releaseGroupMbid || record.albumMbid || !artist) return null;
-  return findLibraryAlbumByArtistTitle(artist.id, record.albumName);
+  return findLibraryAlbumByArtistTitle(artist.id, record.albumName, record.title);
 }
 
 function findTrack(record, album) {
