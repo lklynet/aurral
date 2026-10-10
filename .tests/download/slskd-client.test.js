@@ -131,6 +131,31 @@ test("testConnection explains an unavailable Soulseek connection without leaking
   }
 });
 
+test("testConnection reports slskd as not connected while Soulseek is still logging in", async () => {
+  const originalSettings = dbOps.getSettings();
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify(request.url === "/api/v0/application"
+      ? { server: { state: "Connected, LoggingIn", isConnected: true, isLoggedIn: false, isLoggingIn: true } }
+      : { directories: { downloads: "/mock-slskd-downloads" } }));
+  });
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: { ...(originalSettings.integrations || {}), slskd: { url: mock.url } },
+  });
+
+  try {
+    const result = await slskdClient.testConnection({ force: true });
+    assert.equal(result.connected, false);
+    assert.equal(result.warning, true);
+    assert.equal(slskdClient.getStatus().connected, false);
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
+});
+
 test("testConnection does not let an older request replace the active cache", async () => {
   const originalSettings = dbOps.getSettings();
   let oldRequestCount = 0;
@@ -158,7 +183,7 @@ test("testConnection does not let an older request replace the active cache", as
         JSON.stringify({
           server: isOldRequest
             ? { state: "None", isConnected: false }
-            : { state: "Connected", isConnected: true },
+            : { state: "Connected, LoggedIn", isConnected: true, isLoggedIn: true },
         }),
       );
       return;
@@ -205,7 +230,7 @@ test("testConnection does not let an older request replace the active cache", as
       configured: true,
       connected: true,
       downloadPath: "/new-downloads",
-      serverState: "Connected",
+      serverState: "Connected, LoggedIn",
     });
   } finally {
     releaseOldRequests();

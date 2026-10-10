@@ -2,9 +2,36 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
 import { once } from "node:events";
-import { setupIsolatedBackend, cleanupIsolatedState, createMockHttpServer } from "../helpers/backendTestHarness.js";
-const [state, { SlskdClient }] = await setupIsolatedBackend("slskd-backoff", "backend/services/slskdClient.js");
+import { setupIsolatedBackend, cleanupIsolatedState, createMockHttpServer, resetDatabase } from "../helpers/backendTestHarness.js";
+const [state, { SlskdClient }, { db }] = await setupIsolatedBackend(
+  "slskd-backoff", "backend/services/slskdClient.js", "backend/config/db-sqlite.js");
 test.after(() => cleanupIsolatedState(state));
+test.beforeEach(() => resetDatabase(db));
+
+test("searches from different processes start at least five seconds apart", { timeout: 20000 }, async () => {
+  const started = [];
+  const server = await createMockHttpServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      if (req.method === "POST" && req.url === "/api/v0/searches") started.push(Date.now());
+      res.writeHead(201, { "content-type": "application/json" });
+      res.end("{}");
+    });
+  });
+  const worker = fork(new URL("../helpers/slskdSearchStartWorker.js", import.meta.url), [], {
+    env: { ...process.env, SLSKD_TEST_URL: server.url }, stdio: ["ignore", "ignore", "pipe", "ipc"],
+  });
+  try {
+    const [message] = await once(worker, "message");
+    assert.deepEqual(message, { done: true });
+    await new SlskdClient({ enabled: true, url: server.url }).createSearch("Main search", { id: "main-search" });
+    assert.equal(started.length, 2);
+    assert.ok(started[1] - started[0] >= 4500, `searches started ${started[1] - started[0]}ms apart`);
+  } finally {
+    if (worker.exitCode == null) worker.kill();
+    await server.close();
+  }
+});
 
 test("downloads enqueue during cross-process search backoff without bypassing search throttling", async () => {
   let notifyFirstSearch;

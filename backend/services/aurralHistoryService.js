@@ -1022,6 +1022,14 @@ export const recordTrackJobDownloading = (job) =>
     title: `Downloading ${job?.trackName || "track"} via ${resolveDownloadClientLabel(job?.downloadSource, job?.downloadClient)}`,
   });
 
+export const recordTrackJobWaiting = (job, reason) =>
+  recordTrackJob(job, {
+    status: "processing",
+    statusLabel: "Waiting",
+    title: `Waiting to download ${job?.trackName || "track"} via ${resolveDownloadClientLabel(job?.downloadSource, job?.downloadClient)}`,
+    subtitle: reason,
+  });
+
 export const recordTrackJobMoving = (job) =>
   recordTrackJob(job, {
     status: "processing",

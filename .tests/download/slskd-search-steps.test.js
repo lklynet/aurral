@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
+import { setupIsolatedBackend, cleanupIsolatedState, createMockHttpServer, resetDatabase } from "../helpers/backendTestHarness.js";
 
-const [state, { dbOps }, { downloadTracker }, { getDownloadClient }, { processPipelinePayload }] =
+const [state, { db }, { dbOps }, { downloadTracker }, { getDownloadClient }, { processPipelinePayload }] =
   await setupIsolatedBackend(
     "slskd-search-steps",
+    "backend/config/db-sqlite.js",
     "backend/db/helpers/index.js",
     "backend/services/downloadJobs/downloadTracker.js",
     "backend/services/download/downloadClientSettings.js",
@@ -115,3 +116,129 @@ test("a failed Soulseek poll moves on to the next query", async (t) => {
   assert.notEqual(second.activeSearch.query, first.activeSearch.query);
   assert.equal(created.mock.callCount(), 2);
 });
+
+async function startSoulseek(t) {
+  const soulseek = { loggedIn: false, searches: [], enqueues: [] };
+  const loggedOut = (action) =>
+    `The server connection must be connected and logged in to ${action} (currently: Connected, LoggingIn)`;
+  const server = await createMockHttpServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", () => {
+      const send = (status, data) => {
+        res.writeHead(status, { "content-type": typeof data === "string" ? "text/plain" : "application/json" });
+        res.end(typeof data === "string" ? data : JSON.stringify(data));
+      };
+      if (req.method === "GET" && req.url === "/api/v0/application") {
+        return send(200, { server: soulseek.loggedIn
+          ? { state: "Connected, LoggedIn", isConnected: true, isLoggedIn: true }
+          : { state: "Connected, LoggingIn", isConnected: true, isLoggedIn: false } });
+      }
+      if (req.method === "GET" && req.url === "/api/v0/options") {
+        return send(200, { directories: { downloads: "/downloads" } });
+      }
+      if (req.method === "POST" && req.url === "/api/v0/searches") {
+        if (!soulseek.loggedIn) return send(409, loggedOut("perform a search"));
+        soulseek.searches.push(JSON.parse(body));
+        return send(200, { id: JSON.parse(body).id });
+      }
+      if (req.method === "POST" && req.url.startsWith("/api/v0/transfers/downloads/")) {
+        if (!soulseek.loggedIn) return send(500, loggedOut("fetch user endpoint"));
+        soulseek.enqueues.push(decodeURIComponent(req.url.split("/").pop()));
+        return send(201, { enqueued: [{ id: "transfer-1" }], failed: [] });
+      }
+      if (req.method === "GET" && req.url.startsWith("/api/v0/events")) return send(200, []);
+      return send(404, "");
+    });
+  });
+  const originalSettings = dbOps.getSettings();
+  resetDatabase(db);
+  dbOps.updateSettings({ ...originalSettings, integrations: {
+    ...originalSettings.integrations,
+    slskd: { enabled: true, url: server.url },
+    deemix: { enabled: true, url: "http://127.0.0.1:9" },
+  } });
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  t.after(async () => {
+    dbOps.updateSettings(originalSettings);
+    await server.close();
+  });
+  return soulseek;
+}
+
+function soulseekCandidate(user) {
+  return { raw: { user, file: "Music\\Waiting Band\\Waiting Album\\01 - Song.flac", size: 30000000 } };
+}
+
+function transferHistoryCount() {
+  return db.prepare("SELECT COUNT(*) AS count FROM slskd_transfer_history").get().count;
+}
+
+test("a download waits while Soulseek logs in instead of skipping or blaming peers", async (t) => {
+  const soulseek = await startSoulseek(t);
+  const jobId = downloadTracker.addJob({ artistName: "Waiting Band", trackName: "Song" }, "library");
+  const candidates = ["first-peer", "second-peer", "third-peer"].map(soulseekCandidate);
+
+  const held = await processPipelinePayload({
+    phase: "download", source: "slskd", jobId, candidates, candidateIndex: 0,
+  });
+  assert.equal(held.phase, "download");
+  assert.equal(held.candidateIndex, 0);
+  assert.ok(held.delaySeconds > 0);
+  assert.equal(transferHistoryCount(), 0);
+
+  t.mock.timers.tick(held.delaySeconds * 1000);
+  const stillHeld = await processPipelinePayload(held);
+  assert.equal(stillHeld.candidateIndex, 0);
+  assert.equal(transferHistoryCount(), 0);
+  assert.notEqual(downloadTracker.getJob(jobId).status, "failed");
+
+  soulseek.loggedIn = true;
+  t.mock.timers.tick(stillHeld.delaySeconds * 1000);
+  const resumed = await processPipelinePayload(stillHeld);
+  assert.equal(resumed.phase, "poll");
+  assert.deepEqual(soulseek.enqueues, ["first-peer"]);
+});
+
+test("a search refused while Soulseek logs in waits and resumes after login", async (t) => {
+  const soulseek = await startSoulseek(t);
+  const jobId = downloadTracker.addJob({ artistName: "Waiting Band", trackName: "Song",
+    albumName: "Waiting Album", durationMs: 200000 }, "library");
+
+  const held = await processPipelinePayload({ phase: "search", source: "slskd", jobId });
+  assert.equal(held.phase, "search");
+  assert.equal(held.source, "slskd");
+  assert.ok(held.delaySeconds > 0);
+  assert.equal(downloadTracker.getJob(jobId).status, "downloading");
+
+  t.mock.timers.tick(held.delaySeconds * 1000);
+  const stillHeld = await processPipelinePayload(held);
+  assert.equal(stillHeld.phase, "search");
+  assert.equal(soulseek.searches.length, 0);
+
+  soulseek.loggedIn = true;
+  t.mock.timers.tick(stillHeld.delaySeconds * 1000);
+  const resumed = await processPipelinePayload(stillHeld);
+  assert.equal(resumed.phase, "search");
+  assert.equal(soulseek.searches.length, 1);
+  assert.equal(resumed.activeSearch.query, held.searchQueries[0]);
+});
+
+for (const phase of ["search", "download"]) {
+  test(`a ${phase} tries the next source when Soulseek stays logged out past the wait limit`, async (t) => {
+    await startSoulseek(t);
+    const jobId = downloadTracker.addJob({ artistName: "Waiting Band", trackName: "Song",
+      albumName: "Waiting Album", durationMs: 200000 }, "library");
+    const heldAt = Date.now();
+    let next = await processPipelinePayload({ phase, source: "slskd", jobId,
+      candidates: [soulseekCandidate("first-peer")], candidateIndex: 0 });
+    while (next?.source === "slskd" && Date.now() - heldAt < 2 * 60 * 60 * 1000) {
+      t.mock.timers.tick(next.delaySeconds * 1000);
+      next = await processPipelinePayload(next);
+    }
+    assert.equal(next.source, "deemix");
+    assert.equal(next.phase, "search");
+    assert.ok(Date.now() - heldAt >= 30 * 60 * 1000, "the wait must outlast a 30-minute Soulseek ban");
+    assert.equal(transferHistoryCount(), 0);
+  });
+}
