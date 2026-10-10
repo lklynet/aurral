@@ -1203,6 +1203,7 @@ db.transaction(() => {
       '$.monitorOption', 'none', '$.addOptions.monitor', 'none')
     WHERE id = ? AND json_valid(metadata_json)
   `);
+  const migratedAt = Date.now();
   for (const artist of artists) {
     const mode = String(artist.mode).trim().toLowerCase();
     if (mode === "first") {
@@ -1210,9 +1211,12 @@ db.transaction(() => {
       markUnmonitored.run(artist.id);
       continue;
     }
-    const since = mode === "future"
-      ? Number(artist.startedAt) || Number(artist.updatedAt) || Date.now()
-      : Number(artist.updatedAt) || Date.now();
+    // Latest took whichever release was newest at each scan, so its cutoffs
+    // start now rather than when the mode was chosen.
+    const since = {
+      future: Number(artist.startedAt) || Number(artist.updatedAt) || migratedAt,
+      latest: migratedAt,
+    }[mode] ?? (Number(artist.updatedAt) || migratedAt);
     const stored = mode === "future" || mode === "latest"
       ? { default: false, rules: rulesFor(mode === "future" ? "none" : "latest") }
       : { default: true };

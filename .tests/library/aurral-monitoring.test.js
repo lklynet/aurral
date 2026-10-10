@@ -82,14 +82,14 @@ function artistPayload(mbid = artistMbid) {
 const recordingId = (release, position) =>
   `b${release.id.slice(1, 24)}${release.id.slice(-4)}000000${String(position).padStart(2, "0")}`;
 
-function pressing(release, suffix, trackCount) {
+function pressing(release, suffix, trackCount, { newRecordings = false } = {}) {
   const source = release.sharesWith || release;
   return {
     id: `${release.id}-${suffix}`,
     status: "Official",
     tracks: Array.from({ length: trackCount }, (_, index) => index + 1).map((position) => ({
       id: `${release.id}-${suffix}-${position}`,
-      recordingid: recordingId(source, position),
+      recordingid: recordingId(source, newRecordings ? position + 50 : position),
       trackname: `${source.title} Track ${position}`,
       trackposition: position,
       mediumnumber: 1,
@@ -109,7 +109,9 @@ function albumPayload(release) {
     releasedate: release.date,
     releases: release.deluxe
       ? [pressing(release, "cd", 2), pressing(release, "digital", 2), pressing(release, "deluxe", 4), pressing(release, "box", 9)]
-      : [pressing(release, "release", 2)],
+      : release.remastered
+        ? [pressing(release, "cd", 2), pressing(release, "digital", 2), pressing(release, "remaster", 4, { newRecordings: true })]
+        : [pressing(release, "release", 2)],
   };
 }
 
@@ -842,7 +844,10 @@ test("top tracks queue the artist's popular songs that monitored releases do not
     throw new Error(`Unexpected Deezer request ${url}`);
   });
   await addAurralArtist("none");
-  monitoringStore.addMonitoringExclusion({ kind: "track", artistMbid, artistName: "Monitor Artist", title: "Deleted Song" });
+  const deletedRecording = "dddddddd-dddd-4ddd-8ddd-000000000001";
+  for (const title of ["Deleted Song (Demo)", "Deleted Song"]) {
+    monitoringStore.addMonitoringExclusion({ kind: "track", mbid: deletedRecording, artistMbid, artistName: "Monitor Artist", title });
+  }
 
   const saved = await monitorWith(customRules({ catalog: "latest", latestCount: 1, types: ["album"], topTracks: 3 }));
   assert.equal(saved.statusCode, 200);
@@ -874,4 +879,43 @@ test("the expanded edition downloads the longer tracklist of an album", async ()
   await runQueuedMonitoringTasks();
   const titles = downloadTracker.getAll().filter((job) => job.albumMbid === deluxe.id).map((job) => job.trackName).sort();
   assert.deepEqual(titles, [1, 2, 3, 4].map((position) => `Deluxe Album Track ${position}`));
+});
+
+test("switching to the expanded edition adds the extra tracks of albums already in the Library", async () => {
+  await addAurralArtist("none");
+  const deluxe = { id: "a2222222-2222-4222-8222-222222222212", title: "Deluxe Album", type: "Album", date: "2024-02-02", deluxe: true };
+  const remastered = { id: "a2222222-2222-4222-8222-222222222213", title: "Remastered Album", type: "Album", date: "2024-05-05", remastered: true };
+  metadataState.extraReleases = [deluxe, remastered];
+  clearMetadataProviderCaches();
+  const rules = { catalog: "latest", latestCount: 2, types: ["album"], newReleases: false };
+  await monitorWith(customRules(rules));
+  await runQueuedMonitoringTasks();
+  assert.deepEqual(queuedAlbumMbids(), [deluxe.id, remastered.id]);
+  const linked = db.prepare(`
+    SELECT link.track_id AS trackId, link.album_id AS albumId FROM library_album_tracks AS link
+    JOIN library_albums AS album ON album.id = link.album_id
+  `).all();
+  assert.equal(linked.length, 4);
+  for (const { trackId, albumId } of linked) {
+    libraryStore.upsertLibraryMediaFile({ trackId, albumId, source: "aurral", path: `/music/${trackId}.flac` });
+  }
+  downloadTracker.clearAll();
+
+  const expanded = customRules({ ...rules, edition: "expanded" });
+  const preview = await callRoute("POST /artists/:mbid/monitoring/preview", {
+    params: { mbid: artistMbid }, body: { monitoring: expanded },
+  });
+  assert.deepEqual(preview.body.monitoring.releaseGroupIds, [deluxe.id]);
+  assert.deepEqual(preview.body.monitoring.skipped, [
+    { releaseGroupId: remastered.id, title: remastered.title, reason: "complete" },
+  ]);
+
+  await monitorWith(expanded);
+  await runQueuedMonitoringTasks();
+  const queuedTitles = () => downloadTracker.getAll().map((job) => job.trackName).sort();
+  assert.deepEqual(queuedTitles(), ["Deluxe Album Track 3", "Deluxe Album Track 4"]);
+
+  await processSystemTask({ kind: "aurral-monitoring-reconcile" });
+  await runQueuedMonitoringTasks();
+  assert.deepEqual(queuedTitles(), ["Deluxe Album Track 3", "Deluxe Album Track 4"]);
 });

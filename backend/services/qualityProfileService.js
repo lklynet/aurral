@@ -141,6 +141,17 @@ function hasUpgradeSource() {
   return getEnabledDownloadSources().some((source) => UPGRADE_SOURCE_IDS.has(source.id));
 }
 
+const keptFilePathsStmt = db.prepare(`
+  SELECT media.path FROM library_media_files AS media
+  JOIN library_tracks AS track ON track.id = media.track_id
+  WHERE track.keep_file = 1
+`).pluck();
+
+const isKeptFile = (filePath) => {
+  const resolved = path.resolve(filePath);
+  return keptFilePathsStmt.all().some((keptPath) => path.resolve(keptPath) === resolved);
+};
+
 export async function queueQualityUpgrade(job) {
   if (!job?.id || job.status !== "done" || !isAurralOwnedPath(job.finalPath)) {
     return "ineligible";
@@ -151,6 +162,7 @@ export async function queueQualityUpgrade(job) {
     return "ineligible";
   }
   if (!hasUpgradeSource()) return "ineligible";
+  if (isKeptFile(current.finalPath)) return "kept";
   if (downloadTracker.findActiveUpgradeJob(current)) return "already-queued";
   const upgradeJobId = downloadTracker.addUpgradeJob(current);
   if (!upgradeJobId) return "ineligible";
@@ -179,12 +191,6 @@ function classifyLibraryFileQuality(file) {
     },
   }, file.path);
 }
-
-const keptFilePathsStmt = db.prepare(`
-  SELECT media.path FROM library_media_files AS media
-  JOIN library_tracks AS track ON track.id = media.track_id
-  WHERE track.keep_file = 1
-`).pluck();
 
 // Monitored Library tracks whose file Aurral did not download have no job
 // yet. Each one below the cutoff gets the Library job an upgrade replaces.

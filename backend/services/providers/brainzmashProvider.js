@@ -414,12 +414,19 @@ export function selectAlbumRelease(album, { edition = "standard" } = {}) {
     .sort(([leftCount, left], [rightCount, right]) => right - left || rightCount - leftCount)[0];
   const standard = chooseTracklist(pool, trackCount);
   if (edition !== "expanded") return standard;
-  const keepsTrack = (release) => (track) => release.tracks.some((candidate) =>
-    (candidate.recordingId && candidate.recordingId === track.recordingId) ||
-    getNormalizedText(candidate.title) === getNormalizedText(track.title));
+  const keepsStandardTracks = (release) => {
+    const unmatched = [...release.tracks];
+    return standard.tracks.every((track) => {
+      const index = unmatched.findIndex((candidate) => (track.recordingId && candidate.recordingId
+        ? candidate.recordingId === track.recordingId
+        : getNormalizedText(candidate.title) === getNormalizedText(track.title)));
+      if (index === -1) return false;
+      unmatched.splice(index, 1);
+      return true;
+    });
+  };
   const longer = pool.filter((release) => release.tracks.length > trackCount &&
-    release.tracks.length <= trackCount * 2 &&
-    standard.tracks.every(keepsTrack(release)));
+    release.tracks.length <= trackCount * 2 && keepsStandardTracks(release));
   if (longer.length === 0) return standard;
   return chooseTracklist(longer, Math.max(...longer.map((release) => release.tracks.length)));
 }

@@ -103,7 +103,7 @@ With Lidarr connected, **Download album** on an album that Aurral does not have 
 - To get one missing track, select the download button on its row. Aurral downloads the track, even on an album that Lidarr manages.
 - To stop monitoring an album, open the album's menu and select **Stop monitoring album**. This stops monitoring every track on it.
 - To stop monitoring one track, open its menu on the album page and select **Stop monitoring track**. An unmonitored track shows a crossed-out eye. Lidarr cannot monitor single tracks, so tracks whose files come from Lidarr have no track monitoring.
-- To keep a file you are happy with, select **Keep this file** in the track's menu. Aurral stops upgrading it and cancels an upgrade that is under way, but keeps monitoring the track. To let Aurral upgrade it again, select **Allow upgrades**.
+- To keep a file you are happy with, select **Keep this file** in the track's menu. Aurral stops upgrading it, including when you ask for an upgrade, and cancels an upgrade that is under way, but keeps monitoring the track. To let Aurral upgrade it again, select **Allow upgrades**.
 
 If the album or track has unfinished downloads, Aurral asks you to confirm. It then cancels those downloads and keeps every finished file. To monitor something again, download it. When nothing is missing, the menu offers **Monitor track** or **Monitor album** instead. An album you unmonitored stays unmonitored when you change the artist's monitoring later.
 
@@ -121,7 +121,7 @@ A monitored album shows its download state on its page, such as **Queued**, **Do
 
 Aurral asks for the tracklist that most releases of the album share, in the order most of them share. That is usually the standard edition rather than a deluxe edition, a box set, or a pressing that swaps tracks. If the album download turns out to be a whole shorter edition, the album is complete. Aurral stops monitoring the tracks that only the longer edition has and does not search for them. To get one of them, select the download button on its row.
 
-When the artist's rules choose the **Expanded** edition, Aurral asks for the longest edition that keeps every standard track and is at most twice as long, such as a deluxe edition but not a box set. If the album download is the shorter edition, Aurral keeps searching for the extra tracks one by one.
+When the artist's rules choose the **Expanded** edition, Aurral asks for the longest edition that keeps every standard track and is at most twice as long, such as a deluxe edition but not a box set. If the album download is the shorter edition, Aurral keeps searching for the extra tracks one by one. Switching an artist to **Expanded** also adds the extra tracks of its albums already in your Library. An expanded edition must use the same recordings as the standard tracks, so a remaster with its own recordings is not treated as one.
 
 - To stop unfinished tracks, select **Cancel downloads**. Finished tracks stay in the Library.
 - To search again for cancelled and failed tracks, select **Retry**.

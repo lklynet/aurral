@@ -1857,23 +1857,33 @@ export class LibraryManager {
       if (exclusions.isAlbumExcluded(release.id)) skip(release, "excluded");
       else if (existing?.managedBy === "lidarr") skip(release, "managed_by_lidarr");
       else if (override?.monitorMode === "unmonitored") skip(release, "unmonitored");
-      else if (existing && existing.statistics.percentOfTracks >= 100) skip(release, "complete");
-      else candidates.push({ release, existing: Boolean(existing) });
+      else if (existing && existing.statistics.percentOfTracks >= 100) {
+        if (rules.edition === "expanded" && !this.albumWantsExpandedEdition(release.id)) {
+          candidates.push({ release, existing: true, complete: true });
+        } else skip(release, "complete");
+      } else candidates.push({ release, existing: Boolean(existing) });
     }
     const needsTracklists = rules.topTracks > 0 || candidates.some(({ release }) => !isStudioAlbum(release));
     const plannedRecordings = new Set();
     const plannedTitles = new Set();
-    for (const { release, existing } of candidates) {
+    for (const { release, existing, complete } of candidates) {
       const studioAlbum = isStudioAlbum(release);
       let tracks = [];
-      if (needsTracklists) {
+      if (needsTracklists || complete) {
         try {
           tracks = await this._releaseTracks(release.id, rules.edition);
         } catch (error) {
-          if (!studioAlbum) {
+          if (complete || !studioAlbum) {
             skip(release, "metadata_unavailable");
             continue;
           }
+        }
+      }
+      if (complete) {
+        const linked = new Set(libraryTracksForAlbum(release.id).map((track) => track.mbid));
+        if (tracks.every(({ recording }) => linked.has(recording))) {
+          skip(release, "complete");
+          continue;
         }
       }
       const covered = !studioAlbum && tracks.length > 0 && tracks.every(({ recording }) =>
@@ -2653,6 +2663,7 @@ export class LibraryManager {
       return this._finishAurralAlbum(existing.id, options);
     };
     const finishExistingOr = (error) => (existingHasTracks ? finishExisting() : error);
+    const edition = options.edition || this._albumEdition(artist);
     if (existingHasTracks) {
       if (!existing.managedBy) {
         setLibraryManagement({
@@ -2662,7 +2673,8 @@ export class LibraryManager {
           monitorMode: options.monitorMode || options.monitorOption || null,
         });
       }
-      if (existingAlbum.metadata?.trackListComplete === true) return finishExisting();
+      if (existingAlbum.metadata?.trackListComplete === true &&
+        (edition !== "expanded" || existingAlbum.metadata?.edition === "expanded")) return finishExisting();
     }
 
     let metadata;
@@ -2703,7 +2715,6 @@ export class LibraryManager {
       });
     }
 
-    const edition = options.edition || this._albumEdition(artist);
     const selectedRelease = selectAlbumRelease(metadata, { edition });
     const tracks = (Array.isArray(selectedRelease?.tracks) ? selectedRelease.tracks : [])
       .map((track) => ({

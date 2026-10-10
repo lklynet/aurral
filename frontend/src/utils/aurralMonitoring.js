@@ -119,3 +119,15 @@ const describeMonitoringResult = (result, subject) => {
 export const describeAlbumMonitoringResult = (result) => describeMonitoringResult(result, "Album");
 
 export const describeTrackMonitoringResult = (result) => describeMonitoringResult(result, "Track");
+
+export const describeKeepFileResult = (result, title) => {
+  if (!result?.keepFile) return { message: `Aurral can upgrade ${title} again.`, warning: false };
+  const kept = `Keeping ${title}. Aurral won't replace it with an upgrade`;
+  if (result.cleanupFailed) {
+    return { message: `${kept}, but the download client may still hold the upgrade in progress.`, warning: true };
+  }
+  return {
+    message: result.cancelledJobIds?.length ? `${kept}, and the upgrade in progress was cancelled.` : `${kept}.`,
+    warning: false,
+  };
+};

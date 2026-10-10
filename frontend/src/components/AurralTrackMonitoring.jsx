@@ -4,6 +4,7 @@ import { Eye, EyeOff, Lock, LockOpen } from "lucide-react";
 import { useToast } from "../contexts/ToastContext";
 import { setAurralTrackKeepFile, setAurralTrackMonitoring } from "../utils/api/endpoints/library.js";
 import {
+  describeKeepFileResult,
   describeTrackMonitoringResult,
   getMonitoringMenuAction,
 } from "../utils/aurralMonitoring.js";
@@ -31,12 +32,8 @@ export function useAurralTrackMonitoring({ canChange, onChanged, onKeepFileChang
     setKeepPending({ id: track.id, keepFile });
     try {
       const result = await setAurralTrackKeepFile(track.id, keepFile);
-      const cancelled = result?.cancelledJobIds?.length || 0;
-      showSuccess(
-        keepFile
-          ? `Keeping ${trackTitle(track)}. Aurral won't replace it with an upgrade${cancelled ? ", and the upgrade in progress was cancelled" : ""}.`
-          : `Aurral can upgrade ${trackTitle(track)} again.`,
-      );
+      const { message, warning } = describeKeepFileResult(result, trackTitle(track));
+      (warning ? showError : showSuccess)(message);
       await onKeepFileChanged?.(track.id, result);
     } catch (error) {
       showError(

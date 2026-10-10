@@ -5,6 +5,7 @@ import {
   canDownloadAurralAlbum,
   describeAlbumMonitoringResult,
   describeAurralMonitoringError,
+  describeKeepFileResult,
   getAlbumMonitoredState,
   getMonitoringMenuAction,
   shouldConfirmUnmonitor,
@@ -196,6 +197,18 @@ test("unmonitoring result warns when the download client cleanup failed", () => 
   });
   assert.equal(result.warning, true);
   assert.match(result.message, /download client/i);
+});
+
+test("keeping a file warns when the upgrade in progress may still be running", () => {
+  const cancelled = describeKeepFileResult({ keepFile: true, cancelledJobIds: ["a"], cleanupFailed: false }, "Roygbiv");
+  assert.deepEqual(cancelled, {
+    message: "Keeping Roygbiv. Aurral won't replace it with an upgrade, and the upgrade in progress was cancelled.",
+    warning: false,
+  });
+  const stuck = describeKeepFileResult({ keepFile: true, cancelledJobIds: ["a"], cleanupFailed: true }, "Roygbiv");
+  assert.equal(stuck.warning, true);
+  assert.match(stuck.message, /download client/i);
+  assert.doesNotMatch(stuck.message, /was cancelled/);
 });
 
 test("unmonitoring an idle album reports no cancellations", () => {

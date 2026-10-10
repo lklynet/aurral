@@ -147,6 +147,10 @@
   color: var(--aurral-danger);
 }
 
+.monitoring-preview__retry {
+  justify-self: start;
+}
+
 .monitoring-preview__list {
   display: grid;
   gap: 0.125rem;

@@ -58,6 +58,7 @@ const insertExclusionStmt = db.prepare(`
   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT (kind, exclusion_key) DO UPDATE SET
     title = excluded.title,
+    normalized_title = excluded.normalized_title,
     artist_name = COALESCE(excluded.artist_name, library_monitoring_exclusions.artist_name)
 `);
 

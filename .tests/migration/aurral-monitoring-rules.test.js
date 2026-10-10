@@ -50,7 +50,9 @@ test("upgrading turns Aurral monitor modes into monitoring rules and leaves Lida
     const lidarr = addArtist("artist:lidarr", "lidarr", "future");
     db.prepare("DELETE FROM settings WHERE key = 'migration:aurral-monitoring-rules-v1'").run();
 
+    const migratedFrom = Date.now();
     start();
+    const migratedTo = Date.now();
 
     const read = (artistId) => {
       const row = db.prepare(
@@ -75,9 +77,12 @@ test("upgrading turns Aurral monitor modes into monitoring rules and leaves Lida
     assert.deepEqual(read(future), {
       mode: "future", monitored: true, default: false, catalog: "none", newReleases: true, since: [startedAt, startedAt],
     });
-    assert.deepEqual(read(latest), {
-      mode: "latest", monitored: true, default: false, catalog: "latest", newReleases: true, since: [changedAt, changedAt],
+    const { since: latestSince, ...latestState } = read(latest);
+    assert.deepEqual(latestState, {
+      mode: "latest", monitored: true, default: false, catalog: "latest", newReleases: true,
     });
+    assert.equal(latestSince[0], latestSince[1]);
+    assert.ok(latestSince[0] >= migratedFrom && latestSince[0] <= migratedTo, String(latestSince[0]));
     assert.deepEqual(read(first), {
       mode: "none", monitored: false, default: null, catalog: null, newReleases: null, since: null,
     });

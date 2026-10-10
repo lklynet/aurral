@@ -309,6 +309,9 @@ export function registerJobs(router) {
     if (result === "already-queued") {
       return res.json({ success: true, queued: 0, alreadyQueued: true, jobId });
     }
+    if (result === "kept") {
+      return res.status(409).json({ error: "This file is kept. Allow upgrades for it first.", code: "kept_file" });
+    }
     if (result !== "queued") {
       return res.status(409).json({ error: "Track is not eligible for an upgrade" });
     }

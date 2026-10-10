@@ -136,6 +136,25 @@ function MonitoringExclusions({ mbid, onError }) {
       onError(`Could not allow ${exclusion.title} again. Nothing changed. ${describeAurralMonitoringError(error, "Try again.")}`),
   });
   const exclusions = Array.isArray(exclusionsQuery.data) ? exclusionsQuery.data : [];
+  if (exclusionsQuery.isError) {
+    return (
+      <section className="monitoring-preview">
+        <h4 className="monitoring-preview__title">Removed from monitoring</h4>
+        <p className="monitoring-preview__status monitoring-preview__status--error" role="alert">
+          Could not load what you removed from monitoring.
+        </p>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm monitoring-preview__retry"
+          disabled={exclusionsQuery.isFetching}
+          onClick={() => exclusionsQuery.refetch()}
+        >
+          {exclusionsQuery.isFetching ? <DotLoader size="sm" label={null} /> : null}
+          Try again
+        </button>
+      </section>
+    );
+  }
   if (!exclusions.length) return null;
 
   return (

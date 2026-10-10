@@ -258,11 +258,16 @@ test("Keep this file stops upgrades of that file and cancels the upgrade already
   const result = await keepFile(kept);
   assert.equal(result.keepFile, true);
   assert.deepEqual(result.cancelledJobIds, [upgradeJobsOf(kept)[0].id]);
-  assert.equal(upgradeJobsOf(kept)[0].status, "cancelled");
+  assert.ok(["cancelled", "cancel_requested"].includes(upgradeJobsOf(kept)[0].status), upgradeJobsOf(kept)[0].status);
   assert.notEqual(upgradeJobsOf(other)[0].status, "cancelled");
   assert.equal(downloadTracker.getJob(kept).status, "done");
 
   const second = await request("/quality-upgrades", { method: "POST" });
   assert.equal(second.queued, 0);
+  assert.equal(upgradeJobsOf(kept).length, 1);
+
+  const direct = await fetch(`${baseUrl}/quality-upgrades/library/${kept}`, { method: "POST" });
+  assert.equal(direct.status, 409);
+  assert.equal((await direct.json()).code, "kept_file");
   assert.equal(upgradeJobsOf(kept).length, 1);
 });
