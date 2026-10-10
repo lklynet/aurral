@@ -23,6 +23,7 @@ import {
   buildSlskdRankingHistoryOptions,
   recordSlskdTransferOutcome,
 } from "./slskdTransferHistory.js";
+import { isSoulseekLoggedOutError, SOULSEEK_LOGGED_OUT_MESSAGE } from "./slskdClient.js";
 import {
   albumGrabJobs,
   continueAlbumGrab,
@@ -94,6 +95,8 @@ const MIN_SEARCH_CANDIDATES = 3;
 const MAX_DOWNLOAD_CANDIDATES = 7;
 const MAX_TRANSFER_RETRIES_PER_CANDIDATE = 1;
 const POLL_DELAY_SECONDS = 3;
+const SOULSEEK_LOGIN_RECHECK_SECONDS = 60;
+const SOULSEEK_LOGIN_WAIT_LIMIT_MS = 45 * 60 * 1000;
 export const SLSKD_NOT_CONFIGURED_MESSAGE =
   "slskd is not configured. Enable slskd and add its Server URL in Settings > Download clients to enable Soulseek downloads for flows and playlists.";
 
@@ -615,6 +618,45 @@ function retrySameCandidateOrNext(payload, job, status, reason, details = {}) {
   return null;
 }
 
+function recordTrackJobHistory(recorderName, job, ...args) {
+  import("./aurralHistoryService.js")
+    .then((history) => history[recorderName](job, ...args))
+    .catch((err) => { logger.warn("slskd", "Failed to record track job activity", { jobId: job.id, error: err?.message || String(err) }); });
+}
+
+async function isLoggedOut(options) {
+  const status = await slskdClient.testConnection(options);
+  return status?.ok === true && status.connected !== true;
+}
+
+async function isStillLoggedOut(payload) {
+  return Boolean(payload.soulseekLoggedOutSince) && isLoggedOut();
+}
+
+async function waitToRetryAfterLogin(payload, job, helpers, reason) {
+  if (!(await isLoggedOut({ force: true }))) return null;
+  return waitForSoulseekLogin({ ...payload, ...TRANSFER_RESET, phase: "download", candidate: null,
+    pollAttempts: 0 }, job, helpers, reason);
+}
+
+function waitForSoulseekLogin(payload, job, helpers, detail) {
+  const since = Number(payload.soulseekLoggedOutSince) || Date.now();
+  if (Date.now() - since >= SOULSEEK_LOGIN_WAIT_LIMIT_MS) {
+    return helpers.failOrTryNextSource({ ...payload, soulseekLoggedOutSince: null }, job,
+      `${SOULSEEK_LOGGED_OUT_MESSAGE} after waiting ${SOULSEEK_LOGIN_WAIT_LIMIT_MS / 60000} minutes`);
+  }
+  if (!payload.soulseekLoggedOutSince) {
+    logger.warn("slskd", "Soulseek is not logged in; waiting for slskd to log in", {
+      jobId: job.id,
+      phase: payload.phase,
+      reason: detail,
+    });
+    recordTrackJobHistory("recordTrackJobWaiting", job,
+      `${SOULSEEK_LOGGED_OUT_MESSAGE}. Aurral continues when it logs in.`);
+  }
+  return { ...payload, soulseekLoggedOutSince: since, delaySeconds: SOULSEEK_LOGIN_RECHECK_SECONDS };
+}
+
 function probeAggregatedResults(aggregated, queryResults, seen) {
   const probe = aggregated.slice();
   const probeSeen = new Set(seen);
@@ -710,10 +752,19 @@ async function advanceSlskdSearch(payload, job, queries, resolvedTrack, searchOp
       index += 1;
       continue;
     }
-    const created = await slskdClient.createSearch(queries[index], {
-      shouldCancel: isCancelled,
-      ...trackSearchWork(payload),
-    });
+    let created;
+    try {
+      created = await slskdClient.createSearch(queries[index], {
+        shouldCancel: isCancelled,
+        ...trackSearchWork(payload),
+      });
+    } catch (error) {
+      if (!isSoulseekLoggedOutError(error)) throw error;
+      return {
+        loggedOut: error,
+        payload: { ...payload, searchQueryIndex: index, searchIds, activeSearch: null },
+      };
+    }
     searchIds.push(created.id);
     if (!job.slskdSearchId) {
       updateSlskdMetaStmt.run(created.id, null, null, null, job.id);
@@ -739,14 +790,17 @@ async function handleSearch(payload, helpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
+  if (await isStillLoggedOut(payload)) return waitForSoulseekLogin(payload, job, helpers);
+  if (payload.soulseekLoggedOutSince) {
+    payload = { ...payload, soulseekLoggedOutSince: null };
+    recordTrackJobHistory("recordTrackJobSearching", job);
+  }
   if (!payload.searchQueries) {
     downloadTracker.setDownloading(job.id);
     downloadTracker.updateDownloadMetadata(job.id, {
       downloadSource: "slskd",
     });
-    import("./aurralHistoryService.js")
-      .then(({ recordTrackJobSearching }) => recordTrackJobSearching(job))
-      .catch((err) => { logger.warn("slskd", "Failed to record track job searching", { jobId: job.id, error: err?.message || String(err) }); });
+    recordTrackJobHistory("recordTrackJobSearching", job);
   }
   const resolvedTrack = buildResolvedTrack(job, payload.track);
   const albumJobs = payload.albumGrab === true ? albumGrabJobs(payload) : null;
@@ -779,6 +833,7 @@ async function handleSearch(payload, helpers) {
     searchOptions,
   );
   if (step.cancelled || !isPipelinePayloadActive(payload)) return null;
+  if (step.loggedOut) return waitForSoulseekLogin(step.payload, job, helpers, step.loggedOut.message);
   if (step.payload) return step.payload;
   const { aggregated, searchIds, queryCount } = step;
   const searchId = payload.searchId || searchIds[0] || null;
@@ -885,9 +940,9 @@ async function handleDownload(payload, helpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
-  import("./aurralHistoryService.js")
-    .then(({ recordTrackJobDownloading }) => recordTrackJobDownloading(job))
-    .catch((err) => { logger.warn("slskd", "Failed to record track job downloading", { jobId: job.id, error: err?.message || String(err) }); });
+  if (await isStillLoggedOut(payload)) return waitForSoulseekLogin(payload, job, helpers);
+  if (payload.soulseekLoggedOutSince) payload = { ...payload, soulseekLoggedOutSince: null };
+  recordTrackJobHistory("recordTrackJobDownloading", job);
   const candidates = Array.isArray(payload.candidates)
     ? payload.candidates
     : [];  const index = Number(payload.candidateIndex || 0);
@@ -924,6 +979,7 @@ async function handleDownload(payload, helpers) {
         return transfers;
       });
     } catch (error) {
+      if (isSoulseekLoggedOutError(error)) return waitForSoulseekLogin(payload, job, helpers, error.message);
       return continueAlbumGrab(payload, ALBUM_TRANSFER_RESET)
         || helpers.failOrTryNextSource(payload, job, safeLogDiagnostic(error));
     }
@@ -967,6 +1023,7 @@ async function handleDownload(payload, helpers) {
       return { transferId, username: transferUsername };
     });
   } catch (error) {
+    if (isSoulseekLoggedOutError(error)) return waitForSoulseekLogin(payload, job, helpers, error.message);
     const message = error?.message || String(error);
     recordPayloadOutcome(job, { ...payload, candidate }, "enqueue_failed", message, { candidate });
     logger.warn("slskd", "slskd batch enqueue failed for candidate", {
@@ -1107,6 +1164,8 @@ async function handlePoll(payload, helpers) {
     if (state === "failed") {
       await cleanupTransferForPayload(basePayload, transfer);
       const reason = describeTransferFailure(transfer);
+      const waiting = await waitToRetryAfterLogin(basePayload, job, helpers, reason);
+      if (waiting) return waiting;
       // A rejection, such as a ban or a file no longer shared, fails again on
       // a retry, so the next user is tried at once.
       const rejected = /rejected/i.test(readTransferState(transfer));
@@ -1147,6 +1206,8 @@ async function handlePoll(payload, helpers) {
     await slskdClient.deleteTransfer(payload.legacyTransfer.username, payload.legacyTransfer.id,
       { remove: true }).catch(() => false);
   }
+  const waiting = await waitToRetryAfterLogin(basePayload, job, helpers, "slskd transfer stalled");
+  if (waiting) return waiting;
   recordPayloadOutcome(job, basePayload, "transfer_timeout",
     progress.stalled ? "slskd transfer stalled" : "slskd transfer stayed in the uploader's queue", { transfer });
   if (hasNextCandidate(basePayload)) {
@@ -1165,9 +1226,15 @@ async function handleFinalize(payload, helpers) {
     const playlistRoot = resolveDownloadRoot();
     const remoteFiles = payload.candidate?.raw?.files || [];
     const paths = [];
+    const isPeerFailure = (transfer) => {
+      const transferState = readTransferState(transfer);
+      return classifyTransferState(transferState) === "failed" && !/cancel/i.test(transferState);
+    };
+    const blamePeer = (payload.albumTransfers || []).some(isPeerFailure)
+      && !(await isLoggedOut({ force: true }));
     for (const [index, transfer] of (payload.albumTransfers || []).entries()) {
       const transferState = readTransferState(transfer);
-      if (classifyTransferState(transferState) === "failed" && !/cancel/i.test(transferState)) {
+      if (blamePeer && isPeerFailure(transfer)) {
         const remote = remoteFiles[index];
         recordPayloadOutcome(downloadTracker.getJob(remote?.jobId) || job, payload, "transfer_failed",
           describeTransferFailure(transfer), {
