@@ -103,7 +103,7 @@ function createAlbum({
     releaseGroupMbid: albumMbid,
     artistId: artist.id,
     title: `Search Album ${sequence}`,
-    metadata: { monitored },
+    metadata: { monitored, ...(managedBy === "aurral" ? { librarySource: "aurral" } : {}) },
   });
   managementStore.setLibraryManagement({
     entityKind: "album",

@@ -12,11 +12,13 @@ import {
   followLibraryFileIdentity,
   getLibraryMediaFile,
   getAvailableLibraryMediaPaths,
+  getLibraryMediaPaths,
   linkLibraryAlbumTrack,
   markLibraryMediaFilesUnavailable,
   mergeReleaseKeyedLibraryAlbums,
   reconcileLibraryAlbums,
   releaseLibraryFileRows,
+  removeMissingLibraryMediaFiles,
   splitLegacyKeyedLibraryRows,
   upsertLibraryAlbum,
   upsertLibraryArtist,
@@ -287,6 +289,16 @@ const albumHasLidarrFileStmt = db.prepare(
   "SELECT 1 FROM library_media_files WHERE album_id = ? AND source = 'lidarr' AND available = 1 LIMIT 1",
 );
 
+// A root with nothing in it is a drive that is not connected, so its files
+// are only marked missing and come back with it. Anywhere else, a file the
+// scan cannot find is gone.
+async function forgetMissingFiles(source, rootPath, paths) {
+  const entries = await fs.readdir(rootPath).catch(() => []);
+  return entries.some((name) => !isLibraryScanExcludedDirectory(name))
+    ? removeMissingLibraryMediaFiles(source, paths)
+    : markLibraryMediaFilesUnavailable(source, paths);
+}
+
 function claimUnownedAlbum(album) {
   if (getLibraryManagementEntry("album", album.id) || albumHasLidarrFileStmt.get(album.id)) return;
   setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
@@ -327,7 +339,7 @@ export async function scanMusicRoot({
       : null;
   const reconcilePaths = changed?.reconcilePaths || null;
   const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
-  const unseenPaths = requestedFiles ? null : getAvailableLibraryMediaPaths(source);
+  const unseenPaths = requestedFiles ? null : getLibraryMediaPaths(source);
   const legacyKeyed = findLegacyKeyedLibraryFiles(source);
   const legacyMoves = [];
   const seenPaths = new Set();
@@ -466,7 +478,7 @@ export async function scanMusicRoot({
         });
       }
       if (unseenPaths && result.filesFailed === 0) {
-        markLibraryMediaFilesUnavailable(source, unseenPaths);
+        await forgetMissingFiles(source, resolvedRoot, unseenPaths);
       }
       if (requestedFiles) {
         const scopes = reconcilePaths || requestedFiles;
@@ -481,7 +493,7 @@ export async function scanMusicRoot({
           ...missingIndexedPaths,
         ];
         if (unavailablePaths.length > 0) {
-          markLibraryMediaFilesUnavailable(source, unavailablePaths);
+          await forgetMissingFiles(source, resolvedRoot, unavailablePaths);
         }
       }
       return result;
@@ -520,7 +532,8 @@ export async function scanMusicRoots({ rootPaths = [], changedPaths = null, ...o
     }
     return result;
   }
-  const unseenPaths = getAvailableLibraryMediaPaths(options.source || "aurral");
+  const source = options.source || "aurral";
+  const unseenPaths = getLibraryMediaPaths(source);
   const result = { filesSeen: 0, filesIndexed: 0, filesFailed: 0, changed: false };
   const scannedRoots = [];
 
@@ -555,15 +568,17 @@ export async function scanMusicRoots({ rootPaths = [], changedPaths = null, ...o
     }
   }
 
-  if (scannedRoots.length > 0) {
-    const missingPaths = [...unseenPaths].filter((filePath) =>
-      scannedRoots.some((rootPath) => {
-        const relative = path.relative(rootPath, filePath);
-        return relative && !relative.startsWith("..") && !path.isAbsolute(relative);
-      }),
-    );
-    result.changed = markLibraryMediaFilesUnavailable(options.source || "aurral", missingPaths) > 0
-      || result.changed;
+  let forgotten = 0;
+  for (const rootPath of scannedRoots) {
+    const missingPaths = [...unseenPaths].filter((filePath) => {
+      const relative = path.relative(rootPath, filePath);
+      return relative && !relative.startsWith("..") && !path.isAbsolute(relative);
+    });
+    if (missingPaths.length > 0) forgotten += await forgetMissingFiles(source, rootPath, missingPaths);
+  }
+  if (forgotten > 0) {
+    result.changed = true;
+    reconcileLibraryAlbums();
   }
 
   return result;

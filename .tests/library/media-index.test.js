@@ -14,6 +14,7 @@ import {
   invalidateLibraryQueryCache,
 } from "../../backend/services/libraryQueryService.js";
 import {
+  assignLidarrAlbumOwners,
   buildFallbackIdentityKey,
   linkLibraryAlbumTrack,
   removeLibraryTrackIfNoAvailableMedia,
@@ -258,7 +259,7 @@ test("configured Lidarr roots scan locally and reconcile only those roots", asyn
     });
     const snapshot = getLibrarySnapshot();
     assert.equal(rescanned.filesIndexed, 1);
-    assert.equal(snapshot.files.find((file) => file.path === paths[0])?.available, 0);
+    assert.equal(snapshot.files.some((file) => file.path === paths[0]), false);
     assert.equal(snapshot.files.find((file) => file.path === outsidePath)?.available, 1);
   } finally {
     const albumIds = trackId
@@ -381,6 +382,53 @@ test("turning Lidarr off removes its music from the Library and keeps Aurral's",
   await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOn, lidarrRoots: [music] });
   assert.equal(albumByTitle(`${tag} Only`).managed_by, "lidarr");
   assert.deepEqual(mediaSources(sharedLidarr), ["lidarr"]);
+});
+
+test("a scan of several roots drops songs whose files are gone from albums nobody asked for, including ones an older scan only marked missing", async (t) => {
+  const roots = await Promise.all([
+    mkdtemp(path.join(tmpdir(), "aurral-roots-gone-one-")),
+    mkdtemp(path.join(tmpdir(), "aurral-roots-gone-two-")),
+  ]);
+  const source = `test-roots-gone-${process.pid}`;
+  const artist = `Roots Gone ${process.pid}`;
+  const tags = {};
+  t.after(async () => {
+    for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
+    removeArtistsNamed(artist);
+    await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
+  });
+  for (const [root, album, title, track] of [[roots[0], "One", "Stays", 1], [roots[0], "One", "Gone", 2], [roots[1], "Two", "Other", 1], [roots[1], "Two", "Marked", 2]]) {
+    tags[await createAudioFile(root, `${artist}/${album}/${track} ${title}.flac`)] = untagged(artist, album, title, track);
+  }
+  const scan = () => scanMusicRoots({ rootPaths: roots, source, metadataReader: async (filePath) => tags[filePath] });
+  const [, gone, , marked] = Object.keys(tags);
+  await scan();
+  db.prepare("UPDATE library_media_files SET available = 0 WHERE source = ? AND path = ?").run(source, marked);
+  await rm(gone);
+  await rm(marked);
+
+  await scan();
+
+  assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["One", 1], ["Two", 1]]);
+});
+
+test("files in a folder Lidarr no longer has leave the Library", async (t) => {
+  const downloads = await mkdtemp(path.join(tmpdir(), "aurral-dropped-root-downloads-"));
+  const kept = await mkdtemp(path.join(tmpdir(), "aurral-dropped-root-kept-"));
+  const dropped = await mkdtemp(path.join(tmpdir(), "aurral-dropped-root-gone-"));
+  const tag = `Dropped Root ${process.pid}`;
+  t.after(async () => {
+    removeArtistsNamed(`${tag}%`);
+    await Promise.all([downloads, kept, dropped].map((root) => rm(root, { recursive: true, force: true })));
+  });
+  const stays = await createAudioFile(kept, `${tag}/${tag} Kept/01 Track.flac`);
+  const leaves = await createAudioFile(dropped, `${tag}/${tag} Dropped/01 Track.flac`);
+  await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOn, lidarrRoots: [kept, dropped] });
+  assert.deepEqual([mediaSources(stays), mediaSources(leaves)], [["lidarr"], ["lidarr"]]);
+
+  await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOn, lidarrRoots: [kept] });
+
+  assert.deepEqual([mediaSources(stays), mediaSources(leaves)], [["lidarr"], []]);
 });
 
 test("a Lidarr root folder inside the Downloads Folder belongs to Lidarr while it is on", async (t) => {
@@ -1154,7 +1202,7 @@ test("songs a catalogue album shares with other albums keep their identity and s
   }
 });
 
-test("a song whose files are gone leaves an album that still plays unless someone asked for it, and comes back with its file", async () => {
+test("a song whose file is gone leaves an album nobody asked for, and stays on one someone asked for", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-missing-"));
   const source = `test-missing-${process.pid}`;
   const artist = `Missing ${process.pid}`;
@@ -1167,32 +1215,65 @@ test("a song whose files are gone leaves an album that still plays unless someon
   const headlight = await file("Horse", "One Headlight", 1);
   const lostCopy = await file("Horse", "One Headlight", 1, "m4a");
   const marlenas = await file("Horse", "Three Marlenas", 2);
-  const wanted = await file("Horse", "The Difference", 3);
   await file("Requested", "Kept", 1);
-  const requestedMissing = await file("Requested", "Coming", 2);
+  const coming = await file("Requested", "Coming", 2);
   const lonely = await file("Unplugged", "Lonely", 1);
   const scan = () => scanMusicRoot({ rootPath: root, source, metadataReader: async (filePath) => tags[filePath] });
   try {
     await scan();
-    const unwanted = [headlight, marlenas, requestedMissing, lonely].map((filePath) => fileRows(source, filePath).trackId);
-    db.prepare(`UPDATE library_tracks SET monitored = 0 WHERE id IN (${unwanted.map(() => "?").join(",")})`).run(...unwanted);
-    setLibraryManagement({ entityKind: "album", entityId: fileRows(source, requestedMissing).albumId, managedBy: "aurral", monitorMode: "monitored" });
-    const lostTrack = fileRows(source, marlenas).trackId;
-    for (const filePath of [lostCopy, marlenas, wanted, requestedMissing, lonely]) await rm(filePath);
+    const catalogueTrack = upsertLibraryTrack({ identityKey: `missing:${process.pid}:difference`, title: "The Difference", monitored: true, syncSearch: false });
+    linkLibraryAlbumTrack({ albumId: fileRows(source, headlight).albumId, trackId: catalogueTrack.id, trackNumber: 3, syncSearch: false });
+    setLibraryManagement({ entityKind: "album", entityId: fileRows(source, coming).albumId, managedBy: "aurral", monitorMode: "monitored" });
+    const comingTrack = fileRows(source, coming).trackId;
+    for (const filePath of [lostCopy, marlenas, coming, lonely]) await rm(filePath);
 
     await scan();
 
-    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["Horse", 2], ["Requested", 2], ["Unplugged", 1]]);
+    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["Horse", 1], ["Requested", 2]]);
     assert.deepEqual(filesOnTrack(fileRows(source, headlight).trackId), [headlight]);
-    assert.deepEqual(filesOnTrack(lostTrack), []);
-    assert.deepEqual([wanted, requestedMissing, lonely].map((filePath) => Boolean(fileRows(source, filePath))), [true, true, true]);
+    assert.deepEqual(filesOnTrack(comingTrack), []);
 
     await file("Horse", "Three Marlenas", 2);
     await scan();
 
-    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["Horse", 3], ["Requested", 2], ["Unplugged", 1]]);
+    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["Horse", 2], ["Requested", 2]]);
   } finally {
     for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
+    removeArtistsNamed(artist);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a folder left empty, as by a disconnected drive, keeps its songs until the files come back", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-unplugged-"));
+  const source = `test-unplugged-${process.pid}`;
+  const artist = `Unplugged ${process.pid}`;
+  const tags = {};
+  for (const [title, track] of [["Plugged", 1], ["In", 2]]) {
+    tags[await createAudioFile(root, `${artist}/Drive/${track} ${title}.flac`)] = untagged(artist, "Drive", title, track);
+  }
+  const scan = () => scanMusicRoot({ rootPath: root, source, metadataReader: async (filePath) => tags[filePath] });
+  const rows = () => Object.keys(tags).map((filePath) => fileRows(source, filePath));
+  const available = () => db.prepare("SELECT available FROM library_media_files WHERE source = ? ORDER BY path").pluck().all(source);
+  try {
+    await scan();
+    const before = rows();
+    await rm(path.join(root, artist), { recursive: true });
+    await mkdir(path.join(root, "_flows"));
+
+    await scan();
+
+    assert.deepEqual(rows(), before);
+    assert.deepEqual(available(), [0, 0]);
+
+    for (const filePath of Object.keys(tags)) await createAudioFile(root, path.relative(root, filePath));
+    await scan();
+
+    assert.deepEqual(rows(), before);
+    assert.deepEqual(available(), [1, 1]);
+  } finally {
+    for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
+    removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -1249,6 +1330,28 @@ test("a scan that removes an album moves the Library's last-modified time forwar
     assert.ok(getLibraryIndexLastModified() > before);
   } finally {
     removeArtistsNamed(artistName);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a file gone from an album someone asked for moves the Library's last-modified time forward", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-gone-time-"));
+  const source = `test-gone-time-${process.pid}`;
+  const artist = `Gone Time ${process.pid}`;
+  const filePath = await createAudioFile(root, `${artist}/Requested/01 Song.flac`);
+  const scan = () => scanMusicRoot({ rootPath: root, source, metadataReader: async () => untagged(artist, "Requested", "Song") });
+  try {
+    await scan();
+    setLibraryManagement({ entityKind: "album", entityId: fileRows(source, filePath).albumId, managedBy: "aurral", monitorMode: "monitored" });
+    const before = getLibraryIndexLastModified();
+    await rm(filePath);
+
+    await scan();
+
+    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["Requested", 1]]);
+    assert.ok(getLibraryIndexLastModified() > before);
+  } finally {
+    removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -1445,17 +1548,20 @@ test("scanMusicRoot reads Aurral identity markers from native ID3 comments", asy
   }
 });
 
-test("a successful rescan marks removed files unavailable without removing media records", async () => {
+test("a rescan forgets files gone from a folder that still holds music, including ones an older scan only marked missing", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-reconcile-"));
   const source = `test-reconcile-${process.pid}`;
+  const filePaths = [];
   try {
-    const filePath = await createAudioFile(root, "Artist/Album/01 Track.mp3");
+    for (const name of ["01 Track", "02 Marked", "03 Kept"]) filePaths.push(await createAudioFile(root, `Artist/Album/${name}.mp3`));
     await scanMusicRoot({
       rootPath: root,
       source,
       metadataReader: async (filePath) => songAt(filePath),
     });
-    await rm(filePath);
+    db.prepare("UPDATE library_media_files SET available = 0 WHERE source = ? AND path = ?").run(source, filePaths[1]);
+    await rm(filePaths[0]);
+    await rm(filePaths[1]);
 
     await scanMusicRoot({
       rootPath: root,
@@ -1463,11 +1569,11 @@ test("a successful rescan marks removed files unavailable without removing media
       metadataReader: async (filePath) => songAt(filePath),
     });
     const snapshot = getLibrarySnapshot();
-    const file = snapshot.files.find((entry) => entry.path === filePath);
 
-    assert.equal(file?.available, 0);
-    assert.equal(snapshot.tracks.some((track) => track.title === "01 Track"), true);
+    assert.deepEqual(snapshot.files.filter((file) => file.source === source).map((file) => file.path), [filePaths[2]]);
+    assert.deepEqual(snapshot.tracks.filter((track) => /^0\d /.test(track.title)).map((track) => track.title), ["03 Kept"]);
   } finally {
+    for (const filePath of filePaths) deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -1550,7 +1656,7 @@ test("a targeted local rescan only parses changed files", async () => {
   }
 });
 
-test("a targeted rescan marks a deleted changed file unavailable", async () => {
+test("a targeted rescan forgets a deleted changed file", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-targeted-delete-"));
   const source = `test-targeted-delete-${process.pid}`;
   let filePath;
@@ -1565,10 +1671,7 @@ test("a targeted rescan marks a deleted changed file unavailable", async () => {
       metadataReader: async (filePath) => songAt(filePath),
     });
 
-    assert.equal(
-      getLibrarySnapshot().files.find((file) => file.path === filePath)?.available,
-      0,
-    );
+    assert.equal(getLibrarySnapshot().files.some((file) => file.path === filePath), false);
   } finally {
     if (filePath) deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
@@ -1595,7 +1698,7 @@ test("path scope matching handles large watcher batches without pairwise compari
   assert.ok(performance.now() - startedAt < 2_000);
 });
 
-test("a targeted directory rescan marks only removed descendants unavailable", async () => {
+test("a targeted directory rescan forgets only removed descendants", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-targeted-directory-"));
   const source = `test-targeted-directory-${process.pid}`;
   const removedDirectory = path.join(root, "Artist", "Removed Album");
@@ -1615,9 +1718,7 @@ test("a targeted directory rescan marks only removed descendants unavailable", a
     });
 
     const files = getLibrarySnapshot().files;
-    assert.equal(files.find((file) => file.path === filePaths[0])?.available, 0);
-    assert.equal(files.find((file) => file.path === filePaths[1])?.available, 0);
-    assert.equal(files.find((file) => file.path === filePaths[2])?.available, 1);
+    assert.deepEqual(files.filter((file) => filePaths.includes(file.path)).map((file) => [file.path, file.available]), [[filePaths[2], 1]]);
   } finally {
     for (const filePath of filePaths) deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
@@ -1759,7 +1860,7 @@ test("a Lidarr artist without albums reads through the projection and picks up m
   }
 });
 
-test("an album whose Lidarr files are all gone stays in library reads", async () => {
+test("an album Lidarr manages stays in library reads when its files are all gone", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-missing-album-"));
   const filePath = await createAudioFile(root, "Missing Album Artist/Fully Missing Album/01 Missing Track.flac");
   const scanMetadata = {
@@ -1784,6 +1885,7 @@ test("an album whose Lidarr files are all gone stays in library reads", async ()
 
   try {
     await scan();
+    assignLidarrAlbumOwners();
     await rm(filePath);
     await scan();
     const page = getLibraryPage({
@@ -1797,6 +1899,7 @@ test("an album whose Lidarr files are all gone stays in library reads", async ()
     assert.equal(page.items[0]?.availableTrackCount, 0);
   } finally {
     deleteIndexedFile("lidarr", filePath);
+    removeArtistsNamed("Missing Album Artist");
     await rm(root, { recursive: true, force: true });
   }
 });

@@ -6,10 +6,9 @@ import {
   assignLibraryArtistMbid,
   getLibraryMediaPaths,
   assignLidarrAlbumOwners,
-  getAvailableLibraryMediaPaths,
   getUnresolvedLibraryArtists,
-  markLibraryMediaFilesUnavailable,
   removeLibraryMediaFiles,
+  removeMissingLibraryMediaFiles,
   reconcileLibraryAlbums,
   removeLidarrLibrary,
   upsertLibraryArtist,
@@ -201,9 +200,9 @@ export async function scanConfiguredLibrary({
           isExcluded: createLibraryScanExclusion("lidarr", { downloadRoot: musicRoot, lidarrRoots: lidarrFolders }),
         });
         if (!targeted) {
-          const removedRootPaths = [...getAvailableLibraryMediaPaths("lidarr")]
+          const removedRootPaths = [...getLibraryMediaPaths("lidarr")]
             .filter((filePath) => !lidarrFolders.some((root) => isPathWithin(root, filePath)));
-          if (markLibraryMediaFilesUnavailable("lidarr", removedRootPaths) > 0) lidarr.changed = true;
+          if (removeMissingLibraryMediaFiles("lidarr", removedRootPaths) > 0) lidarr.changed = true;
         }
       } catch (error) {
         scanFailed = true;

@@ -998,50 +998,21 @@ function removeEmptyLibraryAlbum(album, tracks) {
   deleteLibraryAlbumRow(album.id, album.artist_id);
 }
 
-const ALBUM_PLAYS = `EXISTS (
-  SELECT 1 FROM library_album_tracks AS play_link
-  JOIN library_media_files AS play_file
-    ON play_file.track_id = play_link.track_id AND play_file.available = 1
-    AND (play_file.album_id = play_link.album_id OR play_file.album_id IS NULL)
-  WHERE play_link.album_id = album.id
-)`;
-
-const deleteMissingFilesStmt = db.prepare(
-  "DELETE FROM library_media_files WHERE track_id = ? AND available = 0 AND (album_id = ? OR album_id IS NULL)",
-);
-
-// A file the scan no longer finds is a copy nobody needs once its song plays
-// from another. On an album that still plays, a song whose files are all gone
-// leaves the album unless Aurral or Lidarr was asked for the album or the
-// song. An album with nothing left to play keeps its songs, so a drive that
-// was missing comes back as it was.
-function dropMissingLibraryFiles() {
-  const copies = db.prepare(
-    `DELETE FROM library_media_files
-     WHERE available = 0 AND EXISTS (
-       SELECT 1 FROM library_media_files AS live
-       WHERE live.track_id = library_media_files.track_id AND live.available = 1
-     )`,
-  ).run().changes;
-  const missing = db.prepare(
+// An album nobody asked for lists the songs it has files for.
+function dropUnfiledAlbumTracks() {
+  const links = db.prepare(
     `SELECT link.album_id AS albumId, link.track_id AS trackId
      FROM library_album_tracks AS link
-     JOIN library_tracks AS track ON track.id = link.track_id
      JOIN library_albums AS album ON album.id = link.album_id
-     WHERE track.monitored = 0
+     WHERE NOT ${ALBUM_IS_OWNED}
        AND NOT EXISTS (
          SELECT 1 FROM library_media_files AS media
-         WHERE media.track_id = link.track_id AND media.available = 1
-           AND (media.album_id = link.album_id OR media.album_id IS NULL)
-       )
-       AND ${ALBUM_PLAYS} AND NOT ${ALBUM_IS_OWNED}`,
+         WHERE media.track_id = link.track_id AND (media.album_id = link.album_id OR media.album_id IS NULL)
+       )`,
   ).all();
-  for (const { albumId, trackId } of missing) {
-    deleteMissingFilesStmt.run(trackId, albumId);
-    unlinkFilelessAlbumTrack(albumId, trackId);
-    touchLibraryAlbum(albumId);
-  }
-  return copies + missing.length;
+  for (const { albumId, trackId } of links) unlinkFilelessAlbumTrack(albumId, trackId);
+  for (const albumId of new Set(links.map((link) => link.albumId))) touchLibraryAlbum(albumId);
+  return links.length;
 }
 
 // An untagged copy of a track its album already lists with MusicBrainz IDs
@@ -1102,7 +1073,7 @@ export function reconcileLibraryAlbums() {
 }
 
 function reconcileAlbums() {
-  let changed = repairLibraryFileAlbums() + dropMissingLibraryFiles();
+  let changed = repairLibraryFileAlbums();
   const albums = db.prepare(
     `SELECT album.*, ${ALBUM_IS_OWNED} AS owned, ${ALBUM_HAS_FILES} AS has_files
      FROM library_albums AS album
@@ -1130,7 +1101,7 @@ function reconcileAlbums() {
       });
     }
   }
-  return changed + foldUntaggedLibraryTracks();
+  return changed + foldUntaggedLibraryTracks() + dropUnfiledAlbumTracks();
 }
 
 // Downloads once took an album's release ID for its release group, and the
@@ -1647,6 +1618,22 @@ export function markLibraryMediaFilesUnavailable(source, paths) {
   ))();
   if (changed > 0) invalidateLibraryCache();
   return changed;
+}
+
+// A file a scan cannot find is gone. Touching its song tells clients it changed.
+export function removeMissingLibraryMediaFiles(source, paths) {
+  const mediaSource = normalizeText(source);
+  const missingPaths = [...new Set(paths)].map(normalizeText).filter(Boolean);
+  if (!mediaSource || missingPaths.length === 0) return 0;
+  const remove = db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ? RETURNING track_id");
+  const touchTrack = db.prepare("UPDATE library_tracks SET updated_at = ? WHERE id = ?");
+  const removed = db.transaction(() => missingPaths.reduce((count, filePath) => {
+    const rows = remove.all(mediaSource, filePath);
+    for (const row of rows) touchTrack.run(now(), row.track_id);
+    return count + rows.length;
+  }, 0))();
+  if (removed > 0) invalidateLibraryCache();
+  return removed;
 }
 
 export function removeLibraryMediaFiles(source, paths) {
