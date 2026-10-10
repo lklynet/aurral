@@ -5,7 +5,7 @@ import {
   invalidateLibraryManagementCache,
   notifyLibraryManagementChanged,
 } from "./libraryManagementStore.js";
-import { invalidateLibraryQueryCache } from "./libraryQueryService.js";
+import { getLibraryIndexLastModified, invalidateLibraryQueryCache } from "./libraryQueryService.js";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 import { clearLibraryManagement } from "./libraryManagementStore.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
@@ -1070,8 +1070,18 @@ function foldUntaggedLibraryTracks() {
 const albumExistsStmt = db.prepare("SELECT 1 FROM library_albums WHERE id = ?");
 const artistAlbumsStmt = db.prepare("SELECT * FROM library_albums WHERE artist_id = ? AND id != ? ORDER BY id");
 
+const markLibraryTidiedStmt = db.prepare(
+  "INSERT INTO library_scan_runs (source, status, started_at, completed_at) VALUES ('library-tidy', 'complete', ?, ?)",
+);
+
+// Removed rows take their timestamps with them, so a tidy that changed
+// anything stamps a time after the Library's last one, or Subsonic clients
+// asking whether the index changed keep what was removed.
 export function reconcileLibraryAlbums() {
+  const indexedAt = getLibraryIndexLastModified() ?? 0;
   if (db.transaction(reconcileAlbums).immediate() === 0) return;
+  const tidiedAt = Math.max(now(), indexedAt + 1);
+  markLibraryTidiedStmt.run(tidiedAt, tidiedAt);
   invalidateLibraryManagementCache();
   invalidateLibraryCache();
 }

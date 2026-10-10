@@ -680,7 +680,7 @@ export function getLibraryIndexLastModified() {
        UNION ALL SELECT MAX(updated_at) FROM library_albums
        UNION ALL SELECT MAX(updated_at) FROM library_tracks
        UNION ALL SELECT MAX(updated_at) FROM library_media_files
-       UNION ALL SELECT MAX(completed_at) FROM library_scan_runs WHERE source = 'lidarr-removal'
+       UNION ALL SELECT MAX(completed_at) FROM library_scan_runs WHERE source IN ('lidarr-removal', 'library-tidy')
      )`,
   ).get();
   return Number(row?.last_modified) || null;

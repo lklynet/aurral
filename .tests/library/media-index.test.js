@@ -1197,6 +1197,23 @@ test("a song whose files are gone leaves an album that still plays unless someon
   }
 });
 
+test("a scan that removes an album moves the Library's last-modified time forward, so clients drop it", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-removal-time-"));
+  const artistName = `Removal Time ${process.pid}`;
+  const artist = upsertLibraryArtist({ identityKey: `name:artist:removal time ${process.pid}`, name: artistName, syncSearch: false });
+  upsertLibraryAlbum({ identityKey: `removal-time:${process.pid}`, artistId: artist.id, title: "Never Downloaded", syncSearch: false });
+  const before = getLibraryIndexLastModified();
+  try {
+    await scanMusicRoot({ rootPath: root, source: `test-removal-time-${process.pid}` });
+
+    assert.deepEqual(artistAlbums(artistName), []);
+    assert.ok(getLibraryIndexLastModified() > before);
+  } finally {
+    removeArtistsNamed(artistName);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a file row naming an album its track is not on shows on the track's album when that empty album goes", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-stray-"));
   const source = `test-stray-${process.pid}`;
