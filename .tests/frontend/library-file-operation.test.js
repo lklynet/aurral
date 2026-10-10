@@ -55,3 +55,17 @@ test("a finished Move ingest offers to remove only the source files it kept, and
   assert.match(move, />Remove source files</);
   assert.doesNotMatch(copy, /Remove/);
 });
+
+test("a finished clean up offers to remove the duplicate copies it found and lists them as duplicates", async (t) => {
+  const markup = await renderOperation(t, finishedIngest({
+    kind: "cleanup",
+    options: {},
+    counts: { done: 1, duplicate: 2 },
+    sources: { removable: 2, removed: 0 },
+  }));
+
+  assert.match(markup, /Remove 2 duplicate copies\?/);
+  assert.match(markup, />Remove duplicates</);
+  assert.match(markup, /aria-pressed="true"[^>]*>Duplicates <span class="library-file-op__count">2</);
+  assert.doesNotMatch(markup, /source file/);
+});

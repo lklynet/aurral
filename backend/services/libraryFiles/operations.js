@@ -2,21 +2,22 @@ import path from "node:path";
 import { resolveDownloadRoot } from "../downloadPaths.js";
 import { logger, safeLogDiagnostic } from "../logger.js";
 import {
+  IngestSourceError,
   applyIngestItem,
-  countIngestSources,
   finishIngest,
   ingestScanRequest,
   planIngest,
-  reopenIngestToRemoveSources,
   resolveIngestSource,
   validateIngestOptions,
 } from "./ingest.js";
 import { applyCleanupItem, createCleanupContext, finishCleanup, planCleanup } from "./cleanup.js";
 import {
   countLibraryFileOperationItems,
+  countRemovableDuplicates,
   createLibraryFileOperation,
   getLibraryFileOperation,
   listLibraryFileOperationItems,
+  reopenToRemoveDuplicates,
   transitionLibraryFileOperation,
   updateLibraryFileOperation,
   updateLibraryFileOperationItem,
@@ -52,8 +53,22 @@ export async function startCleanup() {
   return operation;
 }
 
-export async function removeIngestSources(id) {
-  if (reopenIngestToRemoveSources(id)) await enqueue(id);
+const UNFINISHED_REASONS = {
+  ingest: "The ingest stopped before Aurral got to this file. Ingest the folder again to file it.",
+  cleanup: "Clean up stopped before Aurral got to this file. Run Clean up Library again.",
+};
+
+// A Move ingest keeps sources the Library has in another file, and Clean up
+// keeps the extra copies of a track, until the user asks to remove them.
+const removesDuplicates = (operation) =>
+  operation?.kind === "cleanup" || (operation?.kind === "ingest" && operation.options.mode === "move");
+
+export async function removeDuplicateFiles(id) {
+  const operation = getLibraryFileOperation(id);
+  if (!removesDuplicates(operation)) {
+    throw new IngestSourceError("Only a Move ingest removes its source files.");
+  }
+  if (reopenToRemoveDuplicates(id, UNFINISHED_REASONS[operation.kind])) await enqueue(id);
   return getLibraryFileOperation(id);
 }
 
@@ -189,7 +204,7 @@ export function describeLibraryFileOperation(operation) {
       : removing
         ? { done: removing - (counts.pending || 0), total: removing, unit: "files" }
         : { done: total - (counts.pending || 0), total, unit: "files" },
-    sources: countIngestSources(operation),
+    sources: removesDuplicates(operation) ? countRemovableDuplicates(operation.id) : null,
     error: operation.error,
     createdAt: operation.createdAt,
     updatedAt: operation.updatedAt,

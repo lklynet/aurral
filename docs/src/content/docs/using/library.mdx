@@ -206,9 +206,11 @@ Music that you copy into the Downloads Folder yourself also joins the Library. I
 
 Downloads and ingested music already get Aurral's names and tags. For music you added by hand, open **Settings > Library files** and select **Clean up Library**. Aurral moves each file in the Downloads Folder to its `Artist/Album/07 - Title` name and fills in the tags it is missing, the same way ingest does. Files without a confident MusicBrainz match keep their tags and are listed as skipped. When the metadata provider cannot be reached, files keep their tags and say so, and the next clean up tries again. When it finishes, Aurral shows how many files changed and lists any it left alone, with the reason. Only one ingest or clean up runs at a time.
 
-Earlier versions of Aurral left the disc out of the name, so Clean up also renames tracks past the first disc from `07 - Title` to `2-07 - Title`.
+Earlier versions of Aurral left the disc out of the name, so Clean up also renames tracks past the first disc from `07 - Title` to `2-07 - Title`. A file keeps the track number from its tags or name when the Library's album has no number for it.
 
-Download jobs, playlists, favorites, and lyrics files follow each file. A file that a media server playlist still uses keeps its old name too, until the playlist updates. Favorites, play counts, and monitoring follow a track when its new MusicBrainz IDs change its identity. Clean up never takes a name that another file has, and it leaves Lidarr's files to Lidarr.
+When two files of one track want the same name, such as after the same folder was ingested twice, Clean up lists the extra one as a duplicate. They are the same recording when their lengths agree within 3 seconds. Aurral keeps the better copy, lossless before lossy and then the higher bitrate, and offers to remove the other. It checks both copies again before it deletes one. When the better copy had another name, it takes the removed copy's name. Two files of one track whose lengths differ are different recordings, so Clean up leaves both and says so.
+
+Download jobs, playlists, favorites, and lyrics files follow each file, and stay with the copy Aurral keeps when it removes a duplicate. A file that a media server playlist still uses keeps its old name too, until the playlist updates. Favorites, play counts, and monitoring follow a track when its new MusicBrainz IDs change its identity. Clean up never takes a name that another file has, and it leaves Lidarr's files to Lidarr.
 
 ## Artists without a MusicBrainz ID
 

@@ -15,12 +15,30 @@ const PAGE_SIZE = 50;
 const GROUPS = [
   { id: "skipped", label: "Skipped", statuses: ["skipped", "conflict"] },
   { id: "failed", label: "Failed", statuses: ["failed"] },
-  { id: "duplicate", label: "Already in the Library", statuses: ["duplicate"] },
+  { id: "duplicate", label: "Already in the Library", cleanupLabel: "Duplicates", statuses: ["duplicate"] },
 ];
 
 const RUNNING = { move: "Moving files", copy: "Copying files", hardlink: "Linking files" };
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
+const duplicateCopies = (count) => `${count} duplicate ${count === 1 ? "copy" : "copies"}`;
+
+const REMOVAL = {
+  ingest: {
+    question: (count) => `Remove ${plural(count, "source file")} already in the Library?`,
+    notes: "Aurral checks each one against the Library's copy again, then deletes it from the source folder.",
+    action: "Remove source files",
+    failed: "Aurral could not remove the source files. Nothing was removed.",
+    removed: (count) => `Removed ${plural(count, "source file")} already in the Library.`,
+  },
+  cleanup: {
+    question: (count) => `Remove ${duplicateCopies(count)}?`,
+    notes: "Aurral keeps the better copy of each track, checks the two again, then deletes the other. Playlists and favorites stay on the copy it keeps.",
+    action: "Remove duplicates",
+    failed: "Aurral could not remove the duplicates. Nothing was removed.",
+    removed: (count) => `Removed ${duplicateCopies(count)}.`,
+  },
+};
 const countOf = (counts, statuses) => statuses.reduce((sum, status) => sum + Number(counts?.[status] || 0), 0);
 
 function describeSkipped(present, others) {
@@ -40,6 +58,7 @@ function describeResult(operation) {
     : [
         counts.done && `Updated ${plural(counts.done, "file")}`,
         operation.summary?.unchanged && `${operation.summary.unchanged} already in order`,
+        counts.duplicate && duplicateCopies(counts.duplicate),
         skipped && `${skipped} skipped`,
       ];
   parts.push(counts.failed && `${counts.failed} failed`);
@@ -47,8 +66,8 @@ function describeResult(operation) {
 }
 
 function describeRunning(operation) {
+  if (operation.summary?.removingSources) return operation.kind === "ingest" ? "Removing source files" : "Removing duplicates";
   if (operation.kind !== "ingest") return "Cleaning up";
-  if (operation.summary?.removingSources) return "Removing source files";
   return RUNNING[operation.options?.mode] || "Filing files";
 }
 
@@ -113,14 +132,15 @@ function StopButton({ operation, onChanged, showError }) {
 function RemoveSourcesOffer({ operation, onChanged, showError }) {
   const [removing, setRemoving] = useState(false);
   const count = Number(operation.sources?.removable || 0);
-  if (!count) return null;
+  const copy = REMOVAL[operation.kind];
+  if (!count || !copy) return null;
   const remove = async () => {
     setRemoving(true);
     try {
       await removeLibraryFileOperationSources(operation.id);
       await onChanged?.();
     } catch (error) {
-      showError?.(error?.response?.data?.message || error?.message || "Aurral could not remove the source files. Nothing was removed.");
+      showError?.(error?.response?.data?.message || error?.message || copy.failed);
     } finally {
       setRemoving(false);
     }
@@ -128,16 +148,12 @@ function RemoveSourcesOffer({ operation, onChanged, showError }) {
   return (
     <div className="library-file-op__offer">
       <div>
-        <p className="library-file-op__question">
-          Remove {plural(count, "source file")} already in the Library?
-        </p>
-        <p className="library-file-op__notes">
-          Aurral checks each one against the Library&apos;s copy again, then deletes it from the source folder.
-        </p>
+        <p className="library-file-op__question">{copy.question(count)}</p>
+        <p className="library-file-op__notes">{copy.notes}</p>
       </div>
       <button type="button" className="btn btn-danger" disabled={removing} onClick={remove}>
         {removing ? <DotLoader size="sm" label={null} /> : null}
-        Remove source files
+        {copy.action}
       </button>
     </div>
   );
@@ -145,9 +161,16 @@ function RemoveSourcesOffer({ operation, onChanged, showError }) {
 
 export default function LibraryFileOperation({ operation, onChanged, showError }) {
   const counts = operation?.counts;
+  const cleanup = operation?.kind === "cleanup";
   const groups = useMemo(
-    () => GROUPS.map((group) => ({ ...group, count: countOf(counts, group.statuses) })).filter((group) => group.count > 0),
-    [counts],
+    () => GROUPS
+      .map((group) => ({
+        ...group,
+        label: (cleanup && group.cleanupLabel) || group.label,
+        count: countOf(counts, group.statuses),
+      }))
+      .filter((group) => group.count > 0),
+    [counts, cleanup],
   );
   const [groupId, setGroupId] = useState(null);
   const [offset, setOffset] = useState(0);
@@ -185,10 +208,8 @@ export default function LibraryFileOperation({ operation, onChanged, showError }
         ) : null}
       </div>
       {!busy ? <RemoveSourcesOffer operation={operation} onChanged={onChanged} showError={showError} /> : null}
-      {operation.sources?.removed ? (
-        <p className="library-file-op__notes">
-          Removed {plural(operation.sources.removed, "source file")} already in the Library.
-        </p>
+      {operation.sources?.removed && REMOVAL[operation.kind] ? (
+        <p className="library-file-op__notes">{REMOVAL[operation.kind].removed(operation.sources.removed)}</p>
       ) : null}
       {operation.summary?.monitor === "pending" || operation.summary?.doubles === "pending" ? (
         <p className="library-file-op__notes">

@@ -109,6 +109,7 @@ WebSocket connections.
 | `GET` | `/api/library/files/operations/:id` | Read an operation's status, progress, and counts |
 | `GET` | `/api/library/files/operations/:id/items` | Read an operation's files. Optional `status`, `offset`, and `limit` up to 200 |
 | `POST` | `/api/library/files/operations/:id/cancel` | Stop an ingest or clean up after the current file. Files already done stay done |
+| `POST` | `/api/library/files/operations/:id/remove-sources` | Remove the files a Move ingest kept because the Library has their track, or the duplicate copies a clean up found. Each is checked again first. Returns `400` for a Copy or Hardlink ingest and `409` while another operation runs |
 | `GET` | `/api/library/canonical` | Read one page of Library items. Requires a supported `kind`, and `pageSize` from 1 to 100 |
 | `GET` | `/api/library/favorites` | Read the current user's library favorites |
 | `POST` | `/api/library/favorites` | Add or remove a library favorite. Requires a user session |

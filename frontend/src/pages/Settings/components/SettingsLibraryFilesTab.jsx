@@ -190,6 +190,7 @@ export function SettingsLibraryFilesTab({ showError }) {
             or <code>2-07 - Title.flac</code> past the first disc,
             and fills in the tags they are missing, for music you added by hand. Playlists, favorites, and media
             servers follow the files. Lidarr&apos;s files stay with Lidarr. Downloads already get these names and tags.
+            When two copies of a track want the same name, Aurral keeps the better one and offers to remove the other.
           </div>
           <div className="settings-library-files__actions">
             <button

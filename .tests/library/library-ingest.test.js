@@ -261,7 +261,7 @@ test("a track the Library has in a different file is skipped as already in the L
   assert.deepEqual([copiedItem.status, keptItem.status], ["duplicate", "duplicate"]);
   assert.equal(keptItem.target, path.relative(root, library));
   assert.equal(describe(copyId).sources, null);
-  await assert.rejects(operations.removeIngestSources(copyId), /Only a Move ingest/);
+  await assert.rejects(operations.removeDuplicateFiles(copyId), /Only a Move ingest/);
   assert.deepEqual(describe(moveId).sources, { removable: 1, removed: 0 });
   assert.equal(await exists(copied), true);
   assert.equal(await exists(kept), true);
@@ -368,7 +368,7 @@ test("a moved file the Library scan files with a track the Library already had g
   assert.equal(queued.includeLidarr, true);
   assert.equal(queued.changedPaths.includes(file), true);
   assert.deepEqual(describe(id).sources, { removable: 1, removed: 0 });
-  await operations.removeIngestSources(id);
+  await operations.removeDuplicateFiles(id);
   assert.equal((await runUntilSettled(id)).status, "complete");
   assert.equal(await exists(file), false);
   assert.equal(await exists(kept), true);
@@ -433,10 +433,10 @@ test("removing sources after a stopped Move ingest never files the music it stop
   });
   const id = await ingest(source, "move");
   assert.equal(operations.cancelLibraryFileOperation(id), true);
-  await assert.rejects(operations.removeIngestSources(id), /still stopping/);
+  await assert.rejects(operations.removeDuplicateFiles(id), /still stopping/);
   assert.equal((await runUntilSettled(id)).status, "cancelled");
 
-  await operations.removeIngestSources(id);
+  await operations.removeDuplicateFiles(id);
   assert.equal((await runUntilSettled(id)).status, "complete");
 
   assert.equal(await exists(kept), false);
@@ -463,7 +463,7 @@ test("a source much longer or shorter than the Library's track is a different re
   assert.match(item.reason, /Wasted & Ready.*0:0[45] longer/);
   assert.equal(describe(id).counts.duplicate, undefined);
   assert.deepEqual(describe(id).sources, { removable: 0, removed: 0 });
-  await operations.removeIngestSources(id);
+  await operations.removeDuplicateFiles(id);
   assert.equal((await runUntilSettled(id)).status, "complete");
   assert.equal(await exists(demo), true);
 });
@@ -507,14 +507,14 @@ test("removing kept sources checks each against the Library again, removes empti
   const unmonitorFour = db.prepare("UPDATE library_tracks SET monitored = 0 WHERE title = 'Four'");
   assert.equal(unmonitorFour.run().changes, 1);
 
-  await operations.removeIngestSources(id);
+  await operations.removeDuplicateFiles(id);
   assert.equal(operations.cancelLibraryFileOperation(id), true);
   assert.equal((await runUntilSettled(id)).status, "cancelled");
   assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
   assert.equal(await exists(one), true);
 
   await rm(second);
-  await operations.removeIngestSources(id);
+  await operations.removeDuplicateFiles(id);
   assert.equal((await runUntilSettled(id)).status, "complete");
 
   assert.equal(await exists(one), false);
@@ -530,7 +530,7 @@ test("removing kept sources checks each against the Library again, removes empti
   assert.equal(twoItem.status, "skipped");
   assert.match(twoItem.reason, /gone/);
 
-  await operations.removeIngestSources(id);
+  await operations.removeDuplicateFiles(id);
   assert.deepEqual(describe(id), after);
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   await settleIngestedMusic();
