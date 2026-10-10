@@ -10,6 +10,7 @@ import {
   getUnresolvedLibraryArtists,
   markLibraryMediaFilesUnavailable,
   removeLibraryMediaFiles,
+  reconcileLibraryAlbums,
   removeLidarrLibrary,
   upsertLibraryArtist,
 } from "./libraryMediaStore.js";
@@ -219,7 +220,10 @@ export async function scanConfiguredLibrary({
       }
     }
     if (lidarrActive) assignLidarrAlbumOwners();
-    else if (!targeted) lidarrRemoved = removeLidarrLibrary();
+    else if (!targeted) {
+      lidarrRemoved = removeLidarrLibrary();
+      if (lidarrRemoved) reconcileLibraryAlbums();
+    }
     artistsResolved = await resolveUnmatchedLibraryArtists();
     if (!targeted) {
       await removePlaylistTracksWithoutDownloads().catch((error) => {

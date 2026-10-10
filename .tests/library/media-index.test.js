@@ -28,6 +28,7 @@ import {
   scanMusicRoots,
 } from "../../backend/services/libraryFileScanner.js";
 import { scanConfiguredLibrary } from "../../backend/services/libraryIndexService.js";
+import { setLibraryManagement } from "../../backend/services/libraryManagementStore.js";
 import { dbOps } from "../../backend/db/helpers/index.js";
 import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.js";
 import { createMockHttpServer } from "../helpers/backendTestHarness.js";
@@ -336,11 +337,24 @@ test("turning Lidarr off removes its music from the Library and keeps Aurral's",
     .run(requested.id);
   await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOn, lidarrRoots: [music] });
   assert.equal(albumByTitle(`${tag} Requested`).managed_by, "aurral");
+  const wanted = upsertLibraryAlbum({
+    identityKey: `${tag}:wanted`,
+    artistId: albumByTitle(`${tag} Only`).artist_id,
+    title: `${tag} Wanted`,
+    metadata: { librarySource: "lidarr", foreignAlbumId: "0e1f2a3b-4c5d-4e6f-8a7b-8c9d0e1f2a3b", monitored: true },
+    syncSearch: false,
+  });
+  const wantedTrack = upsertLibraryTrack({ identityKey: `${tag}:wanted:track`, title: "Wanted Song", syncSearch: false });
+  linkLibraryAlbumTrack({ albumId: wanted.id, trackId: wantedTrack.id, trackNumber: 1, syncSearch: false });
+  setLibraryManagement({ entityKind: "album", entityId: wanted.id, managedBy: "lidarr" });
+  await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOn, lidarrRoots: [music] });
+  assert.equal(albumByTitle(`${tag} Wanted`).managed_by, "lidarr");
 
   const off = await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOff, lidarrRoots: [music] });
 
   assert.equal(off.lidarrRemoved, true);
   assert.equal(albumByTitle(`${tag} Only`), undefined);
+  assert.equal(albumByTitle(`${tag} Wanted`), undefined);
   assert.equal(
     db.prepare("SELECT COUNT(*) AS count FROM library_artists WHERE name = ?").get(`${tag} Lidarr`).count,
     0,
@@ -937,7 +951,7 @@ test("a file retagged onto another album leaves no empty track or album behind",
   }
 });
 
-test("a scan folds an album an earlier scan left without files into the album its files moved to", async () => {
+test("a scan folds an album an earlier scan left without files into the album its files moved to, and removes ones with nowhere to go but keeps their favorites", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-leftover-"));
   const source = `test-leftover-${process.pid}`;
   const artist = `Leftover ${process.pid}`;
@@ -965,13 +979,171 @@ test("a scan folds an album an earlier scan left without files into the album it
 
     await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
 
-    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["7 Devils", 1], ["Still Starred", 1]]);
+    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["7 Devils", 1]]);
     assert.deepEqual(fileRows(source, filePath), {
       albumId: twinAlbum.id, trackId: twinTrack.id, albumKey: twinAlbum.identity_key, trackKey: twinTrack.identity_key,
     });
     assert.deepEqual(starredKeys(userId), [["album", twinAlbum.identity_key], ["song", kept.identity_key], ["song", twinTrack.identity_key]]);
   } finally {
     db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+    deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+const tagged = (artist, album, title, track, releaseGroup, recording) => {
+  const metadata = untagged(artist, album, title, track);
+  Object.assign(metadata.common, { musicbrainz_releasegroupid: releaseGroup, musicbrainz_recordingid: recording });
+  return metadata;
+};
+
+const filesOnTrack = (trackId) => db.prepare(
+  "SELECT path FROM library_media_files WHERE track_id = ? ORDER BY path",
+).pluck().all(trackId);
+
+test("an album split between untagged and tagged files is one album that lists each song once, through rescans", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-split-"));
+  const source = `test-split-${process.pid}`;
+  const artist = `Split ${process.pid}`;
+  const userId = 9900 + (process.pid % 90);
+  const releaseGroup = "6c4a1b2e-3d4f-4a5b-8c6d-7e8f9a0b1c2d";
+  const tags = {};
+  const reader = async (filePath) => tags[filePath];
+  const copy = await createAudioFile(root, `${artist}/Mellon Collie/01 Tonight.flac`);
+  const only = await createAudioFile(root, `${artist}/Mellon Collie/02 Zero.flac`);
+  tags[copy] = untagged(artist, "Mellon Collie", "Tonight, Tonight", 1);
+  tags[only] = untagged(artist, "Mellon Collie", "Zero", 2);
+  try {
+    await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
+    starFor(userId, ["album", fileRows(source, only).albumKey]);
+    const original = await createAudioFile(root, `${artist}/Mellon Collie (Tagged)/01 Tonight.flac`);
+    tags[original] = tagged(artist, "Mellon Collie", "Tonight, Tonight", 1, releaseGroup, "0a1b2c3d-4e5f-4a6b-8c7d-8e9f0a1b2c3d");
+
+    for (const force of [false, true]) {
+      await scanMusicRoot({ rootPath: root, source, force, metadataReader: reader });
+      assert.deepEqual(artistAlbums(artist).map(({ title, identityKey, tracks }) => [title, identityKey, tracks]), [
+        ["Mellon Collie", `release-group:${releaseGroup}`, 2],
+      ]);
+      assert.deepEqual(filesOnTrack(fileRows(source, original).trackId), [copy, original].sort());
+      assert.deepEqual(starredKeys(userId), [["album", `release-group:${releaseGroup}`]]);
+    }
+  } finally {
+    db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+    for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an untagged file joins the one of an artist's same-titled releases that lists its song", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-same-title-"));
+  const source = `test-same-title-${process.pid}`;
+  const artist = `Same Title ${process.pid}`;
+  const tags = {};
+  const blue = await createAudioFile(root, `${artist}/Blue/04 Buddy Holly.flac`);
+  const green = await createAudioFile(root, `${artist}/Green/03 Hash Pipe.flac`);
+  tags[blue] = tagged(artist, "Weezer", "Buddy Holly", 4, "1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e", "2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f");
+  tags[green] = tagged(artist, "Weezer", "Hash Pipe", 3, "3d4e5f6a-7b8c-4d9e-8f0a-1b2c3d4e5f6a", "4e5f6a7b-8c9d-4e0f-8a1b-2c3d4e5f6a7b");
+  const reader = async (filePath) => tags[filePath];
+  try {
+    await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
+    const copy = await createAudioFile(root, `${artist}/Weezer/04 Buddy Holly.mp3`);
+    tags[copy] = untagged(artist, "Weezer", "Buddy Holly", 4);
+    await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
+
+    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["Weezer", 1], ["Weezer", 1]]);
+    assert.equal(fileRows(source, copy).trackId, fileRows(source, blue).trackId);
+  } finally {
+    for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a scan removes albums nobody can play or asked for, and keeps the ones Aurral or Lidarr was asked for", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-owners-"));
+  const artistName = `Owners ${process.pid}`;
+  const leftoverName = `Catalogue Only ${process.pid}`;
+  const artist = upsertLibraryArtist({ identityKey: `name:artist:owners ${process.pid}`, name: artistName, syncSearch: false });
+  const leftoverArtist = upsertLibraryArtist({ identityKey: `name:artist:catalogue ${process.pid}`, name: leftoverName, syncSearch: false });
+  const album = (owner, title, metadata, management = null) => {
+    const row = upsertLibraryAlbum({ identityKey: `owners:${process.pid}:${title}`, artistId: owner.id, title, metadata, syncSearch: false });
+    const track = upsertLibraryTrack({ identityKey: `owners:${process.pid}:${title}:track`, title: `${title} Song`, syncSearch: false });
+    linkLibraryAlbumTrack({ albumId: row.id, trackId: track.id, trackNumber: 1, syncSearch: false });
+    if (management) setLibraryManagement({ entityKind: "album", entityId: row.id, ...management });
+    return track;
+  };
+  const lidarrRecord = { foreignAlbumId: "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c", profileId: 1, anyReleaseOk: true, monitored: true };
+  const catalogueTrack = album(artist, "Catalogue", lidarrRecord);
+  album(leftoverArtist, "Catalogue Elsewhere", lidarrRecord);
+  album(artist, "Scanned Away", { tags: { album: "Scanned Away" }, monitored: false }, { managedBy: "aurral" });
+  album(artist, "Requested", { librarySource: "aurral", trackListComplete: true, monitored: true }, { managedBy: "aurral", monitorMode: "monitored" });
+  album(artist, "Unmonitored", { librarySource: "aurral", trackListComplete: true, monitored: false }, { managedBy: "aurral", monitorMode: "unmonitored" });
+  album(artist, "Lidarr Wants", { librarySource: "lidarr", monitored: true }, { managedBy: "lidarr" });
+  try {
+    await scanMusicRoot({ rootPath: root, source: `test-owners-${process.pid}` });
+
+    assert.deepEqual(artistAlbums(artistName).map(({ title }) => title), ["Lidarr Wants", "Requested", "Unmonitored"]);
+    assert.deepEqual(artistAlbums(leftoverName), []);
+    assert.equal(db.prepare("SELECT COUNT(*) FROM library_artists WHERE name = ?").pluck().get(leftoverName), 0);
+    assert.equal(db.prepare("SELECT COUNT(*) FROM library_tracks WHERE id = ?").pluck().get(catalogueTrack.id), 0);
+  } finally {
+    removeArtistsNamed(`Owners ${process.pid}`);
+    removeArtistsNamed(`Catalogue Only ${process.pid}`);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a file row naming an album its track is not on shows on the track's album when that empty album goes", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-stray-"));
+  const source = `test-stray-${process.pid}`;
+  const elsewhere = `test-stray-elsewhere-${process.pid}`;
+  const artist = `Stray ${process.pid}`;
+  const strayPath = path.join(root, "elsewhere", "Where Is My Mind.flac");
+  const filePath = await createAudioFile(root, `${artist}/Death to the Pixies/01 Where Is My Mind.flac`);
+  const reader = async () => tagged(artist, "Death to the Pixies", "Where Is My Mind?", 1,
+    "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d", "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e");
+  try {
+    await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
+    const twin = fileRows(source, filePath);
+    const artistId = db.prepare("SELECT artist_id FROM library_albums WHERE id = ?").pluck().get(twin.albumId);
+    const leftover = upsertLibraryAlbum({ identityKey: `name:album:stray ${process.pid}`, artistId, title: "Pixies Rarities", syncSearch: false });
+    const leftoverTrack = upsertLibraryTrack({ identityKey: `name:track:stray ${process.pid}`, title: "Where Is My Mind?", syncSearch: false });
+    linkLibraryAlbumTrack({ albumId: leftover.id, trackId: leftoverTrack.id, trackNumber: 0, syncSearch: false });
+    upsertLibraryMediaFile({ trackId: twin.trackId, albumId: leftover.id, source: elsewhere, path: strayPath });
+
+    await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
+
+    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["Death to the Pixies", 1]]);
+    assert.equal(fileRows(elsewhere, strayPath).albumId, twin.albumId);
+    assert.deepEqual(filesOnTrack(twin.trackId), [filePath, strayPath].sort());
+  } finally {
+    deleteIndexedFile(elsewhere, strayPath);
+    deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an untagged copy an album lists beside its tagged track becomes that track", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-copy-row-"));
+  const source = `test-copy-row-${process.pid}`;
+  const elsewhere = `test-copy-row-elsewhere-${process.pid}`;
+  const artist = `Copy Row ${process.pid}`;
+  const copyPath = path.join(root, "elsewhere", "03 Song.mp3");
+  const filePath = await createAudioFile(root, `${artist}/Album/03 Song.flac`);
+  const reader = async () => tagged(artist, "Album", "Song", 3,
+    "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f", "9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a");
+  try {
+    await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
+    const kept = fileRows(source, filePath);
+    const copy = upsertLibraryTrack({ identityKey: `name:track:copy row ${process.pid}:1:3:song`, title: "Song", syncSearch: false });
+    linkLibraryAlbumTrack({ albumId: kept.albumId, trackId: copy.id, discNumber: 1, trackNumber: 3, syncSearch: false });
+    upsertLibraryMediaFile({ trackId: copy.id, albumId: kept.albumId, source: elsewhere, path: copyPath });
+
+    await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
+
+    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["Album", 1]]);
+    assert.deepEqual(filesOnTrack(kept.trackId), [copyPath, filePath].sort());
+  } finally {
+    deleteIndexedFile(elsewhere, copyPath);
     deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
   }

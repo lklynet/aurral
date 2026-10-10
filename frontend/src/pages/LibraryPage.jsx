@@ -90,12 +90,15 @@ import {
 import { buildAuthenticatedApiUrl } from "../utils/api/core.js";
 import { mergeAlbumMetadataTracks } from "../utils/libraryTrackHydration.js";
 import {
+  albumCardMeta,
   EMPTY_LIBRARY,
   favoriteId,
   firstAvailableFile,
   getAlbumCoverId,
   getCachedAlbumTracks,
   mergeAlbumTrackPageIntoLibrary,
+  releaseTypeOf,
+  yearOf,
 } from "../utils/libraryPageData.js";
 import {
   aurralAlbumStatusKey,
@@ -164,11 +167,6 @@ const hasGenre = (genre, ...entities) => {
   if (!genre) return true;
   const wanted = genre.toLocaleLowerCase();
   return entities.flatMap(metadataGenres).some((value) => value.toLocaleLowerCase() === wanted);
-};
-
-const yearOf = (value) => {
-  const match = /^(\d{4})/.exec(text(value));
-  return match ? match[1] : "";
 };
 
 const hasAurralTrackFile = (track) =>
@@ -695,8 +693,8 @@ function LibraryPage() {
           albumId: album.id,
           page: 1,
           pageSize,
-          // Full tracklist regardless of the library-wide availability setting;
-          // availability is surfaced per-track via badges after merging metadata.
+          // Full tracklist; availability is surfaced per-track via badges
+          // after merging metadata.
           availableOnly: false,
         }, { signal });
         const ownedTracks = Array.isArray(page?.items) ? page.items : [];
@@ -2325,13 +2323,7 @@ function LibraryPage() {
   const renderAlbumCard = (album) => {
     const artist = getArtistForAlbum(album);
     const albumEmpty = !getAlbumTracks(album).length && !album.trackCount && !album.trackIds?.length;
-    const availability = albumAvailability(album);
-    const meta =
-      availability.total && availability.available < availability.total
-        ? availability.available + "/" + availability.total + " available"
-        : (yearOf(album.releaseDate) ? yearOf(album.releaseDate) + " · " : "") +
-          (availability.total || 0) +
-          " tracks";
+    const meta = albumCardMeta(album, albumAvailability(album));
     const isFavorite = favoriteIds.has(favoriteId("album", album));
     const aurralState = album.managedBy === "aurral"
       ? describeAurralAlbumStatus(aurralAlbumStatuses[aurralAlbumStatusKey(album.id)] || {})
@@ -2576,7 +2568,7 @@ function LibraryPage() {
       <section className="native-library-detail">
         <CollectionHeader
           cover={<Cover src={getAlbumCover(libraryAlbum)} label={libraryAlbum.title} />}
-          kicker="Album"
+          kicker={releaseTypeOf(libraryAlbum) || "Album"}
           title={libraryAlbum.title || "Unknown Album"}
           subtitle={
             artist ? (

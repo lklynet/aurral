@@ -37,7 +37,7 @@ const libraryPageParams = (options = {}) => Object.fromEntries(
     albumId: options.albumId,
     source: options.source || "all",
     // Tri-state: an explicit boolean forces the filter, while `undefined` omits
-    // the param so the backend applies the Lidarr "available only" setting.
+    // the param so the backend shows what can be played and what Aurral is fetching.
     availableOnly: options.availableOnly === undefined || options.availableOnly === null
       ? undefined
       : options.availableOnly === true ? "true" : "false",

@@ -33,6 +33,8 @@ To open a track, album, or artist menu, select its options button, right-click i
 
 The page tells you when library data is stale, when files are partial or missing, when a service has a problem, and when a list is empty.
 
+The Library lists the music you can play, plus the albums Aurral is downloading for you. To see the rest of an artist's discography and request it, open the artist's Discover page. When an artist has several releases with one title, each card shows its year, and singles and EPs say so.
+
 On a Discover artist page, you can search releases by title. Filter by all releases, albums, EPs and singles, or compilations. To show or hide live releases in any filter, use the **Live albums** switch.
 
 ## Who manages your library
@@ -155,7 +157,12 @@ To scan now, select **Refresh** in Library and choose a scan:
 - **Quick scan** checks every folder, reads new and changed files, and marks missing files as unavailable.
 - **Full scan** reads the tags of every file again. Use it after you retag files without changing their size or modification time, or when a quick scan does not fix stale metadata. A full scan can take a long time on a large library. It keeps running if you leave the page.
 
-When a file without MusicBrainz tags gains them, the scan keeps its album and track, with their favorites, play counts, and monitoring. Earlier versions started a second album beside it and left the first one empty, showing as 0 available. A scan folds each empty album like that into the album its files moved to.
+Each album appears once, and each song appears once on its album:
+
+- A file without MusicBrainz tags joins the artist's album with the same title. When the artist has more than one, it joins the one that lists the song.
+- When a file gains MusicBrainz tags, the scan keeps its album and track, with their favorites, play counts, and monitoring.
+- After each scan, Aurral folds an album that untagged files split off, or that its files left behind, into the album with the same title. Favorites and play counts move with it. An untagged copy of a song the album already has becomes a second file of that song, which [Clean up](#clean-up-the-library) can remove.
+- Aurral removes albums that have no files and that neither you, Aurral, nor Lidarr asked for, such as albums an earlier Lidarr connection listed without downloading. Their favorites and play counts stay saved and come back if the album returns. Albums you asked Aurral or Lidarr for stay, with or without files.
 
 When a scan finishes, an open Library page reloads. **Recently added** sorting on albums, tracks, and artists and the home page use the time that a file entered the Library, not the release date.
 
@@ -229,4 +236,3 @@ To fix a wrong or missing link, open the artist menu and select **Edit MusicBrai
 - Aurral hands an album to Lidarr only when Lidarr downloads or monitors it. Aurral never takes albums from Lidarr.
 - When you remove an album and keep its files in the Downloads Folder, the next full scan adds it back, unmonitored. To remove it for good, delete its files too.
 - Lidarr files tagged with a release ID but no release group ID can show up as a second copy of an album that Aurral also has.
-- When Lidarr is connected and **Show available music only** is on, the Library hides albums that Aurral is still downloading until one track finishes. To show them, turn off the setting in **Settings > Lidarr**.

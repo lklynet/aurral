@@ -8,6 +8,7 @@ import {
 import { invalidateLibraryQueryCache } from "./libraryQueryService.js";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 import { clearLibraryManagement } from "./libraryManagementStore.js";
+import { logger, safeLogDiagnostic } from "./logger.js";
 import {
   removeLibrarySearchDocument,
   syncLibrarySearchAlbum,
@@ -632,14 +633,14 @@ export function isSameLibraryName(left, right) {
   return Boolean(raw(left)) && raw(left) === raw(right);
 }
 
-// A file without MusicBrainz album tags belongs to the artist's one album
-// with the same title, so an untagged copy never splits an album in two.
-export function findLibraryAlbumByArtistTitle(artistId, title) {
+// A file without MusicBrainz album tags belongs to the artist's album with
+// the same title, so an untagged copy never splits an album in two.
+export function findLibraryAlbumByArtistTitle(artistId, title, trackTitle = null) {
   if (!normalizeText(title) || !Number.isSafeInteger(Number(artistId))) return null;
   const matches = db.prepare("SELECT * FROM library_albums WHERE artist_id = ? ORDER BY id")
     .all(Number(artistId))
     .filter((album) => isSameLibraryName(album.title, title));
-  return matches.length === 1 ? matches[0] : null;
+  return chooseLibraryAlbum(matches, trackTitle ? [trackTitle] : []);
 }
 
 export function moveLibraryMediaFilePath(source, fromPath, toPath) {
@@ -759,6 +760,21 @@ export function rekeyLibraryAlbum(albumId, identityKey) {
   return result?.id ?? null;
 }
 
+const deleteAlbumStmt = db.prepare("DELETE FROM library_albums WHERE id = ?");
+const artistHasAlbumStmt = db.prepare("SELECT 1 FROM library_albums WHERE artist_id = ? LIMIT 1");
+const artistManagedStmt = db.prepare("SELECT 1 FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?");
+const deleteArtistStmt = db.prepare("DELETE FROM library_artists WHERE id = ?");
+
+function deleteLibraryAlbumRow(albumId, artistId) {
+  clearLibraryManagement("album", albumId);
+  deleteAlbumStmt.run(albumId);
+  removeLibrarySearchDocument("album", albumId);
+  if (artistId != null && !artistHasAlbumStmt.get(artistId) && !artistManagedStmt.get(artistId)) {
+    deleteArtistStmt.run(artistId);
+    removeLibrarySearchDocument("artist", artistId);
+  }
+}
+
 // Removes an album link an upgrade left behind, and the album, track, or
 // artist it emptied.
 export function unlinkLibraryAlbumTrackWithoutMedia(albumId, trackId) {
@@ -781,15 +797,7 @@ export function unlinkLibraryAlbumTrackWithoutMedia(albumId, trackId) {
     if (!db.prepare("SELECT 1 FROM library_album_tracks WHERE album_id = ? LIMIT 1").get(album)
       && !db.prepare("SELECT 1 FROM library_media_files WHERE album_id = ? AND available = 1 LIMIT 1").get(album)) {
       db.prepare("DELETE FROM library_media_files WHERE album_id = ?").run(album);
-      clearLibraryManagement("album", album);
-      db.prepare("DELETE FROM library_albums WHERE id = ?").run(album);
-      removeLibrarySearchDocument("album", album);
-      if (artistId != null
-        && !db.prepare("SELECT 1 FROM library_albums WHERE artist_id = ? LIMIT 1").get(artistId)
-        && !db.prepare("SELECT 1 FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?").get(artistId)) {
-        db.prepare("DELETE FROM library_artists WHERE id = ?").run(artistId);
-        removeLibrarySearchDocument("artist", artistId);
-      }
+      deleteLibraryAlbumRow(album, artistId);
     } else {
       touchLibraryAlbum(album);
     }
@@ -839,67 +847,210 @@ export function releaseLibraryFileRows(before, after) {
   if (before.albumId !== after.albumId) unlinkLibraryAlbumTrackWithoutMedia(before.albumId, after.trackId);
 }
 
-function hasLibraryReferences(album, tracks) {
-  const starred = db.prepare("SELECT 1 FROM subsonic_stars WHERE entity_key = ? LIMIT 1");
-  return Boolean(
-    starred.get(album.identity_key)
-    || db.prepare("SELECT 1 FROM play_album_stats WHERE album_key = ? LIMIT 1").get(album.identity_key)
-    || tracks.some((track) => starred.get(track.identity_key)),
-  );
+const albumTracksStmt = db.prepare(
+  `SELECT track.*, link.disc_number, link.track_number,
+     EXISTS (
+       SELECT 1 FROM library_media_files AS media
+       WHERE media.track_id = track.id AND (media.album_id = link.album_id OR media.album_id IS NULL)
+     ) AS has_files
+   FROM library_album_tracks AS link
+   JOIN library_tracks AS track ON track.id = link.track_id
+   WHERE link.album_id = ?
+   ORDER BY link.disc_number, link.track_number, track.id`,
+);
+
+const ALBUM_HAS_FILES = `EXISTS (
+  SELECT 1 FROM library_album_tracks AS file_link
+  JOIN library_media_files AS file
+    ON file.track_id = file_link.track_id
+    AND (file.album_id = file_link.album_id OR file.album_id IS NULL)
+  WHERE file_link.album_id = album.id
+)`;
+
+// Aurral and Lidarr keep the albums they were asked for, with or without
+// files: a requested album still downloading, or one unmonitored so artist
+// monitoring leaves it out.
+const ALBUM_IS_OWNED = `(
+  CASE WHEN json_valid(album.metadata_json)
+    THEN json_extract(album.metadata_json, '$.librarySource') IS NOT NULL
+      OR COALESCE(json_extract(album.metadata_json, '$.trackListComplete'), 0) = 1
+    ELSE 0 END
+  OR EXISTS (
+    SELECT 1 FROM library_management AS owner
+    WHERE owner.entity_kind = 'album' AND owner.entity_id = album.id
+      AND (owner.managed_by != 'aurral' OR owner.monitor_mode IS NOT NULL)
+  )
+)`;
+
+// A file without a recording ID is the album's track with its title and
+// position, or the tagged one when an untagged copy sits beside it.
+function matchLibraryAlbumTrack(tracks, { title, discNumber, trackNumber }) {
+  const same = [...new Map(tracks
+    .filter((track) => isSameLibraryName(track.title, title)
+      && (!(track.track_number > 0 && trackNumber > 0)
+        || (track.track_number === trackNumber && (track.disc_number || 1) === (discNumber || 1))))
+    .map((track) => [track.id, track])).values()];
+  if (same.length === 1) return same[0];
+  const tagged = same.filter((track) => !isNameKey(track.identity_key));
+  return tagged.length === 1 ? tagged[0] : null;
 }
 
-// Scans once left an untagged album behind, with no files, when its files
-// gained MusicBrainz IDs and moved to an album of their own. Each folds into
-// the one album of its artist and title that has files, with its favorites
-// and play counts. One with nowhere to go is removed when nothing refers to it.
-export function mergeLeftoverLibraryAlbums() {
-  const leftovers = db.prepare(
-    `SELECT * FROM library_albums AS album
-     WHERE album.identity_key LIKE 'name:%'
-       AND NOT EXISTS (SELECT 1 FROM library_media_files AS media WHERE media.album_id = album.id)`,
-  ).all();
-  for (const album of leftovers) {
-    const tracks = db.prepare(
-      `SELECT track.*, EXISTS (SELECT 1 FROM library_media_files AS media WHERE media.track_id = track.id) AS has_media
-       FROM library_album_tracks AS link JOIN library_tracks AS track ON track.id = link.track_id
-       WHERE link.album_id = ?`,
-    ).all(album.id);
-    const twins = db.prepare(
-      `SELECT * FROM library_albums AS twin
-       WHERE twin.artist_id = ? AND twin.id != ?
-         AND EXISTS (SELECT 1 FROM library_media_files AS media WHERE media.album_id = twin.id)`,
-    ).all(album.artist_id, album.id).filter((twin) => isSameLibraryName(twin.title, album.title));
-    if (twins.length > 1) continue;
-    const [twin] = twins;
-    if (!twin) {
-      if (hasLibraryReferences(album, tracks)) continue;
-      for (const track of tracks) unlinkLibraryAlbumTrackWithoutMedia(album.id, track.id);
-      if (db.prepare("SELECT 1 FROM library_albums WHERE id = ?").get(album.id)) {
-        db.transaction(() => {
-          clearLibraryManagement("album", album.id);
-          db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
-        })();
-        removeLibrarySearchDocument("album", album.id);
-        invalidateLibraryCache();
-      }
-      continue;
-    }
-    const twinTracks = db.prepare(
-      `SELECT track.* FROM library_album_tracks AS link JOIN library_tracks AS track ON track.id = link.track_id
-       WHERE link.album_id = ?`,
-    ).all(twin.id);
-    const matches = tracks.map((track) => {
-      if (track.has_media) return [track, null];
-      const same = twinTracks.filter((candidate) => isSameLibraryName(candidate.title, track.title));
-      return [track, same.length === 1 ? same[0] : undefined];
+export function findLibraryAlbumTrack(albumKey, { title, discNumber, trackNumber }) {
+  const album = db.prepare("SELECT id FROM library_albums WHERE identity_key = ?").get(normalizeText(albumKey));
+  if (!album) return null;
+  return matchLibraryAlbumTrack(albumTracksStmt.all(album.id), { title, discNumber, trackNumber });
+}
+
+// Of an artist's albums with one title, an untagged album or file belongs to
+// the only one, else the only one holding its tracks, else the only one of
+// those with files.
+function chooseLibraryAlbum(albums, titles) {
+  if (albums.length <= 1) return albums[0] || null;
+  const holding = titles.length
+    ? albums.filter((album) => {
+      const tracks = albumTracksStmt.all(album.id);
+      return titles.every((title) => tracks.some((track) => isSameLibraryName(track.title, title)));
+    })
+    : [];
+  const pool = holding.length ? holding : albums;
+  if (pool.length === 1) return pool[0];
+  const withFiles = pool.filter((album) => albumTracksStmt.all(album.id).some((track) => track.has_files));
+  return withFiles.length === 1 ? withFiles[0] : null;
+}
+
+// A file names the album it was filed under. One naming an album its track
+// is not on shows nowhere, so it takes the track's album, or none when the
+// track is on several.
+function repairLibraryFileAlbums() {
+  return db.prepare(
+    `UPDATE library_media_files SET album_id = (
+       SELECT CASE WHEN COUNT(DISTINCT link.album_id) = 1 THEN MIN(link.album_id) END
+       FROM library_album_tracks AS link WHERE link.track_id = library_media_files.track_id
+     )
+     WHERE album_id IS NOT NULL AND NOT EXISTS (
+       SELECT 1 FROM library_album_tracks AS link
+       WHERE link.track_id = library_media_files.track_id AND link.album_id = library_media_files.album_id
+     )`,
+  ).run().changes;
+}
+
+function foldLibraryAlbum(album, tracks, target) {
+  const targetTracks = albumTracksStmt.all(target.id);
+  const dropped = [];
+  for (const track of tracks) {
+    const match = matchLibraryAlbumTrack(targetTracks, {
+      title: track.title,
+      discNumber: track.disc_number,
+      trackNumber: track.track_number,
     });
-    if (matches.some(([, match]) => match === undefined)) continue;
-    for (const [track, match] of matches) {
-      if (match && match.id !== track.id) rekeyLibraryTrack(track.id, match.identity_key);
+    if (match && match.id !== track.id && (!track.has_files || isNameKey(track.identity_key))) {
+      rekeyLibraryTrack(track.id, match.identity_key);
+    } else if (!match && !track.has_files) {
+      dropped.push(track.id);
     }
-    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
-    rekeyLibraryAlbum(album.id, twin.identity_key);
   }
+  db.prepare(
+    `DELETE FROM library_album_tracks
+     WHERE album_id = ? AND track_id IN (SELECT track_id FROM library_album_tracks WHERE album_id = ?)`,
+  ).run(album.id, target.id);
+  rekeyLibraryAlbum(album.id, target.identity_key);
+  for (const trackId of dropped) unlinkLibraryAlbumTrackWithoutMedia(target.id, trackId);
+}
+
+const unlinkAlbumTrackStmt = db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?");
+const trackLinkedStmt = db.prepare("SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1");
+const trackHasFileStmt = db.prepare("SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1");
+const deleteTrackStmt = db.prepare("DELETE FROM library_tracks WHERE id = ?");
+
+function removeEmptyLibraryAlbum(album, tracks) {
+  for (const track of tracks) {
+    unlinkAlbumTrackStmt.run(album.id, track.id);
+    if (!trackLinkedStmt.get(track.id) && !trackHasFileStmt.get(track.id)) {
+      deleteTrackStmt.run(track.id);
+      removeLibrarySearchDocument("track", track.id);
+    }
+  }
+  deleteLibraryAlbumRow(album.id, album.artist_id);
+}
+
+// An untagged copy of a track its album already lists with MusicBrainz IDs
+// is that track.
+function foldUntaggedLibraryTracks() {
+  const links = db.prepare(
+    `SELECT link.album_id, link.disc_number, link.track_number, track.id, track.title, track.identity_key
+     FROM library_album_tracks AS link
+     JOIN library_tracks AS track ON track.id = link.track_id
+     WHERE link.album_id IN (
+       SELECT named.album_id FROM library_album_tracks AS named
+       JOIN library_tracks AS untagged ON untagged.id = named.track_id AND untagged.identity_key LIKE 'name:%'
+       INTERSECT
+       SELECT known.album_id FROM library_album_tracks AS known
+       JOIN library_tracks AS tagged ON tagged.id = known.track_id AND tagged.identity_key NOT LIKE 'name:%'
+     )
+     ORDER BY link.album_id`,
+  ).all();
+  let changed = 0;
+  for (const [albumId, tracks] of Map.groupBy(links, (link) => link.album_id)) {
+    const tagged = tracks.filter((track) => !isNameKey(track.identity_key));
+    for (const track of tracks.filter((entry) => isNameKey(entry.identity_key))) {
+      const match = matchLibraryAlbumTrack(tagged, {
+        title: track.title,
+        discNumber: track.disc_number,
+        trackNumber: track.track_number,
+      });
+      if (!match) continue;
+      unlinkAlbumTrackStmt.run(albumId, track.id);
+      rekeyLibraryTrack(track.id, match.identity_key);
+      changed += 1;
+    }
+  }
+  return changed;
+}
+
+// An artist's albums with one title are one album, and the Library holds no
+// album nobody can play or asked for. After a scan, an untagged album folds
+// into the album with its title, taking its files, favorites, and plays, as
+// does an album whose files all moved to another. One with no files and
+// nowhere to go is removed; its favorites and plays come back with it.
+const albumExistsStmt = db.prepare("SELECT 1 FROM library_albums WHERE id = ?");
+const artistAlbumsStmt = db.prepare("SELECT * FROM library_albums WHERE artist_id = ? AND id != ? ORDER BY id");
+
+export function reconcileLibraryAlbums() {
+  if (db.transaction(reconcileAlbums).immediate() === 0) return;
+  invalidateLibraryManagementCache();
+  invalidateLibraryCache();
+}
+
+function reconcileAlbums() {
+  let changed = repairLibraryFileAlbums();
+  const albums = db.prepare(
+    `SELECT album.*, ${ALBUM_IS_OWNED} AS owned, ${ALBUM_HAS_FILES} AS has_files
+     FROM library_albums AS album
+     WHERE album.identity_key LIKE 'name:%' OR (NOT ${ALBUM_HAS_FILES} AND NOT ${ALBUM_IS_OWNED})
+     ORDER BY album.id`,
+  ).all();
+  for (const album of albums) {
+    if (!album.has_files && album.owned) continue;
+    const siblings = artistAlbumsStmt.all(album.artist_id, album.id)
+      .filter((sibling) => isSameLibraryName(sibling.title, album.title));
+    if (album.has_files && siblings.length === 0) continue;
+    if (!albumExistsStmt.get(album.id)) continue;
+    const tracks = albumTracksStmt.all(album.id);
+    const hasFiles = tracks.some((track) => track.has_files);
+    const titles = (hasFiles ? tracks.filter((track) => track.has_files) : tracks).map((track) => track.title);
+    const target = chooseLibraryAlbum(siblings, titles);
+    if (!target && hasFiles) continue;
+    try {
+      db.transaction(() => (target ? foldLibraryAlbum(album, tracks, target) : removeEmptyLibraryAlbum(album, tracks)))();
+      changed += 1;
+    } catch (error) {
+      logger.warn("library", "Could not tidy a Library album", {
+        albumId: album.id,
+        reason: safeLogDiagnostic(error),
+      });
+    }
+  }
+  return changed + foldUntaggedLibraryTracks();
 }
 
 // Downloads once took an album's release ID for its release group, and the

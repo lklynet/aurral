@@ -296,11 +296,13 @@ test("music joins the folders and names already on disk when the Library writes 
   assert.equal(await exists(closer), true);
 });
 
-// Two albums with one title leave an untagged source without an album to
-// match, but the scan still files its copy with the Library's track.
+// Two releases with one title leave an untagged source without an album to
+// match, but the scan files its copy with the Library's track on the release
+// that holds it.
 async function sourceTheScanJoinsToALibraryTrack({ keptFolder = "Album" } = {}) {
   const kept = await libraryTrack(path.join("Twice", keptFolder, "01 - Song.flac"), {
     artist: "Twice", album: "Album", title: "Song", track: "1",
+    MUSICBRAINZ_RELEASEGROUPID: "88888888-8888-4888-8888-888888888888",
   });
   await libraryTrack(path.join("Twice", "Album (Tagged)", "01 - Other.flac"), {
     artist: "Twice", album: "Album", title: "Other", track: "1",
@@ -388,7 +390,9 @@ test("a moved file the Library scan files with a track the Library already had g
   await mkdir(path.dirname(libraryArt), { recursive: true });
   await writeFile(libraryArt, "library art");
   const otherTags = { artist: "Twice", album: "Album", title: "Tune", track: "2" };
-  await libraryTrack(path.join("Twice", "Earlier Rip", "02 - Tune.flac"), otherTags);
+  await libraryTrack(path.join("Twice", "Earlier Rip", "02 - Tune.flac"), {
+    ...otherTags, MUSICBRAINZ_RELEASEGROUPID: "88888888-8888-4888-8888-888888888888",
+  });
   const otherFile = await makeTrack(path.join(source, "Twice", "Album CD2", "tune.mp3"), otherTags);
   const otherArt = path.join(path.dirname(otherFile), "back.jpg");
   await writeFile(otherArt, "back");

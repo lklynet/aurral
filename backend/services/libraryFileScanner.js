@@ -7,14 +7,15 @@ import {
   buildIdentityKey,
   findLibraryAlbumByArtistTitle,
   findLibraryAlbumByReleaseMbid,
+  findLibraryAlbumTrack,
   findLegacyKeyedLibraryFiles,
   followLibraryFileIdentity,
   getLibraryMediaFile,
   getAvailableLibraryMediaPaths,
   linkLibraryAlbumTrack,
   markLibraryMediaFilesUnavailable,
-  mergeLeftoverLibraryAlbums,
   mergeReleaseKeyedLibraryAlbums,
+  reconcileLibraryAlbums,
   releaseLibraryFileRows,
   splitLegacyKeyedLibraryRows,
   upsertLibraryAlbum,
@@ -372,17 +373,21 @@ export async function scanMusicRoot({
             syncSearch,
           });
           const titledAlbum = !record.releaseGroupMbid && !record.albumMbid
-            ? findLibraryAlbumByArtistTitle(artist.id, record.albumName)
+            ? findLibraryAlbumByArtistTitle(artist.id, record.albumName, record.title)
             : null;
           const namedAlbum = legacyKeyed.albumIds.has(titledAlbum?.id) ? null : titledAlbum;
           const releaseAlbum = findLibraryAlbumByReleaseMbid(record.releaseGroupMbid) || namedAlbum;
           const albumKey = releaseAlbum?.identity_key || record.albumKey;
+          const listedTrack = record.trackMbid || legacyKeyed.paths.has(filePath)
+            ? null
+            : findLibraryAlbumTrack(albumKey, record);
+          const trackKey = listedTrack?.identity_key || record.trackKey;
           const before = existing && !legacyKeyed.paths.has(filePath)
             ? followLibraryFileIdentity(existing, {
               artistId: artist.id,
               albumKey,
               albumTitle: namedAlbum?.title || record.albumName,
-              trackKey: record.trackKey,
+              trackKey,
               title: record.title,
             })
             : null;
@@ -398,15 +403,17 @@ export async function scanMusicRoot({
             syncSearch,
           });
           if (source === "aurral") claimUnownedAlbum(album);
-          const track = upsertLibraryTrack({
-            identityKey: record.trackKey,
-            mbid: record.trackMbid,
-            title: record.title,
-            artistName: record.trackArtistName,
-            metadata: record.trackMetadata,
-            monitored: source !== "aurral" || downloadedByAurral,
-            syncSearch,
-          });
+          const track = (trackKey !== record.trackKey
+            && db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(trackKey))
+            || upsertLibraryTrack({
+              identityKey: record.trackKey,
+              mbid: record.trackMbid,
+              title: record.title,
+              artistName: record.trackArtistName,
+              metadata: record.trackMetadata,
+              monitored: source !== "aurral" || downloadedByAurral,
+              syncSearch,
+            });
           linkLibraryAlbumTrack({
             albumId: album.id,
             trackId: track.id,
@@ -483,7 +490,7 @@ export async function scanMusicRoot({
     // had, even when the walk stops partway.
     return run().finally(() => {
       if (legacyMoves.length > 0) splitLegacyKeyedLibraryRows(legacyMoves);
-      mergeLeftoverLibraryAlbums();
+      reconcileLibraryAlbums();
     });
   });
   return scanResult;

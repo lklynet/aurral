@@ -1284,7 +1284,29 @@ const recentMediaOrder = (kind, sourceFilter, availableOnly, direction) => {
   ), 0) ${orderDirection}, track.title COLLATE NOCASE ${direction === "desc" ? "DESC" : "ASC"}`;
 };
 
+// The Library shows what can be played, and the albums Aurral is fetching.
+export const LIBRARY_VIEW = "library";
+
+const aurralFetching = (alias) => `CASE WHEN json_valid(${alias}.metadata_json)
+  THEN json_extract(${alias}.metadata_json, '$.librarySource') = 'aurral'
+    AND json_extract(${alias}.metadata_json, '$.monitored') = 1
+  ELSE 0 END`;
+
+const visibleAlbum = (sourceFilter) => {
+  const playable = pageMediaExists("albums", sourceFilter, true);
+  return { sql: `(${playable.sql} OR ${aurralFetching("album")})`, parameters: playable.parameters };
+};
+
 const pageMediaExists = (kind, sourceFilter, availableOnly) => {
+  if (availableOnly === LIBRARY_VIEW) {
+    if (kind === "tracks") return pageMediaExists(kind, sourceFilter, true);
+    const album = visibleAlbum(sourceFilter);
+    if (kind === "albums") return album;
+    return {
+      sql: `EXISTS (SELECT 1 FROM library_albums AS album WHERE album.artist_id = artist.id AND ${album.sql})`,
+      parameters: album.parameters,
+    };
+  }
   if (!sourceFilter && availableOnly !== true) {
     if (kind === "artists") {
       return {
@@ -1430,11 +1452,14 @@ export function getLibraryArtistPage({
     ).all(...parameters, ...(boundedLimit === null ? [] : [boundedLimit, pageOffset(offset)])).map((row) => row.id);
   if (!ids.length) return { artists: [], albums: [], tracks: [] };
 
+  const shownAlbums = availableOnly === LIBRARY_VIEW ? visibleAlbum(sourceFilter) : null;
   if (!includeStats) {
-    const filterAlbums = Boolean(sourceFilter) || availableOnly === true;
+    const filterAlbums = Boolean(sourceFilter) || availableOnly === true || Boolean(shownAlbums);
     const albumJoin = filterAlbums ? "JOIN" : "LEFT JOIN";
-    const albumFilter = filterAlbums
-      ? `AND EXISTS (
+    const albumFilter = shownAlbums
+      ? `AND ${shownAlbums.sql}`
+      : filterAlbums
+        ? `AND EXISTS (
           SELECT 1
           FROM library_album_tracks AS album_track
           JOIN library_media_files AS media
@@ -1444,7 +1469,7 @@ export function getLibraryArtistPage({
             ${sourceFilter ? "AND media.source = ?" : ""}
             ${availableOnly === true ? "AND media.available = 1" : ""}
         )`
-      : "";
+        : "";
     const rows = db.prepare(
       `SELECT
          artist.id AS artist_id,
@@ -1459,7 +1484,7 @@ export function getLibraryArtistPage({
        WHERE artist.id IN (${ids.map(() => "?").join(",")})
          ${albumFilter}
        GROUP BY artist.id`,
-    ).all(...ids, ...(sourceFilter ? [sourceFilter] : []));
+    ).all(...ids, ...(shownAlbums ? shownAlbums.parameters : sourceFilter ? [sourceFilter] : []));
     const byId = new Map(rows.map((row) => {
       const metadata = parseJson(row.artist_metadata_json);
       return [row.artist_id, {
@@ -1495,7 +1520,7 @@ export function getLibraryArtistPage({
   }
   if (availableOnly === true) mediaConditions.push("media.available = 1");
   const mediaJoin = sourceFilter || availableOnly === true ? "JOIN" : "LEFT JOIN";
-  aggregateParameters.push(...ids);
+  aggregateParameters.push(...ids, ...(shownAlbums?.parameters || []));
   const rows = db.prepare(
     `SELECT
        artist.id AS artist_id,
@@ -1514,6 +1539,7 @@ export function getLibraryArtistPage({
      JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
      ${mediaJoin} library_media_files AS media ON ${mediaConditions.join(" AND ")}
      WHERE artist.id IN (${ids.map(() => "?").join(",")})
+       ${shownAlbums ? `AND ${shownAlbums.sql}` : ""}
      GROUP BY artist.id
      ORDER BY coalesce(artist.sort_name, artist.name) COLLATE NOCASE,
        artist.name COLLATE NOCASE`,
@@ -2114,7 +2140,8 @@ function readGenreStats(cacheKey, compute) {
   return stats;
 }
 
-function getLibraryGenreStats({ sourceFilter, availableOnly }) {
+function getLibraryGenreStats({ sourceFilter, availableOnly: requested }) {
+  const availableOnly = requested === LIBRARY_VIEW || requested === true;
   return readGenreStats(
     genreStatsScope(sourceFilter, availableOnly),
     () => computeLibraryGenreStats(db, { sourceFilter, availableOnly }),
