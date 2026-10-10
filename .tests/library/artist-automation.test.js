@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.js";
+import {
+  cleanupIsolatedState,
+  createMockHttpServer,
+  setupIsolatedBackend,
+} from "../helpers/backendTestHarness.js";
 
 const [
   isolatedState,
@@ -14,6 +18,7 @@ const [
   { registerArtists },
   { registerAlbums },
   { downloadWorker },
+  { clearMetadataProviderCaches },
 ] =
   await setupIsolatedBackend(
     "artist-automation",
@@ -26,6 +31,7 @@ const [
     "backend/routes/library/handlers/artists.js",
     "backend/routes/library/handlers/albums.js",
     "backend/services/downloadJobs/downloadWorker.js",
+    "backend/services/providers/brainzmashProvider.js",
   );
 
 const routes = new Map();
@@ -70,8 +76,26 @@ const lidarrAlbum = (id, foreignAlbumId, monitored) => ({
 });
 
 const originalWorkerStart = downloadWorker.start;
+const originalSettings = dbOps.getSettings();
+const metadata = { fails: false };
+const metadataServer = await createMockHttpServer((request, response) => {
+  response.setHeader("content-type", "application/json");
+  if (metadata.fails) {
+    response.writeHead(503);
+    response.end(JSON.stringify({ error: "unavailable" }));
+    return;
+  }
+  response.end(JSON.stringify({ id: artistMbid, artistname: "Automation Artist", Albums: [] }));
+});
 
 test.before(() => {
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      metadata: { ...originalSettings.integrations?.metadata, baseUrl: metadataServer.url },
+    },
+  });
   downloadWorker.start = async () => {};
   lidarrClient.isConfigured = () => lidarr.configured;
   lidarrClient.getArtistByMbid = async () => lidarr.artist;
@@ -122,11 +146,15 @@ test.beforeEach(() => {
   db.prepare("DELETE FROM library_artists").run();
   managementStore.invalidateLibraryManagementCache();
   Object.assign(lidarr, { configured: true, artist: null, albums: [], calls: [] });
+  metadata.fails = false;
+  clearMetadataProviderCaches();
 });
 
 test.after(async () => {
   downloadWorker.start = originalWorkerStart;
   Object.assign(lidarrClient, originalClient);
+  dbOps.updateSettings(originalSettings);
+  await metadataServer.close();
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -267,6 +295,7 @@ test("without Lidarr, Aurral monitors the artist and Lidarr is never asked", asy
 
 test("an Aurral monitoring change that cannot load releases leaves the artist as it was", async () => {
   lidarr.configured = false;
+  metadata.fails = true;
   const artist = seedArtist("aurral", "none");
 
   const result = await libraryManager.setArtistMonitoring(artistMbid, { monitorOption: "all", user: admin });
@@ -344,12 +373,21 @@ test("the monitoring state reports only the manager in charge", async () => {
   const notInLidarr = await libraryManager.getArtistMonitoring(artistMbid);
   lidarr.artist = lidarrArtist({ monitorNewItems: "all" });
   const inLidarr = await libraryManager.getArtistMonitoring(artistMbid);
-  managementStore.setLibraryManagement({ entityKind: "artist", entityId: artist.id, managedBy: "aurral", monitorMode: "future" });
+  managementStore.setLibraryManagement({ entityKind: "artist", entityId: artist.id, managedBy: "aurral", monitorMode: "none" });
+  await libraryManager.setArtistMonitoring(artistMbid, {
+    monitoring: { monitored: true, useDefault: false, rules: { catalog: "none", newReleases: true } },
+    user: admin,
+  });
   const aurral = await libraryManager.getArtistMonitoring(artistMbid);
 
   assert.deepEqual(notInLidarr, { manager: "lidarr", added: false, monitorOption: "none", inAurral: false, error: null });
   assert.deepEqual(inLidarr, { manager: "lidarr", added: true, monitorOption: null, inAurral: false, error: null });
-  assert.deepEqual(aurral, { manager: "aurral", added: true, monitorOption: "future", inAurral: true, error: null });
+  assert.equal(aurral.manager, "aurral");
+  assert.equal(aurral.monitored, true);
+  assert.equal(aurral.useDefault, false);
+  assert.equal(aurral.monitorOption, "future");
+  assert.equal(aurral.rules.catalog, "none");
+  assert.equal(aurral.rules.newReleases, true);
 });
 
 test("deleting an artist removes it from Lidarr and Aurral together", async () => {

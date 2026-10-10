@@ -1285,14 +1285,14 @@ function LibraryPage() {
   });
   const libraryArtistMonitoringItems = (() => {
     if (!libraryArtist?.mbid || isPreviewLibrary || !libraryArtistMonitoring.ready) return [];
-    const { label, monitoringItems, reason } = libraryArtistMonitoring;
+    const { label, manager, monitoringItems, reason } = libraryArtistMonitoring;
     const submenuItems = reason
       ? [{ id: "monitoring-blocked", label: reason, disabled: true }]
       : monitoringItems;
     return submenuItems.length
       ? [{
           id: "monitoring",
-          label: `Monitor: ${label}`,
+          label: manager === "aurral" ? label : `Monitor: ${label}`,
           icon: Eye,
           separatorBefore: true,
           submenuItems,
@@ -1377,11 +1377,10 @@ function LibraryPage() {
     hasMissingTracks: hasMissingAlbumTracks,
     onChanged: updateAlbumMonitoringState,
   });
-  const updateTrackMonitoringState = useCallback(
-    (trackId, result) => {
-      const monitored = result?.monitored !== false;
+  const patchLibraryTrack = useCallback(
+    (trackId, patch) => {
       const mark = (track) =>
-        String(track.id) === String(trackId) ? { ...track, monitored } : track;
+        String(track.id) === String(trackId) ? { ...track, ...patch } : track;
       setLibrary((current) => ({ ...current, tracks: current.tracks.map(mark) }));
       queryClient.setQueriesData({ queryKey: queryKeys.libraryAlbumTracksPrefix }, (data) =>
         Array.isArray(data?.tracks) ? { ...data, tracks: data.tracks.map(mark) } : data,
@@ -1392,9 +1391,14 @@ function LibraryPage() {
     },
     [refreshLibraryActivity, setLibrary],
   );
+  const updateTrackMonitoringState = useCallback(
+    (trackId, result) => patchLibraryTrack(trackId, { monitored: result?.monitored !== false }),
+    [patchLibraryTrack],
+  );
   const trackMonitoring = useAurralTrackMonitoring({
     canChange: canChangeMonitoring,
     onChanged: updateTrackMonitoringState,
+    onKeepFileChanged: (trackId, result) => patchLibraryTrack(trackId, { keepFile: result?.keepFile === true }),
   });
 
   const reloadLibraryAlbumTracks = useCallback(async () => {
@@ -2094,6 +2098,10 @@ function LibraryPage() {
           hasFile: Boolean(file),
           downloadPending,
         });
+        const keepFileItem = trackMonitoring.getKeepFileItem(track, {
+          aurral: hasAurralTrackFile(track),
+          hasFile: Boolean(file),
+        });
         const downloadTrack = () =>
           downloadMissingTrack(track).then((result) => {
             if (result?.monitored) updateTrackMonitoringState(track.id, result);
@@ -2142,6 +2150,7 @@ function LibraryPage() {
               ]
             : []),
           ...(monitoringItem ? [monitoringItem] : []),
+          ...(keepFileItem ? [{ ...keepFileItem, separatorBefore: !monitoringItem }] : []),
           ...(canDeleteTrack && (file || hasAurralTrackFile(track))
             ? [
                 {
@@ -2845,6 +2854,7 @@ function LibraryPage() {
         deleting={deletingLibraryEntity}
       />
       {trackMonitoring.dialog}
+      {libraryArtistMonitoring.dialog}
       <DeleteAlbumModal
         show={libraryRemoval?.kind === "album"}
         title={libraryRemoval?.entity?.title || libraryRemoval?.entity?.albumName}

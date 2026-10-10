@@ -1,5 +1,6 @@
 import { shouldPollAlbumStatus } from "./aurralAlbumStatus.js";
-import { getMonitorOptionsForManager, normalizeLibraryManager } from "./libraryDestination.js";
+import { normalizeLibraryManager } from "./libraryDestination.js";
+import { describeDownloadCount, plural } from "./monitoringRules.js";
 
 export const MONITOR_OPTIONS = [
   { value: "none", label: "None (artist only)" },
@@ -14,35 +15,38 @@ export const MONITOR_OPTIONS = [
 export const getMonitorOptionLabel = (value) =>
   MONITOR_OPTIONS.find((option) => option.value === value)?.label || value;
 
-export const resolveCurrentMonitorOption = (artist, managedBy) => {
-  if (!artist || artist.monitored === false) return "none";
-  const stored = artist.monitorOption || artist.addOptions?.monitor || artist.monitorNewItems;
-  if (!stored) return artist.monitored ? "all" : "none";
-  const offered = getMonitorOptionsForManager(MONITOR_OPTIONS, managedBy);
-  return offered.some((option) => option.value === stored) ? stored : null;
-};
-
-const plural = (count, singular, pluralForm = `${singular}s`) =>
-  `${count} ${count === 1 ? singular : pluralForm}`;
-
 const SKIPPED_DETAILS = [
   { reason: "complete", text: (count) => `${count} already in your library` },
+  {
+    reason: "covered",
+    text: (count) =>
+      `${count} skipped because another release has ${count === 1 ? "its" : "their"} songs`,
+  },
+  {
+    reason: "excluded",
+    text: (count) => `${count} skipped because you removed ${count === 1 ? "it" : "them"}`,
+  },
   {
     reason: "unmonitored",
     text: (count) =>
       `${count} skipped because you unmonitored ${count === 1 ? "it" : "them"}`,
   },
   { reason: "managed_by_lidarr", text: (count) => `${count} managed by Lidarr` },
+  { reason: "metadata_unavailable", text: (count) => `${count} could not be checked` },
 ];
 
-const summaryHeadline = ({ mode, releaseGroupIds = [], queued }) => {
-  if (queued) return `Queued ${plural(releaseGroupIds.length, "album")} for download`;
-  if (mode === "none") return "Monitoring turned off";
-  if (mode === "future") return "Watching for new releases";
-  return "No albums to queue";
+const summaryHeadline = (plan, { monitored, rules } = {}) => {
+  if (monitored === false) return "Monitoring turned off";
+  const downloads = describeDownloadCount({
+    releases: plan.releaseGroupIds?.length || 0,
+    tracks: plan.topTracks?.length || 0,
+  });
+  if (plan.queued && downloads) return `Queued ${downloads} for download`;
+  if (rules?.newReleases) return "Watching for new releases";
+  return "Nothing new to download";
 };
 
-export const summarizeAurralMonitoring = (monitoring) => {
+export const summarizeAurralMonitoring = (monitoring, state = {}) => {
   const plan = monitoring || {};
   const counts = new Map();
   for (const entry of plan.skipped || []) {
@@ -56,16 +60,9 @@ export const summarizeAurralMonitoring = (monitoring) => {
     .filter(([reason]) => !knownReasons.has(reason))
     .reduce((total, [, count]) => total + count, 0);
   if (otherCount > 0) details.push(`${otherCount} skipped`);
-  const headline = summaryHeadline(plan);
+  if (plan.topTracksError) details.push(plan.topTracksError.replace(/\.$/, ""));
+  const headline = summaryHeadline(plan, state);
   return { headline, details, message: [headline, ...details].join(". ") };
-};
-
-export const describeArtistMonitoringResult = (response) => {
-  if (!response?.monitoring) return null;
-  return {
-    patch: { monitored: response.monitored, monitorOption: response.monitorOption },
-    message: summarizeAurralMonitoring(response.monitoring).message,
-  };
 };
 
 const METADATA_UNAVAILABLE_MESSAGE =
@@ -122,3 +119,15 @@ const describeMonitoringResult = (result, subject) => {
 export const describeAlbumMonitoringResult = (result) => describeMonitoringResult(result, "Album");
 
 export const describeTrackMonitoringResult = (result) => describeMonitoringResult(result, "Track");
+
+export const describeKeepFileResult = (result, title) => {
+  if (!result?.keepFile) return { message: `Aurral can upgrade ${title} again.`, warning: false };
+  const kept = `Keeping ${title}. Aurral won't replace it with an upgrade`;
+  if (result.cleanupFailed) {
+    return { message: `${kept}, but the download client may still hold the upgrade in progress.`, warning: true };
+  }
+  return {
+    message: result.cancelledJobIds?.length ? `${kept}, and the upgrade in progress was cancelled.` : `${kept}.`,
+    warning: false,
+  };
+};

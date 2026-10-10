@@ -107,10 +107,11 @@ test("without Lidarr, Monitor offers Aurral's options and monitors the artist", 
   await expect(page.getByRole("menuitemradio", { name: "Not monitored", exact: true })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("menuitemradio", { name: "Existing albums", exact: true })).toHaveCount(0);
   await expect(page.getByRole("menuitem", { name: "Customize add…", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Monitoring rules…", exact: true })).toBeVisible();
   expect(writes).toEqual([]);
-  await page.getByRole("menuitemradio", { name: "All albums", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Monitored", exact: true }).click();
   await expect.poll(() => writes.length).toBe(1);
-  expect(writes[0]).toMatchObject({ path: monitoringPath, body: { monitorOption: "all" } });
+  expect(writes[0]).toMatchObject({ path: monitoringPath, body: { monitoring: { monitored: true } } });
 });
 
 test("with Lidarr, Monitor adds and monitors the artist in one choice", async ({ page }) => {
@@ -307,7 +308,7 @@ test("returning to an artist after Lidarr is disconnected drops the Lidarr-only 
   await page.goBack();
   await monitorButton(page).click();
   await expect(page.getByRole("menuitemradio", { name: "Existing albums", exact: true })).toHaveCount(0);
-  await page.getByRole("menuitemradio", { name: "All albums", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Monitored", exact: true }).click();
   await expect.poll(() => writes.length).toBe(1);
-  expect(writes[0]).toMatchObject({ path: monitoringPath, body: { monitorOption: "all" } });
+  expect(writes[0]).toMatchObject({ path: monitoringPath, body: { monitoring: { monitored: true } } });
 });

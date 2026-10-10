@@ -10,7 +10,7 @@ import {
   resolveAlbumSearchOutcome,
 } from "../../../services/albumSearchState.js";
 import { logger } from "../../../services/logger.js";
-import { getLibraryTrackOwnership } from "../../../services/libraryQueryService.js";
+import { requestLibraryTrack } from "../../../services/libraryTrackRequests.js";
 import { resolveAurralOwnedTrackJob } from "../../../services/libraryTrackResearchService.js";
 import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.js";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.js";
@@ -374,101 +374,14 @@ export function registerDownloads(router) {
     }
 
     try {
-      const alreadyOwned = getLibraryTrackOwnership({
-        trackMbid: track.trackMbid,
-        artistName: track.artistName,
-        trackName: track.trackName,
-      });
-      if (alreadyOwned) return res.json({ success: true, alreadyOwned: true, queued: false });
-
-      const monitoredTrack = await libraryManager.monitorAurralTrack({
+      const result = await requestLibraryTrack(track, {
         canonicalTrackId: body.canonicalTrackId,
-        trackMbid: track.trackMbid,
+        user: req.user,
       });
-      if (monitoredTrack) {
-        const { recordTrackJobQueued } = await import("../../../services/aurralHistoryService.js");
-        const { downloadTracker } = await import("../../../services/downloadJobs/downloadTracker.js");
-        for (const jobId of monitoredTrack.queuedJobIds) {
-          recordTrackJobQueued(downloadTracker.getJob(jobId), req.user);
-        }
-        await invalidateActivityRequestsCache();
-        return res.status(202).json({
-          success: true,
-          queued: monitoredTrack.queuedJobIds.length > 0,
-          jobId: monitoredTrack.queuedJobIds[0] || null,
-          monitored: true,
-        });
-      }
-
-      const { downloadTracker } = await import(
-        "../../../services/downloadJobs/downloadTracker.js"
-      );
-      const existingJob = downloadTracker.getAll().find((job) => {
-        if (job.playlistType !== "library" || ["failed", "done"].includes(job.status)) {
-          return false;
-        }
-        if (track.trackMbid) return job.trackMbid === track.trackMbid;
-        return (
-          job.artistName?.toLocaleLowerCase() === track.artistName.toLocaleLowerCase() &&
-          job.trackName?.toLocaleLowerCase() === track.trackName.toLocaleLowerCase()
-        );
-      });
-      if (existingJob) {
-        if (existingJob.status !== "done") {
-          const { recordTrackJobQueued } = await import(
-            "../../../services/aurralHistoryService.js"
-          );
-          recordTrackJobQueued(existingJob);
-          await invalidateActivityRequestsCache();
-        }
-        return res.status(202).json({
-          success: true,
-          queued: existingJob.status !== "done",
-          jobId: existingJob.id,
-          alreadyQueued: true,
-        });
-      }
-
-      const jobId = downloadTracker.addJob(track, "library");
-      if (!jobId) return res.status(400).json({ error: "Track details are incomplete" });
-
-      const { downloadWorker } = await import(
-        "../../../services/downloadJobs/downloadWorker.js"
-      );
-      try {
-        const { normalizeExistingFileMode, reuseTrackForPlaylist } = await import(
-          "../../../services/downloadJobs/fileReuse.js"
-        );
-        const reuse = await reuseTrackForPlaylist(track, "library", {
-          existingFileMode: normalizeExistingFileMode(
-            downloadWorker.getWorkerSettings().existingFileMode,
-          ),
-          downloadRoot: downloadWorker.downloadRoot,
-          existingJobId: jobId,
-          targetPlaylistType: "library",
-          skipHistory: true,
-        });
-        if (reuse.reused) {
-          return res.status(202).json({
-            success: true,
-            queued: false,
-            reused: true,
-            jobId,
-          });
-        }
-      } catch (error) {
-        logger.warn("library", "Track reuse failed; leaving acquisition queued", {
-          error: error.message,
-        });
-      }
-
-      const { recordTrackJobQueued } = await import(
-        "../../../services/aurralHistoryService.js"
-      );
-      recordTrackJobQueued(downloadTracker.getJob(jobId), req.user);
-      await invalidateActivityRequestsCache();
-      await downloadWorker.start();
-      return res.status(202).json({ success: true, queued: true, jobId });
+      if (result.error) return res.status(result.statusCode || 400).json({ error: result.error });
+      if (result.alreadyOwned) return res.json({ success: true, ...result });
+      if (!result.reused) await invalidateActivityRequestsCache();
+      return res.status(202).json({ success: true, ...result });
     } catch (error) {
       logger.error("library", "Failed to queue track acquisition", error.message);
       return res.status(500).json({

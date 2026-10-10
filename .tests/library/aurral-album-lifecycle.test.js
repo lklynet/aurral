@@ -772,6 +772,74 @@ test("an album asks for its most common edition and a whole shorter edition comp
     .get(requested.body.album.id).count, 3);
 });
 
+test("an album that wants the expanded edition keeps its extra tracks after a standard download", async (t) => {
+  const artistMbid = "eeeeeeee-eeee-4eee-8eee-000000000021";
+  const albumMbid = "eeeeeeee-eeee-4eee-8eee-000000000022";
+  const release = (id, count) => ({ id, status: "Official", tracks: Array.from({ length: count }, (_, index) => ({
+    id: `${id}-${index}`, recordingid: `eeeeeeee-eeee-4eee-8eee-30000000000${index + 1}`,
+    trackname: `Expanded Song ${index + 1}`, artistid: artistMbid, durationms: 1000,
+    trackposition: index + 1, mediumnumber: 1,
+  })) });
+  const releases = [release("cd", 2), release("digital", 2), release("deluxe", 3), release("box-set", 7)];
+  const metadata = await createMockHttpServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    if (new URL(request.url, "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
+      response.writeHead(404);
+      response.end("{}");
+      return;
+    }
+    response.end(JSON.stringify({ id: albumMbid, title: "Expanded Album", artistid: artistMbid,
+      artists: [{ id: artistMbid, artistname: "Expanded Artist" }], releases }));
+  });
+  const originalSettings = dbOps.getSettings();
+  const originalWorkerStart = downloadWorker.start;
+  const originalIsConfigured = lidarrClient.isConfigured;
+  dbOps.updateSettings({ ...originalSettings, integrations: { ...originalSettings.integrations,
+    slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
+    metadata: { ...originalSettings.integrations?.metadata, baseUrl: metadata.url, enableNarrowFallbacks: false } } });
+  clearMetadataProviderCaches();
+  downloadWorker.start = async () => {};
+  lidarrClient.isConfigured = () => false;
+  const defaults = libraryManager.getMonitoringDefaultsState().rules;
+  libraryManager.setMonitoringDefaults({ ...defaults, edition: "expanded" });
+  let ids = [];
+  t.after(async () => {
+    for (const id of ids) {
+      if (downloadTracker.getJob(id)?.status === "pending") downloadTracker.setCancelled(id);
+    }
+    libraryManager.setMonitoringDefaults(defaults);
+    downloadWorker.start = originalWorkerStart;
+    lidarrClient.isConfigured = originalIsConfigured;
+    dbOps.updateSettings(originalSettings);
+    clearMetadataProviderCaches();
+    await metadata.close();
+  });
+
+  const requested = await callRoute("POST /albums/request", {}, { albumMbid, albumName: "Expanded Album",
+    artistMbid, artistName: "Expanded Artist", managedBy: "aurral" });
+  assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
+  ids = requested.body.jobIds;
+  assert.deepEqual(ids.map((id) => downloadTracker.getJob(id).trackName),
+    ["Expanded Song 1", "Expanded Song 2", "Expanded Song 3"]);
+
+  const folder = path.join(isolatedState.baseDir, "expanded-download");
+  await fs.mkdir(folder, { recursive: true });
+  const filePaths = [];
+  for (const song of [1, 2]) {
+    const filePath = path.join(folder, `0${song} Expanded Song ${song}.flac`);
+    await promisify(execFile)("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
+      "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac", "-metadata", `title=Expanded Song ${song}`,
+      "-metadata", "artist=Expanded Artist", "-metadata", `track=${song}`, filePath]);
+    filePaths.push(filePath);
+  }
+  await finishAlbumGrab({ jobId: ids[0], albumGrab: true, albumGroupJobIds: ids, source: "slskd",
+    playlistId: "library" }, { filePaths, source: "soulseek" });
+  assert.deepEqual(ids.map((id) => downloadTracker.getJob(id).status), ["done", "done", "pending"]);
+  const missing = db.prepare("SELECT monitored FROM library_tracks WHERE mbid = ?")
+    .get("eeeeeeee-eeee-4eee-8eee-300000000003");
+  assert.equal(missing.monitored, 1);
+});
+
 test("a two-disc album downloads a title it repeats on each disc to two names", async (t) => {
   const artistMbid = "dddddddd-dddd-4ddd-8ddd-000000000001";
   const albumMbid = "dddddddd-dddd-4ddd-8ddd-000000000002";

@@ -1,4 +1,4 @@
-import { isEligibleAurralRelease } from "./aurralMonitoring.js";
+import { FACTORY_MONITOR_RULES, releaseMatchesRules } from "./aurralMonitoring.js";
 import { UUID_REGEX } from "../../lib/uuid.js";
 import {
   enqueueSystemTaskJob,
@@ -156,7 +156,7 @@ export async function refreshReleaseMetadata({
     const calendar = getArtistReleaseCalendar(artist.id);
     const entries = [];
     for (const release of releases) {
-      if (!isEligibleAurralRelease(release)) continue;
+      if (!releaseMatchesRules(release, FACTORY_MONITOR_RULES)) continue;
       const releaseGroupMbid = text(release.id);
       releasesSeen += 1;
       seenReleaseGroupMbids.add(releaseGroupMbid);

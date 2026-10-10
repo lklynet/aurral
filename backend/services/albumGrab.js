@@ -65,15 +65,17 @@ function blockAlbumGrabSource(payload, jobs) {
 
 // Like an import in Lidarr, a download that is a whole edition settles the
 // album on that edition: tracks it does not have stop being wanted instead
-// of being searched one by one.
+// of being searched one by one. An album that asked for the expanded edition
+// keeps searching for the rest.
 async function settleAlbumEdition(payload, edition) {
   if (!edition) return;
   const onEdition = new Set(edition.jobIds);
   if (!edition.jobIds.every((id) => downloadTracker.getJob(id)?.status === "done")) return;
   const others = albumGrabJobs(payload).filter((job) => !onEdition.has(job.id));
   if (others.length === 0) return;
-  for (const job of others) downloadTracker.setCancelled(job.id);
   const { libraryManager } = await import("./libraryManager.js");
+  if (libraryManager.albumWantsExpandedEdition(others[0].albumMbid)) return;
+  for (const job of others) downloadTracker.setCancelled(job.id);
   libraryManager.unmonitorAlbumOnlyTracks(others[0].albumMbid, others.map((job) => job.trackMbid));
   recordAlbumGrabPhase(payload,
     `Downloaded edition has ${onEdition.size} tracks; ${others.length} from another edition are no longer wanted`);

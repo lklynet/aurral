@@ -141,6 +141,17 @@ function hasUpgradeSource() {
   return getEnabledDownloadSources().some((source) => UPGRADE_SOURCE_IDS.has(source.id));
 }
 
+const keptFilePathsStmt = db.prepare(`
+  SELECT media.path FROM library_media_files AS media
+  JOIN library_tracks AS track ON track.id = media.track_id
+  WHERE track.keep_file = 1
+`).pluck();
+
+const isKeptFile = (filePath) => {
+  const resolved = path.resolve(filePath);
+  return keptFilePathsStmt.all().some((keptPath) => path.resolve(keptPath) === resolved);
+};
+
 export async function queueQualityUpgrade(job) {
   if (!job?.id || job.status !== "done" || !isAurralOwnedPath(job.finalPath)) {
     return "ineligible";
@@ -151,6 +162,7 @@ export async function queueQualityUpgrade(job) {
     return "ineligible";
   }
   if (!hasUpgradeSource()) return "ineligible";
+  if (isKeptFile(current.finalPath)) return "kept";
   if (downloadTracker.findActiveUpgradeJob(current)) return "already-queued";
   const upgradeJobId = downloadTracker.addUpgradeJob(current);
   if (!upgradeJobId) return "ineligible";
@@ -191,7 +203,8 @@ function listLibraryUpgradeCandidates(profile) {
     `SELECT media.path, media.track_id, media.album_id, media.quality_json
      FROM library_media_files AS media
      JOIN library_tracks AS track ON track.id = media.track_id
-     WHERE media.source = 'aurral' AND media.available = 1 AND track.monitored = 1
+     WHERE media.source = 'aurral' AND media.available = 1
+       AND track.monitored = 1 AND track.keep_file = 0
      ORDER BY media.id`,
   ).iterate()) {
     const filePath = path.resolve(file.path);
@@ -220,6 +233,7 @@ export async function runQualityUpgradeCheck({ force = false, playlistId = null,
   if (!force && !profile.automaticUpgrades) return 0;
   const dueBefore = Date.now() - profile.intervalDays * DAY_MS;
   const isUnmonitored = indexUnmonitoredJobs();
+  const keptFiles = new Set(keptFilePathsStmt.all().map((filePath) => path.resolve(filePath)));
   const seen = new Set();
   let queued = 0;
   for (const job of downloadTracker.getAll()) {
@@ -229,7 +243,7 @@ export async function runQualityUpgradeCheck({ force = false, playlistId = null,
     const filePath = path.resolve(job.finalPath);
     if (seen.has(filePath)) continue;
     seen.add(filePath);
-    if (!isAurralOwnedPath(filePath) || isUnmonitored(job)) continue;
+    if (!isAurralOwnedPath(filePath) || isUnmonitored(job) || keptFiles.has(filePath)) continue;
     if (!job.qualityCheckedAt) await classifyQualityJob(job);
     const current = downloadTracker.getJob(job.id);
     if (getQualityState({ tier: current?.qualityTier }, profile) === "preferred") continue;

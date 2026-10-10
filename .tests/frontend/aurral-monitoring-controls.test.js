@@ -1,115 +1,75 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getMonitorOptionsForManager } from "../../frontend/src/utils/libraryDestination.js";
 import {
-  MONITOR_OPTIONS,
   canDownloadAurralAlbum,
   describeAlbumMonitoringResult,
-  describeArtistMonitoringResult,
   describeAurralMonitoringError,
+  describeKeepFileResult,
   getAlbumMonitoredState,
   getMonitoringMenuAction,
-  resolveCurrentMonitorOption,
   shouldConfirmUnmonitor,
   summarizeAurralMonitoring,
 } from "../../frontend/src/utils/aurralMonitoring.js";
 
-const values = (options) => options.map((option) => option.value);
-
-test("Aurral artists never get existing or missing, which Aurral treats as all", () => {
-  assert.deepEqual(values(getMonitorOptionsForManager(MONITOR_OPTIONS, "aurral")), [
-    "none",
-    "all",
-    "future",
-    "latest",
-    "first",
-  ]);
+test("summary counts queued releases and top tracks", () => {
+  const monitored = { monitored: true, rules: { newReleases: true } };
+  assert.equal(
+    summarizeAurralMonitoring({ releaseGroupIds: ["rg1"], topTracks: [], skipped: [], queued: true }, monitored).headline,
+    "Queued 1 release for download",
+  );
+  assert.equal(
+    summarizeAurralMonitoring(
+      { releaseGroupIds: ["rg1", "rg2"], topTracks: [{ title: "a" }, { title: "b" }], skipped: [], queued: true },
+      monitored,
+    ).headline,
+    "Queued 2 releases and 2 top tracks for download",
+  );
+  assert.equal(
+    summarizeAurralMonitoring({ releaseGroupIds: [], topTracks: [{ title: "a" }], skipped: [], queued: true }, monitored).headline,
+    "Queued 1 top track for download",
+  );
 });
 
-test("Lidarr artists keep existing among their monitor options", () => {
-  const options = getMonitorOptionsForManager(MONITOR_OPTIONS, "lidarr");
-  assert.ok(values(options).includes("existing"));
-  assert.equal(options.length, 7);
+test("summary says what happens when nothing was queued", () => {
+  const empty = { releaseGroupIds: [], topTracks: [], skipped: [], queued: false };
+  assert.equal(summarizeAurralMonitoring(empty, { monitored: false }).headline, "Monitoring turned off");
+  assert.equal(
+    summarizeAurralMonitoring(empty, { monitored: true, rules: { newReleases: true } }).headline,
+    "Watching for new releases",
+  );
+  assert.equal(
+    summarizeAurralMonitoring(empty, { monitored: true, rules: { newReleases: false } }).headline,
+    "Nothing new to download",
+  );
+  assert.equal(summarizeAurralMonitoring(undefined).headline, "Nothing new to download");
 });
 
-test("summary reports a single queued album", () => {
+test("summary lists skipped releases by reason with counts and keeps unknown reasons", () => {
   const summary = summarizeAurralMonitoring({
-    mode: "latest",
-    releaseGroupIds: ["rg1"],
-    skipped: [],
-    queued: true,
-  });
-  assert.equal(summary.headline, "Queued 1 album for download");
-  assert.deepEqual(summary.details, []);
-});
-
-test("summary counts queued albums from the planned release groups", () => {
-  const summary = summarizeAurralMonitoring({
-    mode: "all",
-    releaseGroupIds: ["rg1", "rg2", "rg3"],
-    skipped: [],
-    queued: true,
-  });
-  assert.equal(summary.headline, "Queued 3 albums for download");
-});
-
-test("summary lists skipped albums by reason with counts", () => {
-  const summary = summarizeAurralMonitoring({
-    mode: "all",
     releaseGroupIds: ["rg1"],
     skipped: [
       { releaseGroupId: "rg2", reason: "complete" },
       { releaseGroupId: "rg3", reason: "complete" },
-      { releaseGroupId: "rg4", reason: "unmonitored" },
-      { releaseGroupId: "rg5", reason: "managed_by_lidarr" },
+      { releaseGroupId: "rg4", reason: "covered" },
+      { releaseGroupId: "rg5", reason: "excluded" },
+      { releaseGroupId: "rg6", reason: "unmonitored" },
+      { releaseGroupId: "rg7", reason: "managed_by_lidarr" },
+      { releaseGroupId: "rg8", reason: "brand_new_reason" },
     ],
+    topTracksError: "Top tracks are unavailable right now. Aurral tries again tomorrow.",
     queued: true,
-  });
+  }, { monitored: true });
   assert.deepEqual(summary.details, [
     "2 already in your library",
+    "1 skipped because another release has its songs",
+    "1 skipped because you removed it",
     "1 skipped because you unmonitored it",
     "1 managed by Lidarr",
+    "1 skipped",
+    "Top tracks are unavailable right now. Aurral tries again tomorrow",
   ]);
-  assert.equal(
-    summary.message,
-    "Queued 1 album for download. 2 already in your library. 1 skipped because you unmonitored it. 1 managed by Lidarr",
-  );
-});
-
-test("summary does not hide skips with an unknown reason", () => {
-  const summary = summarizeAurralMonitoring({
-    mode: "missing",
-    releaseGroupIds: [],
-    skipped: [{ releaseGroupId: "rg9", reason: "brand_new_reason" }],
-    queued: false,
-  });
-  assert.equal(summary.headline, "No albums to queue");
-  assert.deepEqual(summary.details, ["1 skipped"]);
-});
-
-test("summary says monitoring was turned off for none", () => {
-  const summary = summarizeAurralMonitoring({
-    mode: "none",
-    releaseGroupIds: [],
-    skipped: [],
-    queued: false,
-  });
-  assert.equal(summary.headline, "Monitoring turned off");
-});
-
-test("summary says future monitoring is watching when nothing was queued", () => {
-  const summary = summarizeAurralMonitoring({
-    mode: "future",
-    releaseGroupIds: [],
-    skipped: [],
-    queued: false,
-  });
-  assert.equal(summary.headline, "Watching for new releases");
-});
-
-test("summary tolerates a response without monitoring details", () => {
-  assert.equal(summarizeAurralMonitoring(undefined).headline, "No albums to queue");
+  assert.match(summary.message, /^Queued 1 release for download\. 2 already in your library\./);
 });
 
 test("metadata_unavailable explains that monitoring did not change", () => {
@@ -239,6 +199,18 @@ test("unmonitoring result warns when the download client cleanup failed", () => 
   assert.match(result.message, /download client/i);
 });
 
+test("keeping a file warns when the upgrade in progress may still be running", () => {
+  const cancelled = describeKeepFileResult({ keepFile: true, cancelledJobIds: ["a"], cleanupFailed: false }, "Roygbiv");
+  assert.deepEqual(cancelled, {
+    message: "Keeping Roygbiv. Aurral won't replace it with an upgrade, and the upgrade in progress was cancelled.",
+    warning: false,
+  });
+  const stuck = describeKeepFileResult({ keepFile: true, cancelledJobIds: ["a"], cleanupFailed: true }, "Roygbiv");
+  assert.equal(stuck.warning, true);
+  assert.match(stuck.message, /download client/i);
+  assert.doesNotMatch(stuck.message, /was cancelled/);
+});
+
 test("unmonitoring an idle album reports no cancellations", () => {
   assert.deepEqual(
     describeAlbumMonitoringResult({ monitored: false, cancelledJobIds: [], cleanupFailed: false }),
@@ -253,71 +225,3 @@ test("monitoring an album is reported as monitored", () => {
   });
 });
 
-test("Aurral artist monitoring result takes state and message from the server", () => {
-  const result = describeArtistMonitoringResult({
-    id: 7,
-    monitored: true,
-    monitorOption: "latest",
-    monitoring: { mode: "latest", releaseGroupIds: ["rg1"], skipped: [], queued: true },
-  });
-  assert.deepEqual(result.patch, { monitored: true, monitorOption: "latest" });
-  assert.equal(result.message, "Queued 1 album for download");
-});
-
-test("turning Aurral monitoring off leaves the artist unmonitored", () => {
-  const result = describeArtistMonitoringResult({
-    monitored: false,
-    monitorOption: "none",
-    monitoring: { mode: "none", releaseGroupIds: [], skipped: [], queued: false },
-  });
-  assert.deepEqual(result.patch, { monitored: false, monitorOption: "none" });
-  assert.equal(result.message, "Monitoring turned off");
-});
-
-test("Lidarr artist updates carry no Aurral monitoring result", () => {
-  assert.equal(describeArtistMonitoringResult({ id: 3, monitorOption: "all" }), null);
-  assert.equal(describeArtistMonitoringResult(undefined), null);
-});
-
-test("current monitor option comes from the stored artist value", () => {
-  assert.equal(
-    resolveCurrentMonitorOption({ monitored: true, monitorOption: "latest" }, "aurral"),
-    "latest",
-  );
-  assert.equal(
-    resolveCurrentMonitorOption({ monitored: true, addOptions: { monitor: "first" } }, "aurral"),
-    "first",
-  );
-  assert.equal(
-    resolveCurrentMonitorOption({ monitored: true, monitorNewItems: "future" }, "lidarr"),
-    "future",
-  );
-});
-
-test("current monitor option is none for an unmonitored or absent artist", () => {
-  assert.equal(resolveCurrentMonitorOption(null, "aurral"), "none");
-  assert.equal(
-    resolveCurrentMonitorOption({ monitored: false, monitorOption: "all" }, "aurral"),
-    "none",
-  );
-  assert.equal(resolveCurrentMonitorOption({ monitored: false }, "lidarr"), "none");
-});
-
-test("current monitor option keeps the legacy fallback for monitored Lidarr artists", () => {
-  assert.equal(resolveCurrentMonitorOption({ monitored: true }, "lidarr"), "all");
-});
-
-test("a stored option the manager does not offer is not remapped", () => {
-  assert.equal(
-    resolveCurrentMonitorOption({ monitored: true, monitorOption: "existing" }, "aurral"),
-    null,
-  );
-  assert.equal(
-    resolveCurrentMonitorOption({ monitored: true, monitorOption: "existing" }, "lidarr"),
-    "existing",
-  );
-  assert.equal(
-    resolveCurrentMonitorOption({ monitored: true, monitorOption: "sometimes" }, "lidarr"),
-    null,
-  );
-});

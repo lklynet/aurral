@@ -6,12 +6,14 @@ import { registerDownloads } from "./handlers/downloads.js";
 import { registerMisc } from "./handlers/misc.js";
 import { registerLibraryIndex } from "./handlers/libraryIndex.js";
 import { registerFiles } from "./handlers/files.js";
+import { registerMonitoring } from "./handlers/monitoring.js";
 import mountRoutes from "../shared/mountRoutes.js";
 
 export default mountRoutes([
   registerLibraryIndex,
   registerStream,
   registerArtists,
+  registerMonitoring,
   registerAlbums,
   registerTracks,
   registerDownloads,
