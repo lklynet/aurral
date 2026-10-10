@@ -64,12 +64,12 @@ export function SharedLinksSection({ showSuccess, showError, className = "" }) {
     },
   });
 
-  const copy = async (link) => {
+  const share = async (link) => {
     try {
       const outcome = await shareLink(link.url, link.title);
       if (outcome === "copied") showSuccess?.(`Copied the link for ${link.title}`);
     } catch {
-      showError?.("Could not copy the link. Try again from a secure (https) address.");
+      showError?.("Could not share the link. Try again from a secure (https) address.");
     }
   };
 
@@ -120,8 +120,8 @@ export function SharedLinksSection({ showSuccess, showError, className = "" }) {
                     <span className="shared-link-row__meta">{describeLink(link)}</span>
                   </span>
                   <span className="shared-link-row__actions">
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => copy(link)}>
-                      Copy link
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => share(link)}>
+                      Share link
                     </button>
                     <button
                       type="button"
