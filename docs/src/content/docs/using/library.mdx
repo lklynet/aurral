@@ -155,6 +155,8 @@ To scan now, select **Refresh** in Library and choose a scan:
 - **Quick scan** checks every folder, reads new and changed files, and marks missing files as unavailable.
 - **Full scan** reads the tags of every file again. Use it after you retag files without changing their size or modification time, or when a quick scan does not fix stale metadata. A full scan can take a long time on a large library. It keeps running if you leave the page.
 
+When a file without MusicBrainz tags gains them, the scan keeps its album and track, with their favorites, play counts, and monitoring. Earlier versions started a second album beside it and left the first one empty, showing as 0 available. A scan folds each empty album like that into the album its files moved to.
+
 When a scan finishes, an open Library page reloads. **Recently added** sorting on albums, tracks, and artists and the home page use the time that a file entered the Library, not the release date.
 
 If Discover says that an album is in Lidarr but the Library does not show it, Aurral probably cannot read the Lidarr root folder. Run **Settings > Storage health > Run checks** and fix the **Lidarr library** section, then select **Refresh**. See [Filesystem and mounts](/getting-started/storage/).

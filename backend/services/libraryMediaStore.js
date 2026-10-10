@@ -802,6 +802,106 @@ export function unlinkLibraryAlbumTrackWithoutMedia(albumId, trackId) {
   return removed;
 }
 
+const isNameKey = (key) => String(key || "").startsWith("name:");
+
+// A file whose tags gained MusicBrainz IDs is still the album and track it
+// was, so those rows take the new identity with their favorites, play counts,
+// and monitoring, as an upgrade's do. Returns what the file was on, for
+// releaseLibraryFileRows once the scan has filed it.
+export function followLibraryFileIdentity(media, { artistId, albumKey, albumTitle, trackKey, title }) {
+  const album = media.album_id ? db.prepare("SELECT * FROM library_albums WHERE id = ?").get(media.album_id) : null;
+  const track = db.prepare("SELECT * FROM library_tracks WHERE id = ?").get(media.track_id);
+  const before = {
+    albumId: media.album_id,
+    trackId: media.track_id,
+    named: isNameKey(album?.identity_key) || isNameKey(track?.identity_key),
+  };
+  if (album && isNameKey(album.identity_key) && album.identity_key !== albumKey
+    && album.artist_id === artistId && isSameLibraryName(album.title, albumTitle)) {
+    rekeyLibraryAlbum(album.id, albumKey);
+  }
+  const shared = db.prepare("SELECT 1 FROM library_media_files WHERE track_id = ? AND id != ? LIMIT 1")
+    .get(media.track_id, media.id);
+  if (track && isNameKey(track.identity_key) && track.identity_key !== trackKey
+    && !shared && isSameLibraryName(track.title, title)) {
+    rekeyLibraryTrack(track.id, trackKey);
+  }
+  return before;
+}
+
+// A file the scan filed under other rows leaves no empty link behind on the
+// untagged album or track it was on. Rows with MusicBrainz IDs may be
+// Lidarr's or a wanted album's, so they keep theirs.
+export function releaseLibraryFileRows(before, after) {
+  if (!before.named || !before.albumId) return;
+  if (before.albumId === after.albumId && before.trackId === after.trackId) return;
+  unlinkLibraryAlbumTrackWithoutMedia(before.albumId, before.trackId);
+  if (before.albumId !== after.albumId) unlinkLibraryAlbumTrackWithoutMedia(before.albumId, after.trackId);
+}
+
+function hasLibraryReferences(album, tracks) {
+  const starred = db.prepare("SELECT 1 FROM subsonic_stars WHERE entity_key = ? LIMIT 1");
+  return Boolean(
+    starred.get(album.identity_key)
+    || db.prepare("SELECT 1 FROM play_album_stats WHERE album_key = ? LIMIT 1").get(album.identity_key)
+    || tracks.some((track) => starred.get(track.identity_key)),
+  );
+}
+
+// Scans once left an untagged album behind, with no files, when its files
+// gained MusicBrainz IDs and moved to an album of their own. Each folds into
+// the one album of its artist and title that has files, with its favorites
+// and play counts. One with nowhere to go is removed when nothing refers to it.
+export function mergeLeftoverLibraryAlbums() {
+  const leftovers = db.prepare(
+    `SELECT * FROM library_albums AS album
+     WHERE album.identity_key LIKE 'name:%'
+       AND NOT EXISTS (SELECT 1 FROM library_media_files AS media WHERE media.album_id = album.id)`,
+  ).all();
+  for (const album of leftovers) {
+    const tracks = db.prepare(
+      `SELECT track.*, EXISTS (SELECT 1 FROM library_media_files AS media WHERE media.track_id = track.id) AS has_media
+       FROM library_album_tracks AS link JOIN library_tracks AS track ON track.id = link.track_id
+       WHERE link.album_id = ?`,
+    ).all(album.id);
+    const twins = db.prepare(
+      `SELECT * FROM library_albums AS twin
+       WHERE twin.artist_id = ? AND twin.id != ?
+         AND EXISTS (SELECT 1 FROM library_media_files AS media WHERE media.album_id = twin.id)`,
+    ).all(album.artist_id, album.id).filter((twin) => isSameLibraryName(twin.title, album.title));
+    if (twins.length > 1) continue;
+    const [twin] = twins;
+    if (!twin) {
+      if (hasLibraryReferences(album, tracks)) continue;
+      for (const track of tracks) unlinkLibraryAlbumTrackWithoutMedia(album.id, track.id);
+      if (db.prepare("SELECT 1 FROM library_albums WHERE id = ?").get(album.id)) {
+        db.transaction(() => {
+          clearLibraryManagement("album", album.id);
+          db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+        })();
+        removeLibrarySearchDocument("album", album.id);
+        invalidateLibraryCache();
+      }
+      continue;
+    }
+    const twinTracks = db.prepare(
+      `SELECT track.* FROM library_album_tracks AS link JOIN library_tracks AS track ON track.id = link.track_id
+       WHERE link.album_id = ?`,
+    ).all(twin.id);
+    const matches = tracks.map((track) => {
+      if (track.has_media) return [track, null];
+      const same = twinTracks.filter((candidate) => isSameLibraryName(candidate.title, track.title));
+      return [track, same.length === 1 ? same[0] : undefined];
+    });
+    if (matches.some(([, match]) => match === undefined)) continue;
+    for (const [track, match] of matches) {
+      if (match && match.id !== track.id) rekeyLibraryTrack(track.id, match.identity_key);
+    }
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+    rekeyLibraryAlbum(album.id, twin.identity_key);
+  }
+}
+
 // Downloads once took an album's release ID for its release group, and the
 // scan filed them under a second album keyed by that release ID. Each such
 // album folds into the album the release belongs to.

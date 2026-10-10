@@ -8,11 +8,14 @@ import {
   findLibraryAlbumByArtistTitle,
   findLibraryAlbumByReleaseMbid,
   findLegacyKeyedLibraryFiles,
+  followLibraryFileIdentity,
   getLibraryMediaFile,
   getAvailableLibraryMediaPaths,
   linkLibraryAlbumTrack,
   markLibraryMediaFilesUnavailable,
+  mergeLeftoverLibraryAlbums,
   mergeReleaseKeyedLibraryAlbums,
+  releaseLibraryFileRows,
   splitLegacyKeyedLibraryRows,
   upsertLibraryAlbum,
   upsertLibraryArtist,
@@ -373,8 +376,18 @@ export async function scanMusicRoot({
             : null;
           const namedAlbum = legacyKeyed.albumIds.has(titledAlbum?.id) ? null : titledAlbum;
           const releaseAlbum = findLibraryAlbumByReleaseMbid(record.releaseGroupMbid) || namedAlbum;
+          const albumKey = releaseAlbum?.identity_key || record.albumKey;
+          const before = existing && !legacyKeyed.paths.has(filePath)
+            ? followLibraryFileIdentity(existing, {
+              artistId: artist.id,
+              albumKey,
+              albumTitle: namedAlbum?.title || record.albumName,
+              trackKey: record.trackKey,
+              title: record.title,
+            })
+            : null;
           const album = upsertLibraryAlbum({
-            identityKey: releaseAlbum?.identity_key || record.albumKey,
+            identityKey: albumKey,
             mbid: releaseAlbum?.mbid || record.albumMbid,
             releaseGroupMbid: releaseAlbum?.release_group_mbid || record.releaseGroupMbid,
             artistId: artist.id,
@@ -414,6 +427,7 @@ export async function scanMusicRoot({
             quality: record.quality,
             scanId,
           });
+          if (before) releaseLibraryFileRows(before, { albumId: album.id, trackId: track.id });
           if (legacyKeyed.paths.has(filePath) && existing) {
             legacyMoves.push({
               fromTrackId: existing.track_id,
@@ -469,6 +483,7 @@ export async function scanMusicRoot({
     // had, even when the walk stops partway.
     return run().finally(() => {
       if (legacyMoves.length > 0) splitLegacyKeyedLibraryRows(legacyMoves);
+      mergeLeftoverLibraryAlbums();
     });
   });
   return scanResult;
