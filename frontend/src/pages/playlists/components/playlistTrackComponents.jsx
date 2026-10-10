@@ -1,8 +1,6 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import {
   Download,
-  ExternalLink,
-  Heart,
   Info,
   ListMusic,
   Play,
@@ -12,7 +10,6 @@ import {
   Plus,
   Trash2,
   Pencil,
-  UserRound,
 } from "lucide-react";
 import { DotLoader, DownloadingIcon } from "../../../components/DotLoader";
 import { SkeletonRows, SkeletonStatus } from "../../../components/Skeletons";
@@ -116,13 +113,6 @@ function PlaylistTrackKebabMenu({
   onViewInfo,
   onAddToLibrary,
   isAddingToLibrary = false,
-  isFavorite = false,
-  isFavoritePending = false,
-  onToggleFavorite,
-  onNavigateAlbum,
-  onNavigateArtist,
-  albumLink = null,
-  artistLink = null,
   canReSearch,
   canManualReSearch,
   searchAction,
@@ -137,10 +127,6 @@ function PlaylistTrackKebabMenu({
 }) {
   const [openSubmenu, setOpenSubmenu] = useState(null);
   const trackLabel = track?.trackName || "track";
-  const canNavigateAlbum = Boolean(
-    onNavigateAlbum && (track?.albumMbid || (track?.resolvesLinks && track?.albumName)),
-  );
-  const canNavigateArtist = Boolean(onNavigateArtist && (track?.artistMbid || track?.resolvesLinks));
   const canAddToLibrary = shouldShowAddToLibrary(track, onAddToLibrary);
   const { isTrackDownloading } = useActiveDownloads();
   const downloading = canAddToLibrary && isTrackDownloading(track);
@@ -172,43 +158,12 @@ function PlaylistTrackKebabMenu({
           onSelect: () => onAddToLibrary(track),
         }
       : null,
-    onToggleFavorite
-      ? {
-          id: "favorite",
-          label: isFavorite ? "Remove from favorites" : "Add to favorites",
-          icon: Heart,
-          selected: isFavorite,
-          separatorBefore: true,
-          disabled: isFavoritePending,
-          onSelect: () => onToggleFavorite?.(track),
-        }
-      : null,
-    canNavigateAlbum
-      ? {
-          id: "album",
-          label: "Go to album",
-          icon: ExternalLink,
-          separatorBefore: true,
-          to: albumLink?.to,
-          state: albumLink?.state,
-          onSelect: () => onNavigateAlbum(track),
-        }
-      : null,
-    canNavigateArtist
-      ? {
-          id: "artist",
-          label: "Go to artist",
-          icon: UserRound,
-          to: artistLink?.to,
-          state: artistLink?.state,
-          onSelect: () => onNavigateArtist(track),
-        }
-      : null,
     canReSearch
       ? {
           id: "re-search",
           label: searchAction === "upgrade" ? "Search for upgrade" : "Re-search",
           icon: Search,
+          separatorBefore: true,
           disabled: isReSearching,
           onSelect: () => onReSearch?.(track),
         }
@@ -595,13 +550,6 @@ export function PlaylistTracksPanel({
           onViewInfo={onViewTrackInfo}
           onAddToLibrary={onAddTrackToLibrary}
           isAddingToLibrary={libraryTrackSavingKey === String(track.id)}
-          isFavorite={favoriteTrackIds.has(trackFavoriteId)}
-          isFavoritePending={favoriteTrackSavingKey === trackFavoriteId}
-          onToggleFavorite={trackFavoriteId ? onToggleFavorite : null}
-          onNavigateAlbum={onNavigateAlbum}
-          onNavigateArtist={onNavigateArtist}
-          albumLink={albumLink}
-          artistLink={artistLink}
           canReSearch={canReSearch}
           canManualReSearch={canManualReSearch}
           searchAction={searchAction}

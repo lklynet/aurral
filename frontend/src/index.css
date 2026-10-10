@@ -10116,6 +10116,10 @@ button.native-library-genre-row:focus-visible {
     height: 2.75rem;
   }
 
+  .native-library-favorite {
+    opacity: 1;
+  }
+
   .native-library-detail__actions {
     --native-library-detail-action-size: 2.75rem;
   }
@@ -10320,9 +10324,12 @@ button.native-library-genre-row:focus-visible {
 
   .native-library-track > span:empty,
   .native-library-track__play,
-  .native-library-track__time,
-  .native-library-track__favorite {
+  .native-library-track__time {
     display: none;
+  }
+
+  .native-library-track__favorite {
+    flex-shrink: 0;
   }
 
   .native-library-track__cover {
