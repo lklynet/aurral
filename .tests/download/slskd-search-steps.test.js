@@ -118,7 +118,7 @@ test("a failed Soulseek poll moves on to the next query", async (t) => {
 });
 
 async function startSoulseek(t) {
-  const soulseek = { loggedIn: false, searches: [], enqueues: [] };
+  const soulseek = { loggedIn: false, searches: [], enqueues: [], deleted: [], transferState: "InProgress" };
   const loggedOut = (action) =>
     `The server connection must be connected and logged in to ${action} (currently: Connected, LoggingIn)`;
   const server = await createMockHttpServer((req, res) => {
@@ -147,6 +147,10 @@ async function startSoulseek(t) {
         soulseek.enqueues.push(decodeURIComponent(req.url.split("/").pop()));
         return send(201, { enqueued: [{ id: "transfer-1" }], failed: [] });
       }
+      if (req.method === "GET" && req.url.startsWith("/api/v0/transfers/downloads/")) {
+        return send(200, { id: req.url.split("/").pop(), state: soulseek.transferState });
+      }
+      if (req.method === "DELETE") soulseek.deleted.push(req.url.split("?")[0]);
       if (req.method === "GET" && req.url.startsWith("/api/v0/events")) return send(200, []);
       return send(404, "");
     });
@@ -222,6 +226,34 @@ test("a search refused while Soulseek logs in waits and resumes after login", as
   assert.equal(resumed.phase, "search");
   assert.equal(soulseek.searches.length, 1);
   assert.equal(resumed.activeSearch.query, held.searchQueries[0]);
+});
+
+test("a transfer that fails while Soulseek logs in is retried from the same peer after login", async (t) => {
+  const soulseek = await startSoulseek(t);
+  soulseek.loggedIn = true;
+  const jobId = downloadTracker.addJob({ artistName: "Waiting Band", trackName: "Song" }, "library");
+  const polling = await processPipelinePayload({
+    phase: "download", source: "slskd", jobId, candidateIndex: 0, candidateRetryCounts: { 0: 0 },
+    candidates: ["first-peer", "second-peer"].map(soulseekCandidate),
+  });
+  assert.equal(polling.phase, "poll");
+
+  soulseek.loggedIn = false;
+  soulseek.transferState = "Completed, Errored";
+  const held = await processPipelinePayload(polling);
+  assert.equal(held.phase, "download");
+  assert.equal(held.candidateIndex, 0);
+  assert.deepEqual(held.candidateRetryCounts, { 0: 0 });
+  assert.equal(transferHistoryCount(), 0);
+  assert.deepEqual(soulseek.deleted, ["/api/v0/transfers/downloads/first-peer/transfer-1"]);
+
+  soulseek.loggedIn = true;
+  t.mock.timers.tick(held.delaySeconds * 1000);
+  const resumed = await processPipelinePayload(held);
+  assert.equal(resumed.phase, "poll");
+  assert.equal(resumed.candidateIndex, 0);
+  assert.deepEqual(soulseek.enqueues, ["first-peer", "first-peer"]);
+  assert.equal(transferHistoryCount(), 0);
 });
 
 for (const phase of ["search", "download"]) {

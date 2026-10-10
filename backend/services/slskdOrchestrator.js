@@ -624,10 +624,19 @@ function recordTrackJobHistory(recorderName, job, ...args) {
     .catch((err) => { logger.warn("slskd", "Failed to record track job activity", { jobId: job.id, error: err?.message || String(err) }); });
 }
 
-async function isStillLoggedOut(payload) {
-  if (!payload.soulseekLoggedOutSince) return false;
-  const status = await slskdClient.testConnection();
+async function isLoggedOut(options) {
+  const status = await slskdClient.testConnection(options);
   return status?.ok === true && status.connected !== true;
+}
+
+async function isStillLoggedOut(payload) {
+  return Boolean(payload.soulseekLoggedOutSince) && isLoggedOut();
+}
+
+async function waitToRetryAfterLogin(payload, job, helpers, reason) {
+  if (!(await isLoggedOut({ force: true }))) return null;
+  return waitForSoulseekLogin({ ...payload, ...TRANSFER_RESET, phase: "download", candidate: null,
+    pollAttempts: 0 }, job, helpers, reason);
 }
 
 function waitForSoulseekLogin(payload, job, helpers, detail) {
@@ -1155,6 +1164,8 @@ async function handlePoll(payload, helpers) {
     if (state === "failed") {
       await cleanupTransferForPayload(basePayload, transfer);
       const reason = describeTransferFailure(transfer);
+      const waiting = await waitToRetryAfterLogin(basePayload, job, helpers, reason);
+      if (waiting) return waiting;
       // A rejection, such as a ban or a file no longer shared, fails again on
       // a retry, so the next user is tried at once.
       const rejected = /rejected/i.test(readTransferState(transfer));
@@ -1195,6 +1206,8 @@ async function handlePoll(payload, helpers) {
     await slskdClient.deleteTransfer(payload.legacyTransfer.username, payload.legacyTransfer.id,
       { remove: true }).catch(() => false);
   }
+  const waiting = await waitToRetryAfterLogin(basePayload, job, helpers, "slskd transfer stalled");
+  if (waiting) return waiting;
   recordPayloadOutcome(job, basePayload, "transfer_timeout",
     progress.stalled ? "slskd transfer stalled" : "slskd transfer stayed in the uploader's queue", { transfer });
   if (hasNextCandidate(basePayload)) {
@@ -1213,9 +1226,15 @@ async function handleFinalize(payload, helpers) {
     const playlistRoot = resolveDownloadRoot();
     const remoteFiles = payload.candidate?.raw?.files || [];
     const paths = [];
+    const isPeerFailure = (transfer) => {
+      const transferState = readTransferState(transfer);
+      return classifyTransferState(transferState) === "failed" && !/cancel/i.test(transferState);
+    };
+    const blamePeer = (payload.albumTransfers || []).some(isPeerFailure)
+      && !(await isLoggedOut({ force: true }));
     for (const [index, transfer] of (payload.albumTransfers || []).entries()) {
       const transferState = readTransferState(transfer);
-      if (classifyTransferState(transferState) === "failed" && !/cancel/i.test(transferState)) {
+      if (blamePeer && isPeerFailure(transfer)) {
         const remote = remoteFiles[index];
         recordPayloadOutcome(downloadTracker.getJob(remote?.jobId) || job, payload, "transfer_failed",
           describeTransferFailure(transfer), {
