@@ -33,11 +33,13 @@ export async function getInstance(db, id) {
 
 export async function saveInstance(db, { id, secretHash, tunnelUrl }) {
   await ensureSchema(db);
-  await db
+  const result = await db
     .prepare(
       `INSERT INTO instances (id, secret_hash, tunnel_url, updated_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET tunnel_url = excluded.tunnel_url, updated_at = excluded.updated_at`,
+       ON CONFLICT(id) DO UPDATE SET tunnel_url = excluded.tunnel_url, updated_at = excluded.updated_at
+       WHERE instances.secret_hash = excluded.secret_hash`,
     )
     .bind(id, secretHash, tunnelUrl, Date.now())
     .run();
+  return result.meta.changes > 0;
 }

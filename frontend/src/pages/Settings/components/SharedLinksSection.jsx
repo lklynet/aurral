@@ -51,6 +51,7 @@ export function SharedLinksSection({ showSuccess, showError, className = "" }) {
     mutationFn: (link) => deleteShareLink(link.id),
     onSuccess: (_, link) => {
       queryClient.setQueryData(queryKey, (current) => ({
+        ...current,
         links: (current?.links || []).filter((entry) => entry.id !== link.id),
       }));
       showSuccess?.(`Stopped sharing ${link.title}.`);

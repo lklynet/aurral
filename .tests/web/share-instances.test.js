@@ -21,7 +21,7 @@ function fakeD1() {
       const bound = (values) => ({
         bind: (...next) => bound(next),
         first: async () => sqlite.prepare(sql).get(...values) ?? null,
-        run: async () => sqlite.prepare(sql).run(...values),
+        run: async () => ({ meta: { changes: sqlite.prepare(sql).run(...values).changes } }),
       });
       return bound([]);
     },
@@ -94,6 +94,26 @@ test("the first secret owns the instance and other secrets cannot move or clear 
   assert.equal(clear.status, 403);
   assert.equal(storedUrl(db), TUNNEL);
   assert.notEqual(db.sqlite.prepare("SELECT secret_hash FROM instances").get().secret_hash, SECRET);
+});
+
+test("a claim racing the first owner cannot take over the instance", async (t) => {
+  const db = fakeD1();
+  const RIVAL = "https://rival-tunnel-name.trycloudflare.com";
+  let releaseRival;
+  const rivalVerified = new Promise((resolve) => {
+    releaseRival = resolve;
+  });
+  const restore = tunnelAnswering({
+    [`${TUNNEL}/share/.well-known/aurral`]: () => json({ instanceId: INSTANCE_ID }),
+    [`${RIVAL}/share/.well-known/aurral`]: () => rivalVerified.then(() => json({ instanceId: INSTANCE_ID })),
+  });
+  t.after(restore);
+
+  const rival = put(db, { secret: "x".repeat(43), url: RIVAL });
+  assert.equal((await put(db, { secret: SECRET, url: TUNNEL })).status, 204);
+  releaseRival();
+  assert.equal((await rival).status, 403);
+  assert.equal(storedUrl(db), TUNNEL);
 });
 
 test("a listen link plays from the registered tunnel, and says so when the tunnel is gone", async (t) => {

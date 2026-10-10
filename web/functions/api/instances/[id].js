@@ -77,15 +77,16 @@ export async function onRequestPut(context) {
   const tunnelUrl = String(auth.body.url || "");
   if (!TUNNEL_URL_PATTERN.test(tunnelUrl)) return reply(400, "invalid_tunnel_url");
   if (!(await tunnelAnswersFor(tunnelUrl, auth.id))) return reply(422, "tunnel_not_verified");
-  await saveInstance(auth.db, { id: auth.id, secretHash: auth.secretHash, tunnelUrl });
-  return reply(204);
+  const saved = await saveInstance(auth.db, { id: auth.id, secretHash: auth.secretHash, tunnelUrl });
+  return saved ? reply(204) : reply(403, "wrong_secret");
 }
 
 export async function onRequestDelete(context) {
   const auth = await authorize(context);
   if (auth.response) return auth.response;
   if (auth.instance) {
-    await saveInstance(auth.db, { id: auth.id, secretHash: auth.secretHash, tunnelUrl: null });
+    const saved = await saveInstance(auth.db, { id: auth.id, secretHash: auth.secretHash, tunnelUrl: null });
+    if (!saved) return reply(403, "wrong_secret");
   }
   return reply(204);
 }
