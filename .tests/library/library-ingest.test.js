@@ -342,7 +342,25 @@ test("a copy the Library scan files with a track the Library already had is take
   assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE title = 'Song'").pluck().get(), 0);
 });
 
-test("a moved file the Library scan files with a track the Library already had goes back to its source with its art and lyrics, offered for removal, and the Library keeps its own", async () => {
+test("a copy taken back out is recorded and rescanned even when its lyrics cannot be removed", async () => {
+  const { source, file, filed } = await sourceTheScanJoinsToALibraryTrack();
+  await writeFile(file.replace(/\.mp3$/, ".lrc"), "[00:00.00]la");
+  const id = await ingest(source, "copy", "tracks");
+  await apply(id);
+  const filedLyrics = filed.replace(/\.mp3$/, ".lrc");
+  await rm(filedLyrics);
+  await mkdir(filedLyrics);
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  clearScheduledLibraryScan();
+
+  await settleIngestedMusic();
+
+  assert.equal(await exists(filed), false);
+  assert.deepEqual(describe(id).counts, { duplicate: 1 });
+  assert.equal(dbOps.getJSONSetting("pendingLibraryScanJob").changedPaths.includes(filed), true);
+});
+
+test("a moved file the Library scan files with a track the Library already had goes back to its source with its art and lyrics, offered for removal, and the Library keeps its own, even when two source folders filed into one album", async () => {
   const { kept, source, file, filed } = await sourceTheScanJoinsToALibraryTrack({ keptFolder: "Earlier Rip" });
   const art = path.join(path.dirname(file), "cover.jpg");
   await writeFile(art, "art");
@@ -351,6 +369,11 @@ test("a moved file the Library scan files with a track the Library already had g
   const libraryArt = path.join(path.dirname(filed), "folder.jpg");
   await mkdir(path.dirname(libraryArt), { recursive: true });
   await writeFile(libraryArt, "library art");
+  const otherTags = { artist: "Twice", album: "Album", title: "Tune", track: "2" };
+  await libraryTrack(path.join("Twice", "Earlier Rip", "02 - Tune.flac"), otherTags);
+  const otherFile = await makeTrack(path.join(source, "Twice", "Album CD2", "tune.mp3"), otherTags);
+  const otherArt = path.join(path.dirname(otherFile), "back.jpg");
+  await writeFile(otherArt, "back");
   const id = await ingest(source, "move");
   await apply(id);
   assert.equal(await exists(file), false);
@@ -363,14 +386,17 @@ test("a moved file the Library scan files with a track the Library already had g
   assert.equal(await exists(file), true);
   assert.equal(await readFile(art, "utf8"), "art");
   assert.equal(await readFile(lyrics, "utf8"), "[00:00.00]la");
+  assert.equal(await exists(otherFile), true);
+  assert.equal(await readFile(otherArt, "utf8"), "back");
   assert.deepEqual(await readdir(path.dirname(filed)), ["folder.jpg"]);
   const queued = dbOps.getJSONSetting("pendingLibraryScanJob");
   assert.equal(queued.includeLidarr, true);
   assert.equal(queued.changedPaths.includes(file), true);
-  assert.deepEqual(describe(id).sources, { removable: 1, removed: 0 });
+  assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
   await operations.removeDuplicateFiles(id);
   assert.equal((await runUntilSettled(id)).status, "complete");
   assert.equal(await exists(file), false);
+  assert.equal(await exists(otherFile), false);
   assert.equal(await exists(kept), true);
 });
 
