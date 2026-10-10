@@ -7,15 +7,15 @@ import {
   ArrowRight,
   ArrowUpZA,
   Download,
-  ExternalLink,
   Eye,
   EyeOff,
   Fingerprint,
   Grid3X3,
-  Heart,
   Info,
   List,
+  ListEnd,
   ListFilter,
+  ListStart,
   MoreVertical,
   Pause,
   Play,
@@ -23,9 +23,9 @@ import {
   ScanSearch,
   Search,
   Share,
+  Shuffle,
   Sparkles,
   Trash2,
-  UserRound,
   X,
 } from "lucide-react";
 
@@ -347,8 +347,17 @@ function LibraryPage() {
     setPlaylistsError,
     loadStaticPlaylists,
   } = useStaticPlaylists();
-  const { playQueue, currentTrack, isPlaying, isLoading, isStarting, togglePlayPause, matchesSource } =
-    useAudioQueue();
+  const {
+    playQueue,
+    queueNext,
+    addToQueue,
+    currentTrack,
+    isPlaying,
+    isLoading,
+    isStarting,
+    togglePlayPause,
+    matchesSource,
+  } = useAudioQueue();
   const isRunning = isPlaying || isStarting;
   const getQueueItems = useQueueTrackActions();
   const navigationType = useNavigationType();
@@ -724,18 +733,32 @@ function LibraryPage() {
   }, [setLibrary]);
 
   const getAlbumForTrack = useCallback(
-    (track) => {
+    (track, albums = albumsById) => {
       const fileAlbumId = firstAvailableFile(track)?.albumId;
       const relation = track?.albums?.find((entry) => entry.albumId === fileAlbumId)
         || track?.albums?.[0];
-      return relation ? albumsById.get(String(relation.albumId)) : null;
+      return relation ? albums.get(String(relation.albumId)) : null;
     },
     [albumsById],
   );
 
   const getArtistForAlbum = useCallback(
-    (album) => (album ? artistsById.get(String(album.artistId)) : null),
+    (album, artists = artistsById) => (album ? artists.get(String(album.artistId)) : null),
     [artistsById],
+  );
+
+  const lookupWithPages = useCallback(
+    (pages) => ({
+      albumsById: new Map([
+        ...albumsById,
+        ...pages.flatMap((page) => page?.albums || []).map((album) => [String(album.id), album]),
+      ]),
+      artistsById: new Map([
+        ...artistsById,
+        ...pages.flatMap((page) => page?.artists || []).map((artist) => [String(artist.id), artist]),
+      ]),
+    }),
+    [albumsById, artistsById],
   );
 
   const getDefaultTrackPlaylistName = useCallback(
@@ -747,40 +770,41 @@ function LibraryPage() {
     [getAlbumForTrack, getArtistForAlbum, staticPlaylists],
   );
 
-  const addLibraryTrackToPlaylist = useCallback(
-    async (track, target) => {
-      const album = getAlbumForTrack(track);
-      const artist = getArtistForAlbum(album);
-      const payload = buildStaticPlaylistTrackPayload({
-        artistName: artist?.name || track?.artistName || "",
-        trackName: track?.title || "",
-        albumName: album?.title || "",
-        artistMbid: artist?.mbid || "",
-        albumMbid: album?.releaseGroupMbid || album?.mbid || "",
-        trackMbid: track?.mbid || "",
-        releaseYear: yearOf(album?.releaseDate),
-        durationMs: trackDurationMs(track),
-      });
-      if (!payload.artistName || !payload.trackName) {
-        showError("Track details are incomplete");
+  const saveLibraryTracksToPlaylist = useCallback(
+    async (tracks, target, { key, label, defaultName, lookup = null }) => {
+      const payloads = tracks
+        .map((track) => {
+          const album = getAlbumForTrack(track, lookup?.albumsById);
+          const artist = getArtistForAlbum(album, lookup?.artistsById);
+          return buildStaticPlaylistTrackPayload({
+            artistName: artist?.name || track?.artistName || "",
+            trackName: track?.title || "",
+            albumName: album?.title || "",
+            artistMbid: artist?.mbid || "",
+            albumMbid: album?.releaseGroupMbid || album?.mbid || "",
+            trackMbid: track?.mbid || "",
+            releaseYear: yearOf(album?.releaseDate),
+            durationMs: trackDurationMs(track),
+          });
+        })
+        .filter((payload) => payload.artistName && payload.trackName);
+      if (!payloads.length) {
+        showError(tracks.length === 1 ? "Track details are incomplete" : "No Library tracks to add");
         return;
       }
-      const key = String(track?.id || "");
       setPlaylistSavingKey(key);
       setPlaylistsError("");
       try {
         if (target?.mode === "new") {
-          const name =
-            String(target?.name || "").trim() ||
-            getDefaultTrackPlaylistName(track);
-          await createStaticPlaylist({ name, tracks: [payload] });
-          showSuccess(`Track saved to ${name}`);
+          const name = String(target?.name || "").trim() || defaultName;
+          await createStaticPlaylist({ name, tracks: payloads });
+          showSuccess(`${label} saved to ${name}`);
         } else {
           const playlist = staticPlaylists.find(
             (candidate) => candidate.id === target?.playlistId,
           );
-          await addStaticPlaylistTracks(target?.playlistId, { tracks: [payload] });
-          showSuccess(`Track added to ${playlist?.name || "playlist"}`);
+          await addStaticPlaylistTracks(target?.playlistId, { tracks: payloads });
+          showSuccess(`${label} added to ${playlist?.name || "playlist"}`);
         }
         const nextPlaylists = await loadStaticPlaylists();
         if (nextPlaylists) setStaticPlaylists(nextPlaylists);
@@ -789,7 +813,7 @@ function LibraryPage() {
           requestError.response?.data?.message ||
           requestError.response?.data?.error ||
           requestError.message ||
-          "Failed to save track to playlist";
+          "Failed to save to playlist";
         setPlaylistsError(message);
         showError(message);
       } finally {
@@ -799,7 +823,6 @@ function LibraryPage() {
     [
       getAlbumForTrack,
       getArtistForAlbum,
-      getDefaultTrackPlaylistName,
       loadStaticPlaylists,
       setPlaylistsError,
       setStaticPlaylists,
@@ -807,6 +830,16 @@ function LibraryPage() {
       showError,
       showSuccess,
     ],
+  );
+
+  const addLibraryTrackToPlaylist = useCallback(
+    (track, target) =>
+      saveLibraryTracksToPlaylist([track], target, {
+        key: String(track?.id || ""),
+        label: "Track",
+        defaultName: getDefaultTrackPlaylistName(track),
+      }),
+    [getDefaultTrackPlaylistName, saveLibraryTracksToPlaylist],
   );
 
   const { removeTracks: removePlaylistTracks } = usePlaylistBulkActions();
@@ -1579,9 +1612,9 @@ function LibraryPage() {
   );
 
   const buildPlayableTrack = useCallback(
-    (track) => {
-      const album = getAlbumForTrack(track);
-      const artist = getArtistForAlbum(album);
+    (track, lookup = null) => {
+      const album = getAlbumForTrack(track, lookup?.albumsById);
+      const artist = getArtistForAlbum(album, lookup?.artistsById);
       const file = firstAvailableFile(track, album?.id);
       return {
         id: track.id,
@@ -1610,30 +1643,117 @@ function LibraryPage() {
     [getAlbumCover, getAlbumForTrack, getArtistForAlbum],
   );
 
+  const playableTracks = useCallback(
+    (tracks, lookup = null) => {
+      const playable = tracks
+        .map((track) => buildPlayableTrack(track, lookup))
+        .filter((track) => track.src);
+      if (!playable.length) showError("No playable files are available in this selection.");
+      return playable;
+    },
+    [buildPlayableTrack, showError],
+  );
+
   const playTracks = useCallback(
-    (tracks, startTrack = null, shuffle = false) => {
-      const playable = tracks.map(buildPlayableTrack).filter((track) => track.src);
-      if (!playable.length) {
-        showError("No playable files are available in this selection.");
-        return;
-      }
+    (tracks, startTrack = null, shuffle = false, lookup = null) => {
+      const playable = playableTracks(tracks, lookup);
+      if (!playable.length) return;
       playQueue(playable, {
         startTrackId: startTrack?.id ?? null,
         shuffle,
         source: librarySource,
       });
     },
-    [buildPlayableTrack, librarySource, playQueue, showError],
+    [librarySource, playQueue, playableTracks],
   );
 
-  const playAlbum = useCallback(async (album) => {
-    try {
-      const tracks = await loadAlbumTracks(album);
-      playTracks(tracks);
-    } catch (requestError) {
-      showError(requestError.response?.data?.message || "Failed to load album tracks");
+  const loadArtistTracks = useCallback(async (artist) => {
+    if (isPreviewLibrary) {
+      return {
+        tracks: library.albums
+          .filter((album) => String(album.artistId) === String(artist.id))
+          .flatMap(getAlbumTracks),
+        lookup: null,
+      };
     }
-  }, [loadAlbumTracks, playTracks, showError]);
+    const pages = [];
+    for (let page = 1; ; page += 1) {
+      const result = await getLibraryPage({
+        kind: "tracks",
+        artistId: artist.id,
+        page,
+        pageSize,
+        availableOnly: true,
+      });
+      pages.push(result);
+      if (!result?.hasMore) break;
+    }
+    const lookup = lookupWithPages(pages);
+    const position = (track) => {
+      const album = getAlbumForTrack(track, lookup.albumsById);
+      const relation = track.albums?.find((entry) => String(entry.albumId) === String(album?.id));
+      return {
+        released: album?.releaseDate || "",
+        album: text(album?.title),
+        disc: Number(relation?.discNumber || 0),
+        number: Number(relation?.trackNumber || 0),
+      };
+    };
+    const tracks = pages
+      .flatMap((page) => (Array.isArray(page?.items) ? page.items : []))
+      .map((track) => ({ track, position: position(track) }))
+      .sort((left, right) =>
+        left.position.released.localeCompare(right.position.released) ||
+        left.position.album.localeCompare(right.position.album) ||
+        left.position.disc - right.position.disc ||
+        left.position.number - right.position.number,
+      )
+      .map(({ track }) => track);
+    return { tracks, lookup };
+  }, [getAlbumForTrack, getAlbumTracks, isPreviewLibrary, library.albums, lookupWithPages]);
+
+  const loadAlbumCollection = useCallback(
+    async (album) => ({ tracks: await loadAlbumTracks(album), lookup: null }),
+    [loadAlbumTracks],
+  );
+
+  const withCollection = useCallback(
+    async (load, action) => {
+      let collection;
+      try {
+        collection = await load();
+      } catch (requestError) {
+        showError(requestError.response?.data?.message || "Failed to load tracks");
+        return;
+      }
+      await action(collection);
+    },
+    [showError],
+  );
+
+  const playCollection = useCallback(
+    (load, shuffle = false) =>
+      withCollection(load, ({ tracks, lookup }) => playTracks(tracks, null, shuffle, lookup)),
+    [playTracks, withCollection],
+  );
+
+  const queueCollection = useCallback(
+    (load, position) =>
+      withCollection(load, ({ tracks, lookup }) => {
+        const playable = playableTracks(tracks, lookup);
+        if (!playable.length) return;
+        const insert = position === "next" ? queueNext : addToQueue;
+        if (insert(playable, { source: librarySource }) === "queued") {
+          showSuccess(position === "next" ? "Playing next" : "Added to queue");
+        }
+      }),
+    [addToQueue, librarySource, playableTracks, queueNext, showSuccess, withCollection],
+  );
+
+  const playAlbum = useCallback(
+    (album) => playCollection(() => loadAlbumCollection(album)),
+    [loadAlbumCollection, playCollection],
+  );
 
   const toggleFavorite = useCallback(
     async (kind, entity) => {
@@ -1728,13 +1848,14 @@ function LibraryPage() {
     if (path) navigate(path);
   };
 
-  const artistMbidMenuItems = (artist) =>
+  const artistMbidMenuItems = (artist, { separatorBefore = false } = {}) =>
     canEditArtistMbid && artist?.providerId == null
       ? [
           {
             id: "mbid",
             label: "Edit MusicBrainz ID",
             icon: Fingerprint,
+            separatorBefore,
             onSelect: () => setMbidArtist(artist),
           },
         ]
@@ -1795,11 +1916,85 @@ function LibraryPage() {
 
   const shareMenuItem = (kind, entity, context) => ({
     id: "share",
-    label: `Share ${kind}`,
+    label: "Share",
     icon: Share,
     onSelect: () => shareLibraryItem(kind, entity, context),
     disabled: isPreviewLibrary,
   });
+
+  const collectionQueueItems = (load, disabled = false) => [
+    {
+      id: "queue-next",
+      label: "Play next",
+      icon: ListStart,
+      disabled,
+      onSelect: () => queueCollection(load, "next"),
+    },
+    {
+      id: "queue-add",
+      label: "Add to queue",
+      icon: ListEnd,
+      disabled,
+      onSelect: () => queueCollection(load, "end"),
+    },
+  ];
+
+  const collectionPlayItems = (load, disabled = false) => [
+    { id: "play", label: "Play", icon: Play, disabled, onSelect: () => playCollection(load) },
+    {
+      id: "shuffle",
+      label: "Shuffle",
+      icon: Shuffle,
+      disabled,
+      onSelect: () => playCollection(load, true),
+    },
+    ...collectionQueueItems(load, disabled),
+  ];
+
+  const collectionPlaylistMenu = ({ key, label, defaultName, load }) => ({
+    additionalItemsAfter: "queue-add",
+    onMenuOpen: loadStaticPlaylists,
+    renderAdditionalItems: ({ closeMenu }) => (
+      <>
+        <div className="native-library-item-menu__separator" />
+        <TrackPlaylistSubmenu
+          label="Add to playlist"
+          playlists={staticPlaylists}
+          loading={playlistsLoading}
+          saving={playlistSavingKey === key}
+          error={playlistsError}
+          defaultNewPlaylistName={reserveUniquePlaylistName(staticPlaylists, defaultName)}
+          onSelect={(target) =>
+            withCollection(load, ({ tracks, lookup }) =>
+              saveLibraryTracksToPlaylist(
+                tracks.filter((track) => firstAvailableFile(track)),
+                target,
+                { key, label, defaultName, lookup },
+              ),
+            )
+          }
+          onClose={closeMenu}
+          toggleOnClick
+        />
+      </>
+    ),
+  });
+
+  const albumMenuProps = (album, load) =>
+    collectionPlaylistMenu({
+      key: "album:" + album.id,
+      label: album.title || "Album",
+      defaultName: album.title || "Album",
+      load,
+    });
+
+  const artistMenuProps = (artist) =>
+    collectionPlaylistMenu({
+      key: "artist:" + artist.id,
+      label: artist.name || "Artist",
+      defaultName: `${artist.name || "Artist"} Picks`,
+      load: () => loadArtistTracks(artist),
+    });
 
   const openLibraryInfo = (kind, entity, context = {}) => {
     setLibraryInfo({ kind, entity, ...context });
@@ -1816,11 +2011,6 @@ function LibraryPage() {
     navigate("/artist/" + encodeURIComponent(artist.mbid), {
       state: discoverArtistState(artist),
     });
-  };
-
-  const handleAlbumOpen = (album) => {
-    const path = libraryAlbumPath(album);
-    if (path) navigate(path);
   };
 
   const handleDiscoverAlbumOpen = (album) => {
@@ -1922,20 +2112,12 @@ function LibraryPage() {
             disabled: !file,
           },
           ...queueItems,
+          shareMenuItem("track", track, { artist, album }),
           {
             id: "info",
             label: "View info",
             icon: Info,
             onSelect: () => openLibraryInfo("track", track, { artist, album, trackNumber }),
-          },
-          shareMenuItem("track", track, { artist, album }),
-          {
-            id: "favorite",
-            label: isFavorite ? "Remove from favorites" : "Add to favorites",
-            icon: Heart,
-            selected: isFavorite,
-            separatorBefore: true,
-            onSelect: () => toggleFavorite("song", track),
           },
           ...(!file
             ? [
@@ -1962,27 +2144,6 @@ function LibraryPage() {
               ]
             : []),
           ...(monitoringItem ? [monitoringItem] : []),
-          ...(album
-            ? [
-                {
-                  id: "album",
-                  label: "Go to album",
-                  icon: ExternalLink,
-                  separatorBefore: true,
-                  onSelect: () => handleAlbumOpen(album),
-                },
-              ]
-            : []),
-          ...(artist
-            ? [
-                {
-                  id: "artist",
-                  label: "Go to artist",
-                  icon: UserRound,
-                  onSelect: () => handleArtistOpen(artist),
-                },
-              ]
-            : []),
           ...(canDeleteTrack && (file || hasAurralTrackFile(track))
             ? [
                 {
@@ -2105,28 +2266,15 @@ function LibraryPage() {
           </RouteLink>
           <LibraryItemMenu
             label={artist.name || "Artist"}
+            {...artistMenuProps(artist)}
             items={[
-              {
-                id: "open",
-                label: "Open artist",
-                icon: UserRound,
-                onSelect: () => handleArtistOpen(artist),
-              },
+              ...collectionPlayItems(() => loadArtistTracks(artist)),
+              shareMenuItem("artist", artist),
               {
                 id: "info",
                 label: "View info",
                 icon: Info,
                 onSelect: () => openLibraryInfo("artist", artist),
-              },
-              shareMenuItem("artist", artist),
-              ...artistMbidMenuItems(artist),
-              {
-                id: "favorite",
-                label: isFavorite ? "Remove from favorites" : "Add to favorites",
-                icon: Heart,
-                selected: isFavorite,
-                separatorBefore: true,
-                onSelect: () => toggleFavorite("artist", artist),
               },
               {
                 id: "discover",
@@ -2136,6 +2284,7 @@ function LibraryPage() {
                 onSelect: () => handleDiscoverArtistOpen(artist),
                 disabled: !artist.mbid,
               },
+              ...artistMbidMenuItems(artist),
               ...(canDeleteArtist && canRemoveLibraryArtist(artist)
                 ? [
                     {
@@ -2175,7 +2324,7 @@ function LibraryPage() {
 
   const renderAlbumCard = (album) => {
     const artist = getArtistForAlbum(album);
-    const albumTracks = getAlbumTracks(album);
+    const albumEmpty = !getAlbumTracks(album).length && !album.trackCount && !album.trackIds?.length;
     const availability = albumAvailability(album);
     const meta =
       availability.total && availability.available < availability.total
@@ -2210,7 +2359,7 @@ function LibraryPage() {
           <TooltipButton
             className="native-library-card__play"
             onClick={() => playAlbum(album)}
-            disabled={!albumTracks.length && !album.trackCount && !album.trackIds?.length}
+            disabled={albumEmpty}
             label={"Play " + (album.title || "album")}
             aria-label={"Play " + (album.title || "album")}
           >
@@ -2218,46 +2367,16 @@ function LibraryPage() {
           </TooltipButton>
           <LibraryItemMenu
             label={album.title || "Album"}
+            {...albumMenuProps(album, () => loadAlbumCollection(album))}
             items={[
-              {
-                id: "play",
-                label: "Play album",
-                icon: Play,
-                onSelect: () => playAlbum(album),
-                disabled: !albumTracks.length && !album.trackCount && !album.trackIds?.length,
-              },
-              {
-                id: "open",
-                label: "Open album",
-                icon: ExternalLink,
-                onSelect: () => handleAlbumOpen(album),
-              },
+              ...collectionPlayItems(() => loadAlbumCollection(album), albumEmpty),
+              shareMenuItem("album", album, { artist }),
               {
                 id: "info",
                 label: "View info",
                 icon: Info,
                 onSelect: () => openLibraryInfo("album", album, { artist }),
               },
-              shareMenuItem("album", album, { artist }),
-              {
-                id: "favorite",
-                label: isFavorite ? "Remove from favorites" : "Add to favorites",
-                icon: Heart,
-                selected: isFavorite,
-                separatorBefore: true,
-                onSelect: () => toggleFavorite("album", album),
-              },
-              ...(artist
-                ? [
-                    {
-                      id: "artist",
-                      label: "Go to artist",
-                      icon: UserRound,
-                      separatorBefore: true,
-                      onSelect: () => handleArtistOpen(artist),
-                    },
-                  ]
-                : []),
               {
                 id: "discover",
                 label: "Open in Discover",
@@ -2449,6 +2568,7 @@ function LibraryPage() {
       0,
     );
     const albumPlayable = albumTracks.some((track) => firstAvailableFile(track));
+    const loadAlbumDetail = async () => ({ tracks: albumTracks, lookup: null });
     const albumIsCurrent =
       matchesSource(librarySource) &&
       albumTracks.some((track) => String(track.id) === String(currentTrack?.id));
@@ -2550,43 +2670,17 @@ function LibraryPage() {
               )}
               <LibraryItemMenu
                 label={libraryAlbum.title || "Album"}
+                {...albumMenuProps(libraryAlbum, loadAlbumDetail)}
                 items={[
-                  {
-                    id: "play",
-                    label: "Play album",
-                    icon: Play,
-                    onSelect: () => playTracks(albumTracks),
-                    disabled: !albumTracks.some((track) => firstAvailableFile(track)),
-                  },
+                  ...collectionQueueItems(loadAlbumDetail, !albumPlayable),
+                  shareMenuItem("album", libraryAlbum, { artist }),
                   {
                     id: "info",
                     label: "View info",
                     icon: Info,
                     onSelect: () => openLibraryInfo("album", libraryAlbum, { artist }),
                   },
-                  shareMenuItem("album", libraryAlbum, { artist }),
-                  {
-                    id: "favorite",
-                    label: favoriteIds.has(favoriteId("album", libraryAlbum))
-                      ? "Remove from favorites"
-                      : "Add to favorites",
-                    icon: Heart,
-                    selected: favoriteIds.has(favoriteId("album", libraryAlbum)),
-                    separatorBefore: true,
-                    onSelect: () => toggleFavorite("album", libraryAlbum),
-                  },
                   ...(albumMonitoringMenuItem ? [albumMonitoringMenuItem] : []),
-                  ...(artist
-                    ? [
-                        {
-                          id: "artist",
-                          label: "Go to artist",
-                          icon: UserRound,
-                          separatorBefore: true,
-                          onSelect: () => handleArtistOpen(artist),
-                        },
-                      ]
-                    : []),
                   ...(canDeleteAlbum && canRemoveLibraryAlbum(libraryAlbum, { lidarrConnected: activeManager === "lidarr" })
                     ? [
                         {
@@ -2624,6 +2718,10 @@ function LibraryPage() {
       0,
     );
     const discoverArtist = libraryArtist.mbid ? libraryArtist : null;
+    const artistPlayable = artistTracks.some((track) => firstAvailableFile(track));
+    const artistIsCurrent =
+      matchesSource(librarySource) &&
+      artistTracks.some((track) => String(track.id) === String(currentTrack?.id));
     return (
       <section className="native-library-detail">
         <div
@@ -2659,14 +2757,18 @@ function LibraryPage() {
                 .join(" · ")}
             </p>
             <div className="native-library-detail__actions">
-              <button
-                type="button"
-                className="native-library-page-play"
-                onClick={() => playTracks(artistTracks)}
-                disabled={!artistTracks.some((track) => firstAvailableFile(track))}
-              >
-                <Play aria-hidden="true" fill="currentColor" /> Play
-              </button>
+              <CollectionPlayButtons
+                label={libraryArtist.name || "artist"}
+                disabled={!artistPlayable}
+                isPlaying={artistIsCurrent && isRunning}
+                isShuffleEnabled={false}
+                onPlay={() =>
+                  artistIsCurrent
+                    ? togglePlayPause()
+                    : playCollection(() => loadArtistTracks(libraryArtist))
+                }
+                onShuffle={() => playCollection(() => loadArtistTracks(libraryArtist), true)}
+              />
               <FavoriteButton
                 active={favoriteIds.has(favoriteId("artist", libraryArtist))}
                 pending={Boolean(pendingFavorite)}
@@ -2682,32 +2784,17 @@ function LibraryPage() {
               )}
               <LibraryItemMenu
                 label={libraryArtist.name || "Artist"}
+                {...artistMenuProps(libraryArtist)}
                 items={[
-                  {
-                    id: "play",
-                    label: "Play artist",
-                    icon: Play,
-                    onSelect: () => playTracks(artistTracks),
-                    disabled: !artistTracks.some((track) => firstAvailableFile(track)),
-                  },
+                  ...collectionQueueItems(() => loadArtistTracks(libraryArtist), !artistPlayable),
+                  shareMenuItem("artist", libraryArtist),
                   {
                     id: "info",
                     label: "View info",
                     icon: Info,
                     onSelect: () => openLibraryInfo("artist", libraryArtist),
                   },
-                  shareMenuItem("artist", libraryArtist),
-                  ...artistMbidMenuItems(libraryArtist),
-                  {
-                    id: "favorite",
-                    label: favoriteIds.has(favoriteId("artist", libraryArtist))
-                      ? "Remove from favorites"
-                      : "Add to favorites",
-                    icon: Heart,
-                    selected: favoriteIds.has(favoriteId("artist", libraryArtist)),
-                    separatorBefore: true,
-                    onSelect: () => toggleFavorite("artist", libraryArtist),
-                  },
+                  ...artistMbidMenuItems(libraryArtist, { separatorBefore: true }),
                   ...libraryArtistMonitoringItems,
                   ...(canDeleteArtist && canRemoveLibraryArtist(libraryArtist)
                     ? [{
