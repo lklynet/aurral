@@ -274,6 +274,13 @@ db.exec(`
     updated_at INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS metadata_response_cache (
+    cache_key TEXT PRIMARY KEY,
+    response BLOB NOT NULL,
+    fresh_until INTEGER NOT NULL,
+    stale_until INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS artist_overrides (
     mbid TEXT PRIMARY KEY,
     musicbrainz_id TEXT,
@@ -542,6 +549,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_playlist_download_jobs_playlist_id ON playlist_download_jobs(playlist_id);
   CREATE INDEX IF NOT EXISTS idx_images_cache_cache_age ON images_cache(cache_age);
   CREATE INDEX IF NOT EXISTS idx_musicbrainz_artist_mbid_cache_updated_at ON musicbrainz_artist_mbid_cache(updated_at);
+  CREATE INDEX IF NOT EXISTS idx_metadata_response_cache_stale_until ON metadata_response_cache(stale_until);
   CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
   CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);

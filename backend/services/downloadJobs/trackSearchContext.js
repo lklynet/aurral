@@ -15,20 +15,14 @@ import {
   getYear,
   pickResolvedDurationMs,
 } from "../providers/brainzmashRanking.js";
+import createCache from "../apiClients/simpleCache.js";
 
-const artistAliasCache = new Map();
-const releaseGroupSearchCache = new Map();
-const releaseContextCache = new Map();
-const MATCHER_OPTIONS = { extended: true };
+const CONTEXT_CACHE_TTL_SECONDS = 15 * 60;
 const MAX_CACHE_ENTRIES = 500;
-
-// ponytail: FIFO eviction, not LRU; upgrade to createCache() TTLs if hit rates matter
-function boundedCacheSet(cache, key, value) {
-  if (cache.size >= MAX_CACHE_ENTRIES && !cache.has(key)) {
-    cache.delete(cache.keys().next().value);
-  }
-  cache.set(key, value);
-}
+const artistAliasCache = createCache(CONTEXT_CACHE_TTL_SECONDS, MAX_CACHE_ENTRIES);
+const releaseGroupSearchCache = createCache(CONTEXT_CACHE_TTL_SECONDS, MAX_CACHE_ENTRIES);
+const releaseContextCache = createCache(CONTEXT_CACHE_TTL_SECONDS, MAX_CACHE_ENTRIES);
+const MATCHER_OPTIONS = { extended: true };
 
 function pickBestCandidate(candidates, expectedTitle, expectedYear = null) {
   const list = Array.isArray(candidates) ? candidates : [];
@@ -65,9 +59,8 @@ function matchesAlbumTitle(actualTitle, expectedTitle) {
 async function fetchArtistAliases(artistMbid) {
   const key = String(artistMbid || "").trim();
   if (!key) return [];
-  if (artistAliasCache.has(key)) {
-    return artistAliasCache.get(key);
-  }
+  const cachedAliases = artistAliasCache.get(key);
+  if (cachedAliases !== undefined) return cachedAliases;
   const promise = (async () => {
     try {
       const artist = await getArtistByMbid(key);
@@ -79,9 +72,9 @@ async function fetchArtistAliases(artistMbid) {
       return [];
     }
   })();
-  boundedCacheSet(artistAliasCache, key, promise);
+  artistAliasCache.set(key, promise);
   const aliases = await promise;
-  boundedCacheSet(artistAliasCache, key, aliases);
+  artistAliasCache.set(key, aliases);
   return aliases;
 }
 
@@ -91,9 +84,8 @@ async function resolveReleaseGroup(artistName, artistMbid, albumName, releaseYea
   const safeArtist = String(artistName || "").trim();
   const safeMbid = String(artistMbid || "").trim();
   const cacheKey = JSON.stringify([safeArtist, safeMbid, safeAlbum]);
-  if (releaseGroupSearchCache.has(cacheKey)) {
-    return releaseGroupSearchCache.get(cacheKey);
-  }
+  const cachedReleaseGroup = releaseGroupSearchCache.get(cacheKey);
+  if (cachedReleaseGroup !== undefined) return cachedReleaseGroup;
   const promise = (async () => {
     try {
       const resolvedId = await resolveAlbumByArtistAndTitle({
@@ -125,9 +117,9 @@ async function resolveReleaseGroup(artistName, artistMbid, albumName, releaseYea
     } catch {}
     return null;
   })();
-  boundedCacheSet(releaseGroupSearchCache, cacheKey, promise);
+  releaseGroupSearchCache.set(cacheKey, promise);
   const resolved = await promise;
-  boundedCacheSet(releaseGroupSearchCache, cacheKey, resolved);
+  releaseGroupSearchCache.set(cacheKey, resolved);
   return resolved;
 }
 
@@ -266,9 +258,8 @@ function mapReleaseContextTracks(release) {
 async function fetchReleaseContext(albumMbid) {
   const key = String(albumMbid || "").trim();
   if (!key) return null;
-  if (releaseContextCache.has(key)) {
-    return releaseContextCache.get(key);
-  }
+  const cachedContext = releaseContextCache.get(key);
+  if (cachedContext !== undefined) return cachedContext;
   const promise = (async () => {
     try {
       const album = await getAlbumByMbid(key);
@@ -306,9 +297,9 @@ async function fetchReleaseContext(albumMbid) {
       return null;
     }
   })();
-  boundedCacheSet(releaseContextCache, key, promise);
+  releaseContextCache.set(key, promise);
   const resolved = await promise;
-  boundedCacheSet(releaseContextCache, key, resolved);
+  releaseContextCache.set(key, resolved);
   return resolved;
 }
 
