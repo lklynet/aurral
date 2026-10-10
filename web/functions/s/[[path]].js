@@ -418,7 +418,7 @@ function page({ type, title, description, image, url, nonce, body, script = "" }
     </header>
     <main>${body}</main>
     <footer>Shared from <a href="/">Aurral</a>, self-hosted music discovery.</footer>
-    ${script ? `<script nonce="${nonce}">${script}</script>` : ""}
+    ${script ? `<script nonce="${nonce}" data-cfasync="false">${script}</script>` : ""}
   </body>
 </html>`;
 }
