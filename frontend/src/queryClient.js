@@ -63,6 +63,7 @@ export const queryKeys = {
   activityRequests: (userId) => ["activity", "requests", userId || null],
   libraryActivityRequests: (userId) => ["library", "activity-requests", userId || null],
   inbox: (userId, zip, limit) => ["inbox", userId || null, zip || "", limit],
+  shareLinks: (userId) => ["share-links", userId || null],
   listeningHistory: (userId) => ["auth", "listening-history", userId || null],
   lidarrPreferences: (userId) => ["auth", "lidarr-preferences", userId || null],
   libraryPrefix: ["library"],

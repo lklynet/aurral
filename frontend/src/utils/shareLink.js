@@ -38,7 +38,7 @@ const toBase64Url = (bytes) => {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 };
 
-export function buildShareUrl(item) {
+export function buildSharePayload(item) {
   const kind = KINDS[item?.kind];
   if (!kind) return null;
   const names = kind.names.map((field) => nameBytes(item[field]));
@@ -57,7 +57,12 @@ export function buildShareUrl(item) {
     payload.set(part, offset);
     offset += part.length;
   }
-  return `${SHARE_ORIGIN}/s/${toBase64Url(payload)}`;
+  return toBase64Url(payload);
+}
+
+export function buildShareUrl(item) {
+  const payload = buildSharePayload(item);
+  return payload ? `${SHARE_ORIGIN}/s/${payload}` : null;
 }
 
 const copyWithSelection = (text) => {

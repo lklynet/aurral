@@ -50,6 +50,8 @@ import newsRouter from "./routes/news.js";
 import subsonicRouter from "./routes/subsonic.js";
 import scrobblingRouter from "./routes/scrobbling.js";
 import playEventsRouter from "./routes/playEvents.js";
+import shareLinksRouter from "./routes/shareLinks.js";
+import { stopShareListener, syncShareListener } from "./services/shareLinks/shareListener.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -198,6 +200,7 @@ app.use("/api/weekly-flow", (req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/scrobbling", scrobblingRouter);
 app.use("/api/play-events", playEventsRouter);
+app.use("/api/share-links", shareLinksRouter);
 app.use("/api/image-proxy", imageProxyRouter);
 app.use("/rest", express.urlencoded({ extended: false }), subsonicRouter);
 
@@ -380,6 +383,7 @@ const gracefulShutdown = async (signal) => {
     clearInterval(interval);
   }
   await shutdownHonkerInfrastructure({ timeoutMs: 5000 });
+  await stopShareListener();
   await new Promise((resolve) => {
     httpServer.close(() => resolve());
   });
@@ -402,6 +406,7 @@ httpServer.listen(PORT, async () => {
   warnAboutConfigDeprecations();
   bootstrapHonkerSchedules();
   initializeAppRuntime({ logger });
+  void syncShareListener();
 });
 
 httpServer.on("error", (error) => {

@@ -22,6 +22,7 @@ const RESET_TABLES = [
   "weekly_flow_download_job_cancellations",
   "weekly_flow_download_cancellations",
   "weekly_flow_download_provider_work",
+  "share_links",
   "inbox_items",
   "news_articles",
   "users",

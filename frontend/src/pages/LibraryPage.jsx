@@ -1597,6 +1597,8 @@ function LibraryPage() {
         artistMbid: artist?.mbid || null,
         albumMbid: album?.releaseGroupMbid || album?.mbid || null,
         trackMbid: track.mbid || track.trackMbid || null,
+        libraryTrackId: file && album ? track.id : null,
+        libraryAlbumId: file && album ? album.id : null,
         durationMs: Number(track.durationMs || file?.durationMs || 0) || null,
         recordHistory: true,
         artwork: getAlbumCover(album),

@@ -14361,6 +14361,36 @@ button.native-library-genre-row:focus-visible {
   font-size: 0.875rem;
 }
 
+.shared-link-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shared-link-row__text {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.shared-link-row__title {
+  overflow-wrap: anywhere;
+}
+
+.shared-link-row__meta {
+  color: var(--aurral-text-muted);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.shared-link-row__actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 .settings-page__section-intro {
   margin-bottom: 0.5rem;
 }
@@ -14406,6 +14436,29 @@ button.native-library-genre-row:focus-visible {
 
 .playlist-modal--create {
   max-width: 26rem;
+}
+
+.share-modal__option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 1rem;
+  row-gap: 0.25rem;
+}
+
+.share-modal__option > .settings-page__hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.share-modal__label {
+  color: var(--aurral-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.share-modal__select {
+  min-width: 9rem;
 }
 
 .playlist-modal__header {

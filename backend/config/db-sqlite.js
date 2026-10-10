@@ -122,6 +122,25 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_lastfm_link_states_expiry
     ON lastfm_link_states(expires_at);
 
+  CREATE TABLE IF NOT EXISTS share_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    target_ref TEXT NOT NULL,
+    album_ref TEXT,
+    payload TEXT NOT NULL,
+    title TEXT NOT NULL,
+    artist_name TEXT NOT NULL,
+    allow_download INTEGER NOT NULL DEFAULT 0,
+    expires_at INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_share_links_user
+    ON share_links(user_id, created_at);
+
   CREATE TABLE IF NOT EXISTS subsonic_play_queues (
     user_id INTEGER PRIMARY KEY,
     song_ids TEXT NOT NULL,
