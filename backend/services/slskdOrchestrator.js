@@ -859,17 +859,11 @@ async function handleSearch(payload, helpers) {
       policyVersion: selection.policyVersion,
     };
   }
-  const rankingOptions = { ...searchOptions };
-  const historyOptions = buildSlskdRankingHistoryOptions();
   const evaluation = await buildSourceCandidates({
     source: "soulseek",
     results: aggregated,
     request: resolvedTrack,
-    options: {
-      ...rankingOptions,
-      isUserBlacklisted: historyOptions.isUserBlacklisted,
-      getUserQueuePenalty: historyOptions.getUserQueuePenalty,
-    },
+    options: { ...searchOptions },
   });
   // Quality profile preference is primary here. Preserve the matcher decision
   // and distance order within each quality tier; queue history only breaks a
@@ -894,7 +888,7 @@ async function handleSearch(payload, helpers) {
       decisionRank: { accept: 0, verify: 1, review: 2 }[entry.decision] ?? 3,
       distance: Number.isFinite(entry.distance) ? entry.distance : Number.POSITIVE_INFINITY,
       variantScore: Number(entry.variantScore || 0),
-      queuePenalty: Number(historyOptions.getUserQueuePenalty?.(entry.candidate?.raw?.user) || 0),
+      queuePenalty: Number(searchOptions.getUserQueuePenalty?.(entry.candidate?.raw?.user) || 0),
     }))
     .sort(
       (left, right) =>

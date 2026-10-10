@@ -169,7 +169,7 @@ export function recordSlskdTransferOutcome({
   return rowId;
 }
 
-export function buildSlskdRankingHistoryOptions() {
+function loadPeerStats() {
   const cutoff = Date.now() - RECENT_HISTORY_WINDOW_MS;
   const peerStats = new Map();
   for (const row of recentPeerRowsStmt.all(cutoff)) {
@@ -195,10 +195,15 @@ export function buildSlskdRankingHistoryOptions() {
     stats.active = Number(row.active || 0);
     peerStats.set(key, stats);
   }
+  return peerStats;
+}
 
+export function buildSlskdRankingHistoryOptions() {
+  let peerStats = null;
+  const statsFor = (username) => (peerStats ??= loadPeerStats()).get(normalizeUsername(username));
   return {
     isUserBlacklisted: (username) => {
-      const stats = peerStats.get(normalizeUsername(username));
+      const stats = statsFor(username);
       if (!stats) return false;
       // A user who banned Aurral rejects every transfer until it lifts the ban.
       if (stats.banned) return true;
@@ -206,7 +211,7 @@ export function buildSlskdRankingHistoryOptions() {
       return stats.failures >= 5 || stats.validationFailures >= 3;
     },
     getUserQueuePenalty: (username) => {
-      const stats = peerStats.get(normalizeUsername(username));
+      const stats = statsFor(username);
       if (!stats) return 0;
       const penalty =
         stats.active * 80 +

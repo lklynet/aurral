@@ -355,6 +355,13 @@ db.exec(`
     FOREIGN KEY (artist_id) REFERENCES library_artists(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS library_release_calendar_artists (
+    artist_id INTEGER PRIMARY KEY,
+    refreshed_at INTEGER,
+    failed_at INTEGER,
+    FOREIGN KEY (artist_id) REFERENCES library_artists(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS library_tracks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     identity_key TEXT NOT NULL UNIQUE,
