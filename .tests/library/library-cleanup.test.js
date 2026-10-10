@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { link, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, link, mkdir, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
+import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -26,6 +27,7 @@ const [
   { playlistManager },
   { findUniqueLibrarySong },
   { getPlayQueue, savePlayQueue },
+  { retryPlaybackRetainedFiles },
 ] = await setupIsolatedBackend(
   "library-cleanup",
   "backend/config/db-sqlite.js",
@@ -39,6 +41,7 @@ const [
   "backend/services/playlists/playlistManager.js",
   "backend/services/subsonicLibraryService.js",
   "backend/services/subsonicPlayQueueService.js",
+  "backend/services/playback/playbackFileRetention.js",
 );
 
 const root = resolveDownloadRoot();
@@ -47,10 +50,10 @@ const releaseGroup = "3f3f3f3f-0000-4000-8000-000000000001";
 const recording = "3f3f3f3f-0000-4000-8000-0000000000r1";
 let tone = 300;
 
-async function makeTrack(filePath, tags = {}, codec = []) {
+async function makeTrack(filePath, tags = {}, codec = [], { seconds = 0.2 } = {}) {
   await mkdir(path.dirname(filePath), { recursive: true });
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi",
-    "-i", `sine=frequency=${tone += 11}:duration=0.2`, ...codec];
+    "-i", `sine=frequency=${tone += 11}:duration=${seconds}`, ...codec];
   for (const [key, value] of Object.entries(tags)) args.push("-metadata", `${key}=${value}`);
   await execFileAsync("ffmpeg", [...args, filePath]);
   return filePath;
@@ -79,7 +82,7 @@ async function cleanUp() {
   const preview = operations.describeLibraryFileOperationItems(checked, {});
   const finished = await runUntilSettled(operation.id);
   assert.equal(finished.status, "complete");
-  return { preview, items: operations.describeLibraryFileOperationItems(finished, {}) };
+  return { id: operation.id, preview, items: operations.describeLibraryFileOperationItems(finished, {}) };
 }
 
 const mediaAt = (filePath) => db.prepare("SELECT * FROM library_media_files WHERE path = ?").get(filePath);
@@ -196,6 +199,183 @@ test("rename never takes a name another file has", async () => {
   assert.equal(items[0].status, "conflict");
   assert.equal(await exists(oldPath), true);
   assert.deepEqual(await readFile(occupant), occupantBytes);
+});
+
+const describe = (id) => operations.describeLibraryFileOperation(getLibraryFileOperation(id));
+const availablePaths = (title) => db.prepare(
+  `SELECT media.path FROM library_media_files AS media JOIN library_tracks AS track ON track.id = media.track_id
+   WHERE track.title = ? AND media.available = 1 ORDER BY media.path`,
+).pluck().all(title);
+
+test("a second copy of a track is a duplicate, removed only when asked, and playlists and favorites stay on the kept copy", async (t) => {
+  const tags = { artist: "Twice", album: "Album", title: "Song", track: "1" };
+  const first = await makeTrack(path.join(root, "loose a", "track.flac"), tags);
+  const second = path.join(root, "loose b", "track.flac");
+  await mkdir(path.dirname(second), { recursive: true });
+  await copyFile(first, second);
+  await writeFile(path.join(root, "loose b", "track.lrc"), "[00:00.00]la");
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const track = db.prepare("SELECT * FROM library_tracks WHERE title = 'Song'").get();
+  db.prepare("INSERT INTO users (id, username, password_hash) VALUES (7, 'fan', 'x')").run();
+  db.prepare("INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (7, 'song', ?, 1)")
+    .run(track.identity_key);
+  const jobId = downloadTracker.addJob({ artistName: "Twice", trackName: "Song" }, "static-mix");
+  downloadTracker.setDone(jobId, second, "Album");
+  const refreshed = [];
+  t.mock.method(playlistManager, "refreshPlaylist", async (playlistId) => { refreshed.push(playlistId); });
+
+  const { id, items } = await cleanUp();
+
+  const named = path.join(root, "Twice", "Album", "01 - Song.flac");
+  const itemFor = (filePath) => items.find((item) => path.resolve(root, item.source) === filePath);
+  assert.equal(itemFor(first).status, "done");
+  assert.equal(itemFor(second).status, "duplicate");
+  assert.equal(itemFor(second).target, path.relative(root, named));
+  assert.deepEqual(describe(id).sources, { removable: 1, removed: 0 });
+  assert.equal(await exists(second), true);
+
+  await operations.removeDuplicateFiles(id);
+  assert.equal((await runUntilSettled(id)).status, "complete");
+
+  assert.equal(await exists(second), false);
+  assert.equal(await exists(path.join(root, "loose b")), false);
+  assert.equal(await readFile(path.join(root, "Twice", "Album", "01 - Song.lrc"), "utf8"), "[00:00.00]la");
+  assert.deepEqual(availablePaths("Song"), [named]);
+  assert.equal(db.prepare("SELECT id FROM library_tracks WHERE title = 'Song'").pluck().get(), track.id);
+  assert.equal(db.prepare("SELECT entity_key FROM subsonic_stars WHERE user_id = 7").pluck().get(), track.identity_key);
+  assert.equal(downloadTracker.getJob(jobId).finalPath, named);
+  assert.ok(refreshed.includes("static-mix"));
+  assert.deepEqual(describe(id).sources, { removable: 0, removed: 1 });
+});
+
+test("the better copy of a track keeps its name, and a copy of a different length stays a conflict", async () => {
+  const tags = { artist: "Swap", album: "Album", title: "Song", track: "1" };
+  const worse = await makeTrack(path.join(root, "Swap", "Album", "01 - Song.mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "96k"]);
+  const middle = await makeTrack(path.join(root, "Swap", "Album", "song (2).mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "192k"]);
+  const better = await makeTrack(path.join(root, "Swap", "Album", "song.mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "320k"]);
+  const betterBytes = await readFile(better);
+  const longTags = { artist: "Long", album: "Album", title: "Song", track: "1" };
+  const short = await makeTrack(path.join(root, "Long", "Album", "01 - Song.flac"), longTags);
+  const long = await makeTrack(path.join(root, "Long", "Album", "song.flac"), longTags, [], { seconds: 5 });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const swapTrack = db.prepare(
+    "SELECT track.id FROM library_tracks AS track JOIN library_media_files AS media ON media.track_id = track.id WHERE media.path = ?",
+  ).pluck().get(worse);
+
+  const { id, items } = await cleanUp();
+  const itemFor = (filePath) => items.find((item) => path.resolve(root, item.source) === filePath);
+
+  assert.equal(itemFor(worse).status, "duplicate");
+  assert.equal(itemFor(worse).target, path.relative(root, better));
+  assert.equal(itemFor(middle).status, "duplicate");
+  assert.equal(itemFor(middle).target, path.relative(root, worse));
+  assert.equal(itemFor(long).status, "conflict");
+  assert.match(itemFor(long).reason, /longer/);
+
+  assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
+  await operations.removeDuplicateFiles(id);
+  assert.equal((await runUntilSettled(id)).status, "complete");
+
+  assert.deepEqual(await readFile(worse), betterBytes);
+  assert.equal(await exists(better), false);
+  assert.equal(await exists(middle), false);
+  assert.equal(db.prepare("SELECT track_id FROM library_media_files WHERE path = ? AND available = 1").pluck().get(worse), swapTrack);
+  assert.equal(await exists(long), true);
+  assert.equal(await exists(short), true);
+});
+
+test("removing duplicates finishes a removal a restart interrupted, and a failed name transfer keeps playlists on the better copy", async (t) => {
+  const pair = async (artist) => {
+    const tags = { artist, album: "Album", title: "Song", track: "1" };
+    return {
+      worse: await makeTrack(path.join(root, artist, "Album", "01 - Song.mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "96k"]),
+      better: await makeTrack(path.join(root, artist, "Album", "song.mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "320k"]),
+    };
+  };
+  const gone = await pair("Gone");
+  const stuck = await pair("Stuck");
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const goneTrack = mediaAt(gone.worse).track_id;
+  const goneBytes = await readFile(gone.better);
+  const goneJob = downloadTracker.addJob({ artistName: "Gone", trackName: "Song" }, "gone-mix");
+  downloadTracker.setDone(goneJob, gone.worse, "Album");
+  const stuckJob = downloadTracker.addJob({ artistName: "Stuck", trackName: "Song" }, "stuck-mix");
+  downloadTracker.setDone(stuckJob, stuck.better, "Album");
+  const refreshed = [];
+  t.mock.method(playlistManager, "refreshPlaylist", async (playlistId) => { refreshed.push(playlistId); });
+
+  const { id } = await cleanUp();
+  assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
+  await rm(gone.worse);
+  const realLink = fsPromises.link;
+  t.mock.method(fsPromises, "link", async (from, to) => {
+    if (path.resolve(from) === stuck.better) throw Object.assign(new Error("denied"), { code: "EACCES" });
+    return realLink(from, to);
+  });
+  await operations.removeDuplicateFiles(id);
+  assert.equal((await runUntilSettled(id)).status, "complete");
+
+  assert.deepEqual(await readFile(gone.worse), goneBytes);
+  assert.equal(await exists(gone.better), false);
+  assert.equal(mediaAt(gone.worse).track_id, goneTrack);
+  assert.equal(mediaAt(gone.better), undefined);
+  assert.equal(downloadTracker.getJob(goneJob).finalPath, gone.worse);
+
+  assert.equal(await exists(stuck.worse), false);
+  assert.equal(await exists(stuck.better), true);
+  assert.deepEqual(availablePaths("Song").filter((filePath) => filePath.includes("Stuck")), [stuck.better]);
+  assert.equal(downloadTracker.getJob(stuckJob).finalPath, stuck.better);
+  assert.ok(refreshed.includes("stuck-mix"));
+});
+
+test("a duplicate stays when a playlist still uses it or its name is behind a linked folder, and nothing deletes it later", async (t) => {
+  const pair = async (artist) => {
+    const tags = { artist, album: "Album", title: "Song", track: "1" };
+    return {
+      worse: await makeTrack(path.join(root, artist, "Album", "01 - Song.mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "96k"]),
+      better: await makeTrack(path.join(root, artist, "Album", "song.mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "320k"]),
+    };
+  };
+  const listed = await pair("Listed");
+  const linked = await pair("Linked");
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const { id } = await cleanUp();
+  assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
+
+  const realFolder = path.join(root, "Linked", "Real");
+  await rename(path.dirname(linked.worse), realFolder);
+  await symlink(realFolder, path.dirname(linked.worse));
+  let referenced = [listed.worse];
+  t.mock.method(playlistManager.destinationRegistry, "run", async (operation) =>
+    (operation === "getReferencedPaths" ? [{ destination: "test", ok: true, paths: referenced }] : []));
+  await operations.removeDuplicateFiles(id);
+  assert.equal((await runUntilSettled(id)).status, "complete");
+  referenced = [];
+  await retryPlaybackRetainedFiles();
+
+  assert.equal(await exists(listed.worse), true);
+  assert.equal(await exists(listed.better), true);
+  assert.equal(await exists(path.join(realFolder, "01 - Song.mp3")), true);
+  assert.equal(await exists(path.join(realFolder, "song.mp3")), true);
+  assert.deepEqual(describe(id).sources, { removable: 0, removed: 0 });
+});
+
+test("Clean up keeps a file's track number from its tags when the Library's album has no number for it", async () => {
+  const recordingId = "3f3f3f3f-0000-4000-8000-0000000000r2";
+  const tags = { artist: "Interpol", album: "Our Love To Admire", title: "Pace Is The Trick", MUSICBRAINZ_TRACKID: recordingId };
+  const download = await makeTrack(path.join(root, "Interpol", "Our Love To Admire", "Pace Is The Trick.flac"), tags);
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const numbered = await makeTrack(path.join(root, "Interpol", "Our Love to Admire", "06 - Pace Is The Trick.flac"), { ...tags, track: "6" });
+  await rm(download);
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+
+  const { items } = await cleanUp();
+
+  const named = path.join(root, "Interpol", "Our Love To Admire", "06 - Pace Is The Trick.flac");
+  assert.deepEqual(items.map((item) => [item.status, item.target]), [["done", path.relative(root, named)]]);
+  assert.equal(await exists(named), true);
+  assert.equal(await exists(numbered), false);
+  assert.equal(await exists(download), false);
 });
 
 test("Clean up leaves Lidarr's files alone when Lidarr shares the Downloads Folder", async () => {

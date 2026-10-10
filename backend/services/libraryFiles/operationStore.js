@@ -170,3 +170,51 @@ export function listUnfinishedLibraryFileOperations() {
     "SELECT * FROM library_file_operations WHERE status IN ('planning', 'running') ORDER BY id",
   ).all().map(toOperation);
 }
+
+// An operation keeps a duplicate file until the user asks to remove it. The
+// operation then runs again over just those files, each checked again before
+// it is removed. Files a stopped operation never reached stay where they are.
+export function reopenToRemoveDuplicates(id, unfinishedReason) {
+  return db.transaction(() => {
+    const operation = getLibraryFileOperation(id);
+    const active = getActiveLibraryFileOperation();
+    if (active) throw new OperationConflictError(active);
+    if (operation.status === "cancelled" && !operation.summary.finished) {
+      throw Object.assign(new OperationConflictError(operation), {
+        message: "It is still stopping. Try again in a moment.",
+      });
+    }
+    const requested = db.prepare(
+      `UPDATE library_file_operation_items
+       SET status = 'pending', details_json = json_set(details_json, '$.action', 'remove-source'), updated_at = ?
+       WHERE operation_id = ? AND status = 'duplicate' AND json_extract(details_json, '$.removable') = 1`,
+    ).run(Date.now(), operation.id).changes;
+    if (!requested) return false;
+    db.prepare(
+      `UPDATE library_file_operation_items SET status = 'skipped', reason = ?, updated_at = ?
+       WHERE operation_id = ? AND (status = 'new'
+         OR (status = 'pending' AND COALESCE(json_extract(details_json, '$.action'), '') != 'remove-source'))`,
+    ).run(unfinishedReason, Date.now(), operation.id);
+    updateLibraryFileOperation(operation.id, {
+      status: "running",
+      summary: { finished: false, removingSources: requested },
+    });
+    return true;
+  }).immediate();
+}
+
+export function restoreUnremovedDuplicates(id) {
+  db.prepare(
+    `UPDATE library_file_operation_items SET status = 'duplicate', updated_at = ?
+     WHERE operation_id = ? AND status = 'pending' AND json_extract(details_json, '$.action') = 'remove-source'`,
+  ).run(Date.now(), Number(id));
+}
+
+export function countRemovableDuplicates(id) {
+  return db.prepare(
+    `SELECT
+       COALESCE(SUM(json_extract(details_json, '$.removable') = 1), 0) AS removable,
+       COALESCE(SUM(json_extract(details_json, '$.sourceRemoved') = 1), 0) AS removed
+     FROM library_file_operation_items WHERE operation_id = ? AND status = 'duplicate'`,
+  ).get(Number(id));
+}

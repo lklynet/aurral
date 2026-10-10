@@ -122,10 +122,21 @@ const twoDiscAlbum = {
     }],
   }],
 };
+const outageReleaseGroup = "4f4f4f4f-0000-4000-8000-000000000003";
+const missingReleaseGroup = "4f4f4f4f-0000-4000-8000-000000000004";
+let providerDown = false;
 
 const metadataServer = await createMockHttpServer((request, response) => {
-  const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
+  const url = new URL(request.url || "/", "http://127.0.0.1");
+  const { pathname } = url;
   response.setHeader("content-type", "application/json");
+  if (providerDown && (pathname === `/album/${outageReleaseGroup}` || url.searchParams.get("query")?.includes("Outage"))) {
+    response.writeHead(503);
+    return response.end(JSON.stringify({ error: "unavailable" }));
+  }
+  if (pathname === `/album/${outageReleaseGroup}`) {
+    return response.end(JSON.stringify({ ...album, id: outageReleaseGroup, title: "Outage Album" }));
+  }
   if (pathname === `/album/${releaseGroup}`) return response.end(JSON.stringify(album));
   if (pathname === `/album/${laterReleaseGroup}`) return response.end(JSON.stringify(laterAlbum));
   if (pathname === `/album/${twoDiscGroup}`) return response.end(JSON.stringify(twoDiscAlbum));
@@ -178,6 +189,7 @@ async function checkAndRun(operation) {
 const originalSettings = dbOps.getSettings();
 
 test.beforeEach(async () => {
+  providerDown = false;
   await rm(root, { recursive: true, force: true });
   await rm(outside, { recursive: true, force: true });
   resetDatabase(db);
@@ -438,4 +450,36 @@ test("a track that fits another edition's length takes that edition, and a guest
   const guest = (await parseFile(guestTrack)).common;
   assert.equal(guest.musicbrainz_artistid?.[0], guestMbid);
   assert.equal(guest.artist, undefined);
+});
+
+test("clean up says the metadata provider was unreachable instead of calling an album unmatched, and fills the tags once it is back", async () => {
+  const albumDir = path.join(root, "Fill Artist", "Outage Album");
+  const tagged = await makeTrack(path.join(albumDir, "01 - Song One.flac"), {
+    artist: "Fill Artist", album: "Outage Album", title: "Song One", track: "1", MUSICBRAINZ_RELEASEGROUPID: outageReleaseGroup,
+  });
+  const untagged = await makeTrack(path.join(root, "Fill Artist", "Outage Live", "01 - Song One.flac"), {
+    artist: "Fill Artist", album: "Outage Live", title: "Song One", track: "1",
+  });
+  const missing = await makeTrack(path.join(root, "Fill Artist", "Nowhere", "01 - Song One.flac"), {
+    artist: "Fill Artist", album: "Nowhere", title: "Song One", track: "1", MUSICBRAINZ_RELEASEGROUPID: missingReleaseGroup,
+  });
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const taggedBytes = await readFile(tagged);
+  providerDown = true;
+
+  const { items } = await checkAndRun(await operations.startCleanup());
+
+  const itemFor = (filePath) => items.find((item) => path.resolve(root, item.source) === filePath);
+  for (const filePath of [tagged, untagged]) {
+    assert.equal(itemFor(filePath).status, "skipped");
+    assert.match(itemFor(filePath).reason, /could not reach the metadata provider/);
+  }
+  assert.match(itemFor(missing).reason, /No confident MusicBrainz match for this album/);
+  assert.deepEqual(await readFile(tagged), taggedBytes);
+
+  providerDown = false;
+  const retried = await checkAndRun(await operations.startCleanup());
+
+  assert.equal(retried.items.find((item) => path.resolve(root, item.source) === tagged).status, "done");
+  assert.equal((await parseFile(tagged)).common.musicbrainz_releasegroupid, outageReleaseGroup);
 });

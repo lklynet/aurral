@@ -9,7 +9,7 @@ import { logger } from "../../../services/logger.js";
 import { getLibraryReadModelForArtistPage } from "../../../services/libraryReadModel.js";
 import { getLibraryArtistProjection } from "../../../services/libraryQueryService.js";
 import { setLibraryArtistMbid } from "../../../services/libraryMediaStore.js";
-import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.js";
+import { getArtistByMbid, isMetadataNotFoundError } from "../../../services/providers/brainzmashProvider.js";
 export function registerArtists(router) {
   router.get("/artists", cacheMiddleware(120), async (req, res) => {
     try {
@@ -212,7 +212,7 @@ export function registerArtists(router) {
           const artist = await getArtistByMbid(mbid);
           musicbrainzName = artist.name || null;
         } catch (error) {
-          if (error?.code === "ERR_METADATA_NOT_FOUND" || error?.response?.status === 404) {
+          if (isMetadataNotFoundError(error)) {
             return res.status(404).json({ error: "MusicBrainz has no artist with that ID" });
           }
           return res.status(503).json({ error: "Could not reach the metadata provider. Try again." });

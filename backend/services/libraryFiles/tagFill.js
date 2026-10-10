@@ -2,6 +2,7 @@ import { readAudioTags, UnsupportedTagFormatError } from "../audioTags.js";
 import { isSameLibraryName } from "../libraryMediaStore.js";
 import {
   getAlbumByMbid,
+  isMetadataNotFoundError,
   resolveAlbumByArtistAndTitle,
   selectAlbumRelease,
 } from "../providers/brainzmashProvider.js";
@@ -23,9 +24,16 @@ const FIELD_LABELS = [
 const yearOf = (value) => Number(String(value || "").match(/^\d{4}/)?.[0]) || 0;
 const isEmpty = (value) => (Array.isArray(value) ? value.length === 0 : !value);
 
+// Only an album the provider does not have is no match. Any other failure
+// reaches planTagFill, which says the provider could not be reached.
+const albumOrNone = (mbid) => getAlbumByMbid(mbid).catch((error) => {
+  if (isMetadataNotFoundError(error)) return null;
+  throw error;
+});
+
 async function resolveMusicBrainzAlbum(album, artist) {
   for (const mbid of [...new Set([album.releaseGroupMbid, album.releaseMbid].filter(Boolean))]) {
-    const found = await getAlbumByMbid(mbid).catch(() => null);
+    const found = await albumOrNone(mbid);
     if (found?.id) return found;
   }
   const releaseGroup = await resolveAlbumByArtistAndTitle({
@@ -34,7 +42,7 @@ async function resolveMusicBrainzAlbum(album, artist) {
     releaseYear: yearOf(album.year) || null,
   });
   if (!releaseGroup) return null;
-  const found = await getAlbumByMbid(releaseGroup);
+  const found = await albumOrNone(releaseGroup);
   const artists = Array.isArray(found?.artists) ? found.artists : [];
   const sameArtist = artist.mbid
     ? found?.artistId === artist.mbid || artists.some((entry) => entry.id === artist.mbid)

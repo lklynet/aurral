@@ -30,14 +30,14 @@ import {
 import { writeAudioTags } from "../audioTags.js";
 import { rekeyLibraryAlbum } from "../libraryMediaStore.js";
 import { findLibraryTrackAtPath, matchLibraryRecord } from "./libraryMatch.js";
+import { SAME_LENGTH_MS, formatGap, readRecording } from "./recordings.js";
 import { planTagFill } from "./tagFill.js";
 import {
-  OperationConflictError,
   addLibraryFileOperationItems,
   deleteLibraryFileOperationItems,
-  getActiveLibraryFileOperation,
   getLibraryFileOperation,
   listLibraryFileOperationItems,
+  restoreUnremovedDuplicates,
   updateLibraryFileOperation,
   updateLibraryFileOperationItem,
 } from "./operationStore.js";
@@ -151,26 +151,8 @@ async function planFill(item, record, match, metadata, albums) {
   }, albums);
 }
 
-const SAME_LENGTH_MS = 3000;
-const STOPPED_REASON = "The ingest stopped before Aurral got to this file. Ingest the folder again to file it.";
 const TAKEN_NAME_REASON =
   "A different file already has this name in the Library. Aurral never replaces a file. Rename or remove one of them, then ingest again.";
-
-async function readRecording(filePath, metadata = null) {
-  try {
-    const parsed = metadata || await parseFile(filePath, { skipCovers: true, duration: false });
-    let seconds = Number(parsed.format?.duration);
-    if (!(seconds > 0)) seconds = Number((await parseFile(filePath, { skipCovers: true, duration: true })).format?.duration);
-    return { durationMs: seconds > 0 ? Math.round(seconds * 1000) : null, lossless: parsed.format?.lossless === true };
-  } catch {
-    return { durationMs: null, lossless: false };
-  }
-}
-
-const formatGap = (ms) => {
-  const seconds = Math.round(Math.abs(ms) / 1000);
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-};
 
 // Matching tags are not proof: a mistagged demo can claim to be an album
 // track. The Library has the same recording only when the lengths agree.
@@ -485,10 +467,7 @@ export function ingestScanRequest(operation, items) {
 // because the Library already has its track keeps its folder and art.
 export async function finishIngest(operation) {
   const { sourcePath: sourceRoot, mode } = operation.options;
-  db.prepare(
-    `UPDATE library_file_operation_items SET status = 'duplicate', updated_at = ?
-     WHERE operation_id = ? AND status = 'pending' AND json_extract(details_json, '$.action') = 'remove-source'`,
-  ).run(Date.now(), operation.id);
+  restoreUnremovedDuplicates(operation.id);
   const folders = new Map();
   const unfiled = new Set();
   const items = db.prepare(
@@ -550,53 +529,6 @@ export async function finishIngest(operation) {
   })));
 }
 
-// Move keeps a source whose track the Library has in a different file until
-// the user asks to remove it. The ingest then runs again over just those
-// sources, each checked against the Library's copy before it is removed.
-// Files a stopped ingest never reached are skipped, so they stay where they are.
-export function reopenIngestToRemoveSources(id) {
-  return db.transaction(() => {
-    const operation = getLibraryFileOperation(id);
-    if (operation?.kind !== "ingest" || operation.options.mode !== "move") {
-      throw new IngestSourceError("Only a Move ingest removes its source files.");
-    }
-    const active = getActiveLibraryFileOperation();
-    if (active) throw new OperationConflictError(active);
-    if (operation.status === "cancelled" && !operation.summary.finished) {
-      throw Object.assign(new OperationConflictError(operation), {
-        message: "The ingest is still stopping. Try again in a moment.",
-      });
-    }
-    const requested = db.prepare(
-      `UPDATE library_file_operation_items
-       SET status = 'pending', details_json = json_set(details_json, '$.action', 'remove-source'), updated_at = ?
-       WHERE operation_id = ? AND status = 'duplicate' AND json_extract(details_json, '$.removable') = 1`,
-    ).run(Date.now(), operation.id).changes;
-    if (!requested) return false;
-    db.prepare(
-      `UPDATE library_file_operation_items SET status = 'skipped', reason = ?, updated_at = ?
-       WHERE operation_id = ? AND (status = 'new'
-         OR (status = 'pending' AND COALESCE(json_extract(details_json, '$.action'), '') != 'remove-source'))`,
-    ).run(STOPPED_REASON, Date.now(), operation.id);
-    updateLibraryFileOperation(operation.id, {
-      status: "running",
-      summary: { finished: false, removingSources: requested },
-    });
-    return true;
-  }).immediate();
-}
-
-export function countIngestSources(operation) {
-  if (operation.kind !== "ingest" || operation.options.mode !== "move") return null;
-  const counts = db.prepare(
-    `SELECT
-       COALESCE(SUM(json_extract(details_json, '$.removable') = 1), 0) AS removable,
-       COALESCE(SUM(json_extract(details_json, '$.sourceRemoved') = 1), 0) AS removed
-     FROM library_file_operation_items WHERE operation_id = ? AND status = 'duplicate'`,
-  ).get(operation.id);
-  return { removable: counts.removable, removed: counts.removed };
-}
-
 const fileExists = (filePath) => fs.lstat(filePath).then(() => true, () => false);
 
 async function rescan(changedPaths, { includeLidarr }) {
@@ -606,17 +538,18 @@ async function rescan(changedPaths, { includeLidarr }) {
 }
 
 // Album art this ingest brought along goes with the last music it filed in a
-// folder: Move returns it to the source, and Copy and Hardlink remove theirs.
-async function takeBackAlbumArt(folder, sourceFolder, art, mode) {
+// folder: Move returns each image to its source folder, and Copy and Hardlink
+// remove theirs.
+async function takeBackAlbumArt(folder, art, mode) {
   const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => null);
   if (!entries) return;
   if (entries.some((entry) => !entry.isFile() || !ALBUM_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))) {
     return;
   }
-  for (const name of art || []) {
+  for (const [name, sourceFolder] of art) {
     const from = path.join(folder, name);
     if (mode === "move") await placeFile(from, path.join(sourceFolder, name), "move").catch(() => {});
-    else await fs.rm(from, { force: true });
+    else await fs.rm(from, { force: true }).catch(() => {});
   }
   await removeEmptyDirectories(folder, resolveDownloadRoot());
 }
@@ -654,7 +587,7 @@ async function takeBackDouble(operation, item, media, removed) {
     });
   } else {
     await fs.unlink(item.target_path);
-    for (const [from] of sidecars) await fs.rm(from, { force: true });
+    for (const [from] of sidecars) await fs.rm(from, { force: true }).catch(() => {});
     updateLibraryFileOperationItem(operation.id, item.position, {
       status: "duplicate",
       targetPath: verdict.targetPath,
@@ -662,7 +595,6 @@ async function takeBackDouble(operation, item, media, removed) {
     });
   }
   removed.add(item.target_path);
-  await takeBackAlbumArt(path.dirname(item.target_path), path.dirname(item.source_path), details.art, operation.options.mode);
   return operation.options.mode === "move" ? [item.target_path, item.source_path] : [item.target_path];
 }
 
@@ -699,10 +631,18 @@ async function settleIngest(operation) {
   if (operation.summary.doubles === "pending") {
     const removed = new Set();
     const changed = [];
+    const art = new Map();
     for (const entry of placed) {
       try {
         const taken = await takeBackDouble(operation, entry.item, entry.media, removed);
-        if (taken) changed.push(...taken);
+        if (!taken) continue;
+        changed.push(...taken);
+        const folder = path.dirname(entry.item.target_path);
+        const images = art.get(folder) || new Map();
+        for (const name of JSON.parse(entry.item.details_json || "{}").art || []) {
+          images.set(name, path.dirname(entry.item.source_path));
+        }
+        art.set(folder, images);
       } catch (error) {
         logger.warn("library-files", "Ingest could not take back a file the Library already had", {
           operationId: operation.id,
@@ -711,6 +651,7 @@ async function settleIngest(operation) {
         });
       }
     }
+    for (const [folder, images] of art) await takeBackAlbumArt(folder, images, operation.options.mode);
     placed = placed.filter(({ item }) => !removed.has(item.target_path));
     updateLibraryFileOperation(operation.id, { summary: { doubles: "checked" } });
     await rescan(changed, { includeLidarr: operation.options.mode === "move" });

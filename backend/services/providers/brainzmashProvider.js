@@ -123,6 +123,10 @@ function isEntityMetadataPath(path) {
   return /^\/(?:album|artist)\/[^/]+$/.test(path);
 }
 
+export function isMetadataNotFoundError(error) {
+  return error?.code === "ERR_METADATA_NOT_FOUND" || error?.response?.status === 404;
+}
+
 function createMetadataNotFoundError() {
   const error = new Error("Metadata resource not found");
   error.code = "ERR_METADATA_NOT_FOUND";
@@ -477,13 +481,22 @@ export async function searchArtists(query, { limit = 24, offset = 0, signal } = 
 
 export async function searchAlbums(
   query,
-  { artistName = "", limit = 24, offset = 0, releaseTypes = [], sort = "relevance", signal } = {},
+  {
+    artistName = "",
+    limit = 24,
+    offset = 0,
+    releaseTypes = [],
+    sort = "relevance",
+    signal,
+    throwOnFailure = false,
+  } = {},
 ) {
   // Relevance ranking reorders what the provider returns, so a short list
   // still looks at enough results to find the album. One more than the page
   // shows whether another page exists.
   const requestedLimit = Math.max(limit + offset + 1, MIN_ALBUM_SEARCH_WINDOW);
   let items = [];
+  let failure = null;
 
   try {
     const data = await request("/search/album", {
@@ -512,11 +525,13 @@ export async function searchAlbums(
         releaseStatuses: [],
       };
     });
-  } catch {
+  } catch (error) {
     signal?.throwIfAborted();
+    failure = error;
   }
 
   if (items.length === 0 && isNarrowFallbacksEnabled()) {
+    failure = null;
     const escapeLucenePhrase = (value) =>
       String(value || "")
         .replace(/\\/g, "\\\\")
@@ -560,6 +575,7 @@ export async function searchAlbums(
     });
   }
 
+  if (failure && throwOnFailure) throw failure;
   items = applyReleaseTypeFilter(items, releaseTypes);
 
   if (sort === "relevance") {
@@ -627,6 +643,8 @@ export async function resolveLibraryArtistByName(name) {
   return matches.size === 1 ? [...matches][0] : null;
 }
 
+// A search the provider could not answer throws, so a caller can tell an
+// outage from an album MusicBrainz does not have.
 export async function resolveAlbumByArtistAndTitle({
   artistName = "",
   albumTitle = "",
@@ -640,6 +658,7 @@ export async function resolveAlbumByArtistAndTitle({
     artistName,
     limit: 10,
     offset: 0,
+    throwOnFailure: true,
   });
   let ranked = rankAlbumCandidates(albumTitle, firstPass.items, {
     artistName,
@@ -652,6 +671,7 @@ export async function resolveAlbumByArtistAndTitle({
     artistName: "",
     limit: 10,
     offset: 0,
+    throwOnFailure: true,
   });
   ranked = rankAlbumCandidates(albumTitle, secondPass.items, {
     artistName,

@@ -6,7 +6,7 @@ import {
   cancelLibraryFileOperation,
   describeLibraryFileOperation,
   describeLibraryFileOperationItems,
-  removeIngestSources,
+  removeDuplicateFiles,
   startCleanup,
   startIngest,
 } from "../../../services/libraryFiles/operations.js";
@@ -105,7 +105,7 @@ export function registerFiles(router) {
     const operation = findOperation(req, res);
     if (!operation) return;
     try {
-      res.json({ operation: describeLibraryFileOperation(await removeIngestSources(operation.id)) });
+      res.json({ operation: describeLibraryFileOperation(await removeDuplicateFiles(operation.id)) });
     } catch (error) {
       sendError(res, error);
     }
