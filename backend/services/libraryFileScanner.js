@@ -478,9 +478,11 @@ export async function scanMusicRoot({
         });
       }
       if (unseenPaths && result.filesFailed === 0) {
+        const walked = (filePath) => isPathWithin(resolvedRoot, filePath) && !isExcluded(filePath)
+          && !path.relative(resolvedRoot, path.dirname(filePath)).split(path.sep).some(isLibraryScanExcludedDirectory);
         const unseen = [...unseenPaths];
-        await forgetMissingFiles(source, resolvedRoot, unseen.filter((filePath) => isPathWithin(resolvedRoot, filePath)));
-        markLibraryMediaFilesUnavailable(source, unseen.filter((filePath) => !isPathWithin(resolvedRoot, filePath)));
+        await forgetMissingFiles(source, resolvedRoot, unseen.filter(walked));
+        markLibraryMediaFilesUnavailable(source, unseen.filter((filePath) => !walked(filePath)));
       }
       if (requestedFiles) {
         const scopes = reconcilePaths || requestedFiles;

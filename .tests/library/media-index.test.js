@@ -448,6 +448,13 @@ test("a Lidarr root folder inside the Downloads Folder belongs to Lidarr while i
   await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOff, lidarrRoots: [music] });
   assert.deepEqual(mediaSources(nested), ["aurral"]);
   assert.equal(albumByTitle(`${tag} Album`).managed_by, "aurral");
+  const album = albumByTitle(`${tag} Album`);
+  const tracks = albumTrackTitles(album.id);
+
+  await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOn, lidarrRoots: [music] });
+  assert.deepEqual([albumByTitle(`${tag} Album`).id, albumTrackTitles(album.id)], [album.id, tracks]);
+  assert.equal(albumByTitle(`${tag} Album`).managed_by, "lidarr");
+  assert.ok(mediaSources(nested).includes("lidarr"));
 });
 
 test("each folder is scanned by its deepest manager when Lidarr and Aurral folders nest", async (t) => {
@@ -1578,7 +1585,7 @@ test("a rescan forgets files gone from a folder that still holds music, includin
   }
 });
 
-test("a rescan of one folder leaves the songs of another folder's files in the Library", async () => {
+test("a rescan leaves the songs of files it did not walk, in another folder or one it skips", async () => {
   const roots = await Promise.all([
     mkdtemp(path.join(tmpdir(), "aurral-library-scanned-")),
     mkdtemp(path.join(tmpdir(), "aurral-library-elsewhere-")),
@@ -1591,11 +1598,14 @@ test("a rescan of one folder leaves the songs of another folder's files in the L
       tags[await createAudioFile(root, `${artist}/${album}/01 Song.flac`)] = untagged(artist, album, "Song");
     }
     const reader = async (filePath) => tags[filePath];
+    const skipped = await createAudioFile(roots[0], `_fallback/${artist}/Skipped/01 Song.flac`);
+    tags[skipped] = untagged(artist, "Skipped", "Song");
     for (const root of roots) await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
+    await scanMusicRoot({ rootPath: roots[0], source, filePaths: [skipped], metadataReader: reader });
 
     await scanMusicRoot({ rootPath: roots[0], source, metadataReader: reader });
 
-    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["Elsewhere", 1], ["Scanned", 1]]);
+    assert.deepEqual(artistAlbums(artist).map(({ title, tracks }) => [title, tracks]), [["Elsewhere", 1], ["Scanned", 1], ["Skipped", 1]]);
   } finally {
     for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
     removeArtistsNamed(artist);
