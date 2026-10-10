@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { copyFile, link, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -248,6 +249,7 @@ test("a second copy of a track is a duplicate, removed only when asked, and play
 test("the better copy of a track keeps its name, and a copy of a different length stays a conflict", async () => {
   const tags = { artist: "Swap", album: "Album", title: "Song", track: "1" };
   const worse = await makeTrack(path.join(root, "Swap", "Album", "01 - Song.mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "96k"]);
+  const middle = await makeTrack(path.join(root, "Swap", "Album", "song (2).mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "192k"]);
   const better = await makeTrack(path.join(root, "Swap", "Album", "song.mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "320k"]);
   const betterBytes = await readFile(better);
   const longTags = { artist: "Long", album: "Album", title: "Song", track: "1" };
@@ -263,18 +265,65 @@ test("the better copy of a track keeps its name, and a copy of a different lengt
 
   assert.equal(itemFor(worse).status, "duplicate");
   assert.equal(itemFor(worse).target, path.relative(root, better));
+  assert.equal(itemFor(middle).status, "duplicate");
+  assert.equal(itemFor(middle).target, path.relative(root, worse));
   assert.equal(itemFor(long).status, "conflict");
   assert.match(itemFor(long).reason, /longer/);
 
-  assert.deepEqual(describe(id).sources, { removable: 1, removed: 0 });
+  assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
   await operations.removeDuplicateFiles(id);
   assert.equal((await runUntilSettled(id)).status, "complete");
 
   assert.deepEqual(await readFile(worse), betterBytes);
   assert.equal(await exists(better), false);
+  assert.equal(await exists(middle), false);
   assert.equal(db.prepare("SELECT track_id FROM library_media_files WHERE path = ? AND available = 1").pluck().get(worse), swapTrack);
   assert.equal(await exists(long), true);
   assert.equal(await exists(short), true);
+});
+
+test("removing duplicates finishes a removal a restart interrupted, and a failed name transfer keeps playlists on the better copy", async (t) => {
+  const pair = async (artist) => {
+    const tags = { artist, album: "Album", title: "Song", track: "1" };
+    return {
+      worse: await makeTrack(path.join(root, artist, "Album", "01 - Song.mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "96k"]),
+      better: await makeTrack(path.join(root, artist, "Album", "song.mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "320k"]),
+    };
+  };
+  const gone = await pair("Gone");
+  const stuck = await pair("Stuck");
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const goneTrack = mediaAt(gone.worse).track_id;
+  const goneBytes = await readFile(gone.better);
+  const goneJob = downloadTracker.addJob({ artistName: "Gone", trackName: "Song" }, "gone-mix");
+  downloadTracker.setDone(goneJob, gone.worse, "Album");
+  const stuckJob = downloadTracker.addJob({ artistName: "Stuck", trackName: "Song" }, "stuck-mix");
+  downloadTracker.setDone(stuckJob, stuck.better, "Album");
+  const refreshed = [];
+  t.mock.method(playlistManager, "refreshPlaylist", async (playlistId) => { refreshed.push(playlistId); });
+
+  const { id } = await cleanUp();
+  assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
+  await rm(gone.worse);
+  const realLink = fsPromises.link;
+  t.mock.method(fsPromises, "link", async (from, to) => {
+    if (path.resolve(from) === stuck.better) throw Object.assign(new Error("denied"), { code: "EACCES" });
+    return realLink(from, to);
+  });
+  await operations.removeDuplicateFiles(id);
+  assert.equal((await runUntilSettled(id)).status, "complete");
+
+  assert.deepEqual(await readFile(gone.worse), goneBytes);
+  assert.equal(await exists(gone.better), false);
+  assert.equal(mediaAt(gone.worse).track_id, goneTrack);
+  assert.equal(mediaAt(gone.better), undefined);
+  assert.equal(downloadTracker.getJob(goneJob).finalPath, gone.worse);
+
+  assert.equal(await exists(stuck.worse), false);
+  assert.equal(await exists(stuck.better), true);
+  assert.deepEqual(availablePaths("Song").filter((filePath) => filePath.includes("Stuck")), [stuck.better]);
+  assert.equal(downloadTracker.getJob(stuckJob).finalPath, stuck.better);
+  assert.ok(refreshed.includes("stuck-mix"));
 });
 
 test("Clean up keeps a file's track number from its tags when the Library's album has no number for it", async () => {

@@ -151,6 +151,7 @@ async function planAlbum(albumId, context) {
   const artist = db.prepare("SELECT * FROM library_artists WHERE id = ?").get(album.artist_id);
   const items = [];
   const settled = new Set();
+  const winners = new Map();
   let unchanged = 0;
   for (const listed of await rankCopies(albumFiles(albumId, context))) {
     if (settled.has(path.resolve(listed.path))) continue;
@@ -169,7 +170,10 @@ async function planAlbum(albumId, context) {
       items.push({ sourcePath: file.path, status: "skipped", reason: "The new name does not fit inside the Downloads Folder.", details });
       continue;
     }
-    const holder = rename ? await nameHolder(target, file, context) : null;
+    const winner = winners.get(target);
+    const holder = !rename ? null
+      : winner ? { path: winner, onDisk: false, trackId: libraryTrackAt(winner) }
+        : await nameHolder(target, file, context);
     if (holder) {
       const copy = holder.trackId === file.track_id ? await compareCopies(file.path, holder.path) : null;
       if (copy?.keepHolder) {
@@ -188,6 +192,7 @@ async function planAlbum(albumId, context) {
         details: { removable: true, takesName: true },
       });
       settled.add(target);
+      winners.set(target, file.path);
       rename = false;
     }
     const { reason, ...fill } = await planTags(file, album, artist, context);
@@ -306,40 +311,42 @@ async function removeDuplicate(item, context) {
   const details = { ...item.details, removable: false };
   const extra = path.resolve(item.sourcePath);
   const kept = path.resolve(item.targetPath);
-  if (!(await fs.lstat(extra).catch(() => null))) {
-    return { status: "duplicate", reason: "This copy is already gone.", details: { ...details, sourceRemoved: true } };
-  }
+  const onDisk = await fs.lstat(extra).catch(() => null);
   if (!(await fs.stat(kept).catch(() => null))) {
+    if (!onDisk) return { status: "duplicate", reason: "This copy is already gone.", details: { ...details, sourceRemoved: true } };
     return { status: "skipped", reason: "The copy Aurral kept is gone, so this one stays. Run Clean up Library again.", details };
   }
-  const trackId = libraryTrackAt(extra);
-  const copy = trackId && trackId === libraryTrackAt(kept) ? await compareCopies(extra, kept) : null;
-  if (!copy?.keepHolder) return { status: "skipped", reason: COPY_CHANGED_REASON, details };
-  if (!(await context.deletionGuard().canDelete(extra))) {
-    return {
-      status: "skipped",
-      reason: "A media server playlist still uses this copy, so it stays. Try again once the playlist has updated.",
-      details,
-    };
+  if (onDisk) {
+    const trackId = libraryTrackAt(extra);
+    const copy = trackId && trackId === libraryTrackAt(kept) ? await compareCopies(extra, kept) : null;
+    if (!copy?.keepHolder) return { status: "skipped", reason: COPY_CHANGED_REASON, details };
+    if (!(await context.deletionGuard().canDelete(extra))) {
+      return {
+        status: "skipped",
+        reason: "A media server playlist still uses this copy, so it stays. Try again once the playlist has updated.",
+        details,
+      };
+    }
+    await transferSidecars(extra, kept, "move").catch(() => {});
+    await fs.unlink(extra);
   }
-  await transferSidecars(extra, kept, "move").catch(() => {});
-  await fs.unlink(extra);
   removeLibraryMediaFiles("aurral", [extra]);
   moveJobs(extra, kept);
   const removed = { ...details, sourceRemoved: true };
+  const done = onDisk ? "Removed this copy" : "This copy is already gone";
   if (!details.takesName) {
-    return { status: "duplicate", reason: "Removed this copy. The Library keeps the other one.", details: removed };
+    return { status: "duplicate", reason: `${done}. The Library keeps the other one.`, details: removed };
   }
   try {
     await renameLibraryFile(kept, extra, context);
   } catch {
     return {
       status: "duplicate",
-      reason: "Removed this copy, but Aurral could not give the better one its name. Run Clean up Library again.",
+      reason: `${done}, but Aurral could not give the better one its name. Run Clean up Library again.`,
       details: removed,
     };
   }
-  return { status: "duplicate", reason: "Removed this copy and gave the better one its name.", details: removed };
+  return { status: "duplicate", reason: `${done}. The better copy now has its name.`, details: { ...removed, nameTaken: true } };
 }
 
 export async function applyCleanupItem(operation, item, context) {
@@ -432,10 +439,10 @@ async function moveAlbumImages(fromDirectory, toDirectory) {
 // took a removed copy's name left its own folder instead.
 function removedCopies(operationId) {
   return db.prepare(
-    `SELECT source_path, target_path, json_extract(details_json, '$.takesName') AS takes_name
+    `SELECT source_path, target_path, json_extract(details_json, '$.nameTaken') AS name_taken
      FROM library_file_operation_items
      WHERE operation_id = ? AND status = 'duplicate' AND json_extract(details_json, '$.sourceRemoved') = 1`,
-  ).all(operationId).map((row) => (row.takes_name ? [row.target_path, row.source_path] : [row.source_path, row.target_path]));
+  ).all(operationId).map((row) => (row.name_taken ? [row.target_path, row.source_path] : [row.source_path, row.target_path]));
 }
 
 export async function finishCleanup(operation) {
