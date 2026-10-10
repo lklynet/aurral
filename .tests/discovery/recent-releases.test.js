@@ -2,10 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import axios from "../../lib/axiosFetch.js";
-import { getHonkerDb } from "../../backend/services/honkerDb.js";
+import { getHonkerDb, getHonkerQueueByName } from "../../backend/services/honkerDb.js";
 
 import { getRecentMissingReleases } from "../../backend/services/discovery/recentReleases.js";
-import { refreshReleaseMetadata } from "../../backend/services/releaseMetadataSync.js";
+import {
+  refreshReleaseMetadata,
+  scheduleReleaseMetadataRefresh,
+} from "../../backend/services/releaseMetadataSync.js";
 import {
   markUnseenReleaseCalendarEntries,
   upsertReleaseCalendarEntry,
@@ -203,6 +206,67 @@ test("BrainzMash refresh dates releases from album lookups and only rechecks dat
     const result = await refresh("2026-09-30T12:00:00Z");
     assert.equal(result.releasesStale, 1);
     assert.equal((await visible("2026-09-30T12:00:00Z"))["Recent Release"], undefined);
+  } finally {
+    removeCalendarArtist(artist.id);
+  }
+});
+
+test("repeat refreshes skip artists refreshed in the last day and only queue for artists that are due", async (t) => {
+  getHonkerDb();
+  const artist = createCalendarArtist("Recently Refreshed Artist");
+  const releaseMbid = randomUUID();
+  const catalogues = { [artist.mbid]: [catalogueRelease(releaseMbid, "Calendar Release")] };
+  const { requestCount } = stubBrainzMash(t, { catalogues, albumDates: { [releaseMbid]: "2026-09-20" } });
+  const hour = 60 * 60 * 1000;
+  const now = Date.now();
+  let newArtist = null;
+  let queuedJob = null;
+
+  try {
+    const first = await refreshReleaseMetadata({ now });
+    assert.equal(first.artistsRefreshed, 1);
+    const requestsAfterFirst = requestCount();
+    assert.ok(requestsAfterFirst > 0);
+
+    const repeat = await refreshReleaseMetadata({ now: now + 6 * hour });
+    assert.equal(repeat.artistsSeen, 0);
+    assert.equal(requestCount(), requestsAfterFirst);
+    assert.equal(scheduleReleaseMetadataRefresh(), null);
+
+    newArtist = createCalendarArtist("Newly Added Artist");
+    queuedJob = scheduleReleaseMetadataRefresh();
+    assert.ok(queuedJob);
+
+    const daily = await refreshReleaseMetadata({ artists: [artist], now: now + 21 * hour });
+    assert.equal(daily.artistsRefreshed, 1);
+    assert.ok(requestCount() > requestsAfterFirst);
+  } finally {
+    if (queuedJob) getHonkerQueueByName("release-metadata-refresh").cancel(queuedJob);
+    if (newArtist) removeCalendarArtist(newArtist.id);
+    removeCalendarArtist(artist.id);
+  }
+});
+
+test("an artist whose catalogue failed is retried after an hour, not on every refresh", async (t) => {
+  const artist = createCalendarArtist("Missing Catalogue Artist");
+  const { requestCount } = stubBrainzMash(t);
+  const hour = 60 * 60 * 1000;
+  const now = Date.parse("2026-09-27T12:00:00Z");
+
+  try {
+    await assert.rejects(refreshReleaseMetadata({ artists: [artist], now }), /failed for every library artist/);
+    const requestsAfterFailure = requestCount();
+    assert.ok(requestsAfterFailure > 0);
+
+    const soon = await refreshReleaseMetadata({ artists: [artist], now: now + hour / 2 });
+    assert.equal(soon.artistsSeen, 0);
+    assert.equal(requestCount(), requestsAfterFailure);
+
+    await assert.rejects(
+      refreshReleaseMetadata({ artists: [artist], now: now + hour }),
+      /failed for every library artist/,
+    );
+    assert.ok(requestCount() > requestsAfterFailure);
   } finally {
     removeCalendarArtist(artist.id);
   }

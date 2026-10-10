@@ -7,12 +7,15 @@ import {
   getSystemTaskQueueName,
   listHonkerJobs,
 } from "./honkerDb.js";
-import { iterateLibraryArtistProjection } from "./libraryQueryService.js";
 import { logger } from "./logger.js";
 import { getAlbumByMbid, listArtistAlbums } from "./providers/brainzmashProvider.js";
 import {
   getArtistReleaseCalendar,
+  getReleaseCalendarArtistRefreshes,
   isReleaseGroupOwned,
+  listReleaseCalendarArtists,
+  markReleaseCalendarArtistFailed,
+  markReleaseCalendarArtistRefreshed,
   markUnseenReleaseCalendarEntries,
   upsertReleaseCalendarEntry,
 } from "./releaseCalendarStore.js";
@@ -22,6 +25,8 @@ import { acquireReleaseMetadataLease } from "./releaseMetadataLease.js";
 const TASK_KIND = "release-metadata-refresh";
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
+const ARTIST_REFRESH_INTERVAL_MS = 20 * HOUR_MS;
+const ARTIST_FAILURE_RETRY_MS = HOUR_MS;
 
 const text = (value) => String(value || "").trim();
 
@@ -40,6 +45,18 @@ function shouldFetchReleaseDate(stored, nowMs) {
   return releaseTime != null && releaseTime > nowMs - 30 * DAY_MS;
 }
 
+function listArtistsDue(artists, nowMs) {
+  const refreshes = getReleaseCalendarArtistRefreshes();
+  return artists.filter((artist) => {
+    if (!UUID_REGEX.test(text(artist?.mbid))) return false;
+    const refresh = refreshes.get(String(artist.id));
+    return !refresh || (
+      nowMs - refresh.refreshedAt >= ARTIST_REFRESH_INTERVAL_MS &&
+      nowMs - refresh.failedAt >= ARTIST_FAILURE_RETRY_MS
+    );
+  });
+}
+
 function isValidCatalogueRelease(release) {
   const releaseGroupMbid = text(release?.id);
   return Boolean(
@@ -52,6 +69,7 @@ function isValidCatalogueRelease(release) {
 }
 
 export function scheduleReleaseMetadataRefresh({ delaySeconds = 0 } = {}) {
+  if (listArtistsDue(listReleaseCalendarArtists(), Date.now()).length === 0) return null;
   const normalizedDelay = Math.max(0, Number(delaySeconds) || 0);
   const requestedRunAt = Math.floor(Date.now() / 1000) + normalizedDelay;
   const queueName = getSystemTaskQueueName(TASK_KIND);
@@ -98,10 +116,10 @@ export async function refreshReleaseMetadata({
   lease.signal.throwIfAborted();
   const requestedNow = new Date(now).getTime();
   const nowMs = Number.isFinite(requestedNow) ? requestedNow : Date.now();
-  const catalogueArtists = Array.isArray(artists)
-    ? artists
-    : [...iterateLibraryArtistProjection({ pageSize: 100 })];
-  const eligibleArtists = catalogueArtists.filter((artist) => UUID_REGEX.test(text(artist?.mbid)));
+  const eligibleArtists = listArtistsDue(
+    Array.isArray(artists) ? artists : listReleaseCalendarArtists(),
+    nowMs,
+  );
   let artistsRefreshed = 0;
   let artistsFailed = 0;
   let releasesSeen = 0;
@@ -127,6 +145,7 @@ export async function refreshReleaseMetadata({
     } catch (error) {
       lease.signal.throwIfAborted();
       artistsFailed += 1;
+      lease.write(() => markReleaseCalendarArtistFailed(artist.id, nowMs));
       logger.warn("library", "BrainzMash release metadata refresh failed for artist", {
         artistMbid: artist.mbid,
         message: error?.message || String(error),
@@ -183,6 +202,7 @@ export async function refreshReleaseMetadata({
         seenReleaseGroupMbids,
         nowMs,
       );
+      markReleaseCalendarArtistRefreshed(artist.id, nowMs);
     });
     artistsRefreshed += 1;
     if (artistsRefreshed % 25 === 0) {
