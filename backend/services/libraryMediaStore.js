@@ -964,7 +964,7 @@ function foldLibraryAlbum(album, tracks, target) {
      WHERE album_id = ? AND track_id IN (SELECT track_id FROM library_album_tracks WHERE album_id = ?)`,
   ).run(album.id, target.id);
   rekeyLibraryAlbum(album.id, target.identity_key);
-  for (const trackId of dropped) unlinkLibraryAlbumTrackWithoutMedia(target.id, trackId);
+  for (const trackId of dropped) unlinkFilelessAlbumTrack(target.id, trackId);
 }
 
 function unlinkFilelessAlbumTrack(albumId, trackId) {

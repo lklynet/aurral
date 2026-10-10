@@ -1084,10 +1084,18 @@ test("a scan removes albums nobody can play or asked for, and keeps the ones Aur
   album(artist, "Requested", { librarySource: "aurral", trackListComplete: true, monitored: true }, { managedBy: "aurral", monitorMode: "monitored" });
   album(artist, "Unmonitored", { librarySource: "aurral", trackListComplete: true, monitored: false }, { managedBy: "aurral", monitorMode: "unmonitored" });
   album(artist, "Lidarr Wants", { librarySource: "lidarr", monitored: true }, { managedBy: "lidarr" });
+  const wanted = upsertLibraryAlbum({
+    identityKey: `owners:${process.pid}:Wanted`, artistId: artist.id, title: "Wanted", metadata: { librarySource: "lidarr", monitored: true }, syncSearch: false,
+  });
+  setLibraryManagement({ entityKind: "album", entityId: wanted.id, managedBy: "lidarr" });
+  const leftover = upsertLibraryAlbum({ identityKey: `name:album:owners ${process.pid}:wanted`, artistId: artist.id, title: "Wanted", syncSearch: false });
+  const leftoverTrack = upsertLibraryTrack({ identityKey: `name:track:owners ${process.pid}:wanted`, title: "Wanted Song", syncSearch: false });
+  linkLibraryAlbumTrack({ albumId: leftover.id, trackId: leftoverTrack.id, trackNumber: 1, syncSearch: false });
   try {
     await scanMusicRoot({ rootPath: root, source: `test-owners-${process.pid}` });
 
-    assert.deepEqual(artistAlbums(artistName).map(({ title }) => title), ["Lidarr Wants", "Requested", "Unmonitored"]);
+    assert.deepEqual(artistAlbums(artistName).map(({ title }) => title), ["Lidarr Wants", "Requested", "Unmonitored", "Wanted"]);
+    assert.equal(db.prepare("SELECT managed_by FROM library_management WHERE entity_kind = 'album' AND entity_id = ?").pluck().get(wanted.id), "lidarr");
     assert.deepEqual(artistAlbums(leftoverName), []);
     assert.equal(db.prepare("SELECT COUNT(*) FROM library_artists WHERE name = ?").pluck().get(leftoverName), 0);
     assert.equal(db.prepare("SELECT COUNT(*) FROM library_tracks WHERE id = ?").pluck().get(catalogueTrack.id), 0);
