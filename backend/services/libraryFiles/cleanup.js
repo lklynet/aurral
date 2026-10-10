@@ -316,11 +316,14 @@ async function removeDuplicate(item, context) {
     if (!onDisk) return { status: "duplicate", reason: "This copy is already gone.", details: { ...details, sourceRemoved: true } };
     return { status: "skipped", reason: "The copy Aurral kept is gone, so this one stays. Run Clean up Library again.", details };
   }
+  if (details.takesName && await passesThroughLinkedFolder(resolveDownloadRoot(), extra)) {
+    return { status: "skipped", reason: LINKED_FOLDER_REASON, details };
+  }
   if (onDisk) {
     const trackId = libraryTrackAt(extra);
     const copy = trackId && trackId === libraryTrackAt(kept) ? await compareCopies(extra, kept) : null;
     if (!copy?.keepHolder) return { status: "skipped", reason: COPY_CHANGED_REASON, details };
-    if (!(await context.deletionGuard().canDelete(extra))) {
+    if (!(await context.deletionGuard().canDelete(extra, { retain: false }))) {
       return {
         status: "skipped",
         reason: "A media server playlist still uses this copy, so it stays. Try again once the playlist has updated.",

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { copyFile, link, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, link, mkdir, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -27,6 +27,7 @@ const [
   { playlistManager },
   { findUniqueLibrarySong },
   { getPlayQueue, savePlayQueue },
+  { retryPlaybackRetainedFiles },
 ] = await setupIsolatedBackend(
   "library-cleanup",
   "backend/config/db-sqlite.js",
@@ -40,6 +41,7 @@ const [
   "backend/services/playlists/playlistManager.js",
   "backend/services/subsonicLibraryService.js",
   "backend/services/subsonicPlayQueueService.js",
+  "backend/services/playback/playbackFileRetention.js",
 );
 
 const root = resolveDownloadRoot();
@@ -324,6 +326,38 @@ test("removing duplicates finishes a removal a restart interrupted, and a failed
   assert.deepEqual(availablePaths("Song").filter((filePath) => filePath.includes("Stuck")), [stuck.better]);
   assert.equal(downloadTracker.getJob(stuckJob).finalPath, stuck.better);
   assert.ok(refreshed.includes("stuck-mix"));
+});
+
+test("a duplicate stays when a playlist still uses it or its name is behind a linked folder, and nothing deletes it later", async (t) => {
+  const pair = async (artist) => {
+    const tags = { artist, album: "Album", title: "Song", track: "1" };
+    return {
+      worse: await makeTrack(path.join(root, artist, "Album", "01 - Song.mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "96k"]),
+      better: await makeTrack(path.join(root, artist, "Album", "song.mp3"), tags, ["-c:a", "libmp3lame", "-b:a", "320k"]),
+    };
+  };
+  const listed = await pair("Listed");
+  const linked = await pair("Linked");
+  await scanMusicRoot({ rootPath: root, source: "aurral" });
+  const { id } = await cleanUp();
+  assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
+
+  const realFolder = path.join(root, "Linked", "Real");
+  await rename(path.dirname(linked.worse), realFolder);
+  await symlink(realFolder, path.dirname(linked.worse));
+  let referenced = [listed.worse];
+  t.mock.method(playlistManager.destinationRegistry, "run", async (operation) =>
+    (operation === "getReferencedPaths" ? [{ destination: "test", ok: true, paths: referenced }] : []));
+  await operations.removeDuplicateFiles(id);
+  assert.equal((await runUntilSettled(id)).status, "complete");
+  referenced = [];
+  await retryPlaybackRetainedFiles();
+
+  assert.equal(await exists(listed.worse), true);
+  assert.equal(await exists(listed.better), true);
+  assert.equal(await exists(path.join(realFolder, "01 - Song.mp3")), true);
+  assert.equal(await exists(path.join(realFolder, "song.mp3")), true);
+  assert.deepEqual(describe(id).sources, { removable: 0, removed: 0 });
 });
 
 test("Clean up keeps a file's track number from its tags when the Library's album has no number for it", async () => {
