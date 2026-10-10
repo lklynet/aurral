@@ -184,3 +184,15 @@ test("adding an artist to a new playlist saves all of its Library tracks", async
     ["Calm", "Later Album"],
   ]);
 });
+
+test("the artist page plays tracks beyond its first page", async ({ page: browserPage }) => {
+  await fixture(browserPage);
+  await browserPage.goto(`/library/artist/${artist.id}`);
+
+  await browserPage.getByRole("button", { name: "Play Collection Artist" }).click();
+  const bar = browserPage.locator(".global-player__inner");
+  await expect(bar.locator(".global-player__title")).toHaveText("Morning");
+  await bar.getByRole("button", { name: "Queue" }).click();
+  const panel = browserPage.getByRole("complementary", { name: "Queue" });
+  await expect.poll(() => upNextTitles(panel)).toEqual(["Noon", "Gust", "Calm"]);
+});

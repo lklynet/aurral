@@ -2762,8 +2762,12 @@ function LibraryPage() {
                 disabled={!artistPlayable}
                 isPlaying={artistIsCurrent && isRunning}
                 isShuffleEnabled={false}
-                onPlay={() => (artistIsCurrent ? togglePlayPause() : playTracks(artistTracks))}
-                onShuffle={() => playTracks(artistTracks, null, true)}
+                onPlay={() =>
+                  artistIsCurrent
+                    ? togglePlayPause()
+                    : playCollection(() => loadArtistTracks(libraryArtist))
+                }
+                onShuffle={() => playCollection(() => loadArtistTracks(libraryArtist), true)}
               />
               <FavoriteButton
                 active={favoriteIds.has(favoriteId("artist", libraryArtist))}
