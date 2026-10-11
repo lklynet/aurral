@@ -1,5 +1,10 @@
 import { distance } from "fastest-levenshtein";
-import { checkVariantCompatibility, stripPromoDescriptors } from "./semanticPolicy.js";
+import {
+  checkVariantCompatibility,
+  compareVariantProfiles,
+  extractVariants,
+  stripPromoDescriptors,
+} from "./semanticPolicy.js";
 import { foldDiacritics } from "../providers/brainzmashRanking.js";
 import { isVariousArtistsCredit } from "./titleText.js";
 import { UUID_REGEX } from "../../../lib/uuid.js";
@@ -424,13 +429,20 @@ const songWords = (title) => normalizeMatchText(String(title || "")
 const holdsWords = (outer, inner) => inner.length * 2 >= outer.length
   && outer.some((_, start) => inner.every((word, offset) => outer[start + offset] === word));
 
+const isOtherVersion = (left, right) => {
+  const version = (title) => variants(title).filter((variant) => variant !== "cover").join("|");
+  const contradicts = (expected, actual) => compareVariantProfiles(extractVariants(expected), extractVariants(actual))
+    .contradictions.some((variant) => variant !== "cover");
+  return version(left) !== version(right) || contradicts(left, right) || contradicts(right, left);
+};
+
 // At one place on an album, two titles name the same song when they differ
 // only in spelling, in a note in brackets or after a dash, or in words one
-// adds, and neither is a live, remixed, or other version the other is not. A
-// note that the artist covers the song changes nothing on their own album.
+// adds, and neither is a live, sped-up, edited, or other version the other is
+// not. A note that the artist covers the song changes nothing on their own
+// album.
 export function isSameSongAtPlace(left, right) {
-  const version = (title) => variants(title).filter((variant) => variant !== "cover").join("|");
-  if (version(left) !== version(right)) return false;
+  if (isOtherVersion(left, right)) return false;
   const [a, b] = [songWords(left), songWords(right)];
   if (!a.length || !b.length) return false;
   const [allA, allB] = [left, right].map((title) => normalizeMatchText(title).split(" "));
