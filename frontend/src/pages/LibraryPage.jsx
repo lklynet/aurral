@@ -60,10 +60,7 @@ import { useLibraryShareAction } from "../hooks/useShareAction";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
 import { useHiddenPlaylistTracks, usePlaylistBulkActions } from "./playlists/usePlaylistBulkActions.js";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
-import {
-  getReleaseGroupCoversBatch,
-  getReleaseGroupTracks,
-} from "../utils/api/endpoints/artists.js";
+import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
 import {
   clearLibraryPageCache,
   deleteAlbumFromLibrary,
@@ -88,7 +85,6 @@ import {
   createStaticPlaylist,
 } from "../utils/api/endpoints/playlists.js";
 import { buildAuthenticatedApiUrl } from "../utils/api/core.js";
-import { mergeAlbumMetadataTracks } from "../utils/libraryTrackHydration.js";
 import {
   albumCardMeta,
   EMPTY_LIBRARY,
@@ -693,34 +689,9 @@ function LibraryPage() {
           albumId: album.id,
           page: 1,
           pageSize,
-          // Full tracklist; availability is surfaced per-track via badges
-          // after merging metadata.
           availableOnly: false,
         }, { signal });
-        const ownedTracks = Array.isArray(page?.items) ? page.items : [];
-        const pageArtist = page?.artists?.[0] || null;
-        if (!releaseGroupMbid) return { tracks: ownedTracks, page };
-        try {
-          const metadataTracks = await getReleaseGroupTracks(releaseGroupMbid, {
-            artistMbid: album?.artistMbid || pageArtist?.mbid || "",
-            artistName:
-              album?.artistName || pageArtist?.name || album?.albumArtist || "",
-            albumTitle: album?.title || album?.albumName || "",
-            releaseDate: album?.releaseDate || "",
-            signal,
-          });
-          return {
-            tracks: mergeAlbumMetadataTracks(
-              ownedTracks,
-              metadataTracks,
-              album,
-              pageArtist,
-            ),
-            page,
-          };
-        } catch {
-          return { tracks: ownedTracks, page };
-        }
+        return { tracks: Array.isArray(page?.items) ? page.items : [], page };
       },
       staleTime: 5 * 60 * 1000,
     });

@@ -79,6 +79,7 @@ function createAlbum({
   jobsAt = Date.now() - 10 * DAY_MS,
   tracks = ["missing"],
   withMbid = true,
+  requested = true,
 } = {}) {
   sequence += 1;
   const suffix = String(sequence).padStart(12, "0");
@@ -103,7 +104,7 @@ function createAlbum({
     releaseGroupMbid: albumMbid,
     artistId: artist.id,
     title: `Search Album ${sequence}`,
-    metadata: { monitored, ...(managedBy === "aurral" ? { librarySource: "aurral" } : {}) },
+    metadata: { monitored, ...(managedBy === "aurral" && requested ? { librarySource: "aurral" } : {}) },
   });
   managementStore.setLibraryManagement({
     entityKind: "album",
@@ -301,8 +302,9 @@ test("a daily run counts an album as due when its wait ends within the hour", as
   assert.equal(albumJobs(notYetDue.albumMbid).length, 0);
 });
 
-test("only Aurral albums with monitored missing tracks and no cancelled or active downloads are searched", async () => {
+test("only Aurral albums someone asked for with monitored missing tracks and no cancelled or active downloads are searched", async () => {
   const unmonitored = createAlbum({ monitored: false });
+  const scannedNotRequested = createAlbum({ requested: false });
   const singleFromPlaylist = createAlbum({ monitored: false, tracks: ["missing", "missing"] });
   setTrackMonitored(singleFromPlaylist.tracks[0].id, true);
   const lidarrManaged = createAlbum({ managedBy: "lidarr" });
@@ -320,10 +322,11 @@ test("only Aurral albums with monitored missing tracks and no cancelled or activ
     albumJobs(singleFromPlaylist.albumMbid).map((job) => job.trackMbid),
     [singleFromPlaylist.tracks[0].mbid],
   );
-  for (const skipped of [unmonitored, lidarrManaged, downloading, cancelledByUser, waitingForReview, withoutMbid]) {
+  for (const skipped of [unmonitored, scannedNotRequested, lidarrManaged, downloading, cancelledByUser, waitingForReview, withoutMbid]) {
     assert.equal(searchTime(skipped.album.id), null);
   }
   assert.equal(albumJobs(unmonitored.albumMbid).length, 0);
+  assert.equal(albumJobs(scannedNotRequested.albumMbid).length, 0);
   assert.equal(albumJobs(lidarrManaged.albumMbid).length, 0);
   assert.equal(albumJobs(downloading.albumMbid).length, 1);
   assert.deepEqual(albumJobs(cancelledByUser.albumMbid).map((job) => job.status).sort(), ["cancelled", "failed"]);

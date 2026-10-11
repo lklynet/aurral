@@ -314,6 +314,30 @@ test("monitoring an Aurral artist with the default rules queues its studio album
   assert.equal(lidarrCalls.length, 0);
 });
 
+test("monitoring an artist downloads the songs missing from an album the Library lists from its files", async () => {
+  await addAurralArtist("none");
+  const artist = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid);
+  const release = albumPayload(releases.firstAlbum).releases[0];
+  const [have, missing] = release.tracks;
+  const album = libraryStore.upsertLibraryAlbum({ identityKey: `release-group:${releases.firstAlbum.id}`, mbid: release.id,
+    releaseGroupMbid: releases.firstAlbum.id, artistId: artist.id, title: releases.firstAlbum.title });
+  managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
+  const owned = libraryStore.upsertLibraryTrack({ identityKey: `recording:${have.recordingid}`, mbid: have.recordingid, title: have.trackname });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: owned.id, trackNumber: 1 });
+  libraryStore.upsertLibraryMediaFile({ trackId: owned.id, albumId: album.id, source: "aurral",
+    path: `${isolatedState.baseDir}/Monitor Artist/First Album/01.flac` });
+  libraryStore.storeLibraryAlbumTrackList(album.id, { forRelease: release.id, release: { id: release.id,
+    tracks: release.tracks.map((track) => ({ recordingId: track.recordingid, title: track.trackname, trackPosition: track.trackposition })) } });
+
+  await callRoute("PUT /artists/:mbid", { params: { mbid: artistMbid }, body: { monitorOption: "all" } });
+  await runQueuedMonitoringTasks();
+
+  assert.deepEqual(
+    downloadTracker.getAll().filter((job) => job.albumMbid === releases.firstAlbum.id).map((job) => job.trackName),
+    [missing.trackname],
+  );
+});
+
 test("older clients' monitor options map onto rules and Lidarr-only options are refused", async () => {
   await addAurralArtist("none");
   assert.deepEqual(queuedMonitoringTasks(), []);
@@ -879,6 +903,34 @@ test("the expanded edition downloads the longer tracklist of an album", async ()
   await runQueuedMonitoringTasks();
   const titles = downloadTracker.getAll().filter((job) => job.albumMbid === deluxe.id).map((job) => job.trackName).sort();
   assert.deepEqual(titles, [1, 2, 3, 4].map((position) => `Deluxe Album Track ${position}`));
+});
+
+test("the expanded edition adds the extra tracks to an album the Library lists from its standard files", async () => {
+  await addAurralArtist("none");
+  const deluxe = { id: "a2222222-2222-4222-8222-222222222212", title: "Deluxe Album", type: "Album", date: "2024-02-02", deluxe: true };
+  metadataState.extraReleases = [deluxe];
+  clearMetadataProviderCaches();
+  const cd = albumPayload(deluxe).releases[0];
+  const artist = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid);
+  const album = libraryStore.upsertLibraryAlbum({ identityKey: `release-group:${deluxe.id}`, mbid: cd.id,
+    releaseGroupMbid: deluxe.id, artistId: artist.id, title: deluxe.title });
+  managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
+  for (const track of cd.tracks) {
+    const row = libraryStore.upsertLibraryTrack({ identityKey: `recording:${track.recordingid}`, mbid: track.recordingid, title: track.trackname });
+    libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: row.id, trackNumber: track.trackposition });
+    libraryStore.upsertLibraryMediaFile({ trackId: row.id, albumId: album.id, source: "aurral",
+      path: `${isolatedState.baseDir}/Deluxe Album/${track.trackposition}.flac` });
+  }
+  libraryStore.storeLibraryAlbumTrackList(album.id, { forRelease: cd.id, release: { id: cd.id,
+    tracks: cd.tracks.map((track) => ({ recordingId: track.recordingid, title: track.trackname, trackPosition: track.trackposition })) } });
+
+  await monitorWith(customRules({ catalog: "latest", latestCount: 1, types: ["album"], edition: "expanded" }));
+  await runQueuedMonitoringTasks();
+
+  assert.deepEqual(
+    downloadTracker.getAll().filter((job) => job.albumMbid === deluxe.id).map((job) => job.trackName).sort(),
+    ["Deluxe Album Track 3", "Deluxe Album Track 4"],
+  );
 });
 
 test("switching to the expanded edition adds the extra tracks of albums already in the Library", async () => {

@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { access, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import { db } from "../../backend/config/db-sqlite.js";
 import {
@@ -34,6 +36,8 @@ import { setLibraryManagement } from "../../backend/services/libraryManagementSt
 import { dbOps } from "../../backend/db/helpers/index.js";
 import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.js";
 import { createMockHttpServer } from "../helpers/backendTestHarness.js";
+
+const execFileAsync = promisify(execFile);
 
 const getLibrarySnapshot = () => ({
   artists: db.prepare("SELECT * FROM library_artists ORDER BY name").all(),
@@ -872,6 +876,256 @@ test("a configured scan resolves untagged artists only on one unambiguous MusicB
     await server.close();
     await rm(root, { recursive: true, force: true });
   }
+});
+
+const uuid = (group, index) => `${group}-0000-4000-8000-${String(index).padStart(12, "0")}`;
+
+async function withReleaseGroups(releaseGroups, run) {
+  const state = { up: true, requests: [] };
+  const server = await createMockHttpServer((request, response) => {
+    const id = new URL(request.url, "http://mock").pathname.split("/").at(-1);
+    state.requests.push(id);
+    const group = releaseGroups[id];
+    response.setHeader("content-type", "application/json");
+    if (!state.up) {
+      response.writeHead(500);
+      response.end("{}");
+      return;
+    }
+    if (!group) {
+      response.writeHead(404);
+      response.end(JSON.stringify({ error: "not found" }));
+      return;
+    }
+    response.end(JSON.stringify({
+      id,
+      title: group.title,
+      artistid: group.artistMbid,
+      artists: [{ id: group.artistMbid, artistname: group.artist }],
+      releases: group.releases.map(({ id: releaseId, titles }) => ({
+        id: releaseId,
+        status: "Official",
+        tracks: titles.map((title, index) => ({
+          id: `${releaseId}-${index}`,
+          recordingid: group.recordings[title],
+          trackname: title,
+          trackposition: index + 1,
+          mediumnumber: 1,
+        })),
+      })),
+    }));
+  });
+  const originalSettings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      metadata: { ...originalSettings.integrations.metadata, baseUrl: server.url, enableNarrowFallbacks: false },
+    },
+  });
+  clearMetadataProviderCaches();
+  try {
+    await run(state);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(originalSettings);
+    await server.close();
+  }
+}
+
+const albumListing = (title) => db.prepare(
+  `SELECT track.title,
+     EXISTS (SELECT 1 FROM library_media_files AS media WHERE media.track_id = track.id
+       AND media.available = 1 AND (media.album_id = link.album_id OR media.album_id IS NULL)) AS have
+   FROM library_albums AS album
+   JOIN library_album_tracks AS link ON link.album_id = album.id
+   JOIN library_tracks AS track ON track.id = link.track_id
+   WHERE album.title = ? ORDER BY link.disc_number, link.track_number`,
+).all(title).map(({ title: name, have }) => [name, have ? "have" : "missing"]);
+
+let tone = 200;
+
+async function makeTrack(filePath, tags) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi", "-i", `sine=frequency=${tone += 7}:duration=0.2`];
+  for (const [key, value] of Object.entries(tags)) args.push("-metadata", `${key}=${value}`);
+  await execFileAsync("ffmpeg", [...args, filePath]);
+  return filePath;
+}
+
+function listedAlbum(artist, artistMbid, title, index, titles, releases = [{ id: uuid("bbbbbbbb", index), titles }]) {
+  const recordings = Object.fromEntries(titles.map((name, position) => [name, uuid("cccccccc", index * 100 + position)]));
+  const releaseGroup = uuid("aaaaaaaa", index);
+  return {
+    releaseGroup,
+    group: { title, artist, artistMbid, recordings, releases },
+    file: (folder, name, release = releaseGroup) => makeTrack(
+      path.join(folder, artist, title, `${String(titles.indexOf(name) + 1).padStart(2, "0")} ${name}.flac`),
+      {
+        ARTIST: artist,
+        ALBUMARTIST: artist,
+        ALBUM: title,
+        TITLE: name,
+        TRACKNUMBER: titles.indexOf(name) + 1,
+        MUSICBRAINZ_ALBUMARTISTID: artistMbid,
+        MUSICBRAINZ_RELEASEGROUPID: releaseGroup,
+        MUSICBRAINZ_ALBUMID: release,
+        MUSICBRAINZ_TRACKID: recordings[name],
+      },
+    ),
+  };
+}
+
+test("an album lists every track of the release its files are tagged with, including the ones it is missing", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-"));
+  const artist = `Track List ${process.pid}`;
+  const artistMbid = uuid("dddddddd", 1);
+  const deluxe = uuid("eeeeeeee", 1);
+  const album = listedAlbum(artist, artistMbid, "Deluxe", 1, ["One", "Two", "Three", "Bonus"], [
+    { id: uuid("eeeeeeee", 2), titles: ["One", "Two", "Three"] },
+    { id: uuid("eeeeeeee", 3), titles: ["One", "Two", "Three"] },
+    { id: deluxe, titles: ["One", "Two", "Three", "Bonus"] },
+  ]);
+  const scan = () => scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
+  try {
+    await album.file(root, "One", deluxe);
+    const two = await makeTrack(path.join(root, artist, "Deluxe", "02 Two.flac"), { ARTIST: artist, ALBUMARTIST: artist, ALBUM: "Deluxe", TITLE: "Two", TRACKNUMBER: 2 });
+    const hidden = await makeTrack(path.join(root, artist, "Deluxe", "05 Hidden.flac"), { ARTIST: artist, ALBUMARTIST: artist, ALBUM: "Deluxe", TITLE: "Hidden", TRACKNUMBER: 5 });
+    await makeTrack(path.join(root, artist, "Bonus Single", "01 Bonus.flac"), {
+      ARTIST: artist, ALBUMARTIST: artist, ALBUM: "Bonus Single", TITLE: "Bonus (Radio Edit)", TRACKNUMBER: 1,
+      MUSICBRAINZ_TRACKID: album.group.recordings.Bonus,
+    });
+    await withReleaseGroups({ [album.releaseGroup]: album.group }, async (provider) => {
+      provider.up = false;
+      await scan();
+      assert.deepEqual(albumListing("Deluxe"), [["One", "have"], ["Two", "have"], ["Hidden", "have"]]);
+
+      provider.up = true;
+      await scan();
+      const listed = [["One", "have"], ["Two", "have"], ["Three", "missing"], ["Bonus (Radio Edit)", "missing"], ["Hidden", "have"]];
+      assert.deepEqual(albumListing("Deluxe"), listed);
+      assert.deepEqual(albumListing("Bonus Single"), [["Bonus (Radio Edit)", "have"]]);
+      const page = getLibraryPage({ kind: "albums", page: 1, pageSize: 10, query: "Deluxe" });
+      assert.deepEqual([page.items[0]?.availableTrackCount, page.items[0]?.trackCount], [3, 5]);
+
+      const requests = provider.requests.length;
+      await scan();
+      assert.deepEqual(albumListing("Deluxe"), listed);
+      assert.equal(provider.requests.length, requests);
+
+      await rm(two);
+      await rm(hidden);
+      await scan();
+      assert.deepEqual(albumListing("Deluxe"), [["One", "have"], ["Two", "missing"], ["Three", "missing"], ["Bonus (Radio Edit)", "missing"]]);
+
+      await album.file(root, "One", uuid("eeeeeeee", 2));
+      await scan();
+      assert.deepEqual(albumListing("Deluxe"), [["One", "have"], ["Two", "missing"], ["Three", "missing"]]);
+    });
+  } finally {
+    removeArtistsNamed(artist);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a song an album keeps after its untagged file is gone is listed once, and stays when Lidarr is turned off", async (t) => {
+  const downloads = await mkdtemp(path.join(tmpdir(), "aurral-track-list-kept-downloads-"));
+  const music = await mkdtemp(path.join(tmpdir(), "aurral-track-list-kept-music-"));
+  const artist = `Kept List ${process.pid}`;
+  const title = `Kept ${process.pid}`;
+  const album = listedAlbum(artist, uuid("dddddddd", 4), title, 40, ["One", "Two", "Three"]);
+  t.after(async () => {
+    removeArtistsNamed(artist);
+    await Promise.all([downloads, music].map((root) => rm(root, { recursive: true, force: true })));
+  });
+  await album.file(downloads, "One", uuid("bbbbbbbb", 40));
+  const two = await makeTrack(path.join(music, artist, title, "02 Two.flac"), { ARTIST: artist, ALBUMARTIST: artist, ALBUM: title, TITLE: "Two", TRACKNUMBER: 2 });
+  const scan = (lidarrClient = lidarrOn) => scanConfiguredLibrary({ musicRoot: downloads, lidarrClient, lidarrRoots: [music] });
+  await withReleaseGroups({ [album.releaseGroup]: album.group }, async (provider) => {
+    provider.up = false;
+    await scan();
+    await rm(two);
+    await scan();
+    assert.deepEqual(albumListing(title), [["One", "have"], ["Two", "missing"]]);
+
+    provider.up = true;
+    await scan();
+    const listed = [["One", "have"], ["Two", "missing"], ["Three", "missing"]];
+    assert.deepEqual(albumListing(title), listed);
+
+    await scan(lidarrOff);
+    assert.deepEqual(albumListing(title), listed);
+  });
+});
+
+test("an album the metadata provider does not know keeps its songs and does not stop the others being listed", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-unknown-"));
+  const artist = `Unknown List ${process.pid}`;
+  const artistMbid = uuid("dddddddd", 2);
+  const unknown = listedAlbum(artist, artistMbid, `Unknown ${process.pid}`, 20, ["Only"]);
+  const known = [1, 2, 3, 4, 5, 6].map((index) => listedAlbum(artist, artistMbid, `Known ${index} ${process.pid}`, 20 + index, ["Have", "Want"]));
+  const scan = () => scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
+  try {
+    await unknown.file(root, "Only", uuid("bbbbbbbb", 20));
+    await withReleaseGroups(Object.fromEntries(known.map((album) => [album.releaseGroup, album.group])), async (provider) => {
+      provider.up = false;
+      await scan();
+      for (const [index, album] of known.entries()) await album.file(root, "Have", uuid("bbbbbbbb", 21 + index));
+      provider.up = true;
+      await scan();
+
+      assert.deepEqual(albumListing(`Unknown ${process.pid}`), [["Only", "have"]]);
+      for (const index of [1, 2, 3, 4, 5, 6]) {
+        assert.deepEqual(albumListing(`Known ${index} ${process.pid}`), [["Have", "have"], ["Want", "missing"]]);
+      }
+      const requests = provider.requests.length;
+      await scan();
+      assert.equal(provider.requests.length, requests);
+    });
+  } finally {
+    removeArtistsNamed(artist);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an album lists the same songs, with the same ids, as Lidarr is turned off and on", async (t) => {
+  const downloads = await mkdtemp(path.join(tmpdir(), "aurral-track-list-downloads-"));
+  const music = await mkdtemp(path.join(tmpdir(), "aurral-track-list-music-"));
+  const artist = `Switch List ${process.pid}`;
+  const title = `Switch ${process.pid}`;
+  const album = listedAlbum(artist, uuid("dddddddd", 3), title, 30, ["One", "Two", "Three"]);
+  const release = uuid("bbbbbbbb", 30);
+  t.after(async () => {
+    removeArtistsNamed(artist);
+    await Promise.all([downloads, music].map((root) => rm(root, { recursive: true, force: true })));
+  });
+  const lidarrOnly = listedAlbum(artist, uuid("dddddddd", 3), `Lidarr Only ${process.pid}`, 31, ["Kept"]);
+  await album.file(downloads, "One", release);
+  await album.file(music, "One", release);
+  await album.file(music, "Two", release);
+  await lidarrOnly.file(music, "Kept", uuid("bbbbbbbb", 31));
+  const scan = (lidarrClient) => scanConfiguredLibrary({ musicRoot: downloads, lidarrClient, lidarrRoots: [music] });
+  const listing = () => {
+    const { id } = albumByTitle(title);
+    return { id, tracks: db.prepare("SELECT track_id FROM library_album_tracks WHERE album_id = ? ORDER BY track_number").pluck().all(id), songs: albumListing(title) };
+  };
+  await withReleaseGroups({ [album.releaseGroup]: album.group, [lidarrOnly.releaseGroup]: lidarrOnly.group }, async (provider) => {
+    await scan(lidarrOn);
+    const on = listing();
+    assert.deepEqual(on.songs, [["One", "have"], ["Two", "have"], ["Three", "missing"]]);
+    assert.deepEqual(albumListing(`Lidarr Only ${process.pid}`), [["Kept", "have"]]);
+
+    await scan(lidarrOff);
+    assert.deepEqual(listing(), { ...on, songs: [["One", "have"], ["Two", "missing"], ["Three", "missing"]] });
+    assert.equal(albumByTitle(`Lidarr Only ${process.pid}`), undefined);
+
+    await scan(lidarrOn);
+    assert.deepEqual(listing(), on);
+    assert.deepEqual(albumListing(`Lidarr Only ${process.pid}`), [["Kept", "have"]]);
+    const requests = provider.requests.length;
+    await scan(lidarrOn);
+    assert.equal(provider.requests.length, requests);
+  });
 });
 
 test("scanMusicRoot applies trusted job metadata when file tags omit identities", async () => {

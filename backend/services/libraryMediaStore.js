@@ -869,10 +869,15 @@ const ALBUM_HAS_FILES = `EXISTS (
   WHERE file_link.album_id = album.id
 )`;
 
+// A song an album's track list names stays on the album without files.
+const TRACK_IS_LISTED = `(json_valid(album.metadata_json) AND EXISTS (
+  SELECT 1 FROM json_each(album.metadata_json, '$.trackList.recordings') WHERE value = track.mbid
+))`;
+
 // Aurral and Lidarr keep the albums they were asked for, with or without
 // files: a requested album still downloading, or one unmonitored so artist
 // monitoring leaves it out.
-const ALBUM_IS_OWNED = `(
+export const ALBUM_IS_OWNED = `(
   CASE WHEN json_valid(album.metadata_json)
     THEN json_extract(album.metadata_json, '$.librarySource') IS NOT NULL
       OR COALESCE(json_extract(album.metadata_json, '$.trackListComplete'), 0) = 1
@@ -998,21 +1003,92 @@ function removeEmptyLibraryAlbum(album, tracks) {
   deleteLibraryAlbumRow(album.id, album.artist_id);
 }
 
-// An album nobody asked for lists the songs it has files for.
+// An album nobody asked for lists its release's tracks and the songs it has
+// files for.
 function dropUnfiledAlbumTracks() {
   const links = db.prepare(
     `SELECT link.album_id AS albumId, link.track_id AS trackId
      FROM library_album_tracks AS link
      JOIN library_albums AS album ON album.id = link.album_id
+     JOIN library_tracks AS track ON track.id = link.track_id
      WHERE NOT ${ALBUM_IS_OWNED}
        AND NOT EXISTS (
          SELECT 1 FROM library_media_files AS media
          WHERE media.track_id = link.track_id AND (media.album_id = link.album_id OR media.album_id IS NULL)
-       )`,
+       )
+       AND NOT ${TRACK_IS_LISTED}`,
   ).all();
   for (const { albumId, trackId } of links) unlinkFilelessAlbumTrack(albumId, trackId);
   for (const albumId of new Set(links.map((link) => link.albumId))) touchLibraryAlbum(albumId);
   return links.length;
+}
+
+// Albums with a MusicBrainz release group whose track list Aurral has not
+// stored, or whose files now name another release. A requested album already
+// has the track list it was requested with.
+export function getLibraryAlbumsWithoutTrackList() {
+  return db.prepare(
+    `SELECT album.id, album.mbid, album.release_group_mbid AS releaseGroupMbid
+     FROM library_albums AS album
+     WHERE album.release_group_mbid IS NOT NULL
+       AND NOT (json_valid(album.metadata_json)
+         AND COALESCE(json_extract(album.metadata_json, '$.trackListComplete'), 0) = 1)
+       AND (NOT json_valid(album.metadata_json)
+         OR json_type(album.metadata_json, '$.trackList') IS NULL
+         OR COALESCE(json_extract(album.metadata_json, '$.trackList.for'), '') != COALESCE(album.mbid, ''))
+     ORDER BY album.id`,
+  ).all();
+}
+
+// An album lists every track of its release. A track it lists by recording,
+// or a tagged file of its own by title and position, stands for that track.
+// The rest are added as missing, and an untagged copy then folds into its
+// track. Missing tracks download only once someone asks for them.
+export function storeLibraryAlbumTrackList(albumId, { release, forRelease = null, artistNameFor = () => null }) {
+  const tracks = (Array.isArray(release?.tracks) ? release.tracks : [])
+    .map((track) => ({
+      mbid: normalizeText(track?.recordingId || track?.id),
+      title: normalizeText(track?.title),
+      discNumber: Number(track?.mediumNumber) || 1,
+      trackNumber: Number(track?.trackPosition || track?.trackNumber) || 0,
+      artistName: artistNameFor(track),
+    }))
+    .filter((track) => track.mbid && track.title);
+  const stored = db.transaction(() => {
+    const album = db.prepare("SELECT * FROM library_albums WHERE id = ?").get(albumId);
+    if (!album) return false;
+    const listed = albumTracksStmt.all(album.id);
+    const recordings = [];
+    for (const track of tracks) {
+      const have = listed.find((entry) => entry.mbid === track.mbid)
+        || matchLibraryAlbumTrack(listed.filter((entry) => entry.has_files && entry.mbid), track);
+      if (have) {
+        recordings.push(have.mbid || track.mbid);
+        continue;
+      }
+      const key = buildIdentityKey("recording", track.mbid);
+      const row = db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key)
+        || upsertLibraryTrack({
+          identityKey: key,
+          mbid: track.mbid,
+          title: track.title,
+          artistName: track.artistName || album.album_artist,
+        });
+      linkLibraryAlbumTrack({ albumId: album.id, trackId: row.id, discNumber: track.discNumber, trackNumber: track.trackNumber });
+      recordings.push(track.mbid);
+    }
+    db.prepare(
+      `UPDATE library_albums
+       SET metadata_json = json_set(
+           CASE WHEN NOT json_valid(metadata_json) THEN '{}' WHEN json_type(metadata_json) = 'object' THEN metadata_json ELSE '{}' END,
+           '$.trackList', json(?)),
+         updated_at = ?
+       WHERE id = ?`,
+    ).run(JSON.stringify({ release: release?.id || null, for: forRelease, recordings }), now(), album.id);
+    return true;
+  })();
+  if (stored) invalidateLibraryCache();
+  return stored;
 }
 
 // An untagged copy of a track its album already lists with MusicBrainz IDs
@@ -1730,8 +1806,9 @@ const LIDARR_METADATA_PATHS = [...LIDARR_METADATA_KEYS, "monitorOption"]
   .join(", ");
 
 // Turning Lidarr off removes everything its root folders added. Aurral's own
-// files, and the tracks Aurral asked for, stay. What Lidarr managed and still
-// has Aurral files becomes Aurral's, unmonitored.
+// files, the tracks Aurral asked for, and the songs an album's track list
+// names stay. What Lidarr managed and still has Aurral files becomes
+// Aurral's, unmonitored.
 export function hasLidarrLibraryData() {
   return db.prepare(
     `SELECT EXISTS (SELECT 1 FROM library_media_files WHERE source = 'lidarr')
@@ -1765,6 +1842,10 @@ export function removeLidarrLibrary() {
          SELECT 1 FROM library_media_files AS media
          WHERE media.track_id = library_album_tracks.track_id
            AND (media.album_id = library_album_tracks.album_id OR media.album_id IS NULL)
+       ) AND NOT EXISTS (
+         SELECT 1 FROM library_albums AS album, library_tracks AS track
+         WHERE album.id = library_album_tracks.album_id AND track.id = library_album_tracks.track_id
+           AND ${TRACK_IS_LISTED}
        )`,
     );
     const isLinked = db.prepare("SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1");
