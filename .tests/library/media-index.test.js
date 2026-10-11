@@ -1206,7 +1206,7 @@ test("an untagged file at a listed song's place is that song when its title is s
   const artist = `Place List ${process.pid}`;
   const title = `Place ${process.pid}`;
   const album = listedAlbum(artist, uuid("dddddddd", 8), title, 80,
-    ["Tongue Tied", "Fly", "Hooray", "The Rat House", "Today", "Stand by Me Tonight", "Get Down With Me", "Anchor", "Glide (Sped Up)", "Drift (Extended)"]);
+    ["Tongue Tied", "Fly", "Hooray", "The Rat House", "Today", "Stand by Me Tonight", "Get Down With Me", "Anchor", "Glide (Sped Up)", "Drift (Extended)", "Halo", "Spark"]);
   t.after(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
@@ -1223,6 +1223,8 @@ test("an untagged file at a listed song's place is that song when its title is s
   await untagged("Groove With Me", 7);
   await untagged("Glide", 9);
   await untagged("Drift", 10);
+  await untagged("Halo (feat. Live)", 11);
+  await untagged("Spark feat. Live", 12);
   await withReleaseGroups({ [album.releaseGroup]: album.group }, async () => {
     await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
 
@@ -1235,8 +1237,10 @@ test("an untagged file at a listed song's place is that song when its title is s
       ["Glide (Sped Up)", "missing"],
       ["Glide", "have"],
       ["Groove With Me", "have"],
+      ["Halo", "have"],
       ["Hooray (Live)", "have"],
       ["Hooray", "missing"],
+      ["Spark", "have"],
       ["Stand by Me Tonight", "missing"],
       ["Stand", "have"],
       ["The Rat House", "have"],

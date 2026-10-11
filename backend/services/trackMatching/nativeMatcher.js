@@ -429,7 +429,13 @@ const songWords = (title) => normalizeMatchText(String(title || "")
 const holdsWords = (outer, inner) => inner.length * 2 >= outer.length
   && outer.some((_, start) => inner.every((word, offset) => outer[start + offset] === word));
 
-const isOtherVersion = (left, right) => {
+const withoutGuests = (title) => String(title || "")
+  .replace(/\s*[([]\s*(?:feat\.?|ft\.?|featuring|with)\s[^)\]]*[)\]]/giu, " ")
+  .replace(/\s(?:feat\.?|ft\.?|featuring)\s[^([\-–—]*/giu, " ");
+
+// A guest's name, such as "feat. Live", says nothing about the version.
+const isOtherVersion = (leftTitle, rightTitle) => {
+  const [left, right] = [leftTitle, rightTitle].map(withoutGuests);
   const version = (title) => variants(title).filter((variant) => variant !== "cover").join("|");
   const contradicts = (expected, actual) => compareVariantProfiles(extractVariants(expected), extractVariants(actual))
     .contradictions.some((variant) => variant !== "cover");
