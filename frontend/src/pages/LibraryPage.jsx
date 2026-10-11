@@ -684,14 +684,26 @@ function LibraryPage() {
     const result = await queryClient.fetchQuery({
       queryKey: queryKeys.libraryAlbumTracks(String(album.id), releaseGroupMbid),
       queryFn: async ({ signal }) => {
-        const page = await getLibraryPage({
-          kind: "tracks",
-          albumId: album.id,
-          page: 1,
-          pageSize,
-          availableOnly: false,
-        }, { signal });
-        return { tracks: Array.isArray(page?.items) ? page.items : [], page };
+        const pages = [];
+        for (let number = 1; ; number += 1) {
+          const page = await getLibraryPage({
+            kind: "tracks",
+            albumId: album.id,
+            page: number,
+            pageSize,
+            availableOnly: false,
+          }, { signal });
+          pages.push(page);
+          if (!page?.hasMore || !page?.items?.length) break;
+        }
+        return {
+          tracks: pages.flatMap((page) => (Array.isArray(page?.items) ? page.items : [])),
+          page: {
+            ...pages[0],
+            artists: pages.flatMap((page) => page?.artists || []),
+            albums: pages.flatMap((page) => page?.albums || []),
+          },
+        };
       },
       staleTime: 5 * 60 * 1000,
     });

@@ -1028,6 +1028,33 @@ test("an album lists every track of the release its files are tagged with, inclu
   }
 });
 
+test("a release that lists a song twice lists it at both places, and a file numbered apart from the release is listed once", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-twice-"));
+  const artist = `Twice List ${process.pid}`;
+  const twice = listedAlbum(artist, uuid("dddddddd", 5), `Twice ${process.pid}`, 50, ["Intro", "Song", "Intro"]);
+  const numbered = listedAlbum(artist, uuid("dddddddd", 5), `Numbered ${process.pid}`, 51, ["First", "Second"]);
+  t.after(async () => {
+    removeArtistsNamed(artist);
+    await rm(root, { recursive: true, force: true });
+  });
+  await makeTrack(path.join(root, artist, `Twice ${process.pid}`, "03 Intro.flac"), {
+    ARTIST: artist, ALBUMARTIST: artist, ALBUM: `Twice ${process.pid}`, TITLE: "Intro", TRACKNUMBER: 3,
+    MUSICBRAINZ_ALBUMARTISTID: uuid("dddddddd", 5), MUSICBRAINZ_RELEASEGROUPID: twice.releaseGroup,
+    MUSICBRAINZ_ALBUMID: uuid("bbbbbbbb", 50), MUSICBRAINZ_TRACKID: twice.group.recordings.Intro,
+  });
+  await makeTrack(path.join(root, artist, `Numbered ${process.pid}`, "04 First.flac"), {
+    ARTIST: artist, ALBUMARTIST: artist, ALBUM: `Numbered ${process.pid}`, TITLE: "First", TRACKNUMBER: 4,
+    MUSICBRAINZ_ALBUMARTISTID: uuid("dddddddd", 5), MUSICBRAINZ_RELEASEGROUPID: numbered.releaseGroup,
+    MUSICBRAINZ_ALBUMID: uuid("bbbbbbbb", 51), MUSICBRAINZ_TRACKID: numbered.group.recordings.First,
+  });
+  await withReleaseGroups({ [twice.releaseGroup]: twice.group, [numbered.releaseGroup]: numbered.group }, async () => {
+    await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
+
+    assert.deepEqual(albumListing(`Twice ${process.pid}`), [["Intro", "have"], ["Song", "missing"], ["Intro", "have"]]);
+    assert.deepEqual(albumListing(`Numbered ${process.pid}`), [["Second", "missing"], ["First", "have"]]);
+  });
+});
+
 test("a song an album keeps after its untagged file is gone is listed once, and stays when Lidarr is turned off", async (t) => {
   const downloads = await mkdtemp(path.join(tmpdir(), "aurral-track-list-kept-downloads-"));
   const music = await mkdtemp(path.join(tmpdir(), "aurral-track-list-kept-music-"));

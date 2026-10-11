@@ -1040,10 +1040,11 @@ export function getLibraryAlbumsWithoutTrackList() {
   ).all();
 }
 
-// An album lists every track of its release. A track it lists by recording,
-// or a tagged file of its own by title and position, stands for that track.
-// The rest are added as missing, and an untagged copy then folds into its
-// track. Missing tracks download only once someone asks for them.
+// An album lists every place on its release. Each track it lists stands for
+// one place: first at the same place, then by recording, then a tagged file
+// by title and position. The rest are added as missing, and an untagged copy
+// then folds into its track. Missing tracks download only once someone asks
+// for them.
 export function storeLibraryAlbumTrackList(albumId, { release, forRelease = null, artistNameFor = () => null }) {
   const tracks = (Array.isArray(release?.tracks) ? release.tracks : [])
     .map((track) => ({
@@ -1057,11 +1058,15 @@ export function storeLibraryAlbumTrackList(albumId, { release, forRelease = null
   const stored = db.transaction(() => {
     const album = db.prepare("SELECT * FROM library_albums WHERE id = ?").get(albumId);
     if (!album) return false;
-    const listed = albumTracksStmt.all(album.id);
+    const unused = albumTracksStmt.all(album.id);
+    const take = (entry) => entry && unused.splice(unused.indexOf(entry), 1)[0];
+    const atPlace = tracks.map((track) => take(unused.find((entry) => entry.mbid === track.mbid
+      && entry.disc_number === track.discNumber && entry.track_number === track.trackNumber)));
     const recordings = [];
-    for (const track of tracks) {
-      const have = listed.find((entry) => entry.mbid === track.mbid)
-        || matchLibraryAlbumTrack(listed.filter((entry) => entry.has_files && entry.mbid), track);
+    for (const [index, track] of tracks.entries()) {
+      const have = atPlace[index]
+        || take(unused.find((entry) => entry.mbid === track.mbid)
+          || matchLibraryAlbumTrack(unused.filter((entry) => entry.has_files && entry.mbid), track));
       if (have) {
         recordings.push(have.mbid || track.mbid);
         continue;
