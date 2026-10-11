@@ -6,7 +6,8 @@ import {
   assignLibraryArtistMbid,
   getLibraryMediaPaths,
   assignLidarrAlbumOwners,
-  getLibraryAlbumsWithoutTrackList,
+  chooseLibraryAlbumRelease,
+  getLibraryAlbumsToList,
   getUnresolvedLibraryArtists,
   removeLibraryMediaFiles,
   removeMissingLibraryMediaFiles,
@@ -138,13 +139,13 @@ async function resolveUnmatchedLibraryArtists() {
   return changed;
 }
 
-// Each album with a MusicBrainz release group lists its release's tracks: the
-// release its files are tagged with, or the one most of its pressings share.
-// A release group MusicBrainz does not have lists only the album's files.
+// Each album with a MusicBrainz release group lists the tracks of the release
+// its files come from, again whenever its files change. A release group
+// MusicBrainz does not have lists only the album's files.
 async function completeLibraryTrackLists() {
   let changed = false;
   let unavailable = null;
-  await mapWithConcurrency(getLibraryAlbumsWithoutTrackList(), 4, async (album) => {
+  await mapWithConcurrency(getLibraryAlbumsToList(), 4, async (album) => {
     if (unavailable) return;
     let metadata = null;
     try {
@@ -155,13 +156,12 @@ async function completeLibraryTrackLists() {
         return;
       }
     }
-    const release = metadata?.releases?.find((entry) => entry.id === album.mbid && entry.tracks?.length)
-      || (metadata ? selectAlbumRelease(metadata) : null);
+    const release = metadata ? chooseLibraryAlbumRelease(album, metadata.releases, selectAlbumRelease(metadata)) : null;
     const artists = new Map((metadata?.artists || []).map((artist) => [artist.id, artist.name]));
     const compilation = isVariousArtistsCredit(artists.get(metadata?.artistId), metadata?.artistId);
     if (storeLibraryAlbumTrackList(album.id, {
       release,
-      forRelease: album.mbid,
+      basis: album.basis,
       artistNameFor: (track) => (compilation ? artists.get(track.artistId) : null) || null,
     })) changed = true;
   });

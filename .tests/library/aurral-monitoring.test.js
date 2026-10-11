@@ -326,7 +326,7 @@ test("monitoring an artist downloads the songs missing from an album the Library
   libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: owned.id, trackNumber: 1 });
   libraryStore.upsertLibraryMediaFile({ trackId: owned.id, albumId: album.id, source: "aurral",
     path: `${isolatedState.baseDir}/Monitor Artist/First Album/01.flac` });
-  libraryStore.storeLibraryAlbumTrackList(album.id, { forRelease: release.id, release: { id: release.id,
+  libraryStore.storeLibraryAlbumTrackList(album.id, { release: { id: release.id,
     tracks: release.tracks.map((track) => ({ recordingId: track.recordingid, title: track.trackname, trackPosition: track.trackposition })) } });
 
   await callRoute("PUT /artists/:mbid", { params: { mbid: artistMbid }, body: { monitorOption: "all" } });
@@ -921,7 +921,7 @@ test("the expanded edition adds the extra tracks to an album the Library lists f
     libraryStore.upsertLibraryMediaFile({ trackId: row.id, albumId: album.id, source: "aurral",
       path: `${isolatedState.baseDir}/Deluxe Album/${track.trackposition}.flac` });
   }
-  libraryStore.storeLibraryAlbumTrackList(album.id, { forRelease: cd.id, release: { id: cd.id,
+  libraryStore.storeLibraryAlbumTrackList(album.id, { release: { id: cd.id,
     tracks: cd.tracks.map((track) => ({ recordingId: track.recordingid, title: track.trackname, trackPosition: track.trackposition })) } });
 
   await monitorWith(customRules({ catalog: "latest", latestCount: 1, types: ["album"], edition: "expanded" }));

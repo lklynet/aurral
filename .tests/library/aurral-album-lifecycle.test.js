@@ -991,7 +991,7 @@ test("asking for an album downloads the missing tracks of the edition its track 
   libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: owned.id, trackNumber: 1 });
   libraryStore.upsertLibraryMediaFile({ trackId: owned.id, albumId: album.id, source: "aurral",
     path: path.join(isolatedState.baseDir, "listed", "01 Listed Song 1.flac") });
-  libraryStore.storeLibraryAlbumTrackList(album.id, { forRelease: "listed-deluxe", release: { id: "listed-deluxe",
+  libraryStore.storeLibraryAlbumTrackList(album.id, { release: { id: "listed-deluxe",
     tracks: [1, 2, 3].map((index) => ({ recordingId: recording(index), title: `Listed Song ${index}`, mediumNumber: 1, trackPosition: index })) } });
 
   const requested = await callRoute("POST /albums/request", {}, { albumMbid, albumName: "Listed Album",

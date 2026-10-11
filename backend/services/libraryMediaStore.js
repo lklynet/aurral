@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { db, dbHelpers } from "../config/db-sqlite.js";
 import {
@@ -6,7 +7,8 @@ import {
   notifyLibraryManagementChanged,
 } from "./libraryManagementStore.js";
 import { getLibraryIndexLastModified, invalidateLibraryQueryCache } from "./libraryQueryService.js";
-import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
+import { isVariousArtistsCredit, withoutRemasterLabel } from "./trackMatching/titleText.js";
+import { isSameSongAtPlace } from "./trackMatching/nativeMatcher.js";
 import { clearLibraryManagement } from "./libraryManagementStore.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
 import {
@@ -625,13 +627,23 @@ export function findLibraryAlbumByReleaseMbid(mbid) {
 
 // Names with letters ASCII cannot spell, such as Japanese titles, compare as
 // written, since their ASCII keys would drop those letters and match each other.
+const libraryNameKey = (value) => {
+  const ascii = asciiKeyPart(spellLetters(value));
+  return ascii && !hasNonLatinLetters(value) ? ascii : normalizeText(value).normalize("NFKC").toLowerCase();
+};
+
 export function isSameLibraryName(left, right) {
-  const a = asciiKeyPart(spellLetters(left));
-  const b = asciiKeyPart(spellLetters(right));
-  if ((a || b) && !hasNonLatinLetters(left) && !hasNonLatinLetters(right)) return a === b;
-  const raw = (value) => normalizeText(value).normalize("NFKC").toLowerCase();
-  return Boolean(raw(left)) && raw(left) === raw(right);
+  const key = libraryNameKey(left);
+  return Boolean(key) && key === libraryNameKey(right);
 }
+
+// A remastered song keeps its name: "Song (Remastered 2012)" is "Song".
+const songKey = (title) => libraryNameKey(withoutRemasterLabel(title));
+
+const isSameSong = (left, right) => {
+  const key = songKey(left);
+  return Boolean(key) && key === songKey(right);
+};
 
 // A file without MusicBrainz album tags belongs to the artist's album with
 // the same title, so an untagged copy never splits an album in two.
@@ -889,13 +901,15 @@ export const ALBUM_IS_OWNED = `(
   )
 )`;
 
-// A file without a recording ID is the album's track with its title and
-// position, or the tagged one when an untagged copy sits beside it.
+// A file without a recording ID is the album's song at its place, even
+// spelled another way, or with its title when either has no place; the
+// tagged one when an untagged copy sits beside it.
 function matchLibraryAlbumTrack(tracks, { title, discNumber, trackNumber }) {
   const same = [...new Map(tracks
-    .filter((track) => isSameLibraryName(track.title, title)
-      && (!(track.track_number > 0 && trackNumber > 0)
-        || (track.track_number === trackNumber && (track.disc_number || 1) === (discNumber || 1))))
+    .filter((track) => (track.track_number > 0 && trackNumber > 0
+      ? track.track_number === trackNumber && (track.disc_number || 1) === (discNumber || 1)
+        && (isSameSong(track.title, title) || isSameSongAtPlace(track.title, title))
+      : isSameSong(track.title, title)))
     .map((track) => [track.id, track])).values()];
   if (same.length === 1) return same[0];
   const tagged = same.filter((track) => !isNameKey(track.identity_key));
@@ -1024,20 +1038,57 @@ function dropUnfiledAlbumTracks() {
 }
 
 // Albums with a MusicBrainz release group whose track list Aurral has not
-// stored, or whose files now name another release. A requested album already
-// has the track list it was requested with.
-export function getLibraryAlbumsWithoutTrackList() {
-  return db.prepare(
-    `SELECT album.id, album.mbid, album.release_group_mbid AS releaseGroupMbid
+// stored, or stored for other files, with the songs of their files. A
+// requested album already has the track list it was requested with.
+export function getLibraryAlbumsToList() {
+  const albums = db.prepare(
+    `SELECT album.id, album.mbid, album.release_group_mbid AS releaseGroupMbid,
+       CASE WHEN json_valid(album.metadata_json) THEN json_extract(album.metadata_json, '$.trackList.for') END AS listedFor
      FROM library_albums AS album
      WHERE album.release_group_mbid IS NOT NULL
        AND NOT (json_valid(album.metadata_json)
          AND COALESCE(json_extract(album.metadata_json, '$.trackListComplete'), 0) = 1)
-       AND (NOT json_valid(album.metadata_json)
-         OR json_type(album.metadata_json, '$.trackList') IS NULL
-         OR COALESCE(json_extract(album.metadata_json, '$.trackList.for'), '') != COALESCE(album.mbid, ''))
      ORDER BY album.id`,
   ).all();
+  const files = Map.groupBy(db.prepare(
+    `SELECT DISTINCT link.album_id AS albumId, track.mbid, track.title, media.path
+     FROM library_album_tracks AS link
+     JOIN library_albums AS album ON album.id = link.album_id AND album.release_group_mbid IS NOT NULL
+     JOIN library_tracks AS track ON track.id = link.track_id
+     JOIN library_media_files AS media ON media.track_id = track.id
+       AND (media.album_id = link.album_id OR media.album_id IS NULL)
+     ORDER BY link.album_id, media.path`,
+  ).all(), (file) => file.albumId);
+  return albums.flatMap(({ listedFor, ...album }) => {
+    const songs = files.get(album.id) || [];
+    const basis = createHash("sha1")
+      .update(JSON.stringify([album.mbid, songs.map((file) => file.path)]))
+      .digest("hex");
+    return listedFor === basis ? [] : [{ ...album, basis, files: songs.map(({ mbid, title }) => ({ mbid, title })) }];
+  });
+}
+
+// An album lists the release its files come from: the one holding most of
+// their recordings, then most of their songs by title, then the release they
+// are tagged with, then the standard one, then the shortest.
+export function chooseLibraryAlbumRelease({ mbid = null, files = [] }, releases = [], standard = null) {
+  const fileSongs = files.map((file) => songKey(file.title)).filter(Boolean);
+  let best = null;
+  for (const release of releases) {
+    if (!release?.tracks?.length) continue;
+    const recordings = new Set(release.tracks.map((track) => track.recordingId || track.id));
+    const songs = new Set(release.tracks.map((track) => songKey(track.title)));
+    const rank = [
+      files.filter((file) => file.mbid && recordings.has(file.mbid)).length,
+      fileSongs.filter((song) => songs.has(song)).length,
+      Number(release.id === mbid),
+      Number(Boolean(standard?.id) && release.id === standard.id),
+      -release.tracks.length,
+    ];
+    const differs = best ? rank.findIndex((value, index) => value !== best.rank[index]) : -1;
+    if (!best || (differs >= 0 && rank[differs] > best.rank[differs])) best = { release, rank };
+  }
+  return best?.release || standard;
 }
 
 // An album lists every place on its release. Each track it lists stands for
@@ -1045,7 +1096,7 @@ export function getLibraryAlbumsWithoutTrackList() {
 // by title and position. The rest are added as missing, and an untagged copy
 // then folds into its track. Missing tracks download only once someone asks
 // for them.
-export function storeLibraryAlbumTrackList(albumId, { release, forRelease = null, artistNameFor = () => null }) {
+export function storeLibraryAlbumTrackList(albumId, { release, basis = null, artistNameFor = () => null }) {
   const tracks = (Array.isArray(release?.tracks) ? release.tracks : [])
     .map((track) => ({
       mbid: normalizeText(track?.recordingId || track?.id),
@@ -1089,7 +1140,7 @@ export function storeLibraryAlbumTrackList(albumId, { release, forRelease = null
            '$.trackList', json(?)),
          updated_at = ?
        WHERE id = ?`,
-    ).run(JSON.stringify({ release: release?.id || null, for: forRelease, recordings }), now(), album.id);
+    ).run(JSON.stringify({ release: release?.id || null, for: basis, recordings }), now(), album.id);
     return true;
   })();
   if (stored) invalidateLibraryCache();
@@ -1097,10 +1148,16 @@ export function storeLibraryAlbumTrackList(albumId, { release, forRelease = null
 }
 
 // An untagged copy of a track its album already lists with MusicBrainz IDs
-// is that track.
+// is that track: the one at its place, else, for copies numbered another way,
+// as one disc for a release of several, the only one with its title that has
+// no file, when no other copy left has that title.
 function foldUntaggedLibraryTracks() {
   const links = db.prepare(
-    `SELECT link.album_id, link.disc_number, link.track_number, track.id, track.title, track.identity_key
+    `SELECT link.album_id, link.disc_number, link.track_number, track.id, track.title, track.identity_key,
+       EXISTS (
+         SELECT 1 FROM library_media_files AS media
+         WHERE media.track_id = track.id AND (media.album_id = link.album_id OR media.album_id IS NULL)
+       ) AS has_files
      FROM library_album_tracks AS link
      JOIN library_tracks AS track ON track.id = link.track_id
      WHERE link.album_id IN (
@@ -1115,12 +1172,21 @@ function foldUntaggedLibraryTracks() {
   let changed = 0;
   for (const [albumId, tracks] of Map.groupBy(links, (link) => link.album_id)) {
     const tagged = tracks.filter((track) => !isNameKey(track.identity_key));
-    for (const track of tracks.filter((entry) => isNameKey(entry.identity_key))) {
-      const match = matchLibraryAlbumTrack(tagged, {
-        title: track.title,
-        discNumber: track.disc_number,
-        trackNumber: track.track_number,
-      });
+    const folds = tracks.filter((track) => isNameKey(track.identity_key)).map((track) => [track, matchLibraryAlbumTrack(tagged, {
+      title: track.title,
+      discNumber: track.disc_number,
+      trackNumber: track.track_number,
+    })]);
+    const filled = new Set(folds.map(([, match]) => match?.id));
+    const left = folds.filter(([, match]) => !match).map(([track]) => track);
+    for (const track of left) {
+      const named = (entry) => songKey(entry.title) === songKey(track.title);
+      const songs = new Set(tagged.filter(named).map((entry) => entry.id));
+      const match = songs.size === 1 && left.filter(named).length === 1
+        && tagged.find((entry) => songs.has(entry.id) && !entry.has_files && !filled.has(entry.id));
+      if (match) folds.push([track, match]);
+    }
+    for (const [track, match] of folds) {
       if (!match) continue;
       becomeAlbumTrack(albumId, track, match);
       changed += 1;

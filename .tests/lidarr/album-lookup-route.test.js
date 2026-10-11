@@ -405,7 +405,6 @@ test("library album lookup counts the tracks of the release a scanned album list
   setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
   upsertLibraryMediaFile({ trackId: owned.id, albumId: album.id, source: "aurral", path: `/tmp/${key}/owned.flac` });
   storeLibraryAlbumTrackList(album.id, {
-    forRelease: album.mbid,
     release: { id: album.mbid, tracks: recordings.map((recordingId, index) => ({ recordingId, title: ["Owned", "Missing"][index], trackPosition: index + 1 })) },
   });
   invalidateLibraryQueryCache();

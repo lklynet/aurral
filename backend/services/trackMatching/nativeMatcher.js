@@ -416,3 +416,23 @@ export function verifyDownloadedRecording(request, observed, policy = MATCH_POLI
 export function titleSimilarity(requested, offered) {
   return similarity(coreMatchTitle(requested), coreMatchTitle(offered));
 }
+
+const songWords = (title) => normalizeMatchText(String(title || "")
+  .replace(/\s*[([][^)\]]*[)\]]/gu, " ")
+  .split(/\s(?:-|–|—)\s|\s(?:feat\.?|ft\.?|featuring)\s/iu)[0]).split(" ").filter(Boolean);
+
+const holdsWords = (outer, inner) => inner.length * 2 >= outer.length
+  && outer.some((_, start) => inner.every((word, offset) => outer[start + offset] === word));
+
+// At one place on an album, two titles name the same song when they differ
+// only in spelling, in a note in brackets or after a dash, or in words one
+// adds, and neither is a live, remixed, or other version the other is not. A
+// note that the artist covers the song changes nothing on their own album.
+export function isSameSongAtPlace(left, right) {
+  const version = (title) => variants(title).filter((variant) => variant !== "cover").join("|");
+  if (version(left) !== version(right)) return false;
+  const [a, b] = [songWords(left), songWords(right)];
+  if (!a.length || !b.length) return false;
+  const [allA, allB] = [left, right].map((title) => normalizeMatchText(title).split(" "));
+  return holdsWords(allB, a) || holdsWords(allA, b) || similarity(a.join(" "), b.join(" ")) >= 0.8;
+}
