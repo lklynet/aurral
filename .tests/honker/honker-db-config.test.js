@@ -6,10 +6,20 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, honkerDb, { dbOps }] = await setupIsolatedBackend(
+const [
+  isolatedState,
+  honkerDb,
+  { dbOps },
+  { flowPlaylistConfig },
+  { NavidromePlaybackDestination },
+  { processSystemTask },
+] = await setupIsolatedBackend(
   "honker-db-config",
   "backend/services/honkerDb.js",
   "backend/db/helpers/index.js",
+  "backend/services/playlists/flowPlaylistConfig.js",
+  "backend/services/playback/navidromePlaybackDestination.js",
+  "backend/services/systemTaskWorker.js",
 );
 
 test.after(async () => {
@@ -113,6 +123,7 @@ test("startup only queues due bootstrap work and a pending migration", () => {
     "stored-data-migration",
     "identity-marker-migration",
     "weekly-flow-startup-check",
+    "playlist-startup-publish",
     "upgrade-readiness-check",
     "discovery-bootstrap",
     "library-index-bootstrap",
@@ -134,10 +145,47 @@ test("startup only queues due bootstrap work and a pending migration", () => {
   honkerDb.enqueueHonkerStartupTasks();
   assert.deepEqual(queuedKinds(), [
     "weekly-flow-startup-check",
+    "playlist-startup-publish",
     "upgrade-readiness-check",
     "discovery-bootstrap",
     "library-index-bootstrap",
     "release-metadata-refresh",
     "news-refresh",
   ]);
+});
+
+test("playlists publish from the startup task, not when a process loads the playlist manager", async (t) => {
+  dbOps.updateSettings({
+    integrations: {
+      navidrome: { url: "http://navidrome.invalid", username: "test", password: "password" },
+    },
+    playlistArtwork: { style: "aurral" },
+    flows: [],
+    sharedPlaylists: [],
+  });
+  const flow = flowPlaylistConfig.createFlow({ name: "Startup Flow", size: 10 });
+  flowPlaylistConfig.setEnabled(flow.id, true);
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Startup Playlist" });
+  const calls = [];
+  t.mock.method(NavidromePlaybackDestination.prototype, "ensureLibrary", async () => {
+    calls.push("ensure library");
+    return { ok: true };
+  });
+  t.mock.method(NavidromePlaybackDestination.prototype, "publishPlaylist", async (snapshot) => {
+    calls.push(snapshot.entityId);
+    return { ok: true };
+  });
+
+  const nodeEnv = process.env.NODE_ENV;
+  delete process.env.NODE_ENV;
+  try {
+    await import(`../../backend/services/playlists/playlistManager.js?process=${Date.now()}`);
+  } finally {
+    process.env.NODE_ENV = nodeEnv;
+  }
+  assert.deepEqual(calls, []);
+
+  await processSystemTask({ kind: "playlist-startup-publish" });
+  assert.equal(calls[0], "ensure library");
+  assert.deepEqual(calls.slice(1).sort(), [flow.id, playlist.id].sort());
 });

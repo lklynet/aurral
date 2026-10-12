@@ -33,10 +33,7 @@ const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
 
 export class PlaylistManager {
-  constructor(
-    downloadRoot = resolveDownloadRoot(),
-    { triggerEnsureOnInit = process.env.NODE_ENV !== "test" } = {},
-  ) {
+  constructor(downloadRoot = resolveDownloadRoot()) {
     this.downloadRoot = resolveDownloadRoot(downloadRoot);
     this.playlistFilesRoot = path.join(this.downloadRoot, PLAYLIST_FILES_DIR);
     this.libraryRoot = path.join(this.playlistFilesRoot, "_playlists");
@@ -57,7 +54,7 @@ export class PlaylistManager {
     this._ensureInFlight = null;
     this._refreshInFlight = new Map();
     this._verifiedArtworkFiles = new Set();
-    this.updateConfig(triggerEnsureOnInit);
+    this.updateConfig(false);
   }
 
   updateConfig(triggerEnsurePlaylists = true) {
