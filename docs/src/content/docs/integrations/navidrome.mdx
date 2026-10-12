@@ -118,6 +118,8 @@ Aurral finds each track in the Navidrome index by its exact file path or by its 
 
 Aurral uses the mapping to create or update the Navidrome library, find playlist tracks, and write fallback M3U files. Storage health and automatic cleanup also use the mapping. If reused Lidarr tracks have different paths in Navidrome, add a Navidrome mapping for that folder too. See [Playback servers report a different path](/getting-started/storage/#playback-servers-report-a-different-path).
 
+On Navidrome 0.61 and earlier, Aurral cannot look up a file by its path. It finds a track through its recording ID or a title search. If the file has no recording ID tag and its title or artist tag differs from Aurral's, the track stays out of the playlist. Update Navidrome to 0.62 or later.
+
 ### Scans and missing tracks
 
 If Navidrome is unavailable during a playlist update, Aurral keeps the playlist ID and tries the update again later.

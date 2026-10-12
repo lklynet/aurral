@@ -8,7 +8,9 @@ const LEGACY_LIBRARY_DIR = "aurral-weekly-flow";
 const PLAYLIST_LIBRARY_NAME = "Aurral Playlists";
 const LEGACY_LIBRARY_NAMES = new Set(["Aurral Weekly Flow"]);
 const PLAYLIST_SONG_BATCH_SIZE = 50;
-const NAVIDROME_SONG_PAGE_SIZE = 1_000;
+const NAVIDROME_SONG_LOOKUP_LIMIT = 100;
+const NAVIDROME_SONG_PATH_FILTER_MINOR_VERSION = 62;
+const NAVIDROME_SONG_CACHE_TTL_MS = 10 * 60_000;
 const NAVIDROME_RATE_LIMIT_RETRIES = 2;
 const NAVIDROME_RATE_LIMIT_DELAY_MS = 250;
 const NAVIDROME_RATE_LIMIT_MAX_DELAY_MS = 5_000;
@@ -33,6 +35,20 @@ function isLegacyPlaylistLibraryPath(value) {
   return libraryPath.endsWith(`/${LEGACY_LIBRARY_DIR}`) || libraryPath === LEGACY_LIBRARY_DIR;
 }
 
+function normalizeMatchText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function songFilePath(song) {
+  return `${normalizeLibraryPath(song.libraryPath)}/${normalizeLibraryPath(song.path)}`.toLowerCase();
+}
+
+function supportsSongPathFilter(serverVersion) {
+  const match = /(\d+)\.(\d+)/.exec(String(serverVersion || ""));
+  if (!match) return false;
+  return Number(match[1]) > 0 || Number(match[2]) >= NAVIDROME_SONG_PATH_FILTER_MINOR_VERSION;
+}
+
 export class NavidromeClient {
   constructor(url, user, password) {
     this.url = url ? url.replace(/\/+$/, "") : null;
@@ -40,7 +56,8 @@ export class NavidromeClient {
     this.password = password;
     this._libraryPaths = [];
     this._nativeTokenPromise = null;
-    this._indexedSongsPromise = null;
+    this._songPathFilter = null;
+    this._songsByFile = new Map();
   }
 
   isConfigured() {
@@ -119,54 +136,99 @@ export class NavidromeClient {
     return this.request("ping");
   }
 
-  async findSong(_title, _artist, track = {}) {
-    const normalizedPath = normalizeLibraryPath(track.path).toLowerCase();
-    const relativePaths = this._libraryPaths
-      .map((libraryPath) => normalizeLibraryPath(libraryPath).toLowerCase())
-      .filter((libraryPath) => normalizedPath.startsWith(`${libraryPath}/`))
-      .map((libraryPath) => normalizedPath.slice(libraryPath.length + 1));
-    const indexedSongs = await this._getIndexedSongs();
-    const normalizeSongPath = (song) => normalizeLibraryPath(song.path).toLowerCase();
-    const exactPathMatch = normalizedPath
-      ? indexedSongs.find((song) => normalizeSongPath(song) === normalizedPath)
-      : null;
-    if (exactPathMatch) return exactPathMatch;
+  async findSong(title, artist, track = {}) {
+    const trackFile = normalizeLibraryPath(track.path).toLowerCase();
+    const cached = this._songsByFile.get(trackFile);
+    if (cached?.expiresAt > Date.now()) return cached.song;
+    const song = await this._lookUpSong(title, artist, track);
+    if (song && songFilePath(song) === trackFile) this._rememberSong(trackFile, song);
+    return song;
+  }
 
-    const relativeMatches = indexedSongs.filter((song) => {
-      const songPath = normalizeSongPath(song);
-      return songPath && relativePaths.includes(songPath);
-    });
-    if (relativeMatches.length === 1) return relativeMatches[0];
-
-    const mbid = String(track.mbid || "").trim().toLowerCase();
-    if (mbid) {
-      const mbidMatch = indexedSongs.find(
-        (song) => String(song.musicBrainzId || "").trim().toLowerCase() === mbid,
-      );
-      if (mbidMatch) return mbidMatch;
+  _rememberSong(trackFile, song) {
+    const now = Date.now();
+    for (const [cachedFile, entry] of this._songsByFile) {
+      if (entry.expiresAt > now) break;
+      this._songsByFile.delete(cachedFile);
     }
+    this._songsByFile.delete(trackFile);
+    this._songsByFile.set(trackFile, { song, expiresAt: now + NAVIDROME_SONG_CACHE_TTL_MS });
+  }
 
-    const cleanTitle = String(_title || track.title || track.trackName || "").trim().toLowerCase();
-    const cleanArtist = String(_artist || track.artist || track.artistName || "").trim().toLowerCase();
-    if (cleanTitle && cleanArtist) {
-      const candidateMatches = indexedSongs.filter(
-        (song) =>
-          String(song.title || "").trim().toLowerCase() === cleanTitle &&
-          String(song.artist || "").trim().toLowerCase() === cleanArtist,
-      );
-      if (candidateMatches.length === 1) return candidateMatches[0];
-      if (candidateMatches.length > 1) {
-        const cleanAlbum = String(track.album || track.albumName || "").trim().toLowerCase();
-        if (cleanAlbum) {
-          const albumMatches = candidateMatches.filter(
-            (song) => String(song.album || "").trim().toLowerCase() === cleanAlbum,
-          );
-          if (albumMatches.length === 1) return albumMatches[0];
-        }
+  async _lookUpSong(title, artist, track) {
+    const trackPath = normalizeLibraryPath(track.path);
+    const matchPath = trackPath.toLowerCase();
+    const isTrackFile = (song) => songFilePath(song) === matchPath;
+    const mbid = normalizeMatchText(track.mbid);
+    const mbidMatches = mbid
+      ? (await this._searchSongs({ mbz_recording_id: mbid })).songs
+        .filter((song) => normalizeMatchText(song.mbzRecordingID) === mbid)
+      : [];
+    const mbidFileMatch = mbidMatches.find(isTrackFile);
+    if (mbidFileMatch) return mbidFileMatch;
+
+    const libraryPaths = this._libraryPaths.map(normalizeLibraryPath).filter((libraryPath) =>
+      libraryPath && matchPath.startsWith(`${libraryPath.toLowerCase()}/`));
+    if (libraryPaths.length && await this._canFilterSongsByPath()) {
+      for (const libraryPath of libraryPaths) {
+        const { songs } = await this._searchSongs({ path: trackPath.slice(libraryPath.length + 1) });
+        const pathMatch = songs.find(isTrackFile);
+        if (pathMatch) return pathMatch;
       }
     }
+    if (mbidMatches.length) return mbidMatches[0];
 
+    const cleanTitle = normalizeMatchText(title || track.title || track.trackName);
+    const cleanArtist = normalizeMatchText(artist || track.artist || track.artistName);
+    if (!cleanTitle || !cleanArtist) return null;
+    const searchText = `${cleanTitle} ${cleanArtist}`
+      .split(/\s+/)
+      .filter((word) => !word.includes("*"))
+      .join(" ");
+    if (!searchText) return null;
+    const { songs, complete } = await this._searchSongs({ title: searchText });
+    const titleFileMatch = songs.find(isTrackFile);
+    if (titleFileMatch) return titleFileMatch;
+    if (!complete) return null;
+    const candidateMatches = songs.filter(
+      (song) =>
+        normalizeMatchText(song.title) === cleanTitle
+        && normalizeMatchText(song.artist) === cleanArtist,
+    );
+    if (candidateMatches.length === 1) return candidateMatches[0];
+    const cleanAlbum = normalizeMatchText(track.album || track.albumName);
+    if (candidateMatches.length > 1 && cleanAlbum) {
+      const albumMatches = candidateMatches.filter(
+        (song) => normalizeMatchText(song.album) === cleanAlbum,
+      );
+      if (albumMatches.length === 1) return albumMatches[0];
+    }
     return null;
+  }
+
+  _canFilterSongsByPath() {
+    const now = Date.now();
+    if (!(this._songPathFilter?.expiresAt > now)) {
+      const supported = this.ping()
+        .then((response) => supportsSongPathFilter(response?.serverVersion))
+        .catch((error) => {
+          if (this._songPathFilter?.supported === supported) this._songPathFilter = null;
+          throw error;
+        });
+      this._songPathFilter = { supported, expiresAt: now + NAVIDROME_SONG_CACHE_TTL_MS };
+    }
+    return this._songPathFilter.supported;
+  }
+
+  async _searchSongs(filters) {
+    const query = new URLSearchParams({
+      ...filters,
+      _start: "0",
+      _end: String(NAVIDROME_SONG_LOOKUP_LIMIT),
+    });
+    const page = await this._nativeRequest("GET", `/api/song?${query}`);
+    const songs = Array.isArray(page) ? page : [];
+    return { songs, complete: songs.length < NAVIDROME_SONG_LOOKUP_LIMIT };
   }
 
   async searchSongsByArtist(artistName, limit = 5) {
@@ -435,37 +497,6 @@ export class NavidromeClient {
     }
   }
 
-  invalidateIndexedSongsCache() {
-    this._indexedSongsPromise = null;
-    this._indexedSongsAt = 0;
-  }
-
-  async _getIndexedSongs(force = false) {
-    const now = Date.now();
-    if (force || !this._indexedSongsPromise || now - (this._indexedSongsAt || 0) > 30000) {
-      this._indexedSongsAt = now;
-      this._indexedSongsPromise = (async () => {
-        const songs = [];
-        for (let start = 0; ; ) {
-          const page = await this._nativeRequest(
-            "GET",
-            `/api/song?_start=${start}&_end=${start + NAVIDROME_SONG_PAGE_SIZE}`,
-          );
-          if (!Array.isArray(page) || page.length === 0) break;
-          songs.push(...page);
-          if (page.length < NAVIDROME_SONG_PAGE_SIZE) break;
-          start += page.length;
-        }
-        return songs;
-      })()
-        .catch(() => {
-          this._indexedSongsPromise = null;
-          return [];
-        });
-    }
-    return this._indexedSongsPromise;
-  }
-
   async uploadPlaylistArtwork(playlistId, data, filename = "cover.webp", contentType = "image/webp") {
     return this._requestPlaylistArtwork(
       "POST",
@@ -495,7 +526,6 @@ export class NavidromeClient {
   async scanLibrary() {
     if (!this.isConfigured()) return null;
     try {
-      this._indexedSongsPromise = null;
       return await this.request("startScan");
     } catch (err) {
       console.warn("[Navidrome] scanLibrary failed:", err?.message);
