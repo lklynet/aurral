@@ -78,6 +78,14 @@ const liveActivePlaylistStmt = db.prepare(
   `SELECT 1 FROM ${JOBS_TABLE} WHERE playlist_type = ?
    AND status IN ('pending', 'downloading') LIMIT 1`,
 );
+const liveActivePlaylistJobsStmt = db.prepare(
+  `SELECT * FROM ${JOBS_TABLE} WHERE status IN ('pending', 'downloading')
+   AND COALESCE(NULLIF(playlist_type, ''), playlist_id) = ?
+   ORDER BY created_at, id`,
+);
+const liveAlbumJobsStmt = db.prepare(
+  `SELECT * FROM ${JOBS_TABLE} WHERE album_mbid IS NOT NULL AND album_mbid != ''`,
+);
 
 function rowToJob(row) {
   return {
@@ -1461,6 +1469,15 @@ export class DownloadTracker {
     return count;
   }
 
+  getActiveByPlaylistType(playlistType) {
+    return sortByCreatedAt([...this.jobs.values()].filter((job) =>
+      job.playlistType === playlistType && (job.status === "pending" || job.status === "downloading")));
+  }
+
+  getByAlbumMbid(matches) {
+    return sortByCreatedAt([...this.jobs.values()].filter((job) => job.albumMbid && matches(job.albumMbid)));
+  }
+
   hasActiveJobsForPlaylist(playlistType) {
     for (const job of this.jobs.values()) {
       if (job.playlistType !== playlistType) continue;
@@ -1664,6 +1681,14 @@ function readTrackerFromDatabase(name, args) {
   if (name === "hasActiveJobsForPlaylist") {
     return !!liveActivePlaylistStmt.get(first ?? null);
   }
+  if (name === "getActiveByPlaylistType") return liveJobs(liveActivePlaylistJobsStmt.all(first ?? null));
+  if (name === "getByAlbumMbid") {
+    const jobs = [];
+    for (const row of liveAlbumJobsStmt.iterate()) {
+      if (first(row.album_mbid)) jobs.push(rowToJob(row));
+    }
+    return sortByCreatedAt(jobs);
+  }
   if (name === "getRevision") return persistedRevisionStmt.get()?.revision || 0;
   if (name === "getStats" || name === "getStatsByPlaylistType" || name === "getPlaylistTypeStats") {
     const byPlaylist = {};
@@ -1688,8 +1713,8 @@ function readTrackerFromDatabase(name, args) {
 
 const LIVE_READ_METHODS = new Set([
   "getJob", "getAll", "getByPlaylistType", "getByPlaylistId", "getByStatus", "getDoneWithFinalPath",
-  "getNextPending", "peekPending", "hasActiveJobsForPlaylist", "getRevision",
-  "getStats", "getStatsByPlaylistType", "getPlaylistTypeStats",
+  "getNextPending", "peekPending", "hasActiveJobsForPlaylist", "getActiveByPlaylistType", "getByAlbumMbid",
+  "getRevision", "getStats", "getStatsByPlaylistType", "getPlaylistTypeStats",
 ]);
 
 for (const name of Object.getOwnPropertyNames(DownloadTracker.prototype)) {

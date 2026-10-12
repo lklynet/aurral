@@ -14,24 +14,27 @@ export const isAurralAlbumJob = (job) => job.playlistType === "library" && job.m
 // release ID that a scan stored as the album's mbid.
 const albumKeys = (albumMbids) => new Set([albumMbids].flat().map(normalizeKey).filter(Boolean));
 
-export function findAurralAlbumJobs(albumMbids) {
-  const keys = albumKeys(albumMbids);
-  if (keys.size === 0) return [];
-  return downloadTracker.getAll().filter(
-    (job) => isAurralAlbumJob(job) && keys.has(normalizeKey(job.albumMbid)),
-  );
+export function indexAurralAlbumJobs(albumMbids) {
+  const requested = albumKeys(albumMbids);
+  const jobsByAlbum = new Map();
+  const position = new Map();
+  if (requested.size > 0) {
+    for (const job of downloadTracker.getByAlbumMbid((albumMbid) => requested.has(normalizeKey(albumMbid)))) {
+      if (!isAurralAlbumJob(job)) continue;
+      const albumKey = normalizeKey(job.albumMbid);
+      const jobs = jobsByAlbum.get(albumKey) || [];
+      jobs.push(job);
+      jobsByAlbum.set(albumKey, jobs);
+      position.set(job, position.size);
+    }
+  }
+  return (mbids) => [...albumKeys(mbids)]
+    .flatMap((key) => jobsByAlbum.get(key) || [])
+    .sort((left, right) => position.get(left) - position.get(right));
 }
 
-export function indexAurralAlbumJobs() {
-  const jobsByAlbum = new Map();
-  for (const job of downloadTracker.getAll()) {
-    const albumKey = normalizeKey(job.albumMbid);
-    if (!albumKey || !isAurralAlbumJob(job)) continue;
-    const jobs = jobsByAlbum.get(albumKey) || [];
-    jobs.push(job);
-    jobsByAlbum.set(albumKey, jobs);
-  }
-  return (albumMbids) => [...albumKeys(albumMbids)].flatMap((key) => jobsByAlbum.get(key) || []);
+export function findAurralAlbumJobs(albumMbids) {
+  return indexAurralAlbumJobs(albumMbids)(albumMbids);
 }
 
 export function jobMatchesTrack(job, track) {

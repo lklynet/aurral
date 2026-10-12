@@ -261,7 +261,6 @@ export const getLidarrStatusSnapshot = async ({ refresh = false } = {}) => {
 export const getAllDownloadStatuses = async () =>
   (await getLidarrStatusSnapshot()).statuses;
 
-const ACTIVE_LIBRARY_JOB_STATUSES = new Set(["pending", "downloading"]);
 const ACTIVE_LIDARR_ALBUM_STATUSES = new Set([
   "adding",
   "searching",
@@ -288,8 +287,7 @@ export const getActiveLibraryDownloads = async () => {
   const albums = new Set();
   const artists = new Set();
   const tracks = [];
-  for (const job of downloadTracker.getAll()) {
-    if (job.playlistType !== "library" || !ACTIVE_LIBRARY_JOB_STATUSES.has(job.status)) continue;
+  for (const job of downloadTracker.getActiveByPlaylistType("library")) {
     tracks.push({
       mbid: job.trackMbid || null,
       artistName: job.artistName,
@@ -564,10 +562,12 @@ export function registerDownloads(router) {
       const statuses = await getDownloadStatusesForAlbumIds(
         albumIdArray.filter((id) => !String(id).startsWith(aurralPrefix)),
       );
-      for (const key of aurralIds) {
-        const status = libraryManager.getAurralAlbumStatus(key.slice(aurralPrefix.length));
-        if (!status?.error) statuses[key] = status;
-      }
+      const aurralStatuses = libraryManager.getAurralAlbumStatuses(
+        aurralIds.map((key) => key.slice(aurralPrefix.length)),
+      );
+      aurralIds.forEach((key, index) => {
+        if (!aurralStatuses[index]?.error) statuses[key] = aurralStatuses[index];
+      });
       res.json(statuses);
     } catch (error) {
       res.status(500).json({

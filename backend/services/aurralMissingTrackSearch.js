@@ -70,8 +70,9 @@ function hasSearchableMissingTrack(album, jobs) {
 
 function selectDueAlbums(intervalDays) {
   const dueBefore = Date.now() - intervalDays * DAY_MS + HOUR_MS;
-  const jobsForAlbum = indexAurralAlbumJobs();
-  const candidates = candidateAlbumsStmt.all(dueBefore)
+  const albums = candidateAlbumsStmt.all(dueBefore);
+  const jobsForAlbum = indexAurralAlbumJobs(albums.flatMap((album) => [album.releaseGroupMbid, album.mbid]));
+  const candidates = albums
     .map((album) => {
       const jobs = jobsForAlbum([album.releaseGroupMbid, album.mbid]);
       const lastActivityAt = Math.max(Number(album.lastSearchedAt) || 0, ...jobs.map(jobActivityAt));

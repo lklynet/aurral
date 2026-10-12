@@ -52,6 +52,7 @@ import {
   cancelFileUpgradeJobs,
   cancelLibraryTrackJobs,
   findAurralAlbumJobs,
+  indexAurralAlbumJobs,
   jobMatchesTrack,
   summarizeAurralAlbum,
 } from "./aurralAlbumJobs.js";
@@ -2350,13 +2351,13 @@ export class LibraryManager {
     return { album, artist, library, mappedAlbum };
   }
 
-  _summarizeAurralAlbum(album, tracks) {
+  _summarizeAurralAlbum(album, tracks, jobsForAlbum = findAurralAlbumJobs) {
     const sourceConfigured = isAnyDownloadSourceConfigured();
     return {
       managedBy: "aurral",
       ...summarizeAurralAlbum({
         tracks: tracks.filter((track) => album.trackIds.includes(track.id)),
-        jobs: findAurralAlbumJobs(albumJobKeys(album)),
+        jobs: jobsForAlbum(albumJobKeys(album)),
         sourceConfigured,
         sourceMessage: sourceConfigured ? null : getDownloadSourceNotConfiguredMessage(),
       }),
@@ -2411,13 +2412,18 @@ export class LibraryManager {
   }
 
   getAurralAlbumStatus(canonicalId) {
-    const resolved = this._resolveAurralAlbum(canonicalId);
-    if (resolved.error) return resolved;
-    const { album, library, mappedAlbum } = resolved;
-    return {
-      canonicalId: mappedAlbum.canonicalId,
-      ...this._summarizeAurralAlbum(album, library.tracks),
-    };
+    return this.getAurralAlbumStatuses([canonicalId])[0];
+  }
+
+  getAurralAlbumStatuses(canonicalIds) {
+    const resolved = canonicalIds.map((canonicalId) => this._resolveAurralAlbum(canonicalId));
+    const jobsForAlbum = indexAurralAlbumJobs(
+      resolved.flatMap((entry) => (entry.error ? [] : albumJobKeys(entry.album))),
+    );
+    return resolved.map((entry) => entry.error ? entry : {
+      canonicalId: entry.mappedAlbum.canonicalId,
+      ...this._summarizeAurralAlbum(entry.album, entry.library.tracks, jobsForAlbum),
+    });
   }
 
   async setAurralTrackMonitoring(canonicalId, { monitored } = {}) {

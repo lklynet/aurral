@@ -91,8 +91,25 @@ async function callRoute(key, params = {}, body = {}, query = {}) {
   return response;
 }
 
+async function callRouteAsWebProcess(t, ...args) {
+  const statement = Object.getPrototypeOf(db.prepare("SELECT 1"));
+  const reads = ["all", "get", "iterate"].map((method) => t.mock.method(statement, method));
+  const previousMode = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
+  try {
+    const response = await callRoute(...args);
+    const jobReads = reads
+      .flatMap((read) => read.mock.calls)
+      .filter((call) => /\bplaylist_download_jobs\b/.test(call.this.source));
+    return { response, jobReads: jobReads.length };
+  } finally {
+    process.env.NODE_ENV = previousMode;
+    for (const read of reads) read.mock.restore();
+  }
+}
+
 let albumSequence = 0;
-function createLibraryAlbum({ managedBy = "aurral", trackCount = 3, availableTracks = 0 } = {}) {
+function createLibraryAlbum({ managedBy = "aurral", trackCount = 3, availableTracks = 0, releaseMbid = null } = {}) {
   albumSequence += 1;
   const suffix = String(albumSequence).padStart(12, "0");
   const artistMbid = `bbbbbbbb-bbbb-4bbb-8bbb-${suffix}`;
@@ -104,7 +121,7 @@ function createLibraryAlbum({ managedBy = "aurral", trackCount = 3, availableTra
   });
   const album = libraryStore.upsertLibraryAlbum({
     identityKey: `release-group:${albumMbid}`,
-    mbid: albumMbid,
+    mbid: releaseMbid || albumMbid,
     releaseGroupMbid: albumMbid,
     artistId: artist.id,
     title: `Lifecycle Album ${albumSequence}`,
@@ -129,7 +146,8 @@ function createLibraryAlbum({ managedBy = "aurral", trackCount = 3, availableTra
     return { ...track, trackMbid };
   });
   managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy });
-  const jobFor = (index, requestGroupId = `group-${albumSequence}`) =>
+  const requestGroupId = `group-${albumSequence}`;
+  const jobFor = (index, job = {}, playlistType = "library") =>
     downloadTracker.addJob(
       {
         artistName: artist.name,
@@ -140,8 +158,9 @@ function createLibraryAlbum({ managedBy = "aurral", trackCount = 3, availableTra
         trackMbid: tracks[index].trackMbid,
         managedBy: "aurral",
         requestGroupId,
+        ...job,
       },
-      "library",
+      playlistType,
     );
   return { album, albumMbid, artistMbid, tracks, jobFor };
 }
@@ -500,7 +519,7 @@ function setDownloadSourceConfigured(configured) {
   });
 }
 
-test("album status aggregates library availability and per-track jobs", async () => {
+test("album status aggregates library availability and per-track jobs", async (t) => {
   const originalIsConfigured = lidarrClient.isConfigured;
   const originalRequest = lidarrClient.request;
   const lidarrCalls = [];
@@ -528,6 +547,7 @@ test("album status aggregates library availability and per-track jobs", async ()
     for (const scenario of scenarios) {
       setDownloadSourceConfigured(scenario.sourceConfigured !== false);
       const { album, jobFor } = createLibraryAlbum({ availableTracks: scenario.availableTracks || 0 });
+      scenario.key = `aurral:${album.id}`;
       scenario.jobs.forEach((jobStatus, index) => {
         if (!jobStatus) return;
         const jobId = jobFor(index);
@@ -553,20 +573,78 @@ test("album status aggregates library availability and per-track jobs", async ()
     }
 
     setDownloadSourceConfigured(true);
-    const { album } = createLibraryAlbum();
-    const batch = await callRoute(
-      "GET /downloads/status",
-      {},
-      {},
-      { albumIds: `aurral:${album.id},aurral:not-a-number` },
-    );
+    const { album: lidarrAlbum } = createLibraryAlbum({ managedBy: "lidarr" });
+    const polled = scenarios.filter((scenario) => scenario.sourceConfigured !== false);
+    const query = {
+      albumIds: [...polled.map((scenario) => scenario.key), `aurral:${lidarrAlbum.id}`, "aurral:not-a-number"].join(","),
+    };
+    const batch = await callRoute("GET /downloads/status", {}, {}, query);
     assert.equal(batch.statusCode, 200);
-    assert.equal(batch.body[`aurral:${album.id}`].status, "missing");
-    assert.equal(batch.body["aurral:not-a-number"], undefined);
+    assert.deepEqual(Object.keys(batch.body).sort(), polled.map((scenario) => scenario.key).sort());
+    for (const scenario of polled) {
+      assert.equal(batch.body[scenario.key].status, scenario.status, scenario.name);
+      assert.equal(batch.body[scenario.key].recovery?.code ?? null, scenario.recovery ?? null, scenario.name);
+    }
+    const { response: webBatch } = await callRouteAsWebProcess(t, "GET /downloads/status", {}, {}, query);
+    assert.deepEqual(webBatch.body, batch.body);
     assert.equal(lidarrCalls.length, 0);
   } finally {
     lidarrClient.isConfigured = originalIsConfigured;
     lidarrClient.request = originalRequest;
+    setDownloadSourceConfigured(false);
+  }
+});
+
+test("a download status poll finds album jobs under either album ID in any spelling and reads jobs once", async (t) => {
+  setDownloadSourceConfigured(true);
+  try {
+    const legacy = createLibraryAlbum({ trackCount: 2, releaseMbid: "abcdabcd-abcd-4bcd-8bcd-000000000001" });
+    const releaseMbid = legacy.album.mbid;
+    const olderJobs = [
+      legacy.jobFor(0, { albumMbid: releaseMbid }),
+      legacy.jobFor(1),
+    ];
+    const newerJobs = [
+      legacy.jobFor(0),
+      legacy.jobFor(1, { albumMbid: releaseMbid }),
+    ];
+    olderJobs.forEach((jobId) => downloadTracker.setFailed(jobId, "No matching source result"));
+
+    const spelled = createLibraryAlbum({ trackCount: 2 });
+    const paddedJob = spelled.jobFor(0, { albumMbid: spelled.albumMbid.toUpperCase() });
+    spelled.jobFor(1, { albumMbid: spelled.albumMbid.toUpperCase() });
+    downloadTracker.setDownloading(paddedJob);
+
+    const untouched = createLibraryAlbum({ trackCount: 2 });
+    untouched.jobFor(0, { managedBy: "lidarr" });
+    untouched.jobFor(1, {}, "discover");
+
+    db.prepare("UPDATE playlist_download_jobs SET created_at = created_at - 60000 WHERE id IN (?, ?)").run(...olderJobs);
+    db.prepare("UPDATE playlist_download_jobs SET album_mbid = ? WHERE id = ?")
+      .run(` ${spelled.albumMbid.toUpperCase()}\t`, paddedJob);
+    downloadTracker.reconcileCommittedJobs();
+
+    const keys = [legacy, spelled, untouched].map(({ album }) => `aurral:${album.id}`);
+    const query = { albumIds: keys.join(",") };
+    const expected = {
+      [keys[0]]: { status: "queued", pending: 2, failed: 0 },
+      [keys[1]]: { status: "downloading", pending: 1, downloading: 1 },
+      [keys[2]]: { status: "missing", missing: 2, pending: 0 },
+    };
+    const poll = await callRoute("GET /downloads/status", {}, {}, query);
+    const webPoll = await callRouteAsWebProcess(t, "GET /downloads/status", {}, {}, query);
+    const singleAlbumPoll = await callRouteAsWebProcess(t, "GET /downloads/status", {}, {}, { albumIds: keys[0] });
+
+    for (const [key, { status, ...counts }] of Object.entries(expected)) {
+      assert.equal(poll.body[key].status, status, key);
+      for (const [name, count] of Object.entries(counts)) {
+        assert.equal(poll.body[key].counts[name], count, `${key} ${name}`);
+      }
+    }
+    assert.deepEqual(webPoll.response.body, poll.body);
+    assert.equal(webPoll.jobReads, 1);
+    assert.equal(singleAlbumPoll.jobReads, 1);
+  } finally {
     setDownloadSourceConfigured(false);
   }
 });
@@ -628,7 +706,7 @@ test("re-requesting a missing completed file reports a missing download source",
   assert.equal(downloadTracker.getJob(jobId).status, "failed");
 });
 
-test("active downloads list in-flight albums, artists, and tracks so buttons survive a reload", async () => {
+test("active downloads list in-flight albums, artists, and tracks so buttons survive a reload", async (t) => {
   const originalIsConfigured = lidarrClient.isConfigured;
   const originalRequest = lidarrClient.request;
   lidarrClient.isConfigured = () => true;
@@ -688,6 +766,8 @@ test("active downloads list in-flight albums, artists, and tracks so buttons sur
       response.body.tracks.map((track) => track.mbid).sort(),
       [queuedAlbum.tracks[0].trackMbid, queuedAlbum.tracks[1].trackMbid, "single-track-mbid"].sort(),
     );
+    const { response: webResponse } = await callRouteAsWebProcess(t, "GET /downloads/active");
+    assert.deepEqual(webResponse.body, response.body);
   } finally {
     lidarrClient.isConfigured = originalIsConfigured;
     lidarrClient.request = originalRequest;
