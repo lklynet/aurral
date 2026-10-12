@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { access, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -901,13 +901,14 @@ async function withReleaseGroups(releaseGroups, run) {
       id,
       title: group.title,
       artistid: group.artistMbid,
-      artists: [{ id: group.artistMbid, artistname: group.artist }],
-      releases: group.releases.map(({ id: releaseId, titles, perDisc = titles.length, recordings = group.recordings }) => ({
+      artists: [{ id: group.artistMbid, artistname: group.artist }, ...(group.credits || [])],
+      releases: group.releases.map(({ id: releaseId, titles, perDisc = titles.length, recordings = group.recordings, merged = {} }) => ({
         id: releaseId,
         status: "Official",
         tracks: titles.map((title, index) => ({
           id: `${releaseId}-${index}`,
           recordingid: recordings[title],
+          oldrecordingids: merged[title] || [],
           trackname: title,
           trackposition: (index % perDisc) + 1,
           mediumnumber: Math.floor(index / perDisc) + 1,
@@ -1085,7 +1086,7 @@ test("a song an album keeps after its untagged file is gone is listed once, and 
   });
 });
 
-test("an album lists the edition its files come from, again when a file of another edition joins it", async (t) => {
+test("an album lists the edition its files come from, again when a file of another edition joins it or a file is retagged", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-edition-"));
   const artist = `Edition List ${process.pid}`;
   const title = `Edition ${process.pid}`;
@@ -1117,6 +1118,14 @@ test("an album lists the edition its files come from, again when a file of anoth
     await scan();
     assert.deepEqual(albumListing(title), listed);
     assert.equal(getLibraryIndexLastModified(), modified);
+
+    await makeTrack(path.join(root, artist, title, "04 Bonus.flac"), {
+      ARTIST: artist, ALBUMARTIST: artist, ALBUM: title, TITLE: "Two", TRACKNUMBER: 2,
+      MUSICBRAINZ_ALBUMARTISTID: album.group.artistMbid, MUSICBRAINZ_RELEASEGROUPID: album.releaseGroup,
+      MUSICBRAINZ_ALBUMID: album.releaseGroup, MUSICBRAINZ_TRACKID: album.group.recordings.Two,
+    });
+    await scan();
+    assert.deepEqual(albumListing(title), [["One", "have"], ["Two", "have"], ["Three", "missing"]]);
   });
 });
 
@@ -1285,6 +1294,211 @@ test("an untagged song numbered apart from the album's song with its title stays
       ["Outro", "have"],
       ["Theme", "have"],
     ]);
+  });
+});
+
+const taggedTrack = (root, artist, title, album, name, number, recording, artistMbid = album.group.artistMbid) =>
+  makeTrack(path.join(root, artist, title, `${String(number).padStart(2, "0")} ${name}.flac`), {
+    ARTIST: artist, ALBUMARTIST: artist, ALBUM: title, TITLE: name, TRACKNUMBER: number,
+    MUSICBRAINZ_ALBUMARTISTID: artistMbid, MUSICBRAINZ_RELEASEGROUPID: album.releaseGroup,
+    MUSICBRAINZ_ALBUMID: album.releaseGroup, MUSICBRAINZ_TRACKID: recording,
+  });
+
+test("a file at a listed song's place is that song, keeping its own title when the album first lists, and taking the place of a song an earlier listing left there without a file", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-stale-"));
+  const artist = `Stale List ${process.pid}`;
+  const title = `Stale ${process.pid}`;
+  const titles = ["One", "You're in My Head", "Two", "Three"];
+  const merged = { Three: [uuid("c1c1c1c1", 4)] };
+  const album = listedAlbum(artist, uuid("dddddddd", 11), title, 110, titles, [{ id: uuid("bbbbbbbb", 110), titles, merged }]);
+  t.after(async () => {
+    removeArtistsNamed(artist);
+    await rm(root, { recursive: true, force: true });
+  });
+  await withReleaseGroups({ [album.releaseGroup]: album.group }, async () => {
+    await album.file(root, "One");
+    await taggedTrack(root, artist, title, album, "Two (feat. Guest)", 3, uuid("c1c1c1c1", 3));
+    await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
+    assert.deepEqual(albumListing(title), [["One", "have"], ["You're in My Head", "missing"], ["Two (feat. Guest)", "have"], ["Three", "missing"]]);
+
+    await taggedTrack(root, artist, title, album, "You'r in My Head", 2, uuid("c1c1c1c1", 2));
+    await taggedTrack(root, artist, title, album, "Trois", 4, merged.Three[0]);
+    await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
+    assert.deepEqual(albumListing(title), [["One", "have"], ["You're in My Head", "have"], ["Two (feat. Guest)", "have"], ["Trois", "have"]]);
+  });
+});
+
+test("a file is the listed song its recording is, before another whose title it shares at its place", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-recording-first-"));
+  const artist = `Recording First List ${process.pid}`;
+  const title = `Recording First ${process.pid}`;
+  const album = listedAlbum(artist, uuid("dddddddd", 16), title, 160, ["Tonight", "Tonight, Tonight"]);
+  t.after(async () => {
+    removeArtistsNamed(artist);
+    await rm(root, { recursive: true, force: true });
+  });
+  await taggedTrack(root, artist, title, album, "Tonight", 2, album.group.recordings.Tonight);
+  await withReleaseGroups({ [album.releaseGroup]: album.group }, async () => {
+    await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
+
+    assert.deepEqual(albumListing(title).sort(), [["Tonight, Tonight", "missing"], ["Tonight", "have"]]);
+  });
+});
+
+test("a file tagged with a recording MusicBrainz merged into a release's song is that song, and counts toward its release", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-merged-"));
+  const artist = `Merged List ${process.pid}`;
+  const title = `Merged ${process.pid}`;
+  const remastered = { One: uuid("c2c2c2c2", 1), Two: uuid("c2c2c2c2", 2), Three: uuid("c2c2c2c2", 3), Bonus: uuid("c2c2c2c2", 4) };
+  const merged = { One: [uuid("c3c3c3c3", 1)], Two: [uuid("c3c3c3c3", 2)] };
+  const album = listedAlbum(artist, uuid("dddddddd", 12), title, 120, ["One", "Two"], [
+    { id: uuid("bbbbbbbb", 120), titles: ["One", "Two"] },
+    { id: uuid("bbbbbbbb", 121), titles: ["One", "Two"] },
+    { id: uuid("bbbbbbbb", 122), titles: ["One", "Two", "Three", "Bonus"], recordings: remastered, merged },
+  ]);
+  t.after(async () => {
+    removeArtistsNamed(artist);
+    await rm(root, { recursive: true, force: true });
+  });
+  await taggedTrack(root, artist, title, album, "One", 1, merged.One[0]);
+  await taggedTrack(root, artist, title, album, "Two (LP Version)", 6, merged.Two[0]);
+  await withReleaseGroups({ [album.releaseGroup]: album.group }, async () => {
+    await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
+
+    assert.deepEqual(albumListing(title), [["One", "have"], ["Three", "missing"], ["Bonus", "missing"], ["Two (LP Version)", "have"]]);
+  });
+});
+
+test("a tagged file numbered apart from its release is the release's song with its title, unless the release lists the title twice or another file has it", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-tagged-apart-"));
+  const artist = `Tagged Apart List ${process.pid}`;
+  const title = `Tagged Apart ${process.pid}`;
+  const album = listedAlbum(artist, uuid("dddddddd", 13), title, 130, ["When You Die", "Intro", "Song", "Intro", "Outro"]);
+  t.after(async () => {
+    removeArtistsNamed(artist);
+    await rm(root, { recursive: true, force: true });
+  });
+  await taggedTrack(root, artist, title, album, "When You Die", 7, uuid("c4c4c4c4", 1));
+  await taggedTrack(root, artist, title, album, "Intro", 8, uuid("c4c4c4c4", 2));
+  await taggedTrack(root, artist, title, album, "Outro", 9, uuid("c4c4c4c4", 3));
+  await taggedTrack(root, artist, title, album, "Outro", 10, uuid("c4c4c4c4", 4));
+  await withReleaseGroups({ [album.releaseGroup]: album.group }, async () => {
+    await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
+
+    assert.deepEqual(albumListing(title), [
+      ["Intro", "missing"],
+      ["Song", "missing"],
+      ["Intro", "missing"],
+      ["Outro", "missing"],
+      ["When You Die", "have"],
+      ["Intro", "have"],
+      ["Outro", "have"],
+      ["Outro", "have"],
+    ]);
+  });
+});
+
+test("a second file of a song, tagged with a recording its album's release does not list, is that song's with an untagged third through a full rescan, unless it is another version or at another song's place", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-copies-"));
+  const artist = `Copies List ${process.pid}`;
+  const title = `Copies ${process.pid}`;
+  const album = listedAlbum(artist, uuid("dddddddd", 17), title, 170, ["Sex and Candy", "3 A.M.", "Kids", "Song"]);
+  const scan = (force = false) => scanConfiguredLibrary({ musicRoot: root, includeLidarr: false, force });
+  const filesOf = (name) => db.prepare(
+    `SELECT media.path FROM library_media_files AS media JOIN library_tracks AS track ON track.id = media.track_id
+     WHERE track.title = ? AND media.available = 1 ORDER BY media.path`,
+  ).pluck().all(name);
+  const listed = [["3 A.M.", "have"], ["Kids (Live)", "have"], ["Kids", "missing"], ["Sex & Candy", "have"], ["Sex and Candy", "have"], ["Song", "missing"]];
+  t.after(async () => {
+    removeArtistsNamed(artist);
+    await rm(root, { recursive: true, force: true });
+  });
+  await withReleaseGroups({ [album.releaseGroup]: album.group }, async (provider) => {
+    provider.up = false;
+    const untagged = await taggedTrack(root, artist, title, album, "3 AM", 2, "");
+    await scan();
+    const candy = [await album.file(root, "Sex and Candy"), await taggedTrack(root, artist, title, album, "Sex & Candy", 1, uuid("c5c5c5c5", 1))];
+    const am = [await album.file(root, "3 A.M."), await taggedTrack(root, artist, title, album, "3AM", 2, uuid("c5c5c5c5", 2)), untagged];
+    await taggedTrack(root, artist, title, album, "Kids (Live)", 3, uuid("c5c5c5c5", 3));
+    await taggedTrack(root, artist, title, album, "Sex & Candy", 4, uuid("c5c5c5c5", 4));
+    await scan();
+    provider.up = true;
+    await scan();
+
+    assert.deepEqual(albumListing(title).sort(), listed);
+    assert.deepEqual(filesOf("Sex and Candy"), candy.toSorted());
+    assert.deepEqual(filesOf("3 A.M."), am.toSorted());
+
+    await scan(true);
+    assert.deepEqual(albumListing(title).sort(), listed);
+    assert.deepEqual(filesOf("3 A.M."), am.toSorted());
+  });
+});
+
+test("an album lists its release group only when the group holds one of its files, by recording and title when the group is another artist's", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-guessed-"));
+  const artist = `Guessed List ${process.pid}`;
+  const artistMbid = uuid("dddddddd", 14);
+  const other = { artist: "Someone Else", artistMbid: uuid("dddddddd", 15) };
+  const album = (name, index, titles) => listedAlbum(artist, artistMbid, `${name} ${process.pid}`, index, titles);
+  const elsewhere = album("Elsewhere", 140, ["One", "Two"]);
+  const merged = { One: [uuid("c6c6c6c6", 1)] };
+  const renamed = listedAlbum(artist, artistMbid, `Renamed ${process.pid}`, 145, ["One", "Two"], [
+    { id: uuid("bbbbbbbb", 145), titles: ["One", "Two"], merged },
+  ]);
+  const otherSong = album("Other Song", 141, ["One", "Two"]);
+  const titleOnly = album("Title Only", 142, ["One", "Two"]);
+  const featured = album("Featured", 143, ["One", "Two"]);
+  const credited = album("Credited", 144, ["Duet", "Solo"]);
+  t.after(async () => {
+    removeArtistsNamed(artist);
+    await rm(root, { recursive: true, force: true });
+  });
+  await taggedTrack(root, artist, `Elsewhere ${process.pid}`, elsewhere, "Stranger", 1, "");
+  await taggedTrack(root, artist, `Renamed ${process.pid}`, renamed, "Another Name", 1, merged.One[0]);
+  await taggedTrack(root, artist, `Other Song ${process.pid}`, otherSong, "Main Theme", 1, otherSong.group.recordings.One);
+  await taggedTrack(root, artist, `Title Only ${process.pid}`, titleOnly, "One", 1, "");
+  await taggedTrack(root, artist, `Featured ${process.pid}`, featured, "One (feat. Guest)", 1, featured.group.recordings.One);
+  await taggedTrack(root, artist, `Credited ${process.pid}`, credited, "Duet", 1, "");
+  await withReleaseGroups({
+    [elsewhere.releaseGroup]: elsewhere.group,
+    [renamed.releaseGroup]: renamed.group,
+    [otherSong.releaseGroup]: { ...otherSong.group, ...other },
+    [titleOnly.releaseGroup]: { ...titleOnly.group, ...other },
+    [featured.releaseGroup]: { ...featured.group, ...other },
+    [credited.releaseGroup]: { ...credited.group, ...other, credits: [{ id: artistMbid, artistname: artist }] },
+  }, async () => {
+    await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
+
+    assert.deepEqual(albumListing(`Elsewhere ${process.pid}`), [["Stranger", "have"]]);
+    assert.deepEqual(albumListing(`Renamed ${process.pid}`), [["Another Name", "have"], ["Two", "missing"]]);
+    assert.deepEqual(albumListing(`Other Song ${process.pid}`), [["Main Theme", "have"]]);
+    assert.deepEqual(albumListing(`Title Only ${process.pid}`), [["One", "have"]]);
+    assert.deepEqual(albumListing(`Featured ${process.pid}`), [["One (feat. Guest)", "have"], ["Two", "missing"]]);
+    assert.deepEqual(albumListing(`Credited ${process.pid}`), [["Duet", "have"], ["Solo", "missing"]]);
+  });
+});
+
+test("an album someone asked for keeps the release it lists after its files are gone", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-gone-"));
+  const artist = `Gone List ${process.pid}`;
+  const title = `Gone ${process.pid}`;
+  const album = listedAlbum(artist, uuid("dddddddd", 18), title, 180, ["One", "Two"]);
+  const listedRelease = () => JSON.parse(db.prepare("SELECT metadata_json FROM library_albums WHERE title = ?").pluck().get(title)).trackList.release;
+  t.after(async () => {
+    removeArtistsNamed(artist);
+    await rm(root, { recursive: true, force: true });
+  });
+  await withReleaseGroups({ [album.releaseGroup]: album.group }, async () => {
+    const file = await album.file(root, "One");
+    await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
+    const albumId = db.prepare("SELECT id FROM library_albums WHERE title = ?").pluck().get(title);
+    setLibraryManagement({ entityKind: "album", entityId: albumId, managedBy: "aurral", monitorMode: "monitored" });
+    await rm(file);
+    await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
+
+    assert.deepEqual(albumListing(title), [["One", "missing"], ["Two", "missing"]]);
+    assert.equal(listedRelease(), uuid("bbbbbbbb", 180));
   });
 });
 
@@ -1459,6 +1673,88 @@ test("a file that gains MusicBrainz IDs keeps its album and track, with their fa
   } finally {
     db.prepare("DELETE FROM users WHERE id = ?").run(userId);
     deleteIndexedFile(source, filePath);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("MusicBrainz IDs tagged in capitals are the same IDs, other services' IDs are none, and rows an older scan keyed by them move with their favorites", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-foreign-ids-"));
+  const source = `test-foreign-ids-${process.pid}`;
+  const artist = `Foreign Ids ${process.pid}`;
+  const userId = 9600 + (process.pid % 300);
+  const artistMbid = "2db9d3bf-c1da-45a9-a635-e19bdc3c1add";
+  const groups = ["5a5dce64-e5b1-359c-96f6-fb4bebc4cf6c", "6b6edf75-f6c2-46ad-a7a7-ac5cfcd5d07d"];
+  const recordings = ["c9824483-339f-4392-b7a9-2983ead513f4", "f5d74f4e-ebc0-4b1e-9d0c-1f2a3b4c5d6e", "e45cd7a6-64d1-4a2b-8c3d-4e5f6a7b8c9d", "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"];
+  const capitals = (id) => id.replace(/(^|-)([a-f])/g, (_, dash, letter) => dash + letter.toUpperCase());
+  const deezer = "4246362661";
+  const files = [
+    { name: "Lack/01 One.flac", title: "One", group: capitals(groups[0]), recording: capitals(recordings[0]), artist: capitals(artistMbid),
+      was: { artist: artistMbid, group: groups[0], track: `recording:${capitals(recordings[0])}` } },
+    { name: "Lack/02 Two.flac", title: "Two", group: capitals(groups[0]), recording: capitals(recordings[1]), artist: capitals(artistMbid),
+      was: { artist: artistMbid, group: capitals(groups[0]), track: `recording:${recordings[1]}` } },
+    { name: "Lack/03 Four.flac", title: "Four", group: groups[0], recording: deezer, artist: artistMbid,
+      was: { artist: artistMbid, group: groups[0], track: `recording:${deezer}` } },
+    { name: "Pawn/01 Three.flac", title: "Three", group: groups[1], recording: recordings[2], artist: capitals(artistMbid),
+      was: { artist: capitals(artistMbid), group: groups[1], track: `recording:${recordings[2]}` } },
+    { name: "Violent Things/01 Five.flac", title: "Five", group: "", recording: recordings[3], artist: artistMbid,
+      was: { artist: artistMbid, album: "1KLBdhphdiK82hYpAiw8DR", track: `recording:${recordings[3]}` } },
+  ];
+  for (const file of files) file.path = await createAudioFile(root, `${artist}/${file.name}`);
+  const metadataReader = async (filePath) => {
+    const file = files.find((entry) => entry.path === filePath);
+    const metadata = untagged(artist, path.basename(path.dirname(filePath)), file.title, Number(path.basename(filePath).slice(0, 2)));
+    Object.assign(metadata.common, {
+      musicbrainz_albumartistid: [file.artist],
+      musicbrainz_releasegroupid: file.group,
+      musicbrainz_albumid: "1KLBdhphdiK82hYpAiw8DR",
+      musicbrainz_recordingid: file.recording,
+    });
+    return metadata;
+  };
+  try {
+    await withLibraryScan(source, root, async (scanId) => {
+      for (const file of files) {
+        const { size, mtimeMs } = await stat(file.path);
+        const artistRow = upsertLibraryArtist({ identityKey: `mbid:${file.was.artist}`, mbid: file.was.artist, name: artist });
+        const album = upsertLibraryAlbum({
+          identityKey: file.was.group ? `release-group:${file.was.group}` : `album:${file.was.album}`,
+          releaseGroupMbid: file.was.group || null,
+          mbid: file.was.album || null,
+          artistId: artistRow.id,
+          title: path.dirname(file.name),
+        });
+        const track = upsertLibraryTrack({ identityKey: file.was.track, mbid: file.was.track.split(":")[1], title: file.title, artistName: artist });
+        linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, discNumber: 1, trackNumber: Number(path.basename(file.name).slice(0, 2)) });
+        upsertLibraryMediaFile({ trackId: track.id, albumId: album.id, source, path: file.path, format: "flac", size, mtimeMs, scanId });
+      }
+    });
+    starFor(userId,
+      ["album", `release-group:${capitals(groups[0])}`],
+      ["artist", `mbid:${capitals(artistMbid)}`],
+      ["song", `recording:${capitals(recordings[0])}`],
+      ["song", `recording:${deezer}`]);
+
+    await scanMusicRoot({ rootPath: root, source, metadataReader });
+
+    const rows = files.map((file) => fileRows(source, file.path));
+    assert.deepEqual(rows.slice(0, 4).map((row) => row.albumKey), [groups[0], groups[0], groups[0], groups[1]].map((id) => `release-group:${id}`));
+    assert.match(rows[4].albumKey, /^name:/u);
+    assert.deepEqual([0, 1, 3, 4].map((index) => rows[index].trackKey), recordings.map((id) => `recording:${id}`));
+    assert.match(rows[2].trackKey, /^name:/u);
+    assert.deepEqual(db.prepare("SELECT identity_key FROM library_artists WHERE name = ?").pluck().all(artist), [`mbid:${artistMbid}`]);
+    assert.deepEqual(artistAlbums(artist).map((album) => album.identityKey), [...groups.map((id) => `release-group:${id}`), rows[4].albumKey]);
+    assert.deepEqual(starredKeys(userId), [
+      ["album", `release-group:${groups[0]}`],
+      ["artist", `mbid:${artistMbid}`],
+      ["song", rows[2].trackKey],
+      ["song", `recording:${recordings[0]}`],
+    ]);
+    assert.equal(db.prepare("SELECT COUNT(*) FROM library_tracks WHERE identity_key IN (?, ?)").pluck()
+      .get(`recording:${capitals(recordings[0])}`, `recording:${deezer}`), 0);
+  } finally {
+    db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+    for (const file of files) deleteIndexedFile(source, file.path);
+    removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   }
 });

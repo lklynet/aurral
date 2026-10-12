@@ -9,6 +9,7 @@ import {
   chooseLibraryAlbumRelease,
   getLibraryAlbumsToList,
   getUnresolvedLibraryArtists,
+  isLibraryAlbumReleaseGroup,
   removeLibraryMediaFiles,
   removeMissingLibraryMediaFiles,
   reconcileLibraryAlbums,
@@ -141,7 +142,8 @@ async function resolveUnmatchedLibraryArtists() {
 
 // Each album with a MusicBrainz release group lists the tracks of the release
 // its files come from, again whenever its files change. A release group
-// MusicBrainz does not have lists only the album's files.
+// MusicBrainz does not have, or one that is not the album's, as files tagged
+// by a wrong guess carry, lists only the album's files.
 async function completeLibraryTrackLists() {
   let changed = false;
   let unavailable = null;
@@ -156,7 +158,9 @@ async function completeLibraryTrackLists() {
         return;
       }
     }
-    const release = metadata ? chooseLibraryAlbumRelease(album, metadata.releases, selectAlbumRelease(metadata)) : null;
+    const release = metadata && isLibraryAlbumReleaseGroup(album, metadata)
+      ? chooseLibraryAlbumRelease(album, metadata.releases, selectAlbumRelease(metadata))
+      : null;
     const artists = new Map((metadata?.artists || []).map((artist) => [artist.id, artist.name]));
     const compilation = isVariousArtistsCredit(artists.get(metadata?.artistId), metadata?.artistId);
     if (storeLibraryAlbumTrackList(album.id, {

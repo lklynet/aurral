@@ -71,7 +71,14 @@ const numberPart = (value, fallback = 0) => {
   return Number.isFinite(number) ? Math.max(0, Math.trunc(number)) : fallback;
 };
 
-const normalizeMbid = (value) => text(first(value)) || null;
+const MBID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+
+// MusicBrainz IDs are lower case. A tag in capitals names the same ID, and
+// one in another shape holds another service's ID.
+const normalizeMbid = (value) => {
+  const id = text(first(value)).toLowerCase();
+  return MBID_PATTERN.test(id) ? id : null;
+};
 
 const normalizeMetadata = (metadata) => metadata?.common || {};
 

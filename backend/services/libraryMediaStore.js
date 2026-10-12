@@ -1038,20 +1038,22 @@ function dropUnfiledAlbumTracks() {
 }
 
 // Albums with a MusicBrainz release group whose track list Aurral has not
-// stored, or stored for other files, with the songs of their files. A
-// requested album already has the track list it was requested with.
+// stored, or stored for other files or before they were retagged, with their
+// artist and the songs of their files. A requested album already has the
+// track list it was requested with.
 export function getLibraryAlbumsToList() {
   const albums = db.prepare(
-    `SELECT album.id, album.mbid, album.release_group_mbid AS releaseGroupMbid,
+    `SELECT album.id, album.mbid, album.release_group_mbid AS releaseGroupMbid, artist.mbid AS artistMbid,
        CASE WHEN json_valid(album.metadata_json) THEN json_extract(album.metadata_json, '$.trackList.for') END AS listedFor
      FROM library_albums AS album
+     LEFT JOIN library_artists AS artist ON artist.id = album.artist_id
      WHERE album.release_group_mbid IS NOT NULL
        AND NOT (json_valid(album.metadata_json)
          AND COALESCE(json_extract(album.metadata_json, '$.trackListComplete'), 0) = 1)
      ORDER BY album.id`,
   ).all();
   const files = Map.groupBy(db.prepare(
-    `SELECT DISTINCT link.album_id AS albumId, track.mbid, track.title, media.path
+    `SELECT DISTINCT link.album_id AS albumId, track.mbid, track.title, media.path, media.mtime_ms AS mtimeMs
      FROM library_album_tracks AS link
      JOIN library_albums AS album ON album.id = link.album_id AND album.release_group_mbid IS NOT NULL
      JOIN library_tracks AS track ON track.id = link.track_id
@@ -1062,10 +1064,33 @@ export function getLibraryAlbumsToList() {
   return albums.flatMap(({ listedFor, ...album }) => {
     const songs = files.get(album.id) || [];
     const basis = createHash("sha1")
-      .update(JSON.stringify([album.mbid, songs.map((file) => file.path)]))
+      .update(JSON.stringify([album.mbid, songs.map((file) => [file.path, file.mtimeMs])]))
       .digest("hex");
     return listedFor === basis ? [] : [{ ...album, basis, files: songs.map(({ mbid, title }) => ({ mbid, title })) }];
   });
+}
+
+// A release's track stands for its recording and the ones MusicBrainz merged
+// into it.
+const releaseRecordings = (track) => [track?.recordingId || track?.id, ...(track?.oldRecordingIds || [])]
+  .map(normalizeText).filter(Boolean);
+
+// A release group is an album's when it holds one of the album's files: by
+// recording or title when it is the album artist's, and by recording and
+// title when it is another artist's. A wrong guess tags files with a group
+// that holds none of them, or with another artist's group and recordings of
+// its other songs. An album without files lists the group it was asked for.
+export function isLibraryAlbumReleaseGroup({ artistMbid = null, files = [] }, group) {
+  if (!files.length) return true;
+  const own = !artistMbid
+    || [group?.artistId, ...(group?.artists || []).map((artist) => artist.id)].includes(artistMbid);
+  const tracks = (group?.releases || []).flatMap((release) => release.tracks || []);
+  const holds = (file, track) => {
+    const recorded = Boolean(file.mbid) && releaseRecordings(track).includes(file.mbid);
+    if (own ? recorded : !recorded) return recorded;
+    return isSameSong(track.title, file.title) || isSameSongAtPlace(track.title, file.title);
+  };
+  return files.some((file) => tracks.some((track) => holds(file, track)));
 }
 
 // An album lists the release its files come from: the one holding most of
@@ -1076,7 +1101,7 @@ export function chooseLibraryAlbumRelease({ mbid = null, files = [] }, releases 
   let best = null;
   for (const release of releases) {
     if (!release?.tracks?.length) continue;
-    const recordings = new Set(release.tracks.map((track) => track.recordingId || track.id));
+    const recordings = new Set(release.tracks.flatMap(releaseRecordings));
     const songs = new Set(release.tracks.map((track) => songKey(track.title)));
     const rank = [
       files.filter((file) => file.mbid && recordings.has(file.mbid)).length,
@@ -1092,14 +1117,17 @@ export function chooseLibraryAlbumRelease({ mbid = null, files = [] }, releases 
 }
 
 // An album lists every place on its release. Each track it lists stands for
-// one place: first at the same place, then by recording, then a tagged file
-// by title and position. The rest are added as missing, and an untagged copy
-// then folds into its track. Missing tracks download only once someone asks
-// for them.
+// one place, a file before a song listed earlier without one: the recording,
+// or one MusicBrainz merged into it, at the same place, then elsewhere, then a
+// tagged file by title and position, then the only tagged file left with the
+// title of a song the release lists once. The rest are added as missing, and
+// an untagged copy then folds into its track. Missing tracks download only
+// once someone asks for them.
 export function storeLibraryAlbumTrackList(albumId, { release, basis = null, artistNameFor = () => null }) {
   const tracks = (Array.isArray(release?.tracks) ? release.tracks : [])
     .map((track) => ({
       mbid: normalizeText(track?.recordingId || track?.id),
+      mbids: releaseRecordings(track),
       title: normalizeText(track?.title),
       discNumber: Number(track?.mediumNumber) || 1,
       trackNumber: Number(track?.trackPosition || track?.trackNumber) || 0,
@@ -1111,13 +1139,25 @@ export function storeLibraryAlbumTrackList(albumId, { release, basis = null, art
     if (!album) return false;
     const unused = albumTracksStmt.all(album.id);
     const take = (entry) => entry && unused.splice(unused.indexOf(entry), 1)[0];
-    const atPlace = tracks.map((track) => take(unused.find((entry) => entry.mbid === track.mbid
-      && entry.disc_number === track.discNumber && entry.track_number === track.trackNumber)));
+    const places = tracks.map(() => null);
+    const fill = (find) => {
+      for (const [index, track] of tracks.entries()) places[index] ||= take(find(track));
+    };
+    const atPlace = (track) => (entry) => entry.disc_number === track.discNumber && entry.track_number === track.trackNumber;
+    const recorded = (track) => (entry) => track.mbids.includes(entry.mbid);
+    const files = () => unused.filter((entry) => entry.has_files);
+    const songs = Map.groupBy(tracks, (track) => songKey(track.title));
+    fill((track) => files().find((entry) => recorded(track)(entry) && atPlace(track)(entry)));
+    fill((track) => files().find(recorded(track)));
+    fill((track) => matchLibraryAlbumTrack(files().filter((entry) => entry.mbid), track));
+    fill((track) => {
+      const named = files().filter((entry) => entry.mbid && songKey(entry.title) === songKey(track.title));
+      return songs.get(songKey(track.title)).length === 1 && named.length === 1 ? named[0] : null;
+    });
+    fill((track) => unused.find(recorded(track)));
     const recordings = [];
     for (const [index, track] of tracks.entries()) {
-      const have = atPlace[index]
-        || take(unused.find((entry) => entry.mbid === track.mbid)
-          || matchLibraryAlbumTrack(unused.filter((entry) => entry.has_files && entry.mbid), track));
+      const have = places[index];
       if (have) {
         recordings.push(have.mbid || track.mbid);
         continue;
@@ -1150,15 +1190,19 @@ export function storeLibraryAlbumTrackList(albumId, { release, basis = null, art
 // An untagged copy of a track its album already lists with MusicBrainz IDs
 // is that track: the one at its place, else, for copies numbered another way,
 // as one disc for a release of several, the only one with its title that has
-// no file, when no other copy left has that title.
-function foldUntaggedLibraryTracks() {
+// no file, when no other copy left has that title. A copy tagged with a
+// recording the album's release does not list, as a song downloaded twice
+// carries, is the song the release lists at its place.
+function foldLibraryTrackCopies() {
   const links = db.prepare(
     `SELECT link.album_id, link.disc_number, link.track_number, track.id, track.title, track.identity_key,
        EXISTS (
          SELECT 1 FROM library_media_files AS media
          WHERE media.track_id = track.id AND (media.album_id = link.album_id OR media.album_id IS NULL)
-       ) AS has_files
+       ) AS has_files,
+       ${TRACK_IS_LISTED} AS listed
      FROM library_album_tracks AS link
+     JOIN library_albums AS album ON album.id = link.album_id
      JOIN library_tracks AS track ON track.id = link.track_id
      WHERE link.album_id IN (
        SELECT named.album_id FROM library_album_tracks AS named
@@ -1166,27 +1210,40 @@ function foldUntaggedLibraryTracks() {
        INTERSECT
        SELECT known.album_id FROM library_album_tracks AS known
        JOIN library_tracks AS tagged ON tagged.id = known.track_id AND tagged.identity_key NOT LIKE 'name:%'
+     ) OR link.album_id IN (
+       SELECT copy.album_id FROM library_album_tracks AS copy
+       JOIN library_albums AS album ON album.id = copy.album_id
+         AND CASE WHEN json_valid(album.metadata_json) THEN json_extract(album.metadata_json, '$.trackList.release') END IS NOT NULL
+       JOIN library_tracks AS track ON track.id = copy.track_id AND track.identity_key NOT LIKE 'name:%'
+       WHERE NOT ${TRACK_IS_LISTED} AND EXISTS (
+         SELECT 1 FROM library_media_files AS media
+         WHERE media.track_id = track.id AND (media.album_id = copy.album_id OR media.album_id IS NULL)
+       )
      )
      ORDER BY link.album_id`,
   ).all();
+  const place = (track) => ({ title: track.title, discNumber: track.disc_number, trackNumber: track.track_number });
   let changed = 0;
   for (const [albumId, tracks] of Map.groupBy(links, (link) => link.album_id)) {
     const tagged = tracks.filter((track) => !isNameKey(track.identity_key));
-    const folds = tracks.filter((track) => isNameKey(track.identity_key)).map((track) => [track, matchLibraryAlbumTrack(tagged, {
-      title: track.title,
-      discNumber: track.disc_number,
-      trackNumber: track.track_number,
-    })]);
+    const listed = tagged.filter((track) => track.listed);
+    const copies = tagged.filter((track) => !track.listed && track.has_files)
+      .map((track) => [track, matchLibraryAlbumTrack(listed, place(track))])
+      .filter(([, match]) => match);
+    const copied = new Set(copies.map(([track]) => track.id));
+    const targets = tagged.filter((track) => !copied.has(track.id));
+    const folds = tracks.filter((track) => isNameKey(track.identity_key))
+      .map((track) => [track, matchLibraryAlbumTrack(targets, place(track))]);
     const filled = new Set(folds.map(([, match]) => match?.id));
     const left = folds.filter(([, match]) => !match).map(([track]) => track);
     for (const track of left) {
       const named = (entry) => songKey(entry.title) === songKey(track.title);
-      const songs = new Set(tagged.filter(named).map((entry) => entry.id));
+      const songs = new Set(targets.filter(named).map((entry) => entry.id));
       const match = songs.size === 1 && left.filter(named).length === 1
-        && tagged.find((entry) => songs.has(entry.id) && !entry.has_files && !filled.has(entry.id));
+        && targets.find((entry) => songs.has(entry.id) && !entry.has_files && !filled.has(entry.id));
       if (match) folds.push([track, match]);
     }
-    for (const [track, match] of folds) {
+    for (const [track, match] of [...copies, ...folds]) {
       if (!match) continue;
       becomeAlbumTrack(albumId, track, match);
       changed += 1;
@@ -1248,7 +1305,7 @@ function reconcileAlbums() {
       });
     }
   }
-  return changed + foldUntaggedLibraryTracks() + dropUnfiledAlbumTracks();
+  return changed + foldLibraryTrackCopies() + dropUnfiledAlbumTracks();
 }
 
 // Downloads once took an album's release ID for its release group, and the
@@ -1308,9 +1365,17 @@ const legacyAlbumKeyBuilders = ({ album_title: title, album_artist: albumArtist,
   artistMbid && ((part) => joinFallbackKey(part, ["album", buildIdentityKey("mbid", artistMbid), title])),
 ].filter(Boolean);
 
+const MBID_GLOB = [8, 4, 4, 4, 12].map((length) => "[0-9a-f]".repeat(length)).join("-");
+
+const keyedByForeignIds = (table, prefixes) => db.prepare(
+  `SELECT id FROM ${table} WHERE ${prefixes.map((prefix) =>
+    `(identity_key LIKE '${prefix}:%' AND substr(identity_key, ${prefix.length + 2}) NOT GLOB '${MBID_GLOB}')`).join(" OR ")}`,
+).pluck().all();
+
 // Scans once gave every name written only in letters ASCII cannot spell the
-// same key, so such artists, albums, and tracks share rows. These are the
-// files on rows still keyed that way, which a scan reads again.
+// same key, so such artists, albums, and tracks share rows, and took any value
+// in a MusicBrainz ID tag as an ID, capitals or another service's ID. These
+// are the files on rows still keyed that way, which a scan reads again.
 export function findLegacyKeyedLibraryFiles(source) {
   const artistIds = db.prepare(
     `SELECT id, identity_key, name FROM library_artists
@@ -1350,6 +1415,9 @@ export function findLegacyKeyedLibraryFiles(source) {
         (part) => joinFallbackKey(part, ["track", albumKey(part), row.disc_number, row.track_number, row.title]),
       )))
     .map((row) => row.id);
+  artistIds.push(...keyedByForeignIds("library_artists", ["mbid"]));
+  albumIds.push(...keyedByForeignIds("library_albums", ["release-group", "album"]));
+  trackIds.push(...keyedByForeignIds("library_tracks", ["recording"]));
   if (!artistIds.length && !albumIds.length && !trackIds.length) {
     return { paths: new Set(), albumIds: new Set() };
   }
