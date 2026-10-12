@@ -716,6 +716,15 @@ db.transaction(() => {
   ).run();
 }).immediate();
 
+const nameGuessesMigrationKey = "migration:name-guesses-v1";
+db.transaction(() => {
+  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(nameGuessesMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  db.prepare("DELETE FROM musicbrainz_artist_mbid_cache WHERE artist_name_key NOT LIKE 'library:%'").run();
+  db.prepare("DELETE FROM deezer_mbid_cache WHERE cache_key LIKE 'dz:%' OR cache_key LIKE 'aa:%'").run();
+}).immediate();
+
 const releaseCalendarPrimaryKey = db
   .prepare("PRAGMA table_info(library_release_calendar)")
   .all()

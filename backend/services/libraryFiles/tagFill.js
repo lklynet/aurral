@@ -38,6 +38,7 @@ async function resolveMusicBrainzAlbum(album, artist) {
   }
   const releaseGroup = await resolveAlbumByArtistAndTitle({
     artistName: artist.name || "",
+    artistMbid: artist.mbid || "",
     albumTitle: album.title,
     releaseYear: yearOf(album.year) || null,
   });

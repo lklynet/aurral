@@ -112,6 +112,7 @@ test("a Spotify album link resolves through song.link to MusicBrainz ids and is 
   metadataRoutes = {
     "/search/artist": [pinkFloydArtist],
     "/search/album": [albumSearchResult(darkSide, "The Dark Side of the Moon", pinkFloydArtist)],
+    [`/album/${darkSide}`]: albumSearchResult(darkSide, "The Dark Side of the Moon", pinkFloydArtist),
   };
   const requests = stubServices(t, {
     "https://album.link/s/4LH4d3cOWNNsVw41Gqt2kv": { body: spotifyAlbumPage, type: "text/html; charset=utf-8" },

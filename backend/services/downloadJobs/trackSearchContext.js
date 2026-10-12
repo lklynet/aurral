@@ -5,12 +5,12 @@ import {
 import {
   getArtistByMbid,
   getAlbumByMbid,
+  isCreditedArtist,
   listArtistAlbums,
   resolveAlbumByArtistAndTitle,
   selectAlbumRelease,
 } from "../providers/brainzmashProvider.js";
 import {
-  artistNamesMatch,
   scoreTextMatch as scoreTextMatchBase,
   getYear,
   pickResolvedDurationMs,
@@ -24,9 +24,8 @@ const releaseGroupSearchCache = createCache(CONTEXT_CACHE_TTL_SECONDS, MAX_CACHE
 const releaseContextCache = createCache(CONTEXT_CACHE_TTL_SECONDS, MAX_CACHE_ENTRIES);
 const MATCHER_OPTIONS = { extended: true };
 
-function pickBestCandidate(candidates, expectedTitle, expectedYear = null) {
+function rankCandidates(candidates, expectedTitle, expectedYear = null) {
   const list = Array.isArray(candidates) ? candidates : [];
-  if (list.length === 0) return null;
   const targetYear = getYear(expectedYear);
   return [...list]
     .map((candidate) => {
@@ -45,7 +44,8 @@ function pickBestCandidate(candidates, expectedTitle, expectedYear = null) {
         score: titleScore + yearScore,
       };
     })
-    .sort((left, right) => right.score - left.score)[0]?.candidate;
+    .sort((left, right) => right.score - left.score)
+    .map(({ candidate }) => candidate);
 }
 
 function matchesAlbumTitle(actualTitle, expectedTitle) {
@@ -78,21 +78,43 @@ async function fetchArtistAliases(artistMbid) {
   return aliases;
 }
 
-async function resolveReleaseGroup(artistName, artistMbid, albumName, releaseYear) {
-  const safeAlbum = String(albumName || "").trim();
+// A release group is a track's when one of its releases lists the track. One
+// the provider has no tracklist for, as for many singles, is the track's when
+// it has the track's title.
+async function holdsTrack(albumMbid, track) {
+  const context = await fetchReleaseContext(albumMbid);
+  if (!context) return false;
+  if (!context.identityTracks?.length) {
+    return scoreTextMatchBase(context.albumName, track.trackName, MATCHER_OPTIONS) >= 85;
+  }
+  return Boolean(matchTrackByTitle(
+    context.identityTracks,
+    track.trackName,
+    track.trackNumber,
+    track.discNumber,
+  ));
+}
+
+// A guessed release group must list the track, so a search that finds an
+// album of the same name, such as another of an artist's self-titled albums,
+// is not the track's.
+async function resolveReleaseGroup(track) {
+  const safeAlbum = String(track.albumName || "").trim();
   if (!safeAlbum) return null;
-  const safeArtist = String(artistName || "").trim();
-  const safeMbid = String(artistMbid || "").trim();
-  const cacheKey = JSON.stringify([safeArtist, safeMbid, safeAlbum]);
+  const safeArtist = String(track.artistName || "").trim();
+  const safeMbid = String(track.artistMbid || "").trim();
+  const cacheKey = JSON.stringify([safeArtist, safeMbid, safeAlbum, track.trackName]);
   const cachedReleaseGroup = releaseGroupSearchCache.get(cacheKey);
   if (cachedReleaseGroup !== undefined) return cachedReleaseGroup;
+  const holds = (albumMbid) => holdsTrack(albumMbid, track);
   const promise = (async () => {
     try {
       const resolvedId = await resolveAlbumByArtistAndTitle({
         artistName: safeArtist,
         artistMbid: safeMbid,
         albumTitle: safeAlbum,
-        releaseYear,
+        releaseYear: track.releaseYear,
+        holds,
       });
       if (resolvedId) {
         const album = await getAlbumByMbid(resolvedId).catch(() => null);
@@ -105,11 +127,12 @@ async function resolveReleaseGroup(artistName, artistMbid, albumName, releaseYea
     } catch {}
     try {
       const candidates = safeMbid ? await listArtistAlbums(safeMbid) : [];
-      const best = pickBestCandidate(candidates, safeAlbum, releaseYear);
-      const bestTitle = best?.Title || best?.title;
-      if ((best?.Id || best?.id) && matchesAlbumTitle(bestTitle, safeAlbum)) {
+      for (const best of rankCandidates(candidates, safeAlbum, track.releaseYear)) {
+        const id = best?.Id || best?.id;
+        if (!id || !matchesAlbumTitle(best?.Title || best?.title, safeAlbum)) continue;
+        if (!(await holds(id))) continue;
         return {
-          id: String(best?.Id || best?.id),
+          id: String(id),
           title: String(best?.Title || best?.title || safeAlbum).trim() || safeAlbum,
           releaseYear: getYear(best?.FirstReleaseDate || best?.firstReleaseDate),
         };
@@ -176,21 +199,16 @@ export function matchTrackByTitle(tracks, trackName, trackNumber = null, discNum
 }
 
 function applyReleaseContext(base, releaseContext) {
-  if (
-    releaseContext?.artistId &&
-    artistNamesMatch(base.artistName, releaseContext.artistName)
-  ) {
-    base.artistMbid = releaseContext.artistId;
+  const creditedArtist = releaseContext?.artists?.find((artist) =>
+    artist?.id && isCreditedArtist(base.artistName, artist));
+  if (creditedArtist) {
+    base.artistMbid = creditedArtist.id;
   }
   if (releaseContext?.releaseYear && !base.releaseYear) {
     base.releaseYear = releaseContext.releaseYear;
   }
-  const titleMatchedTrack = matchTrackByTitle(
-    releaseContext?.tracks,
-    base.trackName,
-    base.trackNumber,
-    base.discNumber,
-  );
+  const titleMatchedTrack = [releaseContext?.tracks, releaseContext?.identityTracks]
+    .reduce((found, tracks) => found || matchTrackByTitle(tracks, base.trackName, base.trackNumber, base.discNumber), null);
   const existingTrackMbid = String(base.trackMbid || "").trim().toLowerCase();
   let identityMatchedTrack = null;
   if (existingTrackMbid) {
@@ -263,17 +281,13 @@ async function fetchReleaseContext(albumMbid) {
   const promise = (async () => {
     try {
       const album = await getAlbumByMbid(key);
-      const primaryArtist = Array.isArray(album?.artists) ? album.artists[0] : null;
-      const artistId =
-        String(album?.artistId || primaryArtist?.id || "").trim() || null;
-      const artistName =
-        String(primaryArtist?.name || "").trim() || null;
+      const artists = (Array.isArray(album?.artists) ? album.artists : [])
+        .toSorted((left, right) => (right.id === album.artistId) - (left.id === album.artistId));
       const pickedRelease = selectAlbumRelease(album);
       if (!pickedRelease) {
         return {
           albumName: String(album?.title || "").trim() || null,
-          artistId,
-          artistName,
+          artists,
           releaseYear: getYear(album?.releaseDate),
           albumTrackCount: null,
           albumTrackTitles: [],
@@ -285,8 +299,7 @@ async function fetchReleaseContext(albumMbid) {
         .flatMap(mapReleaseContextTracks);
       return {
         albumName: String(album?.title || "").trim() || null,
-        artistId,
-        artistName,
+        artists,
         releaseYear: getYear(pickedRelease?.releaseDate) || getYear(album?.releaseDate),
         albumTrackCount: tracks.length > 0 ? tracks.length : null,
         albumTrackTitles: tracks.map((track) => track.title),
@@ -403,23 +416,17 @@ export async function resolveTrackSearchContext(track) {
   let releaseContext = null;
   if (base.albumMbid) {
     releaseContext = await fetchReleaseContext(base.albumMbid);
-    if (
-      releaseContext?.albumName &&
-      base.albumName &&
-      !matchesAlbumTitle(releaseContext.albumName, base.albumName)
-    ) {
+    const otherAlbum = releaseContext?.albumName
+      && base.albumName
+      && !matchesAlbumTitle(releaseContext.albumName, base.albumName);
+    if (otherAlbum || (releaseContext && !(await holdsTrack(base.albumMbid, base)))) {
       base.albumMbid = null;
       base.trackMbid = null;
       releaseContext = null;
     }
   }
   if (!base.albumMbid && base.albumName) {
-    const releaseGroup = await resolveReleaseGroup(
-      base.artistName,
-      base.artistMbid,
-      base.albumName,
-      base.releaseYear,
-    );
+    const releaseGroup = await resolveReleaseGroup(base);
     if (releaseGroup?.id) {
       base.albumMbid = releaseGroup.id;
       if (!base.artistMbid && releaseGroup.artistMbid) {
