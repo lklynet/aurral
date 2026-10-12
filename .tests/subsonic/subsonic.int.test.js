@@ -136,6 +136,8 @@ test("supports token auth for every local user and syncs password changes", asyn
     f: "json",
   });
   assert.equal(oldToken.json.error.code, 41);
+  const oldPassword = await request("ping", { u: "bob", p: "bob-password", f: "json" });
+  assert.equal(oldPassword.json.error.code, 40);
 
   const newToken = await request("ping", {
     u: "bob",
@@ -145,6 +147,8 @@ test("supports token auth for every local user and syncs password changes", asyn
     f: "json",
   });
   assert.equal(newToken.json.status, "ok");
+  const newPassword = await request("ping", { u: "bob", p: "bob-new-password", f: "json" });
+  assert.equal(newPassword.json.status, "ok");
 });
 
 test("allows browser Subsonic clients without CORS configuration", async () => {
