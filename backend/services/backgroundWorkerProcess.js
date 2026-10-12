@@ -169,9 +169,11 @@ const heartbeat = setInterval(() => {
     const downloadOwnerStatus = downloadWorker
       ? { ...downloadWorker.getStatus(), operationWorker: playlistOperationStatus() }
       : null;
+    const { rss, heapUsed } = process.memoryUsage();
     process.send({
       type: "heartbeat",
       group,
+      memory: { rss, heapUsed },
       workers: getHonkerWorkerStatuses().filter((worker) =>
         isQueueOwnedByGroup(worker.name, group)),
       ...(downloadOwnerStatus ? { downloadOwnerStatus } : {}),

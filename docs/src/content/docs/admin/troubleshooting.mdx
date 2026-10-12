@@ -154,6 +154,21 @@ This section applies only when `AUTH_PROXY_ENABLED` or `AUTH_PROXY_HEADER` is se
 
 Library scans, discovery refreshes, playlist downloads, and other tasks run in their own background processes. Aurral starts each process when it has work and stops it about a minute after the work finishes, so `docker stats` rises during tasks and falls back when Aurral is idle. **Settings > Tasks** shows a stopped process as **Standby**.
 
+## A background task restarts after it runs out of memory
+
+Each background process stops when its JavaScript heap reaches 2 GB. The log then shows a line like `[BackgroundWorkers] library exited (SIGABRT); running ...; restarting`. It names the job that was running and the memory that the process used at its last check, and Aurral starts the process again.
+
+If a large library needs more memory, raise `AURRAL_WORKER_MAX_HEAP_MB`. See [Environment variables](/admin/environment/#resource-tuning).
+
+To capture a heap snapshot for a bug report, create a `diagnostics` folder in your app data folder, set this variable, and restart Aurral:
+
+```yaml
+environment:
+  - NODE_OPTIONS=--heapsnapshot-near-heap-limit=1 --diagnostic-dir=/config/diagnostics
+```
+
+Node then writes one `.heapsnapshot` file to `/config/diagnostics` when a process nears its limit. Writing it pauses the process and needs about as much free memory as the heap again, so remove the variable after you have the file.
+
 ## Docker memory looks high after you view cover art
 
 The official image preloads jemalloc, so Sharp returns free memory to the system after it processes cover art.

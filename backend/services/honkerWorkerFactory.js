@@ -11,6 +11,12 @@ import { getWorkerId, requeueInterruptedHonkerJob, adjustHonkerClaimAttempts } f
 import { shouldStartQueueHere } from "./backgroundWorkerQueues.js";
 import { logger } from "./logger.js";
 
+function payloadSummary(payload) {
+  if (payload == null) return null;
+  const text = typeof payload === "string" ? payload : JSON.stringify(payload);
+  return text.length > 200 ? `${text.slice(0, 200)}…` : text;
+}
+
 export default function createHonkerWorker({
   name,
   getQueue,
@@ -153,7 +159,7 @@ export default function createHonkerWorker({
               waitingAttempt = false;
             }
             if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected && process.send) {
-              process.send({ type: "job-started", queue: name, jobId: job.id });
+              process.send({ type: "job-started", queue: name, jobId: job.id, payload: payloadSummary(job.payload) });
               announced = true;
             }
             return processJob(job.payload, job, { signal: jobController.signal, ...prepared });
