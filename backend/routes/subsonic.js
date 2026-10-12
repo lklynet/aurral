@@ -162,6 +162,19 @@ function sendError(res, format, code, message, helpUrl = undefined) {
   return sendResponse(res, format, "failed", { code, message, helpUrl });
 }
 
+const PLAYLIST_EDIT_ERROR_CODES = {
+  STATIC_PLAYLIST_NAME_CONFLICT: 50,
+  SUBSONIC_PLAYLIST_READ_ONLY: 50,
+  SUBSONIC_PLAYLIST_ENTRY_NOT_FOUND: 70,
+};
+
+function sendPlaylistEditError(res, format, error) {
+  const code = PLAYLIST_EDIT_ERROR_CODES[error?.code];
+  return code === undefined
+    ? sendError(res, format, 0, "Failed to update playlist")
+    : sendError(res, format, code, error.message);
+}
+
 function requestedFormat(req) {
   const format = getParameter(req, "f").toLowerCase() || "xml";
   return format === "xml" || format === "json" ? format : null;
@@ -515,10 +528,7 @@ async function handleSubsonicRequest(req, res) {
         playlist: getSubsonicPlaylist(`shared:${encodeURIComponent(playlist.id)}`, user),
       });
     } catch (error) {
-      if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
-        return sendError(res, format, 50, error.message);
-      }
-      return sendError(res, format, 0, "Failed to update playlist");
+      return sendPlaylistEditError(res, format, error);
     }
   }
   if (method === "getstarred" || method === "getstarred2") {
@@ -558,8 +568,7 @@ async function handleSubsonicRequest(req, res) {
     const playlistId = getParameter(req, "playlistId");
     if (!playlistId) return sendError(res, format, 10, "Required parameter is missing: playlistId");
     const songIndexesToRemove = getParameters(req, ["songIndexToRemove"])
-      .map((value) => Number.parseInt(value, 10))
-      .filter((value) => Number.isInteger(value) && value >= 0);
+      .map((value) => (/^\d+$/.test(value) ? Number(value) : value));
     try {
       const playlist = await updateSubsonicPlaylist(user, {
         playlistId,
@@ -574,10 +583,7 @@ async function handleSubsonicRequest(req, res) {
         ? sendResponse(res, format)
         : sendError(res, format, 70, "Requested data was not found");
     } catch (error) {
-      if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
-        return sendError(res, format, 50, error.message);
-      }
-      return sendError(res, format, 0, "Failed to update playlist");
+      return sendPlaylistEditError(res, format, error);
     }
   }
   if (method === "deleteplaylist") {

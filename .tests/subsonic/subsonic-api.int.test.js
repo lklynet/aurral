@@ -41,6 +41,12 @@ let syncedFavoriteSourcePath;
 let syncedFavoriteSourceJobId;
 let libraryFavoritePlaylist;
 let libraryFavoriteJobId;
+let editablePlaylist;
+let editableKeptPath;
+let editableRemovedPath;
+let editableLeftoverPath;
+let doubledPlaylist;
+let doubledPaths;
 
 function subsonicUrl(method, params = {}) {
   const query = new URLSearchParams({
@@ -240,6 +246,46 @@ test.before(async () => {
   const heldFlow = flowPlaylistConfig.createFlow({ name: "Held FLAC", size: 1 });
   heldJobId = downloadTracker.addJob({ artistName: "Held Artist", trackName: "Held Song" }, heldFlow.id);
   downloadTracker.setBlocked(heldJobId, "Review required", fixturePath);
+  const editableTrack = (trackName) => ({ artistName: "Editable Artist", albumName: "Editable Album", trackName, durationMs: 1000 });
+  const editableTracks = [
+    editableTrack("Still Downloading"),
+    { artistName: "Canonical Artist", albumName: "Canonical Album", trackName: "Canonical Song", durationMs: 10_000 },
+    editableTrack("Kept Song"),
+    editableTrack("Removed Song"),
+  ];
+  editablePlaylist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Editable Playlist",
+    ownerUserId: alice.id,
+    tracks: editableTracks,
+  });
+  editableKeptPath = path.join(fixtureRoot, "Editable Artist", "Editable Album", "Kept Song.flac");
+  editableRemovedPath = path.join(process.env.WEEKLY_FLOW_FOLDER, "Editable Artist", "Editable Album", "Removed Song.flac");
+  editableLeftoverPath = path.join(process.env.WEEKLY_FLOW_FOLDER, "Editable Artist", "Editable Album", "Leftover Song.flac");
+  for (const filePath of [editableKeptPath, editableRemovedPath, editableLeftoverPath]) {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, path.basename(filePath));
+  }
+  const [, canonicalTrack, keptTrack, removedTrack] = editableTracks;
+  downloadTracker.addJob(editableTracks[0], editablePlaylist.id);
+  const leftoverTrack = editableTrack("Leftover Song");
+  for (const [track, filePath] of [[canonicalTrack, fixturePath], [keptTrack, editableKeptPath], [removedTrack, editableRemovedPath], [leftoverTrack, editableLeftoverPath]]) {
+    downloadTracker.setDone(downloadTracker.addJob(track, editablePlaylist.id), filePath, track.albumName);
+  }
+  doubledPlaylist = flowPlaylistConfig.createStaticPlaylist({ name: "Doubled Playlist", ownerUserId: alice.id, tracks: [] });
+  const doubledTracks = ["Doubled One", "Doubled Two"].map((trackName) => ({ artistName: "Doubled Artist", albumName: "Doubled Album", trackName, durationMs: 1000 }));
+  doubledPaths = doubledTracks.map((track) => path.join(process.env.WEEKLY_FLOW_FOLDER, "Doubled Artist", "Doubled Album", `${track.trackName}.flac`));
+  for (const [index, track] of doubledTracks.entries()) {
+    await mkdir(path.dirname(doubledPaths[index]), { recursive: true });
+    await writeFile(doubledPaths[index], track.trackName);
+    downloadTracker.setDone(downloadTracker.addJob(track, doubledPlaylist.id), doubledPaths[index], track.albumName);
+  }
+  flowPlaylistConfig.updateStaticPlaylist(doubledPlaylist.id, {
+    tracks: doubledTracks.map((track, index) => {
+      const libraryJobId = downloadTracker.addJob(track, "library");
+      downloadTracker.setDone(libraryJobId, doubledPaths[index], track.albumName);
+      return { ...track, canonicalJobId: libraryJobId };
+    }),
+  });
 
   aurral = await startServerProcess();
   const login = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
@@ -1184,6 +1230,118 @@ test("streams held FLAC previews with the registered audio type", async () => {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("content-type"), "audio/flac");
   assert.equal(await response.text(), "0123456789");
+});
+
+test("updatePlaylist reports flows as read-only and leaves them unchanged", async () => {
+  const flow = responseJson(await request("getPlaylists")).playlists.playlist.find((playlist) => playlist.name === "Canonical Flow");
+  const entryIds = async () => responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry.map((song) => song.id);
+  const before = await entryIds();
+  assert.ok(before.length > 0);
+
+  const result = responseJson(await request("updatePlaylist", { playlistId: flow.id, songIndexToRemove: "0" }));
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.error.code, 50);
+  assert.deepEqual(await entryIds(), before);
+});
+
+test("updatePlaylist rejects song indexes the playlist does not have and changes nothing", async () => {
+  const id = `shared:${encodeURIComponent(editablePlaylist.id)}`;
+  const titles = async () => responseJson(await request("getPlaylist", { id })).playlist.entry.map((song) => song.title);
+  assert.deepEqual(await titles(), ["Canonical Song", "Kept Song", "Removed Song", "Leftover Song"]);
+
+  for (const songIndexToRemove of [["0", "4"], "first"]) {
+    const result = responseJson(await request("updatePlaylist", { playlistId: id, songIndexToRemove }));
+    assert.equal(result.error?.code, 70);
+  }
+
+  assert.deepEqual(await titles(), ["Canonical Song", "Kept Song", "Removed Song", "Leftover Song"]);
+});
+
+test("updatePlaylist removes the songs at the positions getPlaylist returned and keeps their files", async () => {
+  const id = `shared:${encodeURIComponent(editablePlaylist.id)}`;
+  const entries = async () => responseJson(await request("getPlaylist", { id })).playlist.entry;
+  const before = await entries();
+  assert.deepEqual(before.map((song) => song.title), ["Canonical Song", "Kept Song", "Removed Song", "Leftover Song"]);
+
+  const removed = responseJson(await request("updatePlaylist", {
+    playlistId: id,
+    name: "Editable Playlist",
+    songIndexToRemove: ["0", "2", "3"],
+  }));
+  assert.equal(removed.status, "ok");
+  const afterRemoval = await entries();
+  assert.deepEqual(afterRemoval.map((song) => song.title), ["Kept Song"]);
+  const jobsResponse = await apiFetch(`/api/playlists/jobs/${encodeURIComponent(editablePlaylist.id)}`);
+  assert.deepEqual((await jobsResponse.json()).map((job) => job.trackName), ["Still Downloading", "Kept Song"]);
+  for (const filePath of [fixturePath, editableRemovedPath, editableLeftoverPath]) await stat(filePath);
+
+  const replaced = responseJson(await request("updatePlaylist", {
+    playlistId: id,
+    songIndexToRemove: "0",
+    songIdToAdd: [before[0].id, afterRemoval[0].id],
+  }));
+  assert.equal(replaced.status, "ok");
+  const after = await entries();
+  assert.deepEqual(after.map((song) => song.title), ["Canonical Song", "Kept Song"]);
+  for (const song of after) {
+    assert.equal((await request("stream", { id: song.id })).response.status, 200);
+  }
+  await stat(editableKeptPath);
+});
+
+test("updatePlaylist takes back the songs a client removed in an earlier request", async () => {
+  const flow = responseJson(await request("getPlaylists")).playlists.playlist.find((playlist) => playlist.name === "Canonical Flow");
+  const flowSong = responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry[0];
+  const librarySong = responseJson(await request("search3", { query: "Canonical Song" })).searchResult3.song[0];
+  const created = responseJson(await request("createPlaylist", { name: "Client Replacement", songId: [flowSong.id, librarySong.id] })).playlist;
+  const entries = async () => responseJson(await request("getPlaylist", { id: created.id })).playlist.entry;
+  try {
+    const before = await entries();
+    assert.deepEqual(before.map((song) => song.title), ["Flow Song", "Canonical Song"]);
+
+    const removed = responseJson(await request("updatePlaylist", { playlistId: created.id, songIndexToRemove: ["0", "1"] }));
+    assert.equal(removed.status, "ok");
+    assert.deepEqual(await entries(), []);
+
+    const added = responseJson(await request("updatePlaylist", {
+      playlistId: created.id,
+      songIdToAdd: [before[1].id, before[0].id],
+    }));
+    assert.equal(added.status, "ok");
+    const after = await entries();
+    assert.deepEqual(after.map((song) => song.title), ["Canonical Song", "Flow Song"]);
+    for (const song of after) {
+      assert.equal((await request("stream", { id: song.id })).response.status, 200);
+    }
+  } finally {
+    assert.equal(responseJson(await request("deletePlaylist", { id: created.id })).status, "ok");
+  }
+});
+
+test("updatePlaylist lets a client drop duplicate copies and then replace the playlist", async () => {
+  const id = `shared:${encodeURIComponent(doubledPlaylist.id)}`;
+  const entries = async () => responseJson(await request("getPlaylist", { id })).playlist.entry;
+  const doubled = await entries();
+  assert.deepEqual(doubled.map((song) => song.title).sort(), ["Doubled One", "Doubled One", "Doubled Two", "Doubled Two"]);
+
+  const deduplicated = responseJson(await request("updatePlaylist", { playlistId: id, songIndexToRemove: ["0", "1"] }));
+  assert.equal(deduplicated.status, "ok");
+  const remaining = await entries();
+  assert.deepEqual(remaining.map((song) => song.id), doubled.slice(2).map((song) => song.id));
+
+  const cleared = responseJson(await request("updatePlaylist", { playlistId: id, songIndexToRemove: ["0", "1"] }));
+  assert.equal(cleared.status, "ok");
+  assert.deepEqual(await entries(), []);
+
+  const refilled = responseJson(await request("updatePlaylist", { playlistId: id, songIdToAdd: [remaining[1].id, remaining[0].id] }));
+  assert.equal(refilled.status, "ok");
+  const after = await entries();
+  assert.deepEqual(after.map((song) => song.title), [remaining[1].title, remaining[0].title]);
+  for (const song of after) {
+    assert.equal((await request("stream", { id: song.id })).response.status, 200);
+  }
+  for (const filePath of doubledPaths) await stat(filePath);
 });
 
 test("returns missing files and stale IDs without exposing filesystem paths", async () => {

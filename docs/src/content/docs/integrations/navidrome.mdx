@@ -44,7 +44,9 @@ If token authentication fails, Aurral returns error `41` with a link to the [API
 
 ### Playlists and favorites from Subsonic clients
 
-When a Subsonic client adds a flow track or static playlist track to a playlist, Aurral adds the track to the Library in the background. Several playlists that add the same track share one download. Removing a track from a playlist removes only that entry. It does not delete the file.
+When a Subsonic client adds a flow track or static playlist track to a playlist, Aurral adds the track to the Library in the background. Several playlists that add the same track share one download. Removing a track from a playlist removes only that entry. It does not delete the file. A track the playlist downloaded itself stays in the Library.
+
+Subsonic clients can edit static playlists but not flows. Editing a flow returns error `50`. A client removes songs by their positions in the playlist it last loaded. If a position no longer exists, Aurral returns error `70` and changes nothing, so the client can reload the playlist and try again.
 
 When a Subsonic client favorites a flow track, Aurral also adds it to the Library. To keep the favorite without adding the track, turn off **Favorite flow tracks** in **Settings > System > Subsonic**. This setting does not affect tracks that are already in the Library.
 

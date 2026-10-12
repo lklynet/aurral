@@ -199,7 +199,7 @@ test("Subsonic edits clean an in-flight legacy file before removing its job", as
   await assert.rejects(fs.access(finalPath), { code: "ENOENT" });
 });
 
-test("Subsonic edits remove a file shared only by jobs from the edited playlist", async () => {
+test("Subsonic edits keep playlist songs that have no stored track", async () => {
   const playlistId = "subsonic-edit-duplicate-file";
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
@@ -210,17 +210,17 @@ test("Subsonic edits remove a file shared only by jobs from the edited playlist"
   activatePlaylistDownloadGeneration(playlistId);
   const finalPath = path.join(playlistManager.downloadRoot, "Duplicate Artist", "Duplicate Song.flac");
   await fs.mkdir(path.dirname(finalPath), { recursive: true });
-  await fs.writeFile(finalPath, "shared by obsolete jobs");
-  const jobIds = ["First", "Second"].map((trackName) => {
+  await fs.writeFile(finalPath, "shared by untracked songs");
+  for (const trackName of ["First", "Second"]) {
     const id = downloadTracker.addJob({ artistName: "Duplicate Artist", trackName }, playlistId);
     downloadTracker.setDone(id, finalPath, "Duplicate Album");
-    return id;
-  });
+  }
 
   assert.ok(await subsonic.updateSubsonicPlaylist(user, { playlistId, name: "Updated" }));
 
-  for (const id of jobIds) assert.equal(downloadTracker.getJob(id), null);
-  await assert.rejects(fs.access(finalPath), { code: "ENOENT" });
+  const songs = subsonic.getSubsonicPlaylist(`shared:${playlistId}`, user).entry;
+  assert.deepEqual(songs.map((song) => song.title).sort(), ["First", "Second"]);
+  await fs.access(finalPath);
 });
 
 test("renaming a Subsonic playlist keeps its library song and file", async () => {

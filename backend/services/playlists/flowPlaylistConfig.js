@@ -375,27 +375,31 @@ export const sortJobsByCreatedAt = (jobs) =>
     return String(left?.id || "").localeCompare(String(right?.id || ""));
   });
 
-export const orderJobsByPlaylistTracks = (jobs, tracks) => {
-  const list = Array.isArray(jobs) ? [...jobs] : [];
-  const configTracks = Array.isArray(tracks) ? tracks : [];
-  if (!configTracks.length) {
-    return sortJobsByCreatedAt(list);
-  }
-  const unmatchedJobs = sortJobsByCreatedAt(list);
-  const orderedJobs = [];
-  for (const track of configTracks) {
+export const pairJobsWithPlaylistTracks = (jobs, tracks) => {
+  const unmatchedJobs = sortJobsByCreatedAt(jobs);
+  const trackList = Array.isArray(tracks) ? tracks : [];
+  const takeJob = (predicate) => {
+    const index = unmatchedJobs.findIndex(predicate);
+    return index < 0 ? null : unmatchedJobs.splice(index, 1)[0];
+  };
+  const pairedJobs = trackList.map((track) =>
+    track?.canonicalJobId ? takeJob((job) => job.id === track.canonicalJobId) : null,
+  );
+  trackList.forEach((track, trackIndex) => {
+    if (pairedJobs[trackIndex]) return;
     const identity = buildPlaylistTrackIdentity(track);
-    let index = unmatchedJobs.findIndex(
-      (job) => buildPlaylistTrackIdentity(job) === identity,
-    );
-    if (index < 0) {
-      index = unmatchedJobs.findIndex((job) => tracksShareMembership(job, track));
-    }
-    if (index >= 0) orderedJobs.push(unmatchedJobs.splice(index, 1)[0]);
-  }
-  orderedJobs.push(...unmatchedJobs);
-  return orderedJobs;
+    pairedJobs[trackIndex] =
+      takeJob((job) => buildPlaylistTrackIdentity(job) === identity) ||
+      takeJob((job) => tracksShareMembership(job, track));
+  });
+  return [
+    ...pairedJobs.flatMap((job, trackIndex) => (job ? [{ job, trackIndex }] : [])),
+    ...unmatchedJobs.map((job) => ({ job, trackIndex: -1 })),
+  ];
 };
+
+export const orderJobsByPlaylistTracks = (jobs, tracks) =>
+  pairJobsWithPlaylistTracks(jobs, tracks).map(({ job }) => job);
 
 export const dedupePlaylistTracks = (tracks) => {
   const seen = new Set();
