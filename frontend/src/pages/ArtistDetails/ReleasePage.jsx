@@ -41,27 +41,17 @@ import { withImageCacheBust } from "../../utils/normalizeMediaUrl.js";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import { releaseGroupDetailsQueryOptions } from "../../queryOptions.js";
 import {
+  buildReleaseHeaderMeta,
   buildStaticPlaylistTrackPayload,
-  formatAlbumDuration,
-  formatReleaseDate,
   getCoverImage,
-  getReleaseMetric,
+  mergeReleaseDetails,
   reserveUniquePlaylistName,
   resolveReleaseLibraryDisplay,
-  sumTrackDurationMs,
 } from "./utils";
 import Tooltip from "../../components/Tooltip";
 import TooltipButton from "../../components/TooltipButton";
 import { useShareAction } from "../../hooks/useShareAction";
 import CrossViewLink from "../../components/CrossViewLink";
-const getReleaseTypeLabel = (release) => {
-  const types = [
-    release?.["primary-type"],
-    ...(Array.isArray(release?.["secondary-types"]) ? release["secondary-types"] : []),
-  ].filter(Boolean);
-  return types.length ? types.join(" · ") : null;
-};
-
 const buildReleaseFromState = (releaseMbid, locationState) => {
   const focusRelease = locationState?.focusReleaseGroup || {};
   const title = String(focusRelease.title || "").trim();
@@ -76,22 +66,6 @@ const buildReleaseFromState = (releaseMbid, locationState) => {
     rating: focusRelease.rating || null,
     _coverUrl: focusRelease.coverUrl || "",
     _deezerAlbumId: focusRelease.deezerAlbumId || "",
-  };
-};
-
-const mergeReleaseDetails = (baseRelease, details) => {
-  if (!details) return baseRelease;
-  return {
-    ...baseRelease,
-    title: details.title || baseRelease.title,
-    "first-release-date": details["first-release-date"] || baseRelease["first-release-date"],
-    "primary-type": details["primary-type"] || baseRelease["primary-type"],
-    "secondary-types":
-      Array.isArray(details["secondary-types"]) && details["secondary-types"].length
-        ? details["secondary-types"]
-        : baseRelease["secondary-types"],
-    rating: details.rating || baseRelease.rating || null,
-    _coverUrl: details.coverUrl || baseRelease._coverUrl || "",
   };
 };
 
@@ -240,12 +214,11 @@ function ReleasePage() {
   const pageTitle = artistName ? `${releaseTitle} — ${artistName}` : releaseTitle;
   useDocumentTitle(pageTitle);
 
-  const releaseTypeLabel = getReleaseTypeLabel(release);
-  const releaseDateLabel = formatReleaseDate(release);
+  const { typeLabel: releaseTypeLabel, meta: releaseMeta } = useMemo(
+    () => buildReleaseHeaderMeta(release, tracks),
+    [release, tracks],
+  );
   const trackCount = tracks.length;
-  const totalDurationMs = useMemo(() => sumTrackDurationMs(tracks), [tracks]);
-  const durationLabel = formatAlbumDuration(totalDurationMs);
-  const metric = getReleaseMetric(release);
   const libraryDisplay = useMemo(
     () => resolveReleaseLibraryDisplay(
       countReleaseTracks(libraryInfo, trackCount),
@@ -260,15 +233,6 @@ function ReleasePage() {
     !isComplete &&
     (isAlbumDownloading(releaseMbid) || ACTIVE_DOWNLOAD_STATUSES.has(String(downloadStatus?.status)));
 
-  const releaseMeta = [
-    releaseDateLabel,
-    releaseTypeLabel,
-    trackCount > 0 ? `${trackCount} track${trackCount === 1 ? "" : "s"}` : null,
-    durationLabel,
-    metric.label ? `${metric.label} ${metric.type === "rating" ? "rating" : "listeners"}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
   const libraryPath = libraryInfo?.canonicalAlbumId
     ? `/library/album/${encodeURIComponent(libraryInfo.canonicalAlbumId)}`
     : `/library/albums?query=${encodeURIComponent(releaseTitle)}`;
