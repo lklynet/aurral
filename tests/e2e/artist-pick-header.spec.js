@@ -28,7 +28,7 @@ const tracks = Array.from({ length: 7 }, (_, index) => ({
 
 const cover = "/pick-header-cover.svg";
 
-async function fixture(page, { withCover = false } = {}) {
+async function fixture(page, { withCover = false, releaseGroups = [album] } = {}) {
   await page.route(`**${cover}`, (route) =>
     route.fulfill({
       contentType: "image/svg+xml",
@@ -48,7 +48,7 @@ async function fixture(page, { withCover = false } = {}) {
     if (path === "/health") return json({ lidarrConfigured: true });
     if (path === `/artists/${artist.id}/stream`) {
       const events = {
-        artist: { ...artist, "release-groups": [album] },
+        artist: { ...artist, "release-groups": releaseGroups },
         cover: { images: [] },
         library: { exists: false },
         complete: {},
@@ -147,6 +147,14 @@ test("the artist pick keeps its actions in one row on a tablet", async ({ page }
     names,
   );
   expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(4);
+});
+
+test("the artist pick header counts ListenBrainz listeners ahead of the rating", async ({ page }) => {
+  await fixture(page, { releaseGroups: [{ ...album, listenerCount: 2621, listenCount: 17712 }] });
+  await page.goto(`/artist/${artist.id}`);
+  const panel = page.locator(".artist-pick-panel");
+  await expect(panel.getByText("May 26, 2001 · Album · 7 tracks · 1 hr 10 min · 2.6K listeners", { exact: true }))
+    .toBeVisible();
 });
 
 async function panelCornerColors(panel) {

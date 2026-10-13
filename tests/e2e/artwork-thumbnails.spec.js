@@ -22,7 +22,7 @@ const artist = {
   genres: [],
   "release-groups": [
     release,
-    { ...release, id: "00000000-0000-4000-8000-000000001183", title: "Other provider", coverUrl: OTHER_COVER, fans: 10 },
+    { ...release, id: "00000000-0000-4000-8000-000000001183", title: "Other provider", coverUrl: OTHER_COVER, listenerCount: 10 },
   ],
 };
 
