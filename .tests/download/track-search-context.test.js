@@ -193,8 +193,11 @@ test("resolveTrackSearchContext preserves a recording from a non-representative 
     return { data: {
       id: "b1392450-e666-3926-a536-22c65f834433",
       title: "OK Computer",
-      artistid: "a74b1b7f-71a5-4011-9441-d0b5e4122711",
-      artists: [{ id: "a74b1b7f-71a5-4011-9441-d0b5e4122711", artistname: "Radiohead" }],
+      artistid: "earlier-alias-artist",
+      artists: [
+        { id: "earlier-alias-artist", artistname: "Different Artist", artistaliases: ["Radiohead"] },
+        { id: "a74b1b7f-71a5-4011-9441-d0b5e4122711", artistname: "Radiohead" },
+      ],
       releases: [
         { id: "ok-computer-representative", status: "Official", tracks: [
           {
@@ -245,6 +248,7 @@ test("resolveTrackSearchContext preserves a recording from a non-representative 
   };
   const resolved = await resolveTrackSearchContext(job);
   assert.equal(get.mock.callCount(), 1);
+  assert.equal(resolved.artistMbid, job.artistMbid);
   assert.equal(resolved.trackMbid, job.trackMbid);
   assert.equal(resolved.trackNumber, 2);
   assert.deepEqual(resolved.albumTrackTitles, job.albumTrackTitles);

@@ -199,8 +199,11 @@ export function matchTrackByTitle(tracks, trackName, trackNumber = null, discNum
 }
 
 function applyReleaseContext(base, releaseContext) {
+  const existingArtistMbid = String(base.artistMbid || "").trim().toLowerCase();
   const creditedArtist = releaseContext?.artists?.find((artist) =>
-    artist?.id && isCreditedArtist(base.artistName, artist));
+    artist?.id && String(artist.id).trim().toLowerCase() === existingArtistMbid)
+    || releaseContext?.artists?.find((artist) =>
+      artist?.id && isCreditedArtist(base.artistName, artist));
   if (creditedArtist) {
     base.artistMbid = creditedArtist.id;
   }
