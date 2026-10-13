@@ -163,6 +163,29 @@ test("the last upgrade to reject a shared Usenet download removes it", async (t)
   assert.equal(removed.mock.callCount(), 1);
 });
 
+test("an upgrade never attaches to a Usenet download that is being removed", async (t) => {
+  const { folder, upgradeIds, start } = await makeUpgrades("removing-download", ["First", "Second"],
+    { files: ["Other"] });
+  const { append, removed } = mockNzbget(t, folder, [101, 102]);
+  let finishRemoval;
+  let removalStarted;
+  const started = new Promise((resolve) => { removalStarted = resolve; });
+  removed.mock.mockImplementation(() => {
+    removalStarted();
+    return new Promise((resolve) => { finishRemoval = () => resolve(true); });
+  });
+  const helpers = { failOrTryNextSource: () => null };
+
+  const rejecting = runToEnd(await start(upgradeIds[0], helpers), helpers);
+  await started;
+  const next = await start(upgradeIds[1], helpers);
+  finishRemoval();
+  await rejecting;
+
+  assert.equal(append.mock.callCount(), 2);
+  assert.equal(next.nzbId, 102);
+});
+
 test("upgrades for two copies of one track download the release separately", async (t) => {
   const { folder, upgradeIds, start } = await makeUpgrades("same-track", ["First", "First"], { files: ["First"] });
   const { append } = mockNzbget(t, folder, [81, 82]);

@@ -66,9 +66,20 @@ function getUsenetClientKey(preferredKey = null) {
 const isAutomaticUpgrade = (job) => Boolean(job?.upgradeForJobId) && !job.manualReplacementSearch;
 
 // A job that is done with a shared download no longer counts as using it,
-// even before it moves on to another release.
+// even before it moves on to another release. A download being removed is
+// retired, so no new upgrade attaches to it while its jobs still point at it.
 const releasedNzbs = new Set();
+const retiredNzbs = new Set();
+const MAX_RETIRED_NZBS = 1000;
 const nzbKey = (clientKey, nzbId) => `${clientKey}\0${String(nzbId ?? "").trim()}`;
+
+function retireNzb(key) {
+  retiredNzbs.add(key);
+  if (retiredNzbs.size > MAX_RETIRED_NZBS) retiredNzbs.delete(retiredNzbs.values().next().value);
+  for (const released of releasedNzbs) {
+    if (released.endsWith(`\0${key}`)) releasedNzbs.delete(released);
+  }
+}
 
 function otherJobsOnNzb(clientKey, nzbId, jobId) {
   const id = String(nzbId ?? "").trim();
@@ -102,6 +113,7 @@ function sharedUpgradeNzb(clientKey, release, job) {
     && isAutomaticUpgrade(entry) && entry.status === "downloading"
     && entry.downloadSource === "usenet" && entry.downloadClient === clientKey
     && entry.releaseGuid === guid && entry.downloadClientId != null
+    && !retiredNzbs.has(nzbKey(clientKey, entry.downloadClientId))
     && !releasedNzbs.has(`${entry.id}\0${nzbKey(clientKey, entry.downloadClientId)}`));
   const pending = pendingUpgradeSubmissions.get(`${clientKey}\0${guid}`);
   if ([...users, pending?.job].some((entry) => entry && isSameTrack(entry, job))) return { separate: true };
@@ -116,9 +128,7 @@ async function removeUsenetItem(payload, jobId, options = {}) {
   const key = nzbKey(client.key, payload.nzbId);
   releasedNzbs.add(`${jobId}\0${key}`);
   if (otherJobsOnNzb(client.key, payload.nzbId, jobId).length > 0) return;
-  for (const released of releasedNzbs) {
-    if (released.endsWith(`\0${key}`)) releasedNzbs.delete(released);
-  }
+  retireNzb(key);
   for (const [entry, remove] of [
     ["queue", () => client.deleteQueueItem(payload.nzbId)],
     ["history", () => client.deleteHistoryItem(payload.nzbId, options)],
