@@ -1321,7 +1321,7 @@ export function resolveStreamPath(value, user) {
   const library = indexFocusedLibrary(getLibraryTrack({
     trackId: parsed.key,
     source: "all",
-    availableOnly: false,
+    availableOnly: true,
   }));
   const track = findLibraryEntry(library, parsed);
   const album = findAlbumForTrack(library, track);

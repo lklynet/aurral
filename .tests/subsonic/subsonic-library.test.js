@@ -24,6 +24,7 @@ const {
   getTopSongs,
   idFor,
   parseId,
+  resolveStreamPath,
   resolveLibraryTracks,
   starMany,
 } = subsonic;
@@ -453,6 +454,53 @@ test("frequent albums keep same-titled releases separated by library identity", 
     );
   } finally {
     db.prepare("DELETE FROM users WHERE id = ?").run(user.id);
+  }
+});
+
+test("streams the available release when a recording belongs to multiple albums", () => {
+  const artist = upsertLibraryArtist({
+    identityKey: "stream-release:artist",
+    name: "Fit For A King",
+  });
+  const single = upsertLibraryAlbum({
+    identityKey: "stream-release:single",
+    artistId: artist.id,
+    title: "Breaking the Mirror",
+    albumArtist: artist.name,
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: "stream-release:album",
+    artistId: artist.id,
+    title: "The Path",
+    albumArtist: artist.name,
+  });
+  const track = upsertLibraryTrack({
+    identityKey: "recording:031614e6-57d0-4444-a6b4-fadbb16defb2",
+    mbid: "031614e6-57d0-4444-a6b4-fadbb16defb2",
+    title: "Breaking the Mirror",
+    artistName: artist.name,
+  });
+  linkLibraryAlbumTrack({ albumId: single.id, trackId: track.id, trackNumber: 1 });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 2 });
+  const file = upsertLibraryMediaFile({
+    albumId: album.id,
+    trackId: track.id,
+    source: "lidarr",
+    path: "/test/The Path/02 - Breaking the Mirror.flac",
+    format: "flac",
+    available: true,
+  });
+  const songId = idFor("song", track.identity_key);
+
+  try {
+    assert.equal(subsonic.getSong(songId).album, "The Path");
+    assert.equal(resolveStreamPath(songId), file.path);
+  } finally {
+    db.prepare("DELETE FROM library_media_files WHERE id = ?").run(file.id);
+    db.prepare("DELETE FROM library_album_tracks WHERE track_id = ?").run(track.id);
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(single.id, album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }
 });
 
