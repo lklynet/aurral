@@ -106,16 +106,12 @@ test("recent artists follow the newest library file instead of the Lidarr added 
   addFile(oldLidarr, "New Album", "2026-10-07T12:00:00Z");
   addFile(missing, "Gone", "2026-10-08T12:00:00Z", { available: false });
 
-  t.mock.method(lidarrClient, "isConfigured", () => false);
-  const recent = await getRecent();
-  assert.deepEqual(recent.map((artist) => artist.artistName),
-    ["Missing Files Artist", "Old Lidarr Artist", "Recent Lidarr Artist"]);
-  assert.deepEqual(recent.map((artist) => artist.added),
-    ["2026-10-08T12:00:00.000Z", "2026-10-07T12:00:00.000Z", "2026-09-15T12:00:00.000Z"]);
-
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  assert.deepEqual((await getRecent()).map((artist) => artist.artistName),
-    ["Old Lidarr Artist", "Recent Lidarr Artist"]);
+  for (const connected of [false, true]) {
+    t.mock.method(lidarrClient, "isConfigured", () => connected);
+    const recent = await getRecent();
+    assert.deepEqual(recent.map((artist) => artist.artistName), ["Old Lidarr Artist", "Recent Lidarr Artist"]);
+    assert.deepEqual(recent.map((artist) => artist.added), ["2026-10-07T12:00:00.000Z", "2026-09-15T12:00:00.000Z"]);
+  }
 });
 
 test("recent artists returns the twenty with the newest files, including artists without MBIDs", async () => {

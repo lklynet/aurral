@@ -114,6 +114,10 @@ export const SYSTEM_TASK_LABELS = {
     label: "Startup playlist schedule check",
     description: "Resumes pending playlist work after Aurral starts.",
   },
+  "playlist-startup-publish": {
+    label: "Startup playlist publish",
+    description: "Publishes flows and playlists to connected playback servers after Aurral starts.",
+  },
   "discovery-refresh-check": {
     label: "Discovery auto refresh check",
     description: "Checks whether discovery recommendations need a scheduled refresh.",

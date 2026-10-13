@@ -946,6 +946,62 @@ test("an album asks for each track's typical length across pressings of its trac
   assert.deepEqual(requested.body.jobIds.map((id) => downloadTracker.getJob(id).durationMs), [301000, 254000]);
 });
 
+test("asking for an album downloads the missing tracks of the edition its track list shows", async (t) => {
+  const artistMbid = "1a1a1a1a-1a1a-4a1a-8a1a-000000000011";
+  const albumMbid = "1a1a1a1a-1a1a-4a1a-8a1a-000000000012";
+  const recording = (index) => `1a1a1a1a-1a1a-4a1a-8a1a-20000000000${index}`;
+  const release = (id, recordings) => ({ id, status: "Official",
+    tracks: recordings.map((recordingIndex, index) => ({
+      id: `${id}-${index}`, recordingid: recording(recordingIndex), trackname: `Listed Song ${index + 1}`,
+      artistid: artistMbid, durationms: 1000, trackposition: index + 1, mediumnumber: 1,
+    })) });
+  const metadata = await createMockHttpServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    if (new URL(request.url, "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
+      response.writeHead(404);
+      response.end("{}");
+      return;
+    }
+    response.end(JSON.stringify({ id: albumMbid, title: "Listed Album", artistid: artistMbid,
+      artists: [{ id: artistMbid, artistname: "Listed Artist" }],
+      releases: [release("listed-standard", [1, 4]), release("listed-reissue", [1, 4]), release("listed-deluxe", [1, 2, 3])] }));
+  });
+  const originalSettings = dbOps.getSettings();
+  const originalWorkerStart = downloadWorker.start;
+  const originalIsConfigured = lidarrClient.isConfigured;
+  dbOps.updateSettings({ ...originalSettings, integrations: { ...originalSettings.integrations,
+    slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
+    metadata: { ...originalSettings.integrations?.metadata, baseUrl: metadata.url, enableNarrowFallbacks: false } } });
+  clearMetadataProviderCaches();
+  downloadWorker.start = async () => {};
+  lidarrClient.isConfigured = () => false;
+  t.after(async () => {
+    downloadWorker.start = originalWorkerStart;
+    lidarrClient.isConfigured = originalIsConfigured;
+    dbOps.updateSettings(originalSettings);
+    clearMetadataProviderCaches();
+    await metadata.close();
+  });
+  const artist = libraryStore.upsertLibraryArtist({ identityKey: `mbid:${artistMbid}`, mbid: artistMbid, name: "Listed Artist" });
+  const album = libraryStore.upsertLibraryAlbum({ identityKey: `release-group:${albumMbid}`, mbid: "listed-deluxe",
+    releaseGroupMbid: albumMbid, artistId: artist.id, title: "Listed Album", metadata: { monitored: false } });
+  managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
+  const owned = libraryStore.upsertLibraryTrack({ identityKey: `recording:${recording(1)}`, mbid: recording(1),
+    title: "Listed Song 1", monitored: false });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: owned.id, trackNumber: 1 });
+  libraryStore.upsertLibraryMediaFile({ trackId: owned.id, albumId: album.id, source: "aurral",
+    path: path.join(isolatedState.baseDir, "listed", "01 Listed Song 1.flac") });
+  libraryStore.storeLibraryAlbumTrackList(album.id, { release: { id: "listed-deluxe",
+    tracks: [1, 2, 3].map((index) => ({ recordingId: recording(index), title: `Listed Song ${index}`, mediumNumber: 1, trackPosition: index })) } });
+
+  const requested = await callRoute("POST /albums/request", {}, { albumMbid, albumName: "Listed Album",
+    artistMbid, artistName: "Listed Artist", managedBy: "aurral" });
+
+  assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
+  assert.deepEqual(requested.body.jobIds.map((id) => downloadTracker.getJob(id).trackName), ["Listed Song 2", "Listed Song 3"]);
+  assert.equal(db.prepare("SELECT COUNT(*) FROM library_album_tracks WHERE album_id = ?").pluck().get(album.id), 3);
+});
+
 test("settling an album on an edition leaves a track another album has monitored", () => {
   const albumMbid = "ffffffff-ffff-4fff-8fff-000000000001";
   const artist = libraryStore.upsertLibraryArtist({ identityKey: "mbid:ffffffff-ffff-4fff-8fff-000000000002",

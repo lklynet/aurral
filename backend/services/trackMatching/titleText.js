@@ -31,6 +31,21 @@ export function coreAlbumTitle(value) {
   return core || String(value || "").trim();
 }
 
+const REMASTER_WORD = /^re-?master(?:ed)?$/u;
+const REMASTER_LABEL_WORD = /^(?:re-?master(?:ed)?|digital(?:ly)?|version|edition|deluxe|anniversary|\d{4}|\d+(?:st|nd|rd|th))$/u;
+
+// "Song (Remastered 2012)" and "Song - 2011 Remaster" are the song itself; a
+// live, demo, or remixed version is not.
+export function withoutRemasterLabel(value) {
+  const title = String(value || "").trim();
+  const match = title.match(/^(.+?)\s*[([]([^)\]]*)[)\]]$/u) || title.match(/^(.+)\s(?:-|–|—)\s+(.+)$/u);
+  if (!match) return title;
+  const words = match[2].toLowerCase().split(/[^\p{L}\p{N}-]+/u).filter(Boolean);
+  return words.some((word) => REMASTER_WORD.test(word)) && words.every((word) => REMASTER_LABEL_WORD.test(word))
+    ? match[1]
+    : title;
+}
+
 const OTHER_PRODUCTS = ["discography", "box set", "boxset", "bootleg", "tribute", "karaoke"];
 const OTHER_ALBUMS = ["live", "anthology", "greatest hits", "best of", "complete albums",
   "complete studio albums", "complete recordings", "complete works"];

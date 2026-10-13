@@ -53,7 +53,7 @@ function encryptSubsonicPassword(password) {
 function decryptSubsonicPassword(value) {
   if (!value) return null;
   const decrypted = decryptWithKey(value, getSettingsEncryptionKey());
-  return decrypted || null;
+  return decrypted && decrypted !== value ? decrypted : null;
 }
 
 export const userOps = {

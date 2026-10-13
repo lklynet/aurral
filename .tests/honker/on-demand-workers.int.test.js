@@ -20,7 +20,9 @@ test("a due schedule runs in background processes that exit once idle", { timeou
     [Math.floor(Date.now() / 1000) - 1, "disposable-on-demand"]);
   tx.commit();
 
+  const started = Promise.withResolvers();
   const finished = Promise.withResolvers();
+  const heartbeat = Promise.withResolvers();
   const exited = Promise.withResolvers();
   const exits = [];
   process.env.NODE_ENV = "production";
@@ -28,8 +30,10 @@ test("a due schedule runs in background processes that exit once idle", { timeou
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["scheduler", "maintenance"],
     findGroupsWithWork: honker.listBackgroundGroupsWithWork,
-    onMessage(message) {
+    onMessage(message, group) {
+      if (message.type === "job-started") started.resolve(message);
       if (message.type === "job-finished") finished.resolve(message);
+      if (message.type === "heartbeat" && group === "maintenance") heartbeat.resolve(message);
     },
     onExit(group, code, _signal, _pid, _reason, retired) {
       exits.push({ group, code, retired });
@@ -46,7 +50,10 @@ test("a due schedule runs in background processes that exit once idle", { timeou
 
   supervisor.start();
   assert.deepEqual(supervisor.getGroups(), ["scheduler"]);
+  assert.match((await started.promise).payload, /"kind":"session-cleanup"/);
   assert.equal((await finished.promise).queue, "system-task-maintenance");
+  const { memory } = await heartbeat.promise;
+  assert.ok(memory.rss > 0 && memory.heapUsed > 0);
   await exited.promise;
   assert.deepEqual(exits.sort((a, b) => a.group.localeCompare(b.group)), [
     { group: "maintenance", code: 0, retired: true },

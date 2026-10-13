@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { execFileSync, fork } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+import v8 from "node:v8";
 import { createBackgroundProcessSupervisor } from "../backend/services/backgroundProcessSupervisor.js";
 import {
   ISOLATED_WORKER_GROUPS,
@@ -54,6 +57,25 @@ test("only the owning process supervises isolated queues", () => {
 });
 
 const quietLogger = { warn() {}, error() {} };
+const heapFixture = fileURLToPath(new URL("./fixtures/heap-limit-background-child.mjs", import.meta.url));
+
+function withEnv(t, name, value) {
+  const previous = process.env[name];
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+  t.after(() => {
+    if (previous === undefined) delete process.env[name];
+    else process.env[name] = previous;
+  });
+}
+
+function forkHeapFixture(onReady) {
+  return (_entry, _args, options) => {
+    const child = fork(heapFixture, [], { ...options, stdio: ["ignore", "ignore", "ignore", "ipc"] });
+    child.once("message", () => onReady(child));
+    return child;
+  };
+}
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 function createFakeFork() {
@@ -326,13 +348,14 @@ test("flow restart waits for job recovery", async () => {
 test("only the worker with an overdue job is terminated", async () => {
   const children = new Map();
   const killed = [];
+  const errors = [];
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["inbox", "maintenance"],
     findGroupsWithWork: () => ["inbox", "maintenance"],
     jobTimeoutsMs: { inbox: 25, maintenance: 25 },
     unresponsiveMs: 1000,
     watchdogIntervalMs: 10,
-    logger: quietLogger,
+    logger: { warn() {}, error: (line) => errors.push(line) },
     forkProcess: (_entry, _args, options) => {
       const group = options.env.AURRAL_BACKGROUND_WORKER_GROUP;
       const child = new EventEmitter();
@@ -351,11 +374,62 @@ test("only the worker with an overdue job is terminated", async () => {
   });
   try {
     supervisor.start();
-    children.get("inbox").emit("message", { type: "job-started", jobId: 42 });
+    children.get("inbox").emit("message", {
+      type: "heartbeat", workers: [], memory: { rss: 300 * 1024 * 1024, heapUsed: 200 * 1024 * 1024 },
+    });
+    children.get("inbox").emit("message", {
+      type: "job-started", queue: "system-task-inbox", jobId: 42, payload: '{"kind":"disposable"}',
+    });
     await new Promise((resolve) => setTimeout(resolve, 65));
     assert.deepEqual(killed, ["inbox"]);
     assert.deepEqual(supervisor.getGroups(), ["inbox", "maintenance"]);
+    assert.deepEqual(errors, [
+      '[BackgroundWorkers] inbox system-task-inbox job 42 timed out; running system-task-inbox job 42 {"kind":"disposable"}; last memory 300 MB RSS, 200 MB heap; restarting its worker',
+    ]);
   } finally {
     await supervisor.stop();
   }
+});
+
+test("a worker that runs out of heap stops at the configured limit and the log names its job", async (t) => {
+  withEnv(t, "NODE_OPTIONS", undefined);
+  withEnv(t, "AURRAL_WORKER_MAX_HEAP_MB", "64");
+  const warned = Promise.withResolvers();
+  const supervisor = createBackgroundProcessSupervisor({
+    groups: ["notifications"],
+    findGroupsWithWork: () => ["notifications"],
+    logger: { warn: (line) => warned.resolve(line), error() {} },
+    forkProcess: forkHeapFixture((child) => child.send({
+      type: "run-job",
+      queue: "_outbox:notifications",
+      jobId: 42,
+      payload: '{"kind":"disposable"}',
+      defaultHeapLimit: v8.getHeapStatistics().heap_size_limit,
+    })),
+  });
+  t.after(() => supervisor.stop());
+  supervisor.start();
+  assert.match(
+    await warned.promise,
+    /^\[BackgroundWorkers\] notifications exited \(SIGABRT\); running _outbox:notifications job 42 \{"kind":"disposable"\}; last memory \d+ MB RSS, \d+ MB heap; restarting$/,
+  );
+});
+
+test("a heap limit set in NODE_OPTIONS reaches background workers unchanged", async (t) => {
+  withEnv(t, "NODE_OPTIONS", "--max-old-space-size=123");
+  withEnv(t, "AURRAL_WORKER_MAX_HEAP_MB", undefined);
+  const expected = Number(execFileSync(process.execPath, ["-p", "v8.getHeapStatistics().heap_size_limit"]));
+  const reported = Promise.withResolvers();
+  const supervisor = createBackgroundProcessSupervisor({
+    groups: ["library"],
+    findGroupsWithWork: () => ["library"],
+    logger: quietLogger,
+    forkProcess: forkHeapFixture((child) => child.send({ type: "report-heap-limit" })),
+    onMessage: (message) => {
+      if (message.type === "heap-limit") reported.resolve(message.bytes);
+    },
+  });
+  t.after(() => supervisor.stop());
+  supervisor.start();
+  assert.equal(await reported.promise, expected);
 });

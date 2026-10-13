@@ -111,6 +111,12 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       await startWorkerIfPending();
       return;
     }
+    case "playlist-startup-publish": {
+      const { playlistManager } = await import("./playlists/playlistManager.js");
+      playlistManager.updateConfig(false);
+      await playlistManager.ensurePlaylists();
+      return;
+    }
     case "discovery-bootstrap": {
       const { bootstrapDiscoveryRefresh } = await import("./discovery/refreshScheduler.js");
       await bootstrapDiscoveryRefresh();

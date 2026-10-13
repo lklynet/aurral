@@ -37,7 +37,7 @@ Spotify returns playlist items in pages of up to 50. Aurral reads every page, so
 
 Aurral stores one Spotify connection for each user. To revoke access, select **Disconnect** in the import window.
 
-If Spotify expires or revokes the connection, Aurral disconnects it and pauses your synced Spotify playlists. When you next open Aurral, a **Spotify disconnected** message appears. Select **Reconnect** to open the import window and connect again.
+If Spotify expires or revokes the connection, Aurral disconnects it. While Spotify is disconnected, Aurral pauses your synced Spotify playlists. It stops checking Spotify for them and keeps their tracks as they are. When you next open Aurral, a **Spotify disconnected** message appears. Select **Reconnect** to open the import window and connect again. The paused playlists sync at the next scheduled check. To sync one now, select **Sync now**.
 
 ## Import from YouTube Music
 
@@ -79,6 +79,8 @@ Before you import, link ListenBrainz in **Settings > Playback > Scrobbling**. Au
 The list shows the playlists that you own, and two generated playlists: **Weekly Jams** and **Weekly Exploration**. It leaves out the dated snapshots from **Created for you**.
 
 **Weekly Jams** and **Weekly Exploration** always point to the newest generated playlist. Aurral finds the newest one each time it previews, imports, or syncs. Another playlist that you own always syncs that one playlist.
+
+If you unlink ListenBrainz, Aurral pauses your synced ListenBrainz playlists until you link it again.
 
 ## Import a JSON file
 
