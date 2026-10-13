@@ -133,6 +133,7 @@ export const testWebhookConnection = (webhook) =>
 export const applyLidarrCommunityGuide = () =>
   postData("/settings/lidarr/apply-community-guide");
 
-export const getUpgradeReadiness = () => getData("/settings/upgrade-readiness");
+export const getUpgradeReadiness = ({ signal } = {}) =>
+  getData("/settings/upgrade-readiness", { signal });
 
 export const recheckUpgradeReadiness = () => postData("/settings/upgrade-readiness/recheck");

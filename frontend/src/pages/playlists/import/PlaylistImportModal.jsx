@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { FileJson, Music2, Upload } from "lucide-react";
 import { Link } from "react-router";
 import { ModalShell } from "../../../components/PlaylistModals";
@@ -23,6 +24,8 @@ import {
 } from "../../../utils/api/endpoints/playlists.js";
 import { getMyListeningHistory, getScrobbleStatus } from "../../../utils/api/endpoints/auth.js";
 import { getAppBasePath, normalizeBasePathWithTrailingSlash } from "../../../utils/basePath";
+import { useAuth } from "../../../contexts/AuthContext";
+import { queryClient, queryKeys } from "../../../queryClient.js";
 import { parseTracklistImportFile, reserveUniqueName, normalizeNameKey } from "../flowPageUtils";
 
 const SYNC_INTERVAL_OPTIONS = [
@@ -238,6 +241,60 @@ function openSpotifyOAuthPopup(oauthUrl) {
   });
 }
 
+const EMPTY_PLAYLISTS = [];
+
+function errorMessage(error, fallback) {
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.message ||
+    fallback
+  );
+}
+
+function isSpotifyAuthRequired(error) {
+  return error?.response?.data?.code === SPOTIFY_AUTH_REQUIRED_CODE;
+}
+
+function validYoutubePreview(payload) {
+  const playlist = payload?.playlist;
+  if (!playlist?.id || !playlist?.name) throw new Error("YouTube Music returned an invalid playlist");
+  return payload;
+}
+
+async function importTracklists(flows, reservedNameKeys) {
+  const reservedNames = new Set(reservedNameKeys);
+  let importedCount = 0;
+  const failed = [];
+  for (const payload of flows) {
+    const desiredName = String(payload?.importName ?? payload?.name ?? "").trim();
+    const baseName = desiredName || String(payload?.name || "").trim();
+    const finalName = reserveUniqueName(reservedNames, baseName);
+    try {
+      await importStaticPlaylist({
+        name: finalName,
+        sourceName: payload?.sourceName || null,
+        sourceFlowId: payload?.sourceFlowId || null,
+        tracks: payload?.tracks || [],
+      });
+      importedCount += 1;
+    } catch (error) {
+      failed.push({ name: finalName, message: errorMessage(error, "Failed to import tracklist") });
+    }
+  }
+  return { importedCount, failed };
+}
+
+function useErrorToast(error, fallback, showError, onError) {
+  const handledRef = useRef(null);
+  useEffect(() => {
+    if (!error || handledRef.current === error) return;
+    handledRef.current = error;
+    onError?.(error);
+    showError?.(errorMessage(error, fallback));
+  }, [error, fallback, onError, showError]);
+}
+
 export function PlaylistImportModal({
   open,
   onClose,
@@ -246,33 +303,17 @@ export function PlaylistImportModal({
   showSuccess,
   existingPlaylistNames = [],
 }) {
+  const { user } = useAuth();
   const [source, setSource] = useState("spotify");
-  const [spotifyStatus, setSpotifyStatus] = useState({ connected: false, displayName: null });
-  const [spotifyLoading, setSpotifyLoading] = useState(false);
-  const [listenBrainzStatus, setListenBrainzStatus] = useState({ connected: false, displayName: null });
-  const [listenBrainzLoading, setListenBrainzLoading] = useState(false);
-  const [lastfmUsername, setLastfmUsername] = useState("");
-  const [lastfmUsernameInput, setLastfmUsernameInput] = useState("");
-  const [lastfmProfileChecked, setLastfmProfileChecked] = useState(false);
-  const [lastfmProfileLoading, setLastfmProfileLoading] = useState(false);
-  const [lastfmLoading, setLastfmLoading] = useState(false);
+  const [lastfmUsernameDraft, setLastfmUsernameDraft] = useState(null);
+  const [lastfmRequestedUsername, setLastfmRequestedUsername] = useState(null);
   const [youtubeUrl, setYoutubeUrl] = useState("");
-  const [youtubeError, setYoutubeError] = useState("");
-  const [playlists, setPlaylists] = useState([]);
   const [playlistQuery, setPlaylistQuery] = useState("");
-  const [selectedPlaylist, setSelectedPlaylist] = useState(null);
-  const [playlistName, setPlaylistName] = useState("");
+  const [pickedPlaylist, setPickedPlaylist] = useState(null);
+  const [playlistNameDraft, setPlaylistNameDraft] = useState(null);
   const [syncIntervalHours, setSyncIntervalHours] = useState(24);
   const [keepRemovedTracks, setKeepRemovedTracks] = useState(true);
-  const [previewTracks, setPreviewTracks] = useState([]);
-  const [previewTrackCount, setPreviewTrackCount] = useState(0);
-  const [previewSkipped, setPreviewSkipped] = useState(0);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [jsonReview, setJsonReview] = useState(null);
-  const sourceRef = useRef(source);
-  const sourceRequestIdRef = useRef(0);
-  const loadedLastfmUsernameRef = useRef("");
 
   const reservedNameKeys = useMemo(
     () =>
@@ -282,235 +323,195 @@ export function PlaylistImportModal({
     [existingPlaylistNames],
   );
 
+  const youtubePreview = useMutation({
+    mutationFn: (url) => previewYoutubeMusicPlaylist(url).then(validYoutubePreview),
+  });
+  const resetYoutubePreview = youtubePreview.reset;
+
   const resetState = useCallback(() => {
-    sourceRef.current = "spotify";
-    sourceRequestIdRef.current += 1;
-    loadedLastfmUsernameRef.current = "";
     setSource("spotify");
-    setLastfmUsername("");
-    setLastfmUsernameInput("");
-    setLastfmProfileChecked(false);
+    setLastfmUsernameDraft(null);
+    setLastfmRequestedUsername(null);
     setYoutubeUrl("");
-    setYoutubeError("");
-    setPlaylists([]);
     setPlaylistQuery("");
-    setSelectedPlaylist(null);
-    setPlaylistName("");
+    setPickedPlaylist(null);
+    setPlaylistNameDraft(null);
     setSyncIntervalHours(24);
     setKeepRemovedTracks(true);
-    setPreviewTracks([]);
-    setPreviewTrackCount(0);
-    setPreviewSkipped(0);
-    setPreviewLoading(false);
     setJsonReview(null);
-  }, []);
+    resetYoutubePreview();
+  }, [resetYoutubePreview]);
 
-  const selectSource = (nextSource) => {
-    sourceRef.current = nextSource;
-    sourceRequestIdRef.current += 1;
-    loadedLastfmUsernameRef.current = "";
-    setSource(nextSource);
-    setPlaylists([]);
-    setPlaylistQuery("");
-    setSelectedPlaylist(null);
-    setPlaylistName("");
-    setYoutubeUrl("");
-    setYoutubeError("");
-    setPreviewTracks([]);
-    setPreviewTrackCount(0);
-    setPreviewSkipped(0);
-    setPreviewLoading(false);
-  };
-
-  const handleSpotifyAuthRequired = useCallback((error, requestId) => {
-    if (error?.response?.data?.code !== SPOTIFY_AUTH_REQUIRED_CODE) return false;
-    if (sourceRef.current !== "spotify" || requestId !== sourceRequestIdRef.current) return false;
-    setSpotifyStatus({ connected: false, displayName: null, connectedAt: null });
+  const handleSpotifyError = useCallback((error) => {
+    if (!isSpotifyAuthRequired(error)) return;
+    queryClient.removeQueries({ queryKey: queryKeys.playlistImportPrefix("spotify") });
+    queryClient.setQueryData(queryKeys.spotifyImportStatus, {
+      connected: false,
+      displayName: null,
+      connectedAt: null,
+    });
     resetState();
-    return true;
   }, [resetState]);
 
-  useEffect(() => {
-    if (!open) {
-      resetState();
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const status = await getSpotifyImportStatus();
-        if (!cancelled) setSpotifyStatus(status || { connected: false });
-      } catch {
-        if (!cancelled) setSpotifyStatus({ connected: false });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, resetState]);
+  const spotifyStatusQuery = useQuery({
+    queryKey: queryKeys.spotifyImportStatus,
+    queryFn: () => getSpotifyImportStatus(),
+    enabled: open,
+    staleTime: 0,
+  });
+  const spotifyConnected = Boolean(spotifyStatusQuery.data?.connected);
+  const spotifyPlaylistsQuery = useQuery({
+    queryKey: queryKeys.playlistImportList("spotify"),
+    queryFn: () => getSpotifyPlaylists(),
+    enabled: open && source === "spotify" && spotifyConnected,
+  });
+  const spotifyStatus = {
+    connected: spotifyConnected,
+    displayName: spotifyPlaylistsQuery.data?.user || spotifyStatusQuery.data?.displayName || null,
+  };
 
-  const loadSpotifyPlaylists = useCallback(async () => {
-    const requestId = sourceRequestIdRef.current;
-    const isCurrent = () =>
-      sourceRef.current === "spotify" && requestId === sourceRequestIdRef.current;
-    setSpotifyLoading(true);
-    try {
-      const payload = await getSpotifyPlaylists();
-      if (!isCurrent()) return;
-      setPlaylists(Array.isArray(payload?.playlists) ? payload.playlists : []);
-      if (payload?.user) {
-        setSpotifyStatus((prev) => ({ ...prev, connected: true, displayName: payload.user }));
-      }
-    } catch (error) {
-      if (!isCurrent()) return;
-      handleSpotifyAuthRequired(error, requestId);
-      showError?.(error?.response?.data?.message || error?.message || "Failed to load Spotify playlists");
-    } finally {
-      if (isCurrent()) setSpotifyLoading(false);
-    }
-  }, [handleSpotifyAuthRequired, showError]);
+  const scrobbleStatusQuery = useQuery({
+    queryKey: queryKeys.scrobbleStatus,
+    queryFn: () => getScrobbleStatus(),
+    enabled: open && source === "listenbrainz",
+    staleTime: 0,
+  });
+  const listenBrainzAccount = scrobbleStatusQuery.data?.listenbrainz;
+  const listenBrainzPlaylistsQuery = useQuery({
+    queryKey: queryKeys.playlistImportList("listenbrainz"),
+    queryFn: () => getListenBrainzPlaylists(),
+    enabled: open && source === "listenbrainz" && Boolean(listenBrainzAccount?.connected),
+  });
+  const listenBrainzStatus = {
+    connected: Boolean(listenBrainzAccount?.connected) && !listenBrainzPlaylistsQuery.isError,
+    displayName: listenBrainzPlaylistsQuery.data?.user || listenBrainzAccount?.displayName || null,
+  };
 
-  useEffect(() => {
-    if (!open || source !== "spotify" || !spotifyStatus.connected) return;
-    loadSpotifyPlaylists();
-  }, [open, source, spotifyStatus.connected, loadSpotifyPlaylists]);
+  const lastfmProfileQuery = useQuery({
+    queryKey: queryKeys.listeningHistory(user?.id),
+    queryFn: ({ signal }) => getMyListeningHistory({ signal }),
+    enabled: open && source === "lastfm" && lastfmRequestedUsername === null,
+  });
+  const profileLastfmUsername =
+    lastfmProfileQuery.data?.listenHistoryProvider === "lastfm"
+      ? String(lastfmProfileQuery.data?.listenHistoryUsername || "").trim()
+      : "";
+  const lastfmUsernameRequest = lastfmRequestedUsername ?? profileLastfmUsername;
+  const lastfmUsernameInput = lastfmUsernameDraft ?? profileLastfmUsername;
+  const lastfmPlaylistsQuery = useQuery({
+    queryKey: queryKeys.playlistImportList("lastfm", lastfmUsernameRequest),
+    queryFn: () => getLastfmPlaylists(lastfmUsernameRequest),
+    enabled: open && source === "lastfm" && Boolean(lastfmUsernameRequest),
+  });
+  const lastfmUsername = lastfmPlaylistsQuery.isSuccess ? lastfmUsernameRequest : "";
+  const lastfmProfileLoading = lastfmRequestedUsername === null && lastfmProfileQuery.isLoading;
+  const lastfmLoading = lastfmPlaylistsQuery.isFetching;
 
-  const loadListenBrainzPlaylists = useCallback(async () => {
-    const requestId = sourceRequestIdRef.current;
-    const isCurrent = () =>
-      sourceRef.current === "listenbrainz" && requestId === sourceRequestIdRef.current;
-    setListenBrainzLoading(true);
-    try {
-      const statusPayload = await getScrobbleStatus();
-      if (!isCurrent()) return;
-      const status = statusPayload?.listenbrainz || { connected: false };
-      setListenBrainzStatus(status);
-      if (!status.connected) {
-        setPlaylists([]);
-        return;
-      }
-      const payload = await getListenBrainzPlaylists();
-      if (!isCurrent()) return;
-      setPlaylists(Array.isArray(payload?.playlists) ? payload.playlists : []);
-      if (payload?.user) {
-        setListenBrainzStatus((prev) => ({ ...prev, connected: true, displayName: payload.user }));
-      }
-    } catch (error) {
-      if (!isCurrent()) return;
-      setListenBrainzStatus({ connected: false, displayName: null });
-      setPlaylists([]);
-      showError?.(
-        error?.response?.data?.message ||
-          error?.message ||
-          "Failed to load ListenBrainz playlists",
-      );
-    } finally {
-      if (isCurrent()) setListenBrainzLoading(false);
-    }
-  }, [showError]);
+  const previewQuery = useQuery({
+    queryKey: queryKeys.playlistImportPreview(source, pickedPlaylist?.id, {
+      sourceType: pickedPlaylist?.sourceType || null,
+      username: source === "lastfm" ? lastfmUsername : null,
+    }),
+    queryFn: () =>
+      source === "spotify"
+        ? previewSpotifyPlaylist(pickedPlaylist.id)
+        : source === "listenbrainz"
+          ? previewListenBrainzPlaylist(pickedPlaylist.id, pickedPlaylist.sourceType)
+          : previewLastfmPlaylist(pickedPlaylist.id, lastfmUsername),
+    enabled:
+      open && ["spotify", "listenbrainz", "lastfm"].includes(source) && Boolean(pickedPlaylist?.id),
+  });
 
-  const loadLastfmPlaylists = useCallback(async (requestedUsername) => {
-    const username = String(requestedUsername || "").trim();
-    if (!username) return;
-    if (loadedLastfmUsernameRef.current === username) return;
-    const requestId = sourceRequestIdRef.current;
-    const isCurrent = () =>
-      sourceRef.current === "lastfm" && requestId === sourceRequestIdRef.current;
-    loadedLastfmUsernameRef.current = username;
-    setLastfmProfileChecked(true);
-    setLastfmLoading(true);
-    try {
-      const payload = await getLastfmPlaylists(username);
-      if (!isCurrent()) return;
-      setLastfmUsername(username);
-      setLastfmUsernameInput(username);
-      setPlaylists(Array.isArray(payload?.playlists) ? payload.playlists : []);
-    } catch (error) {
-      if (!isCurrent()) return;
-      loadedLastfmUsernameRef.current = "";
-      setPlaylists([]);
-      showError?.(
-        error?.response?.data?.message ||
-          error?.message ||
-          "Failed to load Last.fm stations",
-      );
-    } finally {
-      if (isCurrent()) setLastfmLoading(false);
-    }
-  }, [showError]);
+  useErrorToast(
+    source === "spotify" ? spotifyPlaylistsQuery.error : null,
+    "Failed to load Spotify playlists",
+    showError,
+    handleSpotifyError,
+  );
+  useErrorToast(
+    source === "listenbrainz" ? scrobbleStatusQuery.error || listenBrainzPlaylistsQuery.error : null,
+    "Failed to load ListenBrainz playlists",
+    showError,
+  );
+  useErrorToast(
+    source === "lastfm" ? lastfmPlaylistsQuery.error : null,
+    "Failed to load Last.fm stations",
+    showError,
+  );
+  useErrorToast(previewQuery.error, "Failed to preview playlist", showError, handleSpotifyError);
 
-  useEffect(() => {
-    if (!open || source !== "listenbrainz") return;
-    loadListenBrainzPlaylists();
-  }, [open, source, loadListenBrainzPlaylists]);
-
-  useEffect(() => {
-    if (!open || source !== "lastfm") return;
-    if (lastfmUsername || lastfmProfileChecked) {
-      if (lastfmUsername) loadLastfmPlaylists(lastfmUsername);
-      return;
-    }
-    let cancelled = false;
-    setLastfmProfileLoading(true);
-    getMyListeningHistory()
-      .then((payload) => {
-        if (cancelled) return;
-        const username =
-          payload?.listenHistoryProvider === "lastfm"
-            ? String(payload?.listenHistoryUsername || "").trim()
-            : "";
-        setLastfmUsernameInput(username);
-        if (username) setLastfmUsername(username);
-        setLastfmProfileChecked(true);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLastfmProfileLoading(false);
+  const connectSpotify = useMutation({
+    mutationFn: async () => {
+      const { oauthUrl } = await startSpotifyOAuth(getOAuthCallbackUrl());
+      const tokens = await openSpotifyOAuthPopup(oauthUrl);
+      return completeSpotifyOAuth(tokens);
+    },
+    onSuccess: (status) => {
+      queryClient.removeQueries({ queryKey: queryKeys.playlistImportPrefix("spotify") });
+      queryClient.setQueryData(queryKeys.spotifyImportStatus, {
+        connected: true,
+        displayName: status?.displayName || null,
+        connectedAt: status?.connectedAt || null,
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, source, lastfmProfileChecked, lastfmUsername, loadLastfmPlaylists]);
+    },
+    onError: (error) => {
+      handleSpotifyError(error);
+      showError?.(errorMessage(error, "Failed to connect Spotify"));
+    },
+  });
 
-  useEffect(() => {
-    if (source === "youtube") return;
-    if (!selectedPlaylist?.id) {
-      setPreviewTracks([]);
-      setPreviewTrackCount(0);
-      setPreviewSkipped(0);
-      return;
-    }
-    let cancelled = false;
-    const requestId = sourceRequestIdRef.current;
-    setPreviewLoading(true);
-    (async () => {
-      try {
-        const payload =
-          source === "spotify"
-            ? await previewSpotifyPlaylist(selectedPlaylist.id)
-            : source === "listenbrainz"
-              ? await previewListenBrainzPlaylist(
-                  selectedPlaylist.id,
-                  selectedPlaylist.sourceType,
-                )
-              : await previewLastfmPlaylist(selectedPlaylist.id, lastfmUsername);
-        if (cancelled) return;
-        setPreviewTrackCount(Number(payload?.trackCount || 0));
-        setPreviewSkipped(Number(payload?.skipped || 0));
-        setPreviewTracks(Array.isArray(payload?.previewTracks) ? payload.previewTracks : []);
-      } catch (error) {
-        if (!cancelled) {
-          handleSpotifyAuthRequired(error, requestId);
-          showError?.(error?.response?.data?.message || error?.message || "Failed to preview playlist");
-        }
-      } finally {
-        if (!cancelled) setPreviewLoading(false);
+  const disconnectSpotifyAccount = useMutation({
+    mutationFn: () => disconnectSpotify(),
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: queryKeys.playlistImportPrefix("spotify") });
+      queryClient.setQueryData(queryKeys.spotifyImportStatus, { connected: false, displayName: null });
+      setPickedPlaylist(null);
+    },
+    onError: (error) => {
+      showError?.(error?.message || "Failed to disconnect Spotify");
+    },
+  });
+
+  const externalImport = useMutation({
+    mutationFn: ({ importPlaylist, payload }) => importPlaylist(payload),
+  });
+  const jsonImport = useMutation({
+    mutationFn: (flows) => importTracklists(flows, reservedNameKeys),
+  });
+
+  const importing = externalImport.isPending || jsonImport.isPending;
+  const spotifyLoading =
+    connectSpotify.isPending || disconnectSpotifyAccount.isPending || spotifyPlaylistsQuery.isLoading;
+  const listenBrainzLoading = scrobbleStatusQuery.isLoading || listenBrainzPlaylistsQuery.isLoading;
+
+  const youtubePlaylist = youtubePreview.data
+    ? {
+        ...youtubePreview.data.playlist,
+        trackCount: Number(youtubePreview.data.trackCount || 0),
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [handleSpotifyAuthRequired, lastfmUsername, selectedPlaylist, showError, source]);
+    : null;
+  const youtubeError = youtubePreview.error
+    ? errorMessage(youtubePreview.error, "Failed to preview YouTube Music playlist")
+    : "";
+  const selectedPlaylist = source === "youtube" ? youtubePlaylist : pickedPlaylist;
+  const previewPayload = source === "youtube" ? youtubePreview.data : previewQuery.data;
+  const previewLoading = source === "youtube" ? youtubePreview.isPending : previewQuery.isLoading;
+  const previewTrackCount = Number(previewPayload?.trackCount || 0);
+  const previewSkipped = Number(previewPayload?.skipped || 0);
+  const previewTracks = Array.isArray(previewPayload?.previewTracks) ? previewPayload.previewTracks : [];
+  const playlistName = playlistNameDraft ?? selectedPlaylist?.name ?? "";
+
+  const activePlaylistsData =
+    source === "spotify"
+      ? spotifyPlaylistsQuery.data
+      : source === "listenbrainz"
+        ? listenBrainzStatus.connected ? listenBrainzPlaylistsQuery.data : null
+        : source === "lastfm"
+          ? lastfmPlaylistsQuery.data
+          : null;
+  const playlists = Array.isArray(activePlaylistsData?.playlists)
+    ? activePlaylistsData.playlists
+    : EMPTY_PLAYLISTS;
 
   const filteredPlaylists = useMemo(() => {
     const query = playlistQuery.trim().toLowerCase();
@@ -518,83 +519,51 @@ export function PlaylistImportModal({
     return playlists.filter((playlist) => playlist.name.toLowerCase().includes(query));
   }, [playlistQuery, playlists]);
 
-  const handleConnectSpotify = async () => {
-    const requestId = sourceRequestIdRef.current;
-    setSpotifyLoading(true);
-    try {
-      const { oauthUrl } = await startSpotifyOAuth(getOAuthCallbackUrl());
-      const tokens = await openSpotifyOAuthPopup(oauthUrl);
-      const status = await completeSpotifyOAuth(tokens);
-      setSpotifyStatus({
-        connected: true,
-        displayName: status?.displayName || null,
-        connectedAt: status?.connectedAt || null,
-      });
-      await loadSpotifyPlaylists();
-    } catch (error) {
-      handleSpotifyAuthRequired(error, requestId);
-      showError?.(
-        error?.response?.data?.message || error?.message || "Failed to connect Spotify",
-      );
-    } finally {
-      setSpotifyLoading(false);
+  const selectSource = (nextSource) => {
+    setSource(nextSource);
+    setPlaylistQuery("");
+    setPickedPlaylist(null);
+    setPlaylistNameDraft(null);
+    setYoutubeUrl("");
+    youtubePreview.reset();
+  };
+
+  const loadLastfmPlaylists = (requestedUsername) => {
+    const username = String(requestedUsername || "").trim();
+    if (!username) return;
+    setLastfmUsernameDraft(username);
+    setLastfmRequestedUsername(username);
+    if (username === lastfmUsernameRequest && lastfmPlaylistsQuery.isError) {
+      void lastfmPlaylistsQuery.refetch();
     }
   };
 
-  const handleDisconnectSpotify = async () => {
-    setSpotifyLoading(true);
-    try {
-      await disconnectSpotify();
-      setSpotifyStatus({ connected: false, displayName: null });
-      setPlaylists([]);
-      setSelectedPlaylist(null);
-    } catch (error) {
-      showError?.(error?.message || "Failed to disconnect Spotify");
-    } finally {
-      setSpotifyLoading(false);
-    }
+  const changeLastfmUsername = () => {
+    setLastfmRequestedUsername("");
+    setLastfmUsernameDraft("");
+    setPickedPlaylist(null);
   };
 
   const handleSelectPlaylist = (playlist) => {
-    setSelectedPlaylist(playlist);
-    setPlaylistName(playlist?.name || "");
+    setPickedPlaylist(playlist);
+    setPlaylistNameDraft(null);
   };
 
-  const handlePreviewYoutube = async () => {
+  const handlePreviewYoutube = () => {
     const url = youtubeUrl.trim();
     if (!url || previewLoading || importing) return;
-    const requestId = sourceRequestIdRef.current;
-    setYoutubeError("");
-    setSelectedPlaylist(null);
-    setPlaylistName("");
-    setPreviewTracks([]);
-    setPreviewTrackCount(0);
-    setPreviewSkipped(0);
-    setPreviewLoading(true);
-    try {
-      const payload = await previewYoutubeMusicPlaylist(url);
-      if (sourceRef.current !== "youtube" || requestId !== sourceRequestIdRef.current) return;
-      const playlist = payload?.playlist;
-      if (!playlist?.id || !playlist?.name) throw new Error("YouTube Music returned an invalid playlist");
-      setSelectedPlaylist({ ...playlist, trackCount: Number(payload?.trackCount || 0) });
-      setPlaylistName(playlist.name);
-      setPreviewTrackCount(Number(payload?.trackCount || 0));
-      setPreviewSkipped(Number(payload?.skipped || 0));
-      setPreviewTracks(Array.isArray(payload?.previewTracks) ? payload.previewTracks : []);
-    } catch (error) {
-      if (sourceRef.current !== "youtube" || requestId !== sourceRequestIdRef.current) return;
-      const message =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        error?.message ||
-        "Failed to preview YouTube Music playlist";
-      setYoutubeError(message);
-      showError?.(message);
-    } finally {
-      if (sourceRef.current === "youtube" && requestId === sourceRequestIdRef.current) {
-        setPreviewLoading(false);
-      }
-    }
+    setPlaylistNameDraft(null);
+    youtubePreview.mutate(url, {
+      onError: (error) => {
+        showError?.(errorMessage(error, "Failed to preview YouTube Music playlist"));
+      },
+    });
+  };
+
+  const handleYoutubeUrlChange = (value) => {
+    setYoutubeUrl(value);
+    setPlaylistNameDraft(null);
+    youtubePreview.reset();
   };
 
   const handleJsonFileChange = async (event) => {
@@ -614,15 +583,14 @@ export function PlaylistImportModal({
     }
   };
 
-  const handleImportExternal = async () => {
+  const handleImportExternal = () => {
     if (!selectedPlaylist?.id || importing) return;
     const baseName = String(playlistName || selectedPlaylist.name || "").trim();
     if (!baseName) {
       showError?.("Playlist name is required");
       return;
     }
-    const reservedNames = new Set(reservedNameKeys);
-    const finalName = reserveUniqueName(reservedNames, baseName);
+    const finalName = reserveUniqueName(new Set(reservedNameKeys), baseName);
     const isListenBrainz = source === "listenbrainz";
     const isLastfm = source === "lastfm";
     const isYoutube = source === "youtube";
@@ -633,87 +601,62 @@ export function PlaylistImportModal({
         : isYoutube
           ? "YouTube Music"
           : "Spotify";
-    const requestId = sourceRequestIdRef.current;
-    setImporting(true);
-    try {
-      const importPlaylist = isListenBrainz
-        ? importListenBrainzPlaylist
-        : isLastfm
-          ? importLastfmPlaylist
-          : isYoutube
-            ? importYoutubeMusicPlaylist
-            : importSpotifyPlaylist;
-      await importPlaylist({
-        playlistId: selectedPlaylist.id,
-        ...(isListenBrainz && selectedPlaylist.sourceType
-          ? { playlistType: selectedPlaylist.sourceType }
-          : {}),
-        ...(isLastfm ? { username: lastfmUsername } : {}),
-        ...(!isYoutube ? { externalName: selectedPlaylist.name } : {}),
-        name: finalName,
-        syncEnabled: syncIntervalHours > 0,
-        syncIntervalHours,
-        keepRemovedTracks,
-      });
-      showSuccess?.(`Queued import of ${finalName} from ${providerLabel}`);
-      onImported?.();
-      onClose?.();
-    } catch (error) {
-      handleSpotifyAuthRequired(error, requestId);
-      showError?.(
-        error?.response?.data?.message ||
-          error?.response?.data?.error ||
-          error?.message ||
-          `Failed to import ${providerLabel} playlist`,
-      );
-    } finally {
-      setImporting(false);
-    }
+    const importPlaylist = isListenBrainz
+      ? importListenBrainzPlaylist
+      : isLastfm
+        ? importLastfmPlaylist
+        : isYoutube
+          ? importYoutubeMusicPlaylist
+          : importSpotifyPlaylist;
+    externalImport.mutate(
+      {
+        importPlaylist,
+        payload: {
+          playlistId: selectedPlaylist.id,
+          ...(isListenBrainz && selectedPlaylist.sourceType
+            ? { playlistType: selectedPlaylist.sourceType }
+            : {}),
+          ...(isLastfm ? { username: lastfmUsername } : {}),
+          ...(!isYoutube ? { externalName: selectedPlaylist.name } : {}),
+          name: finalName,
+          syncEnabled: syncIntervalHours > 0,
+          syncIntervalHours,
+          keepRemovedTracks,
+        },
+      },
+      {
+        onSuccess: () => {
+          showSuccess?.(`Queued import of ${finalName} from ${providerLabel}`);
+          onImported?.();
+          onClose?.();
+        },
+        onError: (error) => {
+          handleSpotifyError(error);
+          showError?.(errorMessage(error, `Failed to import ${providerLabel} playlist`));
+        },
+      },
+    );
   };
 
-  const handleImportJson = async () => {
+  const handleImportJson = () => {
     if (!jsonReview || importing) return;
-    setImporting(true);
-    const reservedNames = new Set(reservedNameKeys);
-    let importedCount = 0;
-    const failed = [];
-    for (const payload of jsonReview.flows) {
-      const desiredName = String(payload?.importName ?? payload?.name ?? "").trim();
-      const baseName = desiredName || String(payload?.name || "").trim();
-      const finalName = reserveUniqueName(reservedNames, baseName);
-      try {
-        await importStaticPlaylist({
-          name: finalName,
-          sourceName: payload?.sourceName || null,
-          sourceFlowId: payload?.sourceFlowId || null,
-          tracks: payload?.tracks || [],
-        });
-        importedCount += 1;
-      } catch (error) {
-        failed.push({
-          name: finalName,
-          message:
-            error?.response?.data?.message ||
-            error?.response?.data?.error ||
-            error?.message ||
-            "Failed to import tracklist",
-        });
-      }
-    }
-    setImporting(false);
-    if (importedCount > 0) {
-      showSuccess?.(`${importedCount} ${importedCount === 1 ? "playlist" : "playlists"} imported`);
-      onImported?.();
-      onClose?.();
-    }
-    if (failed.length > 0) {
-      const first = failed[0];
-      showError?.(
-        failed.length === 1
-          ? `${first.name}: ${first.message}`
-          : `${failed.length} imports failed. First issue: ${first.name} - ${first.message}`,
-      );
-    }
+    jsonImport.mutate(jsonReview.flows, {
+      onSuccess: ({ importedCount, failed }) => {
+        if (importedCount > 0) {
+          showSuccess?.(`${importedCount} ${importedCount === 1 ? "playlist" : "playlists"} imported`);
+          onImported?.();
+          onClose?.();
+        }
+        if (failed.length > 0) {
+          const first = failed[0];
+          showError?.(
+            failed.length === 1
+              ? `${first.name}: ${first.message}`
+              : `${failed.length} imports failed. First issue: ${first.name} - ${first.message}`,
+          );
+        }
+      },
+    });
   };
 
   const canImportExternal = selectedPlaylist?.id && previewTrackCount > 0 && !previewLoading;
@@ -817,15 +760,7 @@ export function PlaylistImportModal({
                     className="input"
                     placeholder="https://music.youtube.com/playlist?list=…"
                     value={youtubeUrl}
-                    onChange={(event) => {
-                      setYoutubeUrl(event.target.value);
-                      setYoutubeError("");
-                      setSelectedPlaylist(null);
-                      setPlaylistName("");
-                      setPreviewTracks([]);
-                      setPreviewTrackCount(0);
-                      setPreviewSkipped(0);
-                    }}
+                    onChange={(event) => handleYoutubeUrlChange(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
                         event.preventDefault();
@@ -872,7 +807,7 @@ export function PlaylistImportModal({
                       previewTrackCount={previewTrackCount}
                       previewTracks={previewTracks}
                       setKeepRemovedTracks={setKeepRemovedTracks}
-                      setPlaylistName={setPlaylistName}
+                      setPlaylistName={setPlaylistNameDraft}
                       setSyncIntervalHours={setSyncIntervalHours}
                       syncIntervalHours={syncIntervalHours}
                     />
@@ -891,7 +826,7 @@ export function PlaylistImportModal({
                 <button
                   type="button"
                   className="btn btn-primary btn-sm"
-                  onClick={handleConnectSpotify}
+                  onClick={() => connectSpotify.mutate()}
                   disabled={spotifyLoading || importing}
                 >
                   {spotifyLoading ? <DotLoader size="sm" label={null} /> : null}
@@ -932,7 +867,7 @@ export function PlaylistImportModal({
                     type="text"
                     className="input"
                     value={lastfmUsernameInput}
-                    onChange={(event) => setLastfmUsernameInput(event.target.value)}
+                    onChange={(event) => setLastfmUsernameDraft(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") loadLastfmPlaylists(lastfmUsernameInput);
                     }}
@@ -973,7 +908,7 @@ export function PlaylistImportModal({
                     <button
                       type="button"
                       className="btn btn-ghost btn-sm"
-                      onClick={handleDisconnectSpotify}
+                      onClick={() => disconnectSpotifyAccount.mutate()}
                       disabled={spotifyLoading || importing}
                     >
                       Disconnect
@@ -982,14 +917,7 @@ export function PlaylistImportModal({
                     <button
                       type="button"
                       className="btn btn-ghost btn-sm"
-                      onClick={() => {
-                        loadedLastfmUsernameRef.current = "";
-                        setLastfmUsername("");
-                        setLastfmUsernameInput("");
-                        setLastfmProfileChecked(true);
-                        setPlaylists([]);
-                        setSelectedPlaylist(null);
-                      }}
+                      onClick={changeLastfmUsername}
                       disabled={lastfmLoading || importing}
                     >
                       Change
@@ -1008,7 +936,7 @@ export function PlaylistImportModal({
                     <button
                       type="button"
                       className="btn btn-ghost btn-sm"
-                      onClick={() => setSelectedPlaylist(null)}
+                      onClick={() => setPickedPlaylist(null)}
                       disabled={importing}
                     >
                       Change
@@ -1070,7 +998,7 @@ export function PlaylistImportModal({
                     previewTrackCount={previewTrackCount}
                     previewTracks={previewTracks}
                     setKeepRemovedTracks={setKeepRemovedTracks}
-                    setPlaylistName={setPlaylistName}
+                    setPlaylistName={setPlaylistNameDraft}
                     setSyncIntervalHours={setSyncIntervalHours}
                     syncIntervalHours={syncIntervalHours}
                   />

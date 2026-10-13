@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import {
@@ -6,6 +7,7 @@ import {
   recheckUpgradeReadiness,
 } from "../../../utils/api/endpoints/settings.js";
 import { formatDateTime } from "../../../utils/dateTime.js";
+import { queryKeys } from "../../../queryClient.js";
 
 const BLOCKER_TITLES = {
   schema: "Database upgrade",
@@ -38,33 +40,21 @@ function ReviewItems({ blocker }) {
 }
 
 export function SettingsUpgradeReadiness({ showSuccess, showError }) {
-  const [readiness, setReadiness] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
+  const queryClient = useQueryClient();
+  const readinessQuery = useQuery({
+    queryKey: queryKeys.upgradeReadiness,
+    queryFn: ({ signal }) => getUpgradeReadiness({ signal }),
+    staleTime: 0,
+  });
+  const readiness = readinessQuery.data ?? null;
   const [rechecking, setRechecking] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setReadiness(await getUpgradeReadiness());
-      setFailed(false);
-    } catch {
-      setFailed(true);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   const handleRecheck = async () => {
     setRechecking(true);
     try {
       await recheckUpgradeReadiness();
       showSuccess("Aurral 3.0 check queued. The results update when the background tasks finish.");
-      await load();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.upgradeReadiness });
     } catch {
       showError("Could not queue the Aurral 3.0 check. Try again.");
     } finally {
@@ -76,18 +66,18 @@ export function SettingsUpgradeReadiness({ showSuccess, showError }) {
   const warnings = readiness?.warnings || [];
 
   let status;
-  if (loading && !readiness) {
+  if (readinessQuery.isFetching && !readiness) {
     status = (
       <div className="settings-system__value" role="status">
         <DotLoader size="xs" label={null} /> Checking…
       </div>
     );
-  } else if (failed) {
+  } else if (readinessQuery.isError) {
     status = (
       <div className="settings-system__value settings-system__value--error" role="alert">
         <AlertCircle className="artist-icon-xs" aria-hidden />
         Could not check readiness.
-        <button type="button" className="arr-btn" onClick={load}>
+        <button type="button" className="arr-btn" onClick={() => readinessQuery.refetch()}>
           Retry
         </button>
       </div>

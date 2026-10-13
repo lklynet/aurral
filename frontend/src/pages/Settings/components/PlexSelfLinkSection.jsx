@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getMyPlexLinkStatus,
   startMyPlexLinkPin,
@@ -6,6 +7,8 @@ import {
   disconnectMyPlex,
 } from "../../../utils/api/endpoints/auth.js";
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.js";
+import { useAuth } from "../../../contexts/AuthContext";
+import { queryKeys } from "../../../queryClient.js";
 
 const EMPTY_STATUS = {
   connected: false,
@@ -18,25 +21,18 @@ const EMPTY_STATUS = {
 };
 
 export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) {
-  const [status, setStatus] = useState(EMPTY_STATUS);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const statusQueryKey = queryKeys.myPlexLinkStatus(user?.id);
+  const statusQuery = useQuery({
+    queryKey: statusQueryKey,
+    queryFn: ({ signal }) => getMyPlexLinkStatus({ signal }),
+  });
+  const status = statusQuery.data ?? EMPTY_STATUS;
+  const updateStatus = (update) =>
+    queryClient.setQueryData(statusQueryKey, (prev) => update(prev ?? EMPTY_STATUS));
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    getMyPlexLinkStatus()
-      .then((data) => {
-        if (!cancelled) setStatus(data);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const handleConnect = async () => {
     if (status.connected && status.linkType === "managed") {
@@ -78,7 +74,7 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
         showError?.("Plex authentication timed out. Please try again.");
         return;
       }
-      setStatus((prev) => ({
+      updateStatus((prev) => ({
         ...prev,
         connected: true,
         linkType: linked.linkType,
@@ -99,7 +95,7 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
     setDisconnecting(true);
     try {
       await disconnectMyPlex();
-      setStatus((prev) => ({
+      updateStatus((prev) => ({
         ...EMPTY_STATUS,
         globalAccount: prev.globalAccount,
         isGlobalAccountOwner: prev.isGlobalAccountOwner,
@@ -111,7 +107,7 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
         if (shouldRetry) {
           try {
             await disconnectMyPlex();
-            setStatus((prev) => ({
+            updateStatus((prev) => ({
               ...EMPTY_STATUS,
               globalAccount: prev.globalAccount,
               isGlobalAccountOwner: prev.isGlobalAccountOwner,
@@ -129,7 +125,7 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
     }
   };
 
-  if (loading) return null;
+  if (statusQuery.isPending) return null;
 
   return (
     <div className={`settings-page__section${className ? ` ${className}` : ""}`}>

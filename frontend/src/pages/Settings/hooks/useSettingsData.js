@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import api from "../../../utils/api/core.js";
-import { checkHealth } from "../../../utils/api/endpoints/auth.js";
+import { checkHealth, fetchHealth } from "../../../utils/api/endpoints/auth.js";
 import {
   fetchAppSettings,
   fetchPlaybackSettings,
@@ -205,6 +205,7 @@ const defaultSettings = {
 };
 
 const AUTOSAVE_DELAY_MS = 450;
+const SETTINGS_SAVE_KEY = ["settings", "save"];
 
 const getLidarrResourceConfig = (settings) => {
   const lidarr = settings?.integrations?.lidarr || {};
@@ -242,24 +243,18 @@ const buildLidarrQueries = ({ url, apiKey, credentialsRevision }, enabled) => [
 ];
 
 export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
-  const [health, setHealth] = useState(null);
   const [settings, setSettingsState] = useState(defaultSettings);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [originalSettings, setOriginalSettings] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [requestingDiscoveryRefresh, setRequestingDiscoveryRefresh] = useState(false);
-  const [clearingCache, setClearingCache] = useState(false);
   const [testingLidarr, setTestingLidarr] = useState(false);
   const [testingGotify, setTestingGotify] = useState(false);
-  const [applyingCommunityGuide, setApplyingCommunityGuide] = useState(false);
   const [showCommunityGuideModal, setShowCommunityGuideModal] = useState(false);
   const comparisonEnabledRef = useRef(false);
   const settingsRef = useRef(defaultSettings);
   const originalSettingsRef = useRef(null);
   const hasUnsavedChangesRef = useRef(false);
   const saveTimerRef = useRef(null);
-  const saveInFlightRef = useRef(null);
-  const saveQueuedRef = useRef(false);
   const persistSettingsRef = useRef(null);
   const settingsActivationTimerRef = useRef(null);
   const mountedRef = useRef(true);
@@ -301,8 +296,16 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
     enabled: false,
     staleTime: 30_000,
   });
+  const healthQuery = useQuery({
+    queryKey: queryKeys.appHealth,
+    queryFn: ({ signal }) => fetchHealth({ signal }),
+    staleTime: 30_000,
+  });
+  const health = healthQuery.data ?? null;
   const settingsSaveMutation = useMutation({
+    mutationKey: SETTINGS_SAVE_KEY,
     mutationFn: updateAppSettings,
+    scope: { id: "app-settings" },
     onSuccess: (savedSettings) => {
       queryClient.setQueryData(queryKeys.appSettings, savedSettings);
       queryClient.invalidateQueries({ queryKey: queryKeys.appHealth });
@@ -343,9 +346,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
 
   const refreshHealth = useCallback(async () => {
     try {
-      const healthData = await checkHealth({ force: true });
-      setHealth(healthData);
-      return healthData;
+      return await checkHealth({ force: true });
     } catch {
       return null;
     }
@@ -429,72 +430,49 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   const persistSettings = useCallback(
     async (settingsToSave) => {
       if (!settingsToSave) return false;
-      if (saveInFlightRef.current) {
-        if (checkForChanges(settingsRef.current, originalSettingsRef.current)) {
-          saveQueuedRef.current = true;
-        }
-        return saveInFlightRef.current;
-      }
-
-      let succeeded = false;
-      const request = (async () => {
-        try {
-          const savedSettings = await saveSettings(settingsToSave);
-          const normalizedSettings = normalizeSettings(savedSettings);
-          const savedSnapshot = structuredClone(normalizedSettings);
-          const isLatestSettings = settingsRef.current === settingsToSave;
-          updateLidarrResourceConfig(getLidarrResourceConfig(normalizedSettings));
-
-          originalSettingsRef.current = savedSnapshot;
-          if (mountedRef.current) setOriginalSettings(savedSnapshot);
-
-          if (isLatestSettings) {
-            settingsRef.current = normalizedSettings;
-            if (mountedRef.current) setSettingsState(normalizedSettings);
-            hasUnsavedChangesRef.current = false;
-            if (mountedRef.current) setHasUnsavedChanges(false);
-          } else {
-            const stillDirty = checkForChanges(settingsRef.current, normalizedSettings);
-            hasUnsavedChangesRef.current = stillDirty;
-            if (mountedRef.current) setHasUnsavedChanges(stillDirty);
-          }
-          if (typeof window !== "undefined") {
-            window.dispatchEvent(new CustomEvent("aurral:settings-updated", {
-              detail: { inboxEnabled: normalizedSettings.inbox?.enabled !== false },
-            }));
-          }
-
-          if (mountedRef.current) void refreshHealth();
-          succeeded = true;
-          return true;
-        } catch (err) {
-          if (mountedRef.current) {
-            showError("Failed to save settings: " + err.message);
-          }
-          return false;
-        }
-      })();
-
-      saveInFlightRef.current = request;
       try {
-        return await request;
-      } finally {
-        saveInFlightRef.current = null;
+        const savedSettings = await saveSettings(settingsToSave);
+        const normalizedSettings = normalizeSettings(savedSettings);
+        const savedSnapshot = structuredClone(normalizedSettings);
+        updateLidarrResourceConfig(getLidarrResourceConfig(normalizedSettings));
 
-        const shouldSaveLatest =
-          succeeded &&
-          (saveQueuedRef.current ||
-            checkForChanges(settingsRef.current, originalSettingsRef.current));
-        saveQueuedRef.current = false;
-        if (shouldSaveLatest) {
-          saveTimerRef.current = setTimeout(() => {
-            saveTimerRef.current = null;
-            persistSettingsRef.current?.(settingsRef.current);
-          }, 0);
+        originalSettingsRef.current = savedSnapshot;
+        if (mountedRef.current) setOriginalSettings(savedSnapshot);
+
+        if (settingsRef.current === settingsToSave) {
+          settingsRef.current = normalizedSettings;
+          if (mountedRef.current) setSettingsState(normalizedSettings);
+          hasUnsavedChangesRef.current = false;
+          if (mountedRef.current) setHasUnsavedChanges(false);
+        } else {
+          const stillDirty = checkForChanges(settingsRef.current, normalizedSettings);
+          hasUnsavedChangesRef.current = stillDirty;
+          if (mountedRef.current) setHasUnsavedChanges(stillDirty);
+          if (
+            stillDirty &&
+            !saveTimerRef.current &&
+            queryClient.isMutating({ mutationKey: SETTINGS_SAVE_KEY }) === 0
+          ) {
+            saveTimerRef.current = setTimeout(() => {
+              saveTimerRef.current = null;
+              persistSettingsRef.current?.(settingsRef.current);
+            }, 0);
+          }
         }
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("aurral:settings-updated", {
+            detail: { inboxEnabled: normalizedSettings.inbox?.enabled !== false },
+          }));
+        }
+        return true;
+      } catch (err) {
+        if (mountedRef.current) {
+          showError("Failed to save settings: " + err.message);
+        }
+        return false;
       }
     },
-    [refreshHealth, saveSettings, showError, updateLidarrResourceConfig],
+    [saveSettings, showError, updateLidarrResourceConfig],
   );
 
   persistSettingsRef.current = persistSettings;
@@ -537,90 +515,112 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
     [persistSettings],
   );
 
-  const handleRefreshDiscovery = useCallback(async () => {
-    if (requestingDiscoveryRefresh) return;
-    setRequestingDiscoveryRefresh(true);
-    try {
-      await refreshDiscovery();
+  const discoveryRefreshMutation = useMutation({
+    mutationFn: () => refreshDiscovery(),
+    onSuccess: () => {
       localStorage.setItem(DISCOVERY_MANUAL_REFRESH_KEY, "1");
-    } catch (err) {
+    },
+    onError: (err) => {
       showError(
         "Failed to start refresh: " +
           (err.response?.data?.message || err.response?.data?.error || err.message),
       );
-    } finally {
-      await refetchDiscoveryStatus();
-      setRequestingDiscoveryRefresh(false);
-    }
-  }, [requestingDiscoveryRefresh, showError]);
+    },
+    onSettled: () => refetchDiscoveryStatus(),
+  });
+  const requestingDiscoveryRefresh = discoveryRefreshMutation.isPending;
+  const { mutate: requestDiscoveryRefresh } = discoveryRefreshMutation;
 
-  const handleClearCache = useCallback(async () => {
+  const handleRefreshDiscovery = useCallback(() => {
+    if (requestingDiscoveryRefresh) return;
+    requestDiscoveryRefresh();
+  }, [requestDiscoveryRefresh, requestingDiscoveryRefresh]);
+
+  const clearCacheMutation = useMutation({
+    mutationFn: () => api.post("/discover/clear"),
+    onSuccess: async () => {
+      showSuccess("Artwork cache cleared successfully.");
+      await refreshHealth();
+    },
+    onError: (err) => {
+      showError(
+        "Failed to clear cache: " +
+          (err.response?.data?.message || err.response?.data?.error || err.message),
+      );
+    },
+  });
+  const clearingCache = clearCacheMutation.isPending;
+  const { mutate: clearCache } = clearCacheMutation;
+
+  const handleClearCache = useCallback(() => {
     if (
       !window.confirm(
         "Clear stored artwork links and native-library image files? Discovery recommendations will stay intact. Artwork will be fetched again as needed.",
       )
     )
       return;
-    setClearingCache(true);
-    try {
-      await api.post("/discover/clear");
-      showSuccess("Artwork cache cleared successfully.");
-      await refreshHealth();
-    } catch (err) {
-      showError(
-        "Failed to clear cache: " +
-          (err.response?.data?.message || err.response?.data?.error || err.message),
-      );
-    } finally {
-      setClearingCache(false);
-    }
-  }, [showSuccess, showError, refreshHealth]);
+    clearCache();
+  }, [clearCache]);
+
+  const communityGuideMutation = useMutation({
+    mutationFn: () => applyLidarrCommunityGuide(),
+    onError: (err) => {
+      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
+      showError(`Failed to apply community guide: ${errorMsg}`);
+    },
+  });
+  const applyingCommunityGuide = communityGuideMutation.isPending;
+  const { mutateAsync: applyCommunityGuide } = communityGuideMutation;
 
   const handleApplyCommunityGuide = useCallback(async () => {
     setShowCommunityGuideModal(false);
-    setApplyingCommunityGuide(true);
+    let result;
     try {
-      const result = await applyLidarrCommunityGuide();
-      showSuccess("Community guide settings applied successfully!");
-
-      let nextSettings = settings;
-      const qualityProfile = result.results?.qualityProfile;
-      const metadataProfile = result.results?.metadataProfile;
-      if (qualityProfile?.id) {
-        nextSettings = {
-          ...nextSettings,
-          integrations: {
-            ...nextSettings.integrations,
-            lidarr: {
-              ...(nextSettings.integrations?.lidarr || {}),
-              qualityProfileId: qualityProfile.id,
-            },
-          },
-        };
-        showInfo(`Default quality profile set to '${qualityProfile.name}'`);
-      }
-      if (metadataProfile?.id) {
-        nextSettings = {
-          ...nextSettings,
-          integrations: {
-            ...nextSettings.integrations,
-            lidarr: {
-              ...(nextSettings.integrations?.lidarr || {}),
-              metadataProfileId: metadataProfile.id,
-            },
-          },
-        };
-        showInfo(`Default metadata profile set to '${metadataProfile.name}'`);
-      }
-      if (nextSettings !== settings) updateSettings(nextSettings);
-      if (qualityProfile || metadataProfile) await refreshLidarrResources();
-    } catch (err) {
-      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
-      showError(`Failed to apply community guide: ${errorMsg}`);
-    } finally {
-      setApplyingCommunityGuide(false);
+      result = await applyCommunityGuide();
+    } catch {
+      return;
     }
-  }, [refreshLidarrResources, settings, updateSettings, showSuccess, showError, showInfo]);
+    showSuccess("Community guide settings applied successfully!");
+
+    let nextSettings = settingsRef.current;
+    const qualityProfile = result.results?.qualityProfile;
+    const metadataProfile = result.results?.metadataProfile;
+    if (qualityProfile?.id) {
+      nextSettings = {
+        ...nextSettings,
+        integrations: {
+          ...nextSettings.integrations,
+          lidarr: {
+            ...(nextSettings.integrations?.lidarr || {}),
+            qualityProfileId: qualityProfile.id,
+          },
+        },
+      };
+      showInfo(`Default quality profile set to '${qualityProfile.name}'`);
+    }
+    if (metadataProfile?.id) {
+      nextSettings = {
+        ...nextSettings,
+        integrations: {
+          ...nextSettings.integrations,
+          lidarr: {
+            ...(nextSettings.integrations?.lidarr || {}),
+            metadataProfileId: metadataProfile.id,
+          },
+        },
+      };
+      showInfo(`Default metadata profile set to '${metadataProfile.name}'`);
+    }
+    if (nextSettings !== settingsRef.current) updateSettings(nextSettings);
+    if (qualityProfile || metadataProfile) {
+      try {
+        await refreshLidarrResources();
+      } catch (err) {
+        const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
+        showError(`Failed to apply community guide: ${errorMsg}`);
+      }
+    }
+  }, [applyCommunityGuide, refreshLidarrResources, updateSettings, showSuccess, showError, showInfo]);
 
   return {
     health,

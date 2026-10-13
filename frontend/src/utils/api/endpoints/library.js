@@ -240,25 +240,34 @@ const writeLibraryLookupCache = (lookup) => {
   });
 };
 
-export const lookupArtistsInLibraryBatch = async (mbids) => {
+export const LIBRARY_LOOKUP_BATCH_SIZE = 100;
+
+export const libraryLookupBatchQuery = (mbids) => {
   const ids = [...new Set((Array.isArray(mbids) ? mbids : []).filter(Boolean))].sort();
-  if (!ids.length) return {};
-  const data = await queryClient.fetchQuery({
+  return {
     queryKey: queryKeys.libraryLookupBatch(ids),
     queryFn: async ({ signal }) => {
       const lookup = {};
-      for (let index = 0; index < ids.length; index += 100) {
+      for (let index = 0; index < ids.length; index += LIBRARY_LOOKUP_BATCH_SIZE) {
         Object.assign(
           lookup,
-          await postData("/library/lookup/batch", { mbids: ids.slice(index, index + 100) }, { signal }),
+          await postData(
+            "/library/lookup/batch",
+            { mbids: ids.slice(index, index + LIBRARY_LOOKUP_BATCH_SIZE) },
+            { signal },
+          ),
         );
       }
+      writeLibraryLookupCache(lookup);
       return lookup;
     },
     staleTime: 60_000,
-  });
-  writeLibraryLookupCache(data);
-  return data;
+  };
+};
+
+export const lookupArtistsInLibraryBatch = async (mbids) => {
+  if (!Array.isArray(mbids) || !mbids.some(Boolean)) return {};
+  return queryClient.fetchQuery(libraryLookupBatchQuery(mbids));
 };
 
 export const lookupAlbumsInLibraryBatch = (mbids, { signal, bypassCache = false } = {}) => {

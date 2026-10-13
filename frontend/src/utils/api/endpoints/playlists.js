@@ -67,9 +67,13 @@ export const getDownloadJobs = (options = {}) =>
 export const getJobFiles = (jobId, options = {}) =>
   getData(`/playlists/jobs/${encodeURIComponent(jobId)}/files`, options);
 
-export const getManualMissingSearchSources = (jobId, { mode = "missing", playlistId = null } = {}) =>
+export const getManualMissingSearchSources = (
+  jobId,
+  { mode = "missing", playlistId = null, signal } = {},
+) =>
   getData(`/playlists/jobs/${encodeURIComponent(jobId)}/manual-search/sources`, {
     params: { mode, ...(playlistId ? { playlistId } : {}) },
+    signal,
   });
 
 export const searchMissingTrackManually = (
