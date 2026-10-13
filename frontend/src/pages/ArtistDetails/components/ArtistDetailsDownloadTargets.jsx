@@ -5,7 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Share } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import AddActionButton from "../../../components/AddActionButton";
-import { CollectionHeader, CollectionPlayButtons } from "../../../components/CollectionHeader";
+import {
+  CollectionHeader,
+  CollectionPlayButtons,
+  useCollectionTint,
+} from "../../../components/CollectionHeader";
 import { OptionalLink } from "../../../components/RouteLink";
 import TooltipButton from "../../../components/TooltipButton";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
@@ -115,6 +119,11 @@ export function ArtistDetailsDownloadTargets({
       : tracks.slice(0, TRACK_PREVIEW_LIMIT);
   const hasHiddenTracks = tracks.length > TRACK_PREVIEW_LIMIT;
   const pickCover = getReleaseGroupCoverUrl(releaseGroup, albumCovers);
+  const coverUrl = getReleaseGroupCoverUrl(releaseGroup, albumCovers, {
+    artistFallback: artistCoverImage,
+    resolved: fulfilledCoverIds?.has(missingReleasePick?.releaseGroupId),
+  });
+  const tint = useCollectionTint(coverUrl);
 
   const normalizeTrack = useCallback(
     (track, index) =>
@@ -199,10 +208,6 @@ export function ArtistDetailsDownloadTargets({
   const title = release.title || missingReleasePick.title;
   const displayArtistName = artistName || artist?.name || "";
   const { typeLabel, meta } = buildReleaseHeaderMeta(release, tracks);
-  const coverUrl = getReleaseGroupCoverUrl(releaseGroup, albumCovers, {
-    artistFallback: artistCoverImage,
-    resolved: fulfilledCoverIds?.has(releaseGroupId),
-  });
   const titleLink = getReleaseGroupLink(releaseGroup, {
     artistMbid: artist?.id,
     artistName: displayArtistName,
@@ -213,7 +218,10 @@ export function ArtistDetailsDownloadTargets({
 
   return (
     <section className="artist-section">
-      <div className="artist-pick-panel">
+      <div
+        className="artist-pick-panel"
+        style={tint ? { "--collection-tint": tint } : undefined}
+      >
         <div className="artist-pick-panel__grid">
           <CollectionHeader
             embedded

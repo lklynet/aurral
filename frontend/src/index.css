@@ -4245,7 +4245,13 @@ textarea {
 .artist-pick-panel {
   position: relative;
   overflow: hidden;
-  background: var(--aurral-surface-raised);
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--collection-tint, transparent) 28%, transparent) 0%,
+      transparent 100%
+    ),
+    var(--aurral-surface-raised);
   border: 1px solid var(--aurral-border);
   border-radius: var(--aurral-radius);
 }

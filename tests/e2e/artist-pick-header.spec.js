@@ -26,7 +26,15 @@ const tracks = Array.from({ length: 7 }, (_, index) => ({
   preview_url: `https://previews.invalid/pick-header-track-${index + 1}.mp3`,
 }));
 
-async function fixture(page) {
+const cover = "/pick-header-cover.svg";
+
+async function fixture(page, { withCover = false } = {}) {
+  await page.route(`**${cover}`, (route) =>
+    route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#e0218a"/></svg>',
+    }),
+  );
   await page.routeWebSocket("**/ws**", (socket) => socket.close());
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -64,7 +72,9 @@ async function fixture(page) {
     if (path.startsWith("/library/lookup/")) return json({ exists: false });
     if (path === "/library/albums/lookup/batch") return json({ [album.id]: { inLibrary: false } });
     if (path.endsWith("/cover")) return json({ images: [] });
-    if (path === "/artists/release-groups/covers") return json({});
+    if (path === "/artists/release-groups/covers") {
+      return json({ covers: withCover ? { [album.id]: { image: cover, notFound: false } } : {} });
+    }
     if (path === "/settings") return json({});
     if (path === "/library/favorites") return json({});
     return json([]);
@@ -138,3 +148,49 @@ test("the artist pick keeps its actions in one row on a tablet", async ({ page }
   );
   expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(4);
 });
+
+async function panelCornerColors(panel) {
+  const box = await panel.boundingBox();
+  const png = (await panel.screenshot()).toString("base64");
+  return panel.page().evaluate(
+    async ({ png, width, height }) => {
+      const image = new Image();
+      image.src = `data:image/png;base64,${png}`;
+      await image.decode();
+      const canvas = Object.assign(document.createElement("canvas"), {
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      });
+      const context = canvas.getContext("2d");
+      context.drawImage(image, 0, 0);
+      const scale = image.naturalWidth / width;
+      const pixel = (x, y) => [...context.getImageData(Math.round(x * scale), Math.round(y * scale), 1, 1).data.slice(0, 3)];
+      return { topLeft: pixel(24, 4), bottomRight: pixel(width - 24, height - 4) };
+    },
+    { png, width: box.width, height: box.height },
+  );
+}
+
+for (const colorScheme of ["light", "dark"]) {
+  test(`the artist pick takes a ${colorScheme} tint from its cover and stays plain without one`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme });
+    await fixture(page, { withCover: true });
+    await page.goto(`/artist/${artist.id}`);
+    const panel = page.locator(".artist-pick-panel");
+    await expect(panel.locator(`img[src="${cover}"]`)).toBeVisible();
+    await expect
+      .poll(async () => {
+        const { topLeft, bottomRight } = await panelCornerColors(panel);
+        return topLeft[0] - topLeft[1] - (bottomRight[0] - bottomRight[1]);
+      })
+      .toBeGreaterThan(8);
+
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await fixture(page);
+    await page.goto(`/artist/${artist.id}`);
+    await expect(panel.getByRole("heading", { name: album.title, level: 2 })).toBeVisible();
+    await expect(panel.locator("img")).toHaveCount(0);
+    const { topLeft, bottomRight } = await panelCornerColors(panel);
+    expect(topLeft).toEqual(bottomRight);
+  });
+}
