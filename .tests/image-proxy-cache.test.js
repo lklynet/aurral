@@ -4,6 +4,73 @@ import express from "express";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { randomBytes } from "node:crypto";
+import { createIsolatedStateDir } from "./helpers/backendTestHarness.js";
+
+test("cached artwork remains available while a remote refresh fails", { timeout: 10000 }, async () => {
+  const state = await createIsolatedStateDir("cached-image-refresh");
+  const previousDataDir = process.env.AURRAL_DATA_DIR;
+  const originalFetch = global.fetch;
+  const refreshStarted = Promise.withResolvers();
+  const refreshGate = Promise.withResolvers();
+  let localStarted = Promise.withResolvers();
+  let server;
+  let refresh;
+  process.env.AURRAL_DATA_DIR = state.dataDir;
+  try {
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+    global.fetch = async () => new Response(png, { headers: { "content-type": "image/png" } });
+    const seed = await import(`../backend/services/imageProxyService.js?refresh-seed=${Date.now()}`);
+    const sourceUrl = "https://images.example/cached-refresh.png";
+    const cached = await seed.warmImageProxy(sourceUrl);
+    const legacyPath = cached.imagePath.replace(/\.webp$/, ".png");
+    await fs.writeFile(legacyPath, png);
+    await fs.writeFile(path.join(state.dataDir, "image-proxy", `${cached.cacheKey}.json`), JSON.stringify({
+      ...cached.meta, extension: "png", contentType: "image/png", size: png.length, fetchedAt: 0,
+    }));
+    await fs.unlink(cached.imagePath);
+    const { warmImageProxy, handleImageProxyRequest } = await import(`../backend/services/imageProxyService.js?refresh-read=${Date.now()}`);
+    const app = express();
+    app.get("/api/image-proxy/:cacheKey", (req, res, next) => {
+      const pending = handleImageProxyRequest(req, res);
+      localStarted.resolve();
+      pending.catch(next);
+    });
+    server = await new Promise((resolve) => {
+      const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+    });
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const missing = await originalFetch(`${base}/api/image-proxy/${randomBytes(32).toString("hex")}.webp`);
+    assert.equal(missing.status, 404);
+    await missing.arrayBuffer();
+    global.fetch = async () => {
+      refreshStarted.resolve();
+      await refreshGate.promise;
+      throw new Error("remote refresh unavailable");
+    };
+    refresh = assert.rejects(warmImageProxy(sourceUrl), /remote refresh unavailable/);
+    await refreshStarted.promise;
+    localStarted = Promise.withResolvers();
+    const local = originalFetch(`${base}${cached.localUrl}`);
+    await localStarted.promise;
+    await new Promise(setImmediate);
+    refreshGate.resolve();
+    await refresh;
+    const response = await local;
+    assert.equal(response.status, 200, "a failed refresh must not hide an existing cached image");
+    assert.equal(response.headers.get("content-type"), "image/webp");
+    assert.ok((await response.arrayBuffer()).byteLength > 0);
+    assert.ok((await fs.readdir(path.join(state.dataDir, "image-proxy"))).some((name) => name.endsWith(".webp")));
+  } finally {
+    refreshGate.resolve();
+    await refresh;
+    global.fetch = originalFetch;
+    if (server) await new Promise((resolve) => server.close(resolve));
+    if (previousDataDir === undefined) delete process.env.AURRAL_DATA_DIR;
+    else process.env.AURRAL_DATA_DIR = previousDataDir;
+    await fs.rm(state.baseDir, { recursive: true, force: true });
+  }
+});
 
 test("image bursts limit upstream work, share duplicates, and release slots after failures", { timeout: 10000 }, async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-image-burst-"));

@@ -134,3 +134,27 @@ test("download owner heartbeats and retirement refresh transient status without 
   const result = spawnSync(process.execPath, [probe], { encoding: "utf8", timeout: 10000 });
   assert.equal(result.status, 0, result.stderr || result.stdout);
 });
+
+test("each user's countdown advances while the globally earliest countdown stays unchanged", (t) => {
+  const first = flowPlaylistConfig.createFlow({ name: "Earlier mix", ownerUserId: 1 });
+  const second = flowPlaylistConfig.createFlow({ name: "Later mix", ownerUserId: 2 });
+  dbOps.updateSettings({ flows: [
+    { ...first, enabled: true, nextRunAt: Date.now() + 15000 },
+    { ...second, enabled: true, nextRunAt: Date.now() + 65000 },
+  ] });
+  invalidateFlowPlaylistConfigCache();
+  for (const flow of [first, second]) {
+    const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Finished" }, flow.id);
+    downloadTracker.setFailed(jobId, "No match");
+  }
+  const socket = new SocketTransport();
+  const earlierUser = socket.connect("earlier", { id: 1, role: "user" });
+  const laterUser = socket.connect("later", { id: 2, role: "user" });
+  start(t, socket);
+  t.mock.timers.tick(4000);
+  assert.equal(earlierUser.messages.at(-1).status.hint.message, "Next update in 1 minute");
+  assert.equal(laterUser.messages.at(-1).status.hint.message, "Next update in 2 minutes");
+  t.mock.timers.tick(4000);
+  assert.equal(earlierUser.messages.at(-1).status.hint.message, "Next update in 1 minute");
+  assert.equal(laterUser.messages.at(-1).status.hint.message, "Next update in 1 minute");
+});

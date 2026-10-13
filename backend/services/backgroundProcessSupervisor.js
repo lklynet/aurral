@@ -262,13 +262,14 @@ export function createBackgroundProcessSupervisor({
   function launchGroupsWithWork() {
     if (!started || stopping) return;
     try {
+      const inspectedAt = Date.now();
       const revision = getWorkRevision?.();
-      for (const group of findGroupsWithWork()) ensure(group);
-      const nextWorkAt = Number(getNextWorkAt());
+      for (const group of findGroupsWithWork(inspectedAt)) ensure(group);
+      const nextWorkAt = Number(getNextWorkAt(inspectedAt));
       clearTimeout(demandTimer);
       demandTimer = null;
-      if (nextWorkAt > Date.now()) {
-        demandTimer = setTimeout(launchGroupsWithWork, Math.min(nextWorkAt - Date.now(), 2147483647));
+      if (nextWorkAt > 0) {
+        demandTimer = setTimeout(launchGroupsWithWork, Math.max(1, Math.min(nextWorkAt - Date.now(), 2147483647)));
         demandTimer.unref?.();
       }
       lastWorkRevision = revision;

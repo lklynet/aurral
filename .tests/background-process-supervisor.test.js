@@ -468,14 +468,20 @@ test("idle demand checks skip queue scans and discover unannounced commits", asy
   const revision = db.prepare("SELECT data_version, total_changes() AS changes FROM pragma_data_version");
   const { launches, forkProcess } = createFakeFork();
   let inspections = 0;
+  let crossDeadline = false;
   const supervisor = createBackgroundProcessSupervisor({
-    groups: ["maintenance"],
+    groups: ["maintenance", "scheduler"],
     forkProcess,
     getWorkRevision: () => JSON.stringify(revision.get()),
     getNextWorkAt: honker.getNextBackgroundWorkAt,
-    findGroupsWithWork: () => {
+    findGroupsWithWork: (now) => {
       inspections++;
-      return honker.listBackgroundGroupsWithWork();
+      const groups = honker.listBackgroundGroupsWithWork(now);
+      if (crossDeadline) {
+        crossDeadline = false;
+        t.mock.timers.setTime(Date.now() + 1100);
+      }
+      return groups;
     },
   });
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: Math.floor(Date.now() / 1000) * 1000 });
@@ -496,9 +502,50 @@ test("idle demand checks skip queue scans and discover unannounced commits", asy
     await flush();
     t.mock.timers.tick(2000);
     assert.deepEqual(supervisor.getGroups(), []);
-    queue.enqueue({ kind: "session-cleanup" });
+    const immediateId = queue.enqueue({ kind: "session-cleanup" });
     t.mock.timers.tick(2000);
     assert.deepEqual(supervisor.getGroups(), ["maintenance"]);
+    queue.cancel(immediateId);
+    launches[1].emit("message", { type: "ready" });
+    launches[1].emit("message", { type: "idle" });
+    exitIdle(launches[1]);
+    await flush();
+    t.mock.timers.tick(2000);
+    for (const kind of ["pending", "processing", "schedule"]) {
+      const dueAt = Math.floor(Date.now() / 1000) + 1;
+      let crossingId;
+      let scheduler;
+      const name = "disposable-crossing-schedule";
+      if (kind === "schedule") {
+        scheduler = honker.getHonkerDb().scheduler();
+        scheduler.add({ name, queue: "system-task-maintenance", schedule: "@every 1h", payload: { kind: "session-cleanup" } });
+        const tx = honker.getHonkerDb().transaction();
+        tx.execute("UPDATE _honker_scheduler_tasks SET next_fire_at = ? WHERE name = ?", [dueAt, name]);
+        tx.commit();
+      } else {
+        crossingId = queue.enqueue({ kind: "session-cleanup" }, { runAt: kind === "pending" ? dueAt : dueAt - 120 });
+        if (kind === "processing") {
+          assert.equal(queue.claimOne("disposable-crossing-owner")?.id, crossingId);
+          const tx = honker.getHonkerDb().transaction();
+          tx.execute("UPDATE _honker_live SET claim_expires_at = ? WHERE id = ?", [dueAt, crossingId]);
+          tx.commit();
+        }
+      }
+      crossDeadline = true;
+      const group = kind === "schedule" ? "scheduler" : "maintenance";
+      supervisor.wake(group);
+      t.mock.timers.tick(1);
+      assert.deepEqual(supervisor.getGroups(), [group], `${kind} work crossed during inspection must still launch its owner`);
+      if (scheduler) scheduler.remove(name);
+      else queue.cancel(crossingId);
+      const child = launches.at(-1);
+      child.emit("message", { type: "ready" });
+      child.emit("message", { type: "idle" });
+      exitIdle(child);
+      await flush();
+      t.mock.timers.tick(2000);
+      assert.deepEqual(supervisor.getGroups(), []);
+    }
   } finally {
     await supervisor.stop();
     t.mock.timers.reset();

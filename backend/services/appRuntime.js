@@ -277,7 +277,7 @@ export function startBackgroundWorkers({ logger = console } = {}) {
     logger,
     getWorkRevision: getDatabaseRevision,
     getNextWorkAt: getNextBackgroundWorkAt,
-    findGroupsWithWork: () => (isHonkerShuttingDown() ? [] : listBackgroundGroupsWithWork()),
+    findGroupsWithWork: (now) => (isHonkerShuttingDown() ? [] : listBackgroundGroupsWithWork(now)),
     onMessage(message, _group, child) {
       if (message?.type === "queue-wake") {
         const owner = ISOLATED_QUEUE_GROUPS[message.queue];

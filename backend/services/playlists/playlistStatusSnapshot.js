@@ -72,22 +72,31 @@ function getMembershipSummary(playlist) {
   };
 }
 
+function getCountdown(nextRunAt) {
+  const timestamp = Number(nextRunAt);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
+  const diff = timestamp - Date.now();
+  if (diff <= 0) return ["soon", 0];
+  const minuteMs = 60 * 1000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+  if (diff < hourMs) return ["minute", Math.ceil(diff / minuteMs)];
+  if (diff < dayMs) return ["hour", Math.ceil(diff / hourMs)];
+  return ["day", Math.ceil(diff / dayMs)];
+}
+
 function formatNextRunMessage(flows) {
   const nextRunAt = (Array.isArray(flows) ? flows : [])
     .filter((flow) => flow?.enabled === true)
     .map((flow) => Number(flow?.nextRunAt))
     .filter((value) => Number.isFinite(value) && value > 0)
     .sort((a, b) => a - b)[0];
-  if (!nextRunAt) return null;
-  const diff = nextRunAt - Date.now();
-  if (diff <= 0) return "Next update soon";
+  const countdown = getCountdown(nextRunAt);
+  if (!countdown) return null;
+  const [unit, value] = countdown;
+  if (unit === "soon") return "Next update soon";
   const rtf = new Intl.RelativeTimeFormat("en", { numeric: "always" });
-  const minuteMs = 60 * 1000;
-  const hourMs = 60 * minuteMs;
-  const dayMs = 24 * hourMs;
-  if (diff < hourMs) return `Next update ${rtf.format(Math.ceil(diff / minuteMs), "minute")}`;
-  if (diff < dayMs) return `Next update ${rtf.format(Math.ceil(diff / hourMs), "hour")}`;
-  return `Next update ${rtf.format(Math.ceil(diff / dayMs), "day")}`;
+  return `Next update ${rtf.format(value, unit)}`;
 }
 
 export function getPlaylistStatusVersion() {
@@ -96,7 +105,9 @@ export function getPlaylistStatusVersion() {
     isDownloadOwnerProcess() ? downloadWorker.getStatus() : getDownloadOwnerStatus(),
     getPlaylistOperationWorkerStatus(),
     slskdClient.getStatus(),
-    formatNextRunMessage(flowPlaylistConfig.getFlows()),
+    flowPlaylistConfig.getFlows()
+      .filter((flow) => flow?.enabled === true)
+      .map((flow) => getCountdown(flow.nextRunAt)),
   ]);
 }
 

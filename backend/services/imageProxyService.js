@@ -32,10 +32,10 @@ const cacheEntriesByKey = new BoundedMap(256);
 let cacheIndexInitialized = false;
 let indexBuildPromise = null;
 
-const runImageWork = (cacheKey, work) => {
-  if (inflightRequests.has(cacheKey)) return inflightRequests.get(cacheKey);
-  const request = imageWorkQueue.add(work).finally(() => inflightRequests.delete(cacheKey));
-  inflightRequests.set(cacheKey, request);
+const runImageWork = (workKey, work) => {
+  if (inflightRequests.has(workKey)) return inflightRequests.get(workKey);
+  const request = imageWorkQueue.add(work).finally(() => inflightRequests.delete(workKey));
+  inflightRequests.set(workKey, request);
   return request;
 };
 
@@ -453,7 +453,7 @@ const normalizeCachedEntryIfNeeded = async (entry) => {
     return entry;
   }
 
-  return runImageWork(entry.cacheKey, () => normalizeCachedEntry(entry));
+  return runImageWork(`normalize:${entry.cacheKey}`, () => normalizeCachedEntry(entry));
 };
 
 const normalizeCachedEntry = async (entry) => {
@@ -571,7 +571,7 @@ const fetchRemoteImage = async (sourceUrl) => {
 
 const fetchAndCacheImage = (sourceUrl, imageProfile = "library") =>
   runImageWork(
-    buildImageCacheKey(normalizeKnownImageUrl(sourceUrl), imageProfile),
+    `fetch:${buildImageCacheKey(normalizeKnownImageUrl(sourceUrl), imageProfile)}`,
     () => fetchAndWriteImage(sourceUrl, imageProfile),
   );
 
