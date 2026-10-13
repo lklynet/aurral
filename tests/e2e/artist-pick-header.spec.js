@@ -174,6 +174,11 @@ async function panelCornerColors(panel) {
 for (const colorScheme of ["light", "dark"]) {
   test(`the artist pick takes a ${colorScheme} tint from its cover and stays plain without one`, async ({ page }) => {
     await page.emulateMedia({ colorScheme });
+    await page.addInitScript(() => {
+      localStorage.setItem("aurralTheme:v2", JSON.stringify({
+        version: 2, themeId: "aurral", appearance: "system", matchArtwork: true, themes: [],
+      }));
+    });
     await fixture(page, { withCover: true });
     await page.goto(`/artist/${artist.id}`);
     const panel = page.locator(".artist-pick-panel");
