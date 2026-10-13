@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import {
   startPlexAuth,
@@ -17,6 +18,7 @@ import {
   unlinkScrobbleProvider,
 } from "../../../utils/api/endpoints/auth.js";
 import { getConfiguredStatus } from "../utils/integrationStatus";
+import { queryKeys } from "../../../queryClient.js";
 
 import {
   AlertTriangle,
@@ -69,7 +71,11 @@ export function SettingsPlaybackSection({
   const [libraryAccessCheck, setLibraryAccessCheck] = useState(null);
   const [plexPathPickerOpen, setPlexPathPickerOpen] = useState(false);
   const [plexLibraryPathPickerOpen, setPlexLibraryPathPickerOpen] = useState(false);
-  const [scrobbleStatus, setScrobbleStatus] = useState(null);
+  const queryClient = useQueryClient();
+  const { data: scrobbleStatus = null } = useQuery({
+    queryKey: queryKeys.scrobbleStatus,
+    queryFn: ({ signal }) => getScrobbleStatus({ signal }),
+  });
   const [listenBrainzToken, setListenBrainzToken] = useState("");
   const [koitoToken, setKoitoToken] = useState("");
   const [koitoUrl, setKoitoUrl] = useState("");
@@ -89,10 +95,10 @@ export function SettingsPlaybackSection({
   const pathMappings = Array.isArray(settings.pathMappings) ? settings.pathMappings : [];
   const plexLibraryMapping = pathMappings.find((entry) => entry?.source === "plex") || null;
 
-  const refreshScrobbleStatus = () => getScrobbleStatus().then(setScrobbleStatus).catch(() => {});
+  const refreshScrobbleStatus = () =>
+    queryClient.invalidateQueries({ queryKey: queryKeys.scrobbleStatus });
 
   useEffect(() => {
-    refreshScrobbleStatus();
     return () => {
       if (lastfmPollRef.current) window.clearInterval(lastfmPollRef.current);
       lastfmPollRef.current = null;

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Download, Search } from "lucide-react";
 import { ModalShell } from "../../components/PlaylistModals.jsx";
 import { DotLoader } from "../../components/DotLoader.jsx";
@@ -7,6 +8,7 @@ import {
   getManualMissingSearchSources,
   searchMissingTrackManually,
 } from "../../utils/api/endpoints/playlists.js";
+import { queryKeys } from "../../queryClient.js";
 
 const errorMessage = (error, fallback) =>
   error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback;
@@ -18,46 +20,34 @@ export default function ManualMissingSearchModal({
   onClose,
   onQueued,
 }) {
-  const [sources, setSources] = useState([]);
-  const [sourceId, setSourceId] = useState("");
-  const [loadingSources, setLoadingSources] = useState(false);
+  const [selectedSourceId, setSelectedSourceId] = useState("");
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState(null);
   const [selectedId, setSelectedId] = useState("");
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
   const searchRequestRef = useRef(0);
+  const sourcesQuery = useQuery({
+    queryKey: queryKeys.manualMissingSearchSources(job?.id, mode, playlistId),
+    queryFn: ({ signal }) => getManualMissingSearchSources(job.id, { mode, playlistId, signal }),
+    enabled: Boolean(job?.id),
+    select: (data) => (Array.isArray(data?.sources) ? data.sources : []),
+  });
+  const sources = sourcesQuery.data ?? [];
+  const loadingSources = sourcesQuery.isLoading;
+  const sourceId = sources.some((source) => source.id === selectedSourceId)
+    ? selectedSourceId
+    : sources[0]?.id || "";
+  const error = actionError ||
+    (sourcesQuery.error ? errorMessage(sourcesQuery.error, "Could not load download clients") : "");
 
   useEffect(() => {
     searchRequestRef.current += 1;
     setSearching(false);
     setSearch(null);
     setSelectedId("");
-    setError("");
-    if (!job?.id) {
-      setSources([]);
-      setSourceId("");
-      setLoadingSources(false);
-      return undefined;
-    }
-    let active = true;
-    setSources([]);
-    setSourceId("");
-    setLoadingSources(true);
-    getManualMissingSearchSources(job.id, { mode, playlistId })
-      .then((data) => {
-        if (!active) return;
-        const available = Array.isArray(data?.sources) ? data.sources : [];
-        setSources(available);
-        setSourceId(available[0]?.id || "");
-      })
-      .catch((requestError) => {
-        if (active) setError(errorMessage(requestError, "Could not load download clients"));
-      })
-      .finally(() => {
-        if (active) setLoadingSources(false);
-      });
-    return () => { active = false; };
+    setActionError("");
+    setSelectedSourceId("");
   }, [job?.id, mode, playlistId]);
 
   const selectedResult = useMemo(
@@ -72,13 +62,13 @@ export default function ManualMissingSearchModal({
     setSearching(true);
     setSearch(null);
     setSelectedId("");
-    setError("");
+    setActionError("");
     try {
       const result = await searchMissingTrackManually(jobId, sourceId, { mode, playlistId });
       if (searchRequestRef.current === requestId) setSearch(result);
     } catch (requestError) {
       if (searchRequestRef.current === requestId) {
-        setError(errorMessage(requestError, "The selected download client could not be searched"));
+        setActionError(errorMessage(requestError, "The selected download client could not be searched"));
       }
     } finally {
       if (searchRequestRef.current === requestId) setSearching(false);
@@ -88,13 +78,13 @@ export default function ManualMissingSearchModal({
   const queueSelection = async () => {
     if (!job?.id || !search?.sessionId || !selectedResult || submitting) return;
     setSubmitting(true);
-    setError("");
+    setActionError("");
     try {
       await downloadManualMissingSearchResult(job.id, search.sessionId, selectedResult.id);
       onQueued?.(job);
       onClose?.();
     } catch (requestError) {
-      setError(errorMessage(requestError, "The selected result could not be queued"));
+      setActionError(errorMessage(requestError, "The selected result could not be queued"));
     } finally {
       setSubmitting(false);
     }
@@ -131,10 +121,10 @@ export default function ManualMissingSearchModal({
             className="input input--tall"
             value={sourceId}
             onChange={(event) => {
-              setSourceId(event.target.value);
+              setSelectedSourceId(event.target.value);
               setSearch(null);
               setSelectedId("");
-              setError("");
+              setActionError("");
             }}
             disabled={busy}
           >

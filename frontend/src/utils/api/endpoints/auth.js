@@ -62,7 +62,7 @@ export const logoutApi = async () => {
 
 export const getMe = () => getData("/auth/me");
 
-export const getApiKey = () => getData("/auth/api-key");
+export const getApiKey = ({ signal } = {}) => getData("/auth/api-key", { signal });
 
 export const rotateApiKey = () => postData("/auth/api-key/rotate");
 
@@ -106,7 +106,7 @@ export const getMyListeningHistory = ({ signal } = {}) =>
 
 export const recordPlayEvent = (payload) => postData("/play-events", payload);
 
-export const getScrobbleStatus = () => getData("/scrobbling/status");
+export const getScrobbleStatus = ({ signal } = {}) => getData("/scrobbling/status", { signal });
 export const getLastfmScrobbleLink = () => getData("/scrobbling/lastfm/link");
 export const linkListenBrainz = (token) =>
   putData("/scrobbling/listenbrainz/link", { token });
@@ -133,7 +133,8 @@ export const updateMyLidarrPreferences = (payload) =>
 export const updateMyDiscoverLayout = (layout) =>
   patchData("/users/me/discover-layout", { layout });
 
-export const getMyPlexLinkStatus = () => getData("/users/me/plex-link/status");
+export const getMyPlexLinkStatus = ({ signal } = {}) =>
+  getData("/users/me/plex-link/status", { signal });
 
 export const startMyPlexLinkPin = (forwardUrl) =>
   postData("/users/me/plex-link/oauth/pin", { forwardUrl });
@@ -145,7 +146,8 @@ export const disconnectMyPlex = async () => {
   await deleteData("/users/me/plex-link");
 };
 
-export const getPlexHomeUsersForAdmin = () => getData("/users/plex-link/home-users");
+export const getPlexHomeUsersForAdmin = ({ signal } = {}) =>
+  getData("/users/plex-link/home-users", { signal });
 
 export const linkManagedPlexUser = (userId, plexUserId, { plexUsername, plexUuid, pin } = {}) =>
   postData(`/users/${userId}/plex-link/managed`, {

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { SettingsSelect } from "./SettingsField";
 import { DotLoader } from "../../../components/DotLoader";
@@ -8,30 +9,37 @@ import {
   adminUnlinkPlex,
 } from "../../../utils/api/endpoints/auth.js";
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.js";
+import { queryKeys } from "../../../queryClient.js";
 
 export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) {
-  const [homeUsers, setHomeUsers] = useState(null);
-  const [loadingHomeUsers, setLoadingHomeUsers] = useState(false);
+  const queryClient = useQueryClient();
+  const [showHomeUsers, setShowHomeUsers] = useState(false);
+  const homeUsersQuery = useQuery({
+    queryKey: queryKeys.plexHomeUsers,
+    queryFn: async ({ signal }) => {
+      try {
+        const { users } = await getPlexHomeUsersForAdmin({ signal });
+        return users || [];
+      } catch (err) {
+        if (!signal.aborted) {
+          showError?.(
+            err.response?.data?.message || err.response?.data?.error || "Failed to load Plex Home users",
+          );
+        }
+        throw err;
+      }
+    },
+    enabled: showHomeUsers,
+    staleTime: 0,
+  });
+  const loadingHomeUsers = showHomeUsers && homeUsersQuery.isFetching;
+  const homeUsers =
+    showHomeUsers && !homeUsersQuery.isFetching ? homeUsersQuery.data ?? [] : null;
   const [selectedPlexUserId, setSelectedPlexUserId] = useState("");
   const [linking, setLinking] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
 
   const plexLink = user.plexLink || { connected: false };
-
-  const loadHomeUsers = async () => {
-    setLoadingHomeUsers(true);
-    try {
-      const { users } = await getPlexHomeUsersForAdmin();
-      setHomeUsers(users || []);
-    } catch (err) {
-      showError?.(
-        err.response?.data?.message || err.response?.data?.error || "Failed to load Plex Home users",
-      );
-      setHomeUsers([]);
-    } finally {
-      setLoadingHomeUsers(false);
-    }
-  };
 
   const handleLink = async () => {
     if (!selectedPlexUserId) return;
@@ -53,8 +61,9 @@ export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) 
       showSuccess?.(
         `Linked ${user.username} to Plex user "${picked?.title || selectedPlexUserId}".`,
       );
-      setHomeUsers(null);
+      setShowHomeUsers(false);
       setSelectedPlexUserId("");
+      void queryClient.invalidateQueries({ queryKey: queryKeys.plexHomeUsers });
       await onChanged?.();
     } catch (err) {
       showError?.(
@@ -143,7 +152,7 @@ export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) 
       <button
         type="button"
         className="arr-btn arr-btn--ghost"
-        onClick={loadHomeUsers}
+        onClick={() => setShowHomeUsers(true)}
         disabled={loadingHomeUsers}
       >
         {loadingHomeUsers ? (
@@ -180,7 +189,7 @@ export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) 
       >
         {linking ? "Linking…" : "Link"}
       </button>
-      <button type="button" className="arr-btn" onClick={() => setHomeUsers(null)}>
+      <button type="button" className="arr-btn" onClick={() => setShowHomeUsers(false)}>
         Cancel
       </button>
     </div>

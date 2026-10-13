@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
 import {
+  LIBRARY_LOOKUP_BATCH_SIZE,
+  libraryLookupBatchQuery,
   lookupAlbumsInLibraryBatch,
-  lookupArtistsInLibraryBatch,
   requestAlbumFromSearch,
   settleLibraryOwnerConflict,
 } from "../utils/api/endpoints/library.js";
@@ -86,6 +87,8 @@ const getDefaultRecommendedSort = (pageType) =>
     ? { key: "match", direction: "desc" }
     : { key: "name", direction: "asc" };
 const EMPTY_SEARCH_PAGES = [];
+const combineLibraryLookup = (queries) =>
+  Object.assign({}, ...queries.map((query) => query.data || {}));
 const LIBRARY_RESULT_LIMIT = 6;
 
 const getRecommendedArtistName = (artist) => String(artist?.name || "").trim();
@@ -128,7 +131,6 @@ function SearchResultsPage() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [artistImages, setArtistImages] = useState({});
   const [albumCovers, setAlbumCovers] = useState({});
-  const [libraryLookup, setLibraryLookup] = useState({});
   const [albumLibraryLookup, setAlbumLibraryLookup] = useState({});
   const [pendingAlbumIds, setPendingAlbumIds] = useState({});
   const [albumOptionsOpen, setAlbumOptionsOpen] = useState(false);
@@ -376,6 +378,22 @@ function SearchResultsPage() {
     () => (isAlbumSearch ? rawResults.map(withAlbumLibraryState) : rawResults),
     [isAlbumSearch, rawResults, withAlbumLibraryState],
   );
+  const libraryLookupBatches = useMemo(() => {
+    if (isAlbumSearch) return [];
+    const ids = isUnifiedSearch
+      ? (unifiedResults?.catalog?.artists || []).map((artist) => artist?.id)
+      : results.map((artist) => getArtistRecordId(artist));
+    const uniqueIds = [...new Set(ids.filter(Boolean))];
+    const batches = [];
+    for (let index = 0; index < uniqueIds.length; index += LIBRARY_LOOKUP_BATCH_SIZE) {
+      batches.push(uniqueIds.slice(index, index + LIBRARY_LOOKUP_BATCH_SIZE));
+    }
+    return batches;
+  }, [isAlbumSearch, isUnifiedSearch, results, unifiedResults]);
+  const libraryLookup = useQueries({
+    queries: libraryLookupBatches.map((ids) => libraryLookupBatchQuery(ids)),
+    combine: combineLibraryLookup,
+  });
   const librarySearchQuery = useQuery({
     queryKey: queryKeys.searchLibrary(trimmedQuery, LIBRARY_RESULT_LIMIT),
     enabled: isUnifiedSearch,
@@ -448,7 +466,6 @@ function SearchResultsPage() {
   );
 
   useEffect(() => {
-    setLibraryLookup({});
     setAlbumLibraryLookup({});
     setPendingAlbumIds({});
     setAlbumCovers({});
@@ -470,31 +487,6 @@ function SearchResultsPage() {
     });
     setArtistImages(imagesMap);
   }, [isAlbumSearch, isUnifiedSearch, results, unifiedResults]);
-
-  useEffect(() => {
-    if (!isUnifiedSearch || !unifiedResults) return undefined;
-    const artists = (unifiedResults.catalog?.artists || []).filter((artist) => artist?.id);
-    const ids = artists.map((artist) => artist.id);
-    if (ids.length === 0) return undefined;
-
-    let cancelled = false;
-    const missing = ids.filter((id) => libraryLookup[id] === undefined);
-    if (missing.length === 0) return undefined;
-
-    const fetchLookup = async () => {
-      try {
-        const lookup = await lookupArtistsInLibraryBatch(missing);
-        if (!cancelled && lookup) {
-          setLibraryLookup((prev) => ({ ...prev, ...lookup }));
-        }
-      } catch {}
-    };
-
-    fetchLookup();
-    return () => {
-      cancelled = true;
-    };
-  }, [isUnifiedSearch, unifiedResults, libraryLookup]);
 
   useEffect(() => {
     if (isAlbumSearch) return undefined;
@@ -568,40 +560,6 @@ function SearchResultsPage() {
       cancelled = true;
     };
   }, [artistImages, displayedResults, isAlbumSearch, isUnifiedSearch, libraryResults, unifiedResults]);
-
-  useEffect(() => {
-    if (isAlbumSearch || isUnifiedSearch) return undefined;
-    let cancelled = false;
-    const ids = results.map((artist) => getArtistRecordId(artist)).filter(Boolean);
-    if (ids.length === 0) {
-      if (Object.keys(libraryLookup).length > 0) {
-        setLibraryLookup({});
-      }
-      return () => {
-        cancelled = true;
-      };
-    }
-    const missing = ids.filter((id) => libraryLookup[id] === undefined);
-    if (missing.length === 0) {
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    const fetchLookup = async () => {
-      try {
-        const lookup = await lookupArtistsInLibraryBatch(missing);
-        if (!cancelled && lookup) {
-          setLibraryLookup((prev) => ({ ...prev, ...lookup }));
-        }
-      } catch {}
-    };
-
-    fetchLookup();
-    return () => {
-      cancelled = true;
-    };
-  }, [results, libraryLookup, isAlbumSearch, isUnifiedSearch]);
 
   useEffect(() => {
     if (!isUnifiedSearch || !unifiedResults?.catalog?.albums?.length) {
