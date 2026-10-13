@@ -54,15 +54,32 @@ export function CollectionPlayButtons({ label, disabled, isPlaying, isShuffleEna
   );
 }
 
-export function CollectionHeader({ cover, kicker, title, subtitle, meta, status, actions, corner }) {
+export function CollectionHeader({
+  cover,
+  kicker,
+  title,
+  subtitle,
+  meta,
+  status,
+  actions,
+  corner,
+  embedded = false,
+}) {
   const artworkStyle = useSharedArtworkStyle();
+  const Title = embedded ? "h2" : "h1";
+  const coverProps = embedded ? { "data-artwork": "" } : { style: artworkStyle };
   return (
-    <header className="native-library-detail__hero collection-header">
+    <header
+      className={`native-library-detail__hero collection-header${embedded ? " collection-header--embedded" : ""}`}
+      data-artwork-scope={embedded ? "" : undefined}
+    >
       {corner ? <div className="collection-header__corner">{corner}</div> : null}
-      <div className="native-library-detail__cover" style={artworkStyle}>{cover}</div>
+      <div className="native-library-detail__cover" {...coverProps}>
+        {cover}
+      </div>
       <div className="native-library-detail__body">
         {kicker ? <p className="native-library-kicker">{kicker}</p> : null}
-        <h1 className="collection-header__title">{title}</h1>
+        <Title className="collection-header__title">{title}</Title>
         {typeof subtitle === "string" ? (
           <p className="collection-header__description">{subtitle}</p>
         ) : subtitle ? (

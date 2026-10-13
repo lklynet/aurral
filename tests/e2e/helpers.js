@@ -69,3 +69,21 @@ export async function useAurralWithoutLidarr(page) {
     .toBe(false);
   return () => (wasEnabled ? setEnabled(true) : undefined);
 }
+
+export function recordViewTransitions(page, scope) {
+  return page.addInitScript((scopeSelector) => {
+    window.__routeTransitions = [];
+    const start = document.startViewTransition?.bind(document);
+    if (!start) return;
+    document.startViewTransition = (update) => {
+      window.__routeTransitions.push(
+        [...document.querySelectorAll("[style*=view-transition-name]")].map((node) =>
+          scopeSelector
+            ? { name: node.style.viewTransitionName, inScope: Boolean(node.closest(scopeSelector)) }
+            : node.style.viewTransitionName,
+        ),
+      );
+      return start(update);
+    };
+  }, scope);
+}

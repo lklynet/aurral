@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { recordViewTransitions } from "./helpers.js";
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
@@ -138,20 +139,6 @@ test("a playlist opened directly still loads without card data", async ({ page }
   await expect(trackTitle(page, "First Link Track")).toBeVisible();
 });
 
-const recordTransitions = () => {
-  window.__routeTransitions = [];
-  const start = document.startViewTransition?.bind(document);
-  if (!start) return;
-  document.startViewTransition = (update) => {
-    window.__routeTransitions.push(
-      [...document.querySelectorAll("[style*=view-transition-name]")].map(
-        (node) => node.style.viewTransitionName,
-      ),
-    );
-    return start(update);
-  };
-};
-
 async function openPlaylistAgain(page) {
   const link = page.locator("main").getByRole("link", { name: `Open ${playlist.name}`, exact: true });
   await link.click();
@@ -166,7 +153,7 @@ async function openPlaylistAgain(page) {
 }
 
 test("opening a card morphs only that card's artwork into the page header", async ({ page }) => {
-  await page.addInitScript(recordTransitions);
+  await recordViewTransitions(page);
   await fixture(page);
   await page.goto("/");
   await openPlaylistAgain(page);
@@ -177,7 +164,7 @@ test("opening a card morphs only that card's artwork into the page header", asyn
 
 test("route transitions are skipped when reduced motion is requested", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.addInitScript(recordTransitions);
+  await recordViewTransitions(page);
   await fixture(page);
   await page.goto("/");
   await openPlaylistAgain(page);
