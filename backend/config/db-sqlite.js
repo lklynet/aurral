@@ -38,9 +38,9 @@ db.pragma("synchronous = NORMAL");
 // fails with SQLITE_BUSY without waiting when another process writes first.
 const createTransaction = db.transaction.bind(db);
 db.transaction = (fn) => createTransaction(fn).immediate;
-db.pragma("cache_size = -24000");
+db.pragma("cache_size = -2000");
 db.pragma("mmap_size = 25165824");
-db.pragma("temp_store = MEMORY");
+db.pragma("temp_store = FILE");
 
 function tryAddColumn(sql) {
   try {
@@ -1274,5 +1274,12 @@ const existingDownloadFolder = db
   .prepare("SELECT value FROM settings WHERE key = ?")
   .get("downloadFolderPath");
 syncDownloadFolderPath(existingDownloadFolder?.value || null);
+
+const databaseRevisionStmt = db.prepare("SELECT data_version, total_changes() AS changes FROM pragma_data_version");
+
+export function getDatabaseRevision() {
+  const { data_version, changes } = databaseRevisionStmt.get();
+  return `${data_version}:${changes}`;
+}
 
 export { db };

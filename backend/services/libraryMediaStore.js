@@ -1051,23 +1051,27 @@ export function getLibraryAlbumsToList() {
        AND NOT (json_valid(album.metadata_json)
          AND COALESCE(json_extract(album.metadata_json, '$.trackListComplete'), 0) = 1)
      ORDER BY album.id`,
-  ).all();
-  const files = Map.groupBy(db.prepare(
-    `SELECT DISTINCT link.album_id AS albumId, track.mbid, track.title, media.path, media.mtime_ms AS mtimeMs
+  ).iterate();
+  const albumFiles = db.prepare(
+    `SELECT DISTINCT track.mbid, track.title, media.path, media.mtime_ms AS mtimeMs
      FROM library_album_tracks AS link
-     JOIN library_albums AS album ON album.id = link.album_id AND album.release_group_mbid IS NOT NULL
      JOIN library_tracks AS track ON track.id = link.track_id
      JOIN library_media_files AS media ON media.track_id = track.id
        AND (media.album_id = link.album_id OR media.album_id IS NULL)
-     ORDER BY link.album_id, media.path`,
-  ).all(), (file) => file.albumId);
-  return albums.flatMap(({ listedFor, ...album }) => {
-    const songs = files.get(album.id) || [];
+     WHERE link.album_id = ?
+     ORDER BY media.path`,
+  );
+  const pending = [];
+  for (const { listedFor, ...album } of albums) {
+    const songs = albumFiles.all(album.id);
     const basis = createHash("sha1")
       .update(JSON.stringify([album.mbid, songs.map((file) => [file.path, file.mtimeMs])]))
       .digest("hex");
-    return listedFor === basis ? [] : [{ ...album, basis, files: songs.map(({ mbid, title }) => ({ mbid, title })) }];
-  });
+    if (listedFor !== basis) {
+      pending.push({ ...album, basis, files: songs.map(({ mbid, title }) => ({ mbid, title })) });
+    }
+  }
+  return pending;
 }
 
 // A release's track stands for its recording and the ones MusicBrainz merged

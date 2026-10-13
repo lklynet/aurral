@@ -42,6 +42,8 @@ function workerExecArgv() {
 export function createBackgroundProcessSupervisor({
   groups = ISOLATED_WORKER_GROUPS,
   findGroupsWithWork = () => [],
+  getWorkRevision = null,
+  getNextWorkAt = () => null,
   forkProcess = fork,
   onMessage = () => {},
   onExit = () => {},
@@ -68,6 +70,8 @@ export function createBackgroundProcessSupervisor({
   let nextRequestId = 0;
   let watchdogInterval = null;
   let demandInterval = null;
+  let demandTimer = null;
+  let lastWorkRevision = null;
   let started = false;
   let stopping = false;
 
@@ -135,6 +139,7 @@ export function createBackgroundProcessSupervisor({
       return;
     }
     children.set(group, child);
+    startWatchdog();
     lastSeen.set(group, Date.now());
     const startedAt = Date.now();
     child.on("message", (message) => {
@@ -192,6 +197,11 @@ export function createBackgroundProcessSupervisor({
       exited = true;
       const run = describeRun(group);
       if (children.get(group) === child) children.delete(group);
+      if (!children.size) {
+        clearInterval(watchdogInterval);
+        watchdogInterval = null;
+      }
+      lastWorkRevision = null;
       const retiring = retiringGroups.delete(group);
       readyGroups.delete(group);
       lastSeen.delete(group);
@@ -252,18 +262,33 @@ export function createBackgroundProcessSupervisor({
   function launchGroupsWithWork() {
     if (!started || stopping) return;
     try {
+      const revision = getWorkRevision?.();
       for (const group of findGroupsWithWork()) ensure(group);
+      const nextWorkAt = Number(getNextWorkAt());
+      clearTimeout(demandTimer);
+      demandTimer = null;
+      if (nextWorkAt > Date.now()) {
+        demandTimer = setTimeout(launchGroupsWithWork, Math.min(nextWorkAt - Date.now(), 2147483647));
+        demandTimer.unref?.();
+      }
+      lastWorkRevision = revision;
     } catch (error) {
+      lastWorkRevision = null;
       logger.warn?.("[BackgroundWorkers] Could not check for queued work:", error?.message || error);
     }
   }
 
-  function start() {
-    if (started) return false;
-    started = true;
-    launchGroupsWithWork();
-    demandInterval = setInterval(launchGroupsWithWork, demandPollMs);
-    demandInterval.unref?.();
+  function checkDemand() {
+    try {
+      if (!getWorkRevision || getWorkRevision() !== lastWorkRevision) launchGroupsWithWork();
+    } catch (error) {
+      logger.warn?.("[BackgroundWorkers] Could not check database changes:", error?.message || error);
+      launchGroupsWithWork();
+    }
+  }
+
+  function startWatchdog() {
+    if (watchdogInterval) return;
     watchdogInterval = setInterval(() => {
       for (const [group, child] of children) {
         const unresponsive = Date.now() - (lastSeen.get(group) || 0) > unresponsiveMs;
@@ -286,6 +311,14 @@ export function createBackgroundProcessSupervisor({
       }
     }, watchdogIntervalMs);
     watchdogInterval.unref?.();
+  }
+
+  function start() {
+    if (started) return false;
+    started = true;
+    launchGroupsWithWork();
+    demandInterval = setInterval(checkDemand, demandPollMs);
+    demandInterval.unref?.();
     return true;
   }
 
@@ -293,6 +326,8 @@ export function createBackgroundProcessSupervisor({
     stopping = true;
     clearInterval(demandInterval);
     demandInterval = null;
+    clearTimeout(demandTimer);
+    demandTimer = null;
     if (watchdogInterval) clearInterval(watchdogInterval);
     watchdogInterval = null;
     for (const timer of restartTimers.values()) clearTimeout(timer);

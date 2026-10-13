@@ -42,6 +42,9 @@ const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 100;
 const MAX_ARTIST_PROJECTION_PAGE_SIZE = 10000;
 const TRACK_OWNERSHIP_BATCH_SIZE = 200;
+const artistMetadataStmt = db.prepare("SELECT metadata_json FROM library_artists WHERE id = ?");
+const albumMetadataStmt = db.prepare("SELECT metadata_json FROM library_albums WHERE id = ?");
+const trackMetadataStmt = db.prepare("SELECT metadata_json FROM library_tracks WHERE id = ?");
 
 const parseJson = (value) => {
   if (!value) return null;
@@ -65,18 +68,12 @@ function normalizeSource(source) {
   return value;
 }
 
-function createEntity(map, id, value) {
-  if (!map.has(id)) map.set(id, value);
-  return map.get(id);
-}
-
 const CANONICAL_SELECT = `SELECT
   artist.id AS artist_id,
   artist.identity_key AS artist_identity_key,
   artist.mbid AS artist_mbid,
   artist.name AS artist_name,
   artist.sort_name AS artist_sort_name,
-  artist.metadata_json AS artist_metadata_json,
   album.id AS album_id,
   album.identity_key AS album_identity_key,
   album.mbid AS album_mbid,
@@ -84,14 +81,12 @@ const CANONICAL_SELECT = `SELECT
   album.title AS album_title,
   album.album_artist AS album_artist,
   album.release_date AS album_release_date,
-  album.metadata_json AS album_metadata_json,
   album.created_at AS album_created_at,
   track.id AS track_id,
   track.identity_key AS track_identity_key,
   track.mbid AS track_mbid,
   track.title AS track_title,
   track.artist_name AS track_artist_name,
-  track.metadata_json AS track_metadata_json,
   track.monitored AS track_monitored,
   track.keep_file AS track_keep_file,
   track.created_at AS track_created_at,
@@ -128,70 +123,82 @@ function buildLibraryFromRows(rows) {
   const tracks = new Map();
 
   for (const row of rows) {
-    const artistMetadata = parseJson(row.artist_metadata_json);
-    const albumMetadata = parseJson(row.album_metadata_json);
-    const trackMetadata = parseJson(row.track_metadata_json);
-    const artist = createEntity(artists, row.artist_id, {
-      id: row.artist_id,
-      canonicalId: String(row.artist_id),
-      identityKey: row.artist_identity_key,
-      mbid: row.artist_mbid,
-      name: row.artist_name,
-      sortName: row.artist_sort_name,
-      metadata: artistMetadata,
-      providerId: artistMetadata?.id ?? null,
-      monitored: artistMetadata?.monitored === true,
-      monitorOption:
-        artistMetadata?.monitor ||
-        artistMetadata?.addOptions?.monitor ||
-        "none",
-      albumIds: [],
-      sources: [],
-      available: false,
-    });
+    let artist = artists.get(row.artist_id);
+    if (!artist) {
+      const artistMetadata = parseJson(artistMetadataStmt.get(row.artist_id)?.metadata_json);
+      artist = {
+        id: row.artist_id,
+        canonicalId: String(row.artist_id),
+        identityKey: row.artist_identity_key,
+        mbid: row.artist_mbid,
+        name: row.artist_name,
+        sortName: row.artist_sort_name,
+        metadata: artistMetadata,
+        providerId: artistMetadata?.id ?? null,
+        monitored: artistMetadata?.monitored === true,
+        monitorOption:
+          artistMetadata?.monitor ||
+          artistMetadata?.addOptions?.monitor ||
+          "none",
+        albumIds: [],
+        sources: [],
+        available: false,
+      };
+      artists.set(row.artist_id, artist);
+    }
     artist.managedBy = artistManagement.get(row.artist_id)?.managedBy ?? null;
     artist.monitorMode = artistManagement.get(row.artist_id)?.monitorMode ?? null;
-    const album = createEntity(albums, row.album_id, {
-      id: row.album_id,
-      canonicalId: String(row.album_id),
-      identityKey: row.album_identity_key,
-      mbid: row.album_mbid,
-      releaseGroupMbid: row.album_release_group_mbid,
-      artistId: row.artist_id,
-      title: row.album_title,
-      albumArtist: row.album_artist,
-      releaseDate: row.album_release_date,
-      createdAt: row.album_created_at,
-      metadata: albumMetadata,
-      providerId: albumMetadata?.id ?? null,
-      monitored: albumMetadata?.monitored === true,
-      monitorOption:
-        albumMetadata?.monitor ||
-        albumMetadata?.addOptions?.monitor ||
-        "none",
-      trackIds: [],
-      sources: [],
-      available: false,
-    });
+    let album = albums.get(row.album_id);
+    if (!album) {
+      const albumMetadata = parseJson(albumMetadataStmt.get(row.album_id)?.metadata_json);
+      album = {
+        id: row.album_id,
+        canonicalId: String(row.album_id),
+        identityKey: row.album_identity_key,
+        mbid: row.album_mbid,
+        releaseGroupMbid: row.album_release_group_mbid,
+        artistId: row.artist_id,
+        title: row.album_title,
+        albumArtist: row.album_artist,
+        releaseDate: row.album_release_date,
+        createdAt: row.album_created_at,
+        metadata: albumMetadata,
+        providerId: albumMetadata?.id ?? null,
+        monitored: albumMetadata?.monitored === true,
+        monitorOption:
+          albumMetadata?.monitor ||
+          albumMetadata?.addOptions?.monitor ||
+          "none",
+        trackIds: [],
+        sources: [],
+        available: false,
+      };
+      albums.set(row.album_id, album);
+    }
     album.managedBy = albumManagement.get(row.album_id)?.managedBy ?? null;
     album.monitorMode = albumManagement.get(row.album_id)?.monitorMode ?? null;
-    const track = createEntity(tracks, row.track_id, {
-      id: row.track_id,
-      canonicalId: String(row.track_id),
-      identityKey: row.track_identity_key,
-      mbid: row.track_mbid,
-      title: row.track_title,
-      artistName: row.track_artist_name,
-      createdAt: row.track_created_at,
-      metadata: trackMetadata,
-      providerId: trackMetadata?.id ?? null,
-      monitored: row.track_monitored !== 0,
-      keepFile: row.track_keep_file === 1,
-      albums: [],
-      files: [],
-      sources: [],
-      available: false,
-    });
+    let track = tracks.get(row.track_id);
+    if (!track) {
+      const trackMetadata = parseJson(trackMetadataStmt.get(row.track_id)?.metadata_json);
+      track = {
+        id: row.track_id,
+        canonicalId: String(row.track_id),
+        identityKey: row.track_identity_key,
+        mbid: row.track_mbid,
+        title: row.track_title,
+        artistName: row.track_artist_name,
+        createdAt: row.track_created_at,
+        metadata: trackMetadata,
+        providerId: trackMetadata?.id ?? null,
+        monitored: row.track_monitored !== 0,
+        keepFile: row.track_keep_file === 1,
+        albums: [],
+        files: [],
+        sources: [],
+        available: false,
+      };
+      tracks.set(row.track_id, track);
+    }
     track.managedBy = album.managedBy ?? null;
     track.monitorMode = album.monitorMode ?? null;
 
@@ -238,9 +245,11 @@ function buildLibraryFromRows(rows) {
     }
   }
 
-  for (const entity of [...artists.values(), ...albums.values(), ...tracks.values()]) {
-    entity.sources.sort();
-    entity.source = entity.sources.length === 1 ? entity.sources[0] : null;
+  for (const entities of [artists, albums, tracks]) {
+    for (const entity of entities.values()) {
+      entity.sources.sort();
+      entity.source = entity.sources.length === 1 ? entity.sources[0] : null;
+    }
   }
   for (const track of tracks.values()) {
     track.files.sort((left, right) =>

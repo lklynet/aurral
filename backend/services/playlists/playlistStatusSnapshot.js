@@ -1,23 +1,43 @@
+import { createHash } from "node:crypto";
 import { downloadTracker } from "../downloadJobs/downloadTracker.js";
 import { downloadWorker } from "../downloadJobs/downloadWorker.js";
+import { getDownloadOwnerStatus, isDownloadOwnerProcess } from "../downloadJobs/downloadOwnerClient.js";
+import { slskdClient } from "../slskdClient.js";
 import { buildPlaylistTrackIdentity, flowPlaylistConfig, invalidateFlowPlaylistConfigCache } from "./flowPlaylistConfig.js";
 import { playlistOperationQueue } from "./playlistOperationQueue.js";
 import { getPlaylistOperationWorkerStatus } from "./playlistOperationWorker.js";
 import { getDownloadClient } from "../download/downloadClientSettings.js";
 import { dbOps, userOps } from "../../db/helpers/index.js";
-import { db } from "../../config/db-sqlite.js";
+import { db, getDatabaseRevision } from "../../config/db-sqlite.js";
 
 const playlistSettingsStmt = db.prepare("SELECT key, value FROM settings WHERE key IN ('flows', 'sharedPlaylists') ORDER BY key");
 const membershipCache = new Map();
 const MEMBERSHIP_CACHE_LIMIT = 128;
 let cachedSettings = null;
 let cachedJobRevision = null;
+let cachedDatabaseRevision = null;
+let cacheCleanupTimer = null;
+
+export function clearPlaylistStatusCache() {
+  clearTimeout(cacheCleanupTimer);
+  cacheCleanupTimer = null;
+  membershipCache.clear();
+  cachedSettings = null;
+  cachedJobRevision = null;
+  cachedDatabaseRevision = null;
+}
 
 function readPlaylistSettingsVersion() {
-  return JSON.stringify(playlistSettingsStmt.all());
+  const hash = createHash("sha256");
+  for (const { key, value } of playlistSettingsStmt.all()) {
+    hash.update(`${key.length}:${key}:${value.length}:`).update(value);
+  }
+  return hash.digest("hex");
 }
 
 function refreshMembershipCache() {
+  const databaseRevision = getDatabaseRevision();
+  if (databaseRevision === cachedDatabaseRevision) return;
   const settings = readPlaylistSettingsVersion();
   const revision = downloadTracker.getRevision();
   if (settings !== cachedSettings) {
@@ -29,6 +49,7 @@ function refreshMembershipCache() {
   }
   cachedSettings = settings;
   cachedJobRevision = revision;
+  cachedDatabaseRevision = databaseRevision;
 }
 
 function getMembershipSummary(playlist) {
@@ -67,6 +88,16 @@ function formatNextRunMessage(flows) {
   if (diff < hourMs) return `Next update ${rtf.format(Math.ceil(diff / minuteMs), "minute")}`;
   if (diff < dayMs) return `Next update ${rtf.format(Math.ceil(diff / hourMs), "hour")}`;
   return `Next update ${rtf.format(Math.ceil(diff / dayMs), "day")}`;
+}
+
+export function getPlaylistStatusVersion() {
+  return JSON.stringify([
+    getDatabaseRevision(),
+    isDownloadOwnerProcess() ? downloadWorker.getStatus() : getDownloadOwnerStatus(),
+    getPlaylistOperationWorkerStatus(),
+    slskdClient.getStatus(),
+    formatNextRunMessage(flowPlaylistConfig.getFlows()),
+  ]);
 }
 
 function aggregateStats(statsByType, ids) {
@@ -156,6 +187,9 @@ export function getPlaylistStatusSnapshot({
   user = null,
 } = {}) {
   refreshMembershipCache();
+  clearTimeout(cacheCleanupTimer);
+  cacheCleanupTimer = setTimeout(clearPlaylistStatusCache, 60000);
+  cacheCleanupTimer.unref?.();
   const workerStatus = downloadWorker.getStatus();
   const flows = user ? flowPlaylistConfig.getFlowsForUser(user) : flowPlaylistConfig.getFlows();
   const rawStaticPlaylists = user

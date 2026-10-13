@@ -121,6 +121,33 @@ test("TTL cache removes values after the stale window", () => {
   assert.equal(cache.getWithStale("album"), undefined);
 });
 
+test("idle TTL caches release expired payloads while keeping stale and live values", () => {
+  const result = spawnSync(process.execPath, ["--expose-gc", "--input-type=module", "-e", `
+    import assert from "node:assert/strict";
+    import { mock } from "node:test";
+    import createCache from "./backend/services/apiClients/simpleCache.js";
+    mock.timers.enable({ apis: ["setInterval", "Date"], now: 1000 });
+    const cache = createCache();
+    let payload = { id: "expired payload" };
+    const retained = new WeakRef(payload);
+    cache.set("expired", payload, 1);
+    cache.set("stale", "offline fallback", 1, 600);
+    cache.set("live", "live", 3600);
+    payload = null;
+    mock.timers.tick(60001);
+    await new Promise(setImmediate);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      global.gc();
+      await new Promise(setImmediate);
+    }
+    assert.equal(retained.deref() === undefined, true, "idle caches must release expired payloads");
+    assert.equal(cache.get("live"), "live");
+    assert.deepEqual(cache.getWithStale("stale"), { value: "offline fallback", stale: true });
+    mock.timers.reset();
+  `], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+});
+
 test("fetch transport failures expose axios-compatible request metadata", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => {

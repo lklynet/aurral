@@ -2,16 +2,36 @@ import assert from "node:assert/strict";
 import { mock } from "node:test";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
-process.env.AURRAL_BACKGROUND_WORKER_GROUP = "maintenance";
 const scenario = process.argv[2];
+process.env.AURRAL_BACKGROUND_WORKER_GROUP = scenario === "settings" ? "downloads" : "maintenance";
 if (scenario !== "fallback") process.env.AURRAL_WORKER_SUPERVISOR_POLL_MS = "120000";
 const [state, honker, runtime] = await setupIsolatedBackend("supervisor-probe", "backend/services/honkerDb.js", "backend/services/appRuntime.js");
-const queue = honker.getMaintenanceTaskQueue();
+const queue = scenario === "settings" ? honker.getPipelineQueue() : honker.getMaintenanceTaskQueue();
 const now = Math.floor(Date.now() / 1000);
 const pump = async () => { for (let index = 0; index < 100; index++) await new Promise(setImmediate); };
 try {
   mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: Date.now() });
-  if (scenario === "deadline") {
+  if (scenario === "settings") {
+    const { dbOps } = await import("../../backend/db/helpers/index.js");
+    dbOps.updateSettings({ integrations: { ytdlp: { enabled: false } } });
+    runtime.startWorkerSupervisor({ group: "downloads" });
+    const id = queue.enqueue({ jobId: "disposable-missing-track", phase: "search" });
+    runtime.wakeQueuedBackgroundWork("downloads");
+    await pump();
+    assert.ok(queue.getJob(id), "an unconfigured download source must not run");
+    dbOps.getSettings();
+    const tx = honker.getHonkerDb().transaction();
+    tx.execute("UPDATE settings SET value = ? WHERE key = 'integrations'", [JSON.stringify({ ytdlp: { enabled: false }, deemix: { enabled: true, url: "http://127.0.0.1:9999" } })]);
+    tx.commit();
+    const updates = honker.getHonkerDb().updateEvents();
+    try {
+      runtime.wakeQueuedBackgroundWork("downloads");
+      while (queue.getJob(id)) await updates.next();
+    } finally {
+      updates.close();
+    }
+    assert.equal(queue.getJob(id), null, "new source settings must take effect without waiting for the settings cache");
+  } else if (scenario === "deadline") {
     mock.timers.setTime(now * 1000);
     const laterId = queue.enqueue({ kind: "session-cleanup" }, { runAt: now + 20 });
     runtime.startWorkerSupervisor({ group: "maintenance" });

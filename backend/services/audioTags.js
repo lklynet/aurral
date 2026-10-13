@@ -2,25 +2,28 @@ import { randomUUID } from "node:crypto";
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import taglib from "node-taglib-sharp";
 
-const {
-  File,
-  Id3v2FrameClassType,
-  Id3v2Settings,
-  Id3v2UserTextInformationFrame,
-  ReadStyle,
-  TagTypes,
-} = taglib;
+let File;
+let Id3v2FrameClassType;
+let Id3v2UserTextInformationFrame;
+let TagTypes;
+let readStyle;
+let addedTagTypes;
+let taglibReady;
 
-Id3v2Settings.useNumericGenres = false;
+function loadTaglib() {
+  return taglibReady ||= import("node-taglib-sharp").then(({ default: taglib }) => {
+    ({ File, Id3v2FrameClassType, Id3v2UserTextInformationFrame, TagTypes } = taglib);
+    taglib.Id3v2Settings.useNumericGenres = false;
+    readStyle = taglib.ReadStyle.None | taglib.ReadStyle.PictureLazy;
+    addedTagTypes = TagTypes.Id3v1 | TagTypes.Ape | TagTypes.MovieId | TagTypes.DivX;
+  });
+}
 
 export const AURRAL_IDENTITY_TAG = "AURRAL_IDS";
 const AURRAL_IDENTITY_PREFIX = `${AURRAL_IDENTITY_TAG}=`;
 const ITUNES_MEAN = "com.apple.iTunes";
 const MUSICBRAINZ_UFID_OWNER = "http://musicbrainz.org";
-const READ_STYLE = ReadStyle.None | ReadStyle.PictureLazy;
-const ADDED_TAG_TYPES = TagTypes.Id3v1 | TagTypes.Ape | TagTypes.MovieId | TagTypes.DivX;
 
 const text = (value) => (value == null ? "" : String(value).trim());
 const first = (values) => text(Array.isArray(values) ? values[0] : values);
@@ -106,10 +109,11 @@ function isFragmentedMp4(filePath) {
   }
 }
 
-function openFile(filePath) {
+async function openFile(filePath) {
+  await loadTaglib();
   if (isFragmentedMp4(filePath)) throw new UnsupportedTagFormatError(filePath, "fragmented ");
   try {
-    return File.createFromPath(filePath, undefined, READ_STYLE);
+    return File.createFromPath(filePath, undefined, readStyle);
   } catch (error) {
     if (/unsupported format/i.test(String(error?.message))) throw new UnsupportedTagFormatError(filePath);
     throw error;
@@ -210,7 +214,7 @@ function planChanges(current, values, fillOnly) {
 }
 
 export async function readAudioTags(filePath) {
-  const file = openFile(filePath);
+  const file = await openFile(filePath);
   try {
     return { ...readFields(file.tag), identity: readIdentity(file) };
   } finally {
@@ -223,7 +227,7 @@ export async function readAudioTags(filePath) {
 // link keeps its tags.
 export async function writeAudioTags(filePath, values = {}, { fillOnly = false, identity = null } = {}) {
   const source = path.resolve(filePath);
-  const preview = openFile(source);
+  const preview = await openFile(source);
   let changes;
   let identityChanged;
   let legacyIdentity;
@@ -241,9 +245,9 @@ export async function writeAudioTags(filePath, values = {}, { fillOnly = false, 
   const working = path.join(path.dirname(source), `.${path.basename(source, extension)}.${randomUUID()}.tagging${extension}`);
   await fs.copyFile(source, working, fs.constants.COPYFILE_FICLONE);
   try {
-    const file = openFile(working);
+    const file = await openFile(working);
     try {
-      file.removeTags(ADDED_TAG_TYPES & ~file.tagTypesOnDisk);
+      file.removeTags(addedTagTypes & ~file.tagTypesOnDisk);
       const id3 = file.getTag(TagTypes.Id3v2, false);
       if (id3 && !(file.tagTypesOnDisk & TagTypes.Id3v2)) id3.version = 4;
       for (const field of changed) {

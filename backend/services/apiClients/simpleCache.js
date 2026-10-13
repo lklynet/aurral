@@ -1,4 +1,29 @@
 const SWEEP_INTERVAL_MS = 60_000;
+const idleCaches = new Set();
+let idleSweepTimer = null;
+
+function removeExpired(cache, currentTime) {
+  for (const [key, entry] of cache) {
+    if (entry.staleUntil < currentTime) cache.delete(key);
+  }
+}
+
+function scheduleIdleSweep(registration) {
+  idleCaches.add(registration);
+  if (idleSweepTimer) return;
+  idleSweepTimer = setInterval(() => {
+    for (const entry of idleCaches) {
+      const cache = entry.cache.deref();
+      if (cache) removeExpired(cache, entry.now());
+      if (!cache?.size) idleCaches.delete(entry);
+    }
+    if (idleCaches.size === 0) {
+      clearInterval(idleSweepTimer);
+      idleSweepTimer = null;
+    }
+  }, SWEEP_INTERVAL_MS);
+  idleSweepTimer.unref?.();
+}
 
 export default function createCache(
   defaultTtlSeconds = 300,
@@ -6,14 +31,13 @@ export default function createCache(
   { now = () => Date.now() } = {},
 ) {
   const cache = new Map();
+  const registration = { cache: new WeakRef(cache), now };
   let nextSweepAt = now() + SWEEP_INTERVAL_MS;
 
   const sweepExpired = (currentTime) => {
     if (currentTime < nextSweepAt) return;
     nextSweepAt = currentTime + SWEEP_INTERVAL_MS;
-    for (const [key, entry] of cache) {
-      if (entry.staleUntil < currentTime) cache.delete(key);
-    }
+    removeExpired(cache, currentTime);
   };
 
   return {
@@ -54,6 +78,7 @@ export default function createCache(
       });
       // ponytail: FIFO cap; switch to measured LRU only if cache churn becomes material.
       if (cache.size > maxEntries) cache.delete(cache.keys().next().value);
+      scheduleIdleSweep(registration);
     },
     delete(key) {
       cache.delete(key);

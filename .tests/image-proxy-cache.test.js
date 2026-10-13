@@ -5,6 +5,59 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+test("image bursts limit upstream work, share duplicates, and release slots after failures", { timeout: 10000 }, async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-image-burst-"));
+  const previousDataDir = process.env.AURRAL_DATA_DIR;
+  const originalFetch = global.fetch;
+  const gate = Promise.withResolvers();
+  const started = Promise.withResolvers();
+  let requests;
+  process.env.AURRAL_DATA_DIR = dataDir;
+  try {
+    const { warmImageProxy } = await import(
+      `../backend/services/imageProxyService.js?burst-test=${Date.now()}`
+    );
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const calls = [];
+    let fail = true;
+    global.fetch = async (url) => {
+      calls.push(String(url));
+      if (calls.length === 2) started.resolve();
+      await gate.promise;
+      if (String(url).endsWith("/fail.png") && fail) throw new Error("upstream unavailable");
+      return new Response(png, { headers: { "content-type": "image/png" } });
+    };
+    const urls = ["fail", "second", "third", "fourth", "fail"]
+      .map((name) => `https://images.example/${name}.png`);
+    requests = Promise.allSettled(urls.map((url) => warmImageProxy(url)));
+    await started.promise;
+    await new Promise(setImmediate);
+    assert.equal(calls.length, 2, "queued requests must not hold source image bytes");
+    gate.resolve();
+    const results = await requests;
+    assert.deepEqual(results.map((result) => result.status), [
+      "rejected", "fulfilled", "fulfilled", "fulfilled", "rejected",
+    ]);
+    assert.equal(calls.filter((url) => url.endsWith("/fail.png")).length, 1);
+    fail = false;
+    const retried = await warmImageProxy(urls[0]);
+    assert.equal(retried.meta.contentType, "image/webp");
+    assert.equal(calls.length, 5);
+    await warmImageProxy(urls[1]);
+    assert.equal(calls.length, 5, "cached artwork must not be fetched again");
+  } finally {
+    gate.resolve();
+    await requests;
+    global.fetch = originalFetch;
+    if (previousDataDir === undefined) delete process.env.AURRAL_DATA_DIR;
+    else process.env.AURRAL_DATA_DIR = previousDataDir;
+    await fs.rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("image proxy cache size and clear operations are asynchronous", async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-image-cache-"));
   const previousDataDir = process.env.AURRAL_DATA_DIR;

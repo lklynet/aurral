@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { dbOps } from "../db/helpers/index.js";
 import { buildPlaylistArtworkWebpBuffer } from "./playlistArtwork.js";
-import sharp from "./sharpConfig.js";
+import getSharp from "./sharpConfig.js";
 import {
   fetchImageBuffer,
   renderStylizedPhotoArtwork,
@@ -35,6 +35,7 @@ export async function resolvePlaylistSourceImageUrl() {
 
 export async function isGeneratedPlaylistArtworkFallback(filePath, { title, kind }) {
   try {
+    const sharp = await getSharp();
     const metadata = await sharp(filePath).metadata();
     if (metadata.width !== 1000 || metadata.height !== 1000) return false;
     const existing = await fs.readFile(filePath);

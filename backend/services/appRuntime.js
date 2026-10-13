@@ -6,6 +6,7 @@ import {
   hasExpiredHonkerClaims,
   getHonkerQueueNextClaimAt,
   listBackgroundGroupsWithWork,
+  getNextBackgroundWorkAt,
   startHonkerScheduler,
 } from "./honkerDb.js";
 import { recoverExitedWorkerJobs, recoverJobsClaimedBeforeStart } from "./backgroundJobRecovery.js";
@@ -14,6 +15,8 @@ import { ISOLATED_QUEUE_GROUPS, isQueueOwnedByGroup } from "./backgroundWorkerQu
 import { getHonkerWorkerStatuses, isHonkerShuttingDown, registerHonkerShutdownHandler } from "./honkerWorkerRuntime.js";
 import { HONKER_QUEUE_NAMES } from "./honkerDb.js";
 import { configureDownloadOwnerClient } from "./downloadJobs/downloadOwnerClient.js";
+import { getDatabaseRevision } from "../config/db-sqlite.js";
+import { dbOps } from "../db/helpers/index.js";
 
 let backgroundWorkersStarted = false;
 let workerSupervisorStarted = false;
@@ -26,6 +29,7 @@ let supervisedGroup = null;
 let backgroundProcessSupervisor = null;
 let lastExpiredSweepAt = 0;
 let stopLibraryFileWatcher = null;
+let lastWorkerDatabaseRevision = null;
 
 export function getIsolatedWorkerStatuses() {
   return backgroundProcessSupervisor?.getWorkerStatuses() || [];
@@ -66,6 +70,7 @@ function startQueueWorker([modulePath, startName], queueName) {
       if (!isHonkerShuttingDown() && workerSupervisorStarted) module[startName]();
     })
     .catch((error) => {
+      lastWorkerDatabaseRevision = null;
       console.warn(`[AppRuntime] Failed to start ${queueName}:`, error?.message || error);
     })
     .finally(() => startingQueues.delete(queueName));
@@ -122,6 +127,11 @@ function sweepExpiredWorkerQueues(group) {
 function checkQueuedBackgroundWork(group = null) {
   if (process.env.AURRAL_TEST_SERVER === "1" || isHonkerShuttingDown()) return;
   let nextClaimAt = null;
+  const previousRevision = lastWorkerDatabaseRevision;
+  lastWorkerDatabaseRevision = null;
+  const revision = getDatabaseRevision();
+  if (revision !== previousRevision) dbOps.invalidateSettingsCache();
+  let inspected = true;
   sweepExpiredWorkerQueues(group);
   const running = new Set(getHonkerWorkerStatuses().filter((worker) => worker.running).map((worker) => worker.name));
   for (const worker of QUEUE_WORKERS) {
@@ -137,6 +147,7 @@ function checkQueuedBackgroundWork(group = null) {
         nextClaimAt = queueNextClaimAt;
       }
     } catch (error) {
+      inspected = false;
       console.warn(
         `[AppRuntime] Failed to inspect ${worker.queue} queue:`,
         error?.message || error,
@@ -144,6 +155,15 @@ function checkQueuedBackgroundWork(group = null) {
     }
   }
   scheduleSupervisorWake(nextClaimAt);
+  lastWorkerDatabaseRevision = inspected ? revision : null;
+}
+
+function checkWorkerDatabaseChanges(group) {
+  try {
+    if (getDatabaseRevision() !== lastWorkerDatabaseRevision) checkQueuedBackgroundWork(group);
+  } catch (error) {
+    console.warn("[AppRuntime] Failed to check database changes:", error?.message || error);
+  }
 }
 
 export function startWorkerSupervisor({ group = null } = {}) {
@@ -153,7 +173,7 @@ export function startWorkerSupervisor({ group = null } = {}) {
   workerSupervisorStarted = true;
   supervisedGroup = group;
   checkQueuedBackgroundWork(group);
-  workerSupervisorInterval = setInterval(() => checkQueuedBackgroundWork(group), WORKER_SUPERVISOR_POLL_MS);
+  workerSupervisorInterval = setInterval(() => checkWorkerDatabaseChanges(group), WORKER_SUPERVISOR_POLL_MS);
   workerSweepInterval = setInterval(() => {
     if (sweepExpiredWorkerQueues(group) > 0) checkQueuedBackgroundWork(group);
   }, 30000);
@@ -166,6 +186,7 @@ export function startWorkerSupervisor({ group = null } = {}) {
 function stopWorkerSupervisor() {
   workerSupervisorStarted = false;
   supervisedGroup = null;
+  lastWorkerDatabaseRevision = null;
   clearSupervisorWakeTimer();
   clearInterval(workerSweepInterval);
   workerSweepInterval = null;
@@ -254,6 +275,8 @@ export function startBackgroundWorkers({ logger = console } = {}) {
   }
   backgroundProcessSupervisor = createBackgroundProcessSupervisor({
     logger,
+    getWorkRevision: getDatabaseRevision,
+    getNextWorkAt: getNextBackgroundWorkAt,
     findGroupsWithWork: () => (isHonkerShuttingDown() ? [] : listBackgroundGroupsWithWork()),
     onMessage(message, _group, child) {
       if (message?.type === "queue-wake") {

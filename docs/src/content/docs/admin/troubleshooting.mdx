@@ -181,7 +181,7 @@ The official image preloads jemalloc, so Sharp returns free memory to the system
 
 The web app loads artwork directly from the provider links, and the browser caches it. Subsonic clients that need Aurral to serve artwork get covers on demand. Aurral caches these as 512 px WebP images.
 
-The artwork disk cache holds up to 256 MB and removes the least recently used images first. To start from a clean memory baseline, restart Aurral.
+The artwork disk cache holds up to 256 MB and removes the least recently used images first. This cache handles at most two cover downloads at a time. Sharp does not retain an image-processing cache. To start from a clean memory baseline, restart Aurral.
 
 Aurral stores artwork links in SQLite, separately from the cached image files. When the cache removes an image, Aurral can fetch it again without a new metadata lookup.
 

@@ -163,7 +163,7 @@ async function writeScanFixture(filePath, title) {
 function seedDatabase(database, { tracks, tracksPerAlbum, musicRoot }) {
   const albumCount = Math.ceil(tracks / tracksPerAlbum);
   const artistCount = Math.ceil(albumCount / 10);
-  const metadata = JSON.stringify({ genres: ["Rock"], tags: ["benchmark"] });
+  const metadata = JSON.stringify({ genres: ["Rock"], tags: ["benchmark"], trackListComplete: true });
   const now = Date.now();
   const insertArtist = database.prepare(
     `INSERT INTO library_artists
@@ -383,7 +383,7 @@ const boundedReadCode = `
 import { groupArtists } from "./backend/routes/subsonic.js";
 import {
   getAlbum,
-  getFlowPlaylists,
+  getSubsonicPlaylists,
   getGenres,
   getStarred,
   getArtist,
@@ -415,7 +415,7 @@ const read = {
     limit: 20,
   }).tracks,
   starred: () => getStarred(user),
-  playlists: () => getFlowPlaylists(user),
+  playlists: () => getSubsonicPlaylists(user),
   genres: () => getGenres(),
 };
 const before = process.memoryUsage();
@@ -502,6 +502,7 @@ async function main() {
   const dataDir = await mkdtemp(path.join(tmpdir(), "aurral-library-perf-"));
   const dbPath = path.join(dataDir, "aurral.db");
   const started = performance.now();
+  const originalFetch = globalThis.fetch;
   let database;
   let output;
   try {
@@ -520,7 +521,7 @@ async function main() {
     rebuildLibrarySearchIndex();
     queryService.rebuildLibraryGenreStats();
     const benchmarkUser = seedSubsonicFavorite(database);
-    flowPlaylistConfig.createSharedPlaylist({
+    flowPlaylistConfig.createStaticPlaylist({
       name: "Benchmark Playlist",
       ownerUserId: benchmarkUser.id,
       tracks: [],
@@ -576,11 +577,12 @@ async function main() {
     const scanOptions = {
       musicRoot: path.join(dataDir, "downloads"),
       lidarrRoots: [musicRoot],
-      lidarrClient: { isEnabled: () => true },
+      lidarrClient: { isConfigured: () => true },
       changedPaths: [target],
       force: true,
     };
     let previousTitle = "Targeted Fixture Original";
+    globalThis.fetch = async () => new Response("{}", { status: 404 });
     await writeScanFixture(target, previousTitle);
     await scanConfiguredLibrary(scanOptions);
     const fixtureAlbumId = database.prepare(
@@ -607,6 +609,7 @@ async function main() {
       });
       previousTitle = title;
     }
+    globalThis.fetch = originalFetch;
     queryService.rebuildLibraryGenreStats();
     const scopedPaths = summarizeSamples(scopedPathSamples);
     const targetedScans = summarizeSamples(targetedScanSamples);
@@ -737,6 +740,7 @@ async function main() {
       verdict: Object.values(checks).every(Boolean) ? "pass" : "fail",
     };
   } finally {
+    globalThis.fetch = originalFetch;
     if (database) database.close();
     await rm(dataDir, { recursive: true, force: true });
   }

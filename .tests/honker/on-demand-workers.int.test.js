@@ -3,7 +3,7 @@ import test from "node:test";
 import { createBackgroundProcessSupervisor } from "../../backend/services/backgroundProcessSupervisor.js";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
-const [state, honker] = await setupIsolatedBackend("on-demand-workers", "backend/services/honkerDb.js");
+const [state, honker, { getDatabaseRevision }] = await setupIsolatedBackend("on-demand-workers", "backend/services/honkerDb.js", "backend/config/db-sqlite.js");
 test.after(() => cleanupIsolatedState(state));
 
 test("a due schedule runs in background processes that exit once idle", { timeout: 30000 }, async (t) => {
@@ -30,6 +30,8 @@ test("a due schedule runs in background processes that exit once idle", { timeou
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["scheduler", "maintenance"],
     findGroupsWithWork: honker.listBackgroundGroupsWithWork,
+    getWorkRevision: getDatabaseRevision,
+    getNextWorkAt: honker.getNextBackgroundWorkAt,
     onMessage(message, group) {
       if (message.type === "job-started") started.resolve(message);
       if (message.type === "job-finished") finished.resolve(message);
