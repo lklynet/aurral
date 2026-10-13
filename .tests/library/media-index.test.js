@@ -2446,9 +2446,10 @@ test("a targeted local rescan refreshes a named file even when its size and time
   const source = `test-targeted-${process.pid}`;
   const filePaths = [];
   const metadataReads = [];
+  let currentMetadata = metadata;
   const metadataReader = async (filePath) => {
     metadataReads.push(filePath);
-    return metadata;
+    return currentMetadata;
   };
   try {
     filePaths.push(await createAudioFile(root, "Artist/Album/01 First.flac"));
@@ -2456,6 +2457,7 @@ test("a targeted local rescan refreshes a named file even when its size and time
 
     await scanMusicRoot({ rootPath: root, source, metadataReader });
     metadataReads.length = 0;
+    currentMetadata = { ...metadata, common: { ...metadata.common, title: "Updated Step" } };
     const indexed = getLibrarySnapshot().files.find((file) => file.path === filePaths[0]);
     await utimes(filePaths[0], indexed.mtime_ms / 1000, indexed.mtime_ms / 1000);
     db.prepare("UPDATE library_media_files SET mtime_ms = ? WHERE source = ? AND path = ?")
@@ -2468,6 +2470,7 @@ test("a targeted local rescan refreshes a named file even when its size and time
     });
 
     assert.deepEqual(metadataReads, [filePaths[0]]);
+    assert.equal(getLibrarySnapshot().tracks.find((track) => track.id === indexed.track_id).title, "Updated Step");
   } finally {
     for (const filePath of filePaths) deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
