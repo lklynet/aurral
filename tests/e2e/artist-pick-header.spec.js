@@ -166,6 +166,52 @@ test("artist page release cards give their ListenBrainz listeners to screen read
   await expect(page.getByRole("tooltip", { name: "2,621 listeners on ListenBrainz" })).toBeVisible();
 });
 
+test("the artist pick stays on the album the user downloads", async ({ page }) => {
+  const single = {
+    id: "pick-header-single",
+    title: "Pick Header Single",
+    "primary-type": "Single",
+    "secondary-types": [],
+    "first-release-date": "2004-02-02",
+    listenerCount: 90,
+    listenCount: 140,
+  };
+  await fixture(page, { releaseGroups: [{ ...album, listenerCount: 2621, listenCount: 17712 }, single] });
+  const libraryAlbum = { id: 70, mbid: album.id, foreignAlbumId: album.id, title: album.title, monitored: true };
+  let requested = false;
+  await page.route("**/api/library/downloads/active", (route) =>
+    route.fulfill({ json: { albums: requested ? [album.id] : [], artists: [], tracks: [] } }),
+  );
+  await page.route("**/api/library/albums/request", (route) => {
+    requested = true;
+    return route.fulfill({
+      json: {
+        status: "searching",
+        artist: { id: 7, mbid: artist.id, foreignArtistId: artist.id, artistName: artist.name },
+        album: libraryAlbum,
+      },
+    });
+  });
+  await page.route(
+    (url) => url.pathname === "/api/library/albums" && url.searchParams.get("artistId") === "7",
+    (route) => route.fulfill({ json: [libraryAlbum] }),
+  );
+  await page.route("**/api/library/downloads/status**", (route) =>
+    route.fulfill({ json: { [libraryAlbum.id]: { status: "searching" } } }),
+  );
+  await page.goto(`/artist/${artist.id}`);
+  const panel = page.locator(".artist-pick-panel");
+  await expect(panel.getByRole("heading", { level: 2 })).toHaveText(album.title);
+
+  await panel.getByRole("button", { name: "Download album", exact: true }).click();
+
+  await expect(page.getByText(`Searching for ${album.title}`, { exact: true })).toBeVisible();
+  await expect(
+    panel.locator(".native-library-detail__actions").getByRole("button", { name: "Downloading", exact: true }),
+  ).toBeDisabled();
+  await expect(panel.getByRole("heading", { level: 2 })).toHaveText(album.title);
+});
+
 async function panelCornerColors(panel) {
   const box = await panel.boundingBox();
   const png = (await panel.screenshot()).toString("base64");

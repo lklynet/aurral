@@ -64,9 +64,12 @@ export function ArtistDetailsDownloadTargets({
   getDefaultPlaylistName,
   onLoadPlaylists,
 }) {
+  const [requestedPick, setRequestedPick] = useState(null);
+  const requestedReleaseGroupId =
+    requestedPick?.artistId === artist?.id ? requestedPick.releaseGroupId : null;
   const missingReleasePick = useMemo(
-    () => buildAurralPick({ releaseGroups, getAlbumStatus }),
-    [releaseGroups, getAlbumStatus],
+    () => buildAurralPick({ releaseGroups, getAlbumStatus, requestedReleaseGroupId }),
+    [releaseGroups, getAlbumStatus, requestedReleaseGroupId],
   );
   const [showAllTracks, setShowAllTracks] = useState(false);
   const { isAlbumDownloading } = useActiveDownloads();
@@ -254,7 +257,10 @@ export function ArtistDetailsDownloadTargets({
                       libraryDestination,
                     )}
                     ownerConflict={albumStatus?.ownerConflict}
-                    onAdd={(managedBy) => handleRequestAlbum(releaseGroupId, title, managedBy)}
+                    onAdd={(managedBy) => {
+                      setRequestedPick({ artistId: artist?.id, releaseGroupId });
+                      handleRequestAlbum(releaseGroupId, title, managedBy);
+                    }}
                     isLoading={albumBusy}
                     loadingLabel="Downloading"
                     disabled={albumBusy}

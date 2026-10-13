@@ -405,13 +405,19 @@ const isUnrequestedReleaseGroup = (getAlbumStatus, releaseGroupId) => {
   return !status || status === "unmonitored";
 };
 
-export const buildAurralPick = ({ releaseGroups = [], getAlbumStatus } = {}) => {
-  const [releaseGroup] = releaseGroups
-    .filter((item) => item?.id && isUnrequestedReleaseGroup(getAlbumStatus, item.id))
-    .sort(
-      (a, b) =>
-        getReleaseKindRank(a) - getReleaseKindRank(b) || compareReleaseGroupsByPopularity(a, b),
-    );
+export const buildAurralPick = ({
+  releaseGroups = [],
+  getAlbumStatus,
+  requestedReleaseGroupId = null,
+} = {}) => {
+  const releaseGroup =
+    releaseGroups.find((item) => item?.id && item.id === requestedReleaseGroupId) ||
+    releaseGroups
+      .filter((item) => item?.id && isUnrequestedReleaseGroup(getAlbumStatus, item.id))
+      .sort(
+        (a, b) =>
+          getReleaseKindRank(a) - getReleaseKindRank(b) || compareReleaseGroupsByPopularity(a, b),
+      )[0];
   if (!releaseGroup) return null;
   return {
     releaseGroupId: releaseGroup.id,
