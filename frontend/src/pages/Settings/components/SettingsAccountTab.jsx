@@ -6,7 +6,6 @@ import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
 import { ConnectedAccountsSection } from "./ConnectedAccountsSection";
 import { SharedLinksSection } from "./SharedLinksSection";
 import { ThemeSettings } from "./ThemeSettings";
-import { useThemeDocument } from "../../../hooks/useThemeDocument.js";
 
 import { Link } from "react-router";
 import { RotateCcw } from "lucide-react";
@@ -35,7 +34,6 @@ export function SettingsAccountTab({
   sidebarArtEnabled = true,
   setSidebarArtEnabled,
 }) {
-  const { matchArtwork: immersiveMode } = useThemeDocument();
   const [resettingTastes, setResettingTastes] = useState(false);
 
   useEffect(() => {
@@ -119,14 +117,11 @@ export function SettingsAccountTab({
                 <PillToggle
                   id="profile-sidebar-art"
                   checked={sidebarArtEnabled}
-                  disabled={!immersiveMode}
                   onChange={(event) => setSidebarArtEnabled(event.target.checked)}
                   aria-label="Show sidebar environment art"
                 />
                 <p className="settings-page__hint">
-                  {immersiveMode
-                    ? "Show the nightly or preview environment art in the sidebar."
-                    : "Enable immersive mode to show environment art in the sidebar."}
+                  Show the nightly or preview environment art in the sidebar.
                 </p>
               </div>
             </fieldset>

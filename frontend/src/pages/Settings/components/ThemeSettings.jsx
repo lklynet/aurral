@@ -518,7 +518,7 @@ export function ThemeSettings({ showSuccess, showError }) {
         <div className="theme-settings__switch-row">
           <div className="theme-settings__switch-copy">
             <label className="theme-settings__switch-label" htmlFor="theme-immersive-mode">Immersive mode</label>
-            <p className="settings-page__hint">Enable artwork colors, background gradients, and environment art.</p>
+            <p className="settings-page__hint">Use artwork colors for the accent, background gradients, and player.</p>
           </div>
           <PillToggle
             id="theme-immersive-mode"
