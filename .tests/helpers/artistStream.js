@@ -10,7 +10,7 @@ export const json = (body, status = 200) =>
 
 export function stubFetch(t, handler) {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (url) => handler(new URL(String(url)));
+  globalThis.fetch = async (url, init) => handler(new URL(String(url)), init);
   t.after(() => {
     globalThis.fetch = originalFetch;
   });
@@ -60,8 +60,8 @@ export function openArtistStream(mbid, query = {}) {
     }
     return parsed;
   };
-  const waitFor = async (predicate) => {
-    const deadline = Date.now() + 3000;
+  const waitFor = async (predicate, { timeoutMs = 3000 } = {}) => {
+    const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const match = events().find(predicate);
       if (match) return match;

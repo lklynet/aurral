@@ -10,7 +10,11 @@ import { cacheMiddleware } from "../../../middleware/cache.js";
 import { requireAuth } from "../../../middleware/requirePermission.js";
 import { buildArtistRequestKey, pendingArtistRequests } from "../utils.js";
 import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.js";
-import { getArtistTagPayload, buildArtistBase } from "../shared/transform.js";
+import {
+  getArtistTagPayload,
+  buildArtistBase,
+  withListenBrainzStats,
+} from "../shared/transform.js";
 import { getLibraryArtistProjection } from "../../../services/libraryQueryService.js";
 
 export function getLibraryLidarrArtist(reference) {
@@ -176,7 +180,7 @@ export function registerDetails(router) {
             artistMbid,
             selectedReleaseTypes,
             { includeTrackCounts: !appearsOnLimit },
-          ),
+          ).then(withListenBrainzStats),
           coreOnly
             ? []
             : musicbrainzGetArtistAppearsOnReleaseGroups(artistMbid, {
@@ -227,7 +231,7 @@ export function registerDetails(router) {
             resolvedMbid,
             selectedReleaseTypes,
             { includeTrackCounts: !appearsOnLimit },
-          ),
+          ).then(withListenBrainzStats),
           coreOnly
             ? []
             : musicbrainzGetArtistAppearsOnReleaseGroups(resolvedMbid, {

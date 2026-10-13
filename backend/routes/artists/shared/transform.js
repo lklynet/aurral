@@ -1,4 +1,5 @@
 import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
+import { listenbrainzGetReleaseGroupListens } from "../../../services/apiClients/listenbrainz.js";
 import {
   getArtistTagLists,
   getSimilarArtists,
@@ -51,6 +52,29 @@ export async function getSimilarArtistCards(
       image: buildImageProxyUrl(artist.image),
       match: Math.round(artist.match * 100),
     }));
+}
+
+const LISTENBRAINZ_WAIT_MS = 2000;
+
+const settleWithin = (waitMs, lookups) => {
+  let timer;
+  const deadline = new Promise((resolve) => {
+    timer = setTimeout(resolve, waitMs, new Map());
+  });
+  return Promise.all(lookups.map((lookup) => Promise.race([lookup, deadline]))).finally(() =>
+    clearTimeout(timer),
+  );
+};
+
+export async function withListenBrainzStats(releaseGroups) {
+  if (!releaseGroups.length) return releaseGroups;
+  const [listens] = await settleWithin(LISTENBRAINZ_WAIT_MS, [
+    listenbrainzGetReleaseGroupListens(releaseGroups.map(({ id }) => id)),
+  ]);
+  return releaseGroups.map((releaseGroup) => ({
+    ...releaseGroup,
+    ...listens.get(releaseGroup.id),
+  }));
 }
 
 export function buildArtistBase(name, resolvedMbid, metadataArtist = null) {
