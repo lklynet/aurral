@@ -1,3 +1,4 @@
+import ArtworkImage from "../../../components/ArtworkImage";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Music, Star } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
@@ -134,7 +135,7 @@ export function ArtistDetailsReleaseGroups({
             <article key={releaseGroup.id} className="artist-release-card" data-artwork-scope>
               <div className="artist-release-card__cover" data-artwork>
                 {coverUrl ? (
-                  <img src={coverUrl} alt="" loading="lazy" decoding="async" />
+                  <ArtworkImage src={coverUrl} alt="" loading="lazy" decoding="async" />
                 ) : (
                   <div className="artist-release-card__placeholder">
                     <Music className="artist-icon-lg" />

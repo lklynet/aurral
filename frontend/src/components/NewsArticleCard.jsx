@@ -1,3 +1,4 @@
+import ArtworkImage from "./ArtworkImage";
 import { useEffect, useState } from "react";
 import { Ban, Newspaper } from "lucide-react";
 import { getArtistCover } from "../utils/api/endpoints/artists.js";
@@ -47,7 +48,7 @@ export function NewsArticleCard({ article, compact = false, onDisableFeed }) {
         >
           <div className="discover-news-card__image-wrap">
             {imageUrl ? (
-              <img
+              <ArtworkImage
                 src={imageUrl}
                 alt=""
                 className="discover-news-card__image"

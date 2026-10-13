@@ -1,3 +1,4 @@
+import ArtworkImage from "../../../components/ArtworkImage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Music,
@@ -330,7 +331,7 @@ export function ArtistDetailsLibraryAlbums({
             >
               <div className="artist-release-card__cover" data-artwork>
                 {coverUrl ? (
-                  <img
+                  <ArtworkImage
                     src={coverUrl}
                     alt={libraryAlbum.albumName}
                     loading="lazy"

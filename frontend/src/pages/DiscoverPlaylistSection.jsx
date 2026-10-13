@@ -1,3 +1,4 @@
+import ArtworkImage from "../components/ArtworkImage";
 import { useState } from "react";
 import { ListMusic } from "lucide-react";
 import { DiscoverRail } from "../components/DiscoverRail";
@@ -14,7 +15,7 @@ function EditorialPlaylistCard({ playlist }) {
       <div className="artist-discover-card artist-discover-card--playlist" data-artwork-scope>
         <div className="artist-discover-card__cover" data-artwork>
           {playlist.artworkUrl && !failedArtwork ? (
-            <img
+            <ArtworkImage
               src={playlist.artworkUrl}
               alt=""
               className="artist-discover-card__image"

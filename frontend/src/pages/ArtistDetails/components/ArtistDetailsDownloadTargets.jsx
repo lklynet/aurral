@@ -1,3 +1,4 @@
+import ArtworkImage from "../../../components/ArtworkImage";
 import { getAlbumAddAction } from "../../../utils/albumAddAction";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -22,7 +23,7 @@ function PickCover({ pick, albumCovers, fulfilledCoverIds, artistCoverImage }) {
     resolved: fulfilledCoverIds?.has(pick?.releaseGroupId),
   });
   if (cover) {
-    return <img src={cover} alt="" loading="lazy" decoding="async" />;
+    return <ArtworkImage src={cover} alt="" loading="lazy" decoding="async" />;
   }
   return (
     <div className="artist-media-placeholder">

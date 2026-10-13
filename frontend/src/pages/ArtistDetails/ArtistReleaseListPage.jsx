@@ -1,3 +1,4 @@
+import ArtworkImage from "../../components/ArtworkImage";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router";
@@ -428,7 +429,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
         <div key={releaseGroup.id} className="artist-release-list-item">
           <div className="artist-media-cell artist-list-cover">
             {cover ? (
-              <img src={cover} alt="" loading="lazy" />
+              <ArtworkImage src={cover} alt="" loading="lazy" />
             ) : (
               <div className="artist-media-placeholder">
                 <Music className="artist-icon-md" />
@@ -483,7 +484,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
       <article key={releaseGroup.id} className="artist-release-card">
         <div className="artist-release-card__cover">
           {cover ? (
-            <img src={cover} alt="" loading="lazy" decoding="async" />
+            <ArtworkImage src={cover} alt="" loading="lazy" decoding="async" />
           ) : (
             <div className="artist-release-card__placeholder">
               <Music className="artist-icon-lg" />

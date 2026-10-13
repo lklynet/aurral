@@ -1,3 +1,4 @@
+import ArtworkImage from "./ArtworkImage";
 import { useState } from "react";
 import { Music } from "lucide-react";
 import SearchLibraryCheck from "./SearchLibraryCheck";
@@ -38,7 +39,7 @@ function AlbumCover({ src, alt }) {
   }
 
   return (
-    <img src={src} alt={alt} loading="lazy" decoding="async" onError={() => setFailed(true)} />
+    <ArtworkImage src={src} alt={alt} loading="lazy" decoding="async" onError={() => setFailed(true)} />
   );
 }
 
@@ -121,7 +122,7 @@ function SearchAlbumResults({
           >
             <div className="artist-media-cell artist-list-cover">
               {coverSrc ? (
-                <img src={coverSrc} alt="" loading="lazy" decoding="async" />
+                <ArtworkImage src={coverSrc} alt="" loading="lazy" decoding="async" />
               ) : (
                 <div className="artist-media-placeholder">
                   <Music className="artist-icon-md" aria-hidden="true" />

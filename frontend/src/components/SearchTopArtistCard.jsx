@@ -5,6 +5,7 @@ import { getSearchResultLink } from "../utils/searchNavigation";
 import { getArtistRecordId } from "../utils/artistTaste";
 import { isAlbumCompleteInLibrary } from "../utils/albumAddAction";
 import RouteLink from "./RouteLink";
+import ArtworkImage from "./ArtworkImage";
 
 function getPrimaryLabel(item) {
   if (item?.type === "artist") return item.name || "";
@@ -70,7 +71,7 @@ function TopResultArtwork({ item, artistImages, albumCovers, isInLibrary }) {
 
   if (coverSrc) {
     return (
-      <img
+      <ArtworkImage
         src={coverSrc}
         alt=""
         className="search-top-artist__image"

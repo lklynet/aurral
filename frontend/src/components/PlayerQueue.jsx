@@ -1,3 +1,4 @@
+import ArtworkImage from "./ArtworkImage";
 import { useEffect, useId, useState } from "react";
 import {
   DndContext,
@@ -24,7 +25,7 @@ import TooltipButton from "./TooltipButton";
 function QueueArt({ src }) {
   return (
     <span className="player-queue__art" aria-hidden="true">
-      {src ? <img src={src} alt="" loading="lazy" decoding="async" /> : <Music />}
+      {src ? <ArtworkImage src={src} sizes="3rem" alt="" loading="lazy" decoding="async" /> : <Music />}
     </span>
   );
 }

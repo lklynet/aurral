@@ -26,6 +26,7 @@ import { PLAYER_SHORTCUTS, usePlayerShortcuts } from "../hooks/usePlayerShortcut
 import { useNowPlayingTitle } from "../hooks/useDocumentTitle";
 import { useLibraryShareAction, useShareAction } from "../hooks/useShareAction.js";
 import { useCollectionTint } from "./CollectionHeader";
+import ArtworkImage from "./ArtworkImage";
 
 const SHEET_EXIT_MS = 260;
 const SHEET_DISMISS_DISTANCE = 120;
@@ -217,10 +218,10 @@ function GlobalPlayerBar() {
     setDragOffset(0);
   };
 
-  const artwork = (className) => (
+  const artwork = (className, thumbnail = true) => (
     <span className={className} aria-hidden="true">
       {currentTrack.artwork ? (
-        <img src={currentTrack.artwork} alt="" decoding="async" />
+        <ArtworkImage src={currentTrack.artwork} thumbnail={thumbnail} sizes="3rem" alt="" loading="eager" />
       ) : (
         <Music />
       )}
@@ -336,7 +337,7 @@ function GlobalPlayerBar() {
             </div>
 
             <div className="now-playing__body">
-              {artwork("global-player__art now-playing__art")}
+              {artwork("global-player__art now-playing__art", false)}
 
               <div className="now-playing__meta">
                 <h2 className="now-playing__title">{currentTrack.title}</h2>

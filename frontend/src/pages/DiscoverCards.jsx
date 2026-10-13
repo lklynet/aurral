@@ -1,3 +1,4 @@
+import ArtworkImage from "../components/ArtworkImage";
 import { memo, useState, useEffect } from "react";
 import { getReleaseGroupCover, getArtistCover } from "../utils/api/endpoints/artists.js";
 
@@ -254,7 +255,7 @@ export const AlbumCard = memo(
         <div className="artist-discover-card__cover-wrap">
           <div className={`artist-discover-card__cover${canOpen ? "" : " is-disabled"}`} data-artwork>
             {coverUrl ? (
-              <img
+              <ArtworkImage
                 src={coverUrl}
                 alt={album.albumName}
                 className="artist-discover-card__image"

@@ -6,6 +6,7 @@ import { useArtistPreviewPlayback } from "../hooks/useArtistPreviewPlayback";
 import { Music, Play } from "lucide-react";
 import { DotLoader } from "./DotLoader";
 import Tooltip from "./Tooltip";
+import ArtworkImage from "./ArtworkImage";
 const queue = [];
 let active = 0;
 const MAX_CONCURRENT = 4;
@@ -57,6 +58,8 @@ const ArtistImage = ({
   enablePreviewPlayback = false,
   isInLibrary = false,
   loading = "lazy",
+  thumbnail = true,
+  sizes = "200px",
   onImageLoad,
 }) => {
   const [currentSrc, setCurrentSrc] = useState(() => normalizeMediaUrl(src));
@@ -328,9 +331,11 @@ const ArtistImage = ({
         </div>
       )}
       {currentSrc && (
-        <img
+        <ArtworkImage
           ref={imgRef}
           src={currentSrc}
+          thumbnail={thumbnail}
+          sizes={sizes}
           alt={alt || "Artist cover"}
           className={`artist-image-media ${showLoading && isLoading ? "is-loading" : "is-loaded"}`}
           onLoad={handleLoad}

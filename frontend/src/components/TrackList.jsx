@@ -1,3 +1,4 @@
+import ArtworkImage from "./ArtworkImage";
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Heart, Pause, Play } from "lucide-react";
 import { LibraryItemMenu } from "./LibraryItemMenu";
@@ -44,7 +45,7 @@ function TrackCover({ cover, indicator = null }) {
   const label = cover?.label || "";
   const content =
     cover?.src && !failed ? (
-      <img src={cover.src} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />
+      <ArtworkImage src={cover.src} sizes="2.5rem" alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />
     ) : (
       <span className="native-library-cover-fallback is-compact" aria-hidden="true">
         {label.trim().charAt(0).toUpperCase() || "—"}

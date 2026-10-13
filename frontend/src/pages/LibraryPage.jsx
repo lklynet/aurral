@@ -1,3 +1,4 @@
+import ArtworkImage from "../components/ArtworkImage";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useNavigationType, useParams, useSearchParams } from "react-router";
@@ -291,9 +292,9 @@ const entityMatches = (entity, query) => {
     .some((value) => text(value).toLocaleLowerCase().includes(query));
 };
 
-function Cover({ src, label, round = false, compact = false }) {
+function Cover({ src, label, round = false, compact = false, thumbnail = true }) {
   if (src) {
-    return <img src={src} alt="" loading="lazy" decoding="async" />;
+    return <ArtworkImage src={src} thumbnail={thumbnail} alt="" loading="lazy" decoding="async" />;
   }
 
   return (
@@ -2559,7 +2560,7 @@ function LibraryPage() {
     return (
       <section className="native-library-detail">
         <CollectionHeader
-          cover={<Cover src={getAlbumCover(libraryAlbum)} label={libraryAlbum.title} />}
+          cover={<Cover src={getAlbumCover(libraryAlbum)} label={libraryAlbum.title} thumbnail={false} />}
           kicker={releaseTypeOf(libraryAlbum) || "Album"}
           title={libraryAlbum.title || "Unknown Album"}
           subtitle={
@@ -2719,6 +2720,7 @@ function LibraryPage() {
                 artistName={libraryArtist.name}
                 alt={libraryArtist.name || ""}
                 className="native-library-detail__artist-image"
+                thumbnail={false}
                 showLoading={false}
                 enablePreviewPlayback={false}
                 isInLibrary
@@ -2879,7 +2881,7 @@ function LibraryPage() {
             <section className="native-library-detail">
               {routeAlbumId && albumSeed?.title ? (
                 <CollectionHeader
-                  cover={<Cover src={albumSeed.coverUrl} label={albumSeed.title} />}
+                  cover={<Cover src={albumSeed.coverUrl} label={albumSeed.title} thumbnail={false} />}
                   kicker="Album"
                   title={albumSeed.title}
                   subtitle={albumSeed.artistName ? <p>{albumSeed.artistName}</p> : null}

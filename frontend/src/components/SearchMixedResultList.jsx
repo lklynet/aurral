@@ -1,3 +1,4 @@
+import ArtworkImage from "./ArtworkImage";
 import { Music } from "lucide-react";
 import ArtistImage from "./ArtistImage";
 import { getSearchResultKey, getSearchResultLink } from "../utils/searchNavigation";
@@ -56,6 +57,7 @@ function ResultThumbnail({ item, artistImages, albumCovers }) {
           artistName={item.name}
           alt={item.name}
           className="search-mixed-results__image"
+          sizes="3rem"
           showLoading={false}
           enableBackendFallback={false}
           enablePreviewPlayback
@@ -76,10 +78,11 @@ function ResultThumbnail({ item, artistImages, albumCovers }) {
   return (
     <span className="search-mixed-results__thumb">
       {coverSrc ? (
-        <img
+        <ArtworkImage
           src={coverSrc}
           alt=""
           className="search-mixed-results__image"
+          sizes="3rem"
           loading="lazy"
           decoding="async"
         />
