@@ -27,6 +27,7 @@ import {
 import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
 import { useStorageHealth } from "../hooks/useStorageHealth";
+import { useThemeDocument } from "../hooks/useThemeDocument.js";
 import SidebarStageBackdrop, {
   getSidebarStageBackdropEnabled,
   resolveSidebarStageBackdropVariant,
@@ -36,10 +37,11 @@ import SidebarStageBackdrop, {
 function Sidebar({ mode, width = 208, settingsMode = false }) {
   const location = useLocation();
   const { user, bootstrap } = useAuth();
+  const { matchArtwork: immersiveMode } = useThemeDocument();
   const [showStageBackdrop, setShowStageBackdrop] = useState(() =>
     getSidebarStageBackdropEnabled(user?.id),
   );
-  const stageBackdropVariant = showStageBackdrop
+  const stageBackdropVariant = immersiveMode && showStageBackdrop
     ? resolveSidebarStageBackdropVariant()
     : null;
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;

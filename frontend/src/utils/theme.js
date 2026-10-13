@@ -399,8 +399,8 @@ export function setThemeAppearance(appearance) {
   update({ appearance: THEME_APPEARANCES.includes(appearance) ? appearance : "system" });
 }
 
-export function setMatchArtwork(matchArtwork) {
-  update({ matchArtwork: Boolean(matchArtwork) });
+export function setImmersiveMode(enabled) {
+  update({ matchArtwork: Boolean(enabled) });
 }
 
 export function saveCustomTheme(value, { select = true } = {}) {

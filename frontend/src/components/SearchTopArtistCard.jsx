@@ -6,6 +6,7 @@ import { getArtistRecordId } from "../utils/artistTaste";
 import { isAlbumCompleteInLibrary } from "../utils/albumAddAction";
 import RouteLink from "./RouteLink";
 import ArtworkImage from "./ArtworkImage";
+import { useThemeDocument } from "../hooks/useThemeDocument.js";
 
 function getPrimaryLabel(item) {
   if (item?.type === "artist") return item.name || "";
@@ -111,9 +112,10 @@ function SearchTopArtistCard({
   query = "",
   previewTracks = [],
 }) {
+  const { matchArtwork: immersiveMode } = useThemeDocument();
   const result = item || legacyArtist;
   const label = getPrimaryLabel(result);
-  const backdropSrc = result ? getBackdropSrc(result, artistImages, albumCovers) : "";
+  const backdropSrc = immersiveMode && result ? getBackdropSrc(result, artistImages, albumCovers) : "";
   if (!result || !label) return null;
   const isArtist = result.type === "artist";
   const artistId = isArtist ? getArtistRecordId(result) : null;
@@ -150,12 +152,12 @@ function SearchTopArtistCard({
       <div
         className={`search-top-artist__main${backdropSrc ? " search-top-artist__main--overlay" : ""}`}
       >
-        <span className="search-top-artist__backdrop" aria-hidden="true">
-          {backdropSrc ? (
+        {backdropSrc ? (
+          <span className="search-top-artist__backdrop" aria-hidden="true">
             <img src={backdropSrc} alt="" className="search-top-artist__backdrop-image" />
-          ) : null}
-          <span className="search-top-artist__backdrop-wash" />
-        </span>
+            <span className="search-top-artist__backdrop-wash" />
+          </span>
+        ) : null}
 
         <span className="search-top-artist__content">
           <span

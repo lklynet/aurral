@@ -325,21 +325,26 @@ test("the startup script paints the saved theme before the app loads", async () 
   assert.equal(runStartup(true).variables.size, 0);
 });
 
-test("album art tints the theme only while matching is on", async () => {
+test("album art tints the theme only while immersive mode is on", async () => {
   const { variables } = createBrowser({ prefersDark: true });
-  const { initializeTheme, setArtworkColor, setMatchArtwork } = await loadTheme();
+  const { initializeTheme, setArtworkColor, setImmersiveMode } = await loadTheme();
   initializeTheme();
 
   setArtworkColor("#e0442b");
   assert.equal(variables.size, 0);
 
-  setMatchArtwork(true);
+  setImmersiveMode(true);
   const accent = variables.get("--aurral-accent");
   const surface = variables.get("--aurral-surface");
   assert.ok(accent && surface);
   assert.notEqual(surface, "#121212");
   assert.ok(Number.parseInt(accent.slice(1, 3), 16) > Number.parseInt(accent.slice(5, 7), 16), "accent stays red");
   assert.ok(contrast(accent, surface) >= 3);
+
+  setImmersiveMode(false);
+  assert.equal(variables.size, 0);
+  setImmersiveMode(true);
+  assert.equal(variables.get("--aurral-accent"), accent);
 
   setArtworkColor(null);
   assert.equal(variables.size, 0);

@@ -28,7 +28,7 @@ test("the player finds a missing cover and the album-art theme follows it", asyn
   });
 
   await page.goto("/profile");
-  const matchArtwork = page.getByRole("switch", { name: "Match album art" });
+  const matchArtwork = page.getByRole("switch", { name: "Immersive mode" });
   const wasMatching = (await matchArtwork.getAttribute("aria-checked")) === "true";
   if (!wasMatching) await matchArtwork.click();
   await expect(matchArtwork).toHaveAttribute("aria-checked", "true");
@@ -51,7 +51,7 @@ test("the player finds a missing cover and the album-art theme follows it", asyn
     await expect.poll(accent).toMatch(/^#[\da-f]{6}$/i);
   } finally {
     await page.goto("/profile");
-    const toggle = page.getByRole("switch", { name: "Match album art" });
+    const toggle = page.getByRole("switch", { name: "Immersive mode" });
     if (((await toggle.getAttribute("aria-checked")) === "true") !== wasMatching) await toggle.click();
   }
 });

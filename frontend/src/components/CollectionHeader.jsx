@@ -8,8 +8,8 @@ export function useCollectionTint(src) {
   return wash ? `light-dark(${wash.light}, ${wash.dark})` : null;
 }
 
-export function CollectionPage({ tintSrc, tintColor = null, className = "", children }) {
-  const tint = useCollectionTint(tintSrc) || tintColor;
+export function CollectionPage({ tintSrc, className = "", children }) {
+  const tint = useCollectionTint(tintSrc);
   return (
     <div
       className={`library-page native-library-page collection-page${className ? ` ${className}` : ""}`}

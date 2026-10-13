@@ -20,7 +20,7 @@ import {
   restoreCustomTheme,
   saveCustomTheme,
   selectTheme,
-  setMatchArtwork,
+  setImmersiveMode,
   setThemeAppearance,
   THEME_MODES,
 } from "../../../utils/theme.js";
@@ -517,14 +517,14 @@ export function ThemeSettings({ showSuccess, showError }) {
         </div>
         <div className="theme-settings__switch-row">
           <div className="theme-settings__switch-copy">
-            <label className="theme-settings__switch-label" htmlFor="theme-match-artwork">Match album art</label>
-            <p className="settings-page__hint">Tint the accent and background from the cover of what&apos;s playing.</p>
+            <label className="theme-settings__switch-label" htmlFor="theme-immersive-mode">Immersive mode</label>
+            <p className="settings-page__hint">Enable artwork colors, background gradients, and environment art.</p>
           </div>
           <PillToggle
-            id="theme-match-artwork"
+            id="theme-immersive-mode"
             checked={themeDocument.matchArtwork}
-            aria-label="Match album art"
-            onChange={(event) => setMatchArtwork(event.target.checked)}
+            aria-label="Immersive mode"
+            onChange={(event) => setImmersiveMode(event.target.checked)}
           />
         </div>
       </section>

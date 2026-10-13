@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useThemeDocument } from "../hooks/useThemeDocument.js";
 import { cacheImageLocally } from "./api/endpoints/images.js";
 import { normalizeMediaUrl } from "./normalizeMediaUrl.js";
 import { hexToOklch, oklchToHex, pickVividColor } from "./themeColor.js";
@@ -102,15 +103,16 @@ export async function extractArtworkWash(src) {
 }
 
 export function useArtworkWash(src) {
+  const { matchArtwork: immersiveMode } = useThemeDocument();
+  const artwork = immersiveMode ? src : null;
   const [wash, setWash] = useState(null);
   useEffect(() => {
-    if (!src) return void setWash(null);
+    if (!artwork) return undefined;
     let dead = false;
-    setWash(null);
-    extractArtworkWash(src).then((r) => !dead && setWash(r));
+    extractArtworkWash(artwork).then((value) => !dead && setWash({ src: artwork, value }));
     return () => {
       dead = true;
     };
-  }, [src]);
-  return wash;
+  }, [artwork]);
+  return artwork && wash?.src === artwork ? wash.value : null;
 }
