@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 
 import bcrypt from "bcrypt";
+import express from "express";
 
 import {
   setupIsolatedBackend,
@@ -11,18 +13,63 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { userOps, dbOps }, { createSession }, auth, permissions] =
-  await setupIsolatedBackend(
-    "recent-auth",
-    "backend/config/db-sqlite.js",
-    "backend/db/helpers/index.js",
-    "backend/config/session-helpers.js",
-    "backend/middleware/auth.js",
-    "backend/middleware/requirePermission.js",
-  );
+const [
+  isolatedState,
+  { db },
+  { userOps, dbOps },
+  { createSession },
+  auth,
+  permissions,
+  { hashPassword },
+  { encryptWithKey },
+  { default: subsonicRouter },
+] = await setupIsolatedBackend(
+  "recent-auth",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
+  "backend/config/session-helpers.js",
+  "backend/middleware/auth.js",
+  "backend/middleware/requirePermission.js",
+  "backend/middleware/passwordHash.js",
+  "backend/config/encryption.js",
+  "backend/routes/subsonic.js",
+);
 
+let subsonicServer;
+
+test.before(async () => {
+  const app = express();
+  app.use("/rest", express.urlencoded({ extended: false }), subsonicRouter);
+  subsonicServer = await new Promise((resolve) => {
+    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+  });
+});
 test.beforeEach(() => resetDatabase(db));
-test.after(async () => cleanupIsolatedState(isolatedState));
+test.after(async () => {
+  await new Promise((resolve) => subsonicServer.close(resolve));
+  await cleanupIsolatedState(isolatedState);
+});
+
+async function subsonicPing(params) {
+  const query = new URLSearchParams({ v: "1.16.1", c: "auth-test", f: "json", ...params });
+  const response = await fetch(
+    `http://127.0.0.1:${subsonicServer.address().port}/rest/ping.view?${query}`,
+  );
+  return (await response.json())["subsonic-response"];
+}
+
+const subsonicToken = (password, salt) =>
+  crypto.createHash("md5").update(`${password}${salt}`).digest("hex");
+
+function watchPasswordHashing(t) {
+  const scrypt = t.mock.method(crypto, "scryptSync");
+  syncBuiltinESMExports();
+  t.after(() => {
+    scrypt.mock.restore();
+    syncBuiltinESMExports();
+  });
+  return scrypt;
+}
 
 test("recent authentication requires a valid bearer session", () => {
   const user = userOps.createUser("recent-user", bcrypt.hashSync("password123", 4));
@@ -66,6 +113,113 @@ test("password and Subsonic authentication reject inactive users", () => {
   const salt = "test-salt";
   const token = crypto.createHash("md5").update(`${password}${salt}`).digest("hex");
   assert.equal(auth.resolveSubsonicTokenUser("inactive-user", token, salt), null);
+});
+
+test("Subsonic requests reuse the stored password instead of hashing it on every call", async (t) => {
+  const user = userOps.createUser("listener", hashPassword("listener-password"));
+  const salt = "listener-salt";
+  const scrypt = watchPasswordHashing(t);
+
+  assert.equal((await subsonicPing({ u: "listener", p: "listener-password" })).status, "ok");
+  assert.equal(scrypt.mock.callCount(), 1);
+
+  assert.equal(
+    (await subsonicPing({ u: "listener", t: subsonicToken("listener-password", salt), s: salt })).status,
+    "ok",
+  );
+  assert.equal((await subsonicPing({ u: "listener", p: "listener-password" })).status, "ok");
+  assert.equal(
+    (await subsonicPing({
+      u: "listener",
+      p: `enc:${Buffer.from("listener-password").toString("hex")}`,
+    })).status,
+    "ok",
+  );
+  assert.equal(scrypt.mock.callCount(), 1);
+
+  assert.equal((await subsonicPing({ u: "listener", p: "listener-passwore" })).error.code, 40);
+  assert.equal((await subsonicPing({ u: "listener", p: "wrong" })).error.code, 40);
+  assert.equal(
+    (await subsonicPing({ u: "listener", t: subsonicToken("wrong", salt), s: salt })).error.code,
+    41,
+  );
+
+  userOps.updateUser(user.id, { status: "disabled" });
+  assert.equal(
+    (await subsonicPing({ u: "listener", t: subsonicToken("listener-password", salt), s: salt })).error.code,
+    41,
+  );
+  assert.equal((await subsonicPing({ u: "listener", p: "listener-password" })).error.code, 40);
+});
+
+test("Subsonic stops accepting a password once the account password hash changes", async () => {
+  const user = userOps.createUser(
+    "rotator",
+    hashPassword("old-password"),
+    "user",
+    null,
+    true,
+    false,
+    "old-password",
+  );
+  const salt = "rotator-salt";
+  assert.equal(
+    (await subsonicPing({ u: "rotator", t: subsonicToken("old-password", salt), s: salt })).status,
+    "ok",
+  );
+
+  userOps.updateUser(user.id, { passwordHash: hashPassword("new-password") });
+
+  assert.equal(
+    (await subsonicPing({ u: "rotator", t: subsonicToken("old-password", salt), s: salt })).error.code,
+    41,
+  );
+  assert.equal((await subsonicPing({ u: "rotator", p: "old-password" })).error.code, 40);
+  assert.equal((await subsonicPing({ u: "rotator", p: "new-password" })).status, "ok");
+  assert.equal(
+    (await subsonicPing({ u: "rotator", t: subsonicToken("new-password", salt), s: salt })).status,
+    "ok",
+  );
+});
+
+test("Subsonic token auth checks a configured legacy password against the account password", async () => {
+  const configureLegacyPassword = (authPassword) =>
+    dbOps.updateSettings({
+      onboardingComplete: true,
+      integrations: { general: { authUser: "owner", authPassword } },
+    });
+  userOps.createUser("owner", hashPassword("current-password"), "admin");
+  const salt = "owner-salt";
+
+  configureLegacyPassword("stale-password");
+  assert.equal(
+    (await subsonicPing({ u: "owner", t: subsonicToken("stale-password", salt), s: salt })).error.code,
+    41,
+  );
+
+  configureLegacyPassword("current-password");
+  assert.equal(
+    (await subsonicPing({ u: "owner", t: subsonicToken("current-password", salt), s: salt })).status,
+    "ok",
+  );
+});
+
+test("Subsonic never accepts a stored password it cannot decrypt", async () => {
+  const user = userOps.createUser("restored", hashPassword("restored-password"));
+  const unreadable = encryptWithKey("restored-password", crypto.randomBytes(32));
+  db.prepare("UPDATE users SET subsonic_password = ? WHERE id = ?").run(unreadable, user.id);
+  const salt = "restored-salt";
+
+  assert.equal((await subsonicPing({ u: "restored", p: unreadable })).error.code, 40);
+  assert.equal(
+    (await subsonicPing({ u: "restored", t: subsonicToken(unreadable, salt), s: salt })).error.code,
+    41,
+  );
+  assert.equal((await subsonicPing({ u: "restored", p: "restored-password" })).status, "ok");
+  assert.equal(
+    (await subsonicPing({ u: "restored", t: subsonicToken("restored-password", salt), s: salt })).status,
+    "ok",
+  );
 });
 
 test("Basic authentication cannot restore legacy admin access for an inactive database user", () => {

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { NavidromeClient } from "../backend/services/navidrome.js";
+import { createFakeNavidrome } from "./helpers/fakeNavidrome.js";
 
 const jsonResponse = (value) => new Response(JSON.stringify(value), {
   headers: { "content-type": "application/json" },
@@ -325,112 +326,240 @@ test("rejects playlist update redirects across origins", async () => {
   assert.equal(requests, 1);
 });
 
-test("prefers the exact indexed path when duplicate songs match", async () => {
+async function withNavidrome(navidrome, run) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = navidrome.fetch;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function connectToLibraries(libraries) {
   const client = new NavidromeClient("http://navidrome.test", "user", "password");
-  client._getIndexedSongs = async () => [
-    { id: "other", title: "Song", artist: "Artist", album: "Other", path: "/music/Other/Song.flac" },
-    {
-      id: "match",
-      title: "Song",
-      artist: "Artist",
-      album: "Album",
-      path: "/music/Artist/Album/Song.flac",
-      duration: 240,
-    },
-  ];
-  const song = await client.findSong("Song", "Artist", {
-    album: "Album",
-    durationMs: 240000,
-    path: "/music/Artist/Album/Song.flac",
+  await client.ensureAurralLibrary(libraries.find((library) => library.name === "Aurral Playlists").path);
+  return client;
+}
+
+test("prefers the exact indexed path when duplicate songs match", async () => {
+  const libraries = [{ id: 1, name: "Aurral Playlists", path: "/music" }];
+  const navidrome = createFakeNavidrome({
+    libraries,
+    songs: [
+      { id: "other", libraryPath: "/music", path: "Other/Song.flac", title: "Song", artist: "Artist", album: "Other" },
+      { id: "match", libraryPath: "/music", path: "Artist/Album/Song.flac", title: "Song", artist: "Artist", album: "Album" },
+    ],
   });
+
+  const song = await withNavidrome(navidrome, async () => (await connectToLibraries(libraries))
+    .findSong("Song", "Artist", { album: "Album", path: "/music/Artist/Album/Song.flac" }));
 
   assert.equal(song.id, "match");
 });
 
-test("does not match an unindexed track from metadata search", async () => {
-  const originalFetch = globalThis.fetch;
-  const queries = [];
-  globalThis.fetch = async (url) => {
-    const request = new URL(url);
-    queries.push(request.searchParams.get("query"));
-    const songs = queries.filter(Boolean).length === 1
-      ? []
-      : [{
-        id: "variant",
-        title: "Slide",
-        artist: "Goo Goo Dolls",
-        album: "Dizzy Up the Girl",
-        path: "Goo Goo Dolls/Dizzy Up the Girl/Slide.flac",
-      }];
-    return jsonResponse({
-      "subsonic-response": {
-        status: "ok",
-        searchResult3: { song: songs },
-      },
-    });
+test("does not match a metadata variant of an unindexed track", async () => {
+  const libraries = [{ id: 1, name: "Aurral Playlists", path: "/music" }];
+  const navidrome = createFakeNavidrome({
+    libraries,
+    songs: [{
+      id: "variant",
+      libraryPath: "/music",
+      path: "Goo Goo Dolls/Greatest Hits/Slide.flac",
+      title: "Slide",
+      artist: "Goo Goo Dolls",
+      album: "Dizzy Up the Girl",
+    }],
+  });
+  const searches = [];
+  const fetchSongs = navidrome.fetch;
+  navidrome.fetch = async (input, init) => {
+    if (new URL(input).pathname.startsWith("/rest/search")) searches.push(input);
+    return fetchSongs(input, init);
   };
 
-  let song;
-  try {
-    const client = new NavidromeClient("http://navidrome.test", "user", "password");
-    client._getIndexedSongs = async () => [];
-    song = await client
-      .findSong("Slide", "The Goo Goo Dolls", {
-        album: "Dizzy Up the Girl",
-        path: "/music/Goo Goo Dolls/Dizzy Up the Girl/Slide.flac",
-      });
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  const song = await withNavidrome(navidrome, async () => (await connectToLibraries(libraries))
+    .findSong("Slide", "The Goo Goo Dolls", {
+      album: "Dizzy Up the Girl",
+      path: "/music/Goo Goo Dolls/Dizzy Up the Girl/Slide.flac",
+    }));
 
   assert.equal(song, null);
-  assert.deepEqual(queries, []);
+  assert.deepEqual(searches, []);
 });
 
 test("uses an indexed path without metadata matching", async () => {
-  const client = new NavidromeClient("http://navidrome.test", "user", "password");
-  client._getIndexedSongs = async () => [{
-    id: "path-match",
-    path: "/data/music/Artist/Album/track.flac",
-    title: "Different tag",
-    artist: "Different artist",
-  }];
-  client.request = async () => {
-    throw new Error("metadata search should not run");
-  };
+  const libraries = [{ id: 1, name: "Aurral Playlists", path: "/data/music" }];
+  const navidrome = createFakeNavidrome({
+    libraries,
+    songs: [{
+      id: "path-match",
+      libraryPath: "/data/music",
+      path: "Artist/Album/track.flac",
+      title: "Different tag",
+      artist: "Different artist",
+    }],
+  });
 
-  const song = await client.findSong("Wanted title", "Wanted artist", {
-    path: "/data/music/Artist/Album/track.flac",
+  const song = await withNavidrome(navidrome, async () => (await connectToLibraries(libraries))
+    .findSong("Wanted title", "Wanted artist", { path: "/data/music/Artist/Album/track.flac" }));
+
+  assert.equal(song.id, "path-match");
+});
+
+test("looks up songs by path again after Navidrome comes back", async () => {
+  const libraries = [{ id: 1, name: "Aurral Playlists", path: "/data/music" }];
+  const navidrome = createFakeNavidrome({
+    libraries,
+    songs: [{
+      id: "path-match",
+      libraryPath: "/data/music",
+      path: "Artist/Album/track.flac",
+      title: "Different tag",
+      artist: "Different artist",
+    }],
+  });
+  const fetchNavidrome = navidrome.fetch;
+  let down = false;
+  navidrome.fetch = async (input, init) => (down
+    ? new Response(null, { status: 503 })
+    : fetchNavidrome(input, init));
+  const track = { path: "/data/music/Artist/Album/track.flac" };
+
+  const song = await withNavidrome(navidrome, async () => {
+    const client = await connectToLibraries(libraries);
+    down = true;
+    await assert.rejects(client.findSong("Wanted title", "Wanted artist", track));
+    down = false;
+    return client.findSong("Wanted title", "Wanted artist", track);
   });
 
   assert.equal(song.id, "path-match");
 });
 
-test("matches Navidrome-relative paths under the configured library root", async () => {
-  const client = new NavidromeClient("http://navidrome.test", "user", "password");
-  client._nativeRequest = async () => [
-    { id: "music-library", name: "Music Library", path: "/data/music" },
-    { id: "aurral-song", name: "Aurral Playlists", path: "/data/downloads/aurral" },
-  ];
-  await client.ensureAurralLibrary("/data/downloads/aurral");
-  client._getIndexedSongs = async () => [{
-    id: "relative-match",
-    path: "The Rapture/Echoes/Echoes.flac",
-  }, {
-    id: "music-relative-match",
-    path: "Black Lips/Good Bad Not Evil/Black Lips_Good Bad Not Evil_08_Bad Kids.flac",
-  }];
+test("picks up a song Navidrome indexed again under a new ID", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const libraries = [{ id: 1, name: "Aurral Playlists", path: "/data/music" }];
+  const indexed = { id: "first-id", libraryPath: "/data/music", path: "Artist/Album/track.flac" };
+  const navidrome = createFakeNavidrome({ libraries, songs: [indexed] });
+  const track = { path: "/data/music/Artist/Album/track.flac" };
 
-  const song = await client.findSong("Echoes", "The Rapture", {
-    path: "/data/downloads/aurral/The Rapture/Echoes/Echoes.flac",
+  const [first, later] = await withNavidrome(navidrome, async () => {
+    const client = await connectToLibraries(libraries);
+    const song = await client.findSong("Track", "Artist", track);
+    indexed.id = "second-id";
+    t.mock.timers.tick(24 * 60 * 60_000);
+    return [song, await client.findSong("Track", "Artist", track)];
+  });
+
+  assert.equal(first.id, "first-id");
+  assert.equal(later.id, "second-id");
+});
+
+test("looks up songs by path once Navidrome is updated to a version that supports it", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const libraries = [{ id: 1, name: "Aurral Playlists", path: "/data/music" }];
+  const navidrome = createFakeNavidrome({
+    libraries,
+    serverVersion: "0.61.2 (aa84e645)",
+    failSongRequest: (params) => params.has("path") && navidrome.serverVersion.startsWith("0.61"),
+    songs: [{
+      id: "path-match",
+      libraryPath: "/data/music",
+      path: "Artist/Album/track.flac",
+      title: "Different tag",
+      artist: "Different artist",
+    }],
+  });
+  const track = { path: "/data/music/Artist/Album/track.flac" };
+
+  const [before, after] = await withNavidrome(navidrome, async () => {
+    const client = await connectToLibraries(libraries);
+    const song = await client.findSong("Wanted title", "Wanted artist", track);
+    navidrome.serverVersion = "0.62.0 (0f9f0a4c)";
+    t.mock.timers.tick(24 * 60 * 60_000);
+    return [song, await client.findSong("Wanted title", "Wanted artist", track)];
+  });
+
+  assert.equal(before, null);
+  assert.equal(after?.id, "path-match");
+});
+
+test("matches Navidrome-relative paths under the configured library root", async () => {
+  const libraries = [
+    { id: 1, name: "Music Library", path: "/data/music" },
+    { id: 2, name: "Aurral Playlists", path: "/data/downloads/aurral" },
+  ];
+  const navidrome = createFakeNavidrome({
+    libraries,
+    songs: [{
+      id: "relative-match",
+      libraryPath: "/data/downloads/aurral",
+      path: "The Rapture/Echoes/Echoes.flac",
+    }, {
+      id: "music-relative-match",
+      libraryPath: "/data/music",
+      path: "Black Lips/Good Bad Not Evil/Black Lips_Good Bad Not Evil_08_Bad Kids.flac",
+    }],
+  });
+
+  const [song, musicSong] = await withNavidrome(navidrome, async () => {
+    const client = await connectToLibraries(libraries);
+    return [
+      await client.findSong("Echoes", "The Rapture", {
+        path: "/data/downloads/aurral/The Rapture/Echoes/Echoes.flac",
+      }),
+      await client.findSong("Bad Kids", "Black Lips", {
+        path: "/data/music/Black Lips/Good Bad Not Evil/Black Lips_Good Bad Not Evil_08_Bad Kids.flac",
+      }),
+    ];
   });
 
   assert.equal(song.id, "relative-match");
-  const musicSong = await client.findSong("Bad Kids", "Black Lips", {
-    path: "/data/music/Black Lips/Good Bad Not Evil/Black Lips_Good Bad Not Evil_08_Bad Kids.flac",
+  assert.equal(musicSong.id, "music-relative-match");
+});
+
+test("matches the copy in the library that holds the track", async () => {
+  const libraries = [
+    { id: 1, name: "Music Library", path: "/data/music" },
+    { id: 2, name: "Aurral Playlists", path: "/data/downloads/aurral" },
+  ];
+  const file = "Main Artist/A_B Album/01 Rock & Roll #1.flac";
+  const song = (id, libraryPath, songPath = file) => ({
+    id,
+    libraryPath,
+    path: songPath,
+    title: "Rock & Roll #1",
+    artist: "Main Artist",
+    album: "A_B Album",
+    mbzRecordingID: "shared-recording",
+  });
+  const navidrome = createFakeNavidrome({
+    libraries,
+    songs: [
+      song("wildcard-neighbor", "/data/music", "Main Artist/AxB Album/01 Rock & Roll #1.flac"),
+      song("lidarr-copy", "/data/music"),
+      song("aurral-copy", "/data/downloads/aurral"),
+    ],
   });
 
-  assert.equal(musicSong.id, "music-relative-match");
+  const [byRecording, byPath] = await withNavidrome(navidrome, async () => {
+    const client = await connectToLibraries(libraries);
+    return Promise.all([
+      client.findSong("Rock & Roll #1", "Main Artist", {
+        album: "A_B Album",
+        mbid: "shared-recording",
+        path: `/data/downloads/aurral/${file}`,
+      }),
+      client.findSong("Rock & Roll #1", "Main Artist", {
+        album: "A_B Album",
+        path: `/data/music/${file}`,
+      }),
+    ]);
+  });
+
+  assert.equal(byRecording.id, "aurral-copy");
+  assert.equal(byPath.id, "lidarr-copy");
 });
 
 test("waits for and verifies a Navidrome library update", async () => {
@@ -475,103 +604,103 @@ test("fails when Navidrome keeps the old library path", async () => {
   );
 });
 
-test("prefers an exact absolute path over an earlier relative match", async () => {
-  const client = new NavidromeClient("http://navidrome.test", "user", "password");
-  client._libraryPaths = ["/data/music"];
-  client._getIndexedSongs = async () => [{
-    id: "relative-match",
-    path: "Artist/Album/track.flac",
-  }, {
-    id: "exact-match",
-    path: "/data/music/Artist/Album/track.flac",
-  }];
-
-  const song = await client.findSong("Track", "Artist", {
-    path: "/data/music/Artist/Album/track.flac",
-  });
-
-  assert.equal(song.id, "exact-match");
-});
-
 test("does not match a path suffix from another library", async () => {
-  const client = new NavidromeClient("http://navidrome.test", "user", "password");
-  client._getIndexedSongs = async () => [{
-    id: "other-library",
-    path: "/library/Artist/Album/track.flac",
-  }];
-
-  const song = await client.findSong("Track", "Artist", {
-    path: "/other-library/Artist/Album/track.flac",
+  const libraries = [{ id: 1, name: "Aurral Playlists", path: "/library" }];
+  const navidrome = createFakeNavidrome({
+    libraries,
+    songs: [{ id: "other-library", libraryPath: "/library", path: "Artist/Album/track.flac" }],
   });
+
+  const song = await withNavidrome(navidrome, async () => (await connectToLibraries(libraries))
+    .findSong("Track", "Artist", { path: "/other-library/Artist/Album/track.flac" }));
 
   assert.equal(song, null);
 });
 
 test("uses an exact indexed recording MBID when the path differs", async () => {
-  const client = new NavidromeClient("http://navidrome.test", "user", "password");
-  client._getIndexedSongs = async () => [{
-    id: "mbid-match",
-    musicBrainzId: "recording-mbid",
-    path: "Artist/Album/track.flac",
-  }];
-  client.request = async () => {
-    throw new Error("metadata search should not run");
-  };
-
-  const song = await client.findSong("Wanted title", "Wanted artist", {
-    mbid: "recording-mbid",
-    path: "/data/music/Other/track.flac",
+  const libraries = [{ id: 1, name: "Aurral Playlists", path: "/data/music" }];
+  const navidrome = createFakeNavidrome({
+    libraries,
+    songs: [{
+      id: "missing-mbid-match",
+      libraryPath: "/data/music",
+      path: "Old Flow/track.flac",
+      mbzRecordingID: "recording-mbid",
+      missing: true,
+    }, {
+      id: "mbid-match",
+      libraryPath: "/data/music",
+      path: "Artist/Album/track.flac",
+      mbzRecordingID: "recording-mbid",
+    }],
   });
 
+  const song = await withNavidrome(navidrome, async () => (await connectToLibraries(libraries))
+    .findSong("Wanted title", "Wanted artist", {
+      mbid: "recording-mbid",
+      path: "/data/music/Other/track.flac",
+    }));
+
   assert.equal(song.id, "mbid-match");
+
+  navidrome.songs[1].missing = true;
+  const missing = await withNavidrome(navidrome, async () => (await connectToLibraries(libraries))
+    .findSong("Wanted title", "Wanted artist", {
+      mbid: "recording-mbid",
+      path: "/data/music/Other/track.flac",
+    }));
+  assert.equal(missing, null);
 });
 
-test("loads the complete indexed song list in pages", async () => {
-  const client = new NavidromeClient("http://navidrome.test", "user", "password");
-  const requests = [];
-  client._nativeRequest = async (_method, requestPath) => {
-    requests.push(requestPath);
-    const start = Number(new URL(`http://navidrome.test${requestPath}`).searchParams.get("_start"));
-    if (start === 0) return Array.from({ length: 1_000 }, (_, index) => ({ id: `song-${index}` }));
-    if (start === 1_000) return [{ id: "song-after-first-page" }];
-    return [];
-  };
+test("falls back to one title and artist match when the path is not indexed", async () => {
+  const libraries = [{ id: 1, name: "Aurral Playlists", path: "/data/music" }];
+  const navidrome = createFakeNavidrome({
+    libraries,
+    songs: ["Album", "Live Album"].map((album) => ({
+      id: album,
+      libraryPath: "/data/music",
+      path: `Artist/${album}/Song.flac`,
+      title: "Song",
+      artist: "Artist",
+      album,
+    })),
+  });
 
-  const songs = await client._getIndexedSongs();
+  const [ambiguous, byAlbum] = await withNavidrome(navidrome, async () => {
+    const client = await connectToLibraries(libraries);
+    return [
+      await client.findSong("Song", "Artist", { path: "/downloads/Song.flac" }),
+      await client.findSong("Song", "Artist", { album: "Live Album", path: "/downloads/Song.flac" }),
+    ];
+  });
 
-  assert.equal(songs.length, 1_001);
-  assert.equal(songs.at(-1).id, "song-after-first-page");
-  assert.deepEqual(requests, [
-    "/api/song?_start=0&_end=1000",
-    "/api/song?_start=1000&_end=2000",
-  ]);
+  assert.equal(ambiguous, null);
+  assert.equal(byAlbum.id, "Live Album");
+
+  navidrome.songs[1].missing = true;
+  const playable = await withNavidrome(navidrome, async () => (await connectToLibraries(libraries))
+    .findSong("Song", "Artist", { path: "/downloads/Song.flac" }));
+  assert.equal(playable.id, "Album");
 });
 
-test("reuses one native login while paging the song index", async () => {
-  const originalFetch = globalThis.fetch;
-  let loginCount = 0;
-  globalThis.fetch = async (url) => {
-    const request = new URL(url);
-    if (request.pathname === "/auth/login") {
-      loginCount += 1;
-      return jsonResponse({ token: "native-token" });
-    }
-    const start = Number(request.searchParams.get("_start"));
-    return jsonResponse(start < 5_000
-      ? Array.from({ length: 1_000 }, (_, index) => ({ id: `song-${start + index}` }))
-      : [{ id: "last-song" }]);
-  };
+test("reuses one native login across concurrent song lookups", async () => {
+  const navidrome = createFakeNavidrome({
+    songs: Array.from({ length: 5 }, (_, index) => ({
+      id: `song-${index}`,
+      libraryPath: "/music",
+      path: `song-${index}.flac`,
+      mbzRecordingID: `mbid-${index}`,
+    })),
+  });
 
-  let songs;
-  try {
-    songs = await new NavidromeClient("http://navidrome.test", "user", "password")
-      ._getIndexedSongs();
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  const songs = await withNavidrome(navidrome, () => {
+    const client = new NavidromeClient("http://navidrome.test", "user", "password");
+    return Promise.all(Array.from({ length: 5 }, (_, index) =>
+      client.findSong("", "", { mbid: `mbid-${index}` })));
+  });
 
-  assert.equal(songs.length, 5_001);
-  assert.equal(loginCount, 1);
+  assert.deepEqual(songs.map((song) => song.id), ["song-0", "song-1", "song-2", "song-3", "song-4"]);
+  assert.equal(navidrome.logins, 1);
 });
 
 test("refreshes a cached native token after a 401", async () => {

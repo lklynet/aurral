@@ -487,9 +487,6 @@ export class NavidromePlaybackDestination {
       pointer = { ...pointer, title: current };
       navidromePlaylistPointerStore.setPointer(snapshot.entityId, targetKey, pointer);
     }
-    if (typeof this.client?.invalidateIndexedSongsCache === "function") {
-      this.client.invalidateIndexedSongsCache();
-    }
     const mappings = getPathMappings("navidrome");
     const remoteTracks = snapshot.tracks.map((track) => ({
       ...track,

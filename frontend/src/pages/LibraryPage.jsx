@@ -60,10 +60,7 @@ import { useLibraryShareAction } from "../hooks/useShareAction";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
 import { useHiddenPlaylistTracks, usePlaylistBulkActions } from "./playlists/usePlaylistBulkActions.js";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
-import {
-  getReleaseGroupCoversBatch,
-  getReleaseGroupTracks,
-} from "../utils/api/endpoints/artists.js";
+import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
 import {
   clearLibraryPageCache,
   deleteAlbumFromLibrary,
@@ -88,14 +85,16 @@ import {
   createStaticPlaylist,
 } from "../utils/api/endpoints/playlists.js";
 import { buildAuthenticatedApiUrl } from "../utils/api/core.js";
-import { mergeAlbumMetadataTracks } from "../utils/libraryTrackHydration.js";
 import {
+  albumCardMeta,
   EMPTY_LIBRARY,
   favoriteId,
   firstAvailableFile,
   getAlbumCoverId,
   getCachedAlbumTracks,
   mergeAlbumTrackPageIntoLibrary,
+  releaseTypeOf,
+  yearOf,
 } from "../utils/libraryPageData.js";
 import {
   aurralAlbumStatusKey,
@@ -164,11 +163,6 @@ const hasGenre = (genre, ...entities) => {
   if (!genre) return true;
   const wanted = genre.toLocaleLowerCase();
   return entities.flatMap(metadataGenres).some((value) => value.toLocaleLowerCase() === wanted);
-};
-
-const yearOf = (value) => {
-  const match = /^(\d{4})/.exec(text(value));
-  return match ? match[1] : "";
 };
 
 const hasAurralTrackFile = (track) =>
@@ -690,39 +684,26 @@ function LibraryPage() {
     const result = await queryClient.fetchQuery({
       queryKey: queryKeys.libraryAlbumTracks(String(album.id), releaseGroupMbid),
       queryFn: async ({ signal }) => {
-        const page = await getLibraryPage({
-          kind: "tracks",
-          albumId: album.id,
-          page: 1,
-          pageSize,
-          // Full tracklist regardless of the library-wide availability setting;
-          // availability is surfaced per-track via badges after merging metadata.
-          availableOnly: false,
-        }, { signal });
-        const ownedTracks = Array.isArray(page?.items) ? page.items : [];
-        const pageArtist = page?.artists?.[0] || null;
-        if (!releaseGroupMbid) return { tracks: ownedTracks, page };
-        try {
-          const metadataTracks = await getReleaseGroupTracks(releaseGroupMbid, {
-            artistMbid: album?.artistMbid || pageArtist?.mbid || "",
-            artistName:
-              album?.artistName || pageArtist?.name || album?.albumArtist || "",
-            albumTitle: album?.title || album?.albumName || "",
-            releaseDate: album?.releaseDate || "",
-            signal,
-          });
-          return {
-            tracks: mergeAlbumMetadataTracks(
-              ownedTracks,
-              metadataTracks,
-              album,
-              pageArtist,
-            ),
-            page,
-          };
-        } catch {
-          return { tracks: ownedTracks, page };
+        const pages = [];
+        for (let number = 1; ; number += 1) {
+          const page = await getLibraryPage({
+            kind: "tracks",
+            albumId: album.id,
+            page: number,
+            pageSize,
+            availableOnly: false,
+          }, { signal });
+          pages.push(page);
+          if (!page?.hasMore || !page?.items?.length) break;
         }
+        return {
+          tracks: pages.flatMap((page) => (Array.isArray(page?.items) ? page.items : [])),
+          page: {
+            ...pages[0],
+            artists: pages.flatMap((page) => page?.artists || []),
+            albums: pages.flatMap((page) => page?.albums || []),
+          },
+        };
       },
       staleTime: 5 * 60 * 1000,
     });
@@ -2334,13 +2315,7 @@ function LibraryPage() {
   const renderAlbumCard = (album) => {
     const artist = getArtistForAlbum(album);
     const albumEmpty = !getAlbumTracks(album).length && !album.trackCount && !album.trackIds?.length;
-    const availability = albumAvailability(album);
-    const meta =
-      availability.total && availability.available < availability.total
-        ? availability.available + "/" + availability.total + " available"
-        : (yearOf(album.releaseDate) ? yearOf(album.releaseDate) + " · " : "") +
-          (availability.total || 0) +
-          " tracks";
+    const meta = albumCardMeta(album, albumAvailability(album));
     const isFavorite = favoriteIds.has(favoriteId("album", album));
     const aurralState = album.managedBy === "aurral"
       ? describeAurralAlbumStatus(aurralAlbumStatuses[aurralAlbumStatusKey(album.id)] || {})
@@ -2585,7 +2560,7 @@ function LibraryPage() {
       <section className="native-library-detail">
         <CollectionHeader
           cover={<Cover src={getAlbumCover(libraryAlbum)} label={libraryAlbum.title} />}
-          kicker="Album"
+          kicker={releaseTypeOf(libraryAlbum) || "Album"}
           title={libraryAlbum.title || "Unknown Album"}
           subtitle={
             artist ? (

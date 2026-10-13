@@ -1,5 +1,6 @@
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import v8 from "node:v8";
 import { ISOLATED_WORKER_GROUPS } from "./backgroundWorkerQueues.js";
 
 const ENTRY = fileURLToPath(new URL("./backgroundWorkerProcess.js", import.meta.url));
@@ -21,6 +22,20 @@ const JOB_TIMEOUT_MS = Object.freeze({
   "slskd-pipeline": 6 * 60 * 60 * 1000,
   "playlist-mbid-enrichment": 2 * 60 * 60 * 1000,
 });
+const MB = 1024 * 1024;
+const DEFAULT_HEAP_LIMIT_MB = 2048;
+
+function workerExecArgv() {
+  const execArgv = process.execArgv.filter((arg) =>
+    !/^--(?:watch|watch-path|inspect|inspect-brk|test(?:-.*)?|experimental-test-.*)(?:=|$)/.test(arg));
+  const configuredMb = Number(process.env.AURRAL_WORKER_MAX_HEAP_MB);
+  if (Number.isInteger(configuredMb) && configuredMb > 0) {
+    return [...execArgv, `--max-old-space-size=${configuredMb}`];
+  }
+  const userLimit = /--max[-_]old[-_]space[-_]size/.test(`${process.env.NODE_OPTIONS || ""} ${execArgv.join(" ")}`);
+  if (userLimit || DEFAULT_HEAP_LIMIT_MB * MB >= v8.getHeapStatistics().heap_size_limit) return execArgv;
+  return [...execArgv, `--max-old-space-size=${DEFAULT_HEAP_LIMIT_MB}`];
+}
 
 // A group's process runs only while it has work: queued jobs or a due schedule
 // reported by findGroupsWithWork, or flow requests. Idle processes exit.
@@ -41,6 +56,7 @@ export function createBackgroundProcessSupervisor({
   const attempts = new Map();
   const lastSeen = new Map();
   const workerStatuses = new Map();
+  const workerMemory = new Map();
   const activeJobs = new Map();
   const exitReasons = new Map();
   const pendingRequests = new Map();
@@ -85,6 +101,15 @@ export function createBackgroundProcessSupervisor({
     }
   }
 
+  function describeRun(group) {
+    const jobs = [...(activeJobs.get(group)?.values() || [])]
+      .map(({ queue, jobId, payload }) => `${queue} job ${jobId}${payload ? ` ${payload}` : ""}`);
+    const memory = workerMemory.get(group);
+    return `${jobs.length ? `; running ${jobs.join(", ")}` : ""}${memory
+      ? `; last memory ${Math.round(memory.rss / MB)} MB RSS, ${Math.round(memory.heapUsed / MB)} MB heap`
+      : ""}`;
+  }
+
   function retire(group, child) {
     if (stopping || !canSend(group) || hasRequests(group) || activeJobs.get(group)?.size) return;
     retiringGroups.add(group);
@@ -102,8 +127,7 @@ export function createBackgroundProcessSupervisor({
       child = forkProcess(ENTRY, [], {
         env: { ...process.env, AURRAL_BACKGROUND_WORKER_GROUP: group },
         stdio: ["inherit", "inherit", "inherit", "ipc"],
-        execArgv: process.execArgv.filter((arg) =>
-          !/^--(?:watch|watch-path|inspect|inspect-brk|test(?:-.*)?|experimental-test-.*)(?:=|$)/.test(arg)),
+        execArgv: workerExecArgv(),
       });
     } catch (error) {
       logger.error?.(`[BackgroundWorkers] Could not start ${group}:`, error);
@@ -131,6 +155,7 @@ export function createBackgroundProcessSupervisor({
       }
       if (message?.type === "heartbeat" && Array.isArray(message.workers)) {
         workerStatuses.set(group, message.workers);
+        if (message.memory) workerMemory.set(group, message.memory);
         if (message.downloadOwnerStatus) downloadOwnerStatuses.set(group, message.downloadOwnerStatus);
       }
       if (message?.type === "download-owner-response") {
@@ -147,6 +172,7 @@ export function createBackgroundProcessSupervisor({
         if (!activeJobs.has(group)) activeJobs.set(group, new Map());
         activeJobs.get(group).set(`${message.queue}:${message.jobId}`, {
           queue: message.queue, jobId: message.jobId, startedAt: Date.now(),
+          payload: typeof message.payload === "string" ? message.payload : null,
         });
       } else if (message?.type === "job-finished") {
         activeJobs.get(group)?.delete(`${message.queue}:${message.jobId}`);
@@ -164,11 +190,13 @@ export function createBackgroundProcessSupervisor({
     const handleExit = (code, signal) => {
       if (exited) return;
       exited = true;
+      const run = describeRun(group);
       if (children.get(group) === child) children.delete(group);
       const retiring = retiringGroups.delete(group);
       readyGroups.delete(group);
       lastSeen.delete(group);
       workerStatuses.delete(group);
+      workerMemory.delete(group);
       activeJobs.delete(group);
       downloadOwnerStatuses.delete(group);
       for (const [id, pending] of pendingRequests) {
@@ -183,7 +211,7 @@ export function createBackgroundProcessSupervisor({
       const retired = retiring && code === 0 && !exitReason;
       if (!retired) {
         if (Date.now() - startedAt > 60000) attempts.delete(group);
-        logger.warn?.(`[BackgroundWorkers] ${group} exited (${signal || code}); restarting`);
+        logger.warn?.(`[BackgroundWorkers] ${group} exited (${signal || code})${run}; restarting`);
       }
       recoveringGroups.add(group);
       Promise.resolve().then(() => onExit(group, code, signal, child.pid, exitReason, retired))
@@ -249,7 +277,7 @@ export function createBackgroundProcessSupervisor({
           ? `${group} ${job.queue || "worker"} job ${job.jobId} timed out`
           : `${group} worker stopped responding`;
         exitReasons.set(group, reason);
-        logger.error?.(`[BackgroundWorkers] ${reason}; restarting its worker`);
+        logger.error?.(`[BackgroundWorkers] ${reason}${describeRun(group)}; restarting its worker`);
         lastSeen.set(group, Date.now());
         activeJobs.delete(group);
         try { child.kill("SIGKILL"); } catch (error) {
@@ -302,6 +330,7 @@ export function createBackgroundProcessSupervisor({
     retiringGroups.clear();
     relaunchGroups.clear();
     workerStatuses.clear();
+    workerMemory.clear();
     activeJobs.clear();
     exitReasons.clear();
     downloadOwnerStatuses.clear();

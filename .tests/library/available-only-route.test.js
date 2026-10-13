@@ -7,11 +7,12 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps }, libraryStore] = await setupIsolatedBackend(
+const [isolatedState, { db }, { dbOps }, libraryStore, { setLibraryManagement }] = await setupIsolatedBackend(
   "canonical-available-only-route",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
   "backend/services/libraryMediaStore.js",
+  "backend/services/libraryManagementStore.js",
 );
 
 const { registerLibraryIndex } = await import(
@@ -53,12 +54,6 @@ function callLibraryPage(query) {
     },
   );
   return body;
-}
-
-function setAvailableOnly(value) {
-  dbOps.updateSettings({
-    integrations: { lidarr: { url: "http://lidarr:8686", apiKey: "test-key", availableOnly: value } },
-  });
 }
 
 test.before(() => {
@@ -130,68 +125,60 @@ test.before(() => {
     path: "/library/Owns Nothing/Unowned Album/01 Unowned Track.flac",
     available: false,
   });
+
+  const fetchingArtist = upsertLibraryArtist({ identityKey: "fetching-artist", name: "Fetching" });
+  for (const [title, monitored] of [["Requested Album", true], ["Unmonitored Album", false]]) {
+    const album = upsertLibraryAlbum({
+      identityKey: `aurral-${title}`,
+      artistId: fetchingArtist.id,
+      title,
+      metadata: { librarySource: "aurral", trackListComplete: true, monitored },
+    });
+    const track = upsertLibraryTrack({ identityKey: `aurral-${title}-track`, title: `${title} Track` });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+    setLibraryManagement({
+      entityKind: "album",
+      entityId: album.id,
+      managedBy: "aurral",
+      monitorMode: monitored ? "monitored" : "unmonitored",
+    });
+  }
 });
 
 test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("albums list hides unavailable albums when the setting is on (default)", () => {
-  setAvailableOnly(true);
-  const page = callLibraryPage({ kind: "albums", page: "1", pageSize: "50" });
-  assert.deepEqual(page.items.map((album) => album.title), ["Owned Album"]);
-  assert.equal(page.total, 1);
+const titles = (page) => page.items.map((entry) => entry.title || entry.name).sort();
+
+test("the Library lists what can be played and what Aurral is fetching, with or without Lidarr", () => {
+  for (const lidarr of [{ url: "http://lidarr:8686", apiKey: "test-key", availableOnly: false }, {}]) {
+    dbOps.updateSettings({ integrations: { lidarr } });
+    const albums = callLibraryPage({ kind: "albums", page: "1", pageSize: "50" });
+    assert.deepEqual(titles(albums), ["Owned Album", "Requested Album"]);
+    assert.equal(albums.total, 2);
+    const artists = callLibraryPage({ kind: "artists", page: "1", pageSize: "50" });
+    assert.deepEqual(titles(artists), ["Fetching", "Owns Some"]);
+    assert.deepEqual(artists.items.map((artist) => artist.albumCount), [1, 1]);
+    const ownsSome = artists.items.find((artist) => artist.name === "Owns Some");
+    assert.deepEqual(
+      titles(callLibraryPage({ kind: "albums", page: "1", pageSize: "50", artistId: String(ownsSome.id) })),
+      ["Owned Album"],
+    );
+  }
 });
 
-test("albums list shows the full catalog when the setting is off", () => {
-  setAvailableOnly(false);
-  const page = callLibraryPage({ kind: "albums", page: "1", pageSize: "50" });
-  assert.deepEqual(
-    page.items.map((album) => album.title).sort(),
-    ["Catalog Album", "Owned Album", "Unowned Album"],
-  );
-  assert.equal(page.total, 3);
+test("a source filter lists and counts only albums and artists with playable files from that source", () => {
+  for (const kind of ["albums", "artists"]) {
+    const page = callLibraryPage({ kind, page: "1", pageSize: "50", source: "lidarr" });
+    assert.deepEqual(titles(page), [kind === "albums" ? "Owned Album" : "Owns Some"]);
+    assert.equal(page.total, 1);
+  }
 });
 
-test("artists with zero available albums disappear when the setting is on (#750)", () => {
-  setAvailableOnly(true);
-  const page = callLibraryPage({ kind: "artists", page: "1", pageSize: "50" });
-  assert.deepEqual(page.items.map((entry) => entry.name), ["Owns Some"]);
-  assert.equal(page.total, 1);
-});
-
-test("artists with zero available albums remain when the setting is off", () => {
-  setAvailableOnly(false);
-  const page = callLibraryPage({ kind: "artists", page: "1", pageSize: "50" });
-  assert.deepEqual(
-    page.items.map((entry) => entry.name).sort(),
-    ["Owns Nothing", "Owns Some"],
-  );
-  assert.equal(page.total, 2);
-});
-
-test("an explicit availableOnly query param overrides the setting", () => {
-  setAvailableOnly(false);
-  const filtered = callLibraryPage({
-    kind: "albums",
-    page: "1",
-    pageSize: "50",
-    availableOnly: "true",
-  });
-  assert.deepEqual(filtered.items.map((album) => album.title), ["Owned Album"]);
-
-  setAvailableOnly(true);
-  const unfiltered = callLibraryPage({
-    kind: "albums",
-    page: "1",
-    pageSize: "50",
-    availableOnly: "false",
-  });
-  assert.equal(unfiltered.total, 3);
-});
-
-test("without a Lidarr connection, the Library shows albums that are still downloading", () => {
-  dbOps.updateSettings({ integrations: { lidarr: {} } });
-  assert.equal(callLibraryPage({ kind: "albums", page: "1", pageSize: "50" }).total, 3);
-  assert.equal(callLibraryPage({ kind: "artists", page: "1", pageSize: "50" }).total, 2);
+test("an explicit availableOnly query param overrides the Library's rule", () => {
+  const playable = callLibraryPage({ kind: "albums", page: "1", pageSize: "50", availableOnly: "true" });
+  assert.deepEqual(titles(playable), ["Owned Album"]);
+  const everything = callLibraryPage({ kind: "albums", page: "1", pageSize: "50", availableOnly: "false" });
+  assert.equal(everything.total, 5);
 });

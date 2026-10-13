@@ -6,13 +6,20 @@ import {
   assignLibraryArtistMbid,
   getLibraryMediaPaths,
   assignLidarrAlbumOwners,
-  getAvailableLibraryMediaPaths,
+  chooseLibraryAlbumRelease,
+  getLibraryAlbumsToList,
   getUnresolvedLibraryArtists,
-  markLibraryMediaFilesUnavailable,
+  isLibraryAlbumReleaseGroup,
   removeLibraryMediaFiles,
+  removeMissingLibraryMediaFiles,
+  reconcileLibraryAlbums,
   removeLidarrLibrary,
+  storeLibraryAlbumTrackList,
   upsertLibraryArtist,
 } from "./libraryMediaStore.js";
+import { getAlbumByMbid, selectAlbumRelease } from "./providers/brainzmashProvider.js";
+import { mapWithConcurrency } from "./discovery/helpers.js";
+import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.js";
 import { removePlaylistTracksWithoutDownloads } from "./playlists/trackRemoval.js";
 import { rebuildLibrarySearchIndex } from "./librarySearchIndex.js";
@@ -133,6 +140,43 @@ async function resolveUnmatchedLibraryArtists() {
   return changed;
 }
 
+// Each album with a MusicBrainz release group lists the tracks of the release
+// its files come from, again whenever its files change. A release group
+// MusicBrainz does not have, or one that is not the album's, as files tagged
+// by a wrong guess carry, lists only the album's files.
+async function completeLibraryTrackLists() {
+  let changed = false;
+  let unavailable = null;
+  await mapWithConcurrency(getLibraryAlbumsToList(), 4, async (album) => {
+    if (unavailable) return;
+    let metadata = null;
+    try {
+      metadata = await getAlbumByMbid(album.releaseGroupMbid);
+    } catch (error) {
+      if (error?.response?.status !== 404) {
+        unavailable ??= error;
+        return;
+      }
+    }
+    const release = metadata && isLibraryAlbumReleaseGroup(album, metadata)
+      ? chooseLibraryAlbumRelease(album, metadata.releases, selectAlbumRelease(metadata))
+      : null;
+    const artists = new Map((metadata?.artists || []).map((artist) => [artist.id, artist.name]));
+    const compilation = isVariousArtistsCredit(artists.get(metadata?.artistId), metadata?.artistId);
+    if (storeLibraryAlbumTrackList(album.id, {
+      release,
+      basis: album.basis,
+      artistNameFor: (track) => (compilation ? artists.get(track.artistId) : null) || null,
+    })) changed = true;
+  });
+  if (unavailable) {
+    logger.warn("library", "Stopped listing album tracks; metadata provider unavailable", {
+      message: unavailable?.message || String(unavailable),
+    });
+  }
+  return changed;
+}
+
 function isPathWithin(rootPath, candidatePath) {
   const relative = path.relative(path.resolve(rootPath), path.resolve(candidatePath));
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
@@ -168,6 +212,7 @@ export async function scanConfiguredLibrary({
   let flow = skippedScan();
   let scanFailed = false;
   let artistsResolved = false;
+  let tracksListed = false;
   let lidarrRemoved = false;
   const lidarrActive = isLidarrLibraryActive(lidarrClient);
   const lidarrFolders = activeLidarrRoots(lidarrClient, lidarrRoots);
@@ -200,9 +245,9 @@ export async function scanConfiguredLibrary({
           isExcluded: createLibraryScanExclusion("lidarr", { downloadRoot: musicRoot, lidarrRoots: lidarrFolders }),
         });
         if (!targeted) {
-          const removedRootPaths = [...getAvailableLibraryMediaPaths("lidarr")]
+          const removedRootPaths = [...getLibraryMediaPaths("lidarr")]
             .filter((filePath) => !lidarrFolders.some((root) => isPathWithin(root, filePath)));
-          if (markLibraryMediaFilesUnavailable("lidarr", removedRootPaths) > 0) lidarr.changed = true;
+          if (removeMissingLibraryMediaFiles("lidarr", removedRootPaths) > 0) lidarr.changed = true;
         }
       } catch (error) {
         scanFailed = true;
@@ -219,8 +264,13 @@ export async function scanConfiguredLibrary({
       }
     }
     if (lidarrActive) assignLidarrAlbumOwners();
-    else if (!targeted) lidarrRemoved = removeLidarrLibrary();
+    else if (!targeted) {
+      lidarrRemoved = removeLidarrLibrary();
+      if (lidarrRemoved) reconcileLibraryAlbums();
+    }
     artistsResolved = await resolveUnmatchedLibraryArtists();
+    tracksListed = await completeLibraryTrackLists();
+    if (tracksListed) reconcileLibraryAlbums();
     if (!targeted) {
       await removePlaylistTracksWithoutDownloads().catch((error) => {
         logger.warn("library", "Could not remove missing tracks from playlists", {
@@ -232,7 +282,7 @@ export async function scanConfiguredLibrary({
     scanFailed = true;
     throw error;
   } finally {
-    if (scanFailed || artistsResolved || lidarrRemoved || local?.changed || lidarr?.changed || flow?.changed) {
+    if (scanFailed || artistsResolved || tracksListed || lidarrRemoved || local?.changed || lidarr?.changed || flow?.changed) {
       if (!targeted || scanFailed || artistsResolved) rebuildLibrarySearchIndex();
       if (!targeted) rebuildLibraryGenreStats();
     }

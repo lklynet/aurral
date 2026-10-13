@@ -1,5 +1,10 @@
 import { distance } from "fastest-levenshtein";
-import { checkVariantCompatibility, stripPromoDescriptors } from "./semanticPolicy.js";
+import {
+  checkVariantCompatibility,
+  compareVariantProfiles,
+  extractVariants,
+  stripPromoDescriptors,
+} from "./semanticPolicy.js";
 import { foldDiacritics } from "../providers/brainzmashRanking.js";
 import { isVariousArtistsCredit } from "./titleText.js";
 import { UUID_REGEX } from "../../../lib/uuid.js";
@@ -415,4 +420,40 @@ export function verifyDownloadedRecording(request, observed, policy = MATCH_POLI
 
 export function titleSimilarity(requested, offered) {
   return similarity(coreMatchTitle(requested), coreMatchTitle(offered));
+}
+
+const spelledOut = (title) => String(title || "").replace(/&/gu, " and ");
+
+const songWords = (title) => normalizeMatchText(spelledOut(title)
+  .replace(/\s*[([][^)\]]*[)\]]/gu, " ")
+  .split(/\s(?:-|–|—)\s|\s(?:feat\.?|ft\.?|featuring)\s/iu)[0]).split(" ").filter(Boolean);
+
+const holdsWords = (outer, inner) => inner.length * 2 >= outer.length
+  && outer.some((_, start) => inner.every((word, offset) => outer[start + offset] === word));
+
+const withoutGuests = (title) => String(title || "")
+  .replace(/\s*[([]\s*(?:feat\.?|ft\.?|featuring|with)\s[^)\]]*[)\]]/giu, " ")
+  .replace(/\s(?:feat\.?|ft\.?|featuring)\s[^([\-–—]*/giu, " ");
+
+// A guest's name, such as "feat. Live", says nothing about the version.
+const isOtherVersion = (leftTitle, rightTitle) => {
+  const [left, right] = [leftTitle, rightTitle].map(withoutGuests);
+  const version = (title) => variants(title).filter((variant) => variant !== "cover").join("|");
+  const contradicts = (expected, actual) => compareVariantProfiles(extractVariants(expected), extractVariants(actual))
+    .contradictions.some((variant) => variant !== "cover");
+  return version(left) !== version(right) || contradicts(left, right) || contradicts(right, left);
+};
+
+// At one place on an album, two titles name the same song when they differ
+// only in spelling, such as "&" for "and" or a space between words, in a note
+// in brackets or after a dash, or in words one adds, and neither is a live, sped-up, edited, or other version the other is
+// not. A note that the artist covers the song changes nothing on their own
+// album.
+export function isSameSongAtPlace(left, right) {
+  if (isOtherVersion(left, right)) return false;
+  const [a, b] = [songWords(left), songWords(right)];
+  if (!a.length || !b.length) return false;
+  const [allA, allB] = [left, right].map((title) => normalizeMatchText(spelledOut(title)).split(" "));
+  return a.join("") === b.join("") || holdsWords(allB, a) || holdsWords(allA, b)
+    || similarity(a.join(" "), b.join(" ")) >= 0.8;
 }

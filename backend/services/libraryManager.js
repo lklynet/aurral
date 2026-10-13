@@ -2721,7 +2721,9 @@ export class LibraryManager {
       });
     }
 
-    const selectedRelease = selectAlbumRelease(metadata, { edition });
+    const listedRelease = edition !== "expanded" && existingAlbum?.metadata?.trackList?.release;
+    const selectedRelease = metadata?.releases?.find((release) => release.id === listedRelease && release.tracks?.length)
+      || selectAlbumRelease(metadata, { edition });
     const tracks = (Array.isArray(selectedRelease?.tracks) ? selectedRelease.tracks : [])
       .map((track) => ({
         ...track,
