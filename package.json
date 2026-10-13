@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": "26.10.x"
+    "node": "26.11.x"
   },
   "workspaces": [
     "backend",
@@ -47,7 +47,7 @@
     "better-sqlite3": false
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.0",
     "ajv": "^8.20.0"
   },
   "overrides": {
