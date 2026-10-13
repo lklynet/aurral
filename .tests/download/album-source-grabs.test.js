@@ -78,59 +78,116 @@ test("one Usenet NZB fills two sibling jobs", async (t) => {
   assert.ok(activity.every((item) => item.downloadMethod === "album" && item.actualDownloadSource === "usenet"));
 });
 
-test("upgrades for two tracks of one album share a single Usenet download", async (t) => {
-  const folder = join(state.baseDir, "usenet-shared-upgrade");
+async function makeUpgrades(group, titles, { files = titles } = {}) {
+  const folder = join(state.baseDir, group);
+  const originals = join(state.baseDir, `${group}-originals`);
   await mkdir(folder, { recursive: true });
-  const titles = ["First", "Second"];
-  const upgradeIds = [];
-  for (const [index, title] of titles.entries()) {
+  await mkdir(originals, { recursive: true });
+  for (const [index, title] of files.entries()) {
     await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
       "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac",
       "-metadata", `title=${title}`, "-metadata", "artist=The Band", join(folder, `0${index + 1} ${title}.flac`)]);
-    const original = join(state.baseDir, "shared-originals", `${title}.mp3`);
-    await mkdir(join(state.baseDir, "shared-originals"), { recursive: true });
+  }
+  const upgradeIds = [];
+  for (const [index, title] of titles.entries()) {
+    const original = join(originals, `${index} ${title}.mp3`);
     await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
       "-i", "anullsrc", "-t", "1", "-c:a", "libmp3lame", "-b:a", "128k", original]);
-    const sourceId = downloadTracker.addJob({ artistName: "The Band", albumName: "Shared Album", trackName: title,
-      trackNumber: index + 1, durationMs: 1000, albumTrackCount: 2, albumTrackTitles: titles }, "library");
-    downloadTracker.setDone(sourceId, original, "Shared Album");
+    const sourceId = downloadTracker.addJob({ artistName: "The Band", albumName: group, trackName: title,
+      durationMs: 1000 }, "library");
+    downloadTracker.setDone(sourceId, original, group);
     downloadTracker.updateQuality(sourceId, { tier: "mp3-128" });
     const upgradeId = downloadTracker.addUpgradeJob(downloadTracker.getJob(sourceId));
     downloadTracker.setDownloading(upgradeId);
     upgradeIds.push(upgradeId);
   }
+  const candidate = { raw: { release: { title: `The Band - ${group} FLAC`, guid: `${group}-release`,
+    downloadUrl: `https://nzb.test/${group}` } }, score: 10, resolvedAlbumName: group };
+  const start = (jobId, helpers) => processUsenetPipelinePayload({ source: "usenet", phase: "download", jobId,
+    upgradeForJobId: downloadTracker.getJob(jobId).upgradeForJobId, playlistId: "library", playlistGeneration: 0,
+    destination: `The Band/${group}`, candidates: [candidate], candidateIndex: 0 }, helpers);
+  return { folder, upgradeIds, start };
+}
+
+function mockNzbget(t, folder, nzbIds = [77]) {
   const client = getDownloadClient("nzbget");
   t.mock.method(prowlarrClient, "downloadNzb", async () => Buffer.from("<nzb></nzb>"));
-  const append = t.mock.method(client, "appendNzb", async () => ({ nzbId: 77 }));
-  t.mock.method(client, "getHistoryItem", async () => ({ NZBID: 77, Status: "SUCCESS", FinalDir: folder }));
+  const append = t.mock.method(client, "appendNzb", async () => ({ nzbId: nzbIds.shift() ?? 99 }));
+  t.mock.method(client, "getHistoryItem", async (nzbId) => ({ NZBID: nzbId, Status: "SUCCESS", FinalDir: folder }));
   const removed = t.mock.method(client, "deleteHistoryItem", async () => true);
   t.mock.method(client, "deleteQueueItem", async () => true);
-  const candidate = { raw: { release: { title: "The Band - Shared Album FLAC", guid: "shared-release",
-    downloadUrl: "https://nzb.test/shared" } }, score: 10, resolvedAlbumName: "Shared Album" };
-  const fail = { failOrTryNextSource: (_, __, reason) => { throw new Error(reason); } };
-  const start = (jobId) => processUsenetPipelinePayload({ source: "usenet", phase: "download", jobId,
-    upgradeForJobId: downloadTracker.getJob(jobId).upgradeForJobId, playlistId: "library", playlistGeneration: 0,
-    destination: "The Band/Shared Album", candidates: [candidate], candidateIndex: 0 }, fail);
+  return { append, removed };
+}
 
-  const [first, second] = await Promise.all(upgradeIds.map(start));
+const failOnSourceFallback = { failOrTryNextSource: (_, __, reason) => { throw new Error(reason); } };
+
+async function runToEnd(payload, helpers = failOnSourceFallback) {
+  while (payload?.phase) payload = await processUsenetPipelinePayload(payload, helpers);
+}
+
+test("upgrades for two tracks of one album share a single Usenet download", async (t) => {
+  const titles = ["First", "Second"];
+  const { folder, upgradeIds, start } = await makeUpgrades("shared-upgrade", titles);
+  const { append, removed } = mockNzbget(t, folder);
+
+  const [first, second] = await Promise.all(upgradeIds.map((id) => start(id, failOnSourceFallback)));
   assert.equal(append.mock.callCount(), 1);
   assert.deepEqual([first.nzbId, second.nzbId], [77, 77]);
 
-  let payload = first;
-  while (payload?.phase) payload = await processUsenetPipelinePayload(payload, fail);
+  await runToEnd(first);
   assert.equal(downloadTracker.getJob(upgradeIds[0]), null);
   assert.equal(removed.mock.callCount(), 0);
 
-  payload = second;
-  while (payload?.phase) payload = await processUsenetPipelinePayload(payload, fail);
+  await runToEnd(second);
   assert.equal(downloadTracker.getJob(upgradeIds[1]), null);
   assert.equal(removed.mock.callCount(), 1);
-  const upgraded = downloadTracker.getAll().filter((job) => job.albumName === "Shared Album" && !job.upgradeForJobId);
+  const upgraded = downloadTracker.getAll().filter((job) => job.albumName === "shared-upgrade" && !job.upgradeForJobId);
   assert.deepEqual(upgraded.map((job) => job.trackName).sort(), titles);
   for (const job of upgraded) {
     assert.match(job.finalPath, /\.flac$/);
     assert.ok((await stat(job.finalPath)).isFile());
   }
+});
+
+test("the last upgrade to reject a shared Usenet download removes it", async (t) => {
+  const { folder, upgradeIds, start } = await makeUpgrades("shared-rejected", ["First", "Second"],
+    { files: ["Other", "Another"] });
+  const { append, removed } = mockNzbget(t, folder);
+  const ended = [];
+  const helpers = { failOrTryNextSource: (_, job) => { ended.push(job.id); return null; } };
+
+  const started = await Promise.all(upgradeIds.map((id) => start(id, helpers)));
+  assert.equal(append.mock.callCount(), 1);
+  for (const payload of started) await runToEnd(payload, helpers);
+  assert.deepEqual(ended.sort(), [...upgradeIds].sort());
+  assert.equal(removed.mock.callCount(), 1);
+});
+
+test("upgrades for two copies of one track download the release separately", async (t) => {
+  const { folder, upgradeIds, start } = await makeUpgrades("same-track", ["First", "First"], { files: ["First"] });
+  const { append } = mockNzbget(t, folder, [81, 82]);
+
+  const started = await Promise.all(upgradeIds.map((id) => start(id, failOnSourceFallback)));
+  assert.equal(append.mock.callCount(), 2);
+  assert.deepEqual(started.map((payload) => payload.nzbId).sort(), [81, 82]);
+});
+
+test("after a failed Usenet submission, one waiting upgrade submits the release for the others", async (t) => {
+  const { upgradeIds, start } = await makeUpgrades("failed-submission", ["First", "Second", "Third"]);
+  const client = getDownloadClient("nzbget");
+  let fetches = 0;
+  t.mock.method(prowlarrClient, "downloadNzb", async () => {
+    fetches += 1;
+    if (fetches === 1) throw new Error("HTTP 429");
+    return Buffer.from("<nzb></nzb>");
+  });
+  const append = t.mock.method(client, "appendNzb", async () => ({ nzbId: 91 }));
+  const helpers = { failOrTryNextSource: () => null };
+
+  const started = await Promise.all(upgradeIds.map((id) => start(id, helpers)));
+  assert.equal(fetches, 2);
+  assert.equal(append.mock.callCount(), 1);
+  assert.deepEqual(started.filter(Boolean).map((payload) => payload.nzbId), [91, 91]);
 });
 
 test("a Usenet download of a second-disc track takes the disc in its name", async (t) => {
