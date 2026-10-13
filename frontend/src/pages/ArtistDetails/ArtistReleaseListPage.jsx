@@ -14,8 +14,8 @@ import {
   List,
   Music,
   Search,
-  Star,
 } from "lucide-react";
+import { ReleaseMetric } from "./components/ReleaseMetric";
 import AddActionButton from "../../components/AddActionButton";
 import { useActiveDownloads } from "../../hooks/useActiveDownloads";
 import PillToggle from "../../components/PillToggle";
@@ -447,8 +447,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
             {metric.label && (
               <Tooltip content={metric.title}>
                 <span className="artist-release-card__metric artist-hidden-mobile">
-                  <Star className="artist-star-icon" />
-                  {metric.label}
+                  <ReleaseMetric metric={metric} />
                 </span>
               </Tooltip>
             )}
@@ -529,8 +528,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
         {metric.label && (
           <Tooltip content={metric.title}>
             <p className="artist-release-card__metric">
-              <Star className="artist-star-icon" />
-              {metric.label}
+              <ReleaseMetric metric={metric} />
             </p>
           </Tooltip>
         )}

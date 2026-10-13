@@ -157,6 +157,15 @@ test("the artist pick header counts ListenBrainz listeners ahead of the rating",
     .toBeVisible();
 });
 
+test("artist page release cards give their ListenBrainz listeners to screen readers and on hover", async ({ page }) => {
+  await fixture(page, { releaseGroups: [{ ...album, listenerCount: 2621, listenCount: 17712 }] });
+  await page.goto(`/artist/${artist.id}`);
+  const metric = page.locator(".artist-release-card").filter({ hasText: album.title }).locator(".artist-release-card__metric");
+  await expect(metric).toMatchAriaSnapshot("- paragraph: 2,621 listeners on ListenBrainz");
+  await metric.hover();
+  await expect(page.getByRole("tooltip", { name: "2,621 listeners on ListenBrainz" })).toBeVisible();
+});
+
 async function panelCornerColors(panel) {
   const box = await panel.boundingBox();
   const png = (await panel.screenshot()).toString("base64");

@@ -1,6 +1,7 @@
 import ArtworkImage from "../../../components/ArtworkImage";
 import { useEffect, useMemo } from "react";
-import { ArrowRight, Music, Star } from "lucide-react";
+import { ArrowRight, Music } from "lucide-react";
+import { ReleaseMetric } from "./ReleaseMetric";
 import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import AddActionButton from "../../../components/AddActionButton";
@@ -134,8 +135,7 @@ export function ArtistDetailsAppearsOn({
               {metric.label && (
                 <Tooltip content={metric.title}>
                   <p className="artist-release-card__metric">
-                    <Star className="artist-star-icon" />
-                    {metric.label}
+                    <ReleaseMetric metric={metric} />
                   </p>
                 </Tooltip>
               )}

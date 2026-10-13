@@ -4151,7 +4151,7 @@ textarea {
   font-size: 0.75rem;
 }
 
-.artist-star-icon {
+.artist-release-metric-icon {
   width: 0.875rem;
   height: 0.875rem;
   color: var(--aurral-text-muted);
@@ -5982,6 +5982,7 @@ textarea {
 }
 
 .artist-discover-card__menu,
+.artist-release-card__metric,
 .artist-release-list-item .artist-row-actions {
   position: relative;
   z-index: calc(var(--aurral-z-raised) + 2);
