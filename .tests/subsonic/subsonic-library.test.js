@@ -502,6 +502,8 @@ test("streams the available release when a recording belongs to multiple albums"
     db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(single.id, album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }
+});
+
 test("reports registered audio types for library song formats", () => {
   const artist = upsertLibraryArtist({ identityKey: "mime:artist", name: "MIME Artist" });
   const album = upsertLibraryAlbum({ identityKey: "mime:album", artistId: artist.id, title: "MIME Album", albumArtist: artist.name });
