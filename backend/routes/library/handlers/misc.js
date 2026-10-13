@@ -15,7 +15,6 @@ import {
   getLibraryArtistProjection,
   getRecentlyAddedLibraryArtists,
 } from "../../../services/libraryQueryService.js";
-import { resolveAvailableOnly } from "./libraryIndex.js";
 
 const ARTIST_LOOKUP_BATCH_MAX = 100;
 
@@ -339,7 +338,7 @@ export function registerMisc(router) {
   router.get("/recent", noCache, (req, res) => {
     try {
       const recent = getRecentlyAddedLibraryArtists({
-        availableOnly: resolveAvailableOnly(undefined, dbOps.getSettings()),
+        availableOnly: true,
         limit: 20,
       }).map((artist) => ({
         ...artist,

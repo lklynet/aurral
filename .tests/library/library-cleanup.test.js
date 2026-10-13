@@ -47,7 +47,7 @@ const [
 const root = resolveDownloadRoot();
 const outside = path.join(isolatedState.baseDir, "seed");
 const releaseGroup = "3f3f3f3f-0000-4000-8000-000000000001";
-const recording = "3f3f3f3f-0000-4000-8000-0000000000r1";
+const recording = "3f3f3f3f-0000-4000-8000-0000000000a1";
 let tone = 300;
 
 async function makeTrack(filePath, tags = {}, codec = [], { seconds = 0.2 } = {}) {
@@ -257,7 +257,7 @@ test("the better copy of a track keeps its name, and a copy of a different lengt
   const longTags = { artist: "Long", album: "Album", title: "Song", track: "1" };
   const short = await makeTrack(path.join(root, "Long", "Album", "01 - Song.flac"), longTags);
   const long = await makeTrack(path.join(root, "Long", "Album", "song.flac"), longTags, [], { seconds: 5 });
-  const silence = { artist: "Silent", album: "Album", title: "[silence]", MUSICBRAINZ_TRACKID: "3f3f3f3f-0000-4000-8000-0000000000s1" };
+  const silence = { artist: "Silent", album: "Album", title: "[silence]", MUSICBRAINZ_TRACKID: "3f3f3f3f-0000-4000-8000-0000000000b1" };
   const firstSilence = await makeTrack(path.join(root, "Silent", "Album", "01 - [silence].flac"), { ...silence, track: "1" });
   const secondSilence = await makeTrack(path.join(root, "Silent", "Album", "02 - [silence].flac"), { ...silence, track: "2" });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
@@ -369,7 +369,7 @@ test("a duplicate stays when a playlist still uses it or its name is behind a li
 });
 
 test("Clean up keeps a file's track number from its tags when the Library's album has no number for it", async () => {
-  const recordingId = "3f3f3f3f-0000-4000-8000-0000000000r2";
+  const recordingId = "3f3f3f3f-0000-4000-8000-0000000000a2";
   const tags = { artist: "Interpol", album: "Our Love To Admire", title: "Pace Is The Trick", MUSICBRAINZ_TRACKID: recordingId };
   const download = await makeTrack(path.join(root, "Interpol", "Our Love To Admire", "Pace Is The Trick.flac"), tags);
   await scanMusicRoot({ rootPath: root, source: "aurral" });

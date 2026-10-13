@@ -7,6 +7,7 @@ const vite = await startFrontendServer();
 test.after(() => vite.close());
 
 const {
+  albumCardMeta,
   favoriteId,
   favoriteLibraryFromResponse,
   getAlbumCoverId,
@@ -93,4 +94,16 @@ test("favorite ids match the ids the favorites endpoint returns", () => {
   for (const [kind, entity] of entities) {
     assert.equal(favoriteId(kind, entity), idFor(kind, entity.identityKey));
   }
+});
+
+test("album cards tell an artist's same-titled releases apart", () => {
+  const blue = { title: "Weezer", releaseDate: "1994-05-10", metadata: { tags: { releasetype: ["album"] } } };
+  const green = { title: "Weezer", releaseDate: "2001-05-15", metadata: { albumType: "Album" } };
+  const single = { title: "Island in the Sun", releaseDate: "2001", metadata: { tags: { releasetype: ["single"] } } };
+  const ep = { title: "Weezer", metadata: { albumType: "EP" } };
+
+  assert.equal(albumCardMeta(blue, { available: 10, total: 10 }), "1994 · 10 tracks");
+  assert.equal(albumCardMeta(green, { available: 9, total: 10 }), "2001 · 9/10 available");
+  assert.equal(albumCardMeta(single, { available: 1, total: 1 }), "Single · 2001 · 1 track");
+  assert.equal(albumCardMeta(ep, { available: 0, total: 0 }), "EP · 0 tracks");
 });

@@ -3,11 +3,11 @@ import {
   requireAuth,
   requireUserAccount,
 } from "../../../middleware/requirePermission.js";
-import { dbOps } from "../../../db/helpers/index.js";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import {
   getLibraryFavoriteTargetKeys,
   getLibraryPage,
+  LIBRARY_VIEW,
 } from "../../../services/libraryQueryService.js";
 import {
   getStarredIdentityKeys,
@@ -21,7 +21,6 @@ import {
   getScheduledLibraryScanJobId,
   scheduleLibraryScan,
 } from "../../../services/libraryScanWorker.js";
-import { lidarrClient } from "../../../services/lidarrClient.js";
 
 const isFilesystemPathKey = (key) => key.toLowerCase().endsWith("path");
 
@@ -35,11 +34,10 @@ export function stripFilesystemPaths(value) {
   );
 }
 
-export function resolveAvailableOnly(queryValue, settings) {
+export function resolveAvailableOnly(queryValue) {
   if (queryValue === "true") return true;
   if (queryValue === "false") return false;
-  if (!lidarrClient.isConfigured()) return false;
-  return settings?.integrations?.lidarr?.availableOnly !== false;
+  return LIBRARY_VIEW;
 }
 
 function getAlbumCoverUrl(album) {
@@ -144,10 +142,7 @@ export function registerLibraryIndex(router) {
       }
       return res.json(toPublicLibraryPage(getLibraryPage({
         source: req.query.source,
-        availableOnly: resolveAvailableOnly(
-          req.query.availableOnly,
-          dbOps.getSettings(),
-        ),
+        availableOnly: resolveAvailableOnly(req.query.availableOnly),
         kind,
         page: req.query.page,
         pageSize: requestedPageSize,

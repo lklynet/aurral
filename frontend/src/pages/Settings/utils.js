@@ -68,7 +68,6 @@ export const normalizeSettings = (savedSettings) => {
         externalUrl: "",
         apiKey: "",
         searchOnAdd: false,
-        availableOnly: true,
         defaultMonitorOption: "none",
         ...lidarr,
         qualityProfileId:

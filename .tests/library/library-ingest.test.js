@@ -296,21 +296,41 @@ test("music joins the folders and names already on disk when the Library writes 
   assert.equal(await exists(closer), true);
 });
 
-// Two albums with one title leave an untagged source without an album to
-// match, but the scan still files its copy with the Library's track.
-async function sourceTheScanJoinsToALibraryTrack({ keptFolder = "Album" } = {}) {
-  const kept = await libraryTrack(path.join("Twice", keptFolder, "01 - Song.flac"), {
+test("an untagged source of a song on one of an artist's same-titled releases is already in the Library", async () => {
+  const kept = await libraryTrack(path.join("Twice", "Album", "01 - Song.flac"), {
     artist: "Twice", album: "Album", title: "Song", track: "1",
+    MUSICBRAINZ_RELEASEGROUPID: "88888888-8888-4888-8888-888888888888",
   });
   await libraryTrack(path.join("Twice", "Album (Tagged)", "01 - Other.flac"), {
     artist: "Twice", album: "Album", title: "Other", track: "1",
     MUSICBRAINZ_RELEASEGROUPID: "99999999-9999-4999-8999-999999999999",
   });
   const source = newSource();
+  await makeTrack(path.join(source, "Twice", "Album", "song.mp3"), {
+    artist: "Twice", album: "Album", title: "Song", track: "1",
+  });
+
+  const [item] = await apply(await ingest(source, "copy"));
+
+  assert.deepEqual([item.status, item.target], ["duplicate", path.relative(root, kept)]);
+  assert.equal(await exists(path.join(root, "Twice", "Album", "01 - Song.mp3")), false);
+});
+
+// A download can finish while an ingest runs, so the Library's own copy of a
+// track arrives after the ingest checked its source, and the scan files the
+// ingested copy with it.
+async function sourceTheScanJoinsToALibraryTrack({ keptFolder = "Album", mode = "copy", monitor, prepare } = {}) {
+  const source = newSource();
   const file = await makeTrack(path.join(source, "Twice", "Album", "song.mp3"), {
     artist: "Twice", album: "Album", title: "Song", track: "1",
   });
-  return { kept, source, file, filed: path.join(root, "Twice", "Album", "01 - Song.mp3") };
+  const prepared = (await prepare?.(source, file)) || {};
+  const id = await ingest(source, mode, monitor);
+  const kept = await libraryTrack(path.join("Twice", keptFolder, "01 - Song.flac"), {
+    artist: "Twice", album: "Album", title: "Song", track: "1",
+    MUSICBRAINZ_RELEASEGROUPID: "88888888-8888-4888-8888-888888888888",
+  });
+  return { ...prepared, id, kept, source, file, filed: path.join(root, "Twice", "Album", "01 - Song.mp3") };
 }
 
 const filesOfTrack = (title) => db.prepare(
@@ -319,10 +339,9 @@ const filesOfTrack = (title) => db.prepare(
 ).pluck().all(title);
 
 test("a copy the Library scan files with a track the Library already had is taken back out, and the source stays", async () => {
-  const { kept, source, file, filed } = await sourceTheScanJoinsToALibraryTrack();
+  const { id, kept, file, filed } = await sourceTheScanJoinsToALibraryTrack({ monitor: "tracks" });
   const keptLyrics = kept.replace(/\.flac$/, ".lrc");
   await writeFile(keptLyrics, "[00:00.00]kept");
-  const id = await ingest(source, "copy", "tracks");
   const [placed] = await apply(id);
   assert.equal(placed.status, "done");
   await scanMusicRoot({ rootPath: root, source: "aurral" });
@@ -361,9 +380,10 @@ test("a filed track that shares its recording with another track of the album st
 });
 
 test("a copy taken back out is recorded and rescanned even when its lyrics cannot be removed", async () => {
-  const { source, file, filed } = await sourceTheScanJoinsToALibraryTrack();
-  await writeFile(file.replace(/\.mp3$/, ".lrc"), "[00:00.00]la");
-  const id = await ingest(source, "copy", "tracks");
+  const { id, filed } = await sourceTheScanJoinsToALibraryTrack({
+    monitor: "tracks",
+    prepare: (_source, song) => writeFile(song.replace(/\.mp3$/, ".lrc"), "[00:00.00]la"),
+  });
   await apply(id);
   const filedLyrics = filed.replace(/\.mp3$/, ".lrc");
   await rm(filedLyrics);
@@ -379,20 +399,27 @@ test("a copy taken back out is recorded and rescanned even when its lyrics canno
 });
 
 test("a moved file the Library scan files with a track the Library already had goes back to its source with its art and lyrics, offered for removal, and the Library keeps its own, even when two source folders filed into one album", async () => {
-  const { kept, source, file, filed } = await sourceTheScanJoinsToALibraryTrack({ keptFolder: "Earlier Rip" });
-  const art = path.join(path.dirname(file), "cover.jpg");
-  await writeFile(art, "art");
-  const lyrics = file.replace(/\.mp3$/, ".lrc");
-  await writeFile(lyrics, "[00:00.00]la");
+  const otherTags = { artist: "Twice", album: "Album", title: "Tune", track: "2" };
+  const { id, kept, file, filed, art, lyrics, otherFile, otherArt } = await sourceTheScanJoinsToALibraryTrack({
+    keptFolder: "Earlier Rip",
+    mode: "move",
+    prepare: async (source, song) => {
+      const art = path.join(path.dirname(song), "cover.jpg");
+      await writeFile(art, "art");
+      const lyrics = song.replace(/\.mp3$/, ".lrc");
+      await writeFile(lyrics, "[00:00.00]la");
+      const otherFile = await makeTrack(path.join(source, "Twice", "Album CD2", "tune.mp3"), otherTags);
+      const otherArt = path.join(path.dirname(otherFile), "back.jpg");
+      await writeFile(otherArt, "back");
+      return { art, lyrics, otherFile, otherArt };
+    },
+  });
   const libraryArt = path.join(path.dirname(filed), "folder.jpg");
   await mkdir(path.dirname(libraryArt), { recursive: true });
   await writeFile(libraryArt, "library art");
-  const otherTags = { artist: "Twice", album: "Album", title: "Tune", track: "2" };
-  await libraryTrack(path.join("Twice", "Earlier Rip", "02 - Tune.flac"), otherTags);
-  const otherFile = await makeTrack(path.join(source, "Twice", "Album CD2", "tune.mp3"), otherTags);
-  const otherArt = path.join(path.dirname(otherFile), "back.jpg");
-  await writeFile(otherArt, "back");
-  const id = await ingest(source, "move");
+  await libraryTrack(path.join("Twice", "Earlier Rip", "02 - Tune.flac"), {
+    ...otherTags, MUSICBRAINZ_RELEASEGROUPID: "88888888-8888-4888-8888-888888888888",
+  });
   await apply(id);
   assert.equal(await exists(file), false);
   assert.equal(await readFile(path.join(path.dirname(filed), "cover.jpg"), "utf8"), "art");

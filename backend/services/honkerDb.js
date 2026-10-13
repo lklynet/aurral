@@ -569,6 +569,7 @@ export function enqueueHonkerStartupTasks() {
     enqueueIfAbsent({ kind: "identity-marker-migration" }, { delaySeconds: 30, priority: -5 });
   }
   enqueueIfAbsent({ kind: "weekly-flow-startup-check" }, { delaySeconds: 5, priority: 5 });
+  enqueueIfAbsent({ kind: "playlist-startup-publish" }, { delaySeconds: 10, priority: 0 });
   import("./libraryFiles/operations.js")
     .then(({ resumeLibraryFileOperations }) => resumeLibraryFileOperations())
     .catch((error) => console.warn("[LibraryFiles] Could not resume file operations:", error?.message || error));

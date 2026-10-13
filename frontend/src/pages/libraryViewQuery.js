@@ -75,14 +75,14 @@ const fetchLibraryView = async (
       albumId,
       page: 1,
       pageSize,
-      // An album detail view shows the full tracklist regardless of the
-      // library-wide availability setting; owned/missing is shown per row.
+      // An album detail view shows the full tracklist; owned/missing is
+      // shown per row.
       availableOnly: false,
     }, { signal });
   }
   if (artistId) {
     return Promise.all([
-      fetchLibraryPage({ kind: "albums", artistId, page: 1, pageSize, availableOnly: true }, { signal }),
+      fetchLibraryPage({ kind: "albums", artistId, page: 1, pageSize }, { signal }),
       fetchLibraryPage({ kind: "tracks", artistId, page: 1, pageSize, availableOnly: true }, { signal }),
     ]);
   }
@@ -94,8 +94,6 @@ const fetchLibraryView = async (
         page: 1,
         pageSize,
         sort: "newest",
-        // "Recently added" defers to the Lidarr "available only"
-        // setting (omitted param) like the Albums/Artists tabs.
       }, { signal }),
       fetchLibraryPage({
         kind: "tracks",
@@ -114,8 +112,8 @@ const fetchLibraryView = async (
     genre,
     sort,
     direction,
-    // Albums/artists defer to the Lidarr "available only" setting
-    // (omitted param); tracks always filter to playable files.
+    // Albums and artists omit the param, so the server shows what can be
+    // played and what Aurral is fetching; tracks show playable files.
     availableOnly: tab === "tracks" ? true : undefined,
   }, { signal });
 };
