@@ -1,7 +1,8 @@
-import { Navigate, useNavigate, useParams } from "react-router";
+import { Navigate, useParams } from "react-router";
+import RouteLink from "../components/RouteLink";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { Music, MapPin, AlertCircle } from "lucide-react";
-import { DotLoader } from "../components/DotLoader";
+import { SkeletonCardGrid, SkeletonStatus } from "../components/Skeletons";
 import NearbyLocationControl from "../components/NearbyLocationControl";
 import ShowCard from "../components/ShowCard";
 import { PageSectionMobileNav } from "../components/PageSectionMobileNav";
@@ -20,7 +21,6 @@ const SHOW_FILTER_MATCHERS = {
 };
 
 function ShowsPage() {
-  const navigate = useNavigate();
   const { filter: filterParam } = useParams();
   const showFilter = normalizeShowsFilter(filterParam);
   const shouldRedirect = filterParam && normalizeShowsFilter(filterParam) !== filterParam;
@@ -71,7 +71,7 @@ function ShowsPage() {
       <header className="shows-page__header">
         <div className="shows-page__title-row">
           <div className="shows-page__title-wrap">
-            <h1 className="page-title">Shows Near You</h1>
+            <h1 className="page-title">Shows near you</h1>
           </div>
           <NearbyLocationControl
             locationMode={locationMode}
@@ -99,20 +99,19 @@ function ShowsPage() {
           </div>
           <h2 className="search-empty-panel__title">Ticketmaster not configured</h2>
           <p className="search-empty-panel__message">
-            Add a Ticketmaster Consumer Key in Settings to enable local show discovery.
+            Add a Ticketmaster consumer key in Settings to enable local show discovery.
           </p>
-          <button
-            type="button"
-            onClick={() => navigate("/settings")}
+          <RouteLink
+            to="/settings"
             className="btn btn-primary btn--bold btn-min-h shows-page__panel-action"
           >
             Open Settings
-          </button>
+          </RouteLink>
         </div>
       ) : showsLoading ? (
-        <div className="artist-loading">
-          <DotLoader size="2xl" label={null} />
-        </div>
+        <SkeletonStatus label="Loading shows">
+          <SkeletonCardGrid square />
+        </SkeletonStatus>
       ) : showsError ? (
         <div className="artist-error-panel" role="alert">
           <AlertCircle className="artist-error-icon" aria-hidden="true" />

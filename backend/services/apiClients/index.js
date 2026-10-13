@@ -43,6 +43,7 @@ export {
 } from "./deezer.js";
 
 export {
+  resolveArtistAndAlbumMbids,
   resolveDeezerAlbumToMbid,
   youtubeFindTopSongVideo,
 } from "./crossProvider.js";

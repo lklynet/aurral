@@ -5,9 +5,9 @@ import {
   isSameAlbumTitle,
   isSiblingTrackPosition,
   MATCH_POLICY,
-  normalizeMatchText,
   parseListingTitle,
 } from "./nativeMatcher.js";
+import { parseYoutubeTitle, readYoutubeUpload } from "./youtubeEvidence.js";
 
 const DECISION_RANK = { accept: 0, verify: 1, review: 2, reject: 3 };
 
@@ -31,18 +31,38 @@ function matcherRequest(request) {
   };
 }
 
-function matcherCandidate(candidate, request, evidence) {
-  const parsed = candidate.path ? parseListingTitle(candidate.path) : null;
-  const uploaderIsArtist = candidate.source === "ytdlp" && request.artistName
-    && normalizeMatchText(candidate.provider?.uploader) === normalizeMatchText(request.artistName);
+function requestArtistNames(request) {
+  return [request.artistName, ...(request.artistAliases || [])].filter(Boolean);
+}
+
+function youtubeMatcherCandidate(candidate, request) {
+  const names = requestArtistNames(request);
+  const claim = parseYoutubeTitle(candidate.title, names, request.trackName);
+  const upload = readYoutubeUpload(candidate.title, candidate.provider?.uploader, names);
   return {
-    title: candidate.filenameTitle || parsed?.title || candidate.cleanedTitle || candidate.title,
-    artists: candidate.artists?.length ? candidate.artists
-      : evidence?.folder?.artistScore >= 92 || uploaderIsArtist
-        ? [request.artistName].filter(Boolean) : [],
+    title: claim.title,
+    versionTitle: claim.versionTitle,
+    artists: [claim.artist, upload.channelArtist].filter(Boolean),
     durationMs: candidate.durationMs,
     recordingMbid: candidate.recordingMbid,
   };
+}
+
+function matcherCandidate(candidate, request, evidence) {
+  if (candidate.source === "ytdlp") return youtubeMatcherCandidate(candidate, request);
+  const parsed = candidate.path ? parseListingTitle(candidate.path) : null;
+  return {
+    title: candidate.filenameTitle || parsed?.title || candidate.cleanedTitle || candidate.title,
+    artists: candidate.artists?.length ? candidate.artists
+      : evidence?.folder?.artistScore >= 92 ? [request.artistName].filter(Boolean) : [],
+    durationMs: candidate.durationMs,
+    recordingMbid: candidate.recordingMbid,
+  };
+}
+
+function isOfficialYoutubeAudio(candidate, request) {
+  return candidate.source === "ytdlp"
+    && readYoutubeUpload(candidate.title, candidate.provider?.uploader, requestArtistNames(request)).officialAudio;
 }
 
 function evaluate(request, normalized, providerEvidence) {
@@ -103,9 +123,11 @@ function evaluate(request, normalized, providerEvidence) {
       },
       folderScore: Number(evidence?.folder?.tracklistScore || 0)
         + Number(evidence?.folder?.albumScore || 0) / 10,
+      officialAudio: isOfficialYoutubeAudio(candidate, request),
       policyVersion: MATCH_POLICY.version,
     };
   }).sort((left, right) => DECISION_RANK[left.decision] - DECISION_RANK[right.decision]
+    || Number(right.officialAudio) - Number(left.officialAudio)
     || left.distance - right.distance || right.folderScore - left.folderScore
     || left.candidateIndex - right.candidateIndex);
   const best = evaluations[0] || null;

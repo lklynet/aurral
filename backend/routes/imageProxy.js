@@ -1,12 +1,10 @@
 import express from "express";
-import {
-  handleImageProxyRequest,
-  handleLegacyImageProxyRequest,
-} from "../services/imageProxyService.js";
+import { requireAuth } from "../middleware/requirePermission.js";
+import { handleImageCacheRequest, handleImageProxyRequest } from "../services/imageProxyService.js";
 
 const router = express.Router();
 
-router.get("/", handleLegacyImageProxyRequest);
+router.post("/", requireAuth, handleImageCacheRequest);
 router.get("/:cacheKey", handleImageProxyRequest);
 
 export default router;

@@ -122,7 +122,7 @@ export function createLibraryFileWatcher({
 
 export function resolveLibraryWatchRoots() {
   const roots = [resolveDownloadRoot()];
-  if (lidarrClient.isEnabled()) {
+  if (lidarrClient.isConfigured()) {
     // Path mapping checks whether the original path exists; defer that I/O to
     // the watcher child along with recursive watcher creation.
     roots.push(

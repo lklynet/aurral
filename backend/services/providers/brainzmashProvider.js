@@ -26,6 +26,7 @@ import {
 import { selectBestAlbumImage } from "../imageService.js";
 import createRateLimiter from "../apiClients/rateLimiter.js";
 import { runSharedInflight } from "../sharedInflight.js";
+import { logger, safeLogDiagnostic } from "../logger.js";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   getMetadataProviderBudget,
@@ -41,16 +42,20 @@ const METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS = 5_000;
 const METADATA_RATE_LIMIT_MAX_COOLDOWN_MS = 60_000;
 const METADATA_FORBIDDEN_COOLDOWN_MS = 5 * 60_000;
 const METADATA_CACHE_MAX_ENTRIES = 20_000;
+const METADATA_HOT_CACHE_TTL_SECONDS = 60;
+const METADATA_HOT_CACHE_MAX_ENTRIES = 50;
+const METADATA_STORE_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const MIN_ALBUM_SEARCH_WINDOW = 25;
 const METADATA_REQUEST_MIN_INTERVAL_MS = 100;
 const METADATA_REQUEST_TIMEOUT_MS = 8000;
 const METADATA_MAX_QUEUED_REQUESTS = Math.floor(
   METADATA_REQUEST_TIMEOUT_MS / METADATA_REQUEST_MIN_INTERVAL_MS,
 ) - 1;
-const providerCache = createCache(
-  METADATA_ENTITY_CACHE_TTL_SECONDS,
-  METADATA_CACHE_MAX_ENTRIES,
+const metadataHotCache = createCache(
+  METADATA_HOT_CACHE_TTL_SECONDS,
+  METADATA_HOT_CACHE_MAX_ENTRIES,
 );
+let nextMetadataStoreCleanupAt = 0;
 const metadataNotFoundCache = createCache(
   METADATA_NOT_FOUND_CACHE_TTL_SECONDS,
   METADATA_CACHE_MAX_ENTRIES,
@@ -63,7 +68,8 @@ const providerRequestLimiter = createRateLimiter(METADATA_REQUEST_MIN_INTERVAL_M
 const METADATA_MAX_RETRIES = 1;
 
 export function clearMetadataProviderCaches() {
-  providerCache.flushAll();
+  metadataHotCache.flushAll();
+  dbOps.clearMetadataResponses();
   metadataNotFoundCache.flushAll();
   releaseCache.flushAll();
   providerInflightRequests.clear();
@@ -115,6 +121,10 @@ function getUserAgent() {
 
 function isEntityMetadataPath(path) {
   return /^\/(?:album|artist)\/[^/]+$/.test(path);
+}
+
+export function isMetadataNotFoundError(error) {
+  return error?.code === "ERR_METADATA_NOT_FOUND" || error?.response?.status === 404;
 }
 
 function createMetadataNotFoundError() {
@@ -206,6 +216,41 @@ function getMetadataCachePolicy(path) {
   };
 }
 
+function readCachedMetadata(cacheKey) {
+  let entry = metadataHotCache.get(cacheKey);
+  if (!entry) {
+    entry = dbOps.getMetadataResponse(cacheKey);
+    if (!entry) return null;
+    metadataHotCache.set(cacheKey, entry);
+  }
+  const now = Date.now();
+  if (entry.staleUntil < now) return null;
+  return { value: entry.value, stale: entry.freshUntil < now };
+}
+
+function storeMetadata(cacheKey, value, { freshTtlSeconds, staleTtlSeconds }) {
+  const now = Date.now();
+  const freshUntil = now + freshTtlSeconds * 1000;
+  const entry = { value, freshUntil, staleUntil: freshUntil + staleTtlSeconds * 1000 };
+  metadataHotCache.set(cacheKey, entry);
+  try {
+    dbOps.setMetadataResponse(cacheKey, entry);
+    if (now >= nextMetadataStoreCleanupAt) {
+      nextMetadataStoreCleanupAt = now + METADATA_STORE_CLEANUP_INTERVAL_MS;
+      dbOps.cleanMetadataResponses(METADATA_CACHE_MAX_ENTRIES);
+    }
+  } catch (error) {
+    logger.warn("metadata", "Could not store metadata response", {
+      reason: safeLogDiagnostic(error),
+    });
+  }
+}
+
+function forgetMetadata(cacheKey) {
+  metadataHotCache.delete(cacheKey);
+  dbOps.deleteMetadataResponse(cacheKey);
+}
+
 function refreshMetadata(cacheKey, path, params, { signal } = {}) {
   const baseUrl = getMetadataBaseUrl();
   const cachePolicy = getMetadataCachePolicy(path);
@@ -255,12 +300,7 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
           },
           { signal: sharedSignal, timeoutMs: METADATA_REQUEST_TIMEOUT_MS },
         );
-        providerCache.set(
-          cacheKey,
-          response.data,
-          cachePolicy.freshTtlSeconds,
-          cachePolicy.staleTtlSeconds,
-        );
+        storeMetadata(cacheKey, response.data, cachePolicy);
         metadataNotFoundCache.delete(cacheKey);
         healthState.lastSuccessAt = healthState.lastCheckedAt;
         healthState.lastFailureReason = "";
@@ -279,7 +319,7 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
           throw error;
         }
         if (error?.response?.status === 404 && isEntityMetadataPath(path)) {
-          providerCache.delete(cacheKey);
+          forgetMetadata(cacheKey);
           metadataNotFoundCache.set(cacheKey, true);
         }
         if (attempt === METADATA_MAX_RETRIES || !isRetryable(error)) throw error;
@@ -307,7 +347,7 @@ async function request(path, params = {}, { signal, forceRefresh = false } = {})
   if (!forceRefresh && metadataNotFoundCache.get(cacheKey)) {
     throw createMetadataNotFoundError();
   }
-  const cached = forceRefresh ? null : providerCache.getWithStale(cacheKey);
+  const cached = forceRefresh ? null : readCachedMetadata(cacheKey);
   if (cached) {
     if (cached.stale) {
       void refreshMetadata(cacheKey, path, params).catch(() => {});
@@ -340,20 +380,31 @@ function tally(releases, key) {
   return counts;
 }
 
-function runningOrder(release) {
+function tracksInOrder(release) {
   return [...release.tracks]
     .sort((left, right) => (left.mediumNumber || 1) - (right.mediumNumber || 1)
-      || (left.trackNumber || 0) - (right.trackNumber || 0))
-    .map((track) => getNormalizedText(track.title))
-    .join("\n");
+      || (left.trackNumber || 0) - (right.trackNumber || 0));
+}
+
+function runningOrder(release) {
+  return tracksInOrder(release).map((track) => getNormalizedText(track.title)).join("\n");
+}
+
+function median(values) {
+  const sorted = values.filter((value) => Number(value) > 0).sort((left, right) => left - right);
+  if (sorted.length === 0) return null;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
 }
 
 // The album is the official tracklist most of its releases share: pressings
 // of the standard edition far outnumber deluxe editions and box sets, which
 // can run to 90 tracks, and misprints that swap tracks. A tie goes to the
 // longer tracklist, and among its releases a single disc, numbered like CD
-// and digital copies, comes first.
-export function selectAlbumRelease(album) {
+// and digital copies, comes first. The expanded edition is the longest one
+// that keeps every standard track and is at most twice as long, which leaves
+// out box sets.
+export function selectAlbumRelease(album, { edition = "standard" } = {}) {
   const releases = Array.isArray(album?.releases) ? album.releases : [];
   const withTracks = releases.filter((release) => Array.isArray(release?.tracks) && release.tracks.length > 0);
   const official = withTracks.filter((release) => String(release?.status || "").toLowerCase() === "official");
@@ -361,14 +412,45 @@ export function selectAlbumRelease(album) {
   if (pool.length === 0) return releases[0] || null;
   const [trackCount] = [...tally(pool, (release) => release.tracks.length)]
     .sort(([leftCount, left], [rightCount, right]) => right - left || rightCount - leftCount)[0];
+  const standard = chooseTracklist(pool, trackCount);
+  if (edition !== "expanded") return standard;
+  const keepsStandardTracks = (release) => {
+    const unmatched = [...release.tracks];
+    return standard.tracks.every((track) => {
+      const index = unmatched.findIndex((candidate) => (track.recordingId && candidate.recordingId
+        ? candidate.recordingId === track.recordingId
+        : getNormalizedText(candidate.title) === getNormalizedText(track.title)));
+      if (index === -1) return false;
+      unmatched.splice(index, 1);
+      return true;
+    });
+  };
+  const longer = pool.filter((release) => release.tracks.length > trackCount &&
+    release.tracks.length <= trackCount * 2 && keepsStandardTracks(release));
+  if (longer.length === 0) return standard;
+  return chooseTracklist(longer, Math.max(...longer.map((release) => release.tracks.length)));
+}
+
+function chooseTracklist(pool, trackCount) {
   const sameCount = pool.filter((release) => release.tracks.length === trackCount);
   const orders = new Map(sameCount.map((release) => [release, runningOrder(release)]));
   const orderCounts = tally(sameCount, (release) => orders.get(release));
   const discs = (release) => new Set(release.tracks.map((track) => track.mediumNumber || 1)).size;
-  return sameCount.reduce((best, release) => {
+  const chosen = sameCount.reduce((best, release) => {
     const commoner = orderCounts.get(orders.get(release)) - orderCounts.get(orders.get(best));
     return commoner > 0 || (commoner === 0 && discs(release) < discs(best)) ? release : best;
   });
+  // Pressings of one tracklist list a track a few seconds apart, and some
+  // round to whole seconds, so each track takes its median length.
+  const pressings = sameCount.filter((release) => orders.get(release) === orders.get(chosen)).map(tracksInOrder);
+  const ordered = tracksInOrder(chosen);
+  return {
+    ...chosen,
+    tracks: chosen.tracks.map((track) => {
+      const index = ordered.indexOf(track);
+      return { ...track, durationMs: median(pressings.map((tracks) => tracks[index]?.durationMs)) ?? track.durationMs };
+    }),
+  };
 }
 
 function storeAlbumReleaseMappings(album) {
@@ -421,13 +503,22 @@ export async function searchArtists(query, { limit = 24, offset = 0, signal } = 
 
 export async function searchAlbums(
   query,
-  { artistName = "", limit = 24, offset = 0, releaseTypes = [], sort = "relevance", signal } = {},
+  {
+    artistName = "",
+    limit = 24,
+    offset = 0,
+    releaseTypes = [],
+    sort = "relevance",
+    signal,
+    throwOnFailure = false,
+  } = {},
 ) {
   // Relevance ranking reorders what the provider returns, so a short list
   // still looks at enough results to find the album. One more than the page
   // shows whether another page exists.
   const requestedLimit = Math.max(limit + offset + 1, MIN_ALBUM_SEARCH_WINDOW);
   let items = [];
+  let failure = null;
 
   try {
     const data = await request("/search/album", {
@@ -456,11 +547,13 @@ export async function searchAlbums(
         releaseStatuses: [],
       };
     });
-  } catch {
+  } catch (error) {
     signal?.throwIfAborted();
+    failure = error;
   }
 
   if (items.length === 0 && isNarrowFallbacksEnabled()) {
+    failure = null;
     const escapeLucenePhrase = (value) =>
       String(value || "")
         .replace(/\\/g, "\\\\")
@@ -504,6 +597,7 @@ export async function searchAlbums(
     });
   }
 
+  if (failure && throwOnFailure) throw failure;
   items = applyReleaseTypeFilter(items, releaseTypes);
 
   if (sort === "relevance") {
@@ -536,14 +630,8 @@ export async function searchAlbums(
   };
 }
 
-export async function resolveArtistByName(name) {
-  const result = await searchArtists(name, { limit: 10, offset: 0 });
-  const ranked = rankArtistCandidates(name, result.items);
-  return ranked[0]?.id || null;
-}
-
 function artistNameForms(name) {
-  const value = String(name || "").trim();
+  const value = String(name || "").trim().replace(/&/g, " and ");
   const parts = value.split(",").map((part) => part.trim());
   const variants = parts.length === 2 && parts.every(Boolean)
     ? [value, `${parts[1]} ${parts[0]}`]
@@ -551,6 +639,33 @@ function artistNameForms(name) {
   return variants
     .map((variant) => getNormalizedText(variant).replace(/^the /, ""))
     .filter(Boolean);
+}
+
+const leadArtistName = (credit) =>
+  String(credit || "").replace(/\s+(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "").trim();
+
+const hasArtistName = (name, artist) => {
+  const forms = new Set(artistNameForms(name));
+  return [artist?.name, ...(artist?.aliases || [])]
+    .some((candidate) => artistNameForms(candidate).some((form) => forms.has(form)));
+};
+
+// An artist is the one a credit names when the credit, or its lead artist as
+// in "Koyo feat. DRAIN", is the artist's name or one of its aliases.
+export function isCreditedArtist(credit, artist) {
+  return hasArtistName(credit, artist) || hasArtistName(leadArtistName(credit), artist);
+}
+
+// Search also finds artists that share only a word with the name, such as
+// "Andrew Dance" for "Dance Gavin Dance feat. Andrew Wells", so a match must
+// carry the name. A credit with a guest falls back to its lead artist.
+export async function resolveArtistByName(name) {
+  const result = await searchArtists(name, { limit: 10, offset: 0 });
+  const ranked = rankArtistCandidates(name, result.items);
+  const named = ranked.find((artist) => hasArtistName(name, artist));
+  if (named) return named.id || null;
+  const lead = leadArtistName(name);
+  return lead && lead !== String(name || "").trim() ? resolveArtistByName(lead) : null;
 }
 
 export async function resolveLibraryArtistByName(name) {
@@ -571,37 +686,43 @@ export async function resolveLibraryArtistByName(name) {
   return matches.size === 1 ? [...matches][0] : null;
 }
 
+// A search the provider could not answer throws, so a caller can tell an
+// outage from an album MusicBrainz does not have. A match has the title and
+// credits the artist by ID or by name. The search without the artist finds an
+// artist written another way, such as in another script, and also other
+// artists' albums with the same title. `holds` checks a match further, such
+// as that it lists the song being downloaded.
 export async function resolveAlbumByArtistAndTitle({
   artistName = "",
+  artistMbid = "",
   albumTitle = "",
   releaseYear = null,
+  holds = null,
 }) {
-  const pickStrongMatch = (candidates) =>
-    candidates.find(
-      (candidate) => candidate?.id && scoreTextMatch(candidate.title, albumTitle) >= 85,
-    );
-  const firstPass = await searchAlbums(albumTitle, {
-    artistName,
-    limit: 10,
-    offset: 0,
+  const albumOrNone = (mbid) => getAlbumByMbid(mbid).catch((error) => {
+    if (isMetadataNotFoundError(error)) return null;
+    throw error;
   });
-  let ranked = rankAlbumCandidates(albumTitle, firstPass.items, {
-    artistName,
-    releaseYear,
-  });
-  const firstMatch = pickStrongMatch(ranked);
-  if (firstMatch?.id) return firstMatch.id;
-
-  const secondPass = await searchAlbums(albumTitle, {
-    artistName: "",
-    limit: 10,
-    offset: 0,
-  });
-  ranked = rankAlbumCandidates(albumTitle, secondPass.items, {
-    artistName,
-    releaseYear,
-  });
-  return pickStrongMatch(ranked)?.id || null;
+  const byArtist = (album) => [{ id: album?.artistId }, ...(album?.artists || [])].some((artist) =>
+    (artistMbid && artist.id === artistMbid) || isCreditedArtist(artistName, artist));
+  const tried = new Set();
+  for (const searchArtist of new Set([artistName, ""])) {
+    const result = await searchAlbums(albumTitle, {
+      artistName: searchArtist,
+      limit: 10,
+      offset: 0,
+      throwOnFailure: true,
+    });
+    const ranked = rankAlbumCandidates(albumTitle, result.items, { artistName, releaseYear });
+    for (const candidate of ranked) {
+      if (!candidate?.id || tried.has(candidate.id)) continue;
+      if (scoreTextMatch(candidate.title, albumTitle) < 85) continue;
+      tried.add(candidate.id);
+      if ((artistName || artistMbid) && !byArtist(await albumOrNone(candidate.id))) continue;
+      if (!holds || await holds(candidate.id)) return candidate.id;
+    }
+  }
+  return null;
 }
 
 export async function listArtistAlbums(

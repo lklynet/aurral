@@ -5,6 +5,9 @@ const [paths, honker, { db }, { scheduleReleaseMetadataRefresh }] = await setupI
   "metadata-routing", "backend/services/honkerDb.js", "backend/config/db-sqlite.js",
   "backend/services/releaseMetadataSync.js");
 after(() => cleanupIsolatedState(paths));
+db.prepare(`INSERT INTO library_artists (identity_key, mbid, name, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?)`).run("mbid:5a5a5a5a-5a5a-45a5-85a5-5a5a5a5a5a5a",
+  "5a5a5a5a-5a5a-45a5-85a5-5a5a5a5a5a5a", "Calendar Artist", Date.now(), Date.now());
 
 test("metadata schedule migration preserves overdue and future fires and legacy claims", () => {
   const scheduler = honker.getHonkerDb().scheduler();

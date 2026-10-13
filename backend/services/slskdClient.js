@@ -8,10 +8,15 @@ const NORMALIZED_SEARCH_RESULTS = Symbol("normalizedSearchResults");
 const DEFAULT_SEARCH_TIMEOUT_MS = 60000;
 const DEFAULT_EMPTY_SEARCH_TIMEOUT_MS = 10000;
 const DEFAULT_SEARCH_GRACE_PERIOD_MS = 20000;
+const MAX_SEARCH_QUEUE_MS = 5 * 60 * 1000;
 const DEFAULT_FILE_LIMIT = 1000;
 const DEFAULT_RESPONSE_LIMIT = 150;
 const DEFAULT_MAX_PEER_QUEUE = 150;
 const DEFAULT_MIN_PEER_SPEED = 51200;
+const SEARCH_START_GAP_MS = 5000;
+const SEARCH_STARTED_AT_SETTING = "slskdSearchStartedAt";
+const SOULSEEK_LOGGED_OUT_CODE = "SLSKD_SOULSEEK_LOGGED_OUT";
+export const SOULSEEK_LOGGED_OUT_MESSAGE = "slskd is not logged in to Soulseek";
 
 export const slskdSettings = Object.freeze({
   key: "slskd",
@@ -158,6 +163,11 @@ export function isSearchComplete(data) {
   return state.includes("Completed");
 }
 
+function isSearchQueued(data) {
+  const state = String(data?.state || data?.State || "").trim();
+  return state === "Requested" || state === "Queued";
+}
+
 export function isSearchInProgress(data) {
   if (isSearchComplete(data)) return false;
   const state = String(data?.state || data?.State || "").trim();
@@ -228,6 +238,21 @@ function summarizeBatchFailures(failures) {
   return messages.length > 0 ? messages.join("; ") : "all files failed";
 }
 
+function soulseekLoggedOutError(detail) {
+  const error = new Error(`${SOULSEEK_LOGGED_OUT_MESSAGE}: ${detail}`);
+  error.code = SOULSEEK_LOGGED_OUT_CODE;
+  return error;
+}
+
+export function isSoulseekLoggedOutError(error) {
+  return error?.code === SOULSEEK_LOGGED_OUT_CODE;
+}
+
+function isSoulseekLoggedIn(server) {
+  if (typeof server?.isLoggedIn === "boolean") return server.isLoggedIn;
+  return String(server?.state || "").split(",").map((flag) => flag.trim()).includes("LoggedIn");
+}
+
 function readId(value) {
   return readProperty(value, "id", "Id");
 }
@@ -260,6 +285,15 @@ function waitSearchDelay(ms, signal) {
   });
 }
 
+async function waitForSearchStartSlot(signal) {
+  const lastStartedAt = Number(dbOps.getJSONSetting(SEARCH_STARTED_AT_SETTING));
+  const waitMs = lastStartedAt > 0
+    ? Math.min(SEARCH_START_GAP_MS, lastStartedAt + SEARCH_START_GAP_MS - Date.now())
+    : 0;
+  if (waitMs > 0) await waitSearchDelay(waitMs, signal);
+  if (signal.aborted) throw new Error("slskd search cancelled");
+}
+
 async function withSearchLock(name, operation, { deadline, signal }) {
   const lockDeadline = Number(deadline) || Date.now() + 300000;
   while (true) {
@@ -288,17 +322,24 @@ class SearchMonitor {
     this.onSearchSettled = options.onSearchSettled;
     this.cleanupTimeoutMs = options.cleanupTimeoutMs;
     this.emptyTimeoutMs = Math.max(0, Number(options.emptyTimeoutMs ?? DEFAULT_EMPTY_SEARCH_TIMEOUT_MS));
-    const activeTimeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : DEFAULT_SEARCH_TIMEOUT_MS;
-    const gracePeriodMs = Math.max(0, Number(options.gracePeriodMs ?? DEFAULT_SEARCH_GRACE_PERIOD_MS));
-    this.startedAt = Number(options.startedAt) || Date.now();
-    this.graceStartsAt = this.startedAt + activeTimeoutMs;
-    this.deadline = Math.min(Number(options.deadline) || Infinity, this.graceStartsAt + gracePeriodMs);
+    this.activeTimeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : DEFAULT_SEARCH_TIMEOUT_MS;
+    this.gracePeriodMs = Math.max(0, Number(options.gracePeriodMs ?? DEFAULT_SEARCH_GRACE_PERIOD_MS));
+    this.hardDeadline = Number(options.deadline) || Infinity;
+    this.startWindows(Number(options.startedAt) || Date.now());
+    this.queueLimit = this.startedAt + MAX_SEARCH_QUEUE_MS;
+    this.queued = false;
     this.totalFiles = 0;
     this.hasSeenFiles = false;
     this.latest = null;
     this.collected = new Map();
     this.eligibilityAssessed = false;
     this.lastEligibility = false;
+  }
+
+  startWindows(startedAt) {
+    this.startedAt = startedAt;
+    this.graceStartsAt = startedAt + this.activeTimeoutMs;
+    this.deadline = Math.min(this.hardDeadline, this.graceStartsAt + this.gracePeriodMs);
   }
 
   cutoff() {
@@ -330,7 +371,7 @@ class SearchMonitor {
     const cancelled = () => signal?.aborted || shouldCancel?.();
     try {
       if (cancelled()) { await this.stop(); return { done: true, data: null }; }
-      const cutoff = this.cutoff();
+      const cutoff = this.queued ? Math.min(this.queueLimit, this.hardDeadline) : this.cutoff();
       if (Date.now() >= cutoff) return this.finish(this.latest);
       let data;
       try {
@@ -344,6 +385,15 @@ class SearchMonitor {
         throw error;
       }
       if (cancelled()) { await this.stop(); return { done: true, data: null }; }
+      // slskd runs a few searches at once and queues the rest. A queued search
+      // has not asked anyone yet, so its windows start once it runs.
+      const wasQueued = this.queued;
+      this.queued = isSearchQueued(data);
+      if (this.queued) {
+        if (Date.now() >= Math.min(this.queueLimit, this.hardDeadline)) return this.finish(this.latest);
+        return { done: false, data, waitMs: Math.min(2000, Math.max(1, this.queueLimit - Date.now())) };
+      }
+      if (wasQueued) this.startWindows(Date.now());
       const files = this.client.flattenSearchResults(data);
       let eligibilityChanged = false;
       for (const file of files) {
@@ -462,7 +512,7 @@ export class SlskdClient {
       }
       const server = appRes.data?.server || {};
       const serverState = String(server.state || "");
-      const soulseekConnected = server.isConnected === true || serverState.includes("Connected");
+      const soulseekConnected = isSoulseekLoggedIn(server);
       const rawDownloadPath =
         optionsRes.data?.directories?.downloads || optionsRes.data?.directories?.download;
       const downloadPath = Array.isArray(rawDownloadPath) ? String(rawDownloadPath[0] || "").trim() || null : String(rawDownloadPath || "").trim() || null;
@@ -476,7 +526,9 @@ export class SlskdClient {
         downloadPath,
         message: soulseekConnected
           ? "slskd is connected"
-          : "slskd is reachable, but it is not connected to Soulseek. Open slskd and connect to the Soulseek server.",
+          : server.isConnected === true
+            ? "slskd is connected to Soulseek but not logged in. Soulseek downloads wait until it logs in."
+            : "slskd is reachable, but it is not connected to Soulseek. Open slskd and connect to the Soulseek server.",
       };
       cacheConnectionResult(settingsKey, result, this._config);
       return result;
@@ -533,9 +585,11 @@ export class SlskdClient {
     try {
       return await withSearchLock("slskd-search-create", async () => {
         for (let attempt = 0; attempt <= 3; attempt++) {
+          await waitForSearchStartSlot(control.signal);
           const response = await withSearchLock("slskd-api", async () => {
             const remaining = Number(options.deadline) ? options.deadline - Date.now() : Infinity;
             if (remaining < 5000) throw new Error("slskd search deadline expired");
+            dbOps.setJSONSetting(SEARCH_STARTED_AT_SETTING, Date.now());
             options.onSearchCreated?.(id);
             creationUncertain = true;
             let result;
@@ -560,7 +614,7 @@ export class SlskdClient {
             await waitSearchDelay(Math.min(30000 * 2 ** attempt, remaining), control.signal);
             continue;
           }
-          if (response.status === 409) throw new Error("slskd Soulseek connection unavailable (409)");
+          if (response.status === 409) throw soulseekLoggedOutError(`search refused (409) ${String(response.data || "")}`.trim());
           throw new Error(`slskd search failed: HTTP ${response.status} ${String(response.data || "")}`);
         }
         throw new Error("slskd search busy after retries");
@@ -749,9 +803,9 @@ export class SlskdClient {
           delaySeconds *= 2;
           continue;
         }
-        throw new Error(
-          `slskd enqueue failed: HTTP ${response.status} ${String(response.data || "")}`,
-        );
+        const detail = `HTTP ${response.status} ${String(response.data || "")}`;
+        if (/must be connected and logged in/i.test(detail)) throw soulseekLoggedOutError(`enqueue refused (${detail})`);
+        throw new Error(`slskd enqueue failed: ${detail}`);
       }
       throw new Error("slskd enqueue busy after retries");
     });

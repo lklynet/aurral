@@ -1,5 +1,5 @@
 import fsp from "fs/promises";
-import path from "path";
+import { streamAudioFile } from "../../../services/audioFileStream.js";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.js";
 import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.js";
 import { noCache } from "../../../middleware/cache.js";
@@ -54,10 +54,9 @@ export function registerStream(router) {
     } catch {
       return res.status(404).json({ error: "Track file missing" });
     }
-    res.sendFile(path.basename(safePath), {
-      root: path.dirname(safePath),
-      dotfiles: "allow",
-    });
+    if (!await streamAudioFile(res, safePath)) {
+      res.status(404).json({ error: "Track file missing" });
+    }
   });
 
   router.get("/staging-stream/:jobId", noCache, async (req, res) => {
@@ -81,9 +80,8 @@ export function registerStream(router) {
     } catch {
       return res.status(404).json({ error: "Staging file no longer exists" });
     }
-    res.sendFile(path.basename(job.stagingPath), {
-      root: path.dirname(job.stagingPath),
-      dotfiles: "allow",
-    });
+    if (!await streamAudioFile(res, job.stagingPath)) {
+      res.status(404).json({ error: "Staging file no longer exists" });
+    }
   });
 }

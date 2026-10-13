@@ -51,6 +51,9 @@ export const addDiscoveryFeedback = (payload) =>
 export const removeDiscoveryFeedback = (id) =>
   deleteData(`/discover/feedback/${encodeURIComponent(id)}`);
 
+export const restoreDiscoveryFeedback = ({ removeIds = [], entries = [] }) =>
+  postData("/discover/feedback/restore", { removeIds, entries });
+
 export const resetDiscoveryFeedback = () => postData("/discover/feedback/reset");
 
 export const getTagSuggestions = (q, limit = 10) =>

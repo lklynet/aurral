@@ -10,7 +10,7 @@ export const PLAYLIST_STARTUP_MIGRATION_VERSION = 1;
 export const PLAYLIST_STARTUP_MIGRATION_SETTING = "playlistStartupMigration";
 export const STORED_DATA_MIGRATION_VERSION = 1;
 export const STORED_DATA_MIGRATION_SETTING = "storedDataMigration";
-export const IDENTITY_MARKER_MIGRATION_VERSION = 1;
+export const IDENTITY_MARKER_MIGRATION_VERSION = 2;
 export const IDENTITY_MARKER_MIGRATION_SETTING = "identityMarkerMigration";
 
 export const HONKER_QUEUE_NAMES = [
@@ -22,6 +22,7 @@ export const HONKER_QUEUE_NAMES = [
   "slskd-pipeline",
   "playlist-mbid-enrichment",
   "library-scan",
+  "library-files",
   "discovery-refresh",
   "discovery-user-refresh",
   "_outbox:notifications",
@@ -88,6 +89,12 @@ export const SCHEDULED_SYSTEM_TASKS = [
     queue: "system-task",
     schedule: "@every 30m",
     payload: { kind: "weekly-flow-reuse-repair" },
+  },
+  {
+    name: "review-timeout",
+    queue: "system-task",
+    schedule: "@every 15m",
+    payload: { kind: "review-timeout" },
   },
   {
     name: "quality-upgrade-check",
@@ -380,6 +387,18 @@ const libraryScan = registerQueue({
 export const getLibraryScanQueue = libraryScan.getQueue;
 export const enqueueLibraryScanJob = libraryScan.enqueueJob;
 
+const libraryFiles = registerQueue({
+  name: "library-files",
+  visibilityTimeoutS: 600,
+  maxAttempts: 5,
+  skipInTest: true,
+  workerModule: "./libraryFiles/libraryFileWorker.js",
+  workerStartFn: "startLibraryFileWorker",
+});
+
+export const getLibraryFileQueue = libraryFiles.getQueue;
+export const enqueueLibraryFileJob = libraryFiles.enqueueJob;
+
 export function getNotificationOutbox() {
   if (!notificationOutbox) {
     notificationOutbox = getHonkerDb().outbox(
@@ -550,6 +569,10 @@ export function enqueueHonkerStartupTasks() {
     enqueueIfAbsent({ kind: "identity-marker-migration" }, { delaySeconds: 30, priority: -5 });
   }
   enqueueIfAbsent({ kind: "weekly-flow-startup-check" }, { delaySeconds: 5, priority: 5 });
+  enqueueIfAbsent({ kind: "playlist-startup-publish" }, { delaySeconds: 10, priority: 0 });
+  import("./libraryFiles/operations.js")
+    .then(({ resumeLibraryFileOperations }) => resumeLibraryFileOperations())
+    .catch((error) => console.warn("[LibraryFiles] Could not resume file operations:", error?.message || error));
   enqueueIfAbsent({ kind: "upgrade-readiness-check" }, { delaySeconds: 60, priority: -10 });
   enqueueIfAbsent({ kind: "discovery-bootstrap" }, { delaySeconds: 15, priority: 5 });
   enqueueIfAbsent({ kind: "library-index-bootstrap" }, { delaySeconds: 8, priority: 0 });
@@ -764,22 +787,38 @@ export function hasActiveHonkerJobs(queueName) {
   )[0]);
 }
 
-export function isHonkerScheduleDue() {
+export function isHonkerScheduleDue(nowMs = Date.now()) {
   return Boolean(getHonkerDb().query(
     "SELECT 1 FROM _honker_scheduler_tasks WHERE enabled = 1 AND next_fire_at <= ? LIMIT 1",
-    [Math.floor(Date.now() / 1000)],
+    [Math.floor(nowMs / 1000)],
   )[0]);
 }
 
-export function listBackgroundGroupsWithWork() {
-  const now = Math.floor(Date.now() / 1000);
+export function listBackgroundGroupsWithWork(nowMs = Date.now()) {
+  const now = Math.floor(nowMs / 1000);
   const groups = new Set(getHonkerDb().query(
     `SELECT DISTINCT queue FROM _honker_live WHERE run_at <= ?
      AND (state = 'pending' OR (state = 'processing' AND claim_expires_at <= ?))`,
     [now, now],
   ).map((row) => ISOLATED_QUEUE_GROUPS[row.queue]).filter(Boolean));
-  if (isHonkerScheduleDue()) groups.add("scheduler");
+  if (isHonkerScheduleDue(nowMs)) groups.add("scheduler");
   return [...groups];
+}
+
+export function getNextBackgroundWorkAt(nowMs = Date.now()) {
+  const now = Math.floor(nowMs / 1000);
+  const row = getHonkerDb().query(
+    `SELECT MIN(due_at) AS next_at FROM (
+       SELECT run_at AS due_at FROM _honker_live WHERE state = 'pending' AND run_at > ?
+       UNION ALL
+       SELECT MAX(run_at, claim_expires_at) AS due_at FROM _honker_live
+         WHERE state = 'processing' AND MAX(run_at, claim_expires_at) > ?
+       UNION ALL
+       SELECT next_fire_at AS due_at FROM _honker_scheduler_tasks WHERE enabled = 1 AND next_fire_at > ?
+     )`,
+    [now, now, now],
+  )[0];
+  return row?.next_at == null ? null : Number(row.next_at) * 1000;
 }
 
 export function hasExpiredHonkerClaims(queueName) {

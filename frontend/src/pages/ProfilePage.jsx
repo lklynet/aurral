@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useAccountSettings } from "./Settings/hooks/useAccountSettings";
 import { SettingsAccountTab } from "./Settings/components/SettingsAccountTab";
 import { DotLoader } from "../components/DotLoader";
+import SectionRail from "../components/SectionRail.jsx";
 import {
   getSidebarStageBackdropEnabled,
   resolveSidebarStageBackdropVariant,
@@ -23,9 +24,17 @@ function ProfilePage() {
     setShowSidebarArt(getSidebarStageBackdropEnabled(authUser?.id));
   }, [authUser?.id]);
   const account = useAccountSettings(authUser, showError);
+  const pageRef = useRef(null);
 
   return (
-    <div className="profile-page profile-page--settings">
+    <div ref={pageRef} className="profile-page profile-page--settings">
+      <SectionRail
+        containerRef={pageRef}
+        sectionSelector=".profile-settings__section"
+        titleSelector=".settings-page__section-title"
+        descriptionSelector=".settings-page__section-note"
+        label="Profile sections"
+      />
       <div className="profile-page__header">
         <div className="profile-page__intro">
           <h1 className="page-title">Profile</h1>

@@ -89,7 +89,7 @@ test("detectNoise flags downloader junk", () => {
   assert.deepEqual(detectNoise("Get Lucky official audio"), []);
 });
 
-test("clean/explicit hard-conflicts only when the requested rating is explicitly known", () => {
+test("clean/explicit conflicts with a known rating, and a censored copy with an unrated request", () => {
   // Requested a clean version, offered explicit: hard contradiction.
   const cleanRequest = { trackName: "Song (Clean Version)" };
   const explicitCandidate = { title: "Song (Explicit)" };
@@ -102,6 +102,12 @@ test("clean/explicit hard-conflicts only when the requested rating is explicitly
   const plainRequest = { trackName: "Song" };
   const softCheck = checkVariantCompatibility(plainRequest, explicitCandidate);
   assert.equal(softCheck.compatible, true);
+
+  // Unqualified request: a clean or edited copy is censored audio.
+  for (const title of ["Song (Clean Version)", "Song (Album Version (Edited))"]) {
+    const censored = checkVariantCompatibility(plainRequest, { title });
+    assert.ok(censored.contradictions.includes("content-rating-clean"), title);
+  }
 
   // Requested explicit, offered clean: also a hard contradiction.
   const explicitRequest = { trackName: "Song (Explicit)" };

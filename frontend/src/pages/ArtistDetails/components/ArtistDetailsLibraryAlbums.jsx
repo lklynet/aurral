@@ -1,5 +1,5 @@
+import ArtworkImage from "../../../components/ArtworkImage";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useDiscoverNavigation } from "../../../hooks/useDiscoverNavigation";
 import {
   Music,
   ChevronLeft,
@@ -10,10 +10,12 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
-import { navigateToLibraryAlbum } from "../../../utils/searchNavigation";
+import { getLibraryAlbumLink } from "../../../utils/searchNavigation";
 import { isVisibleLibraryAlbum } from "../utils";
+import { canSearchLibraryAlbum } from "../../../utils/libraryDestination";
 import TooltipButton from "../../../components/TooltipButton";
 import Tooltip from "../../../components/Tooltip";
+import { OptionalLink } from "../../../components/RouteLink";
 
 export function ArtistDetailsLibraryAlbums({
   artist,
@@ -30,12 +32,12 @@ export function ArtistDetailsLibraryAlbums({
   canDeleteAlbum,
   handleDeleteAlbumClick,
   canReSearchAlbum,
+  lidarrConnected = false,
   handleReSearchAlbum,
   handleReSearchMissingDownloads,
   onVisibleCoverIdsChange,
   artistName = "",
 }) {
-  const navigate = useDiscoverNavigation();
   const railRef = useRef(null);
   const visibleCoverIdsRef = useRef(new Set());
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -72,6 +74,7 @@ export function ArtistDetailsLibraryAlbums({
         downloadStatus.status,
       );
     const canReSearch =
+      canSearchLibraryAlbum(libraryAlbum, { lidarrConnected }) &&
       !isComplete &&
       !String(libraryAlbum.id ?? "").startsWith("pending-") &&
       !isActiveSearch &&
@@ -145,22 +148,14 @@ export function ArtistDetailsLibraryAlbums({
     });
   }, []);
 
-  const openLibraryAlbum = (libraryAlbum) => {
+  const libraryAlbumLink = (libraryAlbum, coverUrl) => {
     const hasFiles =
       (libraryAlbum.statistics?.sizeOnDisk ?? 0) > 0 ||
       (libraryAlbum.statistics?.trackFileCount ?? 0) > 0;
     if (libraryAlbum.canonicalId && hasFiles) {
-      navigate(`/library/album/${encodeURIComponent(libraryAlbum.canonicalId)}`);
-      return;
+      return { to: `/library/album/${encodeURIComponent(libraryAlbum.canonicalId)}` };
     }
-    const rgId = libraryAlbum.mbid || libraryAlbum.foreignAlbumId;
-    const coverUrl =
-      albumCovers[rgId] ||
-      albumCovers[libraryAlbum.id] ||
-      libraryAlbum.coverUrl ||
-      (fulfilledCoverIds?.has(rgId) ? artistCoverImage : "") ||
-      "";
-    navigateToLibraryAlbum(navigate, libraryAlbum, {
+    return getLibraryAlbumLink(libraryAlbum, {
       artistMbid: artist?.id,
       artistName: artistName || artist?.name || "",
       coverUrl,
@@ -332,11 +327,11 @@ export function ArtistDetailsLibraryAlbums({
               key={libraryAlbum.id}
               className="artist-library-card"
               data-cover-id={rgId}
-              onClick={() => openLibraryAlbum(libraryAlbum)}
+              data-artwork-scope
             >
-              <div className="artist-release-card__cover">
+              <div className="artist-release-card__cover" data-artwork>
                 {coverUrl ? (
-                  <img
+                  <ArtworkImage
                     src={coverUrl}
                     alt={libraryAlbum.albumName}
                     loading="lazy"
@@ -472,7 +467,7 @@ export function ArtistDetailsLibraryAlbums({
                               >
                                 <span className="artist-menu-item__main">
                                   <Trash2 className="artist-icon-sm" />
-                                  {libraryAlbum.managedBy === "aurral" ? "Remove album" : "Delete Album"}
+                                  {libraryAlbum.managedBy === "aurral" ? "Remove album" : "Delete album"}
                                 </span>
                               </button>
                             </>
@@ -484,7 +479,10 @@ export function ArtistDetailsLibraryAlbums({
                 </div>
               </div>
 
-              <div className="artist-card-button">
+              <OptionalLink
+                link={libraryAlbumLink(libraryAlbum, coverUrl)}
+                className="artist-card-button card-link"
+              >
                 <span className="artist-card-title-row">
                   <span className="artist-release-card__title artist-clamp-2">
                     {libraryAlbum.albumName}
@@ -493,7 +491,7 @@ export function ArtistDetailsLibraryAlbums({
                 {metaItems.length > 0 && (
                   <span className="artist-card-meta artist-truncate">{metaItems.join(" · ")}</span>
                 )}
-              </div>
+              </OptionalLink>
             </article>
           );
         })}

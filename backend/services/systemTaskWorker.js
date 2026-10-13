@@ -47,6 +47,11 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       downloadWorker.scheduleReuseLinkRepair(false);
       return;
     }
+    case "review-timeout": {
+      const { denyExpiredReviews } = await import("./downloadJobs/blockedJobReview.js");
+      await denyExpiredReviews();
+      return;
+    }
     case "quality-upgrade-check": {
       const { runQualityUpgradeCheck } = await import("./qualityProfileService.js");
       await runQualityUpgradeCheck({
@@ -78,6 +83,16 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       await runDueImportSourceSyncs();
       return;
     }
+    case "playback-library-scan": {
+      const { playlistManager } = await import("./playlists/playlistManager.js");
+      playlistManager.updateConfig(false);
+      const results = await playlistManager.scanLibrary();
+      const failures = (results || []).filter((result) => !result.ok);
+      if (failures.length) {
+        throw new Error(failures.map((result) => `${result.destination}: ${result.error.message}`).join("; "));
+      }
+      return;
+    }
     case "library-index-refresh": {
       return;
     }
@@ -94,12 +109,22 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       const { hasCompletedLibraryScan, scheduleLibraryScan } = await import(
         "./libraryScanWorker.js"
       );
-      if (!hasCompletedLibraryScan()) scheduleLibraryScan();
+      const { lidarrClient } = await import("./lidarrClient.js");
+      const { hasLidarrLibraryData } = await import("./libraryMediaStore.js");
+      if (!hasCompletedLibraryScan() || (!lidarrClient.isConfigured() && hasLidarrLibraryData())) {
+        scheduleLibraryScan();
+      }
       return;
     }
     case "weekly-flow-startup-check": {
       const { startWorkerIfPending } = await import("./downloadJobs/downloadWorker.js");
       await startWorkerIfPending();
+      return;
+    }
+    case "playlist-startup-publish": {
+      const { playlistManager } = await import("./playlists/playlistManager.js");
+      playlistManager.updateConfig(false);
+      await playlistManager.ensurePlaylists();
       return;
     }
     case "discovery-bootstrap": {
@@ -226,10 +251,15 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       const result = await migrateIdentityMarkers();
       if (result.moved > 0 || result.failed > 0) {
         console.log(
-          `[Library] Moved the identity marker to the grouping tag in ${result.moved} file(s); ${result.failed} file(s) failed`,
+          `[Library] Moved the identity marker to its own tag in ${result.moved} file(s); ${result.failed} file(s) failed`,
         );
       }
       await refreshUpgradeReadiness();
+      return;
+    }
+    case "lidarr-files-release": {
+      const { downloadWorker } = await import("./downloadJobs/downloadWorker.js");
+      await downloadWorker.releaseLidarrFiles();
       return;
     }
     case "lidarr-retry": {

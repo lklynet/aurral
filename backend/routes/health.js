@@ -8,6 +8,7 @@ import {
   getTicketmasterApiKey,
   getMetadataProviderHealthSnapshot,
 } from "../services/apiClients/index.js";
+import { API_CONTRACT } from "../config/apiContract.js";
 import { APP_VERSION } from "../config/constants.js";
 import {
   resolveRequestUser,
@@ -264,6 +265,7 @@ function buildBootstrapPayload(req) {
     dateTimeFormat: settings.dateTimeFormat,
     timestamp: new Date().toISOString(),
     appVersion: APP_VERSION,
+    api: API_CONTRACT,
     matcher: serializeBootstrapMatcherStatus(
       getMatcherStatus(),
       Boolean(currentUser),
@@ -282,7 +284,7 @@ function buildBootstrapPayload(req) {
     payload.rootFolderConfigured = lidarrConfigured || Boolean(resolveDownloadRoot());
     payload.lidarr = {
       configured: lidarrConfigured,
-      circuitOpen: lidarrClient.isCircuitOpen(),
+      circuitOpen: lidarrConfigured && lidarrClient.isCircuitOpen(),
     };
     payload.lidarrConfigured = lidarrConfigured;
     payload.lastfmConfigured = !!getLastfmApiKey();

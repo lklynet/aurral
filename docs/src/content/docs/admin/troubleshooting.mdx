@@ -37,13 +37,30 @@ Aurral deletes playlists and flows in the background. The page shows **removal q
 
 If a download client still shows work after the removal, check that client's queue. Aurral does not import results into the removed playlist. If Aurral cannot remove the item from the client, the removal fails and Aurral tries again.
 
+## Lidarr is unreachable
+
+When Lidarr fails several requests in a row, Aurral pauses Lidarr requests, and **Settings > Lidarr** says that Lidarr is unreachable. Lidarr's music stays in the Library, and Aurral does not take over Lidarr's artists and albums.
+
+1. Check that Lidarr is running and that the Aurral server can reach the **Server URL**.
+2. In **Settings > Lidarr**, select **Test connection**.
+
+Do not turn off **Enabled** to fix an outage. Turning Lidarr off removes its music from the Library. See [Turning Lidarr off](/using/library/#turning-lidarr-off).
+
+## Lidarr's music disappeared from the Library
+
+Aurral removes Lidarr's music when **Settings > Lidarr > Enabled** is off or the API key is empty. Turn Lidarr on, enter the API key, and save. Aurral scans the Lidarr root folders again.
+
 ## Albums are missing from the Library
 
-When Lidarr is connected, **Settings > Lidarr > Show available music only** is on by default. It hides albums without downloaded files, including albums that Aurral is still downloading. Turn it off to see them, or follow the download on the album page and in **Activity**. Without Lidarr, the Library shows every album that you add.
+The Library lists albums that have a file you can play, plus albums that Aurral is downloading. Follow a download on the album page and in **Activity**. Albums of an artist's discography that you don't have are on the artist's Discover page.
+
+An album whose files all went missing from disk leaves the list. If that happened to many albums at once, check the folders in **Settings > Storage health**, then select **Refresh** in Library.
 
 ## Settings warn that roots overlap
 
-Aurral shows this warning when the Downloads Folder and a Lidarr root folder are the same folder, or when one is inside the other. Aurral allows it, but Lidarr can rename, import, or delete files under its root folders. Aurral never moves files to remove the overlap.
+Aurral shows this warning when the Downloads Folder and a Lidarr root folder are the same folder, or when one is inside the other. The check applies your Lidarr remote path mappings. Aurral allows the overlap, but Lidarr can rename, import, or delete files under its root folders.
+
+While the folders overlap, Aurral treats files in a Lidarr root folder as Lidarr's and never deletes them. A Lidarr root folder inside the Downloads Folder is scanned only as Lidarr's. Aurral never moves files to remove the overlap.
 
 To clear the warning, set **Settings > Download clients > Downloads Folder > Path** to a folder outside every Lidarr root folder. Move the existing files yourself if you want them in the new folder.
 
@@ -129,23 +146,44 @@ This section applies only when `AUTH_PROXY_ENABLED` or `AUTH_PROXY_HEADER` is se
 - Set `AUTH_PROXY_TRUSTED_IPS` before you expose Aurral.
 - Reload the page. Aurral shows its sign-in page when the browser has no valid session. A reload lets your proxy authenticate again.
 - A short backend restart does not sign out an open tab. If the log repeats `WebSocket server initialized` and `Server running`, the backend keeps restarting. Check the container or the file-watcher process.
-- If an error such as "Error Loading Artist" stays on the page, your proxy answers rejected API calls with a JSON error in Aurral's format. Let the proxy return its own redirect or `401` instead.
+- If an error such as "Error loading artist" stays on the page, your proxy answers rejected API calls with a JSON error in Aurral's format. Let the proxy return its own redirect or `401` instead.
 - For Authelia or another forward-auth proxy, set `AUTH_PROXY_DOMAIN` to your sign-in address.
 - For Authentik, `curl -i https://your-aurral-host/outpost.goauthentik.io/ping` must return `204`. If it returns Aurral HTML or another sign-in redirect, route `/outpost.goauthentik.io` directly to the Authentik outpost. Do not apply `auth_request` to that route.
 - If an Authentik logout returns to Aurral's sign-in page, set `AUTH_PROXY_LOGOUT_URL=https://your-aurral-host/outpost.goauthentik.io/sign_out`. Check the spelling of the variable name.
 - If **Log out** is missing, `AUTH_PROXY_LOGOUT_URL` is not set. Aurral hides **Log out** when it cannot end the proxy session.
 
+## Media server scans wait after downloads
+
+Aurral batches scan requests for Navidrome, Plex, and Jellyfin after files change. **Settings > Tasks** shows the queued **Media server scan**. If a server is unavailable, the task retries and records the failure. A full Library scan requests another media server scan.
+
 ## Docker memory rises while tasks run
 
 Library scans, discovery refreshes, playlist downloads, and other tasks run in their own background processes. Aurral starts each process when it has work and stops it about a minute after the work finishes, so `docker stats` rises during tasks and falls back when Aurral is idle. **Settings > Tasks** shows a stopped process as **Standby**.
+
+## A background task restarts after it runs out of memory
+
+Each background process stops when its JavaScript heap reaches 2 GB. The log then shows a line like `[BackgroundWorkers] library exited (SIGABRT); running ...; restarting`. It names the job that was running and the memory that the process used at its last check, and Aurral starts the process again.
+
+If a large library needs more memory, raise `AURRAL_WORKER_MAX_HEAP_MB`. See [Environment variables](/admin/environment/#resource-tuning).
+
+To capture a heap snapshot for a bug report, create a `diagnostics` folder in your app data folder, set this variable, and restart Aurral:
+
+```yaml
+environment:
+  - NODE_OPTIONS=--heapsnapshot-near-heap-limit=1 --diagnostic-dir=/config/diagnostics
+```
+
+Node then writes one `.heapsnapshot` file to `/config/diagnostics` when a process nears its limit. Writing it pauses the process and needs about as much free memory as the heap again, so remove the variable after you have the file.
 
 ## Docker memory looks high after you view cover art
 
 The official image preloads jemalloc, so Sharp returns free memory to the system after it processes cover art.
 
-The web app loads artwork directly from the provider links, and the browser caches it. Subsonic clients that need Aurral to serve artwork get covers on demand. Aurral caches these as 512 px WebP images.
+The web app loads artwork directly from the provider links, and the browser caches it. Fanart.tv thumbnails use 200 px or 400 px previews according to the image's display size and screen density. Larger artwork uses the original image. If a preview is unavailable, Aurral retries the original before showing the existing fallback. Thumbnail loading does not add a server-side artwork cache.
 
-The artwork disk cache holds up to 256 MB and removes the least recently used images first. To start from a clean memory baseline, restart Aurral.
+Subsonic clients that need Aurral to serve artwork get covers on demand. Aurral caches these as 512 px WebP images.
+
+The artwork disk cache holds up to 256 MB and removes the least recently used images first. This cache handles at most two cover downloads at a time. Sharp does not retain an image-processing cache. To start from a clean memory baseline, restart Aurral.
 
 Aurral stores artwork links in SQLite, separately from the cached image files. When the cache removes an image, Aurral can fetch it again without a new metadata lookup.
 

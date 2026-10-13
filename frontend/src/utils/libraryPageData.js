@@ -118,3 +118,21 @@ export const getCachedAlbumTracks = (album, tracksById) => {
     : queryClient.getQueryData(queryKey)?.tracks;
   return cached || album?.trackIds?.map((id) => tracksById.get(String(id))).filter(Boolean) || [];
 };
+
+export const yearOf = (value) => /^(\d{4})/.exec(String(value || "").trim())?.[1] || "";
+
+const RELEASE_TYPES = { single: "Single", ep: "EP", broadcast: "Broadcast" };
+
+export const releaseTypeOf = (album) => {
+  const metadata = album?.metadata || {};
+  const type = metadata.albumType || metadata.releaseType || [metadata.tags?.releasetype].flat()[0];
+  return RELEASE_TYPES[String(type || "").trim().toLowerCase()] || null;
+};
+
+export const albumCardMeta = (album, { available, total }) => [
+  releaseTypeOf(album),
+  yearOf(album?.releaseDate),
+  total && available < total
+    ? `${available}/${total} available`
+    : `${total || 0} ${total === 1 ? "track" : "tracks"}`,
+].filter(Boolean).join(" · ");

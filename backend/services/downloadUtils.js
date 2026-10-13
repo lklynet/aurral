@@ -1,13 +1,11 @@
-import { execFile } from "child_process";
-import { promisify } from "util";
 import path from "path";
 import fs from "fs/promises";
 import { parseFile } from "music-metadata";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
+import { AURRAL_IDENTITY_TAG, writeAudioTags } from "./audioTags.js";
 
-const execFileAsync = promisify(execFile);
-const AURRAL_IDENTITY_PREFIX = "AURRAL_IDS=";
+const AURRAL_IDENTITY_PREFIX = `${AURRAL_IDENTITY_TAG}=`;
 
 export function sanitizePathPart(value, fallback = "Unknown") {
   const text = String(value || "")
@@ -16,12 +14,15 @@ export function sanitizePathPart(value, fallback = "Unknown") {
   return text || fallback;
 }
 
-// "07 - Title.flac" when the album position is known, so a folder lists in
-// album order and two tracks with one title keep distinct names.
+// "07 - Title.flac" when the album position is known, or "2-07 - Title.flac"
+// past the first disc, so a folder lists in album order and two tracks with
+// one title keep distinct names.
 export function buildTrackFileName(job, ext) {
   const title = sanitizePathPart(job?.trackName, "Unknown Track");
-  const position = normalizePositiveInteger(job?.trackNumber);
-  return `${position ? `${String(position).padStart(2, "0")} - ` : ""}${title}${ext}`;
+  const track = normalizePositiveInteger(job?.trackNumber);
+  const disc = normalizePositiveInteger(job?.discNumber);
+  const position = track ? `${disc > 1 ? `${disc}-` : ""}${String(track).padStart(2, "0")} - ` : "";
+  return `${position}${title}${ext}`;
 }
 
 export function normalizePositiveInteger(value) {
@@ -50,15 +51,13 @@ export function stringifyStringListJson(value) {
   return normalized.length > 0 ? JSON.stringify(normalized) : null;
 }
 
-export function buildAurralIdentityComment(metadata = {}) {
+export function buildAurralIdentity(metadata = {}) {
   const identity = Object.fromEntries(
     ["artistMbid", "albumMbid", "trackMbid"]
       .map((key) => [key, String(metadata?.[key] || "").trim()])
       .filter(([, value]) => value),
   );
-  return Object.keys(identity).length > 0
-    ? `${AURRAL_IDENTITY_PREFIX}${JSON.stringify(identity)}`
-    : null;
+  return Object.keys(identity).length > 0 ? identity : null;
 }
 
 export function parseAurralIdentityComment(value) {
@@ -74,14 +73,33 @@ export function parseAurralIdentityComment(value) {
   return null;
 }
 
-export function readCommentIdentity(metadata) {
-  const nativeComments = Object.values(metadata?.native || {})
-    .flatMap((tags) => (Array.isArray(tags) ? tags : []))
+const nativeTags = (metadata) => Object.values(metadata?.native || {})
+  .flatMap((tags) => (Array.isArray(tags) ? tags : []));
+
+// Older versions kept the marker in the comment, then the grouping tag.
+export function readLegacyAurralIdentity(metadata) {
+  const nativeComments = nativeTags(metadata)
     .filter((tag) => ["txxx:comment", "comm"].includes(String(tag?.id || "").toLowerCase()))
     .map((tag) => tag.value);
-  const native = parseAurralIdentityComment(nativeComments);
-  const common = parseAurralIdentityComment(metadata?.common?.comment);
-  return native || common ? { ...(native || {}), ...(common || {}) } : null;
+  const found = [
+    parseAurralIdentityComment(nativeComments),
+    parseAurralIdentityComment(metadata?.common?.comment),
+    parseAurralIdentityComment(metadata?.common?.grouping),
+  ].filter(Boolean);
+  return found.length ? Object.assign({}, ...found) : null;
+}
+
+const OWN_IDENTITY_TAG = new RegExp(`(^|:)${AURRAL_IDENTITY_TAG}$`, "i");
+
+export function readAurralIdentity(metadata) {
+  const tag = nativeTags(metadata).find((entry) => OWN_IDENTITY_TAG.test(String(entry?.id || "")));
+  let own = null;
+  try {
+    const parsed = JSON.parse(String(tag?.value ?? ""));
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) own = parsed;
+  } catch {}
+  const legacy = readLegacyAurralIdentity(metadata);
+  return own || legacy ? { ...(legacy || {}), ...(own || {}) } : null;
 }
 
 export function buildResolvedJobTrack(job, payloadTrack = {}) {
@@ -96,6 +114,7 @@ export function buildResolvedJobTrack(job, payloadTrack = {}) {
     releaseYear: job.releaseYear || track.releaseYear,
     durationMs: job.durationMs ?? track.durationMs ?? null,
     trackNumber: normalizePositiveInteger(job.trackNumber ?? track.trackNumber),
+    discNumber: normalizePositiveInteger(job.discNumber ?? track.discNumber),
     albumTrackCount: normalizePositiveInteger(job.albumTrackCount ?? track.albumTrackCount),
     albumTrackTitles: normalizeStringList(
       (job.albumTrackTitles?.length ? job.albumTrackTitles : null) || track.albumTrackTitles,
@@ -197,43 +216,8 @@ export async function commitDownloadedFile(
   return resolvedTarget;
 }
 
-async function rewriteAudioTags(filePath, tags) {
-  const sourcePath = path.resolve(filePath);
-  const ext = path.extname(sourcePath) || ".m4a";
-  const taggedPath = path.join(
-    path.dirname(sourcePath),
-    `.${path.basename(sourcePath, ext)}.${process.pid}-${Date.now()}.tagged${ext}`,
-  );
-  const args = [
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-nostdin",
-    "-y",
-    "-i",
-    sourcePath,
-    "-map",
-    "0",
-    "-c",
-    "copy",
-  ];
-  for (const [key, value] of tags) {
-    args.push("-metadata", `${key}=${value}`);
-  }
-  args.push(taggedPath);
-  try {
-    await execFileAsync("ffmpeg", args, { timeout: 120000 });
-    await fs.rename(taggedPath, sourcePath);
-    return sourcePath;
-  } catch (error) {
-    await fs.rm(taggedPath, { force: true }).catch(() => {});
-    const detail = String(error?.stderr || error?.message || error).trim().slice(-500);
-    throw new Error(`Failed to write audio metadata: ${detail}`);
-  }
-}
-
-// Tags a file that is already at its final location. Tagging rewrites the whole
-// file, so doing it after the import keeps that I/O on the library disk rather
+// Tags a file that is already at its final location. Tagging writes a copy of
+// the file, so doing it after the import keeps that I/O on the library disk rather
 // than in the download client's folder, which may be a slow network mount. By
 // then the download is in place and its source is gone, so a failure is logged
 // instead of failing the job, which could not be retried anyway.
@@ -249,36 +233,29 @@ export async function writeImportedFileMetadata(filePath, metadata = {}, { sourc
   }
 }
 
-// A compilation's tracks keep their own performer as the artist.
+// A compilation's tracks keep their own performer as the artist. The download
+// job knows which track it fetched, so its identity replaces the uploader's.
 export async function writeAudioMetadata(filePath, metadata = {}) {
   const performer = isVariousArtistsCredit(metadata.artistName, metadata.artistMbid)
     ? metadata.artistAliases?.[0]
     : null;
-  const tags = [
-    ["title", metadata.trackName],
-    ["artist", performer || metadata.artistName],
-    ["album_artist", metadata.artistName],
-    ["album", metadata.albumName],
-    ["musicbrainz_artistid", performer ? null : metadata.artistMbid],
-    ["musicbrainz_albumartistid", metadata.artistMbid],
-    ["musicbrainz_albumid", metadata.albumMbid],
-    ["musicbrainz_releasegroupid", metadata.albumMbid],
-    ["musicbrainz_recordingid", metadata.trackMbid],
-    ["musicbrainz_trackid", metadata.trackMbid],
-    ["grouping", buildAurralIdentityComment(metadata)],
-    ["date", metadata.releaseYear],
-    ["track", normalizePositiveInteger(metadata.trackNumber)],
-  ]
-    .filter(([, value]) => value != null && String(value).trim())
-    .map(([key, value]) => [key, String(value).trim()]);
-  return rewriteAudioTags(filePath, tags);
+  return writeAudioTags(filePath, {
+    title: metadata.trackName,
+    artist: performer || metadata.artistName,
+    albumArtist: metadata.artistName,
+    album: metadata.albumName,
+    artistMbid: performer ? undefined : metadata.artistMbid,
+    albumArtistMbid: metadata.artistMbid,
+    releaseGroupMbid: metadata.albumMbid,
+    recordingMbid: metadata.trackMbid,
+    year: metadata.releaseYear,
+    trackNumber: metadata.trackNumber,
+    discNumber: metadata.discNumber,
+  }, { identity: buildAurralIdentity(metadata) });
 }
 
-export async function moveIdentityMarkerToGrouping(filePath, identity) {
-  return rewriteAudioTags(filePath, [
-    ["grouping", buildAurralIdentityComment(identity)],
-    ["comment", ""],
-  ]);
+export async function moveIdentityMarkerToOwnTag(filePath, identity) {
+  return writeAudioTags(filePath, {}, { identity });
 }
 
 export async function repairYtdlpMetadata(jobs = []) {
@@ -297,18 +274,15 @@ export async function repairYtdlpMetadata(jobs = []) {
     seen.add(filePath);
     result.scanned += 1;
     try {
-      const { common } = await parseFile(filePath, { skipCovers: true });
+      const metadata = await parseFile(filePath, { skipCovers: true });
+      const { common } = metadata;
       const expected = [
         [common.title, job.trackName],
         [common.artist, job.artistName],
         [common.albumartist, job.artistName],
         [common.album, job.albumName],
       ].filter(([, value]) => String(value || "").trim());
-      const embeddedIdentity = Object.assign(
-        {},
-        parseAurralIdentityComment(common.comment) || {},
-        parseAurralIdentityComment(common.grouping) || {},
-      );
+      const embeddedIdentity = readAurralIdentity(metadata) || {};
       const expectedIdentity = [
         [
           common.musicbrainz_albumartistid ||

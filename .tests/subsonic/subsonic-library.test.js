@@ -16,7 +16,10 @@ const [isolatedState, { db }, subsonic, libraryStore] =
   );
 
 const {
+  getSong,
+  getAlbum,
   getAlbumList,
+  getGenres,
   getMusicDirectory,
   getTopSongs,
   idFor,
@@ -201,6 +204,59 @@ test("implements starred and frequent album lists without inventing ratings", ()
     assert.deepEqual(getAlbumList({ musicFolderId: "2" }, user), []);
   } finally {
     db.prepare("DELETE FROM users WHERE id = ?").run(user.id);
+  }
+});
+
+test("recent albums follow each user's latest plays of available albums", () => {
+  const insertUser = db.prepare(
+    "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, '', 'user', '{}') RETURNING id",
+  );
+  const listener = insertUser.get("subsonic-recent-listener");
+  const otherListener = insertUser.get("subsonic-recent-other");
+  const quietListener = insertUser.get("subsonic-recent-quiet");
+  const insertPlay = db.prepare(`
+    INSERT INTO play_events
+      (user_id, track_id, title, artist, album, album_key, played_at, source, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'subsonic', ?)
+  `);
+  const play = (user, trackTitle, albumTitle, playedAt) => insertPlay.run(
+    user.id,
+    idFor("song", `test-track:${trackTitle}`),
+    trackTitle,
+    "Artist A",
+    albumTitle,
+    `test-album:${albumTitle}`,
+    playedAt,
+    playedAt,
+  );
+  const recentTitles = (user, options = {}) =>
+    getAlbumList({ type: "recent", ...options }, user).map((album) => album.title);
+  const setAvailable = db.prepare(
+    "UPDATE library_media_files SET available = ? WHERE path LIKE '%/Other Artist Song.flac'",
+  );
+
+  try {
+    play(listener, "Old Song", "Old Album", 1000);
+    play(listener, "New Song", "New Album", 2000);
+    play(listener, "Other Artist Song", "Artist A Collection", 3000);
+    play(otherListener, "Other Artist Song", "Artist A Collection", 9000);
+    play(otherListener, "New Song", "New Album", 8000);
+
+    assert.deepEqual(recentTitles(listener), ["Artist A Collection", "New Album", "Old Album"]);
+
+    play(listener, "Old Song", "Old Album", 4000);
+    assert.deepEqual(recentTitles(listener), ["Old Album", "Artist A Collection", "New Album"]);
+    assert.deepEqual(recentTitles(listener, { size: 1, offset: 1 }), ["Artist A Collection"]);
+    assert.deepEqual(recentTitles(otherListener), ["Artist A Collection", "New Album"]);
+
+    setAvailable.run(0);
+    assert.deepEqual(recentTitles(listener), ["Old Album", "New Album"]);
+
+    assert.deepEqual(recentTitles(quietListener), []);
+  } finally {
+    setAvailable.run(1);
+    db.prepare("DELETE FROM users WHERE id IN (?, ?, ?)")
+      .run(listener.id, otherListener.id, quietListener.id);
   }
 });
 
@@ -446,4 +502,68 @@ test("streams the available release when a recording belongs to multiple albums"
     db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(single.id, album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }
+test("reports registered audio types for library song formats", () => {
+  const artist = upsertLibraryArtist({ identityKey: "mime:artist", name: "MIME Artist" });
+  const album = upsertLibraryAlbum({ identityKey: "mime:album", artistId: artist.id, title: "MIME Album", albumArtist: artist.name });
+  for (const [format, expected] of [["flac", "audio/flac"], ["m4a", "audio/mp4"], ["opus", "audio/ogg"], ["ogg", "audio/ogg"], ["oga", "audio/ogg"], ["aiff", "audio/x-aiff"], ["mp3", "audio/mpeg"]]) {
+    const track = upsertLibraryTrack({ identityKey: `mime:${format}`, title: `MIME ${format}`, artistName: "MIME Artist" });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+    upsertLibraryMediaFile({ trackId: track.id, source: "lidarr", path: `/test/mime.${format}`, format, available: true });
+    assert.equal(getSong(idFor("song", `mime:${format}`)).contentType, expected);
+  }
+});
+
+test("reports known file bitrates in kbps and omits unknown ones", () => {
+  const artist = upsertLibraryArtist({ identityKey: "bitrate:artist", name: "Bitrate Artist" });
+  const album = upsertLibraryAlbum({ identityKey: "bitrate:album", artistId: artist.id, title: "Bitrate Album", albumArtist: artist.name });
+  const files = [
+    { title: "Lidarr FLAC", source: "lidarr", format: "flac", quality: { audioFormat: "FLAC", audioBitRate: "1012 kbps" } },
+    { title: "Scanned MP3", source: "aurral", format: "mp3", quality: { format: "MPEG 1 Layer 3", bitrate: 128000 } },
+    { title: "Lidarr Unknown", source: "lidarr", format: "mp3", quality: { audioFormat: "MP3", audioBitRate: "0 kbps" } },
+    { title: "No Quality", source: "aurral", format: "ogg", quality: null },
+  ];
+  files.forEach((file, index) => {
+    const track = upsertLibraryTrack({ identityKey: `bitrate:${file.title}`, title: file.title, artistName: artist.name });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: index + 1 });
+    upsertLibraryMediaFile({ trackId: track.id, source: file.source, path: `/test/bitrate/${file.title}.${file.format}`, format: file.format, quality: file.quality, available: true });
+  });
+
+  const songs = getAlbum(idFor("album", "bitrate:album")).song;
+  assert.deepEqual(
+    songs.map((song) => [song.title, song.bitRate]),
+    [["Lidarr FLAC", 1012], ["Scanned MP3", 128], ["Lidarr Unknown", undefined], ["No Quality", undefined]],
+  );
+  assert.equal(Object.hasOwn(songs[2], "bitRate"), false);
+  assert.equal(Object.hasOwn(songs[3], "bitRate"), false);
+});
+
+test("splits semicolon genre tags into separate Subsonic genres", () => {
+  const artist = upsertLibraryArtist({ identityKey: "split-genre:artist", name: "Split Genre Artist" });
+  const album = upsertLibraryAlbum({
+    identityKey: "split-genre:album",
+    artistId: artist.id,
+    title: "Split Genre Album",
+    albumArtist: artist.name,
+    metadata: { genre: "Metalcore;Melodic Metalcore; Rock;;Rock" },
+  });
+  const track = upsertLibraryTrack({
+    identityKey: "split-genre:track",
+    title: "Split Genre Song",
+    artistName: artist.name,
+    metadata: { genres: ["Alt/Indie", "Folk, World, & Country"] },
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  upsertLibraryMediaFile({ trackId: track.id, source: "lidarr", path: "/test/split-genre.flac", format: "flac", available: true });
+
+  const result = getAlbum(idFor("album", "split-genre:album"));
+  const expected = ["Metalcore", "Melodic Metalcore", "Rock", "Alt/Indie", "Folk, World, & Country"];
+  assert.equal(result.genre, "Metalcore");
+  assert.deepEqual(result.genres, expected.map((name) => ({ name })));
+  assert.equal(result.song[0].genre, "Metalcore");
+  assert.deepEqual(result.song[0].genres, expected.map((name) => ({ name })));
+  assert.deepEqual(
+    getGenres().filter((genre) => expected.includes(genre.value) || genre.value.includes(";")),
+    [...expected].sort((left, right) => left.localeCompare(right))
+      .map((value) => ({ value, albumCount: 1, songCount: 1 })),
+  );
 });

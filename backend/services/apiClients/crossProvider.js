@@ -2,6 +2,7 @@ import axios from "../../../lib/axiosFetch.js";
 import createCache from "./simpleCache.js";
 import { dbOps } from "../../db/helpers/index.js";
 import { resolveAlbumByArtistAndTitle } from "../providers/brainzmashProvider.js";
+import { musicbrainzResolveArtistMbidByName } from "./musicbrainz.js";
 
 const youtubeVideoCache = createCache(24 * 3600);
 
@@ -16,10 +17,11 @@ export async function resolveDeezerAlbumToMbid(
   albumName,
   deezerAlbumId,
 ) {
-  const dzKey = `dz:${String(deezerAlbumId || "").replace(/^dz-/, "")}`;
+  const deezerId = String(deezerAlbumId || "").replace(/^dz-/, "").trim();
+  const dzKey = deezerId ? `dz:${deezerId}` : null;
   const aaKey = normalizeArtistAlbumKey(artistName, albumName);
   const cached =
-    dbOps.getDeezerMbidCache(dzKey) || dbOps.getDeezerMbidCache(aaKey);
+    (dzKey && dbOps.getDeezerMbidCache(dzKey)) || dbOps.getDeezerMbidCache(aaKey);
   if (cached) return cached;
 
   const artist = String(artistName || "").trim();
@@ -32,12 +34,22 @@ export async function resolveDeezerAlbumToMbid(
       albumTitle: album,
     });
     if (!id) return null;
-    dbOps.setDeezerMbidCache(dzKey, id);
+    if (dzKey) dbOps.setDeezerMbidCache(dzKey, id);
     dbOps.setDeezerMbidCache(aaKey, id);
     return id;
   } catch (e) {
     return null;
   }
+}
+
+export async function resolveArtistAndAlbumMbids({ artistName, albumName, deezerAlbumId }) {
+  const artist = String(artistName || "").trim();
+  const album = String(albumName || "").trim();
+  const [artistMbid, albumMbid] = await Promise.all([
+    musicbrainzResolveArtistMbidByName(artist),
+    album ? resolveDeezerAlbumToMbid(artist, album, deezerAlbumId) : null,
+  ]);
+  return { artistMbid: artistMbid || null, albumMbid: albumMbid || null };
 }
 export async function youtubeFindTopSongVideo(artistName, trackTitle) {
   const artist = String(artistName || "").trim();

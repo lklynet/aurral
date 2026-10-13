@@ -45,6 +45,7 @@ export function buildTrackRequest(context = {}) {
     albumMbid: cleanText(context.albumMbid || context.releaseGroupMbid),
     releaseMbid: cleanText(context.releaseMbid),
     recordingMbid: cleanText(context.recordingMbid || context.trackMbid),
+    recordingMbidAliases: cleanTextList(context.recordingMbidAliases),
     isrc: cleanText(context.isrc),
     variants: extractVariants(trackName),
     albumTrackCount: cleanPositiveInt(context.albumTrackCount),

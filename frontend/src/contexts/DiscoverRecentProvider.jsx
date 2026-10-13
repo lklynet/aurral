@@ -145,7 +145,7 @@ function buildDiscoverRecentLabel(path, state = {}) {
     const type = params.get("type");
     if (type === "recommended") {
       const tag = params.get("tag");
-      return tag ? `Because You Like ${tag}` : "Recommended";
+      return tag ? `Because you like ${tag}` : "Recommended";
     }
     if (type === "trending") return "Trending";
     if (type === "tag") {

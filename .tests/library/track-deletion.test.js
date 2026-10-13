@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import fsp from "node:fs/promises";
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { db } from "../../backend/config/db-sqlite.js";
@@ -28,9 +27,16 @@ import {
   withPipelineCommitLock,
 } from "../../backend/services/downloadJobs/downloadCancellation.js";
 import { createMockHttpServer } from "../helpers/backendTestHarness.js";
+import { resolveDownloadRoot } from "../../backend/services/downloadPaths.js";
+
+async function downloadsDir() {
+  const root = resolveDownloadRoot();
+  await mkdir(root, { recursive: true });
+  return root;
+}
 
 test("deletes Aurral-owned track files without Lidarr", async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-"));
+  const root = await mkdtemp(path.join(await downloadsDir(), "aurral-track-delete-"));
   const filePath = path.join(root, "Artist", "Album", "01 Track.flac");
   const identity = `track-delete-${process.pid}-${Date.now()}`;
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -112,7 +118,7 @@ test("deletes Aurral-owned track files without Lidarr", async (t) => {
 });
 
 test("deleting a library track removes it from playlists that referenced its download", async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-playlist-"));
+  const root = await mkdtemp(path.join(await downloadsDir(), "aurral-track-delete-playlist-"));
   const filePath = path.join(root, "Artist", "Single", "01 Track.flac");
   const identity = `track-delete-playlist-${process.pid}-${Date.now()}`;
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -184,7 +190,7 @@ test("deleting a library track removes it from playlists that referenced its dow
 });
 
 test("deleting a library track preserves a file still referenced by a playlist job", async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-shared-file-"));
+  const root = await mkdtemp(path.join(await downloadsDir(), "aurral-track-delete-shared-file-"));
   const filePath = path.join(root, "Artist", "Album", "01 Track.flac");
   const identity = `track-delete-shared-file-${process.pid}-${Date.now()}`;
   const mbid = `${identity}-mbid`;
@@ -244,7 +250,7 @@ test("deleting a library track preserves a file still referenced by a playlist j
 });
 
 test("deletes a library file committed while track removal waits for its lock", async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-commit-race-"));
+  const root = await mkdtemp(path.join(await downloadsDir(), "aurral-track-delete-commit-race-"));
   const originalPath = path.join(root, "Artist", "Album", "Original.flac");
   const committedPath = path.join(root, "Artist", "Album", "Committed.flac");
   const identity = `track-delete-commit-race-${process.pid}-${Date.now()}`;
@@ -318,7 +324,7 @@ test("deletes a library file committed while track removal waits for its lock", 
 });
 
 test("records successful Aurral deletions when another file fails", async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-partial-"));
+  const root = await mkdtemp(path.join(await downloadsDir(), "aurral-track-delete-partial-"));
   const deletedPath = path.join(root, "Artist", "Album", "01 Track.flac");
   const failedPath = path.join(root, "Artist", "Album", "02 Track.flac");
   const identity = `track-delete-partial-${process.pid}-${Date.now()}`;
@@ -413,7 +419,7 @@ test("records successful Aurral deletions when another file fails", async (t) =>
 });
 
 test("keeps a library job and track when provider cancellation fails, then retries", async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "aurral-track-delete-cancel-"));
+  const root = await mkdtemp(path.join(await downloadsDir(), "aurral-track-delete-cancel-"));
   const filePath = path.join(root, "Artist", "Album", "Track.flac");
   const identity = `track-delete-cancel-${process.pid}-${Date.now()}`;
   const searchId = `search-${identity}`;
@@ -500,4 +506,84 @@ test("keeps a library job and track when provider cancellation fails, then retri
     await mock.close();
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("deletes a scanned Lidarr track through the Lidarr album with the same MusicBrainz ID", async (t) => {
+  const identity = `lidarr-track-delete-${process.pid}-${Date.now()}`;
+  const albumMbid = "d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1";
+  const trackMbid = "d2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2";
+  const artist = upsertLibraryArtist({ identityKey: `${identity}:artist`, name: "Scanned Artist" });
+  const album = upsertLibraryAlbum({
+    identityKey: `release-group:${albumMbid}`,
+    mbid: albumMbid,
+    releaseGroupMbid: albumMbid,
+    artistId: artist.id,
+    title: "Scanned Album",
+    metadata: { tags: {} },
+  });
+  const track = upsertLibraryTrack({
+    identityKey: `recording:${trackMbid}`,
+    mbid: trackMbid,
+    title: "Scanned Track",
+    artistName: "Scanned Artist",
+    metadata: { tags: {} },
+  });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "lidarr",
+    path: `/music/${identity}/01 Scanned Track.flac`,
+    available: true,
+  });
+  t.after(() => {
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  });
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getAlbumByMbid", async (mbid) => (mbid === albumMbid ? { id: 70 } : null));
+  t.mock.method(lidarrClient, "getTracksByAlbumId", async (albumId) =>
+    albumId === 70 ? [{ id: 1, foreignRecordingId: trackMbid, trackFileId: 99, hasFile: true }] : []);
+  const deleted = t.mock.method(lidarrClient, "deleteTrackFile", async () => {});
+
+  assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
+  assert.deepEqual(deleted.mock.calls.map((call) => call.arguments[0]), [99]);
+});
+
+test("a scanned Lidarr track is not deleted when only a title matches more than one Lidarr track", async (t) => {
+  const identity = `lidarr-title-delete-${process.pid}-${Date.now()}`;
+  const albumMbid = "d3d3d3d3-d3d3-4d3d-8d3d-d3d3d3d3d3d3";
+  const artist = upsertLibraryArtist({ identityKey: `${identity}:artist`, name: "Title Artist" });
+  const album = upsertLibraryAlbum({
+    identityKey: `release-group:${albumMbid}`,
+    mbid: albumMbid,
+    releaseGroupMbid: albumMbid,
+    artistId: artist.id,
+    title: "Title Album",
+  });
+  const track = upsertLibraryTrack({ identityKey: `${identity}:track`, title: "Intro", artistName: "Title Artist" });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "lidarr",
+    path: `/music/${identity}/01 Intro.flac`,
+    available: true,
+  });
+  t.after(() => {
+    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  });
+  t.mock.method(lidarrClient, "isConfigured", () => true);
+  t.mock.method(lidarrClient, "getAlbumByMbid", async () => ({ id: 71 }));
+  t.mock.method(lidarrClient, "getTracksByAlbumId", async () => [
+    { id: 1, title: "Intro", trackFileId: 101, hasFile: true },
+    { id: 2, title: "Intro", trackFileId: 102, hasFile: true },
+  ]);
+  const deleted = t.mock.method(lidarrClient, "deleteTrackFile", async () => {});
+
+  const result = await libraryManager.deleteTrack(track.id);
+
+  assert.equal(result.success, false);
+  assert.equal(deleted.mock.callCount(), 0);
 });

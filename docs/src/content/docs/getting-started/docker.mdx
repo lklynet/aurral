@@ -75,7 +75,7 @@ Aurral 3.0 removes support for data and settings from older versions. Before you
 
 - Each item under **Blocks the update** names what Aurral still needs to finish. Most items finish on their own in the background after Aurral starts. Select **Check again** to run the remaining tasks.
 - **Files to review** lists older files in the Downloads Folder that Aurral could not move safely, with the reason for each. Move or delete each file yourself, then select **Check again**.
-- **Still in use** lists settings and requests that 3.0 no longer accepts, such as the `WEEKLY_FLOW_FOLDER` variable or a data folder at `/app/backend/data`. They do not block the update, but change them first, or Aurral 3.0 will not start.
+- **Still in use** lists settings and requests that 3.0 no longer accepts, such as the `WEEKLY_FLOW_FOLDER` variable or a data folder at `/app/backend/data`. They do not block this check, but Aurral 3.0 refuses to start while any of them is in use. Change them before you update.
 
 If you skip from an older 2.x version straight to 3.0, Aurral 3.0 will stop without changing anything. Run the `2` image tag once, wait for the check to pass, then change to `latest`.
 

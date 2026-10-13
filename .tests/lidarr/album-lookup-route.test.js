@@ -14,6 +14,7 @@ import {
 } from "../../backend/services/libraryManagementStore.js";
 import {
   linkLibraryAlbumTrack,
+  storeLibraryAlbumTrackList,
   upsertLibraryAlbum,
   upsertLibraryArtist,
   upsertLibraryMediaFile,
@@ -389,6 +390,45 @@ test("album batch lookup bypasses stale cache and unrelated broken albums", asyn
   }
 });
 
+test("library album lookup counts the tracks of the release a scanned album lists", async () => {
+  const key = `album-lookup-listed-${process.pid}-${Date.now()}`;
+  const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, name: "Listed Lookup Artist" });
+  const album = upsertLibraryAlbum({
+    identityKey: `${key}:album`,
+    mbid: "55555555-5555-4555-8555-555555555555",
+    artistId: artist.id,
+    title: "Listed Lookup Album",
+  });
+  const recordings = ["66666666-6666-4666-8666-666666666661", "66666666-6666-4666-8666-666666666662"];
+  const owned = upsertLibraryTrack({ identityKey: `recording:${recordings[0]}`, mbid: recordings[0], title: "Owned" });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: owned.id, trackNumber: 1 });
+  setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
+  upsertLibraryMediaFile({ trackId: owned.id, albumId: album.id, source: "aurral", path: `/tmp/${key}/owned.flac` });
+  storeLibraryAlbumTrackList(album.id, {
+    release: { id: album.mbid, tracks: recordings.map((recordingId, index) => ({ recordingId, title: ["Owned", "Missing"][index], trackPosition: index + 1 })) },
+  });
+  invalidateLibraryQueryCache();
+  const routes = new Map();
+  registerMisc({ get() {}, post(path, handler) { routes.set(path, handler); } });
+  let body;
+  try {
+    await routes.get("/albums/lookup/batch")(
+      { body: { mbids: [album.mbid] } },
+      { status() { return this; }, json(value) { body = value; return this; } },
+    );
+    const { status, trackListComplete, trackCount, trackFileCount, percentOfTracks } = body[album.mbid];
+    assert.deepEqual({ status, trackListComplete, trackCount, trackFileCount, percentOfTracks },
+      { status: "partial", trackListComplete: true, trackCount: 2, trackFileCount: 1, percentOfTracks: 50 });
+  } finally {
+    db.prepare("DELETE FROM library_management WHERE entity_kind = 'album' AND entity_id = ?").run(album.id);
+    db.prepare("DELETE FROM library_media_files WHERE album_id = ?").run(album.id);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
+    db.prepare(`DELETE FROM library_tracks WHERE mbid IN (?, ?)`).run(...recordings);
+    db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+    db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+  }
+});
+
 test("library album lookup reports partial ownership, its manager, and the complete track count", async () => {
   const key = `album-lookup-partial-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
@@ -415,7 +455,6 @@ test("library album lookup reports partial ownership, its manager, and the compl
     artistName: artist.name,
   });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: ownedTrack.id, trackNumber: 1 });
-  linkLibraryAlbumTrack({ albumId: album.id, trackId: missingTrack.id, trackNumber: 2 });
   setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
   const ownedPath = `/tmp/${key}/owned.flac`;
   upsertLibraryMediaFile({
@@ -450,6 +489,17 @@ test("library album lookup reports partial ownership, its manager, and the compl
       { body: { mbids: [album.mbid] } },
       response,
     );
+    assert.equal(body?.[album.mbid]?.status, "partial");
+    assert.equal(body?.[album.mbid]?.trackListComplete, false);
+    assert.equal("percentOfTracks" in body[album.mbid], false);
+    assert.equal(body[album.mbid].trackCount, 1);
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: missingTrack.id, trackNumber: 2 });
+    upsertLibraryAlbum({ identityKey: `${key}:album`, mbid: album.mbid, artistId: artist.id, title: "Partial Lookup Album", metadata: { trackListComplete: true } });
+    invalidateLibraryQueryCache();
+    await routes.get("/albums/lookup/batch")(
+      { body: { mbids: [album.mbid] } },
+      response,
+    );
     const result = body?.[album.mbid];
     assert.equal(statusCode, 200);
     assert.equal(result?.status, "partial");
@@ -458,9 +508,16 @@ test("library album lookup reports partial ownership, its manager, and the compl
     assert.equal(result?.percentOfTracks, 50);
     assert.deepEqual(result?.ownedTrackMbids, [ownedTrack.mbid]);
     assert.equal(result?.managedBy, "aurral");
+    assert.equal(result?.trackListComplete, true);
+    upsertLibraryMediaFile({ trackId: missingTrack.id, albumId: album.id, source: "aurral", path: `/tmp/${key}/missing.flac` });
+    invalidateLibraryQueryCache();
+    await routes.get("/albums/lookup/batch")({ body: { mbids: [album.mbid] } }, response);
+    assert.equal(body[album.mbid].status, "available");
+    assert.equal(body[album.mbid].percentOfTracks, 100);
+    assert.equal(body[album.mbid].trackListComplete, true);
   } finally {
     db.prepare("DELETE FROM library_management WHERE entity_kind = 'album' AND entity_id = ?").run(album.id);
-    db.prepare("DELETE FROM library_media_files WHERE path = ?").run(ownedPath);
+    db.prepare("DELETE FROM library_media_files WHERE album_id = ?").run(album.id);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
     db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(ownedTrack.id, missingTrack.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
@@ -468,7 +525,7 @@ test("library album lookup reports partial ownership, its manager, and the compl
   }
 });
 
-test("album lookup follows fresh Lidarr removal while the library index catches up", async (t) => {
+test("album lookup follows fresh Lidarr removal but keeps Aurral's albums", async (t) => {
   const key = `album-lookup-stale-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -509,7 +566,16 @@ test("album lookup follows fresh Lidarr removal while the library index catches 
       { json(value) { body = value; return this; } },
     );
     assert.deepEqual(body, {});
+
+    setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
+    invalidateLibraryQueryCache();
+    await routes.get("/albums/lookup/batch")(
+      { body: { mbids: [album.mbid] } },
+      { json(value) { body = value; return this; } },
+    );
+    assert.equal(body[album.mbid]?.managedBy, "aurral");
   } finally {
+    clearLibraryManagement("album", album.id);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);

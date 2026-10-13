@@ -46,6 +46,9 @@ export function DeleteAlbumModal({
           ) : (
             <>
               Delete <strong>{title}</strong> from your library?
+              {managedBy === "aurral"
+                ? " Artist monitoring won't download it again unless you request it."
+                : null}
             </>
           )}
         </p>

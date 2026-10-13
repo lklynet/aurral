@@ -9,6 +9,7 @@ export default function DownloadFolderField({
   onChange,
   disabled = false,
   autoApplySuggestion = true,
+  suggestFolder = true,
   createOnConfirm = true,
   id,
   helperText = "",
@@ -28,7 +29,7 @@ export default function DownloadFolderField({
   }, [value]);
 
   useEffect(() => {
-    if (prefilled || String(value || "").trim() || disabled) return;
+    if (!suggestFolder || prefilled || String(value || "").trim() || disabled) return;
     let cancelled = false;
     browseFilesystem()
       .then((result) => {
@@ -48,7 +49,7 @@ export default function DownloadFolderField({
     return () => {
       cancelled = true;
     };
-  }, [autoApplySuggestion, disabled, prefilled, value]);
+  }, [autoApplySuggestion, disabled, prefilled, suggestFolder, value]);
 
   const commitDraft = (nextValue) => {
     const trimmed = String(nextValue ?? draft).trim();

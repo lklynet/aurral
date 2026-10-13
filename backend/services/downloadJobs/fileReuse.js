@@ -158,13 +158,15 @@ function sanitizeSafeSegment(value, fallback = "Unknown") {
   return text;
 }
 
-// Downloads are named "Title" or, with a known album position, "07 - Title".
-// An album can repeat a title, so a known position must match too.
-function isTrackFileBaseName(baseName, title, trackNumber) {
+// Downloads are named "Title" or, with a known album position, "07 - Title",
+// or "2-07 - Title" past the first disc. An album can repeat a title, so a
+// known position must match too.
+function isTrackFileBaseName(baseName, title, trackNumber, discNumber) {
   if (baseName === title) return true;
   const position = baseName.endsWith(` - ${title}`)
-    && /^(\d{2,3}) - $/.exec(baseName.slice(0, -title.length));
-  return Boolean(position) && (!trackNumber || Number(position[1]) === trackNumber);
+    && /^(?:(\d+)-)?(\d{2,3}) - $/.exec(baseName.slice(0, -title.length));
+  return Boolean(position) && (!trackNumber || Number(position[2]) === trackNumber)
+    && Number(position[1] || 1) === (discNumber || 1);
 }
 
 /**
@@ -186,6 +188,7 @@ async function findLocalExistingSource(track, options = {}) {
   const albumDir = sanitizeSafeSegment(track?.albumName, "Unknown Album");
   const expectedBaseName = sanitizeSafeSegment(track?.trackName, "Unknown Track");
   const trackNumber = normalizePositiveInteger(track?.trackNumber);
+  const discNumber = normalizePositiveInteger(track?.discNumber);
 
   // Build candidate directories.
   // Files can land in different locations depending on playlist type
@@ -217,7 +220,7 @@ async function findLocalExistingSource(track, options = {}) {
       for (const file of files) {
         const ext = path.extname(file).toLowerCase();
         const baseName = path.basename(file, ext);
-        if (isTrackFileBaseName(baseName, expectedBaseName, trackNumber) && VALID_AUDIO_EXTENSIONS.has(ext)) {
+        if (isTrackFileBaseName(baseName, expectedBaseName, trackNumber, discNumber) && VALID_AUDIO_EXTENSIONS.has(ext)) {
           const filePath = path.join(destinationDir, file);
           const resolvedFilePath = path.resolve(filePath);
           if (!isPathInsideRoot(resolvedFilePath, root)) continue;
@@ -606,6 +609,12 @@ async function findLidarrSource(track, options = {}) {
   return null;
 }
 
+async function canReuseLidarrFiles(options) {
+  if (options.allowLidarr === false) return false;
+  const { lidarrClient } = await import("../lidarrClient.js");
+  return lidarrClient.isConfigured();
+}
+
 /**
  * Resolves a reusable track source from local storage, Aurral library, or Lidarr library.
  *
@@ -624,7 +633,7 @@ export async function resolveReusableTrackSource(track, options = {}) {
 
   const aurralSource = await findAurralSource(track, options);
   if (aurralSource) return { source: aurralSource, reason: null };
-  if (options.allowLidarr !== false) {
+  if (await canReuseLidarrFiles(options)) {
     const lidarrSource = await findLidarrSource(track, options);
     if (lidarrSource) return { source: lidarrSource, reason: null };
   }
@@ -647,7 +656,7 @@ export async function resolveRepairTrackSource(track, options = {}) {
   const localSource = await findLocalExistingSource(track, options);
   if (localSource) return { source: localSource, reason: null };
 
-  if (options.allowLidarr !== false) {
+  if (await canReuseLidarrFiles(options)) {
     const lidarrSource = await findLidarrSource(track, options);
     if (lidarrSource) return { source: lidarrSource, reason: null };
   }
@@ -721,6 +730,23 @@ export async function restoreCompletedTrack(job, options = {}) {
     action: "requeued",
     reason: reason || "No reusable source found",
   };
+}
+
+// A download that reused a Lidarr file needs Aurral's own copy once Lidarr
+// is turned off.
+export function requeueJobsUsingLidarrFiles({ downloadRoot = resolveDownloadRoot(), lidarrRoots = [] } = {}) {
+  const root = path.resolve(downloadRoot);
+  let requeued = 0;
+  for (const job of downloadTracker.getAll()) {
+    if (job?.status !== "done" || typeof job.finalPath !== "string" || job.managedBy === "lidarr") continue;
+    const finalPath = path.resolve(remapLegacyPath(job.finalPath, root));
+    if (isPathInsideRoot(finalPath, root)) continue;
+    const inLidarrRoot = lidarrRoots.some((lidarrRoot) =>
+      finalPath === path.resolve(lidarrRoot) || isPathInsideRoot(finalPath, path.resolve(lidarrRoot)));
+    if (!job.externalPath && !inLidarrRoot) continue;
+    if (downloadTracker.setPending(job.id, "Lidarr was turned off")) requeued += 1;
+  }
+  return requeued;
 }
 
 export async function repairJobsUnderRemovedPlaylistDir(playlistType, options = {}) {

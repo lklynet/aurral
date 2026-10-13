@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { dbOps } from "../db/helpers/index.js";
 import {
   normalizeBaseUrl,
@@ -83,6 +84,16 @@ function buildUrl(url, apiKey) {
   return `${base}/api?apikey=${encodeURIComponent(apiKey)}&output=json`;
 }
 
+function buildNzbUpload(fileName, content) {
+  const boundary = `aurral-${randomUUID()}`;
+  const header = `--${boundary}\r\nContent-Disposition: form-data; name="name"; `
+    + `filename="${fileName.replace(/"/g, "")}"\r\nContent-Type: application/x-nzb\r\n\r\n`;
+  return {
+    contentType: `multipart/form-data; boundary=${boundary}`,
+    body: Buffer.concat([Buffer.from(header), Buffer.from(content), Buffer.from(`\r\n--${boundary}--\r\n`)]),
+  };
+}
+
 function mapPriority(addPaused) {
   if (addPaused) return -2;
   return 0;
@@ -138,41 +149,44 @@ export class SabnzbdClient {
     };
   }
 
-  async api(mode, params = {}) {
+  async api(mode, params = {}, { file = null } = {}) {
     const settings = this._getSettings();
     const base = buildUrl(settings.url, settings.apiKey);
     const query = Object.entries({ mode, ...params })
       .filter(([, v]) => v != null && v !== "")
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
       .join("&");
-    const response = await axios.get(`${base}&${query}`, { timeout: 45000 });
+    const response = file
+      ? await axios.post(`${base}&${query}`, file.body, {
+        timeout: 45000,
+        headers: { "Content-Type": file.contentType },
+      })
+      : await axios.get(`${base}&${query}`, { timeout: 45000 });
     if (response.status !== 200) {
       throw new Error(`SABnzbd ${mode} failed: HTTP ${response.status}`);
     }
     return response.data;
   }
 
-  async appendUrl({
+  async appendNzb({
     name,
-    url,
+    content,
     category,
     priority,
     addPaused,
   }) {
     const settings = this._getSettings();
-    const safeUrl = String(url || "").trim();
-    if (!safeUrl) throw new Error("SABnzbd append requires a URL");
+    if (!content?.length) throw new Error("SABnzbd append requires an NZB file");
     const nzbName = `${sanitizeNzbName(name)}.nzb`;
     const pp = mapPriority(addPaused ?? settings.addPaused);
-    const result = await this.api("addurl", {
-      name: safeUrl,
+    const result = await this.api("addfile", {
       nzbname: nzbName,
       cat: category ?? settings.category,
       priority: normalizeInteger(priority, pp),
       pp: 3,
-    });
+    }, { file: buildNzbUpload(nzbName, content) });
     if (!result?.nzo_ids || result.nzo_ids.length === 0) {
-      throw new Error("SABnzbd rejected the NZB URL");
+      throw new Error("SABnzbd rejected the NZB");
     }
     return {
       nzbId: String(result.nzo_ids[0]),

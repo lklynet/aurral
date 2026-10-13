@@ -13,14 +13,13 @@ import {
 } from "../../utils/api/endpoints/library.js";
 import {
   getReleaseGroupCover,
-  getReleaseGroupDetails,
   getReleaseGroupTracks,
 } from "../../utils/api/endpoints/artists.js";
 import { useStaticPlaylists } from "../../hooks/useStaticPlaylists";
 import { useWebSocketChannel } from "../../hooks/useWebSocket";
 
 import { Link, useLocation, useParams } from "react-router";
-import { ExternalLink } from "lucide-react";
+import { Share } from "lucide-react";
 import AddActionButton from "../../components/AddActionButton";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../../hooks/useActiveDownloads";
@@ -40,9 +39,9 @@ import {
 import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../../components/CollectionHeader";
 import { withImageCacheBust } from "../../utils/normalizeMediaUrl.js";
 import { queryClient, queryKeys } from "../../queryClient.js";
+import { releaseGroupDetailsQueryOptions } from "../../queryOptions.js";
 import {
   buildStaticPlaylistTrackPayload,
-  buildLastfmAlbumUrl,
   formatAlbumDuration,
   formatReleaseDate,
   getCoverImage,
@@ -52,6 +51,8 @@ import {
   sumTrackDurationMs,
 } from "./utils";
 import Tooltip from "../../components/Tooltip";
+import TooltipButton from "../../components/TooltipButton";
+import { useShareAction } from "../../hooks/useShareAction";
 import CrossViewLink from "../../components/CrossViewLink";
 const getReleaseTypeLabel = (release) => {
   const types = [
@@ -112,6 +113,7 @@ function ReleasePage() {
   const ownerConflict =
     ownerConflictState?.releaseMbid === releaseMbid ? ownerConflictState.conflict : null;
   const { hasPermission } = useAuth();
+  const share = useShareAction();
   const canAddAlbum = hasPermission("addAlbum");
 
   const focusTrackMbid = locationState?.focusTrackMbid || null;
@@ -121,12 +123,7 @@ function ReleasePage() {
     [locationState, releaseMbid],
   );
 
-  const releaseDetailsQuery = useQuery({
-    queryKey: queryKeys.releaseGroupDetails(releaseMbid),
-    queryFn: ({ signal }) => getReleaseGroupDetails(releaseMbid, { signal }),
-    enabled: Boolean(releaseMbid),
-    staleTime: 5 * 60 * 1000,
-  });
+  const releaseDetailsQuery = useQuery(releaseGroupDetailsQueryOptions(releaseMbid));
   const release = useMemo(
     () => mergeReleaseDetails(baseRelease, releaseDetailsQuery.data),
     [baseRelease, releaseDetailsQuery.data],
@@ -237,6 +234,7 @@ function ReleasePage() {
     tracks,
     artistName,
     artistMbid,
+    artwork: coverUrl,
     playbackSource,
   });
   const pageTitle = artistName ? `${releaseTitle} — ${artistName}` : releaseTitle;
@@ -261,14 +259,13 @@ function ReleasePage() {
   const albumDownloading =
     !isComplete &&
     (isAlbumDownloading(releaseMbid) || ACTIVE_DOWNLOAD_STATUSES.has(String(downloadStatus?.status)));
-  const lastfmUrl = artistName && releaseTitle ? buildLastfmAlbumUrl(artistName, releaseTitle) : "";
 
   const releaseMeta = [
     releaseDateLabel,
     releaseTypeLabel,
     trackCount > 0 ? `${trackCount} track${trackCount === 1 ? "" : "s"}` : null,
     durationLabel,
-    metric.label ? (metric.type === "rating" ? `${metric.label} rating` : metric.label) : null,
+    metric.label ? `${metric.label} ${metric.type === "rating" ? "rating" : "listeners"}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -605,19 +602,25 @@ function ReleasePage() {
                 </span>
               </Tooltip>
             ) : null}
-            {lastfmUrl ? (
-              <Tooltip content="Open on Last.fm">
-                <a
-                  href={lastfmUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="native-library-favorite"
-                  aria-label="Open on Last.fm"
-                >
-                  <ExternalLink aria-hidden="true" />
-                </a>
-              </Tooltip>
-            ) : null}
+            <TooltipButton
+              className="native-library-favorite"
+              onClick={() =>
+                share(
+                  {
+                    kind: "album",
+                    albumMbid: releaseMbid,
+                    artistMbid,
+                    title: releaseTitle,
+                    artistName,
+                  },
+                  releaseTitle,
+                )
+              }
+              disabled={!artistName || !release.title}
+              label="Share album"
+            >
+              <Share aria-hidden="true" />
+            </TooltipButton>
           </>
         }
       />

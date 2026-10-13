@@ -195,6 +195,30 @@ test("reuseTrackForPlaylist finds a local file named with its album position", a
   const reprisePath = path.join(repeatedDir, "09 - Theme.flac");
   await fs.writeFile(reprisePath, "audio");
   assert.equal((await reuseTrackForPlaylist(reprise, "library", options)).finalPath, reprisePath);
+
+  const discDir = path.join(downloadRoot, "Numbered Artist", "Two Disc Album");
+  const onDisc = (discNumber) =>
+    ({ artistName: "Numbered Artist", trackName: "Bomb", albumName: "Two Disc Album", trackNumber: 3, discNumber });
+  await fs.mkdir(discDir, { recursive: true });
+  const secondDiscPath = path.join(discDir, "2-03 - Bomb.flac");
+  await fs.writeFile(secondDiscPath, "audio");
+  assert.equal((await reuseTrackForPlaylist(onDisc(1), "library", options)).reused, false);
+  assert.equal((await reuseTrackForPlaylist(onDisc(2), "library", options)).finalPath, secondDiscPath);
+  const firstDiscPath = path.join(discDir, "03 - Bomb.flac");
+  await fs.writeFile(firstDiscPath, "audio");
+  assert.equal((await reuseTrackForPlaylist(onDisc(null), "library", options)).finalPath, firstDiscPath);
+
+  const unnumbered = (discNumber) =>
+    ({ artistName: "Numbered Artist", trackName: "Song", albumName: "Unnumbered Album", discNumber });
+  const unnumberedDir = path.join(downloadRoot, "Numbered Artist", "Unnumbered Album");
+  await fs.mkdir(unnumberedDir, { recursive: true });
+  await fs.writeFile(path.join(unnumberedDir, "2-03 - Song.flac"), "audio");
+  for (const discNumber of [1, null]) {
+    assert.equal((await reuseTrackForPlaylist(unnumbered(discNumber), "library", options)).reused, false);
+  }
+  const unnumberedPath = path.join(unnumberedDir, "03 - Song.flac");
+  await fs.writeFile(unnumberedPath, "audio");
+  assert.equal((await reuseTrackForPlaylist(unnumbered(1), "library", options)).finalPath, unnumberedPath);
 });
 
 test("reuseTrackForPlaylist neutralizes path traversal attempts in track metadata and target playlist", async () => {
@@ -666,4 +690,75 @@ test("Aurral copies stay when the album was not handed over or playback still us
   assert.deepEqual(result, { moved: 1, deleted: 0 });
   assert.equal(path.resolve(downloadTracker.getJob(inUse.jobId).finalPath), path.resolve(inUse.lidarrPath));
   assert.equal(await fileExists(inUse.aurralPath), true);
+});
+
+test("turning Lidarr off requeues downloads that used a Lidarr file", async (t) => {
+  const { downloadWorker } = await importFromRepo("backend/services/downloadJobs/downloadWorker.js");
+  const { lidarrClient } = await importFromRepo("backend/services/lidarrClient.js");
+  const musicRoot = path.join(isolatedState.baseDir, "music");
+  dbOps.updateSettings({
+    integrations: { lidarr: { enabled: false, apiKey: "key", rootFolderPath: musicRoot } },
+  });
+  lidarrClient.updateConfig();
+  t.mock.method(downloadWorker, "start", async () => {});
+  t.mock.method(downloadWorker, "wake", () => {});
+  const doneJob = (trackName, finalPath, externalPath = null) => {
+    const id = downloadTracker.addJob({ artistName: "Artist", trackName }, "library");
+    downloadTracker.setDone(id, finalPath, "Album", externalPath);
+    return id;
+  };
+  const reused = doneJob("Reused", path.join(musicRoot, "Artist", "1.flac"), "/remote/music/Artist/1.flac");
+  const repointed = doneJob("Repointed", path.join(musicRoot, "Artist", "2.flac"));
+  const own = doneJob("Own", path.join(downloadRoot, "Artist", "3.flac"));
+  const elsewhere = doneJob("Elsewhere", path.join(isolatedState.baseDir, "old-downloads", "4.flac"));
+
+  assert.equal(await downloadWorker.releaseLidarrFiles(), 2);
+
+  assert.equal(downloadTracker.getJob(reused).status, "pending");
+  assert.equal(downloadTracker.getJob(repointed).status, "pending");
+  assert.equal(downloadTracker.getJob(own).status, "done");
+  assert.equal(downloadTracker.getJob(elsewhere).status, "done");
+
+  dbOps.updateSettings({
+    integrations: { lidarr: { enabled: true, apiKey: "key", rootFolderPath: musicRoot } },
+  });
+  lidarrClient.updateConfig();
+  const kept = doneJob("Kept", path.join(musicRoot, "Artist", "5.flac"), "/remote/music/Artist/5.flac");
+  assert.equal(await downloadWorker.releaseLidarrFiles(), 0);
+  assert.equal(downloadTracker.getJob(kept).status, "done");
+});
+
+test("playlists reuse a Lidarr file only while Lidarr is on", async (t) => {
+  const { lidarrClient } = await importFromRepo("backend/services/lidarrClient.js");
+  const setLidarr = (enabled) => {
+    dbOps.updateSettings({ integrations: { lidarr: { enabled, apiKey: "key" } } });
+    lidarrClient.updateConfig();
+  };
+  t.after(() => setLidarr(false));
+  const lidarrPath = path.join(isolatedState.baseDir, "music", "Reuse Artist", "Reuse Album", "01 Song.flac");
+  await fs.mkdir(path.dirname(lidarrPath), { recursive: true });
+  await fs.writeFile(lidarrPath, "lidarr");
+  const artist = libraryStore.upsertLibraryArtist({ identityKey: "name:reuse-artist", name: "Reuse Artist" });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: "name:reuse-artist:reuse-album",
+    artistId: artist.id,
+    title: "Reuse Album",
+  });
+  const libraryTrack = libraryStore.upsertLibraryTrack({
+    identityKey: "name:reuse-artist:reuse-album:song",
+    title: "Song",
+    artistName: "Reuse Artist",
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: libraryTrack.id, trackNumber: 1 });
+  libraryStore.upsertLibraryMediaFile({ trackId: libraryTrack.id, albumId: album.id, source: "lidarr", path: lidarrPath });
+  const track = { artistName: "Reuse Artist", trackName: "Song", albumName: "Reuse Album" };
+
+  setLidarr(false);
+  const off = await reuseTrackForPlaylist(track, "off-playlist", { existingFileMode: "reuse", downloadRoot });
+  setLidarr(true);
+  const on = await reuseTrackForPlaylist(track, "on-playlist", { existingFileMode: "reuse", downloadRoot });
+
+  assert.equal(off.reused, false);
+  assert.equal(on.reused, true);
+  assert.equal(on.sourceType, "lidarr");
 });

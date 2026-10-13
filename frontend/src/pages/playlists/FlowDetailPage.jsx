@@ -2,12 +2,14 @@ import { lazy, Suspense, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { Check, ClipboardCopy, Download, FilePlus2, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
+import { SkeletonCollectionHeader, SkeletonRows, SkeletonStatus } from "../../components/Skeletons";
 import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../../components/CollectionHeader";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import TooltipButton from "../../components/TooltipButton";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
+import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import {
   convertFlowToStaticPlaylist,
   deleteFlow,
@@ -71,13 +73,13 @@ export default function FlowDetailPage() {
 
   if (!flow) {
     return (
-      <main className="library-page native-library-page playlist-page">
+      <div className="library-page native-library-page playlist-page">
         <div className="native-library-content">
           {loading && !status ? (
-            <div className="native-library-state" role="status">
-              <DotLoader size="xl" label={null} />
-              <span>Loading flow…</span>
-            </div>
+            <SkeletonStatus label="Loading flow" className="native-library-detail">
+              <SkeletonCollectionHeader />
+              <SkeletonRows count={10} />
+            </SkeletonStatus>
           ) : error && !status ? (
             <div className="native-library-state" role="alert">
               <strong>Flow unavailable</strong>
@@ -96,7 +98,7 @@ export default function FlowDetailPage() {
             </div>
           )}
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -104,6 +106,7 @@ export default function FlowDetailPage() {
 }
 
 function FlowDetail({ flow }) {
+  const lidarrConnected = useLibraryDestination().primary === "lidarr";
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
@@ -385,13 +388,15 @@ function FlowDetail({ flow }) {
                       flow.showInLibrary === true ? "Hidden from library" : "Shown in library",
                     ),
                 }),
-                {
-                  id: "lidarr-url",
-                  label: "Copy Lidarr import URL",
-                  icon: ClipboardCopy,
-                  separatorBefore: true,
-                  onSelect: handleCopyLidarrUrl,
-                },
+                ...(lidarrConnected
+                  ? [{
+                      id: "lidarr-url",
+                      label: "Copy Lidarr import URL",
+                      icon: ClipboardCopy,
+                      separatorBefore: true,
+                      onSelect: handleCopyLidarrUrl,
+                    }]
+                  : []),
                 {
                   id: "delete",
                   label: "Delete flow",

@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rename, rm } from "node:fs/promises";
+import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parseFile } from "music-metadata";
 
 import {
+  readAurralIdentity,
   repairYtdlpMetadata,
   writeAudioMetadata,
 } from "../../backend/services/downloadUtils.js";
@@ -85,18 +86,16 @@ test("yt-dlp output receives Aurral's canonical Navidrome tags", async () => {
   assert.equal(common.album, "Animal Boy");
   assert.equal(common.year, 1986);
   assert.equal(common.track.no, 5);
-  assert.equal(
-    common.comment?.some((entry) =>
-      String(entry?.text || entry).includes(
-        'AURRAL_IDS={"artistMbid":"11111111-1111-4111-8111-111111111111","albumMbid":"22222222-2222-4222-8222-222222222222","trackMbid":"33333333-3333-4333-8333-333333333333"}',
-      ),
-    ) ?? false,
-    false,
-  );
-  assert.equal(
-    common.grouping,
-    'AURRAL_IDS={"artistMbid":"11111111-1111-4111-8111-111111111111","albumMbid":"22222222-2222-4222-8222-222222222222","trackMbid":"33333333-3333-4333-8333-333333333333"}',
-  );
+  assert.equal(common.musicbrainz_releasegroupid, "22222222-2222-4222-8222-222222222222");
+  assert.equal(common.musicbrainz_recordingid, "33333333-3333-4333-8333-333333333333");
+  assert.equal(common.musicbrainz_albumid, undefined);
+  assert.equal(common.grouping, undefined);
+  assert.equal(common.comment, undefined);
+  assert.deepEqual(readAurralIdentity(await parseFile(filePath)), {
+    artistMbid: "11111111-1111-4111-8111-111111111111",
+    albumMbid: "22222222-2222-4222-8222-222222222222",
+    trackMbid: "33333333-3333-4333-8333-333333333333",
+  });
 });
 
 test("startup repair merges partial grouping and legacy comment identities", async () => {
@@ -164,4 +163,20 @@ test("startup repair tags existing completed yt-dlp M4As", async () => {
 
 test.after(async () => {
   await rm(tempDir, { recursive: true, force: true });
+});
+
+test("tags a downloaded M4A that carries a chapter track", async () => {
+  const chapters = path.join(tempDir, "chapters.txt");
+  await writeFile(chapters, ";FFMETADATA1\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=500\ntitle=Intro\n"
+    + "[CHAPTER]\nTIMEBASE=1/1000\nSTART=500\nEND=1000\ntitle=Song\n");
+  const filePath = path.join(tempDir, "chaptered.m4a");
+  const generated = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc",
+    "-i", chapters, "-map", "0:a", "-map_chapters", "1", "-t", "1", "-c:a", "aac", filePath], { encoding: "utf8" });
+  assert.equal(generated.status, 0, generated.stderr);
+
+  await writeAudioMetadata(filePath, { trackName: "Within", artistName: "Daft Punk", albumName: "Random Access Memories" });
+
+  const { common } = await parseFile(filePath);
+  assert.equal(common.title, "Within");
+  assert.equal(common.artist, "Daft Punk");
 });

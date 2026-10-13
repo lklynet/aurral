@@ -1,30 +1,32 @@
+import ArtworkImage from "../components/ArtworkImage";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useNavigationType, useParams, useSearchParams } from "react-router";
 import {
   ArrowDownAZ,
   ArrowLeft,
   ArrowRight,
   ArrowUpZA,
   Download,
-  ExternalLink,
   Eye,
   EyeOff,
   Fingerprint,
   Grid3X3,
-  Heart,
   Info,
   List,
+  ListEnd,
   ListFilter,
+  ListStart,
   MoreVertical,
   Pause,
   Play,
   RefreshCw,
   ScanSearch,
   Search,
+  Share,
+  Shuffle,
   Sparkles,
   Trash2,
-  UserRound,
   X,
 } from "lucide-react";
 
@@ -42,17 +44,24 @@ import {
   useCollectionTint,
 } from "../components/CollectionHeader";
 import CrossViewLink from "../components/CrossViewLink";
+import RouteLink from "../components/RouteLink";
+import { readRouteSeed } from "../navigation/routeSeed.js";
+import { useSharedArtworkStyle } from "../navigation/viewTransitions.js";
+import {
+  SkeletonCardGrid,
+  SkeletonCollectionHeader,
+  SkeletonRows,
+  SkeletonStatus,
+} from "../components/Skeletons";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useLibraryShareAction } from "../hooks/useShareAction";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
-import { useDiscoverNavigation } from "../hooks/useDiscoverNavigation";
+import { useHiddenPlaylistTracks, usePlaylistBulkActions } from "./playlists/usePlaylistBulkActions.js";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
-import {
-  getReleaseGroupCoversBatch,
-  getReleaseGroupTracks,
-} from "../utils/api/endpoints/artists.js";
+import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists.js";
 import {
   clearLibraryPageCache,
   deleteAlbumFromLibrary,
@@ -60,11 +69,9 @@ import {
   deleteAurralAlbumFromLibrary,
   deleteLidarrAlbumFromLibrary,
   deleteTrackFromLibrary,
-  fetchLibraryPage,
   getActiveLibraryRefresh,
   getLibraryPage,
   getDownloadStatus,
-  getLibraryFavorites,
   getLibraryRefreshStatus,
   getRequests,
   downloadTrackToLibrary,
@@ -77,19 +84,18 @@ import {
 import {
   addStaticPlaylistTracks,
   createStaticPlaylist,
-  deleteStaticPlaylistTrack,
 } from "../utils/api/endpoints/playlists.js";
 import { buildAuthenticatedApiUrl } from "../utils/api/core.js";
-import { mergeAlbumMetadataTracks } from "../utils/libraryTrackHydration.js";
 import {
+  albumCardMeta,
   EMPTY_LIBRARY,
   favoriteId,
-  favoriteLibraryFromResponse,
   firstAvailableFile,
   getAlbumCoverId,
   getCachedAlbumTracks,
   mergeAlbumTrackPageIntoLibrary,
-  normalizeLibraryPages,
+  releaseTypeOf,
+  yearOf,
 } from "../utils/libraryPageData.js";
 import {
   aurralAlbumStatusKey,
@@ -99,6 +105,7 @@ import {
 } from "../utils/aurralAlbumStatus.js";
 import {
   canRemoveLibraryAlbum,
+  canRemoveLibraryArtist,
   resolveAlbumManager,
 } from "../utils/libraryDestination.js";
 import { describeAlbumRequestResult } from "../utils/albumAddAction.js";
@@ -109,8 +116,18 @@ import {
 import { useArtistMonitoring } from "../components/ArtistMonitoringButtons";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
-import { DEFAULT_LIBRARY_VIEW, LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
+import { useQueueTrackActions } from "../hooks/useQueueTrackActions";
+import { LIBRARY_VIEWS } from "../navigation/libraryNavConfig";
 import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
+import {
+  LIBRARY_DEFAULT_SORT,
+  LIBRARY_PAGE_SIZE,
+  LIBRARY_SORT_OPTIONS,
+  libraryListParams,
+  libraryTabForSection,
+  libraryViewQueryOptions,
+  resolveLibrarySection,
+} from "./libraryViewQuery.js";
 import {
   TrackPlaylistRemoveSubmenu,
   TrackPlaylistSubmenu,
@@ -127,8 +144,9 @@ import {
 import { useResponsiveReleaseLimit } from "./ArtistDetails/hooks/useResponsiveReleaseLimit";
 import { queryClient, queryKeys } from "../queryClient.js";
 import Tooltip from "../components/Tooltip";
+import { showFavoriteRemoved } from "../utils/favoriteUndo.js";
 
-const LIBRARY_VIEW_IDS = new Set(LIBRARY_VIEWS.map((view) => view.id));
+const pageSize = LIBRARY_PAGE_SIZE;
 
 const text = (value) => String(value || "").trim();
 
@@ -136,6 +154,7 @@ const metadataGenres = (entity) => {
   const metadata = entity?.metadata || {};
   return [metadata.genres, metadata.genre, metadata.common?.genre, metadata.tags?.genre]
     .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .flatMap((value) => String(value || "").split(";"))
     .map(text)
     .filter(Boolean)
     .filter((value, index, values) => values.indexOf(value) === index);
@@ -147,34 +166,11 @@ const hasGenre = (genre, ...entities) => {
   return entities.flatMap(metadataGenres).some((value) => value.toLocaleLowerCase() === wanted);
 };
 
-const yearOf = (value) => {
-  const match = /^(\d{4})/.exec(text(value));
-  return match ? match[1] : "";
-};
-
 const hasAurralTrackFile = (track) =>
   (track?.files || []).some((file) => file.source === "aurral");
 
 const firstAvailableAurralFile = (track) =>
   (track?.files || []).find((file) => file.source === "aurral" && file.available) || null;
-
-const favoriteIdsFromPages = (pages) => new Set(
-  ["artists", "albums", "tracks"].flatMap((kind) =>
-    pages
-      .flatMap((page) => (Array.isArray(page?.[kind]) ? page[kind] : []))
-      .filter((entity) => entity.userFavorite)
-      .map((entity) => favoriteId(
-        kind === "artists" ? "artist" : kind === "albums" ? "album" : "song",
-        entity,
-      )),
-  ),
-);
-
-const favoriteIdsFromFavorites = (favorites) => new Set(
-  ["artist", "album", "song"].flatMap((kind) =>
-    (Array.isArray(favorites?.[kind]) ? favorites[kind] : []).map((entry) => entry.id),
-  ),
-);
 
 const trackDurationMs = (track) => {
   const fileDurationMs = (track?.files || []).find((file) => Number(file?.durationMs) > 0)
@@ -253,6 +249,8 @@ const sameTrackText = (left, right) => {
 
 const TOP_ARTIST_TRACK_LIMIT = 10;
 
+const QUERY_DEBOUNCE_MS = 250;
+
 const wait = (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs));
 
 const trackRating = (track) => {
@@ -294,9 +292,9 @@ const entityMatches = (entity, query) => {
     .some((value) => text(value).toLocaleLowerCase().includes(query));
 };
 
-function Cover({ src, label, round = false, compact = false }) {
+function Cover({ src, label, round = false, compact = false, thumbnail = true }) {
   if (src) {
-    return <img src={src} alt="" loading="lazy" decoding="async" />;
+    return <ArtworkImage src={src} thumbnail={thumbnail} alt="" loading="lazy" decoding="async" />;
   }
 
   return (
@@ -325,7 +323,7 @@ function EmptyState({ title, message }) {
 
 function LibraryPage() {
   const navigate = useNavigate();
-  const navigateToDiscover = useDiscoverNavigation();
+  const location = useLocation();
   const {
     section: routeSection,
     albumId: routeAlbumId,
@@ -333,7 +331,9 @@ function LibraryPage() {
   } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const { bootstrap, hasPermission, user } = useAuth();
-  const { showError, showSuccess } = useToast();
+  const toast = useToast();
+  const shareLibrary = useLibraryShareAction();
+  const { showError, showSuccess } = toast;
   const {
     staticPlaylists,
     setStaticPlaylists,
@@ -342,20 +342,29 @@ function LibraryPage() {
     setPlaylistsError,
     loadStaticPlaylists,
   } = useStaticPlaylists();
-  const { playQueue, currentTrack, isPlaying, isLoading, togglePlayPause, matchesSource } =
-    useAudioQueue();
-  const [query, setQuery] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortMode, setSortMode] = useState("name");
-  const [sortDirection, setSortDirection] = useState("asc");
-  const [viewMode, setViewMode] = useState("grid");
+  const {
+    playQueue,
+    queueNext,
+    addToQueue,
+    currentTrack,
+    isPlaying,
+    isLoading,
+    isStarting,
+    togglePlayPause,
+    matchesSource,
+  } = useAudioQueue();
+  const isRunning = isPlaying || isStarting;
+  const getQueueItems = useQueueTrackActions();
+  const navigationType = useNavigationType();
+  const urlQuery = searchParams.get("q") || "";
+  const [query, setQuery] = useState(urlQuery);
+  const queryTimerRef = useRef(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [covers, setCovers] = useState({});
   const [pendingFavorite, setPendingFavorite] = useState(null);
   const favoriteMutationInFlightRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [pageIndex, setPageIndex] = useState(1);
   const refreshAttemptRef = useRef(0);
   const [playlistSavingKey, setPlaylistSavingKey] = useState("");
   const [trackDownloadStates, setTrackDownloadStates] = useState({});
@@ -381,8 +390,6 @@ function LibraryPage() {
   }, []);
 
   useWebSocketChannel("library", handleLibraryScanMessage);
-
-  const pageSize = 100;
 
   useEffect(() => () => {
     refreshAttemptRef.current += 1;
@@ -493,45 +500,69 @@ function LibraryPage() {
     />
   );
 
-  const section = LIBRARY_VIEW_IDS.has(routeSection) ? routeSection : DEFAULT_LIBRARY_VIEW;
+  const section = resolveLibrarySection(routeSection);
   const isDetail = Boolean(routeAlbumId || routeArtistId);
-  const tab = section === "home" || section === "album-artists" ? "artists" : section;
+  const albumSeed = routeAlbumId ? readRouteSeed(location.state) : null;
+  const sharedArtworkStyle = useSharedArtworkStyle();
+  const tab = libraryTabForSection(section);
   const selectedGenre = searchParams.get("genre") || "";
   const forcePreview = import.meta.env.DEV && searchParams.get("preview") === "1";
   const previewQuery = forcePreview ? "?preview=1" : "";
   const sectionLabel = LIBRARY_VIEWS.find((view) => view.id === section)?.label || "Library";
-  const librarySource = useMemo(() => ({ type: "native-library", id: "library" }), []);
-  const normalizedQuery = query.trim() ? searchQuery : "";
+  const librarySource = useMemo(
+    () => ({ type: "native-library", id: "library", label: "Library" }),
+    [],
+  );
+  const sortOptions = LIBRARY_SORT_OPTIONS[section] || [];
+  const {
+    sort: sortMode,
+    direction: sortDirection,
+    pageIndex,
+  } = libraryListParams(section, searchParams);
+  const viewMode = searchParams.get("view") === "list" ? "list" : "grid";
+  const normalizedQuery = query.trim() ? urlQuery.trim().toLocaleLowerCase() : "";
 
-  useEffect(() => {
-    const nextQuery = query.trim().toLocaleLowerCase();
-    if (!nextQuery) {
-      setSearchQuery("");
-      return undefined;
+  const updateViewParams = (changes, { replace = false } = {}) => {
+    const next = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(changes)) {
+      if (value) next.set(key, String(value));
+      else next.delete(key);
     }
-    const timer = setTimeout(() => {
-      setSearchQuery(nextQuery);
-      setPageIndex(1);
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [query]);
+    setSearchParams(next, { replace });
+  };
+  const updateViewParamsRef = useRef(updateViewParams);
+  updateViewParamsRef.current = updateViewParams;
+
+  const changeQuery = (value) => {
+    setQuery(value);
+    window.clearTimeout(queryTimerRef.current);
+    const nextQuery = value.trim();
+    const writeQuery = () =>
+      updateViewParamsRef.current({ q: nextQuery, page: null }, { replace: true });
+    if (!nextQuery) writeQuery();
+    else queryTimerRef.current = window.setTimeout(writeQuery, QUERY_DEBOUNCE_MS);
+  };
+
+  useEffect(() => () => window.clearTimeout(queryTimerRef.current), []);
 
   useEffect(() => {
-    setQuery("");
-    setSearchQuery("");
-    setSortMode("name");
-    setSortDirection("asc");
-    setViewMode(section === "tracks" || section === "genres" ? "list" : "grid");
+    if (navigationType === "REPLACE") return;
+    window.clearTimeout(queryTimerRef.current);
+    setQuery(urlQuery);
+  }, [navigationType, urlQuery]);
+
+  useEffect(() => {
     setSearchOpen(false);
     setFiltersOpen(false);
-    setPageIndex(1);
   }, [section]);
 
-  const libraryQueryKey = useMemo(
-    () => queryKeys.libraryView({
+  const setPageIndex = (nextPage) =>
+    updateViewParams({ page: nextPage > 1 ? nextPage : null });
+
+  const libraryQueryOptions = useMemo(
+    () => libraryViewQueryOptions({
       preview: forcePreview,
       section,
-      tab,
       albumId: routeAlbumId || null,
       artistId: routeArtistId || null,
       pageIndex,
@@ -550,100 +581,24 @@ function LibraryPage() {
       selectedGenre,
       sortDirection,
       sortMode,
-      tab,
     ],
   );
+  const libraryQueryKey = libraryQueryOptions.queryKey;
   const libraryQuery = useQuery({
-    queryKey: libraryQueryKey,
-    enabled: !forcePreview,
-    staleTime: 15_000,
-    queryFn: async ({ signal }) => {
-      const nextData = isDetail
-        ? routeAlbumId
-          ? await fetchLibraryPage({
-              kind: "tracks",
-              albumId: routeAlbumId,
-              page: 1,
-              pageSize,
-              // An album detail view shows the full tracklist regardless of the
-              // library-wide availability setting; owned/missing is shown per row.
-              availableOnly: false,
-            }, { signal })
-          : await Promise.all([
-              fetchLibraryPage({
-                kind: "albums",
-                artistId: routeArtistId,
-                page: 1,
-                pageSize,
-                availableOnly: true,
-              }, { signal }),
-              fetchLibraryPage({
-                kind: "tracks",
-                artistId: routeArtistId,
-                page: 1,
-                pageSize,
-                availableOnly: true,
-              }, { signal }),
-            ])
-        : section === "favorites"
-          ? await getLibraryFavorites({ signal })
-          : section === "home"
-            ? await Promise.all([
-                fetchLibraryPage({
-                  kind: "albums",
-                  page: 1,
-                  pageSize,
-                  sort: "newest",
-                  // "Recently added" defers to the Lidarr "available only"
-                  // setting (omitted param) like the Albums/Artists tabs.
-                }, { signal }),
-                fetchLibraryPage({
-                  kind: "tracks",
-                  page: 1,
-                  pageSize: 12,
-                  sort: "newest",
-                  availableOnly: true,
-                }, { signal }),
-              ])
-            : await fetchLibraryPage({
-                kind: tab,
-                page: pageIndex,
-                pageSize,
-                query: normalizedQuery,
-                genre: selectedGenre,
-                sort: sortMode,
-                direction: sortDirection,
-                // Albums/artists defer to the Lidarr "available only" setting
-                // (omitted param); tracks always filter to playable files.
-                availableOnly: tab === "tracks" ? true : undefined,
-              }, { signal });
-      const pageResults = section === "favorites"
-        ? [nextData?.library || EMPTY_LIBRARY]
-        : Array.isArray(nextData) ? nextData : [nextData];
-      const normalizedLibrary = section === "favorites"
-        ? favoriteLibraryFromResponse(nextData)
-        : normalizeLibraryPages(pageResults);
-      const usePreview =
-        import.meta.env.DEV &&
-        pageResults.every((page) => Number(page?.total || 0) === 0) &&
-        !normalizedQuery &&
-        !selectedGenre &&
-        normalizedLibrary.artists.length === 0 &&
-        normalizedLibrary.albums.length === 0 &&
-        normalizedLibrary.tracks.length === 0;
-      return {
-        nextData,
-        pageResults,
-        isPreview: usePreview,
-        library: usePreview ? libraryPreviewData : normalizedLibrary,
-        favoriteIds: usePreview
-          ? new Set(libraryPreviewFavorites)
-          : section === "favorites"
-            ? favoriteIdsFromFavorites(nextData)
-            : favoriteIdsFromPages(pageResults),
-      };
+    ...libraryQueryOptions,
+    placeholderData: (previous, previousQuery) => {
+      const previousView = previousQuery?.queryKey?.[2];
+      const view = libraryQueryOptions.queryKey[2];
+      return previousView &&
+        previousView.preview === view.preview &&
+        previousView.section === view.section &&
+        previousView.albumId === view.albumId &&
+        previousView.artistId === view.artistId
+        ? previous
+        : undefined;
     },
   });
+  const libraryUpdating = libraryQuery.isPlaceholderData;
 
   const queryData = libraryQuery.data;
   const isPreviewLibrary = forcePreview || queryData?.isPreview === true;
@@ -674,6 +629,17 @@ function LibraryPage() {
         }
       : queryData.nextData;
   }, [isDetail, isPreviewLibrary, queryData, section]);
+  const totalPages =
+    pageData?.kind === tab && tab !== "genres"
+      ? Math.ceil(pageData.total / pageData.pageSize)
+      : 0;
+  const lastPage = Math.max(totalPages, 1);
+
+  useEffect(() => {
+    if (pageData && pageIndex > lastPage) {
+      updateViewParamsRef.current({ page: lastPage > 1 ? lastPage : null }, { replace: true });
+    }
+  }, [lastPage, pageData, pageIndex]);
   const setLibrary = useCallback((updater) => {
     queryClient.setQueryData(libraryQueryKey, (current) => {
       if (!current && !forcePreview) return current;
@@ -719,39 +685,26 @@ function LibraryPage() {
     const result = await queryClient.fetchQuery({
       queryKey: queryKeys.libraryAlbumTracks(String(album.id), releaseGroupMbid),
       queryFn: async ({ signal }) => {
-        const page = await getLibraryPage({
-          kind: "tracks",
-          albumId: album.id,
-          page: 1,
-          pageSize,
-          // Full tracklist regardless of the library-wide availability setting;
-          // availability is surfaced per-track via badges after merging metadata.
-          availableOnly: false,
-        }, { signal });
-        const ownedTracks = Array.isArray(page?.items) ? page.items : [];
-        const pageArtist = page?.artists?.[0] || null;
-        if (!releaseGroupMbid) return { tracks: ownedTracks, page };
-        try {
-          const metadataTracks = await getReleaseGroupTracks(releaseGroupMbid, {
-            artistMbid: album?.artistMbid || pageArtist?.mbid || "",
-            artistName:
-              album?.artistName || pageArtist?.name || album?.albumArtist || "",
-            albumTitle: album?.title || album?.albumName || "",
-            releaseDate: album?.releaseDate || "",
-            signal,
-          });
-          return {
-            tracks: mergeAlbumMetadataTracks(
-              ownedTracks,
-              metadataTracks,
-              album,
-              pageArtist,
-            ),
-            page,
-          };
-        } catch {
-          return { tracks: ownedTracks, page };
+        const pages = [];
+        for (let number = 1; ; number += 1) {
+          const page = await getLibraryPage({
+            kind: "tracks",
+            albumId: album.id,
+            page: number,
+            pageSize,
+            availableOnly: false,
+          }, { signal });
+          pages.push(page);
+          if (!page?.hasMore || !page?.items?.length) break;
         }
+        return {
+          tracks: pages.flatMap((page) => (Array.isArray(page?.items) ? page.items : [])),
+          page: {
+            ...pages[0],
+            artists: pages.flatMap((page) => page?.artists || []),
+            albums: pages.flatMap((page) => page?.albums || []),
+          },
+        };
       },
       staleTime: 5 * 60 * 1000,
     });
@@ -762,18 +715,32 @@ function LibraryPage() {
   }, [setLibrary]);
 
   const getAlbumForTrack = useCallback(
-    (track) => {
+    (track, albums = albumsById) => {
       const fileAlbumId = firstAvailableFile(track)?.albumId;
       const relation = track?.albums?.find((entry) => entry.albumId === fileAlbumId)
         || track?.albums?.[0];
-      return relation ? albumsById.get(String(relation.albumId)) : null;
+      return relation ? albums.get(String(relation.albumId)) : null;
     },
     [albumsById],
   );
 
   const getArtistForAlbum = useCallback(
-    (album) => (album ? artistsById.get(String(album.artistId)) : null),
+    (album, artists = artistsById) => (album ? artists.get(String(album.artistId)) : null),
     [artistsById],
+  );
+
+  const lookupWithPages = useCallback(
+    (pages) => ({
+      albumsById: new Map([
+        ...albumsById,
+        ...pages.flatMap((page) => page?.albums || []).map((album) => [String(album.id), album]),
+      ]),
+      artistsById: new Map([
+        ...artistsById,
+        ...pages.flatMap((page) => page?.artists || []).map((artist) => [String(artist.id), artist]),
+      ]),
+    }),
+    [albumsById, artistsById],
   );
 
   const getDefaultTrackPlaylistName = useCallback(
@@ -785,40 +752,41 @@ function LibraryPage() {
     [getAlbumForTrack, getArtistForAlbum, staticPlaylists],
   );
 
-  const addLibraryTrackToPlaylist = useCallback(
-    async (track, target) => {
-      const album = getAlbumForTrack(track);
-      const artist = getArtistForAlbum(album);
-      const payload = buildStaticPlaylistTrackPayload({
-        artistName: artist?.name || track?.artistName || "",
-        trackName: track?.title || "",
-        albumName: album?.title || "",
-        artistMbid: artist?.mbid || "",
-        albumMbid: album?.releaseGroupMbid || album?.mbid || "",
-        trackMbid: track?.mbid || "",
-        releaseYear: yearOf(album?.releaseDate),
-        durationMs: trackDurationMs(track),
-      });
-      if (!payload.artistName || !payload.trackName) {
-        showError("Track details are incomplete");
+  const saveLibraryTracksToPlaylist = useCallback(
+    async (tracks, target, { key, label, defaultName, lookup = null }) => {
+      const payloads = tracks
+        .map((track) => {
+          const album = getAlbumForTrack(track, lookup?.albumsById);
+          const artist = getArtistForAlbum(album, lookup?.artistsById);
+          return buildStaticPlaylistTrackPayload({
+            artistName: artist?.name || track?.artistName || "",
+            trackName: track?.title || "",
+            albumName: album?.title || "",
+            artistMbid: artist?.mbid || "",
+            albumMbid: album?.releaseGroupMbid || album?.mbid || "",
+            trackMbid: track?.mbid || "",
+            releaseYear: yearOf(album?.releaseDate),
+            durationMs: trackDurationMs(track),
+          });
+        })
+        .filter((payload) => payload.artistName && payload.trackName);
+      if (!payloads.length) {
+        showError(tracks.length === 1 ? "Track details are incomplete" : "No Library tracks to add");
         return;
       }
-      const key = String(track?.id || "");
       setPlaylistSavingKey(key);
       setPlaylistsError("");
       try {
         if (target?.mode === "new") {
-          const name =
-            String(target?.name || "").trim() ||
-            getDefaultTrackPlaylistName(track);
-          await createStaticPlaylist({ name, tracks: [payload] });
-          showSuccess(`Track saved to ${name}`);
+          const name = String(target?.name || "").trim() || defaultName;
+          await createStaticPlaylist({ name, tracks: payloads });
+          showSuccess(`${label} saved to ${name}`);
         } else {
           const playlist = staticPlaylists.find(
             (candidate) => candidate.id === target?.playlistId,
           );
-          await addStaticPlaylistTracks(target?.playlistId, { tracks: [payload] });
-          showSuccess(`Track added to ${playlist?.name || "playlist"}`);
+          await addStaticPlaylistTracks(target?.playlistId, { tracks: payloads });
+          showSuccess(`${label} added to ${playlist?.name || "playlist"}`);
         }
         const nextPlaylists = await loadStaticPlaylists();
         if (nextPlaylists) setStaticPlaylists(nextPlaylists);
@@ -827,7 +795,7 @@ function LibraryPage() {
           requestError.response?.data?.message ||
           requestError.response?.data?.error ||
           requestError.message ||
-          "Failed to save track to playlist";
+          "Failed to save to playlist";
         setPlaylistsError(message);
         showError(message);
       } finally {
@@ -837,7 +805,6 @@ function LibraryPage() {
     [
       getAlbumForTrack,
       getArtistForAlbum,
-      getDefaultTrackPlaylistName,
       loadStaticPlaylists,
       setPlaylistsError,
       setStaticPlaylists,
@@ -847,34 +814,40 @@ function LibraryPage() {
     ],
   );
 
+  const addLibraryTrackToPlaylist = useCallback(
+    (track, target) =>
+      saveLibraryTracksToPlaylist([track], target, {
+        key: String(track?.id || ""),
+        label: "Track",
+        defaultName: getDefaultTrackPlaylistName(track),
+      }),
+    [getDefaultTrackPlaylistName, saveLibraryTracksToPlaylist],
+  );
+
+  const { removeTracks: removePlaylistTracks } = usePlaylistBulkActions();
+  const hiddenPlaylistTracks = useHiddenPlaylistTracks();
+  const removablePlaylists = useMemo(
+    () => (hiddenPlaylistTracks.size
+      ? staticPlaylists.map((playlist) => {
+          const hiddenIds = hiddenPlaylistTracks.get(playlist.id);
+          return hiddenIds && Array.isArray(playlist.trackEntries)
+            ? { ...playlist, trackEntries: playlist.trackEntries.filter((entry) => !hiddenIds.has(entry.id)) }
+            : playlist;
+        })
+      : staticPlaylists),
+    [hiddenPlaylistTracks, staticPlaylists],
+  );
+
   const removeLibraryTrackFromPlaylist = useCallback(
-    async (track, target) => {
+    (track, target) => {
       if (!target?.playlistId || !target?.jobId) return;
-      const key = String(track?.id || "");
-      setPlaylistSavingKey(key);
-      setPlaylistsError("");
-      try {
-        const result = await deleteStaticPlaylistTrack(target.playlistId, target.jobId);
-        showSuccess(
-          result?.queued
-            ? `Removal queued for ${track?.title || "track"}`
-            : `Removed ${track?.title || "track"} from playlist`,
-        );
-        const nextPlaylists = await loadStaticPlaylists();
-        if (nextPlaylists) setStaticPlaylists(nextPlaylists);
-      } catch (requestError) {
-        const message =
-          requestError.response?.data?.message ||
-          requestError.response?.data?.error ||
-          requestError.message ||
-          "Failed to remove track from playlist";
-        setPlaylistsError(message);
-        showError(message);
-      } finally {
-        setPlaylistSavingKey("");
-      }
+      const playlist = staticPlaylists.find((candidate) => candidate.id === target.playlistId);
+      removePlaylistTracks(
+        { id: target.playlistId, name: playlist?.name },
+        [{ id: target.jobId, trackName: track?.title }],
+      );
     },
-    [loadStaticPlaylists, setPlaylistsError, setStaticPlaylists, showError, showSuccess],
+    [removePlaylistTracks, staticPlaylists],
   );
 
   const canDeleteArtist = hasPermission("deleteArtist");
@@ -947,7 +920,7 @@ function LibraryPage() {
     try {
       if (!isPreviewLibrary) {
         if (removal.kind === "artist") {
-          await deleteArtistFromLibrary(entity.mbid, deleteFiles);
+          await deleteArtistFromLibrary(entity.mbid || entity.id, deleteFiles);
         } else if (removal.kind === "album" && resolveAlbumManager(entity) === "aurral") {
           await deleteAurralAlbumFromLibrary(entity.canonicalId || entity.id, deleteFiles);
         } else if (removal.kind === "album" && /^\d+$/.test(String(entity.providerId ?? ""))) {
@@ -1296,14 +1269,14 @@ function LibraryPage() {
   });
   const libraryArtistMonitoringItems = (() => {
     if (!libraryArtist?.mbid || isPreviewLibrary || !libraryArtistMonitoring.ready) return [];
-    const { label, monitoringItems, reason } = libraryArtistMonitoring;
+    const { label, manager, monitoringItems, reason } = libraryArtistMonitoring;
     const submenuItems = reason
       ? [{ id: "monitoring-blocked", label: reason, disabled: true }]
       : monitoringItems;
     return submenuItems.length
       ? [{
           id: "monitoring",
-          label: `Monitor: ${label}`,
+          label: manager === "aurral" ? label : `Monitor: ${label}`,
           icon: Eye,
           separatorBefore: true,
           submenuItems,
@@ -1388,11 +1361,10 @@ function LibraryPage() {
     hasMissingTracks: hasMissingAlbumTracks,
     onChanged: updateAlbumMonitoringState,
   });
-  const updateTrackMonitoringState = useCallback(
-    (trackId, result) => {
-      const monitored = result?.monitored !== false;
+  const patchLibraryTrack = useCallback(
+    (trackId, patch) => {
       const mark = (track) =>
-        String(track.id) === String(trackId) ? { ...track, monitored } : track;
+        String(track.id) === String(trackId) ? { ...track, ...patch } : track;
       setLibrary((current) => ({ ...current, tracks: current.tracks.map(mark) }));
       queryClient.setQueriesData({ queryKey: queryKeys.libraryAlbumTracksPrefix }, (data) =>
         Array.isArray(data?.tracks) ? { ...data, tracks: data.tracks.map(mark) } : data,
@@ -1403,9 +1375,14 @@ function LibraryPage() {
     },
     [refreshLibraryActivity, setLibrary],
   );
+  const updateTrackMonitoringState = useCallback(
+    (trackId, result) => patchLibraryTrack(trackId, { monitored: result?.monitored !== false }),
+    [patchLibraryTrack],
+  );
   const trackMonitoring = useAurralTrackMonitoring({
     canChange: canChangeMonitoring,
     onChanged: updateTrackMonitoringState,
+    onKeepFileChanged: (trackId, result) => patchLibraryTrack(trackId, { keepFile: result?.keepFile === true }),
   });
 
   const reloadLibraryAlbumTracks = useCallback(async () => {
@@ -1426,9 +1403,13 @@ function LibraryPage() {
     albumManager === "lidarr" && /^\d+$/.test(String(libraryAlbum?.providerId ?? ""))
       ? libraryAlbum.providerId
       : null;
+  const [lidarrMonitoredOverride, setLidarrMonitoredOverride] = useState(null);
   const albumMonitored =
     albumManager === "aurral" ? albumMonitoring.monitored
-      : lidarrAlbumId ? libraryAlbum.monitored === true
+      : lidarrAlbumId
+        ? lidarrMonitoredOverride?.albumId === lidarrAlbumId
+          ? lidarrMonitoredOverride.monitored
+          : libraryAlbum.monitored === true
         : null;
   const canDownloadLibraryAlbum = (() => {
     if (!canAddTracks || isPreviewLibrary || !libraryAlbum || !hasMissingAlbumTracks) return false;
@@ -1476,23 +1457,28 @@ function LibraryPage() {
   }, [activeManager, getArtistForAlbum, libraryAlbum, reloadLibraryAlbumTracks, setLibrary, showError, showSuccess, updateAlbumMonitoringState]);
 
   const setLidarrAlbumMonitored = useCallback(async (monitored) => {
-    if (!lidarrAlbumId) return;
+    if (!lidarrAlbumId || lidarrMonitoredOverride) return;
     const title = libraryAlbum.title || "Album";
+    setLidarrMonitoredOverride({ albumId: lidarrAlbumId, monitored });
     try {
       await updateLibraryAlbum(lidarrAlbumId, { monitored });
       updateAlbumMonitoringState(libraryAlbum.id, { monitored });
       showSuccess(monitored ? `${title} monitored in Lidarr` : `${title} unmonitored in Lidarr`);
     } catch (requestError) {
       showError(
-        requestError.response?.data?.message ||
-          requestError.response?.data?.error ||
-          requestError.message ||
-          "Could not update album monitoring",
+        `Could not ${monitored ? "monitor" : "unmonitor"} ${title} in Lidarr. Nothing changed. ${
+          requestError.response?.data?.message ||
+            requestError.response?.data?.error ||
+            requestError.message ||
+            "Try again."
+        }`,
       );
+    } finally {
+      setLidarrMonitoredOverride(null);
     }
-  }, [libraryAlbum, lidarrAlbumId, showError, showSuccess, updateAlbumMonitoringState]);
+  }, [libraryAlbum, lidarrAlbumId, lidarrMonitoredOverride, showError, showSuccess, updateAlbumMonitoringState]);
   const lidarrAlbumAction =
-    lidarrAlbumId && canChangeMonitoring
+    activeManager === "lidarr" && lidarrAlbumId && canChangeMonitoring
       ? getMonitoringMenuAction({ monitored: albumMonitored, hasMissing: hasMissingAlbumTracks })
       : null;
   const albumMonitoringMenuItem = albumManager === "lidarr"
@@ -1605,12 +1591,16 @@ function LibraryPage() {
     (album) => album?.coverUrl || covers[getAlbumCoverId(album)] || "",
     [covers],
   );
-  const albumTint = useCollectionTint(libraryAlbum ? getAlbumCover(libraryAlbum) : null);
+  const [artistHeroImage, setArtistHeroImage] = useState(null);
+  useEffect(() => setArtistHeroImage(null), [libraryArtist?.id]);
+  const detailTint = useCollectionTint(
+    libraryAlbum ? getAlbumCover(libraryAlbum) : libraryArtist ? artistHeroImage : null,
+  );
 
   const buildPlayableTrack = useCallback(
-    (track) => {
-      const album = getAlbumForTrack(track);
-      const artist = getArtistForAlbum(album);
+    (track, lookup = null) => {
+      const album = getAlbumForTrack(track, lookup?.albumsById);
+      const artist = getArtistForAlbum(album, lookup?.artistsById);
       const file = firstAvailableFile(track, album?.id);
       return {
         id: track.id,
@@ -1629,6 +1619,8 @@ function LibraryPage() {
         artistMbid: artist?.mbid || null,
         albumMbid: album?.releaseGroupMbid || album?.mbid || null,
         trackMbid: track.mbid || track.trackMbid || null,
+        libraryTrackId: file && album ? track.id : null,
+        libraryAlbumId: file && album ? album.id : null,
         durationMs: Number(track.durationMs || file?.durationMs || 0) || null,
         recordHistory: true,
         artwork: getAlbumCover(album),
@@ -1637,37 +1629,117 @@ function LibraryPage() {
     [getAlbumCover, getAlbumForTrack, getArtistForAlbum],
   );
 
-  const playTracks = useCallback(
-    (tracks, startTrack = null, shuffle = false) => {
-      const playable = tracks.map(buildPlayableTrack).filter((track) => track.src);
-      if (!playable.length) {
-        showError("No playable files are available in this selection.");
-        return;
-      }
-      const startIndex = startTrack
-        ? Math.max(
-            0,
-            playable.findIndex((track) => String(track.id) === String(startTrack.id)),
-          )
-        : 0;
-      playQueue(playable, {
-        startIndex: startIndex < 0 ? 0 : startIndex,
-        shuffle,
-        source: librarySource,
-        updateShufflePreference: false,
-      });
+  const playableTracks = useCallback(
+    (tracks, lookup = null) => {
+      const playable = tracks
+        .map((track) => buildPlayableTrack(track, lookup))
+        .filter((track) => track.src);
+      if (!playable.length) showError("No playable files are available in this selection.");
+      return playable;
     },
-    [buildPlayableTrack, librarySource, playQueue, showError],
+    [buildPlayableTrack, showError],
   );
 
-  const playAlbum = useCallback(async (album) => {
-    try {
-      const tracks = await loadAlbumTracks(album);
-      playTracks(tracks);
-    } catch (requestError) {
-      showError(requestError.response?.data?.message || "Failed to load album tracks");
+  const playTracks = useCallback(
+    (tracks, startTrack = null, shuffle = false, lookup = null) => {
+      const playable = playableTracks(tracks, lookup);
+      if (!playable.length) return;
+      playQueue(playable, {
+        startTrackId: startTrack?.id ?? null,
+        shuffle,
+        source: librarySource,
+      });
+    },
+    [librarySource, playQueue, playableTracks],
+  );
+
+  const loadArtistTracks = useCallback(async (artist) => {
+    if (isPreviewLibrary) {
+      return {
+        tracks: library.albums
+          .filter((album) => String(album.artistId) === String(artist.id))
+          .flatMap(getAlbumTracks),
+        lookup: null,
+      };
     }
-  }, [loadAlbumTracks, playTracks, showError]);
+    const pages = [];
+    for (let page = 1; ; page += 1) {
+      const result = await getLibraryPage({
+        kind: "tracks",
+        artistId: artist.id,
+        page,
+        pageSize,
+        availableOnly: true,
+      });
+      pages.push(result);
+      if (!result?.hasMore) break;
+    }
+    const lookup = lookupWithPages(pages);
+    const position = (track) => {
+      const album = getAlbumForTrack(track, lookup.albumsById);
+      const relation = track.albums?.find((entry) => String(entry.albumId) === String(album?.id));
+      return {
+        released: album?.releaseDate || "",
+        album: text(album?.title),
+        disc: Number(relation?.discNumber || 0),
+        number: Number(relation?.trackNumber || 0),
+      };
+    };
+    const tracks = pages
+      .flatMap((page) => (Array.isArray(page?.items) ? page.items : []))
+      .map((track) => ({ track, position: position(track) }))
+      .sort((left, right) =>
+        left.position.released.localeCompare(right.position.released) ||
+        left.position.album.localeCompare(right.position.album) ||
+        left.position.disc - right.position.disc ||
+        left.position.number - right.position.number,
+      )
+      .map(({ track }) => track);
+    return { tracks, lookup };
+  }, [getAlbumForTrack, getAlbumTracks, isPreviewLibrary, library.albums, lookupWithPages]);
+
+  const loadAlbumCollection = useCallback(
+    async (album) => ({ tracks: await loadAlbumTracks(album), lookup: null }),
+    [loadAlbumTracks],
+  );
+
+  const withCollection = useCallback(
+    async (load, action) => {
+      let collection;
+      try {
+        collection = await load();
+      } catch (requestError) {
+        showError(requestError.response?.data?.message || "Failed to load tracks");
+        return;
+      }
+      await action(collection);
+    },
+    [showError],
+  );
+
+  const playCollection = useCallback(
+    (load, shuffle = false) =>
+      withCollection(load, ({ tracks, lookup }) => playTracks(tracks, null, shuffle, lookup)),
+    [playTracks, withCollection],
+  );
+
+  const queueCollection = useCallback(
+    (load, position) =>
+      withCollection(load, ({ tracks, lookup }) => {
+        const playable = playableTracks(tracks, lookup);
+        if (!playable.length) return;
+        const insert = position === "next" ? queueNext : addToQueue;
+        if (insert(playable, { source: librarySource }) === "queued") {
+          showSuccess(position === "next" ? "Playing next" : "Added to queue");
+        }
+      }),
+    [addToQueue, librarySource, playableTracks, queueNext, showSuccess, withCollection],
+  );
+
+  const playAlbum = useCallback(
+    (album) => playCollection(() => loadAlbumCollection(album)),
+    [loadAlbumCollection, playCollection],
+  );
 
   const toggleFavorite = useCallback(
     async (kind, entity) => {
@@ -1692,27 +1764,41 @@ function LibraryPage() {
         else next.delete(id);
         return next;
       });
+      const name = entity?.name || entity?.title || entity?.trackName;
       try {
         const result = await updateLibraryFavorites([id], nextStarred);
-        if (Array.isArray(result?.changedIds)) {
-          setFavoriteIds((current) => {
-            const next = new Set(current);
-            for (const changedId of result.changedIds) {
-              if (nextStarred) next.add(changedId);
-              else next.delete(changedId);
-            }
-            return next;
+        const changedIds = Array.isArray(result?.changedIds) ? result.changedIds : [];
+        const applyFavorite = (starred) => setFavoriteIds((current) => {
+          const next = new Set(current);
+          for (const changedId of changedIds) {
+            if (starred) next.add(changedId);
+            else next.delete(changedId);
+          }
+          return next;
+        });
+        applyFavorite(nextStarred);
+        if (!nextStarred) {
+          showFavoriteRemoved(toast, {
+            name,
+            removed: result?.removed,
+            restore: () => applyFavorite(true),
+            revert: () => applyFavorite(false),
+            onRestored: () => queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix }),
           });
         }
       } catch (requestError) {
         setFavoriteIds(previous);
-        showError(requestError.response?.data?.message || "Failed to update favorites");
+        showError(
+          `Could not ${nextStarred ? "add" : "remove"} ${name || "this item"} ${nextStarred ? "to" : "from"} favorites. Nothing changed. ${
+            requestError.response?.data?.message || "Try again."
+          }`,
+        );
       } finally {
         favoriteMutationInFlightRef.current = false;
         setPendingFavorite(null);
       }
     },
-    [favoriteIds, isPreviewLibrary, setFavoriteIds, showError],
+    [favoriteIds, isPreviewLibrary, setFavoriteIds, showError, toast],
   );
 
   const playTrack = useCallback(
@@ -1738,18 +1824,24 @@ function LibraryPage() {
     ],
   );
 
+  const libraryArtistPath = (artist) =>
+    artist?.id ? "/library/artist/" + encodeURIComponent(artist.id) + previewQuery : null;
+  const libraryAlbumPath = (album) =>
+    album?.id ? "/library/album/" + encodeURIComponent(album.id) + previewQuery : null;
+
   const handleArtistOpen = (artist) => {
-    if (!artist?.id) return;
-    navigate("/library/artist/" + encodeURIComponent(artist.id) + previewQuery);
+    const path = libraryArtistPath(artist);
+    if (path) navigate(path);
   };
 
-  const artistMbidMenuItems = (artist) =>
+  const artistMbidMenuItems = (artist, { separatorBefore = false } = {}) =>
     canEditArtistMbid && artist?.providerId == null
       ? [
           {
             id: "mbid",
             label: "Edit MusicBrainz ID",
             icon: Fingerprint,
+            separatorBefore,
             onSelect: () => setMbidArtist(artist),
           },
         ]
@@ -1775,6 +1867,121 @@ function LibraryPage() {
     }
   };
 
+  const shareLibraryItem = (kind, entity, { artist = null, album = null } = {}) => {
+    if (kind === "artist") {
+      shareLibrary(
+        { kind, libraryArtistId: entity.id, artistMbid: entity.mbid, artistName: entity.name },
+        entity.name,
+      );
+      return;
+    }
+    const artistName = artist?.name || entity.artistName || entity.albumArtist || album?.albumArtist;
+    const item =
+      kind === "album"
+        ? {
+            kind,
+            libraryAlbumId: entity.id,
+            albumMbid: entity.releaseGroupMbid || entity.mbid,
+            artistMbid: artist?.mbid,
+            title: entity.title,
+            artistName,
+          }
+        : {
+            kind,
+            libraryTrackId: entity.id,
+            libraryAlbumId: album?.id,
+            trackMbid: entity.mbid || entity.trackMbid,
+            albumMbid: album?.releaseGroupMbid || album?.mbid,
+            artistMbid: artist?.mbid,
+            title: entity.title,
+            artistName,
+            albumTitle: album?.title,
+          };
+    shareLibrary(item, entity.title);
+  };
+
+  const shareMenuItem = (kind, entity, context) => ({
+    id: "share",
+    label: "Share",
+    icon: Share,
+    onSelect: () => shareLibraryItem(kind, entity, context),
+    disabled: isPreviewLibrary,
+  });
+
+  const collectionQueueItems = (load, disabled = false) => [
+    {
+      id: "queue-next",
+      label: "Play next",
+      icon: ListStart,
+      disabled,
+      onSelect: () => queueCollection(load, "next"),
+    },
+    {
+      id: "queue-add",
+      label: "Add to queue",
+      icon: ListEnd,
+      disabled,
+      onSelect: () => queueCollection(load, "end"),
+    },
+  ];
+
+  const collectionPlayItems = (load, disabled = false) => [
+    { id: "play", label: "Play", icon: Play, disabled, onSelect: () => playCollection(load) },
+    {
+      id: "shuffle",
+      label: "Shuffle",
+      icon: Shuffle,
+      disabled,
+      onSelect: () => playCollection(load, true),
+    },
+    ...collectionQueueItems(load, disabled),
+  ];
+
+  const collectionPlaylistMenu = ({ key, label, defaultName, load }) => ({
+    additionalItemsAfter: "queue-add",
+    onMenuOpen: loadStaticPlaylists,
+    renderAdditionalItems: ({ closeMenu }) => (
+      <>
+        <div className="native-library-item-menu__separator" />
+        <TrackPlaylistSubmenu
+          label="Add to playlist"
+          playlists={staticPlaylists}
+          loading={playlistsLoading}
+          saving={playlistSavingKey === key}
+          error={playlistsError}
+          defaultNewPlaylistName={reserveUniquePlaylistName(staticPlaylists, defaultName)}
+          onSelect={(target) =>
+            withCollection(load, ({ tracks, lookup }) =>
+              saveLibraryTracksToPlaylist(
+                tracks.filter((track) => firstAvailableFile(track)),
+                target,
+                { key, label, defaultName, lookup },
+              ),
+            )
+          }
+          onClose={closeMenu}
+          toggleOnClick
+        />
+      </>
+    ),
+  });
+
+  const albumMenuProps = (album, load) =>
+    collectionPlaylistMenu({
+      key: "album:" + album.id,
+      label: album.title || "Album",
+      defaultName: album.title || "Album",
+      load,
+    });
+
+  const artistMenuProps = (artist) =>
+    collectionPlaylistMenu({
+      key: "artist:" + artist.id,
+      label: artist.name || "Artist",
+      defaultName: `${artist.name || "Artist"} Picks`,
+      load: () => loadArtistTracks(artist),
+    });
+
   const openLibraryInfo = (kind, entity, context = {}) => {
     setLibraryInfo({ kind, entity, ...context });
   };
@@ -1790,11 +1997,6 @@ function LibraryPage() {
     navigate("/artist/" + encodeURIComponent(artist.mbid), {
       state: discoverArtistState(artist),
     });
-  };
-
-  const handleAlbumOpen = (album) => {
-    if (!album?.id) return;
-    navigate("/library/album/" + encodeURIComponent(album.id) + previewQuery);
   };
 
   const handleDiscoverAlbumOpen = (album) => {
@@ -1817,28 +2019,6 @@ function LibraryPage() {
             : tab === "tracks"
               ? sortedTracks.length
               : sortedGenres.length;
-  const sortOptions =
-    section === "albums"
-      ? [
-          { value: "name", label: "Name" },
-          { value: "artist", label: "Artist" },
-          { value: "newest", label: "Recently added" },
-        ]
-      : section === "tracks"
-        ? [
-            { value: "name", label: "Name" },
-            { value: "artist", label: "Artist" },
-            { value: "newest", label: "Recently added" },
-          ]
-        : section === "artists" || section === "album-artists"
-          ? [
-              { value: "name", label: "Name" },
-              { value: "newest", label: "Recently added" },
-            ]
-          : section === "genres"
-            ? [{ value: "name", label: "Name" }]
-            : [];
-
   const collectionTracks = useMemo(() => {
     if (libraryAlbum) return getAlbumTracks(libraryAlbum);
     if (section === "favorites") return favoriteTracks;
@@ -1860,13 +2040,7 @@ function LibraryPage() {
 
   const collectionPlayable = collectionTracks.some((track) => firstAvailableFile(track));
 
-  const updateGenreFilter = (genre) => {
-    setPageIndex(1);
-    const next = new URLSearchParams(searchParams);
-    if (genre) next.set("genre", genre);
-    else next.delete("genre");
-    setSearchParams(next);
-  };
+  const updateGenreFilter = (genre) => updateViewParams({ genre, page: null });
 
   const renderTrackList = (tracks, label, { variant = "collection" } = {}) => (
     <TrackList
@@ -1908,31 +2082,32 @@ function LibraryPage() {
           hasFile: Boolean(file),
           downloadPending,
         });
+        const keepFileItem = trackMonitoring.getKeepFileItem(track, {
+          aurral: hasAurralTrackFile(track),
+          hasFile: Boolean(file),
+        });
         const downloadTrack = () =>
           downloadMissingTrack(track).then((result) => {
             if (result?.monitored) updateTrackMonitoringState(track.id, result);
           });
+        const queueItems = file
+          ? getQueueItems(buildPlayableTrack(track), { source: librarySource })
+          : [];
         const trackMenuItems = [
           {
             id: "play",
-            label: active && isPlaying ? "Pause" : "Play",
-            icon: active && isPlaying ? Pause : Play,
+            label: active && isRunning ? "Pause" : "Play",
+            icon: active && isRunning ? Pause : Play,
             onSelect: () => playTrack(track, tracks),
-            disabled: !file || (active && isLoading),
+            disabled: !file,
           },
+          ...queueItems,
+          shareMenuItem("track", track, { artist, album }),
           {
             id: "info",
             label: "View info",
             icon: Info,
             onSelect: () => openLibraryInfo("track", track, { artist, album, trackNumber }),
-          },
-          {
-            id: "favorite",
-            label: isFavorite ? "Remove from favorites" : "Add to favorites",
-            icon: Heart,
-            selected: isFavorite,
-            separatorBefore: true,
-            onSelect: () => toggleFavorite("song", track),
           },
           ...(!file
             ? [
@@ -1959,27 +2134,7 @@ function LibraryPage() {
               ]
             : []),
           ...(monitoringItem ? [monitoringItem] : []),
-          ...(album
-            ? [
-                {
-                  id: "album",
-                  label: "Go to album",
-                  icon: ExternalLink,
-                  separatorBefore: true,
-                  onSelect: () => handleAlbumOpen(album),
-                },
-              ]
-            : []),
-          ...(artist
-            ? [
-                {
-                  id: "artist",
-                  label: "Go to artist",
-                  icon: UserRound,
-                  onSelect: () => handleArtistOpen(artist),
-                },
-              ]
-            : []),
+          ...(keepFileItem ? [{ ...keepFileItem, separatorBefore: !monitoringItem }] : []),
           ...(canDeleteTrack && (file || hasAurralTrackFile(track))
             ? [
                 {
@@ -1997,26 +2152,26 @@ function LibraryPage() {
           key: track.id,
           number: variant === "release" && trackNumber ? trackNumber : index + 1,
           title: track.title || "Unknown Track",
-          badge: track.monitored === false ? (
+          badge: !trackMonitoring.isMonitored(track) ? (
             <span className="native-library-track__unmonitored" role="img" aria-label="Not monitored">
               <EyeOff aria-hidden="true" />
             </span>
           ) : null,
           subtitle: artistName,
-          artist: { label: artistName, onOpen: artist ? () => handleArtistOpen(artist) : null },
-          album: { label: albumName, onOpen: album ? () => handleAlbumOpen(album) : null },
+          artist: { label: artistName, to: libraryArtistPath(artist) },
+          album: { label: albumName, to: libraryAlbumPath(album) },
           cover: {
             src: album ? getAlbumCover(album) : "",
             label: albumName,
-            onOpen: album ? () => handleAlbumOpen(album) : null,
+            to: libraryAlbumPath(album),
           },
           time: formatDuration(trackDurationMs(track)) || "Unavailable",
           timeMissing: !file,
           active,
-          playing: active && isPlaying,
+          playing: active && isRunning,
+          loading: active && isLoading,
           missing: !file,
           onPlay: file ? () => playTrack(track, tracks) : null,
-          playDisabled: active && isLoading,
           trailing: !file ? (
             <TooltipButton
               className="native-library-track__download"
@@ -2030,7 +2185,7 @@ function LibraryPage() {
           ) : null,
           menu: {
             items: trackMenuItems,
-            additionalItemsAfter: "play",
+            additionalItemsAfter: queueItems.at(-1)?.id ?? "play",
             onMenuOpen: loadStaticPlaylists,
             renderAdditionalItems: ({ closeMenu }) => (
               <>
@@ -2049,7 +2204,7 @@ function LibraryPage() {
                 />
                 <TrackPlaylistRemoveSubmenu
                   track={track}
-                  playlists={staticPlaylists}
+                  playlists={removablePlaylists}
                   saving={playlistSavingKey === String(track.id)}
                   error={playlistsError}
                   onSelect={(target) => removeLibraryTrackFromPlaylist(track, target)}
@@ -2075,13 +2230,14 @@ function LibraryPage() {
       <article
         className="native-library-card native-library-card--artist"
         data-library-menu-target
+        data-artwork-scope
         key={artist.id}
       >
         <div className="native-library-card__cover-wrap">
-          <button
-            type="button"
+          <RouteLink
+            to={libraryArtistPath(artist)}
             className="native-library-card__cover native-library-card__cover--round"
-            onClick={() => handleArtistOpen(artist)}
+            data-artwork
             aria-label={"Open " + (artist.name || "artist")}
           >
             {artist.mbid ? (
@@ -2093,34 +2249,23 @@ function LibraryPage() {
                 showLoading={false}
                 enablePreviewPlayback={false}
                 isInLibrary
+                onImageLoad={setArtistHeroImage}
               />
             ) : (
               <Cover label={artist.name} round />
             )}
-          </button>
+          </RouteLink>
           <LibraryItemMenu
             label={artist.name || "Artist"}
+            {...artistMenuProps(artist)}
             items={[
-              {
-                id: "open",
-                label: "Open artist",
-                icon: UserRound,
-                onSelect: () => handleArtistOpen(artist),
-              },
+              ...collectionPlayItems(() => loadArtistTracks(artist)),
+              shareMenuItem("artist", artist),
               {
                 id: "info",
                 label: "View info",
                 icon: Info,
                 onSelect: () => openLibraryInfo("artist", artist),
-              },
-              ...artistMbidMenuItems(artist),
-              {
-                id: "favorite",
-                label: isFavorite ? "Remove from favorites" : "Add to favorites",
-                icon: Heart,
-                selected: isFavorite,
-                separatorBefore: true,
-                onSelect: () => toggleFavorite("artist", artist),
               },
               {
                 id: "discover",
@@ -2130,7 +2275,8 @@ function LibraryPage() {
                 onSelect: () => handleDiscoverArtistOpen(artist),
                 disabled: !artist.mbid,
               },
-              ...(canDeleteArtist && artist.mbid
+              ...artistMbidMenuItems(artist),
+              ...(canDeleteArtist && canRemoveLibraryArtist(artist)
                 ? [
                     {
                       id: "delete",
@@ -2148,13 +2294,9 @@ function LibraryPage() {
         <div className="native-library-card__body">
           <div className="native-library-card__title-row">
             <Tooltip content={artist.name}>
-              <button
-                type="button"
-                className="native-library-card__title"
-                onClick={() => handleArtistOpen(artist)}
-              >
+              <RouteLink to={libraryArtistPath(artist)} className="native-library-card__title">
                 {artist.name || "Unknown Artist"}
-              </button>
+              </RouteLink>
             </Tooltip>
             <FavoriteButton
               active={isFavorite}
@@ -2173,34 +2315,36 @@ function LibraryPage() {
 
   const renderAlbumCard = (album) => {
     const artist = getArtistForAlbum(album);
-    const albumTracks = getAlbumTracks(album);
-    const availability = albumAvailability(album);
-    const meta =
-      availability.total && availability.available < availability.total
-        ? availability.available + "/" + availability.total + " available"
-        : (yearOf(album.releaseDate) ? yearOf(album.releaseDate) + " · " : "") +
-          (availability.total || 0) +
-          " tracks";
+    const albumEmpty = !getAlbumTracks(album).length && !album.trackCount && !album.trackIds?.length;
+    const meta = albumCardMeta(album, albumAvailability(album));
     const isFavorite = favoriteIds.has(favoriteId("album", album));
     const aurralState = album.managedBy === "aurral"
       ? describeAurralAlbumStatus(aurralAlbumStatuses[aurralAlbumStatusKey(album.id)] || {})
       : null;
     const cardStatus = aurralState?.status === "complete" ? null : aurralState;
+    const albumLinkState = {
+      seed: {
+        title: album.title || "",
+        artistName: artist?.name || album.albumArtist || "",
+        coverUrl: getAlbumCover(album) || null,
+      },
+    };
     return (
-      <article className="native-library-card" data-library-menu-target key={album.id}>
+      <article className="native-library-card" data-library-menu-target data-artwork-scope key={album.id}>
         <div className="native-library-card__cover-wrap">
-          <button
-            type="button"
+          <RouteLink
+            to={libraryAlbumPath(album)}
+            state={albumLinkState}
             className="native-library-card__cover"
-            onClick={() => handleAlbumOpen(album)}
+            data-artwork
             aria-label={"Open " + (album.title || "album")}
           >
             <Cover src={getAlbumCover(album)} label={album.title} />
-          </button>
+          </RouteLink>
           <TooltipButton
             className="native-library-card__play"
             onClick={() => playAlbum(album)}
-            disabled={!albumTracks.length && !album.trackCount && !album.trackIds?.length}
+            disabled={albumEmpty}
             label={"Play " + (album.title || "album")}
             aria-label={"Play " + (album.title || "album")}
           >
@@ -2208,45 +2352,16 @@ function LibraryPage() {
           </TooltipButton>
           <LibraryItemMenu
             label={album.title || "Album"}
+            {...albumMenuProps(album, () => loadAlbumCollection(album))}
             items={[
-              {
-                id: "play",
-                label: "Play album",
-                icon: Play,
-                onSelect: () => playAlbum(album),
-                disabled: !albumTracks.length && !album.trackCount && !album.trackIds?.length,
-              },
-              {
-                id: "open",
-                label: "Open album",
-                icon: ExternalLink,
-                onSelect: () => handleAlbumOpen(album),
-              },
+              ...collectionPlayItems(() => loadAlbumCollection(album), albumEmpty),
+              shareMenuItem("album", album, { artist }),
               {
                 id: "info",
                 label: "View info",
                 icon: Info,
                 onSelect: () => openLibraryInfo("album", album, { artist }),
               },
-              {
-                id: "favorite",
-                label: isFavorite ? "Remove from favorites" : "Add to favorites",
-                icon: Heart,
-                selected: isFavorite,
-                separatorBefore: true,
-                onSelect: () => toggleFavorite("album", album),
-              },
-              ...(artist
-                ? [
-                    {
-                      id: "artist",
-                      label: "Go to artist",
-                      icon: UserRound,
-                      separatorBefore: true,
-                      onSelect: () => handleArtistOpen(artist),
-                    },
-                  ]
-                : []),
               {
                 id: "discover",
                 label: "Open in Discover",
@@ -2273,13 +2388,13 @@ function LibraryPage() {
         <div className="native-library-card__body">
           <div className="native-library-card__title-row">
             <Tooltip content={album.title}>
-              <button
-                type="button"
+              <RouteLink
+                to={libraryAlbumPath(album)}
+                state={albumLinkState}
                 className="native-library-card__title"
-                onClick={() => handleAlbumOpen(album)}
               >
                 {album.title || "Unknown Album"}
-              </button>
+              </RouteLink>
             </Tooltip>
             <FavoriteButton
               active={isFavorite}
@@ -2289,13 +2404,9 @@ function LibraryPage() {
             />
           </div>
           {artist ? (
-            <button
-              type="button"
-              className="native-library-card__artist"
-              onClick={() => handleArtistOpen(artist)}
-            >
+            <RouteLink to={libraryArtistPath(artist)} className="native-library-card__artist">
               {artist.name}
-            </button>
+            </RouteLink>
           ) : (
             <span className="native-library-card__artist">
               {artist?.name || album.albumArtist || "Unknown Artist"}
@@ -2321,9 +2432,9 @@ function LibraryPage() {
         {count != null && <span>{count}</span>}
       </div>
       {path && (
-        <button type="button" onClick={() => navigate(path)} className="btn">
+        <RouteLink to={path} className="btn">
           {actionLabel}
-        </button>
+        </RouteLink>
       )}
     </div>
   );
@@ -2416,18 +2527,15 @@ function LibraryPage() {
       <div role="list" aria-label="Library genres">
         {sortedGenres.map((genre) => (
           <div role="listitem" key={genre.name}>
-            <button
-              type="button"
+            <RouteLink
               className="native-library-genre-row"
-              onClick={() =>
-                navigate("/library/albums?genre=" + encodeURIComponent(genre.name))
-              }
+              to={"/library/albums?genre=" + encodeURIComponent(genre.name)}
             >
               <strong>{genre.name}</strong>
               <span>{genre.artists}</span>
               <span>{genre.albums}</span>
               <span>{genre.tracks}</span>
-            </button>
+            </RouteLink>
           </div>
         ))}
       </div>
@@ -2445,24 +2553,21 @@ function LibraryPage() {
       0,
     );
     const albumPlayable = albumTracks.some((track) => firstAvailableFile(track));
+    const loadAlbumDetail = async () => ({ tracks: albumTracks, lookup: null });
     const albumIsCurrent =
       matchesSource(librarySource) &&
       albumTracks.some((track) => String(track.id) === String(currentTrack?.id));
     return (
       <section className="native-library-detail">
         <CollectionHeader
-          cover={<Cover src={getAlbumCover(libraryAlbum)} label={libraryAlbum.title} />}
-          kicker="Album"
+          cover={<Cover src={getAlbumCover(libraryAlbum)} label={libraryAlbum.title} thumbnail={false} />}
+          kicker={releaseTypeOf(libraryAlbum) || "Album"}
           title={libraryAlbum.title || "Unknown Album"}
           subtitle={
             artist ? (
-              <button
-                type="button"
-                className="native-library-detail__artist"
-                onClick={() => handleArtistOpen(artist)}
-              >
+              <RouteLink to={libraryArtistPath(artist)} className="native-library-detail__artist">
                 {artist.name}
-              </button>
+              </RouteLink>
             ) : (
               <p>{libraryAlbum.albumArtist || "Unknown Artist"}</p>
             )
@@ -2506,7 +2611,7 @@ function LibraryPage() {
               <CollectionPlayButtons
                 label={libraryAlbum.title || "album"}
                 disabled={!albumPlayable}
-                isPlaying={albumIsCurrent && isPlaying}
+                isPlaying={albumIsCurrent && isRunning}
                 isShuffleEnabled={false}
                 onPlay={() => (albumIsCurrent ? togglePlayPause() : playTracks(albumTracks))}
                 onShuffle={() => playTracks(albumTracks, null, true)}
@@ -2550,42 +2655,17 @@ function LibraryPage() {
               )}
               <LibraryItemMenu
                 label={libraryAlbum.title || "Album"}
+                {...albumMenuProps(libraryAlbum, loadAlbumDetail)}
                 items={[
-                  {
-                    id: "play",
-                    label: "Play album",
-                    icon: Play,
-                    onSelect: () => playTracks(albumTracks),
-                    disabled: !albumTracks.some((track) => firstAvailableFile(track)),
-                  },
+                  ...collectionQueueItems(loadAlbumDetail, !albumPlayable),
+                  shareMenuItem("album", libraryAlbum, { artist }),
                   {
                     id: "info",
                     label: "View info",
                     icon: Info,
                     onSelect: () => openLibraryInfo("album", libraryAlbum, { artist }),
                   },
-                  {
-                    id: "favorite",
-                    label: favoriteIds.has(favoriteId("album", libraryAlbum))
-                      ? "Remove from favorites"
-                      : "Add to favorites",
-                    icon: Heart,
-                    selected: favoriteIds.has(favoriteId("album", libraryAlbum)),
-                    separatorBefore: true,
-                    onSelect: () => toggleFavorite("album", libraryAlbum),
-                  },
                   ...(albumMonitoringMenuItem ? [albumMonitoringMenuItem] : []),
-                  ...(artist
-                    ? [
-                        {
-                          id: "artist",
-                          label: "Go to artist",
-                          icon: UserRound,
-                          separatorBefore: true,
-                          onSelect: () => handleArtistOpen(artist),
-                        },
-                      ]
-                    : []),
                   ...(canDeleteAlbum && canRemoveLibraryAlbum(libraryAlbum, { lidarrConnected: activeManager === "lidarr" })
                     ? [
                         {
@@ -2623,19 +2703,24 @@ function LibraryPage() {
       0,
     );
     const discoverArtist = libraryArtist.mbid ? libraryArtist : null;
+    const artistPlayable = artistTracks.some((track) => firstAvailableFile(track));
+    const artistIsCurrent =
+      matchesSource(librarySource) &&
+      artistTracks.some((track) => String(track.id) === String(currentTrack?.id));
     return (
       <section className="native-library-detail">
         <div
           className="native-library-detail__hero native-library-detail__hero--artist"
           data-library-menu-target
         >
-          <div className="native-library-detail__cover">
+          <div className="native-library-detail__cover" style={sharedArtworkStyle}>
             {libraryArtist.mbid ? (
               <ArtistImage
                 mbid={libraryArtist.mbid}
                 artistName={libraryArtist.name}
                 alt={libraryArtist.name || ""}
                 className="native-library-detail__artist-image"
+                thumbnail={false}
                 showLoading={false}
                 enablePreviewPlayback={false}
                 isInLibrary
@@ -2658,14 +2743,18 @@ function LibraryPage() {
                 .join(" · ")}
             </p>
             <div className="native-library-detail__actions">
-              <button
-                type="button"
-                className="native-library-page-play"
-                onClick={() => playTracks(artistTracks)}
-                disabled={!artistTracks.some((track) => firstAvailableFile(track))}
-              >
-                <Play aria-hidden="true" fill="currentColor" /> Play
-              </button>
+              <CollectionPlayButtons
+                label={libraryArtist.name || "artist"}
+                disabled={!artistPlayable}
+                isPlaying={artistIsCurrent && isRunning}
+                isShuffleEnabled={false}
+                onPlay={() =>
+                  artistIsCurrent
+                    ? togglePlayPause()
+                    : playCollection(() => loadArtistTracks(libraryArtist))
+                }
+                onShuffle={() => playCollection(() => loadArtistTracks(libraryArtist), true)}
+              />
               <FavoriteButton
                 active={favoriteIds.has(favoriteId("artist", libraryArtist))}
                 pending={Boolean(pendingFavorite)}
@@ -2681,33 +2770,19 @@ function LibraryPage() {
               )}
               <LibraryItemMenu
                 label={libraryArtist.name || "Artist"}
+                {...artistMenuProps(libraryArtist)}
                 items={[
-                  {
-                    id: "play",
-                    label: "Play artist",
-                    icon: Play,
-                    onSelect: () => playTracks(artistTracks),
-                    disabled: !artistTracks.some((track) => firstAvailableFile(track)),
-                  },
+                  ...collectionQueueItems(() => loadArtistTracks(libraryArtist), !artistPlayable),
+                  shareMenuItem("artist", libraryArtist),
                   {
                     id: "info",
                     label: "View info",
                     icon: Info,
                     onSelect: () => openLibraryInfo("artist", libraryArtist),
                   },
-                  ...artistMbidMenuItems(libraryArtist),
-                  {
-                    id: "favorite",
-                    label: favoriteIds.has(favoriteId("artist", libraryArtist))
-                      ? "Remove from favorites"
-                      : "Add to favorites",
-                    icon: Heart,
-                    selected: favoriteIds.has(favoriteId("artist", libraryArtist)),
-                    separatorBefore: true,
-                    onSelect: () => toggleFavorite("artist", libraryArtist),
-                  },
+                  ...artistMbidMenuItems(libraryArtist, { separatorBefore: true }),
                   ...libraryArtistMonitoringItems,
-                  ...(canDeleteArtist && libraryArtist.mbid
+                  ...(canDeleteArtist && canRemoveLibraryArtist(libraryArtist)
                     ? [{
                         id: "delete",
                         label: "Delete artist",
@@ -2764,6 +2839,7 @@ function LibraryPage() {
         deleting={deletingLibraryEntity}
       />
       {trackMonitoring.dialog}
+      {libraryArtistMonitoring.dialog}
       <DeleteAlbumModal
         show={libraryRemoval?.kind === "album"}
         title={libraryRemoval?.entity?.title || libraryRemoval?.entity?.albumName}
@@ -2800,10 +2876,35 @@ function LibraryPage() {
         </p>
       )}
       {loading && (
-        <div className="native-library-state" role="status">
-          <DotLoader size="xl" label={null} />
-          <span>Loading library…</span>
-        </div>
+        isDetail ? (
+          <div className="native-library-content">
+            <section className="native-library-detail">
+              {routeAlbumId && albumSeed?.title ? (
+                <CollectionHeader
+                  cover={<Cover src={albumSeed.coverUrl} label={albumSeed.title} thumbnail={false} />}
+                  kicker="Album"
+                  title={albumSeed.title}
+                  subtitle={albumSeed.artistName ? <p>{albumSeed.artistName}</p> : null}
+                  actions={
+                    <CollectionPlayButtons label={albumSeed.title} disabled isPlaying={false} />
+                  }
+                />
+              ) : null}
+              <SkeletonStatus label="Loading library">
+                {routeAlbumId && albumSeed?.title ? null : <SkeletonCollectionHeader />}
+                <SkeletonRows count={10} />
+              </SkeletonStatus>
+            </section>
+          </div>
+        ) : viewMode === "list" || tab === "tracks" || tab === "genres" ? (
+          <SkeletonStatus label="Loading library">
+            <SkeletonRows count={12} />
+          </SkeletonStatus>
+        ) : (
+          <SkeletonStatus label="Loading library">
+            <SkeletonCardGrid className="native-library-grid" square={tab !== "artists"} />
+          </SkeletonStatus>
+        )
       )}
       {!loading && error && (
         <div className="native-library-state" role="alert">
@@ -2825,9 +2926,9 @@ function LibraryPage() {
 
   if (isDetail) {
     return (
-      <main
-        className={`library-page native-library-page${libraryAlbum ? " collection-page" : ""}`}
-        style={libraryAlbum && albumTint ? { "--collection-tint": albumTint } : undefined}
+      <div
+        className={`library-page native-library-page${libraryAlbum || libraryArtist ? " collection-page" : ""}`}
+        style={detailTint ? { "--collection-tint": detailTint } : undefined}
       >
         {renderLibraryModals()}
         {renderStatus()}
@@ -2837,7 +2938,7 @@ function LibraryPage() {
         {!loading && !error && (libraryAlbum || libraryArtist) && (
           <div className="native-library-content">{renderLibraryDetail()}</div>
         )}
-      </main>
+      </div>
     );
   }
 
@@ -2877,19 +2978,16 @@ function LibraryPage() {
       : section === "albums" && selectedGenre
         ? selectedGenre
         : sectionLabel;
-  const totalPages =
-    pageData?.kind === tab && tab !== "genres"
-      ? Math.ceil(pageData.total / pageData.pageSize)
-      : 0;
   const pageCount =
     section === "home"
       ? pageData?.total ?? library.albums.length + ownedLibraryTracks.length
       : activeCount;
   const showToolbar = section !== "home";
+  const isSearchVisible = searchOpen || Boolean(query);
   const hasActiveFilters = Boolean(selectedGenre);
 
   return (
-    <main className="library-page native-library-page">
+    <div className="library-page native-library-page">
       {renderLibraryModals()}
       <header className={`native-library-header${section === "home" ? " native-library-header--home" : ""}`}>
         <div className="native-library-title-row">
@@ -2911,28 +3009,28 @@ function LibraryPage() {
           </div>
           <div className="native-library-header-actions">
             {selectedGenre && (
-              <button
-                type="button"
+              <RouteLink
                 className="btn btn-surface btn-sm"
-                onClick={() =>
-                  navigateToDiscover(
-                    "/search?q=" +
-                      encodeURIComponent("#" + selectedGenre) +
-                      "&type=tag",
-                  )
-                }
+                to={"/search?q=" + encodeURIComponent("#" + selectedGenre) + "&type=tag"}
               >
                 <Sparkles aria-hidden="true" />
                 Explore in Discover
-              </button>
+              </RouteLink>
             )}
             {showToolbar ? (
               <TooltipButton
-                className={`native-library-icon-button${searchOpen ? " is-active" : ""}`}
-                onClick={() => setSearchOpen((value) => !value)}
-                label={searchOpen ? "Close search" : "Search"}
-                aria-label={searchOpen ? "Close search" : "Search " + sectionLabel.toLocaleLowerCase()}
-                aria-pressed={searchOpen}
+                className={`native-library-icon-button${isSearchVisible ? " is-active" : ""}`}
+                onClick={() => {
+                  if (isSearchVisible) {
+                    setSearchOpen(false);
+                    if (query) changeQuery("");
+                    return;
+                  }
+                  setSearchOpen(true);
+                }}
+                label={isSearchVisible ? "Close search" : "Search"}
+                aria-label={isSearchVisible ? "Close search" : "Search " + sectionLabel.toLocaleLowerCase()}
+                aria-pressed={isSearchVisible}
               >
                 <Search aria-hidden="true" />
               </TooltipButton>
@@ -2944,26 +3042,20 @@ function LibraryPage() {
         {showToolbar && (
           <>
             <div className="native-library-toolbar">
-              {searchOpen && (
+              {isSearchVisible && (
                 <label className="native-library-search">
                   <Search aria-hidden="true" />
                   <input
                     type="search"
                     value={query}
-                    onChange={(event) => {
-                      if (!event.target.value.trim()) setPageIndex(1);
-                      setQuery(event.target.value);
-                    }}
+                    onChange={(event) => changeQuery(event.target.value)}
                     placeholder={"Search " + sectionLabel.toLocaleLowerCase()}
                     aria-label={"Search " + sectionLabel.toLocaleLowerCase()}
                     autoFocus
                   />
                   {query && (
                     <TooltipButton
-                      onClick={() => {
-                        setPageIndex(1);
-                        setQuery("");
-                      }}
+                      onClick={() => changeQuery("")}
                       label="Clear search"
                      className="btn">
                       <X aria-hidden="true" />
@@ -2977,10 +3069,15 @@ function LibraryPage() {
                     <span className="sr-only">Sort {sectionLabel.toLocaleLowerCase()} by</span>
                     <select
                       value={sortMode}
-                      onChange={(event) => {
-                        setPageIndex(1);
-                        setSortMode(event.target.value);
-                      }}
+                      onChange={(event) =>
+                        updateViewParams(
+                          {
+                            sort: event.target.value === LIBRARY_DEFAULT_SORT ? null : event.target.value,
+                            page: null,
+                          },
+                          { replace: true },
+                        )
+                      }
                       aria-label={"Sort " + sectionLabel.toLocaleLowerCase()}
                     >
                       {sortOptions.map((option) => (
@@ -2993,10 +3090,12 @@ function LibraryPage() {
                   <span className="native-library-toolbar-divider" aria-hidden="true" />
                   <TooltipButton
                     className="native-library-icon-button"
-                    onClick={() => {
-                      setPageIndex(1);
-                      setSortDirection((value) => (value === "asc" ? "desc" : "asc"));
-                    }}
+                    onClick={() =>
+                      updateViewParams(
+                        { dir: sortDirection === "asc" ? "desc" : null, page: null },
+                        { replace: true },
+                      )
+                    }
                     label={sortDirection === "asc" ? "Descending" : "Ascending"}
                     aria-label={sortDirection === "asc" ? "Sort descending" : "Sort ascending"}
                   >
@@ -3025,7 +3124,7 @@ function LibraryPage() {
                 <div className="native-library-view-toggle" aria-label="Library view">
                   <TooltipButton
                     className={`native-library-icon-button${viewMode === "grid" ? " is-active" : ""}`}
-                    onClick={() => setViewMode("grid")}
+                    onClick={() => updateViewParams({ view: null }, { replace: true })}
                     label="Grid view"
                     aria-label="Grid view"
                     aria-pressed={viewMode === "grid"}
@@ -3034,7 +3133,7 @@ function LibraryPage() {
                   </TooltipButton>
                   <TooltipButton
                     className={`native-library-icon-button${viewMode === "list" ? " is-active" : ""}`}
-                    onClick={() => setViewMode("list")}
+                    onClick={() => updateViewParams({ view: "list" }, { replace: true })}
                     label="List view"
                     aria-label="List view"
                     aria-pressed={viewMode === "list"}
@@ -3095,13 +3194,18 @@ function LibraryPage() {
         />
       )}
       {!loading && !error && activeCount > 0 && (
-        <div className="native-library-content">{content}</div>
+        <div
+          className={`native-library-content${libraryUpdating ? " query-pending" : ""}`}
+          aria-busy={libraryUpdating || undefined}
+        >
+          {content}
+        </div>
       )}
       {!loading && !error && totalPages > 1 && (
         <nav className="native-library-pagination" aria-label={sectionLabel + " pages"}>
           <TooltipButton
             className="native-library-icon-button"
-            onClick={() => setPageIndex((value) => Math.max(1, value - 1))}
+            onClick={() => setPageIndex(pageIndex - 1)}
             disabled={pageIndex === 1}
             label="Previous page"
             aria-label="Previous page"
@@ -3113,7 +3217,7 @@ function LibraryPage() {
           </span>
           <TooltipButton
             className="native-library-icon-button"
-            onClick={() => setPageIndex((value) => Math.min(totalPages, value + 1))}
+            onClick={() => setPageIndex(Math.min(totalPages, pageIndex + 1))}
             disabled={pageIndex === totalPages}
             label="Next page"
             aria-label="Next page"
@@ -3122,7 +3226,7 @@ function LibraryPage() {
           </TooltipButton>
         </nav>
       )}
-    </main>
+    </div>
   );
 }
 

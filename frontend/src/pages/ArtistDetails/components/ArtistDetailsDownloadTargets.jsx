@@ -1,3 +1,4 @@
+import ArtworkImage from "../../../components/ArtworkImage";
 import { getAlbumAddAction } from "../../../utils/albumAddAction";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -13,6 +14,7 @@ import { ArtistTrackListToolbar } from "./ArtistTrackListToolbar";
 import { useAlbumTrackListToolbar } from "../../../hooks/useAlbumTrackListToolbar";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
+import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 import { queryKeys } from "../../../queryClient.js";
 
 function PickCover({ pick, albumCovers, fulfilledCoverIds, artistCoverImage }) {
@@ -21,7 +23,7 @@ function PickCover({ pick, albumCovers, fulfilledCoverIds, artistCoverImage }) {
     resolved: fulfilledCoverIds?.has(pick?.releaseGroupId),
   });
   if (cover) {
-    return <img src={cover} alt="" loading="lazy" decoding="async" />;
+    return <ArtworkImage src={cover} alt="" loading="lazy" decoding="async" />;
   }
   return (
     <div className="artist-media-placeholder">
@@ -109,6 +111,7 @@ export function ArtistDetailsDownloadTargets({
       ? tracks
       : tracks.slice(0, TRACK_PREVIEW_LIMIT);
   const hasHiddenTracks = tracks.length > TRACK_PREVIEW_LIMIT;
+  const pickCover = getReleaseGroupCoverUrl(releaseGroup, albumCovers);
 
   const normalizeTrack = useCallback(
     (track, index) =>
@@ -121,15 +124,17 @@ export function ArtistDetailsDownloadTargets({
         artistName || artist?.name || "",
         {
           album: missingReleasePick?.title || "",
+          artwork: pickCover || null,
           artistMbid: artist?.id || "",
           albumMbid: missingReleasePick?.releaseGroupId || "",
         },
       ),
-    [artist?.id, artist?.name, artistName, missingReleasePick?.releaseGroupId, missingReleasePick?.title],
+    [artist?.id, artist?.name, artistName, missingReleasePick?.releaseGroupId, missingReleasePick?.title, pickCover],
   );
 
   const { currentTrack, isPlaying, isLoading, playTrack, togglePlayPause, source } =
     useAudioQueue();
+  const getQueueItems = useQueueTrackActions();
 
   const handlePlay = useCallback(
     (track, options = {}, ...normalizeArgs) => {
@@ -142,8 +147,6 @@ export function ArtistDetailsDownloadTargets({
       playTrack(normalized, {
         source: options.source ?? source,
         queue: options.queue,
-        shuffle: options.shuffle,
-        updateShufflePreference: options.updateShufflePreference,
       });
     },
     [currentTrack?.id, normalizeTrack, playTrack, source, togglePlayPause],
@@ -288,8 +291,15 @@ export function ArtistDetailsDownloadTargets({
                         <span className="artist-track-title">
                           {track.title || track.trackName || "Unknown Track"}
                         </span>
-                        {onAddTrackToPlaylist ? (
+                        {onAddTrackToPlaylist || track.preview_url ? (
                           <TrackPlaylistMenu
+                            queueItems={
+                              track.preview_url
+                                ? getQueueItems(normalizeTrack(track, index), {
+                                    source: playbackSource,
+                                  })
+                                : []
+                            }
                             track={
                               resolveMembershipTrack
                                 ? resolveMembershipTrack(track, missingReleasePick.releaseGroup)
@@ -316,8 +326,15 @@ export function ArtistDetailsDownloadTargets({
                                     )
                                 : null
                             }
-                            onSelect={(target) =>
-                              onAddTrackToPlaylist(track, missingReleasePick.releaseGroup, target)
+                            onSelect={
+                              onAddTrackToPlaylist
+                                ? (target) =>
+                                    onAddTrackToPlaylist(
+                                      track,
+                                      missingReleasePick.releaseGroup,
+                                      target,
+                                    )
+                                : undefined
                             }
                           />
                         ) : null}

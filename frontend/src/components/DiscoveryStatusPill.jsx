@@ -1,6 +1,6 @@
 import { AlertTriangle, Clock } from "lucide-react";
-import { formatDate } from "../utils/dateTime.js";
 import { DotLoader } from "./DotLoader";
+import RelativeTime from "./RelativeTime";
 
 export default function DiscoveryStatusPill({
   isUpdating = false,
@@ -21,9 +21,13 @@ export default function DiscoveryStatusPill({
     return (
       <span role="status" className="artist-discover-hero__updated">
         <AlertTriangle className="artist-discover-hero__updated-icon" aria-hidden="true" />
-        {lastUpdated
-          ? `Refresh failed · Updated ${formatDate(new Date(lastUpdated))}`
-          : "Refresh failed"}
+        {lastUpdated ? (
+          <>
+            Refresh failed · Updated <RelativeTime value={lastUpdated} unit="day" />
+          </>
+        ) : (
+          "Refresh failed"
+        )}
       </span>
     );
   }
@@ -32,7 +36,9 @@ export default function DiscoveryStatusPill({
     return (
       <span role="status" className="artist-discover-hero__updated">
         <Clock className="artist-discover-hero__updated-icon" aria-hidden="true" />
-        Updated {formatDate(new Date(lastUpdated))}
+        <span>
+          Updated <RelativeTime value={lastUpdated} unit="day" />
+        </span>
       </span>
     );
   }

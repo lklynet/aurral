@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { dbOps } from "../../../db/helpers/index.js";
+import { MAX_REVIEW_TIMEOUT_HOURS } from "../../../db/helpers/settings.js";
 import {
   DATE_TIME_FORMATS,
   DEFAULT_METADATA_BASE_URL,
@@ -135,10 +136,18 @@ export function registerGeneral(router) {
         missingTrackSearch,
         inbox,
         dateTimeFormat,
+        reviewTimeoutHours,
       } = req.body;
 
       if (dateTimeFormat !== undefined && !DATE_TIME_FORMATS.includes(dateTimeFormat)) {
         return res.status(400).json({ error: "Invalid date and time format" });
+      }
+      if (reviewTimeoutHours !== undefined
+        && (!Number.isInteger(reviewTimeoutHours) || reviewTimeoutHours < 0
+          || reviewTimeoutHours > MAX_REVIEW_TIMEOUT_HOURS)) {
+        return res.status(400).json({
+          error: `reviewTimeoutHours must be a whole number from 0 to ${MAX_REVIEW_TIMEOUT_HOURS}`,
+        });
       }
 
       const currentSettings = dbOps.getSettings();
@@ -545,6 +554,8 @@ export function registerGeneral(router) {
           missingTrackSearch && typeof missingTrackSearch === "object"
             ? { ...currentSettings.missingTrackSearch, ...missingTrackSearch }
             : currentSettings.missingTrackSearch,
+        reviewTimeoutHours:
+          reviewTimeoutHours !== undefined ? reviewTimeoutHours : currentSettings.reviewTimeoutHours,
       };
 
       if (updatedSettings?.integrations?.coverArtArchive) {
@@ -566,6 +577,8 @@ export function registerGeneral(router) {
       }
 
       const previousMusicDataSource = getMusicDataSourceName();
+      const { lidarrClient } = await import("../../../services/lidarrClient.js");
+      const lidarrWasActive = lidarrClient.isConfigured();
       dbOps.updateSettings(updatedSettings);
       if (getMusicDataSourceName() !== previousMusicDataSource) {
         const { enqueueDiscoveryRefresh } = await import(
@@ -573,15 +586,25 @@ export function registerGeneral(router) {
         );
         enqueueDiscoveryRefresh({ reason: "music_data_source_changed", force: true });
       }
-      const { lidarrClient } = await import("../../../services/lidarrClient.js");
       lidarrClient.updateConfig();
-      if (didLidarrRootDiscoveryChange(currentSettings, updatedSettings) && lidarrClient.isConfigured()) {
+      const lidarrActive = lidarrClient.isConfigured();
+      if (didLidarrRootDiscoveryChange(currentSettings, updatedSettings) && lidarrActive) {
         try {
           await lidarrClient.getRootFolders({ forceRefresh: true });
         } catch (error) {
           logger.warn("settings", "Failed to refresh Lidarr root folders:", {
             message: error.message,
           });
+        }
+      }
+      if (lidarrActive !== lidarrWasActive) {
+        const { scheduleLibraryScan } = await import("../../../services/libraryScanWorker.js");
+        scheduleLibraryScan({ includeLidarr: lidarrActive });
+        if (!lidarrActive) {
+          const { invalidateLidarrArtistCache } = await import("../../../services/libraryManager.js");
+          const { enqueueSystemTaskJob } = await import("../../../services/honkerDb.js");
+          invalidateLidarrArtistCache();
+          enqueueSystemTaskJob({ kind: "lidarr-files-release" });
         }
       }
       const { downloadClientRegistry } = await import(

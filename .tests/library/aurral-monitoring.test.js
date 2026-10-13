@@ -11,10 +11,13 @@ const [
   isolatedState,
   { db },
   { dbOps },
+  { default: axios },
   { registerArtists },
   { registerAlbums },
+  { registerMonitoring },
   libraryStore,
   managementStore,
+  monitoringStore,
   { downloadTracker },
   { downloadWorker },
   { lidarrClient },
@@ -26,10 +29,13 @@ const [
   "aurral-monitoring",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
+  "lib/axiosFetch.js",
   "backend/routes/library/handlers/artists.js",
   "backend/routes/library/handlers/albums.js",
+  "backend/routes/library/handlers/monitoring.js",
   "backend/services/libraryMediaStore.js",
   "backend/services/libraryManagementStore.js",
+  "backend/services/aurralMonitoringStore.js",
   "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/downloadJobs/downloadWorker.js",
   "backend/services/lidarrClient.js",
@@ -49,7 +55,7 @@ const releases = {
   live: { id: "a2222222-2222-4222-8222-222222222205", title: "Live Album", type: "Album", secondary: ["Live"], date: "2022-09-01" },
   bootleg: { id: "a2222222-2222-4222-8222-222222222206", title: "Bootleg Album", type: "Album", statuses: ["Bootleg"], date: "2022-10-01" },
 };
-const eligibleIds = [releases.firstAlbum.id, releases.secondAlbum.id, releases.latestEp.id];
+const defaultIds = [releases.firstAlbum.id, releases.secondAlbum.id, releases.latestEp.id];
 
 const metadataState = { artistFails: false, extraReleases: [], otherReleases: [], albumGate: null, artistGate: null };
 const lidarrCalls = [];
@@ -73,6 +79,25 @@ function artistPayload(mbid = artistMbid) {
   };
 }
 
+const recordingId = (release, position) =>
+  `b${release.id.slice(1, 24)}${release.id.slice(-4)}000000${String(position).padStart(2, "0")}`;
+
+function pressing(release, suffix, trackCount, { newRecordings = false } = {}) {
+  const source = release.sharesWith || release;
+  return {
+    id: `${release.id}-${suffix}`,
+    status: "Official",
+    tracks: Array.from({ length: trackCount }, (_, index) => index + 1).map((position) => ({
+      id: `${release.id}-${suffix}-${position}`,
+      recordingid: recordingId(source, newRecordings ? position + 50 : position),
+      trackname: `${source.title} Track ${position}`,
+      trackposition: position,
+      mediumnumber: 1,
+      durationms: 180000,
+    })),
+  };
+}
+
 function albumPayload(release) {
   const owner = release.artistMbid || artistMbid;
   return {
@@ -82,18 +107,11 @@ function albumPayload(release) {
     artistid: owner,
     artists: [{ id: owner, artistname: owner === artistMbid ? "Monitor Artist" : "Other Artist" }],
     releasedate: release.date,
-    releases: [{
-      id: `${release.id}-release`,
-      status: "Official",
-      tracks: [1, 2].map((position) => ({
-        id: `${release.id.slice(0, -2)}${String(position).padStart(2, "0")}-track`,
-        recordingid: `${release.id.slice(0, 24)}b${release.id.slice(25, -2)}${String(position).padStart(2, "0")}`,
-        trackname: `${release.title} Track ${position}`,
-        trackposition: position,
-        mediumnumber: 1,
-        durationms: 180000,
-      })),
-    }],
+    releases: release.deluxe
+      ? [pressing(release, "cd", 2), pressing(release, "digital", 2), pressing(release, "deluxe", 4), pressing(release, "box", 9)]
+      : release.remastered
+        ? [pressing(release, "cd", 2), pressing(release, "digital", 2), pressing(release, "remaster", 4, { newRecordings: true })]
+        : [pressing(release, "release", 2)],
   };
 }
 
@@ -138,6 +156,7 @@ const route = (method) => (routePath, ...handlers) => {
 const router = { get: route("GET"), post: route("POST"), put: route("PUT"), delete: route("DELETE") };
 registerArtists(router);
 registerAlbums(router);
+registerMonitoring(router);
 
 async function callRoute(key, { params = {}, body = {}, query = {} } = {}) {
   const response = { statusCode: 200, body: null };
@@ -152,16 +171,22 @@ async function callRoute(key, { params = {}, body = {}, query = {} } = {}) {
         response.body = value;
         return this;
       },
+      set() {
+        return this;
+      },
+      setHeader() {},
     },
   );
   return response;
 }
 
-function queuedMonitoringTasks() {
+function systemTasks(kind) {
   return listHonkerJobs("system-task")
     .map((job) => job.payload)
-    .filter((payload) => payload?.kind === "aurral-monitoring-apply");
+    .filter((payload) => payload?.kind === kind);
 }
+
+const queuedMonitoringTasks = () => systemTasks("aurral-monitoring-apply");
 
 function clearMonitoringTasks() {
   const queue = getHonkerQueueByName("system-task");
@@ -178,10 +203,21 @@ async function runQueuedMonitoringTasks() {
 function queuedAlbumMbids() {
   return [...new Set(
     downloadTracker.getAll()
-      .filter((job) => job.playlistType === "library" && job.managedBy === "aurral")
+      .filter((job) => job.playlistType === "library" && job.managedBy === "aurral" && job.albumMbid)
       .map((job) => job.albumMbid),
   )].sort();
 }
+
+const queuedTrackTitles = () =>
+  downloadTracker.getAll()
+    .filter((job) => job.playlistType === "library" && !job.albumMbid)
+    .map((job) => job.trackName)
+    .sort();
+
+const artistRow = (mbid = artistMbid) => db.prepare("SELECT id, metadata_json FROM library_artists WHERE mbid = ?").get(mbid);
+
+const storedMonitoring = (mbid = artistMbid) =>
+  managementStore.getLibraryManagementEntry("artist", artistRow(mbid).id)?.monitorRules ?? null;
 
 const originalSettings = dbOps.getSettings();
 const originalLidarr = {
@@ -230,6 +266,8 @@ test.beforeEach(() => {
   db.prepare("DELETE FROM library_albums").run();
   db.prepare("DELETE FROM library_tracks").run();
   db.prepare("DELETE FROM library_artists").run();
+  db.prepare("DELETE FROM library_monitoring_exclusions").run();
+  db.prepare("DELETE FROM settings WHERE key = 'monitoringDefaults'").run();
   managementStore.invalidateLibraryManagementCache();
   lidarrCalls.length = 0;
 });
@@ -242,85 +280,138 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-async function addAurralArtist(monitorOption = "none") {
+async function addAurralArtist(monitorOption = "none", { mbid = artistMbid, name = "Monitor Artist" } = {}) {
   return callRoute("POST /artists", {
-    body: {
-      foreignArtistId: artistMbid,
-      artistName: "Monitor Artist",
-      monitorOption,
-      managedBy: "aurral",
-    },
+    body: { foreignArtistId: mbid, artistName: name, monitorOption, managedBy: "aurral" },
   });
 }
 
-test("monitoring an Aurral artist queues every eligible album without Lidarr", async () => {
-  const added = await addAurralArtist("all");
+const monitorWith = (monitoring, mbid = artistMbid) =>
+  callRoute("PUT /artists/:mbid", { params: { mbid }, body: { monitoring } });
+
+const customRules = (rules) => ({ monitored: true, useDefault: false, rules });
+
+test("monitoring an Aurral artist with the default rules queues its studio albums and EPs without Lidarr", async () => {
+  const added = await callRoute("POST /artists", {
+    body: { foreignArtistId: artistMbid, artistName: "Monitor Artist", managedBy: "aurral", monitoring: { monitored: true } },
+  });
   assert.equal(added.statusCode, 201);
   assert.equal(added.body.artist.managedBy, "aurral");
-  assert.deepEqual([...added.body.artist.monitoring.releaseGroupIds].sort(), [...eligibleIds].sort());
+  assert.equal(added.body.artist.monitored, true);
+  assert.equal(added.body.artist.useDefault, true);
+  assert.deepEqual(added.body.artist.monitoring.releaseGroupIds, defaultIds);
 
   const tasks = await runQueuedMonitoringTasks();
   assert.equal(tasks.length, 1);
-  assert.deepEqual(queuedAlbumMbids(), [...eligibleIds].sort());
+  assert.deepEqual(queuedAlbumMbids(), [...defaultIds].sort());
   const groups = new Set(downloadTracker.getAll().map((job) => `${job.albumMbid}:${job.requestGroupId}`));
   assert.equal(groups.size, 3);
 
-  await runQueuedMonitoringTasks();
-  const monitoredAgain = await callRoute("PUT /artists/:mbid", {
-    params: { mbid: artistMbid },
-    body: { monitorOption: "all" },
-  });
+  const monitoredAgain = await monitorWith({ monitored: true });
   assert.equal(monitoredAgain.statusCode, 200);
   await runQueuedMonitoringTasks();
   assert.equal(downloadTracker.getAll().length, 6);
   assert.equal(lidarrCalls.length, 0);
 });
 
-test("Aurral monitor modes select the matching releases and reject Lidarr-only modes", async () => {
+test("monitoring an artist downloads the songs missing from an album the Library lists from its files", async () => {
+  await addAurralArtist("none");
+  const artist = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid);
+  const release = albumPayload(releases.firstAlbum).releases[0];
+  const [have, missing] = release.tracks;
+  const album = libraryStore.upsertLibraryAlbum({ identityKey: `release-group:${releases.firstAlbum.id}`, mbid: release.id,
+    releaseGroupMbid: releases.firstAlbum.id, artistId: artist.id, title: releases.firstAlbum.title });
+  managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
+  const owned = libraryStore.upsertLibraryTrack({ identityKey: `recording:${have.recordingid}`, mbid: have.recordingid, title: have.trackname });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: owned.id, trackNumber: 1 });
+  libraryStore.upsertLibraryMediaFile({ trackId: owned.id, albumId: album.id, source: "aurral",
+    path: `${isolatedState.baseDir}/Monitor Artist/First Album/01.flac` });
+  libraryStore.storeLibraryAlbumTrackList(album.id, { release: { id: release.id,
+    tracks: release.tracks.map((track) => ({ recordingId: track.recordingid, title: track.trackname, trackPosition: track.trackposition })) } });
+
+  await callRoute("PUT /artists/:mbid", { params: { mbid: artistMbid }, body: { monitorOption: "all" } });
+  await runQueuedMonitoringTasks();
+
+  assert.deepEqual(
+    downloadTracker.getAll().filter((job) => job.albumMbid === releases.firstAlbum.id).map((job) => job.trackName),
+    [missing.trackname],
+  );
+});
+
+test("older clients' monitor options map onto rules and Lidarr-only options are refused", async () => {
   await addAurralArtist("none");
   assert.deepEqual(queuedMonitoringTasks(), []);
 
-  const selections = {};
-  for (const mode of ["latest", "first", "future", "none"]) {
-    const response = await callRoute("PUT /artists/:mbid", {
-      params: { mbid: artistMbid },
-      body: { monitorOption: mode },
-    });
-    assert.equal(response.statusCode, 200, mode);
-    assert.equal(response.body.monitorOption, mode, mode);
-    selections[mode] = response.body.monitoring.releaseGroupIds;
-  }
-  assert.deepEqual(selections.latest, [releases.latestEp.id]);
-  assert.deepEqual(selections.first, [releases.firstAlbum.id]);
-  assert.deepEqual(selections.future, []);
-  assert.deepEqual(selections.none, []);
+  const latest = await callRoute("PUT /artists/:mbid", { params: { mbid: artistMbid }, body: { monitorOption: "latest" } });
+  assert.equal(latest.statusCode, 200);
+  assert.equal(latest.body.useDefault, false);
+  assert.equal(latest.body.monitorOption, "latest");
+  assert.deepEqual(latest.body.monitoring.releaseGroupIds, [releases.latestEp.id]);
 
-  for (const mode of ["existing", "missing"]) {
-    const rejected = await callRoute("PUT /artists/:mbid", {
-      params: { mbid: artistMbid },
-      body: { monitorOption: mode },
-    });
+  const future = await callRoute("PUT /artists/:mbid", { params: { mbid: artistMbid }, body: { monitorOption: "future" } });
+  assert.equal(future.body.monitored, true);
+  assert.equal(future.body.rules.catalog, "none");
+  assert.equal(future.body.rules.newReleases, true);
+  assert.deepEqual(future.body.monitoring.releaseGroupIds, []);
+
+  const all = await callRoute("PUT /artists/:mbid", { params: { mbid: artistMbid }, body: { monitorOption: "all" } });
+  assert.equal(all.body.useDefault, true);
+
+  const none = await callRoute("PUT /artists/:mbid", { params: { mbid: artistMbid }, body: { monitorOption: "none" } });
+  assert.equal(none.body.monitored, false);
+  assert.equal(storedMonitoring(), null);
+
+  for (const mode of ["first", "existing", "missing"]) {
+    const rejected = await callRoute("PUT /artists/:mbid", { params: { mbid: artistMbid }, body: { monitorOption: mode } });
     assert.equal(rejected.statusCode, 400, mode);
     assert.equal(rejected.body.code, "unsupported_monitor_mode", mode);
   }
   assert.equal(lidarrCalls.length, 0);
 });
 
-test("a metadata outage reports an error and keeps the previous monitor mode", async () => {
-  const added = await addAurralArtist("none");
+test("custom rules choose release types and how much of the back catalogue to take", async () => {
+  await addAurralArtist("none");
+
+  const cases = [
+    [{ types: ["album"], extraTypes: ["live"] }, [releases.firstAlbum.id, releases.secondAlbum.id, releases.live.id]],
+    [{ catalog: "latest", latestCount: 2, types: ["album", "ep", "single"] }, [releases.latestEp.id, releases.single.id]],
+    [{ catalog: "since", sinceYear: 2021 }, [releases.secondAlbum.id, releases.latestEp.id]],
+  ];
+  for (const [rules, expected] of cases) {
+    const previous = storedMonitoring();
+    const preview = await callRoute("POST /artists/:mbid/monitoring/preview", {
+      params: { mbid: artistMbid }, body: { monitoring: customRules(rules) },
+    });
+    assert.equal(preview.statusCode, 200);
+    assert.deepEqual(preview.body.monitoring.releaseGroupIds, expected, JSON.stringify(rules));
+    assert.deepEqual(storedMonitoring(), previous);
+    assert.deepEqual(queuedMonitoringTasks(), []);
+
+    const saved = await monitorWith(customRules(rules));
+    assert.equal(saved.statusCode, 200);
+    assert.deepEqual(saved.body.monitoring.releaseGroupIds, expected, JSON.stringify(rules));
+    assert.deepEqual(storedMonitoring().rules, saved.body.rules);
+    clearMonitoringTasks();
+  }
+
+  const before = storedMonitoring();
+  for (const rules of [{ types: [] }, { catalog: "none", newReleases: false }, { topTracks: 51 }, { types: ["boxset"] }]) {
+    const rejected = await monitorWith(customRules(rules));
+    assert.equal(rejected.statusCode, 400, JSON.stringify(rules));
+    assert.equal(rejected.body.code, "invalid_monitor_rules", JSON.stringify(rules));
+  }
+  assert.deepEqual(storedMonitoring(), before);
+});
+
+test("a metadata outage reports an error and keeps the previous monitoring", async () => {
+  await addAurralArtist("none");
   metadataState.artistFails = true;
   clearMetadataProviderCaches();
 
-  const response = await callRoute("PUT /artists/:mbid", {
-    params: { mbid: artistMbid },
-    body: { monitorOption: "all" },
-  });
+  const response = await monitorWith({ monitored: true });
   assert.equal(response.statusCode, 503);
   assert.equal(response.body.code, "metadata_unavailable");
-  assert.equal(
-    managementStore.getLibraryManagementEntry("artist", Number(added.body.artist.id)).monitorMode,
-    "none",
-  );
+  assert.equal(storedMonitoring(), null);
   assert.deepEqual(queuedMonitoringTasks(), []);
 });
 
@@ -331,9 +422,8 @@ test("adding an artist reports a metadata outage during monitoring", async () =>
   assert.equal(response.statusCode, 503);
   assert.equal(response.body.code, "metadata_unavailable");
   assert.deepEqual(queuedMonitoringTasks(), []);
-  const artist = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid);
-  assert.equal(managementStore.getLibraryManagementEntry("artist", artist.id).monitorMode, "none");
-  const metadata = JSON.parse(db.prepare("SELECT metadata_json FROM library_artists WHERE id = ?").get(artist.id).metadata_json);
+  assert.equal(storedMonitoring(), null);
+  const metadata = JSON.parse(artistRow().metadata_json);
   assert.equal(metadata.monitored, false);
   assert.equal(metadata.monitorOption, "none");
 });
@@ -341,12 +431,12 @@ test("adding an artist reports a metadata outage during monitoring", async () =>
 test("the artist add service activates monitoring for an existing Aurral artist", async () => {
   await addAurralArtist("none");
   const artist = await libraryManager.addArtistWithResolvedOptions(artistMbid, "Monitor Artist", {
-    managedBy: "aurral", monitorOption: "all",
+    managedBy: "aurral", monitoring: { monitored: true },
   });
-  assert.equal(artist.monitorOption, "all");
-  assert.equal(managementStore.getLibraryManagementEntry("artist", Number(artist.id)).monitorMode, "all");
+  assert.equal(artist.monitored, true);
+  assert.equal(storedMonitoring().default, true);
   await runQueuedMonitoringTasks();
-  assert.deepEqual(queuedAlbumMbids(), [...eligibleIds].sort());
+  assert.deepEqual(queuedAlbumMbids(), [...defaultIds].sort());
 });
 
 test("a later disable wins over an earlier artist monitoring request", async () => {
@@ -356,21 +446,16 @@ test("a later disable wins over an earlier artist monitoring request", async () 
   const release = Promise.withResolvers();
   metadataState.artistGate = { started: started.resolve, release: release.promise };
 
-  const enable = callRoute("PUT /artists/:mbid", {
-    params: { mbid: artistMbid }, body: { monitorOption: "all" },
-  });
+  const enable = monitorWith({ monitored: true });
   await started.promise;
-  const disable = callRoute("PUT /artists/:mbid", {
-    params: { mbid: artistMbid }, body: { monitorOption: "none" },
-  });
+  const disable = monitorWith({ monitored: false });
   release.resolve();
   try {
     await Promise.all([enable, disable]);
   } finally {
     metadataState.artistGate = null;
   }
-  const artist = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid);
-  assert.equal(managementStore.getLibraryManagementEntry("artist", artist.id).monitorMode, "none");
+  assert.equal(storedMonitoring(), null);
   await runQueuedMonitoringTasks();
   assert.deepEqual(queuedAlbumMbids(), []);
 });
@@ -393,13 +478,10 @@ test("artist monitoring skips albums managed by Lidarr", async () => {
   libraryStore.linkLibraryAlbumTrack({ albumId: lidarrAlbum.id, trackId: track.id, trackNumber: 1 });
   managementStore.setLibraryManagement({ entityKind: "album", entityId: lidarrAlbum.id, managedBy: "lidarr" });
 
-  const response = await callRoute("PUT /artists/:mbid", {
-    params: { mbid: artistMbid },
-    body: { monitorOption: "all" },
-  });
+  const response = await monitorWith({ monitored: true });
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.body.monitoring.skipped, [
-    { releaseGroupId: releases.secondAlbum.id, reason: "managed_by_lidarr" },
+    { releaseGroupId: releases.secondAlbum.id, title: releases.secondAlbum.title, reason: "managed_by_lidarr" },
   ]);
   await runQueuedMonitoringTasks();
   assert.deepEqual(queuedAlbumMbids(), [releases.firstAlbum.id, releases.latestEp.id].sort());
@@ -421,7 +503,7 @@ test("a Lidarr album follow-up never reactivates an Aurral artist that shares it
   try {
     await libraryManager.ensureRequestedAlbumMonitoring(sharedId, "9");
     await runQueuedMonitoringTasks();
-    assert.equal(managementStore.getLibraryManagementEntry("artist", Number(sharedId)).monitorMode, "none");
+    assert.equal(storedMonitoring(), null);
     assert.deepEqual(queuedAlbumMbids(), []);
 
     lidarrClient.getArtist = async () => {
@@ -430,44 +512,45 @@ test("a Lidarr album follow-up never reactivates an Aurral artist that shares it
     lidarrClient.getAlbum = lidarrClient.getArtist;
     await libraryManager.ensureRequestedAlbumMonitoring(sharedId, "9");
     await runQueuedMonitoringTasks();
-    assert.equal(managementStore.getLibraryManagementEntry("artist", Number(sharedId)).monitorMode, "none");
+    assert.equal(storedMonitoring(), null);
     assert.deepEqual(queuedAlbumMbids(), []);
   } finally {
     Object.assign(lidarrClient, stubbed);
   }
 });
 
-test("queued artist acquisition stops after monitoring is disabled", async () => {
+test("queued artist acquisition stops after monitoring is disabled or the rules change", async () => {
   await addAurralArtist("none");
-  await callRoute("PUT /artists/:mbid", {
-    params: { mbid: artistMbid }, body: { monitorOption: "all" },
-  });
+  await monitorWith({ monitored: true });
   assert.ok(queuedMonitoringTasks().length > 0);
-  await callRoute("PUT /artists/:mbid", {
-    params: { mbid: artistMbid }, body: { monitorOption: "none" },
-  });
+  await monitorWith({ monitored: false });
   await runQueuedMonitoringTasks();
   assert.deepEqual(queuedAlbumMbids(), []);
+
+  await monitorWith({ monitored: true });
+  const [staleTask] = queuedMonitoringTasks();
+  clearMonitoringTasks();
+  await monitorWith(customRules({ types: ["ep"] }));
+  await processSystemTask(staleTask);
+  assert.deepEqual(queuedAlbumMbids(), []);
+  await runQueuedMonitoringTasks();
+  assert.deepEqual(queuedAlbumMbids(), [releases.latestEp.id]);
 });
 
 test("an artist disabled during metadata lookup does not acquire albums", async () => {
   await addAurralArtist("none");
+  const monitoring = await monitorWith(customRules({ types: ["album"] }));
+  assert.equal(monitoring.statusCode, 200);
   const started = Promise.withResolvers();
   const release = Promise.withResolvers();
   metadataState.albumGate = { started: started.resolve, release: release.promise };
 
-  const monitoring = await callRoute("PUT /artists/:mbid", {
-    params: { mbid: artistMbid }, body: { monitorOption: "all" },
-  });
-  assert.equal(monitoring.statusCode, 200);
   const task = queuedMonitoringTasks()[0];
   clearMonitoringTasks();
   const acquisition = processSystemTask(task);
   await started.promise;
   try {
-    const disabled = await callRoute("PUT /artists/:mbid", {
-      params: { mbid: artistMbid }, body: { monitorOption: "none" },
-    });
+    const disabled = await monitorWith({ monitored: false });
     assert.equal(disabled.statusCode, 200);
   } finally {
     release.resolve();
@@ -515,12 +598,9 @@ test("an album override survives artist monitoring changes and unmonitoring keep
   assert.equal(downloadTracker.getJob(activeJob.id).status, "cancelled");
   assert.equal(downloadTracker.getJob(finishedJob.id).status, "done");
 
-  const monitoredArtist = await callRoute("PUT /artists/:mbid", {
-    params: { mbid: artistMbid },
-    body: { monitorOption: "all" },
-  });
+  const monitoredArtist = await monitorWith({ monitored: true });
   assert.deepEqual(monitoredArtist.body.monitoring.skipped, [
-    { releaseGroupId: releases.latestEp.id, reason: "unmonitored" },
+    { releaseGroupId: releases.latestEp.id, title: releases.latestEp.title, reason: "unmonitored" },
   ]);
   await runQueuedMonitoringTasks();
   assert.equal(downloadTracker.getJob(activeJob.id).status, "cancelled");
@@ -587,7 +667,7 @@ test("daily reconciliation queues new releases once and keeps going past a faili
   await processSystemTask({ kind: "aurral-monitoring-reconcile" });
   assert.deepEqual(
     queuedAlbumMbids(),
-    [...eligibleIds, newRelease.id, upcoming.id].sort(),
+    [...defaultIds, newRelease.id, upcoming.id].sort(),
   );
   const afterFirstRun = downloadTracker.getAll().length;
   assert.equal(afterFirstRun, initialJobs + 4);
@@ -606,32 +686,288 @@ test("daily reconciliation queues new releases once and keeps going past a faili
   assert.equal(lidarrCalls.length, 0);
 });
 
-test("a same-mode write does not move the future monitoring cutoff", async () => {
+test("saving rules again keeps the cutoff for new releases while new releases stay on", async () => {
   const added = await addAurralArtist("future");
   assert.equal(added.statusCode, 201);
-  const artistId = Number(added.body.artist.id);
-  const start = JSON.parse(db.prepare("SELECT metadata_json FROM library_artists WHERE id = ?").get(artistId).metadata_json).monitorStartedAt;
-  assert.ok(Number.isSafeInteger(start));
-  const newRelease = {
-    id: "a5555555-5555-4555-8555-555555555555",
-    title: "Future Album",
-    type: "Album",
-    date: futureDate(1),
-  };
+  const start = Date.now() - 3 * 24 * 60 * 60 * 1000;
+  monitoringStore.setAurralArtistMonitoringState(artistRow().id, { ...storedMonitoring(), catalogAt: start, newSince: start });
+  const newRelease = { id: "a5555555-5555-4555-8555-555555555555", title: "Recent Album", type: "Album", date: futureDate(-1) };
   metadataState.extraReleases = [newRelease];
   clearMetadataProviderCaches();
 
-  const originalNow = Date.now;
-  Date.now = () => originalNow() + 3 * 24 * 60 * 60 * 1000;
-  try {
-    managementStore.setLibraryManagement({
-      entityKind: "artist", entityId: artistId, managedBy: "aurral", monitorMode: "future",
-    });
-  } finally {
-    Date.now = originalNow;
-  }
+  assert.equal((await monitorWith(customRules({ catalog: "none", newReleases: true }))).statusCode, 200);
+  assert.equal(storedMonitoring().newSince, start);
+  assert.equal((await monitorWith(customRules({ catalog: "none", newReleases: true, types: ["album"] }))).statusCode, 200);
+  assert.equal(storedMonitoring().newSince, start);
+  assert.equal(JSON.parse(artistRow().metadata_json).monitorStartedAt, start);
+
+  clearMonitoringTasks();
+  await processSystemTask({ kind: "aurral-monitoring-reconcile" });
+  assert.deepEqual(queuedAlbumMbids(), [newRelease.id]);
+});
+
+test("Latest with new releases off keeps the same releases after the artist puts out another", async () => {
+  await addAurralArtist("none");
+  const saved = await monitorWith(customRules({ catalog: "latest", latestCount: 1, newReleases: false }));
+  assert.equal(saved.statusCode, 200);
+  assert.equal(saved.body.monitored, true);
+  assert.deepEqual(saved.body.monitoring.releaseGroupIds, [releases.latestEp.id]);
+  await runQueuedMonitoringTasks();
+
+  metadataState.extraReleases = [
+    { id: "a2222222-2222-4222-8222-222222222209", title: "Newer EP", type: "EP", date: futureDate(1) },
+  ];
+  clearMetadataProviderCaches();
+  await processSystemTask({ kind: "aurral-monitoring-reconcile" });
+  assert.deepEqual(queuedAlbumMbids(), [releases.latestEp.id]);
+});
+
+test("a release whose every song is already wanted is skipped, but studio albums never are", async () => {
+  await addAurralArtist("none");
+  const albumSingle = { id: "a2222222-2222-4222-8222-222222222210", title: "Album Single", type: "Single", date: "2021-05-01", sharesWith: releases.secondAlbum };
+  const reissue = { id: "a2222222-2222-4222-8222-222222222211", title: "First Album Reissue", type: "Album", date: "2020-01-01", sharesWith: releases.firstAlbum };
+  metadataState.extraReleases = [albumSingle, reissue];
+  clearMetadataProviderCaches();
+
+  const saved = await monitorWith(customRules({ types: ["album", "ep", "single"] }));
+  assert.equal(saved.statusCode, 200);
+  assert.deepEqual(saved.body.monitoring.releaseGroupIds, [
+    releases.firstAlbum.id, reissue.id, releases.secondAlbum.id, releases.latestEp.id, releases.single.id,
+  ]);
+  assert.deepEqual(saved.body.monitoring.skipped, [
+    { releaseGroupId: albumSingle.id, title: albumSingle.title, reason: "covered" },
+  ]);
+  await runQueuedMonitoringTasks();
+
+  const singlesOnly = await monitorWith(customRules({ types: ["single"] }));
+  assert.deepEqual(singlesOnly.body.monitoring.skipped, [
+    { releaseGroupId: albumSingle.id, title: albumSingle.title, reason: "covered" },
+  ]);
+});
+
+test("a deleted album stays out of monitoring until someone asks for it again", async () => {
+  await addAurralArtist("none");
+  await monitorWith({ monitored: true });
+  await runQueuedMonitoringTasks();
+  const album = db.prepare("SELECT id FROM library_albums WHERE mbid = ?").get(releases.secondAlbum.id);
+
+  const removed = await callRoute("DELETE /albums/aurral/:canonicalId", { params: { canonicalId: String(album.id) } });
+  assert.equal(removed.statusCode, 200);
+  assert.equal(removed.body.excluded, true);
+  downloadTracker.clearAll();
 
   await processSystemTask({ kind: "aurral-monitoring-reconcile" });
-  assert.ok(queuedAlbumMbids().includes(newRelease.id));
-  assert.equal(JSON.parse(db.prepare("SELECT metadata_json FROM library_artists WHERE id = ?").get(artistId).metadata_json).monitorStartedAt, start);
+  assert.deepEqual(queuedAlbumMbids(), []);
+  const resaved = await monitorWith(customRules({ types: ["album"] }));
+  assert.deepEqual(resaved.body.monitoring.skipped, [
+    { releaseGroupId: releases.secondAlbum.id, title: releases.secondAlbum.title, reason: "excluded" },
+  ]);
+
+  const exclusions = await callRoute("GET /monitoring/exclusions", { query: { artistMbid } });
+  assert.deepEqual(exclusions.body.map(({ kind, mbid, title }) => ({ kind, mbid, title })), [
+    { kind: "album", mbid: releases.secondAlbum.id, title: releases.secondAlbum.title },
+  ]);
+
+  const requested = await callRoute("POST /albums/request", {
+    body: {
+      albumMbid: releases.secondAlbum.id,
+      albumName: releases.secondAlbum.title,
+      artistMbid,
+      artistName: "Monitor Artist",
+      managedBy: "aurral",
+    },
+  });
+  assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
+  assert.deepEqual((await callRoute("GET /monitoring/exclusions", { query: { artistMbid } })).body, []);
+  assert.deepEqual(queuedAlbumMbids(), [releases.secondAlbum.id]);
+});
+
+test("allowing an excluded album again lets monitoring take it back", async () => {
+  await addAurralArtist("none");
+  await monitorWith(customRules({ types: ["album"] }));
+  await runQueuedMonitoringTasks();
+  const album = db.prepare("SELECT id FROM library_albums WHERE mbid = ?").get(releases.firstAlbum.id);
+  await callRoute("DELETE /albums/aurral/:canonicalId", { params: { canonicalId: String(album.id) } });
+  downloadTracker.clearAll();
+
+  const [exclusion] = (await callRoute("GET /monitoring/exclusions", { query: { artistMbid } })).body;
+  const allowed = await callRoute("DELETE /monitoring/exclusions/:id", { params: { id: String(exclusion.id) } });
+  assert.equal(allowed.statusCode, 200);
+  const missing = await callRoute("DELETE /monitoring/exclusions/:id", { params: { id: String(exclusion.id) } });
+  assert.equal(missing.statusCode, 404);
+
+  await processSystemTask({ kind: "aurral-monitoring-reconcile" });
+  assert.deepEqual(queuedAlbumMbids(), [releases.firstAlbum.id]);
+});
+
+test("changing the default rules re-applies them to the artists that use them", async () => {
+  await addAurralArtist("none");
+  await monitorWith({ monitored: true });
+  await runQueuedMonitoringTasks();
+  metadataState.otherReleases = [
+    { id: "a5555555-5555-4555-8555-555555555504", title: "Other Single", type: "Single", date: "2020-01-01", artistMbid: otherArtistMbid },
+  ];
+  await addAurralArtist("none", { mbid: otherArtistMbid, name: "Other Artist" });
+  await monitorWith(customRules({ catalog: "none", newReleases: true }), otherArtistMbid);
+  clearMonitoringTasks();
+
+  const current = await callRoute("GET /monitoring/defaults");
+  assert.equal(current.body.artistCount, 1);
+  assert.deepEqual(current.body.rules.types, ["album", "ep"]);
+
+  const withSingles = { ...current.body.rules, types: ["album", "ep", "single"] };
+  const preview = await callRoute("POST /monitoring/defaults/preview", { body: { rules: withSingles } });
+  assert.equal(preview.statusCode, 200);
+  assert.deepEqual(
+    { artistCount: preview.body.artistCount, releaseCount: preview.body.releaseCount, failedArtistCount: preview.body.failedArtistCount },
+    { artistCount: 1, releaseCount: 1, failedArtistCount: 0 },
+  );
+  assert.deepEqual(systemTasks("aurral-monitoring-reconcile"), []);
+
+  const saved = await callRoute("PUT /monitoring/defaults", { body: { rules: withSingles } });
+  assert.equal(saved.statusCode, 200);
+  assert.deepEqual(saved.body.rules.types, ["album", "ep", "single"]);
+  const [reconcile] = systemTasks("aurral-monitoring-reconcile");
+  assert.ok(reconcile);
+  clearMonitoringTasks();
+  await processSystemTask(reconcile);
+  assert.deepEqual(queuedAlbumMbids(), [...defaultIds, releases.single.id].sort());
+
+  assert.equal((await callRoute("PUT /monitoring/defaults", { body: { rules: withSingles } })).statusCode, 200);
+  assert.deepEqual(systemTasks("aurral-monitoring-reconcile"), []);
+
+  const invalid = await callRoute("PUT /monitoring/defaults", { body: { rules: { types: [] } } });
+  assert.equal(invalid.statusCode, 400);
+
+  await callRoute("PUT /monitoring/defaults", { body: { rules: { ...withSingles, newReleases: false } } });
+  const artistId = artistRow().id;
+  assert.equal(managementStore.getLibraryManagementEntry("artist", artistId).monitorMode, "none");
+  assert.equal(storedMonitoring().default, true);
+  assert.equal(managementStore.getLibraryManagementEntry("artist", artistRow(otherArtistMbid).id).monitorMode, "future");
+});
+
+test("top tracks queue the artist's popular songs that monitored releases do not already bring", async (t) => {
+  const deezerRequests = [];
+  const topTracks = ["Second Album Track 1", "Hit Song", "Deleted Song", "Deep Cut"];
+  const providerGet = axios.get.bind(axios);
+  t.mock.method(axios, "get", async (url, options) => {
+    if (!String(url).startsWith("https://api.deezer.com/")) return providerGet(url, options);
+    deezerRequests.push(url);
+    if (url === "https://api.deezer.com/search/artist") {
+      return { data: { data: [{ id: 77, name: "Monitor Artist" }] } };
+    }
+    if (url === "https://api.deezer.com/artist/77/top") {
+      return {
+        data: {
+          data: topTracks.slice(0, options.params.limit).map((title, index) => ({
+            id: index + 1, title, duration: 200, rank: 1000 - index, album: { title: "Hits" },
+          })),
+        },
+      };
+    }
+    throw new Error(`Unexpected Deezer request ${url}`);
+  });
+  await addAurralArtist("none");
+  const deletedRecording = "dddddddd-dddd-4ddd-8ddd-000000000001";
+  for (const title of ["Deleted Song (Demo)", "Deleted Song"]) {
+    monitoringStore.addMonitoringExclusion({ kind: "track", mbid: deletedRecording, artistMbid, artistName: "Monitor Artist", title });
+  }
+
+  const saved = await monitorWith(customRules({ catalog: "latest", latestCount: 1, types: ["album"], topTracks: 3 }));
+  assert.equal(saved.statusCode, 200);
+  assert.deepEqual(saved.body.monitoring.releaseGroupIds, [releases.secondAlbum.id]);
+  assert.deepEqual(saved.body.monitoring.topTracks.map((track) => track.title), ["Hit Song"]);
+  assert.deepEqual(saved.body.monitoring.skippedTracks, [
+    { title: "Second Album Track 1", reason: "on_release" },
+    { title: "Deleted Song", reason: "excluded" },
+  ]);
+
+  await runQueuedMonitoringTasks();
+  assert.deepEqual(queuedAlbumMbids(), [releases.secondAlbum.id]);
+  assert.deepEqual(queuedTrackTitles(), ["Hit Song"]);
+
+  const jobCount = downloadTracker.getAll().length;
+  await processSystemTask({ kind: "aurral-monitoring-reconcile" });
+  assert.equal(downloadTracker.getAll().length, jobCount);
+  assert.ok(deezerRequests.length > 0);
+});
+
+test("the expanded edition downloads the longer tracklist of an album", async () => {
+  await addAurralArtist("none");
+  const deluxe = { id: "a2222222-2222-4222-8222-222222222212", title: "Deluxe Album", type: "Album", date: "2024-02-02", deluxe: true };
+  metadataState.extraReleases = [deluxe];
+  clearMetadataProviderCaches();
+
+  const saved = await monitorWith(customRules({ catalog: "latest", latestCount: 1, types: ["album"], edition: "expanded" }));
+  assert.deepEqual(saved.body.monitoring.releaseGroupIds, [deluxe.id]);
+  await runQueuedMonitoringTasks();
+  const titles = downloadTracker.getAll().filter((job) => job.albumMbid === deluxe.id).map((job) => job.trackName).sort();
+  assert.deepEqual(titles, [1, 2, 3, 4].map((position) => `Deluxe Album Track ${position}`));
+});
+
+test("the expanded edition adds the extra tracks to an album the Library lists from its standard files", async () => {
+  await addAurralArtist("none");
+  const deluxe = { id: "a2222222-2222-4222-8222-222222222212", title: "Deluxe Album", type: "Album", date: "2024-02-02", deluxe: true };
+  metadataState.extraReleases = [deluxe];
+  clearMetadataProviderCaches();
+  const cd = albumPayload(deluxe).releases[0];
+  const artist = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid);
+  const album = libraryStore.upsertLibraryAlbum({ identityKey: `release-group:${deluxe.id}`, mbid: cd.id,
+    releaseGroupMbid: deluxe.id, artistId: artist.id, title: deluxe.title });
+  managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
+  for (const track of cd.tracks) {
+    const row = libraryStore.upsertLibraryTrack({ identityKey: `recording:${track.recordingid}`, mbid: track.recordingid, title: track.trackname });
+    libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: row.id, trackNumber: track.trackposition });
+    libraryStore.upsertLibraryMediaFile({ trackId: row.id, albumId: album.id, source: "aurral",
+      path: `${isolatedState.baseDir}/Deluxe Album/${track.trackposition}.flac` });
+  }
+  libraryStore.storeLibraryAlbumTrackList(album.id, { release: { id: cd.id,
+    tracks: cd.tracks.map((track) => ({ recordingId: track.recordingid, title: track.trackname, trackPosition: track.trackposition })) } });
+
+  await monitorWith(customRules({ catalog: "latest", latestCount: 1, types: ["album"], edition: "expanded" }));
+  await runQueuedMonitoringTasks();
+
+  assert.deepEqual(
+    downloadTracker.getAll().filter((job) => job.albumMbid === deluxe.id).map((job) => job.trackName).sort(),
+    ["Deluxe Album Track 3", "Deluxe Album Track 4"],
+  );
+});
+
+test("switching to the expanded edition adds the extra tracks of albums already in the Library", async () => {
+  await addAurralArtist("none");
+  const deluxe = { id: "a2222222-2222-4222-8222-222222222212", title: "Deluxe Album", type: "Album", date: "2024-02-02", deluxe: true };
+  const remastered = { id: "a2222222-2222-4222-8222-222222222213", title: "Remastered Album", type: "Album", date: "2024-05-05", remastered: true };
+  metadataState.extraReleases = [deluxe, remastered];
+  clearMetadataProviderCaches();
+  const rules = { catalog: "latest", latestCount: 2, types: ["album"], newReleases: false };
+  await monitorWith(customRules(rules));
+  await runQueuedMonitoringTasks();
+  assert.deepEqual(queuedAlbumMbids(), [deluxe.id, remastered.id]);
+  const linked = db.prepare(`
+    SELECT link.track_id AS trackId, link.album_id AS albumId FROM library_album_tracks AS link
+    JOIN library_albums AS album ON album.id = link.album_id
+  `).all();
+  assert.equal(linked.length, 4);
+  for (const { trackId, albumId } of linked) {
+    libraryStore.upsertLibraryMediaFile({ trackId, albumId, source: "aurral", path: `/music/${trackId}.flac` });
+  }
+  downloadTracker.clearAll();
+
+  const expanded = customRules({ ...rules, edition: "expanded" });
+  const preview = await callRoute("POST /artists/:mbid/monitoring/preview", {
+    params: { mbid: artistMbid }, body: { monitoring: expanded },
+  });
+  assert.deepEqual(preview.body.monitoring.releaseGroupIds, [deluxe.id]);
+  assert.deepEqual(preview.body.monitoring.skipped, [
+    { releaseGroupId: remastered.id, title: remastered.title, reason: "complete" },
+  ]);
+
+  await monitorWith(expanded);
+  await runQueuedMonitoringTasks();
+  const queuedTitles = () => downloadTracker.getAll().map((job) => job.trackName).sort();
+  assert.deepEqual(queuedTitles(), ["Deluxe Album Track 3", "Deluxe Album Track 4"]);
+
+  await processSystemTask({ kind: "aurral-monitoring-reconcile" });
+  await runQueuedMonitoringTasks();
+  assert.deepEqual(queuedTitles(), ["Deluxe Album Track 3", "Deluxe Album Track 4"]);
 });

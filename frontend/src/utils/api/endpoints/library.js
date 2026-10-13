@@ -11,7 +11,7 @@ import {
   queryKeys,
 } from "../../../queryClient.js";
 import { getLibraryOwnerConflict } from "../../libraryDestination.js";
-import { addActiveDownload } from "../../activeDownloads.js";
+import { addActiveDownload, normalizeActiveDownloads } from "../../activeDownloads.js";
 
 const buildStreamUrl = (path) => buildAuthenticatedApiUrl(path);
 const SLOW_LIBRARY_REQUEST_TIMEOUT_MS = 90000;
@@ -37,7 +37,7 @@ const libraryPageParams = (options = {}) => Object.fromEntries(
     albumId: options.albumId,
     source: options.source || "all",
     // Tri-state: an explicit boolean forces the filter, while `undefined` omits
-    // the param so the backend applies the Lidarr "available only" setting.
+    // the param so the backend shows what can be played and what Aurral is fetching.
     availableOnly: options.availableOnly === undefined || options.availableOnly === null
       ? undefined
       : options.availableOnly === true ? "true" : "false",
@@ -88,6 +88,30 @@ export const updateLibraryArtistMbid = async (artistId, mbid) => {
   return result;
 };
 
+export const getLibraryFiles = () => getData("/library/files");
+
+export const checkLibraryIngestSource = (sourcePath) =>
+  postData("/library/files/ingest/check", { sourcePath });
+
+export const startLibraryIngest = (sourcePath, mode, { monitor, fillTags }) =>
+  postData("/library/files/ingest", { sourcePath, mode, monitor, fillTags });
+
+export const startLibraryCleanup = () => postData("/library/files/cleanup");
+
+export const getLibraryFileOperation = (id) =>
+  getData(`/library/files/operations/${encodeURIComponent(id)}`);
+
+export const getLibraryFileOperationItems = (id, { status = [], offset = 0, limit = 50 } = {}) =>
+  getData(`/library/files/operations/${encodeURIComponent(id)}/items`, {
+    params: { status: status.join(",") || undefined, offset, limit },
+  });
+
+export const cancelLibraryFileOperation = (id) =>
+  postData(`/library/files/operations/${encodeURIComponent(id)}/cancel`);
+
+export const removeLibraryFileOperationSources = (id) =>
+  postData(`/library/files/operations/${encodeURIComponent(id)}/remove-sources`);
+
 export const getLibraryTrackFiles = (trackId, options = {}) =>
   getData(`/library/tracks/${encodeURIComponent(trackId)}/files`, options);
 
@@ -133,11 +157,11 @@ export const clearLibraryFavoritesCache = () => {
   latestLibraryFavorites = null;
 };
 
-export const updateLibraryFavorites = (ids, starred) => {
+const writeLibraryFavorites = (send) => {
   const generation = ++libraryFavoritesGeneration;
   const write = libraryFavoritesWrite.then(async () => {
     try {
-      const data = await postData("/library/favorites", { ids, starred });
+      const data = await send();
       if (generation !== libraryFavoritesGeneration) return data;
       try {
         const refreshed = await fetchLibraryFavorites();
@@ -163,6 +187,12 @@ export const updateLibraryFavorites = (ids, starred) => {
   });
   return write;
 };
+
+export const updateLibraryFavorites = (ids, starred) =>
+  writeLibraryFavorites(() => postData("/library/favorites", { ids, starred }));
+
+export const restoreLibraryFavorites = (favorites) =>
+  writeLibraryFavorites(() => postData("/library/favorites/restore", { favorites }));
 
 const normalizeLibraryArtist = (artist) =>
   artist && !artist.foreignArtistId
@@ -210,25 +240,34 @@ const writeLibraryLookupCache = (lookup) => {
   });
 };
 
-export const lookupArtistsInLibraryBatch = async (mbids) => {
+export const LIBRARY_LOOKUP_BATCH_SIZE = 100;
+
+export const libraryLookupBatchQuery = (mbids) => {
   const ids = [...new Set((Array.isArray(mbids) ? mbids : []).filter(Boolean))].sort();
-  if (!ids.length) return {};
-  const data = await queryClient.fetchQuery({
+  return {
     queryKey: queryKeys.libraryLookupBatch(ids),
     queryFn: async ({ signal }) => {
       const lookup = {};
-      for (let index = 0; index < ids.length; index += 100) {
+      for (let index = 0; index < ids.length; index += LIBRARY_LOOKUP_BATCH_SIZE) {
         Object.assign(
           lookup,
-          await postData("/library/lookup/batch", { mbids: ids.slice(index, index + 100) }, { signal }),
+          await postData(
+            "/library/lookup/batch",
+            { mbids: ids.slice(index, index + LIBRARY_LOOKUP_BATCH_SIZE) },
+            { signal },
+          ),
         );
       }
+      writeLibraryLookupCache(lookup);
       return lookup;
     },
     staleTime: 60_000,
-  });
-  writeLibraryLookupCache(data);
-  return data;
+  };
+};
+
+export const lookupArtistsInLibraryBatch = async (mbids) => {
+  if (!Array.isArray(mbids) || !mbids.some(Boolean)) return {};
+  return queryClient.fetchQuery(libraryLookupBatchQuery(mbids));
 };
 
 export const lookupAlbumsInLibraryBatch = (mbids, { signal, bypassCache = false } = {}) => {
@@ -284,6 +323,34 @@ export const deleteArtistFromLibrary = (mbid, deleteFiles = false, manager = nul
 export const getArtistMonitoring = (mbid, { signal } = {}) =>
   getData(`/library/artists/${encodeURIComponent(mbid)}/monitoring`, { signal });
 
+export const previewArtistMonitoring = (mbid, { monitoring, artistName }, { signal } = {}) =>
+  postData(
+    `/library/artists/${encodeURIComponent(mbid)}/monitoring/preview`,
+    { monitoring, artistName },
+    { signal, timeout: SLOW_LIBRARY_REQUEST_TIMEOUT_MS },
+  );
+
+export const getMonitoringDefaults = ({ signal } = {}) =>
+  getData("/library/monitoring/defaults", { signal });
+
+export const previewMonitoringDefaults = (rules, { signal } = {}) =>
+  postData("/library/monitoring/defaults/preview", { rules }, {
+    signal,
+    timeout: SLOW_LIBRARY_REQUEST_TIMEOUT_MS,
+  });
+
+export const saveMonitoringDefaults = (rules) =>
+  putData("/library/monitoring/defaults", { rules });
+
+export const getMonitoringExclusions = ({ artistMbid = null, signal } = {}) =>
+  getData("/library/monitoring/exclusions", {
+    params: artistMbid ? { artistMbid } : {},
+    signal,
+  });
+
+export const removeMonitoringExclusion = (id) =>
+  deleteData(`/library/monitoring/exclusions/${encodeURIComponent(id)}`);
+
 export const deleteLidarrAlbumFromLibrary = (mbid, deleteFiles = false) =>
   deleteData(`/library/albums/lidarr/${encodeURIComponent(mbid)}`, {
     params: { deleteFiles },
@@ -336,13 +403,26 @@ export const addLibraryAlbum = async (
   });
 
 export const requestAlbumFromSearch = async (payload) => {
-  const result = await postData("/library/albums/request", payload, {
-    timeout: SLOW_LIBRARY_REQUEST_TIMEOUT_MS,
-  });
+  const started = { albumMbid: payload?.albumMbid, artistMbid: payload?.artistMbid };
+  const previous = queryClient.getQueryData(queryKeys.activeDownloads);
+  const optimistic = queryClient.setQueryData(queryKeys.activeDownloads, (current) =>
+    addActiveDownload(current, started));
+  let result;
+  try {
+    result = await postData("/library/albums/request", payload, {
+      timeout: SLOW_LIBRARY_REQUEST_TIMEOUT_MS,
+    });
+  } catch (error) {
+    if (queryClient.getQueryData(queryKeys.activeDownloads) === optimistic) {
+      queryClient.setQueryData(queryKeys.activeDownloads, previous ?? normalizeActiveDownloads(previous));
+    }
+    void refreshActiveDownloads();
+    throw error;
+  }
   if (result?.status === "available") {
     void refreshActiveDownloads();
   } else {
-    markDownloadStarted({ albumMbid: payload?.albumMbid, artistMbid: payload?.artistMbid });
+    markDownloadStarted(started);
   }
   return result;
 };
@@ -444,6 +524,9 @@ export const setAurralAlbumMonitoring = (canonicalId, monitored) =>
 
 export const setAurralTrackMonitoring = (canonicalId, monitored) =>
   refreshActiveDownloadsAfter(putData(`/library/tracks/aurral/${encodeURIComponent(canonicalId)}`, { monitored }));
+
+export const setAurralTrackKeepFile = (canonicalId, keepFile) =>
+  refreshActiveDownloadsAfter(putData(`/library/tracks/aurral/${encodeURIComponent(canonicalId)}`, { keepFile }));
 
 export const refreshLibraryArtist = (mbid) =>
   postData(`/library/artists/${mbid}/refresh`);

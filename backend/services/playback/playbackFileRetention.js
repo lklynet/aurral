@@ -60,7 +60,7 @@ export function createPlaybackDeletionGuard({
     return paths;
   };
   return {
-    async canDelete(file) {
+    async canDelete(file, { retain = true } = {}) {
       snapshot ??= load().then((paths) => ({ paths })).catch((error) => {
         console.warn("[PlaybackFileRetention] Deferring file cleanup:", error.message);
         return { error };
@@ -68,7 +68,7 @@ export function createPlaybackDeletionGuard({
       const result = await snapshot;
       const reason = result.error || checkedConfig !== configKey() ? "usage-unknown"
         : result.paths.has(localFileKey(file)) ? "playlist-reference" : null;
-      if (reason) recordRetention(file, reason, excludeEntityIds, retentionRoot);
+      if (reason && retain) recordRetention(file, reason, excludeEntityIds, retentionRoot);
       return reason == null;
     },
   };

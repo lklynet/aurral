@@ -30,14 +30,14 @@ const DISCOVER_RECENTLY_ADDED_KEY = "discoverRecentlyAdded";
 const DISCOVER_RECENT_RELEASES_KEY = "discoverRecentReleases";
 
 export const DEFAULT_DISCOVER_SECTIONS = [
-  { id: "recentlyAdded", label: "Recently Added", enabled: true },
+  { id: "recentlyAdded", label: "Recently added", enabled: true },
   { id: "playlists", label: "Playlists", enabled: true },
-  { id: "recommendedShows", label: "Shows Near You", enabled: true },
-  { id: "recentReleases", label: "Recent Releases", enabled: true },
-  { id: "news", label: "Artist News", enabled: true },
+  { id: "recommendedShows", label: "Shows near you", enabled: true },
+  { id: "recentReleases", label: "Recent releases", enabled: true },
+  { id: "news", label: "Artist news", enabled: true },
   { id: "recommended", label: "Recommended", enabled: true },
-  { id: "globalTop", label: "Global Trending", enabled: true },
-  { id: "genreSections", label: "Because You Like", enabled: true },
+  { id: "globalTop", label: "Global trending", enabled: true },
+  { id: "genreSections", label: "Because you like", enabled: true },
 ];
 
 export const DISCOVER_NEARBY_MODE_KEY = "discoverNearbyMode";

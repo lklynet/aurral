@@ -164,3 +164,21 @@ test("final hydration collects the advertised files across successive partial sn
   const files = slskdClient.flattenSearchResults(await pending);
   assert.deepEqual(files.map((file) => file.file).sort(), ["First.flac", "Second.flac", "Third.flac"]);
 });
+
+test("a search waiting in slskd's queue gets its full windows once it runs", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 1000 });
+  t.mock.method(slskdClient, "deleteSearch", async () => true);
+  const runsAt = 1000 + 25000;
+  t.mock.method(slskdClient, "getSearch", async () => {
+    if (Date.now() < runsAt) return { state: "Queued", responses: [] };
+    if (Date.now() < runsAt + 4000) return { state: "InProgress", responses: [] };
+    return { state: "Completed", fileCount: 1, responses: [{ username: "peer", files: [{ filename: "Song.flac" }] }] };
+  });
+  const pending = slskdClient.waitForSearch("queued-search", 10000);
+  for (let step = 0; step < 40; step += 1) {
+    await new Promise(setImmediate);
+    t.mock.timers.tick(1000);
+  }
+  const result = slskdClient.flattenSearchResults(await pending);
+  assert.deepEqual(result.map((file) => file.file), ["Song.flac"]);
+});

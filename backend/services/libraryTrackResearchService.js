@@ -1,5 +1,5 @@
 import path from "node:path";
-import { getLibraryForTrackIds } from "./libraryQueryService.js";
+import { getLibraryForAlbumIds, getLibraryForTrackIds } from "./libraryQueryService.js";
 import { isAurralOwnedPath } from "./qualityProfileService.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 
@@ -63,6 +63,17 @@ export function resolveAurralOwnedTrackJob({ trackId, albumId } = {}) {
     (entry) => String(entry.albumId) === String(sourceFile.albumId),
   );
   const releaseYear = String(album?.releaseDate || "").match(/^\d{4}/)?.[0] || null;
+  const albumTracks = album
+    ? getLibraryForAlbumIds({ ids: [album.id] }).tracks
+      .map((entry) => ({
+        title: entry.title,
+        position: entry.albums.find((place) => String(place.albumId) === String(album.id)),
+      }))
+      .filter((entry) => entry.title && entry.position)
+      .sort((left, right) =>
+        Number(left.position.discNumber || 1) - Number(right.position.discNumber || 1)
+        || Number(left.position.trackNumber || 0) - Number(right.position.trackNumber || 0))
+    : [];
 
   return downloadTracker.ensureLibraryTrackJob(
     {
@@ -75,7 +86,9 @@ export function resolveAurralOwnedTrackJob({ trackId, albumId } = {}) {
       releaseYear,
       durationMs: sourceFile.durationMs ?? track?.metadata?.durationMs ?? null,
       trackNumber: albumTrack?.trackNumber || 0,
-      albumTrackCount: album?.trackIds?.length || null,
+      discNumber: albumTrack?.discNumber || null,
+      albumTrackCount: albumTracks.length || null,
+      albumTrackTitles: albumTracks.map((entry) => entry.title),
       artistAliases: Array.isArray(artist?.metadata?.aliases)
         ? artist.metadata.aliases
         : [],

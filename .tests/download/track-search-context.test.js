@@ -21,9 +21,9 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("BrainzMash release-track IDs are not treated as recording IDs", () => {
+test("BrainzMash release-track IDs are not treated as recording IDs, and merged recording IDs are kept", () => {
   assert.deepEqual(
-    toNormalizedTrack({ id: "release-track-id", trackname: "Song" }),
+    toNormalizedTrack({ id: "release-track-id", trackname: "Song", oldrecordingids: ["merged-recording-id"] }),
     {
       id: "release-track-id",
       recordingId: "",
@@ -33,6 +33,7 @@ test("BrainzMash release-track IDs are not treated as recording IDs", () => {
       mediumNumber: null,
       durationMs: null,
       artistId: null,
+      oldRecordingIds: ["merged-recording-id"],
     },
   );
 });
@@ -133,7 +134,7 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
           id: "correct-album",
           title: "Jet Set Radio Future Original Sound Tracks",
           artistid: "correct-artist",
-          artists: [{ id: "correct-artist", artistname: "長沼英樹" }],
+          artists: [{ id: "correct-artist", artistname: "長沼英樹", artistaliases: ["Hideki Naganuma"] }],
           releasedate: "2002-03-20",
           releases: [
             {
@@ -167,6 +168,7 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
   });
 
   assert.equal(resolved.albumMbid, "correct-album");
+  assert.equal(resolved.artistMbid, "correct-artist");
   assert.equal(resolved.durationMs, 222813);
   assert.equal(resolved.trackNumber, 1);
   assert.deepEqual(resolved.albumTrackTitles, ["The Concept of Love"]);
@@ -191,8 +193,11 @@ test("resolveTrackSearchContext preserves a recording from a non-representative 
     return { data: {
       id: "b1392450-e666-3926-a536-22c65f834433",
       title: "OK Computer",
-      artistid: "a74b1b7f-71a5-4011-9441-d0b5e4122711",
-      artists: [{ id: "a74b1b7f-71a5-4011-9441-d0b5e4122711", artistname: "Radiohead" }],
+      artistid: "earlier-alias-artist",
+      artists: [
+        { id: "earlier-alias-artist", artistname: "Different Artist", artistaliases: ["Radiohead"] },
+        { id: "a74b1b7f-71a5-4011-9441-d0b5e4122711", artistname: "Radiohead" },
+      ],
       releases: [
         { id: "ok-computer-representative", status: "Official", tracks: [
           {
@@ -243,9 +248,52 @@ test("resolveTrackSearchContext preserves a recording from a non-representative 
   };
   const resolved = await resolveTrackSearchContext(job);
   assert.equal(get.mock.callCount(), 1);
+  assert.equal(resolved.artistMbid, job.artistMbid);
   assert.equal(resolved.trackMbid, job.trackMbid);
   assert.equal(resolved.trackNumber, 2);
   assert.deepEqual(resolved.albumTrackTitles, job.albumTrackTitles);
+});
+
+test("resolveTrackSearchContext learns a track's disc and keeps a known disc for a recording on two discs", async (t) => {
+  const originalSettings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      metadata: { ...originalSettings.integrations.metadata, baseUrl: "https://brainzmash.example.test" },
+    },
+  });
+  clearMetadataProviderCaches();
+  t.after(() => {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(originalSettings);
+  });
+  const track = (mediumnumber, trackposition, trackname, recordingid) =>
+    ({ id: `${recordingid}-${mediumnumber}`, recordingid, trackname, trackposition, mediumnumber, durationms: 200000 });
+  t.mock.method(axios, "get", async () => ({ data: {
+    id: "sixteen-stone",
+    title: "Sixteen Stone",
+    artistid: "bush",
+    artists: [{ id: "bush", artistname: "Bush" }],
+    releases: [{ id: "deluxe", status: "Official", tracks: [
+      track(1, 1, "Swim", "swim"),
+      track(1, 3, "Bomb", "bomb"),
+      track(2, 1, "Swim", "swim-demo"),
+      track(2, 3, "Bomb", "bomb"),
+    ] }],
+  } }));
+  const resolve = (trackMbid, trackNumber, discNumber) => resolveTrackSearchContext({
+    artistName: "Bush", trackName: trackNumber === 1 ? "Swim" : "Bomb", albumName: "Sixteen Stone",
+    artistMbid: "bush", albumMbid: "sixteen-stone", trackMbid, durationMs: 200000, trackNumber, discNumber,
+    albumTrackTitles: ["Swim", "Bomb", "Swim", "Bomb"], artistAliases: ["Bush"],
+  });
+
+  const positions = await Promise.all([
+    resolve("swim-demo", 1, null),
+    resolve("bomb", 3, null),
+    resolve("bomb", 3, 2),
+  ]);
+  assert.deepEqual(positions.map(({ discNumber, trackNumber }) => [discNumber, trackNumber]), [[2, 1], [1, 3], [2, 3]]);
 });
 
 test("resolveTrackSearchContext repairs a stored Last.fm release-track ID", async (t) => {
@@ -356,4 +404,152 @@ test("resolveTrackSearchContext takes neither a recording ID nor a length from L
   const fromRelease = await resolveTrackSearchContext({ ...request, albumName: "Lastfm Album",
     albumMbid: "lastfm-album", durationMs: 369626 });
   assert.equal(fromRelease.durationMs, 369626);
+});
+
+function stubMetadata(t, respond) {
+  const originalSettings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      metadata: { ...originalSettings.integrations.metadata, baseUrl: "https://brainzmash.example.test", enableNarrowFallbacks: false },
+    },
+  });
+  clearMetadataProviderCaches();
+  t.after(() => {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(originalSettings);
+  });
+  t.mock.method(axios, "get", async (url, options) => ({ data: respond(new URL(url).pathname, options?.params || {}) ?? {} }));
+}
+
+const artistEntry = (id, name, extra = {}) => ({ id, artistname: name, type: "Group", ...extra });
+const albumEntry = (id, title, artist, tracks = null) => ({
+  id,
+  title,
+  type: "Album",
+  artistid: artist.id,
+  artists: [artist],
+  ...(tracks ? { releases: [{ id: `${id}-release`, status: "Official", tracks: tracks.map((name, index) => ({
+    trackname: name, trackposition: index + 1, mediumnumber: 1, durationms: 200000, recordingid: `${id}-${index + 1}`,
+  })) }] } : {}),
+});
+
+test("a download credited to an artist and a guest takes the lead artist, and not another artist's album of the same title", async (t) => {
+  const lead = artistEntry("dance-gavin-dance", "Dance Gavin Dance");
+  const namesake = artistEntry("andrew-dance", "Andrew Dance", { disambiguation: "techno artist" });
+  const other = artistEntry("other-band", "Other Band");
+  stubMetadata(t, (path, params) => {
+    if (path === "/search/artist") {
+      return params.query === "Dance Gavin Dance" ? [lead] : [lead, namesake];
+    }
+    if (path === "/search/album") return params.artist ? [] : [albumEntry("other-afterburner", "Afterburner", other)];
+    if (path === "/album/other-afterburner") return albumEntry("other-afterburner", "Afterburner", other, ["Afterburner"]);
+    return null;
+  });
+
+  const resolved = await resolveTrackSearchContext({
+    artistName: "Dance Gavin Dance feat. Andrew Wells",
+    trackName: "Afterburner",
+    albumName: "Afterburner",
+  });
+
+  assert.equal(resolved.artistMbid, "dance-gavin-dance");
+  assert.equal(resolved.albumMbid, null);
+  assert.equal(resolved.trackMbid, null);
+
+  for (const complete of [false, true]) {
+    const existing = await resolveTrackSearchContext({
+      artistName: "Dance Gavin Dance feat. Andrew Wells",
+      artistMbid: "dance-gavin-dance",
+      artistAliases: ["Dance Gavin Dance"],
+      trackName: "Afterburner",
+      albumName: "Afterburner",
+      albumMbid: "other-afterburner",
+      ...(complete ? {
+        trackMbid: "other-afterburner-1",
+        durationMs: 200000,
+        trackNumber: 1,
+        albumTrackTitles: ["Afterburner"],
+      } : {}),
+    });
+    assert.equal(existing.artistMbid, "dance-gavin-dance");
+    assert.equal(existing.albumMbid, null);
+    assert.equal(existing.trackMbid, null);
+    assert.equal(existing.trackNumber, null);
+    assert.deepEqual(existing.albumTrackTitles, []);
+  }
+});
+
+test("a download credited with \"&\" takes the artist MusicBrainz names with \"and\"", async (t) => {
+  const band = artistEntry("belle-and-sebastian", "Belle and Sebastian");
+  const namesake = artistEntry("sebastian", "Sebastian", { disambiguation: "French producer" });
+  stubMetadata(t, (path) => (path === "/search/artist" ? [namesake, band] : null));
+
+  const resolved = await resolveTrackSearchContext({ artistName: "Belle & Sebastian", trackName: "The Boy with the Arab Strap" });
+
+  assert.equal(resolved.artistMbid, "belle-and-sebastian");
+});
+
+test("a download takes the album of its title that lists the song, over the album the job named or the artist's first album of that title", async (t) => {
+  const weezer = artistEntry("weezer", "Weezer");
+  const albums = {
+    blue: albumEntry("blue", "Weezer", weezer, ["My Name Is Jonas", "Buddy Holly"]),
+    teal: albumEntry("teal", "Weezer", weezer, ["Africa", "Everybody Wants to Rule the World"]),
+    records: albumEntry("records", "Records", weezer),
+  };
+  const deluxe = albumEntry("teal-deluxe", "Weezer", weezer, ["Africa", "Everybody Wants to Rule the World", "Billie Jean"]);
+  albums.teal.releases.push({ ...albums.teal.releases[0], id: "teal-vinyl" }, deluxe.releases[0]);
+  stubMetadata(t, (path, params) => {
+    if (path === "/search/album") {
+      return Object.values(albums).filter((album) => album.title === params.query).map(({ releases, ...album }) => album);
+    }
+    if (path === "/artist/weezer") {
+      return { ...weezer, Albums: [{ Id: "blue", Title: "Weezer", Type: "Album" }, { Id: "teal", Title: "Weezer", Type: "Album" }] };
+    }
+    return albums[path.replace("/album/", "")] || null;
+  });
+
+  const resolved = await resolveTrackSearchContext({
+    artistName: "Weezer",
+    artistMbid: "weezer",
+    trackName: "Africa",
+    albumName: "Weezer",
+    albumMbid: "blue",
+  });
+  assert.equal(resolved.albumMbid, "teal");
+  assert.equal(resolved.trackMbid, "teal-1");
+  assert.equal(resolved.trackNumber, 1);
+
+  const complete = await resolveTrackSearchContext({
+    artistName: "Weezer",
+    artistMbid: "weezer",
+    artistAliases: ["Weezer"],
+    trackName: "Africa",
+    albumName: "Weezer",
+    albumMbid: "blue",
+    trackMbid: "blue-1",
+    durationMs: 200000,
+    trackNumber: 1,
+    albumTrackTitles: ["Africa"],
+  });
+  assert.equal(complete.albumMbid, "teal");
+  assert.equal(complete.trackMbid, "teal-1");
+  assert.deepEqual(complete.albumTrackTitles, ["Africa", "Everybody Wants to Rule the World"]);
+
+  const unsearched = await resolveTrackSearchContext({
+    artistName: "Weezer",
+    artistMbid: "weezer",
+    trackName: "Everybody Wants to Rule the World",
+    albumName: "Weezer (Teal Album)",
+  });
+  assert.equal(unsearched.albumMbid, "teal");
+
+  const bonus = await resolveTrackSearchContext({ artistName: "Weezer", artistMbid: "weezer", trackName: "Billie Jean", albumName: "Weezer" });
+  assert.equal(bonus.albumMbid, "teal");
+  assert.equal(bonus.trackMbid, "teal-deluxe-3");
+  assert.equal(bonus.trackNumber, 3);
+
+  const single = await resolveTrackSearchContext({ artistName: "Weezer", trackName: "Records", albumName: "Records" });
+  assert.equal(single.albumMbid, "records");
 });

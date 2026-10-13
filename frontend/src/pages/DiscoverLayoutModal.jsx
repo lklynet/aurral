@@ -189,7 +189,7 @@ export function DiscoverLayoutModal({
             className="btn btn-ghost btn-sm"
             disabled={isSaving}
           >
-            Reset to Default
+            Reset to default
           </button>
           <div className="artist-customize-modal__actions">
             <button
@@ -207,7 +207,7 @@ export function DiscoverLayoutModal({
               disabled={isSaving}
             >
               {isSaving ? <DotLoader size="sm" label={null} /> : null}
-              {isSaving ? "Saving..." : "Save Layout"}
+              {isSaving ? "Saving..." : "Save layout"}
             </button>
           </div>
         </div>

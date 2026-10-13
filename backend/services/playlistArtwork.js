@@ -1,4 +1,4 @@
-import sharp from "./sharpConfig.js";
+import getSharp from "./sharpConfig.js";
 
 const TAG_COLORS = [
   "#845336",
@@ -324,6 +324,7 @@ const buildArtworkSvg = ({ playlistName, kind }) => {
 export const PLAYLIST_ARTWORK_WEBP_QUALITY = 70;
 
 export async function writePlaylistArtworkWebpFromBuffer(buffer, outputPath) {
+  const sharp = await getSharp();
   await sharp(buffer, { animated: false })
     .rotate()
     .resize(ARTWORK_SIZE, ARTWORK_SIZE, { fit: "cover" })
@@ -332,6 +333,7 @@ export async function writePlaylistArtworkWebpFromBuffer(buffer, outputPath) {
 }
 
 export async function buildPlaylistArtworkWebpBuffer({ playlistName, kind }) {
+  const sharp = await getSharp();
   const svg = buildArtworkSvg({ playlistName, kind });
   return sharp(Buffer.from(svg)).webp({ quality: PLAYLIST_ARTWORK_WEBP_QUALITY }).toBuffer();
 }

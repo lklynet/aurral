@@ -13,7 +13,7 @@ const normalizeArtist = (artist) => ({
 });
 
 export default function BlocklistPage() {
-  useDocumentTitle("Blocked Artists");
+  useDocumentTitle("Blocked artists");
   const { feedbackList, submitFeedback } = useArtistTasteFeedback();
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
@@ -99,7 +99,7 @@ export default function BlocklistPage() {
     <div className="blocklist-page">
       <header className="blocklist-page__header">
         <div>
-          <h1 className="page-title">Blocked Artists</h1>
+          <h1 className="page-title">Blocked artists</h1>
           <p className="page-subtitle">
             These artists will not be recommended or downloaded into your playlists and flows.
           </p>

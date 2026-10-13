@@ -1,4 +1,4 @@
-import { DotLoader } from "../components/DotLoader";
+import { SkeletonRail, SkeletonStatus } from "../components/Skeletons";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
 import { useEditorialShelf } from "./useEditorialShelf";
@@ -10,10 +10,11 @@ export default function DiscoverPlaylistsPage() {
   const renderShelf = () => {
     if (isPending) {
       return (
-        <div className="search-empty-panel discover-playlists-page__status-panel" role="status">
-          <DotLoader size="lg" label={null} />
-          <h2 className="search-empty-panel__title">Loading playlists</h2>
-        </div>
+        <SkeletonStatus label="Loading playlists">
+          <SkeletonRail square />
+          <SkeletonRail square />
+          <SkeletonRail square />
+        </SkeletonStatus>
       );
     }
     if (error) {

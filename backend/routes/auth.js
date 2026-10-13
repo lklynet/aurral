@@ -6,7 +6,7 @@ import {
   getSessionByToken,
   touchReauth,
 } from "../config/session-helpers.js";
-import { requireAuth, requireRecentAuth } from "../middleware/requirePermission.js";
+import { requireAdmin, requireAuth, requireRecentAuth } from "../middleware/requirePermission.js";
 import { getApiKey, rotateApiKey } from "../middleware/auth.js";
 import { hashPassword, verifyPassword, needsRehash } from "../middleware/passwordHash.js";
 import { clearOidcTransactionCookie, exchangeOidcCallback, startOidcLogin } from "../services/oidcAuth.js";
@@ -118,11 +118,11 @@ router.post("/reauth", requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
-router.get("/api-key", requireAuth, (req, res) => {
+router.get("/api-key", requireAuth, requireAdmin, (req, res) => {
   res.json({ apiKey: getApiKey() });
 });
 
-router.post("/api-key/rotate", requireAuth, (req, res) => {
+router.post("/api-key/rotate", requireAuth, requireAdmin, (req, res) => {
   const newKey = rotateApiKey();
   res.json({ apiKey: newKey });
 });

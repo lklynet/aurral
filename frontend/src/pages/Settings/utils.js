@@ -37,6 +37,9 @@ export const normalizeSettings = (savedSettings) => {
       favoriteAutoKeep: savedSettings.subsonic?.favoriteAutoKeep !== false,
     },
     downloadFolderPath: String(savedSettings.downloadFolderPath || "").trim(),
+    reviewTimeoutHours: Number.isInteger(savedSettings.reviewTimeoutHours)
+      ? savedSettings.reviewTimeoutHours
+      : 0,
     pathMappings: Array.isArray(savedSettings.pathMappings) ? savedSettings.pathMappings : [],
     playlistArtwork: {
       ...playlistArtwork,
@@ -65,7 +68,6 @@ export const normalizeSettings = (savedSettings) => {
         externalUrl: "",
         apiKey: "",
         searchOnAdd: false,
-        availableOnly: true,
         defaultMonitorOption: "none",
         ...lidarr,
         qualityProfileId:

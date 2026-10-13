@@ -134,3 +134,37 @@ export const applyArtistDiscoveryFeedback = async ({
     feedbackList: normalizeDiscoveryFeedbackList(response?.feedbackList || response),
   };
 };
+
+export const previewArtistDiscoveryFeedback = (feedbackList, { artist, action, isSelected, payload }) => {
+  const opposite = isSelected ? null : getOppositeRatingAction(action);
+  const kept = normalizeDiscoveryFeedbackList(feedbackList).filter(
+    (entry) => !((entry.action === action || entry.action === opposite) && entryMatchesArtist(entry, artist)),
+  );
+  if (isSelected) return kept;
+  return [{ ...payload, id: `pending:${action}`, createdAt: new Date().toISOString() }, ...kept];
+};
+
+export const diffDiscoveryFeedback = (previous, next) => {
+  const previousIds = new Set(normalizeDiscoveryFeedbackList(previous).map((entry) => entry.id));
+  const nextIds = new Set(normalizeDiscoveryFeedbackList(next).map((entry) => entry.id));
+  return {
+    added: normalizeDiscoveryFeedbackList(next).filter((entry) => !previousIds.has(entry.id)),
+    removed: normalizeDiscoveryFeedbackList(previous).filter((entry) => !nextIds.has(entry.id)),
+  };
+};
+
+const feedbackTime = (entry) => {
+  const time = new Date(entry?.createdAt || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+};
+
+export const revertDiscoveryFeedback = (feedbackList, { added, removed }) => {
+  const addedIds = new Set(added.map((entry) => entry.id));
+  const next = normalizeDiscoveryFeedbackList(feedbackList).filter((entry) => !addedIds.has(entry.id));
+  for (const entry of removed) {
+    if (next.some((existing) => existing.id === entry.id)) continue;
+    const index = next.findIndex((existing) => feedbackTime(existing) <= feedbackTime(entry));
+    next.splice(index < 0 ? next.length : index, 0, entry);
+  }
+  return next;
+};

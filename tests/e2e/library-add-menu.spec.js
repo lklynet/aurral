@@ -107,10 +107,11 @@ test("without Lidarr, Monitor offers Aurral's options and monitors the artist", 
   await expect(page.getByRole("menuitemradio", { name: "Not monitored", exact: true })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("menuitemradio", { name: "Existing albums", exact: true })).toHaveCount(0);
   await expect(page.getByRole("menuitem", { name: "Customize add…", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Monitoring rules…", exact: true })).toBeVisible();
   expect(writes).toEqual([]);
-  await page.getByRole("menuitemradio", { name: "All albums", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Monitored", exact: true }).click();
   await expect.poll(() => writes.length).toBe(1);
-  expect(writes[0]).toMatchObject({ path: monitoringPath, body: { monitorOption: "all" } });
+  expect(writes[0]).toMatchObject({ path: monitoringPath, body: { monitoring: { monitored: true } } });
 });
 
 test("with Lidarr, Monitor adds and monitors the artist in one choice", async ({ page }) => {
@@ -154,7 +155,7 @@ test("customized Lidarr failure keeps the dialog available and never falls back 
   await expect(dialog.getByRole("button", { name: "Add to Lidarr", exact: true })).toBeEnabled();
   await dialog.getByRole("combobox").nth(1).selectOption("/fixture-music");
   await dialog.getByRole("button", { name: "Add to Lidarr", exact: true }).click();
-  await expect(page.getByRole("alert").filter({ hasText: /Could not add the artist/ })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: `Could not add ${artist.name}. Nothing was added.` })).toBeVisible();
   await expect(dialog).toBeVisible();
   expect(writes).toHaveLength(1);
   expect(writes[0].body).toMatchObject({ managedBy: "lidarr", rootFolderPath: "/fixture-music" });
@@ -174,9 +175,11 @@ test("a pending change prevents duplicates and a failure allows a retry", async 
   await page.getByRole("menuitemradio", { name: "All albums", exact: true }).click();
   await expect.poll(() => writes.length).toBe(1);
   await expect(monitorButton(page)).toBeDisabled();
+  await expect(monitorButton(page)).toHaveAccessibleName("Monitoring: All albums");
   finishUpdate();
-  await expect(page.getByText("Fixture service unavailable")).toBeVisible();
+  await expect(page.getByText(`Could not add ${artist.name}. Nothing was added. Fixture service unavailable`)).toBeVisible();
   await expect(monitorButton(page)).toBeEnabled();
+  await expect(monitorButton(page)).toHaveAccessibleName("Monitor");
   await monitorButton(page).click();
   await page.getByRole("menuitemradio", { name: "All albums", exact: true }).click();
   await expect.poll(() => writes.length).toBe(2);
@@ -216,7 +219,7 @@ test("search results have no artist add button", async ({ page }) => {
   await page.route("**/api/search/unified**", (route) =>
     route.fulfill({ json: { top, catalog: { artists: [top], albums: [], tracks: [] } } }));
   await page.goto("/search?q=Menu");
-  await expect(page.getByRole("button", { name: `Open ${artist.name}`, exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: `Open ${artist.name}`, exact: true }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: /^(Add to|Monitor with) / })).toHaveCount(0);
 });
 
@@ -305,7 +308,7 @@ test("returning to an artist after Lidarr is disconnected drops the Lidarr-only 
   await page.goBack();
   await monitorButton(page).click();
   await expect(page.getByRole("menuitemradio", { name: "Existing albums", exact: true })).toHaveCount(0);
-  await page.getByRole("menuitemradio", { name: "All albums", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Monitored", exact: true }).click();
   await expect.poll(() => writes.length).toBe(1);
-  expect(writes[0]).toMatchObject({ path: monitoringPath, body: { monitorOption: "all" } });
+  expect(writes[0]).toMatchObject({ path: monitoringPath, body: { monitoring: { monitored: true } } });
 });

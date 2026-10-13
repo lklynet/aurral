@@ -15,7 +15,7 @@ const MIX_VARIANT_PATTERNS = [
   {
     value: "remix",
     pattern:
-      /\b(?:remix|rework|bootleg|vip\s?(?:mix|edit)|mash\s?-?\s?up|mix\s?(?:2024|20\d\d))\b/,
+      /\b(?:remix|rework(?:ed)?|bootleg|vip\s?(?:mix|edit)|mash\s?-?\s?up|mix\s?(?:2024|20\d\d))\b/,
   },
 ];
 
@@ -85,7 +85,7 @@ export function extractVariants(value) {
     : /\bstereo\b/.test(text)
       ? "stereo"
       : null;
-  const contentRating = /\bclean\b/.test(text)
+  const contentRating = /\b(?:clean|edited|censored)\b/.test(text)
     ? "clean"
     : /\bexplicit\b/.test(text)
       ? "explicit"
@@ -160,9 +160,9 @@ export function compareVariantProfiles(expected, actual) {
     score -= 6;
   }
 
-  // Clean/explicit matters only when explicitly requested: a requested
-  // rating contradicts a differently-rated candidate, but an unqualified
-  // request must not reject a rated one.
+  // A requested rating contradicts a differently rated candidate. An
+  // unqualified request is the release version: an "explicit" label is soft
+  // evidence, but a clean or edited copy is censored audio.
   if (expected.contentRating && actual.contentRating) {
     if (expected.contentRating === actual.contentRating) {
       score += 4;
@@ -172,6 +172,9 @@ export function compareVariantProfiles(expected, actual) {
     }
   } else if (expected.contentRating && !actual.contentRating) {
     score -= 10;
+  } else if (actual.contentRating === "clean") {
+    contradictions.push("content-rating-clean");
+    score -= 80;
   } else if (actual.contentRating) {
     score -= 6;
   }
@@ -281,6 +284,12 @@ const PROMO_GROUP_WORDS = new Set([
   "4k",
   "mv",
   "topic",
+  "oficial",
+  "officiel",
+  "letra",
+  "letras",
+  "explicit",
+  "360",
 ]);
 
 function groupWords(inner) {
@@ -294,7 +303,7 @@ function isDescriptorGroup(inner) {
   return words.some((word) => DESCRIPTOR_GROUP_WORDS.has(word));
 }
 
-function isPromoGroup(inner) {
+export function isPromoGroup(inner) {
   const words = groupWords(inner);
   return words.length > 0 && words.every((word) => PROMO_GROUP_WORDS.has(word));
 }

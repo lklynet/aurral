@@ -479,14 +479,17 @@ export function resolveUser(username, password) {
     .toLowerCase();
   const u = userOps.getUserByUsername(un);
   if (!u || u.status !== "active" || !password) return null;
-  if (!verifyPassword(password, u.passwordHash)) return null;
-  if (needsRehash(u.passwordHash)) {
-    userOps.updateUser(u.id, {
-      passwordHash: hashPassword(password),
-      subsonicPassword: password,
-    });
-  } else {
-    userOps.syncSubsonicPassword(u.id, password);
+  const storedPassword = userOps.getSubsonicPasswordById(u.id);
+  if (!storedPassword || !safeCompare(password, storedPassword)) {
+    if (!verifyPassword(password, u.passwordHash)) return null;
+    if (needsRehash(u.passwordHash)) {
+      userOps.updateUser(u.id, {
+        passwordHash: hashPassword(password),
+        subsonicPassword: password,
+      });
+    } else {
+      userOps.syncSubsonicPassword(u.id, password);
+    }
   }
   const perms = buildPermissions(u.role, u.permissions);
   return {
@@ -623,8 +626,7 @@ export const authMiddleware = (req, res, next) => {
       req.path === "/api/health/bootstrap" ||
       req.path === "/api/filesystem/browse" ||
       req.path === "/api/filesystem/ensure" ||
-      req.path === "/api/image-proxy" ||
-      req.path.startsWith("/api/image-proxy/") ||
+      ((req.method === "GET" || req.method === "HEAD") && req.path.startsWith("/api/image-proxy/")) ||
       (req.method === "GET" && /^\/api\/feeds\/lidarr\/flows\/[^/]+\.json$/i.test(req.path))
     ) {
       return next();

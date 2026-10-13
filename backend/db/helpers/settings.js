@@ -50,6 +50,14 @@ function normalizeMissingTrackSearchSettings(raw) {
   };
 }
 
+export const MAX_REVIEW_TIMEOUT_HOURS = 720;
+
+// Hours a song may wait in review before it is denied; 0 waits indefinitely.
+export function normalizeReviewTimeoutHours(value) {
+  const hours = Number(value);
+  return Number.isInteger(hours) && hours >= 0 && hours <= MAX_REVIEW_TIMEOUT_HOURS ? hours : 0;
+}
+
 function normalizePlaylistWorkerSettings(raw) {
   const worker = raw && typeof raw === "object" ? raw : {};
   const parsedConcurrency = Number(worker.concurrency);
@@ -120,6 +128,18 @@ export const dbOps = {
     );
   },
 
+  getUserTheme(userId) {
+    return dbOps.getJSONSetting(`user:${parseInt(userId, 10)}:theme`);
+  },
+
+  setUserTheme(userId, theme) {
+    dbOps.setJSONSetting(`user:${parseInt(userId, 10)}:theme`, theme);
+  },
+
+  deleteUserTheme(userId) {
+    deleteSettingStmt.run(`user:${parseInt(userId, 10)}:theme`);
+  },
+
   setLidarrRootFolderPaths(paths) {
     const settings = dbOps.getSettings();
     const normalized = normalizeLidarrRootFolderPaths(paths);
@@ -184,6 +204,9 @@ export const dbOps = {
     const missingTrackSearch = normalizeMissingTrackSearchSettings(
       readStoredSettingJson("missingTrackSearch"),
     );
+    const reviewTimeoutHours = normalizeReviewTimeoutHours(
+      getSettingStmt.get("reviewTimeoutHours")?.value,
+    );
     const inbox = dbHelpers.parseJSON(getSettingStmt.get("inbox")?.value) || {};
     const blocklist = dbHelpers.parseJSON(
       getSettingStmt.get("blocklist")?.value
@@ -227,6 +250,7 @@ export const dbOps = {
       playlistWorker,
       playlistArtwork,
       missingTrackSearch,
+      reviewTimeoutHours,
       inbox: {
         enabled: inbox.enabled !== false,
         releases: inbox.releases !== false,
@@ -401,6 +425,12 @@ export const dbOps = {
           dbHelpers.stringifyJSON(
             normalizeMissingTrackSearchSettings(settings.missingTrackSearch),
           ),
+        );
+      }
+      if (settings.reviewTimeoutHours !== undefined) {
+        upsertSettingStmt.run(
+          "reviewTimeoutHours",
+          String(normalizeReviewTimeoutHours(settings.reviewTimeoutHours)),
         );
       }
       if (settings.blocklist !== undefined) {

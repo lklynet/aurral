@@ -1,0 +1,132 @@
+---
+title: App API contract
+description: Version and response guarantees for the JSON API used by Aurral apps.
+---
+
+## Version and capabilities
+
+`GET /api/health/bootstrap` returns the JSON API contract without authentication:
+
+```json
+{
+  "api": {
+    "version": 1,
+    "features": ["discover", "flows", "activity", "review", "trackDownloads", "linkSearch", "downloadCancel"]
+  }
+}
+```
+
+`api.version` is a positive integer. It changes when a breaking change removes a
+contract field, changes its type or meaning, or changes a required request
+parameter. New optional fields and capabilities do not change the version.
+Clients ignore unknown fields and feature names.
+
+`appVersion` identifies the Aurral build. Nightly and preview build identifiers
+are not API versions. The Subsonic protocol version is separate.
+
+Feature names describe implemented server capabilities. They do not grant a
+permission or guarantee that an optional service is configured or available.
+The feature list is the same before and after sign-in.
+
+| Feature | Capability |
+| --- | --- |
+| `discover` | Discover recommendations and trending artists |
+| `flows` | Flow creation and playlist status |
+| `activity` | Activity through `/api/requests` |
+| `review` | Blocked download jobs and approval or denial |
+| `trackDownloads` | Single-track requests through `/api/library/downloads/track` |
+| `linkSearch` | Streaming-service links resolved through `/api/search/link` |
+| `downloadCancel` | Cancelling one pending or downloading song through `POST /api/playlists/jobs/:jobId/cancel`, and searching again for cancelled songs that did not come from an album request |
+
+Clients check for a feature before using its routes. An absent name means the
+server does not promise that capability. Features implemented in later releases
+receive their own names. Aurral adds each name only when its routes are available.
+
+The registry is `backend/config/apiContract.js`. A capability change updates that
+registry and this reference. The response checks in `.tests/api/` pin the fields
+below through HTTP requests.
+
+## Authentication and errors
+
+Password sign-in uses `POST /api/auth/login` with a JSON body containing
+`username` and `password`. Subsequent requests use
+`Authorization: Bearer SESSION_TOKEN`. The [API overview](/api/overview/) covers
+API keys and other authentication methods.
+
+A JSON error contains a string `error`. Other error fields are optional.
+`401` means authentication failed or is missing. `403` means the credential
+lacks the required permission. `404` means the requested resource is missing.
+Service failures can return other error statuses. Clients inspect the status
+before interpreting a success response.
+
+## Stable response fields
+
+The routes and fields below form version 1 of the app contract. Responses may
+contain additional fields. Arrays can be empty. Fields marked nullable can be
+`null`.
+
+| Route | Request | Success response |
+| --- | --- | --- |
+| `POST /api/auth/login` | `username`, `password` | String `token`, numeric `expiresAt`, and `user` |
+| `GET /api/auth/me` | Authenticated session | `user` and nullable numeric `expiresAt` |
+| `GET /api/health/bootstrap` | Public; optional credential | String `status` and `appVersion`, boolean `authRequired` and `onboardingRequired`, and `api` |
+| `GET /api/discover` | Optional `limit` from 1 to 200 and `offset` | Arrays `recommendations`, `globalTop`, `basedOn`, `topTags`, and `topGenres`; numeric `recommendationCount`; nullable string `lastUpdated`; boolean `configured`; string `provider` |
+| `GET /api/search` | Required `q`; `scope=artist` or `scope=album`; optional `limit`, `offset` | Strings `scope` and `query`, numeric `count` and `offset`, and array `items` |
+| `GET /api/search/link` | Required `url` | String `kind` and `source`; object `artist`; nullable objects `album` and `track` |
+| `GET /api/artists/:mbid` | Artist MusicBrainz ID; optional `mode=core` | Strings `id` and `name`, arrays `tags`, `genres`, `release-groups`, and `appears-on-release-groups` |
+| `GET /api/artists/release-group/:mbid` | Release-group MusicBrainz ID | Strings `id`, `title`, and `primary-type`; arrays `secondary-types`, `artist-credit`, `releases`, and `genres`; nullable strings `first-release-date` and `coverUrl`; string `overview` |
+| `GET /api/library/canonical` | Required `kind=artists`, `albums`, `tracks`, or `genres`, and `pageSize` from 1 to 100; optional `page`, `source`, `availableOnly`, and filters | String `kind`; numeric `page`, `pageSize`, and `total`; boolean `hasMore`; arrays `items`, `artists`, `albums`, `tracks`, and `genres` |
+| `GET /api/library/lookup/:mbid` | Artist MusicBrainz ID | Boolean `exists` and `canonical`, nullable object `artist`, array `albums`, and nullable string `libraryArtistId` |
+| `POST /api/library/lookup/batch` | Array `mbids` | Object keyed by requested IDs, with boolean values |
+| `POST /api/library/albums/lookup/batch` | Array `mbids` | Object keyed by found album IDs, with album lookup objects |
+| `POST /api/library/albums/request` | `albumMbid`, `albumName`, `artistMbid`, `artistName`; optional `triggerSearch` and `managedBy` | HTTP `201` with boolean `success`, `createdArtist`, `createdAlbum`, and `queued`; objects `artist` and `album`; strings `status` and `managedBy` |
+| `POST /api/library/downloads/track` | `artistName`, `trackName`; optional track and album identifiers | Boolean `success` and `queued`. An owned track returns HTTP `200` with `alreadyOwned=true`. An existing queued request returns HTTP `202` with string `jobId` and `alreadyQueued=true`. Other accepted requests return HTTP `202`; `jobId` can be nullable for an already monitored track. |
+| `POST /api/playlists/flows` | `name`, `size`, `mix`, `scheduleDays`, and `scheduleTime`, or a supported `templateId` | Boolean `success` and object `flow` |
+| `GET /api/playlists/status` | Requires `accessFlow` | Arrays `flows` and `sharedPlaylists`; objects `stats`, `flowStats`, `worker`, and `hint` |
+| `GET /api/playlists/jobs` | Requires `accessFlow`; optional `status=blocked` for review | Array of download job objects |
+| `GET /api/requests` | Optional `refresh=1` | Array of activity objects |
+| `POST /api/playlists/jobs/:jobId/approve` | Requires `accessFlow`; blocked job ID | Boolean `success` and string `path` for the imported file |
+| `POST /api/playlists/jobs/:jobId/deny` | Requires `accessFlow`; blocked job ID | Boolean `success` |
+
+`user` contains numeric `id`, strings `username` and `role`, and object
+`permissions`. An authenticated bootstrap also includes `user`.
+
+Discovery artist entries contain nullable string `id` and `image`, strings
+`name` and `type`, and array `tags`. Search artist entries contain string `id`,
+`name`, and `type`, nullable string `image`, array `tags`, and boolean
+`inLibrary`. Search album entries contain strings `id`, `title`, `artistName`,
+`type`, and `status`, and boolean `inLibrary`.
+
+A resolved link's `artist` contains string `name` and nullable string `mbid`.
+`album` contains string `title` and nullable string `mbid`; it is `null` for
+artist links and for tracks whose album the service does not report. `track`
+contains string `title` and nullable string `mbid`; it is `null` unless `kind`
+is `track`. A `null` MusicBrainz ID means Aurral found no match, so search by
+name instead. An unsupported link returns `400`.
+
+Artist release-group entries contain strings `id`, `title`, and `primary-type`,
+array `secondary-types`, and nullable string `first-release-date`.
+
+Library artist, album, and track entries use numeric `id` and string
+`identityKey`. Artists have string `name`, albums have string `title`, and
+tracks have strings `title` and `artistName`, nullable string `mbid`, and array
+`files`. These IDs are different from MusicBrainz IDs and Subsonic IDs.
+
+Album lookup objects contain boolean `inLibrary` and `monitored`, nullable
+strings `libraryAlbumId` and `libraryArtistId`, string `status`, numeric
+`trackCount` and `trackFileCount`, and array `ownedTrackMbids`. An absent key
+means that the server did not find the album. `ownedTrackMbids` identifies
+available tracks; it does not promise a complete album track list.
+
+Flow objects contain strings `id` and `name`, numeric `size` and `ownerUserId`,
+boolean `enabled`, and object `mix`. Existing legacy flows can have a nullable
+`ownerUserId`. Download job objects contain strings `id`, `status`,
+`artistName`, `trackName`, and `playlistType`, and nullable string `streamFormat`.
+
+Activity objects contain string `id`, `status`, and `title`, and nullable
+strings `kind`, `artistName`, and `trackName`. Activity combines several kinds
+of events, so clients do not assume that every item describes a track.
+
+Approval imports the held file and marks the job done. Denial removes the held
+file and returns the job to the download queue. A missing or no-longer-blocked
+job returns `404` with `error`.

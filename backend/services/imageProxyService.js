@@ -3,9 +3,10 @@ import dns from "node:dns";
 import fs from "fs";
 import path from "path";
 import { Agent, fetch as undiciFetch } from "undici";
-import sharp from "./sharpConfig.js";
+import PQueue from "p-queue";
+import getSharp from "./sharpConfig.js";
+import BoundedMap from "./boundedMap.js";
 import { resolveAurralDataDir } from "../config/data-dir.js";
-import { noteDeprecatedUsage } from "./deprecatedUsage.js";
 import { isPrivateAddress, isPrivateHostname } from "../../lib/publicUrl.js";
 
 const IMAGE_PROXY_ROUTE = "/api/image-proxy";
@@ -26,10 +27,17 @@ const IMAGE_PROXY_MAX_BYTES = (() => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 256 * 1024 * 1024;
 })();
 const inflightRequests = new Map();
-const cacheEntriesByKey = new Map();
-const cacheKeysBySourceUrl = new Map();
+const imageWorkQueue = new PQueue({ concurrency: 2 });
+const cacheEntriesByKey = new BoundedMap(256);
 let cacheIndexInitialized = false;
 let indexBuildPromise = null;
+
+const runImageWork = (workKey, work) => {
+  if (inflightRequests.has(workKey)) return inflightRequests.get(workKey);
+  const request = imageWorkQueue.add(work).finally(() => inflightRequests.delete(workKey));
+  inflightRequests.set(workKey, request);
+  return request;
+};
 
 const MIME_EXTENSION_MAP = {
   "image/jpeg": "jpg",
@@ -90,46 +98,6 @@ const initializeCacheIndex = () => {
     try {
       await ensureCacheDir();
       await migrateObsoleteImageCache();
-      const files = (await fs.promises.readdir(IMAGE_PROXY_DIR)).filter((file) =>
-        /^[a-f0-9]{64}\.json$/i.test(file),
-      );
-      for (let offset = 0; offset < files.length; offset += 64) {
-        await Promise.all(
-          files.slice(offset, offset + 64).map(async (file) => {
-            const match = file.match(/^([a-f0-9]{64})\.json$/i);
-            if (!match) return;
-            const cacheKey = match[1].toLowerCase();
-            const metaPath = path.join(IMAGE_PROXY_DIR, file);
-            let meta = null;
-            try {
-              meta = JSON.parse(await fs.promises.readFile(metaPath, "utf8"));
-            } catch {
-              return;
-            }
-            if (!meta?.extension) return;
-            const imagePath = path.join(IMAGE_PROXY_DIR, `${cacheKey}.${meta.extension}`);
-            try {
-              await fs.promises.access(imagePath);
-            } catch {
-              return;
-            }
-            const sourceUrl = normalizeKnownImageUrl(meta.sourceUrl);
-            const profile = normalizeImageProfile(meta.profile);
-            cacheEntriesByKey.set(cacheKey, {
-              cacheKey,
-              meta: { ...meta, profile },
-              imagePath,
-              localUrl: buildLocalImageUrl(cacheKey, meta.extension),
-              isFresh:
-                Number(meta.fetchedAt || 0) > 0 &&
-                Date.now() - Number(meta.fetchedAt || 0) < CACHE_TTL_MS,
-            });
-            if (sourceUrl) {
-              cacheKeysBySourceUrl.set(buildSourceMapKey(sourceUrl, profile), cacheKey);
-            }
-          }),
-        );
-      }
       await pruneImageProxyCacheToLimit();
     } catch {}
   })();
@@ -143,7 +111,6 @@ export const clearImageProxyCache = async () => {
   await ensureCacheDir();
 
   cacheEntriesByKey.clear();
-  cacheKeysBySourceUrl.clear();
   inflightRequests.clear();
   cacheIndexInitialized = false;
   indexBuildPromise = null;
@@ -164,7 +131,7 @@ export const getImageProxyCacheSizeBytes = async () => {
   return total;
 };
 
-const removeCacheEntryFromDisk = async (cacheKey, extension, sourceUrl, profile = "library") => {
+const removeCacheEntryFromDisk = async (cacheKey, extension) => {
   const normalizedKey = String(cacheKey || "").toLowerCase();
   if (!normalizedKey) return;
   const { metaPath, baseImagePath } = getCachePaths(normalizedKey);
@@ -175,10 +142,6 @@ const removeCacheEntryFromDisk = async (cacheKey, extension, sourceUrl, profile 
     removeStaleCachedFiles(normalizedKey, null),
   ]);
   cacheEntriesByKey.delete(normalizedKey);
-  const normalizedSource = normalizeKnownImageUrl(sourceUrl);
-  if (normalizedSource) {
-    cacheKeysBySourceUrl.delete(buildSourceMapKey(normalizedSource, profile));
-  }
 };
 
 const pruneImageProxyCacheToLimit = async () => {
@@ -209,8 +172,6 @@ const pruneImageProxyCacheToLimit = async () => {
       entries.push({
         cacheKey,
         extension,
-        sourceUrl: meta?.sourceUrl || null,
-        profile: normalizeImageProfile(meta?.profile),
         mtimeMs: Math.max(Number(imageStat.mtimeMs) || 0, Number(metaStat.mtimeMs) || 0),
         bytes: Number(imageStat.size || 0) + Number(metaStat.size || 0),
       });
@@ -231,8 +192,6 @@ const pruneImageProxyCacheToLimit = async () => {
     await removeCacheEntryFromDisk(
       entry.cacheKey,
       entry.extension,
-      entry.sourceUrl,
-      entry.profile,
     );
     total -= entry.bytes;
   }
@@ -247,9 +206,6 @@ const touchCacheEntry = (imagePath) => {
 const hashValue = (value) => crypto.createHash("sha256").update(String(value)).digest("hex");
 
 const normalizeImageProfile = () => "library";
-
-const buildSourceMapKey = (sourceUrl, profile = "library") =>
-  `${normalizeImageProfile(profile)}:${sourceUrl}`;
 
 const buildImageCacheKey = (sourceUrl, profile = "library") =>
   hashValue(`${normalizeImageProfile(profile)}:${sourceUrl}`);
@@ -339,7 +295,6 @@ const readCacheEntryFromDisk = (cacheKey) => {
   if (!meta?.extension) return null;
   const imagePath = path.join(IMAGE_PROXY_DIR, `${cacheKey}.${meta.extension}`);
   if (!fs.existsSync(imagePath)) return null;
-  const sourceUrl = normalizeKnownImageUrl(meta.sourceUrl);
   const profile = normalizeImageProfile(meta.profile);
   const entry = {
     cacheKey,
@@ -351,9 +306,6 @@ const readCacheEntryFromDisk = (cacheKey) => {
       Date.now() - Number(meta.fetchedAt || 0) < CACHE_TTL_MS,
   };
   cacheEntriesByKey.set(cacheKey, entry);
-  if (sourceUrl) {
-    cacheKeysBySourceUrl.set(buildSourceMapKey(sourceUrl, profile), cacheKey);
-  }
   return entry;
 };
 
@@ -401,9 +353,7 @@ const getCachedEntry = (sourceUrl, imageProfile = "library") => {
   if (!normalizedSourceUrl) return null;
   const profile = normalizeImageProfile(imageProfile);
   initializeCacheIndex();
-  const cacheKey =
-    cacheKeysBySourceUrl.get(buildSourceMapKey(normalizedSourceUrl, profile)) ||
-    buildImageCacheKey(normalizedSourceUrl, profile);
+  const cacheKey = buildImageCacheKey(normalizedSourceUrl, profile);
   return getCachedEntryFromKey(cacheKey);
 };
 
@@ -441,12 +391,6 @@ const writeCacheEntry = async (
     isFresh: true,
   };
   cacheEntriesByKey.set(cacheKey, entry);
-  if (normalizedSourceUrl) {
-    cacheKeysBySourceUrl.set(
-      buildSourceMapKey(normalizedSourceUrl, profile),
-      cacheKey,
-    );
-  }
   await pruneImageProxyCacheToLimit();
   return entry;
 };
@@ -466,6 +410,7 @@ const inspectImageBuffer = async (buffer, contentType) => {
 
   let metadata;
   try {
+    const sharp = await getSharp();
     metadata = await sharp(buffer, {
       animated: false,
       limitInputPixels: MAX_SOURCE_IMAGE_PIXELS,
@@ -485,6 +430,7 @@ const optimizeImageBuffer = async (buffer, contentType, imageProfile = "library"
   }
   const profile = IMAGE_PROFILES[normalizeImageProfile(imageProfile)];
 
+  const sharp = await getSharp();
   const optimizedBuffer = await sharp(buffer, {
     animated: false,
     limitInputPixels: MAX_SOURCE_IMAGE_PIXELS,
@@ -507,6 +453,10 @@ const normalizeCachedEntryIfNeeded = async (entry) => {
     return entry;
   }
 
+  return runImageWork(`normalize:${entry.cacheKey}`, () => normalizeCachedEntry(entry));
+};
+
+const normalizeCachedEntry = async (entry) => {
   let buffer = null;
   try {
     buffer = await fs.promises.readFile(entry.imagePath);
@@ -556,7 +506,7 @@ const readBoundedResponse = async (response) => {
   const chunks = [];
   let totalBytes = 0;
   for await (const chunk of response.body || []) {
-    const buffer = Buffer.from(chunk);
+    const buffer = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
     totalBytes += buffer.length;
     if (totalBytes > MAX_SOURCE_IMAGE_BYTES) {
       throw new Error("Upstream image exceeds the size limit");
@@ -619,7 +569,13 @@ const fetchRemoteImage = async (sourceUrl) => {
   throw new Error("Too many upstream image redirects");
 };
 
-const fetchAndCacheImage = async (sourceUrl, imageProfile = "library") => {
+const fetchAndCacheImage = (sourceUrl, imageProfile = "library") =>
+  runImageWork(
+    `fetch:${buildImageCacheKey(normalizeKnownImageUrl(sourceUrl), imageProfile)}`,
+    () => fetchAndWriteImage(sourceUrl, imageProfile),
+  );
+
+const fetchAndWriteImage = async (sourceUrl, imageProfile = "library") => {
   const normalizedSourceUrl = normalizeKnownImageUrl(sourceUrl);
   if (!normalizedSourceUrl) {
     throw new Error("Missing source image URL");
@@ -675,16 +631,7 @@ export const warmImageProxy = async (sourceUrl, imageProfile = "library") => {
     return normalizeCachedEntryIfNeeded(cached);
   }
 
-  const inflightKey = buildSourceMapKey(normalizedSourceUrl, profile);
-  if (inflightRequests.has(inflightKey)) {
-    return inflightRequests.get(inflightKey);
-  }
-
-  const request = fetchAndCacheImage(normalizedSourceUrl, profile).finally(() => {
-    inflightRequests.delete(inflightKey);
-  });
-  inflightRequests.set(inflightKey, request);
-  return request;
+  return fetchAndCacheImage(normalizedSourceUrl, profile);
 };
 
 export const warmPublicImageUrl = async (sourceUrl, imageProfile = "library") => {
@@ -790,19 +737,15 @@ export const handleImageProxyRequest = async (req, res) => {
   });
 };
 
-export const handleLegacyImageProxyRequest = async (req, res) => {
-  noteDeprecatedUsage("image-proxy-query");
-  const rawSourceUrl = typeof req.query.src === "string" ? req.query.src.trim() : "";
-  if (!rawSourceUrl) {
-    return res.status(404).json({ error: "Image not found" });
+export const handleImageCacheRequest = async (req, res) => {
+  const sourceUrl = typeof req.body?.src === "string" ? req.body.src.trim() : "";
+  if (!/^https?:\/\//i.test(sourceUrl)) {
+    return res.status(400).json({ error: "An http or https image URL is required" });
   }
-
   try {
-    const cached = await warmImageProxy(rawSourceUrl);
-    if (!cached?.localUrl) {
-      return res.status(404).json({ error: "Image not found" });
-    }
-    return res.redirect(302, cached.localUrl);
+    const cached = await warmImageProxy(sourceUrl);
+    if (!cached?.localUrl) return res.status(404).json({ error: "Image not found" });
+    return res.json({ url: cached.localUrl });
   } catch {
     return res.status(404).json({ error: "Image not found" });
   }

@@ -78,6 +78,14 @@ const liveActivePlaylistStmt = db.prepare(
   `SELECT 1 FROM ${JOBS_TABLE} WHERE playlist_type = ?
    AND status IN ('pending', 'downloading') LIMIT 1`,
 );
+const liveActivePlaylistJobsStmt = db.prepare(
+  `SELECT * FROM ${JOBS_TABLE} WHERE status IN ('pending', 'downloading')
+   AND COALESCE(NULLIF(playlist_type, ''), playlist_id) = ?
+   ORDER BY created_at, id`,
+);
+const liveAlbumJobsStmt = db.prepare(
+  `SELECT * FROM ${JOBS_TABLE} WHERE album_mbid IS NOT NULL AND album_mbid != ''`,
+);
 
 function rowToJob(row) {
   return {
@@ -95,6 +103,7 @@ function rowToJob(row) {
         ? Number(row.duration_ms)
         : null,
     trackNumber: normalizePositiveInteger(row.track_number),
+    discNumber: normalizePositiveInteger(row.disc_number),
     albumTrackCount: normalizePositiveInteger(row.album_track_count),
     albumTrackTitles: parseStringListJson(row.album_track_titles),
     artistAliases: parseStringListJson(row.artist_aliases),
@@ -150,6 +159,7 @@ const insertStmt = db.prepare(`
     release_year,
     duration_ms,
     track_number,
+    disc_number,
     album_track_count,
     album_track_titles,
     artist_aliases,
@@ -176,7 +186,7 @@ const insertStmt = db.prepare(`
     upgrade_for_job_id,
     manual_replacement_search
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const updateStmt = db.prepare(`
@@ -196,6 +206,7 @@ const updateStmt = db.prepare(`
       release_year = ?,
       duration_ms = ?,
       track_number = ?,
+      disc_number = ?,
       album_track_count = ?,
       album_track_titles = ?,
       artist_aliases = ?,
@@ -294,6 +305,7 @@ function buildPipelinePayload(job) {
       releaseYear: job.releaseYear,
       durationMs: job.durationMs,
       trackNumber: job.trackNumber,
+      discNumber: job.discNumber,
       albumTrackCount: job.albumTrackCount,
       albumTrackTitles: job.albumTrackTitles || [],
       artistAliases: job.artistAliases || [],
@@ -711,6 +723,7 @@ export class DownloadTracker {
           job.releaseYear ?? null,
           job.durationMs ?? null,
           job.trackNumber ?? null,
+          job.discNumber ?? null,
           job.albumTrackCount ?? null,
           stringifyStringListJson(job.albumTrackTitles),
           stringifyStringListJson(job.artistAliases),
@@ -754,6 +767,7 @@ export class DownloadTracker {
       job.releaseYear ?? null,
       job.durationMs ?? null,
       job.trackNumber ?? null,
+      job.discNumber ?? null,
       job.albumTrackCount ?? null,
       stringifyStringListJson(job.albumTrackTitles),
       stringifyStringListJson(job.artistAliases),
@@ -800,6 +814,7 @@ export class DownloadTracker {
       job.releaseYear ?? null,
       job.durationMs ?? null,
       job.trackNumber ?? null,
+      job.discNumber ?? null,
       job.albumTrackCount ?? null,
       stringifyStringListJson(job.albumTrackTitles),
       stringifyStringListJson(job.artistAliases),
@@ -841,6 +856,7 @@ export class DownloadTracker {
           ? Math.max(0, Math.round(Number(track.durationMs)))
           : null,
       trackNumber: normalizePositiveInteger(track?.trackNumber),
+      discNumber: normalizePositiveInteger(track?.discNumber),
       albumTrackCount: normalizePositiveInteger(track?.albumTrackCount),
       albumTrackTitles: normalizeStringList(track?.albumTrackTitles),
       artistAliases: normalizeStringList(track?.artistAliases),
@@ -1043,10 +1059,11 @@ export class DownloadTracker {
         changed = true;
       }
     }
-    if ("trackNumber" in metadata) {
-      const nextTrackNumber = normalizePositiveInteger(metadata.trackNumber);
-      if (job.trackNumber !== nextTrackNumber) {
-        job.trackNumber = nextTrackNumber;
+    for (const key of ["trackNumber", "discNumber"]) {
+      if (!(key in metadata)) continue;
+      const next = normalizePositiveInteger(metadata[key]);
+      if (job[key] !== next) {
+        job[key] = next;
         changed = true;
       }
     }
@@ -1452,6 +1469,15 @@ export class DownloadTracker {
     return count;
   }
 
+  getActiveByPlaylistType(playlistType) {
+    return sortByCreatedAt([...this.jobs.values()].filter((job) =>
+      job.playlistType === playlistType && (job.status === "pending" || job.status === "downloading")));
+  }
+
+  getByAlbumMbid(matches) {
+    return sortByCreatedAt([...this.jobs.values()].filter((job) => job.albumMbid && matches(job.albumMbid)));
+  }
+
   hasActiveJobsForPlaylist(playlistType) {
     for (const job of this.jobs.values()) {
       if (job.playlistType !== playlistType) continue;
@@ -1655,6 +1681,14 @@ function readTrackerFromDatabase(name, args) {
   if (name === "hasActiveJobsForPlaylist") {
     return !!liveActivePlaylistStmt.get(first ?? null);
   }
+  if (name === "getActiveByPlaylistType") return liveJobs(liveActivePlaylistJobsStmt.all(first ?? null));
+  if (name === "getByAlbumMbid") {
+    const jobs = [];
+    for (const row of liveAlbumJobsStmt.iterate()) {
+      if (first(row.album_mbid)) jobs.push(rowToJob(row));
+    }
+    return sortByCreatedAt(jobs);
+  }
   if (name === "getRevision") return persistedRevisionStmt.get()?.revision || 0;
   if (name === "getStats" || name === "getStatsByPlaylistType" || name === "getPlaylistTypeStats") {
     const byPlaylist = {};
@@ -1679,8 +1713,8 @@ function readTrackerFromDatabase(name, args) {
 
 const LIVE_READ_METHODS = new Set([
   "getJob", "getAll", "getByPlaylistType", "getByPlaylistId", "getByStatus", "getDoneWithFinalPath",
-  "getNextPending", "peekPending", "hasActiveJobsForPlaylist", "getRevision",
-  "getStats", "getStatsByPlaylistType", "getPlaylistTypeStats",
+  "getNextPending", "peekPending", "hasActiveJobsForPlaylist", "getActiveByPlaylistType", "getByAlbumMbid",
+  "getRevision", "getStats", "getStatsByPlaylistType", "getPlaylistTypeStats",
 ]);
 
 for (const name of Object.getOwnPropertyNames(DownloadTracker.prototype)) {

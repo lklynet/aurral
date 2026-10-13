@@ -619,7 +619,7 @@ export async function migrateAurralDownloadFolder(options = {}) {
     }
     const destination = previous.destination || path.resolve(
       rootPath,
-      buildAurralTrackDestination(playlistId, artistDir, albumDir, { ephemeral: Boolean(flow) }),
+      buildAurralTrackDestination(playlistId, artistDir, albumDir, { ephemeral: Boolean(flow), root: rootPath }),
       `${trackName}${path.extname(sourcePath).toLowerCase() || ".mp3"}`,
     );
     if (!isPathInsideRoot(destination, rootPath)) {

@@ -72,7 +72,7 @@ If Aurral writes `/data/downloads/aurral/track.flac` but Navidrome sees the same
 | --- | --- | --- |
 | Lidarr | URL, API key, and read access to the files that Lidarr reports | Mount the same media root in Aurral and Lidarr at the same container path. |
 | Download clients | API access and read access to completed downloads | Mount the same media root in Aurral and the client at the same container path. |
-| Navidrome | URL, username, password, and a Navidrome view of the Downloads Folder | Mount the Downloads Folder in Navidrome at the same container path. |
+| Navidrome | URL, username, password, and a Navidrome view of the Downloads Folder | Mount the Downloads Folder in Navidrome. If the path differs, add a path mapping for Navidrome. |
 | Plex | Plex account, server URL, and a Plex view of the Downloads Folder | Mount the Downloads Folder in Plex. If the path differs, set **Plex Aurral Library path**. |
 | Jellyfin | URL, API key, user ID, and a Jellyfin library that contains the Downloads Folder | Mount the Downloads Folder in Jellyfin. If the path differs, add a path mapping for Jellyfin. |
 
@@ -218,9 +218,9 @@ A native Windows service can report a path such as `N:\ServerFolders\Music`. Mou
 
 ### Navidrome sees a different path
 
-Aurral publishes Navidrome playlists through the Subsonic API. It finds each track in the Navidrome index, so publishing a playlist does not use a path mapping.
+Aurral publishes Navidrome playlists through the Subsonic API. If Navidrome sees the Downloads Folder at a different path, add a remote path mapping with **Applies to** set to **Navidrome**.
 
-Mount the Downloads Folder at the same absolute path in Aurral and Navidrome. Aurral needs this to manage the **Aurral Playlists** library. Other Navidrome libraries, such as your Lidarr library, can use different paths.
+For example, if Aurral sees `/data/aurral` and Navidrome sees `/music-aurral`, set **Remote path** to `/music-aurral` and **Local path** to `/data/aurral`. Both containers must mount the same host folder. Aurral uses the mapping to manage the **Aurral Playlists** library and publish its tracks. Add another Navidrome mapping if reused Lidarr tracks also have different paths.
 
 ### Plex sees a different path
 

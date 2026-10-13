@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Link, useLocation, useNavigate, useNavigationType } from "react-router";
+import RouteLink from "./RouteLink";
+import { useLocation, useNavigate, useNavigationType } from "react-router";
 import {
   Menu,
   Sparkles,
@@ -71,6 +72,7 @@ function Layout({ children, headerActions }) {
   const navigate = useNavigate();
   const navigationType = useNavigationType();
   const scrollPositionsRef = useRef(new Map());
+  const scrolledPathnameRef = useRef(null);
   const sectionNav = useSectionNav();
   const { isDiscoverSectionActive } = useDiscoverRecent();
   const sectionBarRef = useRef(null);
@@ -363,8 +365,14 @@ function Layout({ children, headerActions }) {
   }, [isMobileMenuOpen]);
 
   useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     const node = mainScrollRef.current;
+    const previousPathname = scrolledPathnameRef.current;
+    scrolledPathnameRef.current = location.pathname;
+    if (navigationType === "REPLACE" && previousPathname === location.pathname) {
+      if (node) scrollPositionsRef.current.set(location.key, node.scrollTop);
+      return undefined;
+    }
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     const savedTop =
       navigationType === "POP" ? scrollPositionsRef.current.get(location.key) || 0 : 0;
     let frameId;
@@ -383,7 +391,7 @@ function Layout({ children, headerActions }) {
     return () => {
       if (frameId) window.cancelAnimationFrame(frameId);
     };
-  }, [location.key, navigationType, updateMainScrollbar]);
+  }, [location.key, location.pathname, navigationType, updateMainScrollbar]);
 
   useEffect(() => {
     const update = () => updateMainScrollbar();
@@ -485,7 +493,7 @@ function Layout({ children, headerActions }) {
             aria-label={sectionNav.label}
           >
             {sectionNav.items.map((item) => (
-              <Link
+              <RouteLink
                 key={item.id}
                 to={item.path}
                 replace
@@ -493,7 +501,7 @@ function Layout({ children, headerActions }) {
                 aria-current={item.active ? "page" : undefined}
               >
                 {item.label}
-              </Link>
+              </RouteLink>
             ))}
           </nav>
         ) : null}
@@ -558,7 +566,7 @@ function Layout({ children, headerActions }) {
                   const Icon = item.icon;
                   const active = isActive(item.path);
                   return (
-                    <Link
+                    <RouteLink
                       key={item.path}
                       ref={index === 0 ? mobileMenuInitialFocusRef : undefined}
                       to={item.path}
@@ -567,7 +575,7 @@ function Layout({ children, headerActions }) {
                     >
                       <Icon aria-hidden="true" />
                       <span>{item.label}</span>
-                    </Link>
+                    </RouteLink>
                   );
                 })}
                 {authRequired && canLogOut && (
@@ -594,7 +602,7 @@ function Layout({ children, headerActions }) {
               const Icon = item.icon;
               const active = isActive(item.path);
               return (
-                <Link
+                <RouteLink
                   key={item.path}
                   to={item.path}
                   className={`app-mobile-nav__item${active ? " is-active" : ""}`}
@@ -602,7 +610,7 @@ function Layout({ children, headerActions }) {
                 >
                   <Icon aria-hidden="true" />
                   <span>{item.label}</span>
-                </Link>
+                </RouteLink>
               );
             })}
             <button

@@ -75,6 +75,10 @@ function mergeMissingMetadata(target, source, { includeJobFields = false } = {})
       patch[key] = Math.max(1, Math.round(Number(source[key])));
     }
   }
+  const samePosition = Number(patch.trackNumber ?? target?.trackNumber) === Number(source?.trackNumber);
+  if (target?.discNumber == null && samePosition && Number(source?.discNumber) > 0) {
+    patch.discNumber = Math.round(Number(source.discNumber));
+  }
 
   const targetTitles = Array.isArray(target?.albumTrackTitles)
     ? target.albumTrackTitles.filter(Boolean)

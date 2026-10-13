@@ -16,6 +16,7 @@ export {
   getDiscoveryFeedback,
   addDiscoveryFeedback,
   removeDiscoveryFeedback,
+  restoreDiscoveryFeedback,
   resetDiscoveryFeedback,
   getBlockedArtistKeys,
   isArtistBlockedForUser,

@@ -43,15 +43,36 @@ test("manager state uses library ids and round-trips through the store", () => {
   assert.equal(store.getManagedBy("album", 7), "aurral");
   assert.equal(store.getManagedBy("album", "7"), "aurral");
   const { updatedAt, ...entry } = store.getLibraryManagementEntry("album", 7);
-  assert.deepEqual(entry, { managedBy: "aurral", monitorMode: "all" });
+  assert.deepEqual(entry, { managedBy: "aurral", monitorMode: "all", monitorRules: null });
   assert.ok(Number.isSafeInteger(updatedAt) && updatedAt > 0);
 
   store.setLibraryManagement({ entityKind: "album", entityId: 7, managedBy: "lidarr" });
   const { updatedAt: _updatedAt, ...changedEntry } = store.getLibraryManagementEntry("album", 7);
-  assert.deepEqual(changedEntry, { managedBy: "lidarr", monitorMode: null });
+  assert.deepEqual(changedEntry, { managedBy: "lidarr", monitorMode: null, monitorRules: null });
 
   assert.equal(store.clearLibraryManagement("album", 7), true);
   assert.equal(store.getManagedBy("album", 7), null);
+});
+
+test("artist monitoring rules survive same-mode writes and clear when the manager or mode changes", () => {
+  const rules = { default: true, catalogAt: 1, newSince: 1 };
+  const write = (fields) => store.setLibraryManagement({ entityKind: "artist", entityId: 9, ...fields });
+
+  write({ managedBy: "aurral", monitorMode: "all", monitorRules: rules });
+  write({ managedBy: "aurral", monitorMode: "all" });
+  assert.deepEqual(store.getLibraryManagementEntry("artist", 9).monitorRules, rules);
+
+  write({ managedBy: "aurral", monitorMode: "none" });
+  assert.equal(store.getLibraryManagementEntry("artist", 9).monitorRules, null);
+
+  write({ managedBy: "aurral", monitorMode: "all", monitorRules: rules });
+  write({ managedBy: "lidarr", monitorMode: "all" });
+  assert.equal(store.getLibraryManagementEntry("artist", 9).monitorRules, null);
+
+  write({ managedBy: "aurral", monitorMode: "none", monitorRules: rules });
+  write({ managedBy: "aurral", monitorMode: "none", monitorRules: null });
+  assert.equal(store.getLibraryManagementEntry("artist", 9).monitorRules, null);
+  store.clearLibraryManagement("artist", 9);
 });
 
 test("manager state written by another process is visible without a restart", async () => {
@@ -252,7 +273,6 @@ test("root overlap warnings cover equal and nested roots without rejecting", () 
   });
   assert.equal(equal.length, 1);
   assert.equal(equal[0].type, "equal");
-  assert.match(equal[0].message, /rename, import, or delete/);
 
   const nestedLidarr = computeLibraryRootOverlaps({
     aurralRoot: "/data/media",

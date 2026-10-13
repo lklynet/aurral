@@ -15,7 +15,6 @@ export function usePreviewPlayer(mbid, artistNameFromNav, artist) {
     isPlaying,
     isLoading,
     currentTrack,
-    isShuffleEnabled,
   } = useAudioQueue();
 
   const artistName = artistNameFromNav || artist?.name || "";
@@ -82,11 +81,7 @@ export function usePreviewPlayer(mbid, artistNameFromNav, artist) {
         normalizePreviewTrack(track, artistName, { artistMbid: mbid }),
       );
       if (tracks.length === 0) return;
-      playQueue(tracks, {
-        source: artistSource,
-        shuffle: isShuffleEnabled,
-        updateShufflePreference: false,
-      });
+      playQueue(tracks, { source: artistSource });
     } finally {
       setBuildingQueue(false);
     }

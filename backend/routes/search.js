@@ -1,6 +1,9 @@
 import express from "express";
 import { noCache } from "../middleware/cache.js";
+import { requireAuth } from "../middleware/requirePermission.js";
 import { searchAlbums, searchArtists, searchTags } from "../services/searchService.js";
+import { resolveStreamingLink } from "../services/streamingLinks.js";
+import { logger, safeLogDiagnostic } from "../services/logger.js";
 import { searchLibrary, searchUnified } from "../services/unifiedSearchService.js";
 
 const router = express.Router();
@@ -48,6 +51,22 @@ router.get("/library", noCache, (req, res) => {
     res.status(500).json({
       error: "Failed to search library",
       message: error.message,
+    });
+  }
+});
+
+router.get("/link", requireAuth, noCache, async (req, res) => {
+  try {
+    return res.json(await resolveStreamingLink(req.query.url));
+  } catch (error) {
+    const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+    if (status >= 500) {
+      logger.warn("search", "Failed to resolve link", { reason: safeLogDiagnostic(error) });
+    }
+    return res.status(status).json({
+      error: "Failed to resolve link",
+      message: error?.message || "Unknown error",
+      ...(error?.code ? { code: error.code } : {}),
     });
   }
 });

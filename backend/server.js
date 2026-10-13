@@ -20,7 +20,7 @@ import {
   getLidarrStatusSnapshot,
   hasActiveLidarrStatusSnapshot,
 } from "./routes/library/handlers/downloads.js";
-import { getPlaylistStatusSnapshot } from "./services/playlists/playlistStatusSnapshot.js";
+import { startPlaylistStatusBroadcasts } from "./services/playlists/playlistStatusBroadcaster.js";
 
 import settingsRouter from "./routes/settings/index.js";
 import onboardingRouter from "./routes/onboarding.js";
@@ -50,6 +50,8 @@ import newsRouter from "./routes/news.js";
 import subsonicRouter from "./routes/subsonic.js";
 import scrobblingRouter from "./routes/scrobbling.js";
 import playEventsRouter from "./routes/playEvents.js";
+import shareLinksRouter from "./routes/shareLinks.js";
+import { stopShareListener, syncShareListener } from "./services/shareLinks/shareListener.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,7 +76,7 @@ const allowedCorsOrigins = String(process.env.CORS_ORIGIN || "")
 
 const isSubsonicRequest = (req) => req.path === "/rest" || req.path.startsWith("/rest/");
 const isImageProxyRequest = (req) =>
-  req.path === "/api/image-proxy" || req.path.startsWith("/api/image-proxy/");
+  (req.method === "GET" || req.method === "HEAD") && req.path.startsWith("/api/image-proxy/");
 
 const corsDefaults = {
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
@@ -117,7 +119,7 @@ if (process.env.OIDC_ENABLED === "true" && !isOidcEnabled()) {
   );
 }
 
-const connectSrcDirectives = ["'self'", "ws:", "wss:", "https://api.github.com", "https://raw.githubusercontent.com"];
+const connectSrcDirectives = ["'self'", "ws:", "wss:", "https://api.github.com"];
 if (process.env.AUTH_PROXY_DOMAIN) {
   connectSrcDirectives.push(process.env.AUTH_PROXY_DOMAIN);
 }
@@ -137,7 +139,7 @@ app.use(
         fontSrc: ["'self'", "data:"],
         imgSrc: ["'self'", "data:", "https:"],
         connectSrc: connectSrcDirectives,
-        mediaSrc: ["'self'", "data:", "https://*.dzcdn.net", "https://*.deezer.com"],
+        mediaSrc: ["'self'", "data:", "https:"],
         frameSrc: ["'self'", "https://www.youtube-nocookie.com", "https://www.youtube.com"],
         frameAncestors: null,
         upgradeInsecureRequests: null,
@@ -198,6 +200,7 @@ app.use("/api/weekly-flow", (req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/scrobbling", scrobblingRouter);
 app.use("/api/play-events", playEventsRouter);
+app.use("/api/share-links", shareLinksRouter);
 app.use("/api/image-proxy", imageProxyRouter);
 app.use("/rest", express.urlencoded({ extended: false }), subsonicRouter);
 
@@ -311,55 +314,6 @@ const broadcastDownloadStatuses = async () => {
   }
 };
 
-const PLAYLIST_STATUS_INTERVAL_MS = 4000;
-let playlistStatusBroadcastInFlight = false;
-const broadcastPlaylistStatus = async () => {
-  if (playlistStatusBroadcastInFlight) return;
-  playlistStatusBroadcastInFlight = true;
-  try {
-    if (!hasWsSubscribers("weekly-flow") && !hasWsSubscribers("playlists")) {
-      return;
-    }
-    const payloadByAudience = new Map();
-    const buildPayload = (channel) => (client) => {
-      const cacheKey =
-        client?.user?.role === "admin"
-          ? "admin"
-          : client?.user?.id != null
-            ? `user:${client.user.id}`
-            : `anon:${client?.id || "unknown"}`;
-      let cached = payloadByAudience.get(cacheKey);
-      if (!cached) {
-        const status = getPlaylistStatusSnapshot({
-          user: client?.user || null,
-        });
-        cached = {
-          payload: JSON.stringify(status),
-          message: {
-            type: "playlist_status",
-            status,
-          },
-        };
-        payloadByAudience.set(cacheKey, cached);
-      }
-      if (!client._lastPlaylistStatusPayloadByChannel) {
-        client._lastPlaylistStatusPayloadByChannel = new Map();
-      }
-      if (client._lastPlaylistStatusPayloadByChannel.get(channel) === cached.payload) {
-        return null;
-      }
-      client._lastPlaylistStatusPayloadByChannel.set(channel, cached.payload);
-      return cached.message;
-    };
-    websocketService.broadcastPerClient("weekly-flow", buildPayload("weekly-flow"));
-    websocketService.broadcastPerClient("playlists", buildPayload("playlists"));
-  } catch (error) {
-    logger.warn("system", "Failed to broadcast playlist status:", { message: error.message });
-  } finally {
-    playlistStatusBroadcastInFlight = false;
-  }
-};
-
 const broadcastIntervals = [];
 
 const scheduleBroadcast = (fn, intervalMs) => {
@@ -368,7 +322,7 @@ const scheduleBroadcast = (fn, intervalMs) => {
 };
 
 scheduleBroadcast(broadcastDownloadStatuses, DOWNLOAD_STATUS_INTERVAL_MS);
-scheduleBroadcast(broadcastPlaylistStatus, PLAYLIST_STATUS_INTERVAL_MS);
+const stopPlaylistStatusBroadcasts = startPlaylistStatusBroadcasts();
 
 let shuttingDown = false;
 
@@ -379,7 +333,9 @@ const gracefulShutdown = async (signal) => {
   for (const interval of broadcastIntervals) {
     clearInterval(interval);
   }
+  stopPlaylistStatusBroadcasts();
   await shutdownHonkerInfrastructure({ timeoutMs: 5000 });
+  await stopShareListener();
   await new Promise((resolve) => {
     httpServer.close(() => resolve());
   });
@@ -402,6 +358,7 @@ httpServer.listen(PORT, async () => {
   warnAboutConfigDeprecations();
   bootstrapHonkerSchedules();
   initializeAppRuntime({ logger });
+  void syncShareListener();
 });
 
 httpServer.on("error", (error) => {

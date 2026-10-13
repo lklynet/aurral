@@ -7,6 +7,7 @@ import {
   recordFlowTracksGenerated,
   recordPlaylistTracksAdded,
   recordTrackJobQueued,
+  recordTrackJobSearching,
 } from "../aurralHistoryService.js";
 import {
   buildCoreTrackIdentity,
@@ -48,6 +49,7 @@ import { filterBlockedArtistsForUser } from "../discovery/feedback.js";
 import {
   activatePlaylistDownloadGeneration,
   isDownloadJobCancelled,
+  restoreDownloadJobCancellations,
   restorePlaylistDownloadWork,
 } from "../downloadJobs/downloadCancellation.js";
 import {
@@ -794,10 +796,15 @@ async function researchPlaylistTrack({ playlistId, jobId } = {}) {
       playlistId: safePlaylistId,
     };
   }
-  if (isLibraryJob) {
+  const requeue = () => {
+    if (job.status === "cancelled" && !job.requestGroupId) restoreDownloadJobCancellations([safeJobId]);
     if (!downloadTracker.setPending(safeJobId, null)) {
       throw new Error("Failed to requeue track");
     }
+    recordTrackJobSearching(downloadTracker.getJob(safeJobId));
+  };
+  if (isLibraryJob) {
+    requeue();
     await wakeDownloadWorker();
     return { success: true, reused: false, jobId: safeJobId, playlistId: safePlaylistId };
   }
@@ -828,10 +835,7 @@ async function researchPlaylistTrack({ playlistId, jobId } = {}) {
         }
       }
       await removePlaylistLocalTrackFile(job, safePlaylistId);
-      const reset = downloadTracker.setPending(safeJobId, null);
-      if (!reset) {
-        throw new Error("Failed to requeue track");
-      }
+      requeue();
     },
     { clearPending: false },
   );

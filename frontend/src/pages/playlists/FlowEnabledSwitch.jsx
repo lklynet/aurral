@@ -38,7 +38,7 @@ export function FlowEnabledSwitch({ flow, onChanged }) {
       <ConfirmModal
         open={confirmDisable}
         title={`Turn off ${flow.name}?`}
-        body="This pauses future runs. You can turn it back on anytime."
+        body="It stops updating and its current songs are removed. Turning it back on picks a fresh set."
         confirmLabel="Turn off"
         busyLabel="Turning off…"
         busy={pendingEnabled === false}

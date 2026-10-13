@@ -48,7 +48,7 @@ test("without Lidarr, an album and artist are deleted with their files", async (
     await ensureAurralArtist(page);
     await apiRequest(page, `/api/library/artists/${artist.mbid}`, {
       method: "PUT",
-      body: { monitorOption: "none" },
+      body: { monitoring: { monitored: false } },
     });
 
     const details = await apiRequest(page, `/api/artists/${artist.mbid}`);

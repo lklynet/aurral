@@ -34,7 +34,7 @@ export function registerAlbums(router) {
       if (managedBy !== null && managedBy !== "aurral" && managedBy !== "lidarr") {
         return res.status(400).json({ error: "managedBy must be 'aurral' or 'lidarr'" });
       }
-      const albums = await libraryManager.getAlbums(artistId, null, { managedBy });
+      const albums = await libraryManager.getAlbums(artistId, null, { managedBy, includeAurral: true });
       const formatted = albums.map((album) => ({
         ...album,
         foreignAlbumId: album.foreignAlbumId || album.mbid,
@@ -143,6 +143,7 @@ export function registerAlbums(router) {
         );
         recordAlbumRequested({
           albumId: album.id,
+          requestGroupId: album.requestGroupId,
           albumName: album.albumName || albumName,
           artistName: album.artistName,
           artistMbid: album.mbid || album.foreignAlbumId,
@@ -208,6 +209,7 @@ export function registerAlbums(router) {
         };
         recordAlbumRequested({
           ...historyAlbum,
+          requestGroupId: result?.requestGroupId || result?.album?.requestGroupId,
           searching: result?.status === "available" ? false : searching,
         });
         if (result?.status === "available") {

@@ -1,5 +1,5 @@
 import axios from "../../../lib/axiosFetch.js";
-import sharp from "../sharpConfig.js";
+import getSharp from "../sharpConfig.js";
 import { FIXED_DISCOVER_PLAYLIST_ARTWORK_COLORS } from "../../config/discoverPlaylistPresets.js";
 
 const ARTWORK_SIZE = 1200;
@@ -97,6 +97,7 @@ const buildCoverTitleLines = (title) => {
 const estimateTextWidth = (line, fontSize) => String(line || "").length * fontSize * 0.56;
 
 const renderArtworkTitleOverlay = async (titleLines) => {
+  const sharp = await getSharp();
   const maxWidth = ARTWORK_SIZE - TITLE_PADDING_X * 2;
   const maxHeight = ARTWORK_SIZE - 144;
   let fontSize = 132;
@@ -162,6 +163,7 @@ export async function fetchImageBuffer(imageUrl) {
 }
 
 export async function renderStylizedPhotoArtwork({ imageBuffer, title, paletteSeed = null }) {
+  const sharp = await getSharp();
   const base = sharp(imageBuffer, { animated: false })
     .resize(ARTWORK_SIZE, ARTWORK_SIZE, { fit: "cover", position: "attention" })
     .ensureAlpha();

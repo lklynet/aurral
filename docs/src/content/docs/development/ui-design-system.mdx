@@ -23,6 +23,8 @@ Name a new token for its role. Use `light-dark()` when the role needs different 
 
 Artwork can use colors extracted from the artwork. Keep those values tied to artwork content. Do not use artwork colors for Aurral controls or page chrome. The checker allows the fallback used by the discover playlist artwork treatment.
 
+The stylesheet owns Aurral's own light and dark colors. Other themes are stored as a few input colors, and `frontend/src/utils/theme.js` generates the color roles from them with contrast targets and writes them over the stylesheet values. A token outside those roles keeps Aurral's value in every theme, so derive a new color token from a role token when it should follow the theme. The opt-in **Match album art** setting is the one exception to the artwork rule above. It feeds the cover color through the same contrast checks, so components should not apply artwork colors to controls themselves.
+
 ## Reuse shared controls
 
 Use `.btn` with the existing variant classes for standard actions:
@@ -54,6 +56,23 @@ Use `AddActionButton` for actions that add an artist or album to the Library. It
 Keep a component-specific control class when the control has a dedicated layout or interaction. The button rule checks bare buttons and classes in the `.btn-*` family. The theme-token checks still apply to custom CSS and inline styles.
 
 Menu items and switches have different roles. Use `role="menuitem"` or `role="switch"` only when the control has that behavior.
+
+Use `SectionRail` on long pages with several titled sections. Render it as the first child of the page's content column and point it at the sections. It finds them in the page, so sections that appear later or only in some setups are picked up. It shows only when the column has a left margin wide enough for it, and never on touch screens.
+
+```jsx
+const pageRef = useRef(null);
+
+<div ref={pageRef} className="profile-page">
+  <SectionRail
+    containerRef={pageRef}
+    sectionSelector=".profile-settings__section"
+    titleSelector=".settings-page__section-title"
+    descriptionSelector=".settings-page__section-note"
+    label="Profile sections"
+  />
+  {sections}
+</div>
+```
 
 ## Add a narrow exception
 

@@ -9,7 +9,7 @@ Connect Navidrome when you want to use Navidrome's server, scanner, or apps. Aur
 
 ## Aurral's Subsonic server
 
-Aurral serves the Subsonic API at `/rest`, for example `/rest/ping.view`. It supports the OpenSubsonic extensions `formPost` and `topSongsByArtistId`. The server offers:
+Aurral serves the Subsonic API at `/rest`, for example `/rest/ping.view`. It supports the OpenSubsonic extensions `formPost`, `topSongsByArtistId`, `songLyrics`, and `transcodeOffset`. The server offers:
 
 - XML and JSON responses
 - Browsing and search of Library artists, albums, and tracks
@@ -20,6 +20,12 @@ Aurral serves the Subsonic API at `/rest`, for example `/rest/ping.view`. It sup
 - Play history through `scrobble.view`
 
 Aurral answers from its own index. It does not ask a metadata service while a client browses. A playlist entry can play while its file is readable.
+
+Subsonic clients can save a personal play queue with `savePlayQueue` and restore it with `getPlayQueue`, including the current track and position. Library tracks, flow tracks, and static playlist tracks keep their order. Tracks that are no longer available are omitted. Saving without any track IDs clears the queue. The web player keeps its own queue.
+
+Subsonic `stream` can convert audio to MP3, Opus in an Ogg container, or AAC when a client requests `format=mp3`, `format=opus`, or `format=aac`. A lower `maxBitRate` converts to MP3 by default. `timeOffset` seeks in seconds when converting. `format=raw`, an unlimited request, or a bitrate limit above the source bitrate keeps the original file. `download` always sends the original file. Conversion requires ffmpeg, which is included in the Docker image.
+
+`getLyricsBySongId` returns local lyrics from a `.lrc` sidecar next to the audio file, then embedded lyrics tags. Timed lyrics include millisecond timestamps. `getLyrics` returns the same text when the artist and title identify one Library track. Aurral does not query external lyrics services.
 
 ### Connect a Subsonic client
 
@@ -38,9 +44,11 @@ If token authentication fails, Aurral returns error `41` with a link to the [API
 
 ### Playlists and favorites from Subsonic clients
 
-When a Subsonic client adds a flow track or static playlist track to a playlist, Aurral adds the track to the Library in the background. Several playlists that add the same track share one download. Removing a track from a playlist removes only that entry. It does not delete the file.
+When a Subsonic client adds a flow track or static playlist track to a playlist, Aurral adds the track to the Library in the background. Several playlists that add the same track share one download. Removing a track from a playlist removes only that entry. It does not delete the file. A track the playlist downloaded itself stays in the Library.
 
-When a Subsonic client favorites a flow track, Aurral also adds it to the Library. To keep the favorite without adding the track, turn off **Favorite Flow tracks** in **Settings > System > Subsonic**. This setting does not affect tracks that are already in the Library.
+Subsonic clients can edit static playlists but not flows. Editing a flow returns error `50`. A client removes songs by their positions in the playlist it last loaded. If a position no longer exists, Aurral returns error `70` and changes nothing, so the client can reload the playlist and try again.
+
+When a Subsonic client favorites a flow track, Aurral also adds it to the Library. To keep the favorite without adding the track, turn off **Favorite flow tracks** in **Settings > System > Subsonic**. This setting does not affect tracks that are already in the Library.
 
 ### Play history
 
@@ -106,11 +114,13 @@ Aurral uploads its playlist artwork to Navidrome and updates it when you change 
 
 ### Filesystem paths
 
-The **Aurral Playlists** library must use the same absolute path in Aurral and Navidrome. Mount the Downloads Folder at the same path in both containers.
+Mount the Downloads Folder at the same path in both containers when possible. If the paths differ, add a mapping in **Settings > Download clients > Remote path mappings** with **Applies to** set to **Navidrome**. Set **Remote path** to the folder inside Navidrome and **Local path** to the same folder inside Aurral.
 
-Aurral finds each track in the Navidrome index by its exact file path or by its MusicBrainz recording ID. It never guesses by title. A reused Lidarr track can therefore use a different path in Navidrome, but Navidrome must still have a library for it.
+Aurral finds each track in the Navidrome index by its exact file path, its MusicBrainz recording ID, or a unique title and artist match. It excludes files Navidrome has marked missing. A reused Lidarr track can therefore use a different path in Navidrome, but Navidrome must still have a library for it.
 
-Publishing a playlist does not use path mappings. Aurral uses a remote path mapping with **Applies to** set to **Navidrome** only to read the paths that Navidrome reports during automatic cleanup. See [Playback servers report a different path](/getting-started/storage/#playback-servers-report-a-different-path).
+Aurral uses the mapping to create or update the Navidrome library, find playlist tracks, and write fallback M3U files. Storage health and automatic cleanup also use the mapping. If reused Lidarr tracks have different paths in Navidrome, add a Navidrome mapping for that folder too. See [Playback servers report a different path](/getting-started/storage/#playback-servers-report-a-different-path).
+
+On Navidrome 0.61 and earlier, Aurral cannot look up a file by its path. It finds a track through its recording ID or a title search. If the file has no recording ID tag and its title or artist tag differs from Aurral's, the track stays out of the playlist. Update Navidrome to 0.62 or later.
 
 ### Scans and missing tracks
 

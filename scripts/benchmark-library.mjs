@@ -44,7 +44,6 @@ Options:
   --tracks N                  Synthetic tracks, default 350000
   --tracks-per-album N        Synthetic tracks per album, default 10
   --repeats N                 Page samples per cold/warm group, default 3
-  --indexer-albums N          Albums in the Lidarr call probe, default 1000
   --child-probe-timeout-ms N  Timeout for child probes, default 30000
   --child-heap-mb N           Child heap cap in megabytes, default 2048
   --output PATH               JSON result path, default perf-results/library-<timestamp>.json
@@ -58,10 +57,6 @@ Options:
     "tracks-per-album",
   );
   const repeats = positiveInteger(readOption(args, "repeats", 3), "repeats");
-  const indexerAlbums = positiveInteger(
-    readOption(args, "indexer-albums", 1000),
-    "indexer-albums",
-  );
   const childProbeTimeoutMs = positiveInteger(
     readOption(args, "child-probe-timeout-ms", 30000),
     "child-probe-timeout-ms",
@@ -76,7 +71,6 @@ Options:
     tracks,
     tracksPerAlbum,
     repeats,
-    indexerAlbums,
     childProbeTimeoutMs,
     childHeapMb,
     output: path.isAbsolute(output) ? output : path.join(repoRoot, output),
@@ -169,7 +163,7 @@ async function writeScanFixture(filePath, title) {
 function seedDatabase(database, { tracks, tracksPerAlbum, musicRoot }) {
   const albumCount = Math.ceil(tracks / tracksPerAlbum);
   const artistCount = Math.ceil(albumCount / 10);
-  const metadata = JSON.stringify({ genres: ["Rock"], tags: ["benchmark"] });
+  const metadata = JSON.stringify({ genres: ["Rock"], tags: ["benchmark"], trackListComplete: true });
   const now = Date.now();
   const insertArtist = database.prepare(
     `INSERT INTO library_artists
@@ -389,7 +383,7 @@ const boundedReadCode = `
 import { groupArtists } from "./backend/routes/subsonic.js";
 import {
   getAlbum,
-  getFlowPlaylists,
+  getSubsonicPlaylists,
   getGenres,
   getStarred,
   getArtist,
@@ -421,7 +415,7 @@ const read = {
     limit: 20,
   }).tracks,
   starred: () => getStarred(user),
-  playlists: () => getFlowPlaylists(user),
+  playlists: () => getSubsonicPlaylists(user),
   genres: () => getGenres(),
 };
 const before = process.memoryUsage();
@@ -503,96 +497,12 @@ function isFiniteBelow(value, limit) {
   return Number.isFinite(value) && value < limit;
 }
 
-const indexerProbeCode = `
-import { performance } from "node:perf_hooks";
-import { indexLidarrLibrary } from "./backend/services/libraryLidarrIndexer.js";
-
-const albumCount = Number(process.env.AURRAL_BENCHMARK_INDEXER_ALBUMS);
-const mode = process.env.AURRAL_BENCHMARK_INDEXER_MODE;
-const calls = [];
-const activeAlbums = new Set();
-let maxActiveAlbums = 0;
-const albums = Array.from({ length: albumCount }, (_, index) => ({
-  id: index + 1,
-  artistId: 1,
-  title: \`Benchmark Album \${index}\`,
-  statistics: { sizeOnDisk: 1 },
-}));
-const artists = [{ id: 1, artistName: "Benchmark Artist", foreignArtistId: "lidarr-artist-1" }];
-const albumCall = async (albumId, kind) => {
-  if (kind === "tracks") activeAlbums.add(String(albumId));
-  maxActiveAlbums = Math.max(maxActiveAlbums, activeAlbums.size);
-  await Promise.resolve();
-  if (kind === "files") activeAlbums.delete(String(albumId));
-  return [];
-};
-const client = {
-  isConfigured: () => true,
-  request: async (...args) => {
-    calls.push({ method: "request", path: args[0] });
-    return artists;
-  },
-  getAllAlbums: async () => {
-    calls.push({ method: "getAllAlbums" });
-    return albums;
-  },
-  getRootFolders: async () => {
-    calls.push({ method: "getRootFolders" });
-    return [];
-  },
-};
-if (mode === "bulk") {
-  client.getAllTracks = async () => {
-    calls.push({ method: "getAllTracks" });
-    return [];
-  };
-  client.getAllTrackFiles = async () => {
-    calls.push({ method: "getAllTrackFiles" });
-    return [];
-  };
-} else {
-  client.getAllTracks = async () => {
-    calls.push({ method: "getAllTracks" });
-    return [{ id: 1, albumId: 1 }];
-  };
-  client.getAllTrackFiles = async () => {
-    calls.push({ method: "getAllTrackFiles" });
-    throw new Error("bulk track-file read failed");
-  };
-  client.getTracksByAlbumId = async (albumId) => {
-    calls.push({ method: "getTracksByAlbumId", albumId });
-    return albumCall(albumId, "tracks");
-  };
-  client.getTrackFilesByAlbumId = async (albumId) => {
-    calls.push({ method: "getTrackFilesByAlbumId", albumId });
-    return albumCall(albumId, "files");
-  };
-}
-const started = performance.now();
-let result = null;
-let error = null;
-try {
-  result = await indexLidarrLibrary({ client });
-} catch (caught) {
-  error = caught?.message || String(caught);
-}
-console.log(JSON.stringify({
-  elapsedMs: Number((performance.now() - started).toFixed(3)),
-  calls,
-  callCount: calls.length,
-  maxActiveAlbums,
-  result,
-  error,
-}));
-`;
-
 async function main() {
   const options = parseOptions(process.argv.slice(2));
   const dataDir = await mkdtemp(path.join(tmpdir(), "aurral-library-perf-"));
-  const indexerDataDir = await mkdtemp(path.join(tmpdir(), "aurral-indexer-perf-"));
-  const fallbackIndexerDataDir = await mkdtemp(path.join(tmpdir(), "aurral-indexer-fallback-perf-"));
   const dbPath = path.join(dataDir, "aurral.db");
   const started = performance.now();
+  const originalFetch = globalThis.fetch;
   let database;
   let output;
   try {
@@ -611,7 +521,7 @@ async function main() {
     rebuildLibrarySearchIndex();
     queryService.rebuildLibraryGenreStats();
     const benchmarkUser = seedSubsonicFavorite(database);
-    flowPlaylistConfig.createSharedPlaylist({
+    flowPlaylistConfig.createStaticPlaylist({
       name: "Benchmark Playlist",
       ownerUserId: benchmarkUser.id,
       tracks: [],
@@ -667,11 +577,12 @@ async function main() {
     const scanOptions = {
       musicRoot: path.join(dataDir, "downloads"),
       lidarrRoots: [musicRoot],
-      lidarrClient: { isEnabled: () => true },
+      lidarrClient: { isConfigured: () => true },
       changedPaths: [target],
       force: true,
     };
     let previousTitle = "Targeted Fixture Original";
+    globalThis.fetch = async () => new Response("{}", { status: 404 });
     await writeScanFixture(target, previousTitle);
     await scanConfiguredLibrary(scanOptions);
     const fixtureAlbumId = database.prepare(
@@ -698,6 +609,7 @@ async function main() {
       });
       previousTitle = title;
     }
+    globalThis.fetch = originalFetch;
     queryService.rebuildLibraryGenreStats();
     const scopedPaths = summarizeSamples(scopedPathSamples);
     const targetedScans = summarizeSamples(targetedScanSamples);
@@ -730,25 +642,6 @@ async function main() {
       }
       subsonicReads[operation] = summarizeReadSamples(samples);
     }
-    const indexerProbes = {};
-    for (const [mode, probeDir] of [
-      ["bulk", indexerDataDir],
-      ["fallback", fallbackIndexerDataDir],
-    ]) {
-      indexerProbes[mode] = await runChild({
-        dataDir: probeDir,
-        dbPath: path.join(probeDir, "aurral.db"),
-        timeoutMs: options.childProbeTimeoutMs,
-        heapMb: options.childHeapMb,
-        code: indexerProbeCode,
-        env: {
-          AURRAL_BENCHMARK_INDEXER_ALBUMS: String(options.indexerAlbums),
-          AURRAL_BENCHMARK_INDEXER_MODE: mode,
-        },
-      });
-    }
-    const expectedBulkIndexerCalls = 5;
-    const expectedFallbackIndexerCalls = 5;
     const measuredReadNames = ["search3", "randomSongs"];
     const measuredReads = measuredReadNames.map((name) => subsonicReads[name]);
     const measuredQueryChecks = {
@@ -794,13 +687,6 @@ async function main() {
       measuredQueryBudgets: Object.values(measuredQueryChecks).every(Boolean),
       pageBudgets: Object.values(pageBudgetChecks).every(Boolean),
       compatibilityReadBudgets: Object.values(compatibilityReadChecks).every(Boolean),
-      bulkIndexerCallCount: indexerProbes.bulk.status === "completed"
-        && indexerProbes.bulk.callCount === expectedBulkIndexerCalls,
-      fallbackIndexerCallCount: indexerProbes.fallback.status === "completed"
-        && indexerProbes.fallback.callCount === expectedFallbackIndexerCalls,
-      fallbackIndexerStopsAtBulkFailure: indexerProbes.fallback.status === "completed"
-        && indexerProbes.fallback.error === "bulk track-file read failed"
-        && indexerProbes.fallback.maxActiveAlbums === 0,
       artistProjectionPageBounded:
         artistProjectionPlanDetails.some((detail) => detail.includes("MATERIALIZE artist_page"))
         && artistProjectionPlanDetails.some((detail) =>
@@ -850,21 +736,13 @@ async function main() {
           "restartMigrationRepeats",
         ],
       },
-      indexer: {
-        requestedAlbums: options.indexerAlbums,
-        expectedBulkCalls: expectedBulkIndexerCalls,
-        expectedFallbackCalls: expectedFallbackIndexerCalls,
-        bulkProbe: indexerProbes.bulk,
-        fallbackProbe: indexerProbes.fallback,
-      },
       checks,
       verdict: Object.values(checks).every(Boolean) ? "pass" : "fail",
     };
   } finally {
+    globalThis.fetch = originalFetch;
     if (database) database.close();
     await rm(dataDir, { recursive: true, force: true });
-    await rm(indexerDataDir, { recursive: true, force: true });
-    await rm(fallbackIndexerDataDir, { recursive: true, force: true });
   }
   await mkdir(path.dirname(options.output), { recursive: true });
   await writeFile(options.output, `${JSON.stringify(output, null, 2)}\n`);

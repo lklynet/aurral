@@ -9,7 +9,7 @@ import { logger } from "../../../services/logger.js";
 import { getLibraryReadModelForArtistPage } from "../../../services/libraryReadModel.js";
 import { getLibraryArtistProjection } from "../../../services/libraryQueryService.js";
 import { setLibraryArtistMbid } from "../../../services/libraryMediaStore.js";
-import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.js";
+import { getArtistByMbid, isMetadataNotFoundError } from "../../../services/providers/brainzmashProvider.js";
 export function registerArtists(router) {
   router.get("/artists", cacheMiddleware(120), async (req, res) => {
     try {
@@ -89,6 +89,7 @@ export function registerArtists(router) {
         artistName,
         quality,
         monitorOption,
+        monitoring,
         rootFolderPath,
         qualityProfileId,
         tagId,
@@ -137,6 +138,7 @@ export function registerArtists(router) {
           managedBy,
           quality,
           monitorOption,
+          monitoring,
           rootFolderPath,
           qualityProfileId,
           tagId,
@@ -212,7 +214,7 @@ export function registerArtists(router) {
           const artist = await getArtistByMbid(mbid);
           musicbrainzName = artist.name || null;
         } catch (error) {
-          if (error?.code === "ERR_METADATA_NOT_FOUND" || error?.response?.status === 404) {
+          if (isMetadataNotFoundError(error)) {
             return res.status(404).json({ error: "MusicBrainz has no artist with that ID" });
           }
           return res.status(503).json({ error: "Could not reach the metadata provider. Try again." });
@@ -248,6 +250,7 @@ export function registerArtists(router) {
 
         const artist = await libraryManager.setArtistMonitoring(mbid, {
           monitorOption: req.body?.monitorOption,
+          monitoring: req.body?.monitoring,
           artistName: req.body?.artistName,
           user: req.user,
         });
@@ -277,8 +280,8 @@ export function registerArtists(router) {
         const { mbid } = req.params;
         const { deleteFiles = false, manager = null } = req.query;
 
-        if (!UUID_REGEX.test(mbid)) {
-          return res.status(400).json({ error: "Invalid MBID format" });
+        if (!UUID_REGEX.test(mbid) && !/^[1-9]\d*$/.test(mbid)) {
+          return res.status(400).json({ error: "Use an artist's MusicBrainz ID or Library id" });
         }
         if (manager !== null && manager !== "aurral" && manager !== "lidarr") {
           return res.status(400).json({ error: "manager must be 'aurral' or 'lidarr'" });

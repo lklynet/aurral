@@ -98,6 +98,7 @@ export function toNormalizedTrack(raw) {
   return {
     id: normalizeString(raw?.id),
     recordingId: normalizeString(raw?.recordingid || raw?.recordingId),
+    oldRecordingIds: normalizeArray(raw?.oldrecordingids).map((id) => normalizeString(id)).filter(Boolean),
     title: normalizeString(raw?.trackname || raw?.title),
     trackNumber:
       raw?.trackposition != null && Number.isFinite(Number(raw.trackposition))

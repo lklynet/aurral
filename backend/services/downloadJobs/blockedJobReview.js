@@ -22,6 +22,7 @@ import { classifyQualityJob } from "../qualityProfileService.js";
 import { withDownloadStepLock } from "./mutationGuards.js";
 import { discardReviewFile } from "./reviewFiles.js";
 import { logger } from "../logger.js";
+import { dbOps } from "../../db/helpers/index.js";
 
 const approvalFollowUps = new Set();
 
@@ -108,22 +109,53 @@ export async function approveBlockedJob(jobId) {
   return { status: 200, path: committedPath };
 }
 
-export async function denyBlockedJob(jobId) {
+export async function denyBlockedJob(jobId, { reason = "Denied by user" } = {}) {
   const job = getBlockedJob(jobId);
   if (!job) return { status: 404, error: "Blocked job not found" };
-  await discardReviewFile(job);
-  const deniedSourceKey = ["usenet", "ytdlp", "deemix"].includes(job.downloadSource)
-    ? String(job.releaseGuid || "").trim()
-    : `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`;
-  if (job.downloadSource && deniedSourceKey) {
-    downloadTracker.recordDeniedSource(job.id, job.downloadSource, deniedSourceKey);
-  }
-  downloadTracker.setPending(job.id, "Denied by user", { asRetryCycle: false });
+  // Approval imports under this lock. Re-check inside it, so a denial cannot
+  // delete the file of an approval in progress or reopen an approved song.
+  const committed = await withPipelineCommitLock(
+    {
+      jobId: job.id,
+      playlistId: job.playlistId || job.playlistType,
+      playlistGeneration: job.playlistGeneration,
+      downloadAttemptId: getActiveDownloadAttemptId(job.id),
+    },
+    async () => {
+      if (!getBlockedJob(job.id)) return false;
+      await discardReviewFile(job);
+      const deniedSourceKey = ["usenet", "ytdlp", "deemix"].includes(job.downloadSource)
+        ? String(job.releaseGuid || "").trim()
+        : `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`;
+      if (job.downloadSource && deniedSourceKey) {
+        downloadTracker.recordDeniedSource(job.id, job.downloadSource, deniedSourceKey);
+      }
+      downloadTracker.setPending(job.id, reason, { asRetryCycle: false });
+      return true;
+    },
+  );
+  if (committed.cancelled) return { status: 409, error: "Download job was removed" };
+  if (!committed.result) return { status: 404, error: "Blocked job not found" };
   import("../aurralHistoryService.js")
     .then(({ recordTrackJobFailed }) =>
-      recordTrackJobFailed(job, "Denied by user — will retry"),
+      recordTrackJobFailed(job, `${reason} — will retry`),
     )
     .catch(() => {});
   await startWorkerIfPending();
   return { status: 200 };
+}
+
+// A song held for review longer than the configured wait is denied, so Aurral
+// searches for it again instead of waiting for a decision indefinitely.
+export async function denyExpiredReviews(now = Date.now()) {
+  const hours = dbOps.getSettings().reviewTimeoutHours;
+  if (!hours) return 0;
+  const cutoff = now - hours * 60 * 60 * 1000;
+  let denied = 0;
+  for (const job of downloadTracker.getByStatus("blocked")) {
+    if (!job.completedAt || job.completedAt > cutoff) continue;
+    const outcome = await denyBlockedJob(job.id, { reason: "Review timed out" });
+    if (outcome.status === 200) denied += 1;
+  }
+  return denied;
 }

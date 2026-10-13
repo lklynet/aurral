@@ -6,6 +6,7 @@ import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useAuth } from "../contexts/AuthContext";
 import { useWebSocketChannel } from "../hooks/useWebSocket";
+import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { getActivityPollIntervalMs } from "../utils/requestScheduling.js";
 import { PageSectionMobileNav } from "../components/PageSectionMobileNav";
 import {
@@ -28,9 +29,10 @@ import ActivityToolbar from "./activity/ActivityToolbar";
 import ActivityMissingPage from "./activity/ActivityMissingPage";
 import ActivityInfoModal from "./activity/ActivityInfoModal";
 
-import { Navigate, useLocation, useNavigate, useParams } from "react-router";
+import { Navigate, useLocation, useParams } from "react-router";
+import RouteLink from "../components/RouteLink";
 import { AlertCircle, Music } from "lucide-react";
-import { DotLoader } from "../components/DotLoader";
+import { SkeletonRows, SkeletonStatus } from "../components/Skeletons";
 import { queryClient, queryKeys } from "../queryClient.js";
 const ACTIVITY_PAGE_SIZE = 25;
 
@@ -45,11 +47,11 @@ const HISTORY_EMPTY_STATE = {
 };
 
 function ActivityPage() {
-  const navigate = useNavigate();
   const location = useLocation();
   const { view: viewParam } = useParams();
   const { user } = useAuth();
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
+  const lidarrConnected = useLibraryDestination().primary === "lidarr";
   const [localError, setLocalError] = useState(null);
   const [visibleCount, setVisibleCount] = useState(ACTIVITY_PAGE_SIZE);
   const [reSearchingAlbumIds, setReSearchingAlbumIds] = useState({});
@@ -242,20 +244,6 @@ function ActivityPage() {
     mutationFn: denyBlockedJob,
   });
 
-  const navigateToArtist = useCallback(
-    (request, isAlbum, artistMbid, artistName, displayName) => {
-      if (!artistMbid || artistMbid === "null" || artistMbid === "undefined") {
-        return;
-      }
-      navigate(isAlbum ? `/artist/${artistMbid}` : `/artist/${request.mbid}`, {
-        state: {
-          artistName: isAlbum ? artistName : displayName,
-        },
-      });
-    },
-    [navigate],
-  );
-
   const handleReSearchAlbum = async (request) => {
     const albumId = request.albumId;
     if (!albumId || reSearchingAlbumIds[albumId]) return;
@@ -308,7 +296,7 @@ function ActivityPage() {
   };
 
   const handleReviewPreview = useCallback(
-    (jobId, trackName, artistName) => {
+    ({ jobId, trackName, artistName, albumName, albumMbid }) => {
       const trackId = String(jobId);
       if (currentTrack?.id === trackId) {
         togglePlayPause();
@@ -319,25 +307,13 @@ function ActivityPage() {
         src: getStagingStreamUrl(jobId),
         title: trackName || "Track",
         artist: artistName || "Artist",
+        album: albumName || "",
+        albumMbid,
       });
     },
     [currentTrack?.id, playTrack, togglePlayPause],
   );
 
-  const handleRowNavigate = useCallback(
-    (request, { isSlskd, isUsenet, isAurral, isAlbum, artistMbid, artistName, displayName }) => {
-      if ((isSlskd || isUsenet) && request.playlistId) {
-        navigate(`/playlists?selected=${encodeURIComponent(request.playlistId)}`);
-        return;
-      }
-      if (request.href && (isAurral || request.type === "activity")) {
-        navigate(request.href);
-        return;
-      }
-      navigateToArtist(request, isAlbum, artistMbid, artistName, displayName);
-    },
-    [navigate, navigateToArtist],
-  );
 
   const emptyState = isQueueView ? QUEUE_EMPTY_STATE : HISTORY_EMPTY_STATE;
 
@@ -387,9 +363,9 @@ function ActivityPage() {
           onRefresh={handleManualRefresh}
           refreshing={refreshing}
         />
-        <div className="activity-page__loading" role="status" aria-label="Loading activity">
-          <DotLoader size="2xl" label={null} />
-        </div>
+        <SkeletonStatus label="Loading activity">
+          <SkeletonRows count={8} />
+        </SkeletonStatus>
       </div>
     );
   }
@@ -414,7 +390,7 @@ function ActivityPage() {
             onClick={() => fetchRequests()}
             className="btn btn-secondary btn--bold btn-min-h"
           >
-            Try Again
+            Try again
           </button>
         </div>
       )}
@@ -434,13 +410,9 @@ function ActivityPage() {
                 : emptyState.message}
             </p>
             {isQueueView && !hasActivityFilter && (
-              <button
-                type="button"
-                onClick={() => navigate("/")}
-                className="btn btn-primary btn--bold btn-min-h"
-              >
-                Start Discovering
-              </button>
+              <RouteLink to="/" className="btn btn-primary btn--bold btn-min-h">
+                Start discovering
+              </RouteLink>
             )}
           </div>
         )
@@ -465,8 +437,7 @@ function ActivityPage() {
                   jobErrors={jobErrors}
                   currentTrack={currentTrack}
                   isPlaying={isPlaying}
-                  onNavigate={handleRowNavigate}
-                  onReSearch={handleReSearchAlbum}
+                  onReSearch={lidarrConnected ? handleReSearchAlbum : undefined}
                   onApprove={(jobId) => reviewBlockedJob(jobId, "approve")}
                   onDeny={(jobId) => reviewBlockedJob(jobId, "deny")}
                   onPreview={handleReviewPreview}

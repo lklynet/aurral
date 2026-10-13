@@ -76,6 +76,9 @@ async function request(config) {
         init.body = JSON.stringify(config.data);
       }
     }
+    if (config.keepalive && (typeof init.body !== "string" || init.body.length < 60_000)) {
+      init.keepalive = true;
+    }
     const res = await fetch(url, init);
 
     if (res.type === "opaqueredirect") {
@@ -231,6 +234,8 @@ export const lidarrCredentialParams = (url, apiKey, { trimUrl = false } = {}) =>
 });
 
 const getApiBaseUrl = () => import.meta.env.VITE_API_URL || getDefaultApiBaseUrl();
+
+export const resolveApiPath = (path) => joinUrl(getApiBaseUrl(), String(path || "").replace(/^\/api(?=\/)/, ""));
 
 export const buildAuthenticatedApiUrl = (path, params = {}) => {
   const normalizedPath = String(path || "").startsWith("/")

@@ -1,15 +1,9 @@
+import ArtworkImage from "./ArtworkImage";
 import { useEffect, useState } from "react";
 import { Ban, Newspaper } from "lucide-react";
 import { getArtistCover } from "../utils/api/endpoints/artists.js";
 import TooltipButton from "./TooltipButton";
-
-const formatNewsDate = (value) => {
-  if (!value) return "Recent";
-  const date = new Date(value);
-  return Number.isFinite(date.getTime())
-    ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(date)
-    : "Recent";
-};
+import RelativeTime from "./RelativeTime";
 
 export function NewsArticleCard({ article, compact = false, onDisableFeed }) {
   const [imageFailed, setImageFailed] = useState(false);
@@ -54,7 +48,7 @@ export function NewsArticleCard({ article, compact = false, onDisableFeed }) {
         >
           <div className="discover-news-card__image-wrap">
             {imageUrl ? (
-              <img
+              <ArtworkImage
                 src={imageUrl}
                 alt=""
                 className="discover-news-card__image"
@@ -89,7 +83,13 @@ export function NewsArticleCard({ article, compact = false, onDisableFeed }) {
             </TooltipButton>
           ) : null}
           <span className="discover-news-card__meta">
-            {[publisher, formatNewsDate(article.publishedAt)].filter(Boolean).join(" · ")}
+            {publisher}
+            {publisher ? " · " : null}
+            {Number.isFinite(new Date(article.publishedAt || "").getTime()) ? (
+              <RelativeTime value={article.publishedAt} />
+            ) : (
+              "Recent"
+            )}
           </span>
         </div>
       </div>

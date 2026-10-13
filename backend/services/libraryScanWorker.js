@@ -273,7 +273,12 @@ export function beginLibraryScanJob(jobId, payload) {
       (isCurrentJob && registry.includeLidarr === true);
     const force = payload?.force === true ||
       (isCurrentJob && registry.force === true);
-    const changedPaths = resolveLibraryScanChangedPaths(registry, force);
+    const interrupted = isCurrentJob && registry.inFlightActive === true;
+    const changedPaths = interrupted && !force
+      ? (Array.isArray(registry.inFlightPaths) && Array.isArray(registry.changedPaths)
+        ? mergeChangedPaths(registry.inFlightPaths, registry.changedPaths)
+        : null)
+      : resolveLibraryScanChangedPaths(registry, force);
     if (isCurrentJob) {
       setScanRegistry({
         ...registry,
@@ -370,11 +375,16 @@ const {
       changedPaths,
       force,
     });
+    const { settleIngestedMusic } = await import("./libraryFiles/ingest.js");
+    await settleIngestedMusic();
     if (scanResult?.lidarr?.error) {
       throw new Error(`Lidarr library indexing failed: ${scanResult.lidarr.error}`);
     }
     const { playlistManager } = await import("./playlists/playlistManager.js");
-    await playlistManager.scanLibrary();
+    if (force || changedPaths?.length > 0 || scanResult?.local?.changed || scanResult?.lidarr?.changed ||
+      scanResult?.flow?.changed || scanResult?.lidarrRemoved) {
+      playlistManager.schedulePlaybackScan();
+    }
     websocketService.broadcast("library", { type: "library_scan_completed" });
   },
   resolveRetry(error, job) {

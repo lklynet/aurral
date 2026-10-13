@@ -12,13 +12,13 @@ import {
   startServerProcess,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { indexLidarrLibrary }, { flowPlaylistConfig }, { downloadTracker }] =
+const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { scanMusicRoot }, { flowPlaylistConfig }, { downloadTracker }] =
   await setupIsolatedBackend(
     "subsonic-openapi",
     "backend/config/db-sqlite.js",
     "backend/db/helpers/index.js",
     "backend/middleware/passwordHash.js",
-    "backend/services/libraryLidarrIndexer.js",
+    "backend/services/libraryFileScanner.js",
     "backend/services/playlists/flowPlaylistConfig.js",
     "backend/services/downloadJobs/downloadTracker.js",
   );
@@ -83,40 +83,23 @@ test.before(async () => {
   const fixturePath = path.join(fixtureRoot, "Schema Artist", "Schema Album", "01 Schema Song.flac");
   await mkdir(path.dirname(fixturePath), { recursive: true });
   await writeFile(fixturePath, "0123456789");
-  await indexLidarrLibrary({
-    client: {
-      isConfigured: () => true,
-      request: async () => [{
-        id: 1,
-        artistName: "Schema Artist",
-        sortName: "Schema Artist",
-        foreignArtistId: "11111111-1111-4111-8111-111111111111",
-        genres: ["Rock"],
-      }],
-      getAllAlbums: async () => [{
-        id: 2,
-        artistId: 1,
-        title: "Schema Album",
-        foreignAlbumId: "22222222-2222-4222-8222-222222222222",
-      }],
-      getTracksByAlbumId: async () => [{
-        id: 3,
-        albumId: 2,
+  await scanMusicRoot({
+    rootPath: fixtureRoot,
+    source: "lidarr",
+    metadataReader: async () => ({
+      common: {
+        albumartist: "Schema Artist",
+        artist: "Schema Artist",
+        album: "Schema Album",
         title: "Schema Song",
-        trackNumber: 1,
-        duration: 10,
-        foreignRecordingId: "33333333-3333-4333-8333-333333333333",
-        trackFileId: 4,
-      }],
-      getTrackFilesByAlbumId: async () => [{
-        id: 4,
-        path: fixturePath,
-        trackIds: [3],
-        duration: 10,
-        mediaInfo: { audioFormat: "FLAC" },
-      }],
-      getRootFolders: async () => [{ path: fixtureRoot }],
-    },
+        track: { no: 1 },
+        genre: ["Rock"],
+        musicbrainz_albumartistid: "11111111-1111-4111-8111-111111111111",
+        musicbrainz_releasegroupid: "22222222-2222-4222-8222-222222222222",
+        musicbrainz_recordingid: "33333333-3333-4333-8333-333333333333",
+      },
+      format: { duration: 10, codec: "FLAC" },
+    }),
   });
 
   const playlist = flowPlaylistConfig.createStaticPlaylist({
@@ -178,6 +161,7 @@ test("system and browsing responses match the OpenSubsonic schema", async () => 
   await assertValid("getTopSongs", { artist: "Schema Artist" });
   await assertValid("getTopSongs", { id: artistId });
   await assertValid("getLyrics", { artist: "Schema Artist", title: "Schema Song" });
+  await assertValid("getLyricsBySongId", { id: "song:missing" });
   await assertValid("getInternetRadioStations");
   await assertValid("getPodcasts");
 });

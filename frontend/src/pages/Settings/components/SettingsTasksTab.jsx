@@ -7,11 +7,8 @@ import { SettingsArrFieldSet } from "./arr/SettingsArrLayout";
 import { AlertCircle, Check, Clock, XCircle } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import Tooltip from "../../../components/Tooltip";
+import { formatRelativeTime } from "../../../utils/dateTime.js";
 const POLL_INTERVAL_MS = 5000;
-
-const relativeFormatter = new Intl.RelativeTimeFormat(undefined, {
-  numeric: "auto",
-});
 
 const STATUS_META = {
   interrupted: {
@@ -72,21 +69,7 @@ function parseDate(value) {
 
 function formatRelative(value, empty = "Never") {
   const date = parseDate(value);
-  if (!date) return empty;
-  const diffSeconds = Math.round((date.getTime() - Date.now()) / 1000);
-  const units = [
-    ["year", 31536000],
-    ["month", 2592000],
-    ["week", 604800],
-    ["day", 86400],
-    ["hour", 3600],
-    ["minute", 60],
-    ["second", 1],
-  ];
-  const [unit, seconds] =
-    units.find(([, unitSeconds]) => Math.abs(diffSeconds) >= unitSeconds) ||
-    units[units.length - 1];
-  return relativeFormatter.format(Math.round(diffSeconds / seconds), unit);
+  return date ? formatRelativeTime(date) : empty;
 }
 
 function formatDuration(ms) {

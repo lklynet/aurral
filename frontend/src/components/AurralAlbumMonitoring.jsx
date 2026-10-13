@@ -16,31 +16,39 @@ const errorMessage = (error) =>
   error?.response?.data?.message ||
   error?.response?.data?.error ||
   error?.message ||
-  "Could not update album monitoring";
+  "Try again.";
 
 export function useAurralAlbumMonitoring({ album, enabled, canChange, hasMissingTracks, onChanged }) {
   const { showSuccess, showError } = useToast();
   const [pending, setPending] = useState(false);
   const [confirmingId, setConfirmingId] = useState(null);
-  const monitored = enabled ? getAlbumMonitoredState(album) : null;
+  const [override, setOverride] = useState(null);
+  const savedMonitored = enabled ? getAlbumMonitoredState(album) : null;
+  const monitored =
+    savedMonitored !== null && override?.albumId === album?.id ? override.monitored : savedMonitored;
 
   if (monitored === null) return { monitored: null, menuItem: null, dialog: null };
   if (!canChange) return { monitored, menuItem: null, dialog: null };
 
   const albumId = album.id;
   const apply = async (nextMonitored) => {
+    if (pending) return;
     setPending(true);
+    setConfirmingId(null);
+    setOverride({ albumId, monitored: nextMonitored });
     try {
       const result = await setAurralAlbumMonitoring(albumId, nextMonitored);
       const { message, warning } = describeAlbumMonitoringResult(result);
       (warning ? showError : showSuccess)(message);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.aurralAlbumStatus(albumId) });
       onChanged?.(albumId, result);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.aurralAlbumStatus(albumId) });
     } catch (error) {
-      showError(errorMessage(error));
+      showError(
+        `Could not ${nextMonitored ? "monitor" : "stop monitoring"} ${album.title || "this album"}. Nothing changed. ${errorMessage(error)}`,
+      );
     } finally {
+      setOverride(null);
       setPending(false);
-      setConfirmingId(null);
     }
   };
 

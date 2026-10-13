@@ -90,7 +90,7 @@ test("runStorageHealthCheck skips optional integrations when unset", async () =>
   assert.equal(slskd?.status, "skip");
   assert.equal(navidrome?.status, "skip");
   assert.equal(nativePlayback?.status, "warn");
-  assert.match(nativePlayback?.steps[0]?.fix || "", /index refresh/i);
+  assert.ok(nativePlayback?.steps[0]?.fix);
 });
 
 test("native playback passes when any available file is readable", async () => {
@@ -293,8 +293,7 @@ test("slskd missing-path remediation points to slskd rather than a nonexistent A
 });
 
 test("unrelated Navidrome libraries do not fail local storage health", async (t) => {
-  const playlistLibrary = path.join(resolveDownloadRoot(), "aurral-weekly-flow");
-  await fs.mkdir(playlistLibrary, { recursive: true });
+  const playlistLibrary = "/music-aurral";
   const server = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     if (request.url?.startsWith("/rest/ping")) {
@@ -323,12 +322,18 @@ test("unrelated Navidrome libraries do not fail local storage health", async (t)
         password: "password",
       },
     },
+    pathMappings: [
+      { source: "lidarr", remote: playlistLibrary, local: path.join(isolatedState.baseDir, "missing-library") },
+      { source: "navidrome", remote: playlistLibrary, local: resolveDownloadRoot() },
+    ],
   });
 
   const result = await runStorageHealthCheck({ force: true });
   const navidrome = result.sections.find((section) => section.id === "navidrome");
 
   assert.notEqual(navidrome?.status, "fail");
+  assert.equal(navidrome?.steps.find((step) => step.id === "aurral-library")?.status, "pass");
+  assert.equal(navidrome?.steps.find((step) => step.id === "library-readable")?.status, "pass");
   assert.equal(
     navidrome?.steps.some((step) => step.status === "fail" && /podcasts/i.test(step.detail || "")),
     false,

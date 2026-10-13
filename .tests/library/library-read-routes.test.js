@@ -7,7 +7,13 @@ import path from "node:path";
 import { db } from "../../backend/config/db-sqlite.js";
 import { registerAlbums } from "../../backend/routes/library/handlers/albums.js";
 import { registerTracks } from "../../backend/routes/library/handlers/tracks.js";
-import { indexLidarrLibrary } from "../../backend/services/libraryLidarrIndexer.js";
+import {
+  linkLibraryAlbumTrack,
+  upsertLibraryAlbum,
+  upsertLibraryArtist,
+  upsertLibraryMediaFile,
+  upsertLibraryTrack,
+} from "../../backend/services/libraryMediaStore.js";
 
 test("bounded backend callers do not materialize the compatibility library", async () => {
   const boundedCallers = [
@@ -31,40 +37,40 @@ test("library track reads remove nested filesystem paths", async () => {
   await writeFile(filePath, "fixture");
 
   try {
-    await indexLidarrLibrary({
-      client: {
-        isConfigured: () => true,
-        request: async () => [{
-          id: 701,
-          artistName: "Route Artist",
-          foreignArtistId: "71111111-1111-4111-8111-111111111111",
-        }],
-        getAllAlbums: async () => [{
-          id: 702,
-          artistId: 701,
-          title: "Route Album",
-          foreignAlbumId: "72222222-2222-4222-8222-222222222222",
-          path: path.dirname(filePath),
-        }],
-        getTracksByAlbumId: async () => [{
-          id: 703,
-          albumId: 702,
-          title: "Route Track",
-          trackNumber: 1,
-          foreignRecordingId: "73333333-3333-4333-8333-333333333333",
-          trackFileId: 704,
-        }],
-        getTrackFilesByAlbumId: async () => [{
-          id: 704,
-          path: filePath,
-          trackIds: [703],
-          mediaInfo: {
-            audioFormat: "FLAC",
-            rootFolderPath: root,
-            nested: { filePath },
-          },
-        }],
-        getRootFolders: async () => [{ path: root }],
+    const artistMbid = "71111111-1111-4111-8111-111111111111";
+    const releaseGroupMbid = "72222222-2222-4222-8222-222222222222";
+    const recordingMbid = "73333333-3333-4333-8333-333333333333";
+    const seededArtist = upsertLibraryArtist({
+      identityKey: `mbid:${artistMbid}`,
+      mbid: artistMbid,
+      name: "Route Artist",
+    });
+    const seededAlbum = upsertLibraryAlbum({
+      identityKey: `release-group:${releaseGroupMbid}`,
+      mbid: releaseGroupMbid,
+      releaseGroupMbid,
+      artistId: seededArtist.id,
+      title: "Route Album",
+      albumArtist: "Route Artist",
+    });
+    const seededTrack = upsertLibraryTrack({
+      identityKey: `recording:${recordingMbid}`,
+      mbid: recordingMbid,
+      title: "Route Track",
+      artistName: "Route Artist",
+    });
+    linkLibraryAlbumTrack({ albumId: seededAlbum.id, trackId: seededTrack.id, trackNumber: 1 });
+    upsertLibraryMediaFile({
+      trackId: seededTrack.id,
+      albumId: seededAlbum.id,
+      source: "lidarr",
+      path: filePath,
+      format: "flac",
+      size: 7,
+      quality: {
+        audioFormat: "FLAC",
+        rootFolderPath: root,
+        nested: { filePath },
       },
     });
 

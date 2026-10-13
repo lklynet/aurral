@@ -71,7 +71,12 @@ const getAppearsOnCoverIds = (releaseGroups, limit) => {
 export function useArtistDetailsStream(
   mbid,
   artistNameFromNav,
-  { visibleCoverIds = EMPTY_ARRAY, initialLibraryHint = null, appearsOnLimit = null } = {},
+  {
+    visibleCoverIds = EMPTY_ARRAY,
+    initialLibraryHint = null,
+    appearsOnLimit = null,
+    seedImage = null,
+  } = {},
 ) {
   const initialArtist = buildInitialArtist(mbid, artistNameFromNav);
   const normalizedAppearsOnLimit = normalizePositiveLimit(appearsOnLimit);
@@ -102,7 +107,10 @@ export function useArtistDetailsStream(
   const artistName = artist?.name;
   const artistReleaseGroups = artist?.["release-groups"];
   const artistAppearsOnReleaseGroups = artist?.["appears-on-release-groups"];
-  const [coverImages, setCoverImages] = useState([]);
+  const seedCoverImages = seedImage ? [{ image: seedImage, front: true }] : EMPTY_ARRAY;
+  const seedCoverImagesRef = useRef(seedCoverImages);
+  seedCoverImagesRef.current = seedCoverImages;
+  const [coverImages, setCoverImages] = useState(seedCoverImages);
   const [libraryArtist, setLibraryArtist] = useState(seededLibraryArtist);
   const [libraryAlbums, setLibraryAlbums] = useState([]);
   const [similarArtists, setSimilarArtists] = useState([]);
@@ -177,7 +185,7 @@ export function useArtistDetailsStream(
         ? stableInitialLibraryHint.libraryArtist
         : null;
     setArtist(buildInitialArtist(mbid, artistNameFromNav));
-    setCoverImages([]);
+    setCoverImages(seedCoverImagesRef.current);
     setAlbumCovers({});
     const emptyFulfilled = new Set();
     setFulfilledCoverIds(emptyFulfilled);

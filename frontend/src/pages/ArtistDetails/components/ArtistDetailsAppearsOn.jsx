@@ -1,15 +1,16 @@
+import ArtworkImage from "../../../components/ArtworkImage";
 import { useEffect, useMemo } from "react";
-import { useDiscoverNavigation } from "../../../hooks/useDiscoverNavigation";
 import { ArrowRight, Music, Star } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import AddActionButton from "../../../components/AddActionButton";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
-import { navigateToReleaseGroup } from "../../../utils/searchNavigation";
+import { getReleaseGroupLink } from "../../../utils/searchNavigation";
 import { getReleaseGroupCoverUrl, getReleaseMetric, getReleaseYear } from "../utils";
 import { getAlbumAddAction } from "../../../utils/albumAddAction";
 import { useResponsiveReleaseLimit } from "../hooks/useResponsiveReleaseLimit";
 import Tooltip from "../../../components/Tooltip";
+import RouteLink, { OptionalLink } from "../../../components/RouteLink";
 
 const sortLatest = (items) =>
   [...items].sort((a, b) =>
@@ -29,10 +30,9 @@ export function ArtistDetailsAppearsOn({
   requestingAlbum,
   artistName,
   onVisibleCoverIdsChange,
-  onViewAll,
+  viewAllLink,
 }) {
   const { isAlbumDownloading } = useActiveDownloads();
-  const navigate = useDiscoverNavigation();
   const [releaseGridRef, previewLimit] = useResponsiveReleaseLimit();
   const releaseGroups = useMemo(() => artist["appears-on-release-groups"] || [], [artist]);
   const visibleReleaseGroups = useMemo(
@@ -49,13 +49,12 @@ export function ArtistDetailsAppearsOn({
     resolved: fulfilledCoverIds?.has(releaseGroup.id),
   });
 
-  const openRelease = (releaseGroup) => {
-    navigateToReleaseGroup(navigate, releaseGroup, {
+  const releaseLink = (releaseGroup, coverUrl) =>
+    getReleaseGroupLink(releaseGroup, {
       artistMbid: artist?.id,
       artistName: artistName || artist?.name || "",
-      coverUrl: getReleaseGroupCoverUrl(releaseGroup, albumCovers, coverOptions(releaseGroup)),
+      coverUrl,
     });
-  };
 
   if (releaseGroups.length === 0 && !loadingAppearsOn) return null;
 
@@ -64,15 +63,15 @@ export function ArtistDetailsAppearsOn({
       <div className="artist-heading-row">
         <div className="artist-min-0">
           <div className="artist-controls-row">
-            <h2 className="artist-section-title">Appears On</h2>
+            <h2 className="artist-section-title">Appears on</h2>
             {loadingAppearsOn && <DotLoader size="sm" label={null} />}
           </div>
         </div>
-        {onViewAll ? (
-          <button type="button" onClick={onViewAll} className="artist-link-button">
-            View All
+        {viewAllLink ? (
+          <RouteLink to={viewAllLink.to} state={viewAllLink.state} className="artist-link-button">
+            View all
             <ArrowRight className="artist-icon-sm" />
-          </button>
+          </RouteLink>
         ) : null}
       </div>
 
@@ -87,14 +86,10 @@ export function ArtistDetailsAppearsOn({
             coverOptions(releaseGroup),
           );
           return (
-            <article
-              key={releaseGroup.id}
-              className="artist-release-card"
-              onClick={() => openRelease(releaseGroup)}
-            >
-              <div className="artist-release-card__cover">
+            <article key={releaseGroup.id} className="artist-release-card" data-artwork-scope>
+              <div className="artist-release-card__cover" data-artwork>
                 {coverUrl ? (
-                  <img src={coverUrl} alt="" loading="lazy" decoding="async" />
+                  <ArtworkImage src={coverUrl} alt="" loading="lazy" decoding="async" />
                 ) : (
                   <div className="artist-release-card__placeholder">
                     <Music className="artist-icon-lg" />
@@ -109,7 +104,7 @@ export function ArtistDetailsAppearsOn({
                       </span>
                     </Tooltip>
                   ) : canAddAlbum ? (
-                    <div onClick={(event) => event.stopPropagation()}>
+                    <div>
                       <AddActionButton
                         {...getAlbumAddAction(
                           { status: status?.status, managedBy: status?.albumInfo?.managedBy },
@@ -126,17 +121,23 @@ export function ArtistDetailsAppearsOn({
                   ) : null}
                 </div>
               </div>
-              <h3 className="artist-release-card__title artist-clamp-2">{releaseGroup.title}</h3>
+              <h3 className="artist-release-card__title artist-clamp-2">
+                <OptionalLink link={releaseLink(releaseGroup, coverUrl)} className="card-link">
+                  {releaseGroup.title}
+                </OptionalLink>
+              </h3>
               <p className="artist-release-card__meta artist-truncate">
                 {[getReleaseYear(releaseGroup), artistCredit || releaseGroup["primary-type"]]
                   .filter(Boolean)
                   .join(" · ")}
               </p>
               {metric.label && (
-                <p className="artist-release-card__metric">
-                  <Star className="artist-star-icon" />
-                  {metric.label}
-                </p>
+                <Tooltip content={metric.title}>
+                  <p className="artist-release-card__metric">
+                    <Star className="artist-star-icon" />
+                    {metric.label}
+                  </p>
+                </Tooltip>
               )}
             </article>
           );

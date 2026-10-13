@@ -13,13 +13,14 @@ import {
   DEFAULT_METADATA_BASE_URL,
 } from "../backend/config/constants.js";
 
-const [isolatedState, { dbOps }, apiClients, brainzmashProvider, { getMetadataProviderBudget }] =
+const [isolatedState, { dbOps }, apiClients, brainzmashProvider, { getMetadataProviderBudget }, { db }] =
   await setupIsolatedBackend(
     "metadata-providers",
     "backend/db/helpers/index.js",
     "backend/services/apiClients/index.js",
     "backend/services/providers/brainzmashProvider.js",
     "backend/services/metadataProviderBudget.js",
+    "backend/config/db-sqlite.js",
   );
 
 const {
@@ -161,6 +162,96 @@ test("stale album metadata is served while one refresh runs in the background", 
     assert.equal(refreshed.title, "Album v2");
   } finally {
     Date.now = originalNow;
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("entity metadata is shared with other processes until the cache is cleared", async () => {
+  const previousSettings = dbOps.getSettings();
+  let requests = 0;
+  const server = await createMockHttpServer((_request, response) => {
+    requests += 1;
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ id: "persisted-album", title: "Persisted Album" }));
+  });
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    assert.equal((await getAlbumByMbid("persisted-album")).title, "Persisted Album");
+    const { stdout } = await promisify(execFile)(process.execPath, [...OFFLINE_CHILD_ARGS, "--input-type=module", "-e", `
+      const { getAlbumByMbid } = await import("./backend/services/providers/brainzmashProvider.js");
+      const album = await getAlbumByMbid("persisted-album");
+      console.log(JSON.stringify({ title: album.title }));
+      process.exit(0);
+    `], { cwd: process.cwd(), env: { ...process.env }, timeout: 10000 });
+    assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)).title, "Persisted Album");
+    assert.equal(requests, 1);
+
+    clearMetadataProviderCaches();
+    await getAlbumByMbid("persisted-album");
+    assert.equal(requests, 2);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("metadata past its stale window is removed from storage", async () => {
+  const previousSettings = dbOps.getSettings();
+  const server = await createMockHttpServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ id: request.url.split("/").at(-1), title: "Album" }));
+  });
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    await promisify(execFile)(process.execPath, [...OFFLINE_CHILD_ARGS, "--input-type=module", "-e", `
+      const day = 24 * 60 * 60 * 1000;
+      const realNow = Date.now;
+      let elapsed = 0;
+      Date.now = () => realNow() - 40 * day + elapsed;
+      const { getAlbumByMbid, searchArtists } = await import("./backend/services/providers/brainzmashProvider.js");
+      await getAlbumByMbid("expiring-album");
+      await searchArtists("expiring search", { limit: 10 });
+      elapsed = 38 * day;
+      await getAlbumByMbid("current-album");
+      process.exit(0);
+    `], { cwd: process.cwd(), env: { ...process.env }, timeout: 10000 });
+
+    const keys = db.prepare("SELECT cache_key FROM metadata_response_cache").all()
+      .map((row) => row.cache_key);
+    assert.equal(keys.length, 1);
+    assert.match(keys[0], /\/album\/current-album:/);
+  } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
     await server.close();

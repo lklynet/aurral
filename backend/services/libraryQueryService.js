@@ -42,6 +42,9 @@ const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 100;
 const MAX_ARTIST_PROJECTION_PAGE_SIZE = 10000;
 const TRACK_OWNERSHIP_BATCH_SIZE = 200;
+const artistMetadataStmt = db.prepare("SELECT metadata_json FROM library_artists WHERE id = ?");
+const albumMetadataStmt = db.prepare("SELECT metadata_json FROM library_albums WHERE id = ?");
+const trackMetadataStmt = db.prepare("SELECT metadata_json FROM library_tracks WHERE id = ?");
 
 const parseJson = (value) => {
   if (!value) return null;
@@ -65,18 +68,12 @@ function normalizeSource(source) {
   return value;
 }
 
-function createEntity(map, id, value) {
-  if (!map.has(id)) map.set(id, value);
-  return map.get(id);
-}
-
 const CANONICAL_SELECT = `SELECT
   artist.id AS artist_id,
   artist.identity_key AS artist_identity_key,
   artist.mbid AS artist_mbid,
   artist.name AS artist_name,
   artist.sort_name AS artist_sort_name,
-  artist.metadata_json AS artist_metadata_json,
   album.id AS album_id,
   album.identity_key AS album_identity_key,
   album.mbid AS album_mbid,
@@ -84,15 +81,14 @@ const CANONICAL_SELECT = `SELECT
   album.title AS album_title,
   album.album_artist AS album_artist,
   album.release_date AS album_release_date,
-  album.metadata_json AS album_metadata_json,
   album.created_at AS album_created_at,
   track.id AS track_id,
   track.identity_key AS track_identity_key,
   track.mbid AS track_mbid,
   track.title AS track_title,
   track.artist_name AS track_artist_name,
-  track.metadata_json AS track_metadata_json,
   track.monitored AS track_monitored,
+  track.keep_file AS track_keep_file,
   track.created_at AS track_created_at,
   album_track.disc_number,
   album_track.track_number,
@@ -127,69 +123,82 @@ function buildLibraryFromRows(rows) {
   const tracks = new Map();
 
   for (const row of rows) {
-    const artistMetadata = parseJson(row.artist_metadata_json);
-    const albumMetadata = parseJson(row.album_metadata_json);
-    const trackMetadata = parseJson(row.track_metadata_json);
-    const artist = createEntity(artists, row.artist_id, {
-      id: row.artist_id,
-      canonicalId: String(row.artist_id),
-      identityKey: row.artist_identity_key,
-      mbid: row.artist_mbid,
-      name: row.artist_name,
-      sortName: row.artist_sort_name,
-      metadata: artistMetadata,
-      providerId: artistMetadata?.id ?? null,
-      monitored: artistMetadata?.monitored === true,
-      monitorOption:
-        artistMetadata?.monitor ||
-        artistMetadata?.addOptions?.monitor ||
-        "none",
-      albumIds: [],
-      sources: [],
-      available: false,
-    });
+    let artist = artists.get(row.artist_id);
+    if (!artist) {
+      const artistMetadata = parseJson(artistMetadataStmt.get(row.artist_id)?.metadata_json);
+      artist = {
+        id: row.artist_id,
+        canonicalId: String(row.artist_id),
+        identityKey: row.artist_identity_key,
+        mbid: row.artist_mbid,
+        name: row.artist_name,
+        sortName: row.artist_sort_name,
+        metadata: artistMetadata,
+        providerId: artistMetadata?.id ?? null,
+        monitored: artistMetadata?.monitored === true,
+        monitorOption:
+          artistMetadata?.monitor ||
+          artistMetadata?.addOptions?.monitor ||
+          "none",
+        albumIds: [],
+        sources: [],
+        available: false,
+      };
+      artists.set(row.artist_id, artist);
+    }
     artist.managedBy = artistManagement.get(row.artist_id)?.managedBy ?? null;
     artist.monitorMode = artistManagement.get(row.artist_id)?.monitorMode ?? null;
-    const album = createEntity(albums, row.album_id, {
-      id: row.album_id,
-      canonicalId: String(row.album_id),
-      identityKey: row.album_identity_key,
-      mbid: row.album_mbid,
-      releaseGroupMbid: row.album_release_group_mbid,
-      artistId: row.artist_id,
-      title: row.album_title,
-      albumArtist: row.album_artist,
-      releaseDate: row.album_release_date,
-      createdAt: row.album_created_at,
-      metadata: albumMetadata,
-      providerId: albumMetadata?.id ?? null,
-      monitored: albumMetadata?.monitored === true,
-      monitorOption:
-        albumMetadata?.monitor ||
-        albumMetadata?.addOptions?.monitor ||
-        "none",
-      trackIds: [],
-      sources: [],
-      available: false,
-    });
+    let album = albums.get(row.album_id);
+    if (!album) {
+      const albumMetadata = parseJson(albumMetadataStmt.get(row.album_id)?.metadata_json);
+      album = {
+        id: row.album_id,
+        canonicalId: String(row.album_id),
+        identityKey: row.album_identity_key,
+        mbid: row.album_mbid,
+        releaseGroupMbid: row.album_release_group_mbid,
+        artistId: row.artist_id,
+        title: row.album_title,
+        albumArtist: row.album_artist,
+        releaseDate: row.album_release_date,
+        createdAt: row.album_created_at,
+        metadata: albumMetadata,
+        providerId: albumMetadata?.id ?? null,
+        monitored: albumMetadata?.monitored === true,
+        monitorOption:
+          albumMetadata?.monitor ||
+          albumMetadata?.addOptions?.monitor ||
+          "none",
+        trackIds: [],
+        sources: [],
+        available: false,
+      };
+      albums.set(row.album_id, album);
+    }
     album.managedBy = albumManagement.get(row.album_id)?.managedBy ?? null;
     album.monitorMode = albumManagement.get(row.album_id)?.monitorMode ?? null;
-    const track = createEntity(tracks, row.track_id, {
-      id: row.track_id,
-      canonicalId: String(row.track_id),
-      identityKey: row.track_identity_key,
-      mbid: row.track_mbid,
-      title: row.track_title,
-      artistName: row.track_artist_name,
-      createdAt: row.track_created_at,
-      metadata: trackMetadata,
-      providerId: trackMetadata?.id ?? null,
-      monitored: row.track_monitored !== 0,
-      albums: [],
-      files: [],
-      sources: [],
-      available: false,
-    });
+    let track = tracks.get(row.track_id);
+    if (!track) {
+      const trackMetadata = parseJson(trackMetadataStmt.get(row.track_id)?.metadata_json);
+      track = {
+        id: row.track_id,
+        canonicalId: String(row.track_id),
+        identityKey: row.track_identity_key,
+        mbid: row.track_mbid,
+        title: row.track_title,
+        artistName: row.track_artist_name,
+        createdAt: row.track_created_at,
+        metadata: trackMetadata,
+        providerId: trackMetadata?.id ?? null,
+        monitored: row.track_monitored !== 0,
+        keepFile: row.track_keep_file === 1,
+        albums: [],
+        files: [],
+        sources: [],
+        available: false,
+      };
+      tracks.set(row.track_id, track);
+    }
     track.managedBy = album.managedBy ?? null;
     track.monitorMode = album.monitorMode ?? null;
 
@@ -236,9 +245,11 @@ function buildLibraryFromRows(rows) {
     }
   }
 
-  for (const entity of [...artists.values(), ...albums.values(), ...tracks.values()]) {
-    entity.sources.sort();
-    entity.source = entity.sources.length === 1 ? entity.sources[0] : null;
+  for (const entities of [artists, albums, tracks]) {
+    for (const entity of entities.values()) {
+      entity.sources.sort();
+      entity.source = entity.sources.length === 1 ? entity.sources[0] : null;
+    }
   }
   for (const track of tracks.values()) {
     track.files.sort((left, right) =>
@@ -405,6 +416,7 @@ function buildLibraryArtistProjectionQuery({
   pageSize = 100,
   offset = null,
   reference = null,
+  artistIds = null,
 } = {}) {
   const normalizedPage = Math.max(1, Number.parseInt(page, 10) || 1);
   const normalizedPageSize = Math.min(
@@ -435,9 +447,14 @@ function buildLibraryArtistProjectionQuery({
       ...references,
     );
   }
+  const ids = Array.isArray(artistIds) ? artistIds : null;
+  if (ids) {
+    where.push(`artist.id IN (${ids.map(() => "?").join(",") || "NULL"})`);
+    parameters.push(...ids);
+  }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const limit = references.length ? "" : "LIMIT ? OFFSET ?";
-  if (!references.length) {
+  const limit = references.length || ids ? "" : "LIMIT ? OFFSET ?";
+  if (!references.length && !ids) {
     parameters.push(normalizedPageSize, normalizedOffset);
   }
   return {
@@ -475,6 +492,7 @@ function buildLibraryArtistProjectionQuery({
         FROM library_scan_runs AS scan
         WHERE scan.source = 'lidarr'
           AND scan.status = 'failed'
+          AND EXISTS (SELECT 1 FROM library_media_files WHERE source = 'lidarr')
           AND scan.id > COALESCE((
             SELECT complete.id
             FROM library_scan_runs AS complete
@@ -498,6 +516,36 @@ export function getLibraryArtistProjection(options = {}) {
   const query = buildLibraryArtistProjectionQuery(options);
   const rows = db.prepare(query.sql).all(...query.parameters);
   return rows.map(libraryArtistProjection);
+}
+
+export function getRecentlyAddedLibraryArtists({ availableOnly = false, limit = 20 } = {}) {
+  const rows = db.prepare(
+    `SELECT id, added_at
+     FROM (
+       SELECT artist.id, (
+         SELECT MAX(media.created_at)
+         FROM library_albums AS album
+         JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
+         JOIN library_media_files AS media INDEXED BY idx_library_media_files_track_album_source_available_created
+           ON media.track_id = album_track.track_id
+         WHERE album.artist_id = artist.id
+           AND ${albumMediaCondition("media", "album_track")}${recentMediaFilter(null, availableOnly, "media")}
+       ) AS added_at
+       FROM library_artists AS artist
+     )
+     WHERE added_at IS NOT NULL
+     ORDER BY added_at DESC, id DESC
+     LIMIT ?`,
+  ).all(limit);
+  const addedAtById = new Map(rows.map((row) => [String(row.id), new Date(row.added_at).toISOString()]));
+  const artistsById = new Map(
+    getLibraryArtistProjection({ artistIds: rows.map((row) => row.id) })
+      .map((artist) => [artist.id, artist]),
+  );
+  return rows
+    .map((row) => artistsById.get(String(row.id)))
+    .filter(Boolean)
+    .map((artist) => ({ ...artist, addedAt: addedAtById.get(artist.id) }));
 }
 
 export function getLibraryArtistProjectionQueryPlan(options = {}) {
@@ -643,6 +691,7 @@ export function getLibraryIndexLastModified() {
        UNION ALL SELECT MAX(updated_at) FROM library_albums
        UNION ALL SELECT MAX(updated_at) FROM library_tracks
        UNION ALL SELECT MAX(updated_at) FROM library_media_files
+       UNION ALL SELECT MAX(completed_at) FROM library_scan_runs WHERE source IN ('lidarr-removal', 'library-tidy')
      )`,
   ).get();
   return Number(row?.last_modified) || null;
@@ -1246,7 +1295,30 @@ const recentMediaOrder = (kind, sourceFilter, availableOnly, direction) => {
   ), 0) ${orderDirection}, track.title COLLATE NOCASE ${direction === "desc" ? "DESC" : "ASC"}`;
 };
 
+// The Library shows what can be played, and the albums Aurral is fetching.
+export const LIBRARY_VIEW = "library";
+
+const aurralFetching = (alias) => `CASE WHEN json_valid(${alias}.metadata_json)
+  THEN json_extract(${alias}.metadata_json, '$.librarySource') = 'aurral'
+    AND json_extract(${alias}.metadata_json, '$.monitored') = 1
+  ELSE 0 END`;
+
+const visibleAlbum = (sourceFilter) => {
+  const playable = pageMediaExists("albums", sourceFilter, true);
+  if (sourceFilter) return playable;
+  return { sql: `(${playable.sql} OR ${aurralFetching("album")})`, parameters: playable.parameters };
+};
+
 const pageMediaExists = (kind, sourceFilter, availableOnly) => {
+  if (availableOnly === LIBRARY_VIEW) {
+    if (kind === "tracks") return pageMediaExists(kind, sourceFilter, true);
+    const album = visibleAlbum(sourceFilter);
+    if (kind === "albums") return album;
+    return {
+      sql: `EXISTS (SELECT 1 FROM library_albums AS album WHERE album.artist_id = artist.id AND ${album.sql})`,
+      parameters: album.parameters,
+    };
+  }
   if (!sourceFilter && availableOnly !== true) {
     if (kind === "artists") {
       return {
@@ -1392,11 +1464,14 @@ export function getLibraryArtistPage({
     ).all(...parameters, ...(boundedLimit === null ? [] : [boundedLimit, pageOffset(offset)])).map((row) => row.id);
   if (!ids.length) return { artists: [], albums: [], tracks: [] };
 
+  const shownAlbums = availableOnly === LIBRARY_VIEW ? visibleAlbum(sourceFilter) : null;
   if (!includeStats) {
-    const filterAlbums = Boolean(sourceFilter) || availableOnly === true;
+    const filterAlbums = Boolean(sourceFilter) || availableOnly === true || Boolean(shownAlbums);
     const albumJoin = filterAlbums ? "JOIN" : "LEFT JOIN";
-    const albumFilter = filterAlbums
-      ? `AND EXISTS (
+    const albumFilter = shownAlbums
+      ? `AND ${shownAlbums.sql}`
+      : filterAlbums
+        ? `AND EXISTS (
           SELECT 1
           FROM library_album_tracks AS album_track
           JOIN library_media_files AS media
@@ -1406,7 +1481,7 @@ export function getLibraryArtistPage({
             ${sourceFilter ? "AND media.source = ?" : ""}
             ${availableOnly === true ? "AND media.available = 1" : ""}
         )`
-      : "";
+        : "";
     const rows = db.prepare(
       `SELECT
          artist.id AS artist_id,
@@ -1421,7 +1496,7 @@ export function getLibraryArtistPage({
        WHERE artist.id IN (${ids.map(() => "?").join(",")})
          ${albumFilter}
        GROUP BY artist.id`,
-    ).all(...ids, ...(sourceFilter ? [sourceFilter] : []));
+    ).all(...ids, ...(shownAlbums ? shownAlbums.parameters : sourceFilter ? [sourceFilter] : []));
     const byId = new Map(rows.map((row) => {
       const metadata = parseJson(row.artist_metadata_json);
       return [row.artist_id, {
@@ -1457,7 +1532,7 @@ export function getLibraryArtistPage({
   }
   if (availableOnly === true) mediaConditions.push("media.available = 1");
   const mediaJoin = sourceFilter || availableOnly === true ? "JOIN" : "LEFT JOIN";
-  aggregateParameters.push(...ids);
+  aggregateParameters.push(...ids, ...(shownAlbums?.parameters || []));
   const rows = db.prepare(
     `SELECT
        artist.id AS artist_id,
@@ -1476,6 +1551,7 @@ export function getLibraryArtistPage({
      JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
      ${mediaJoin} library_media_files AS media ON ${mediaConditions.join(" AND ")}
      WHERE artist.id IN (${ids.map(() => "?").join(",")})
+       ${shownAlbums ? `AND ${shownAlbums.sql}` : ""}
      GROUP BY artist.id
      ORDER BY coalesce(artist.sort_name, artist.name) COLLATE NOCASE,
        artist.name COLLATE NOCASE`,
@@ -1577,7 +1653,7 @@ export function getLibraryAlbumPage({
   let orderBy;
   if (type === "random") {
     orderBy = "random()";
-  } else if (type === "newest" || type === "recent") {
+  } else if (type === "newest") {
     orderBy = recentMediaOrder("albums", sourceFilter, availableOnly, "asc");
   } else if (type === "alphabeticalByArtist") {
     orderBy = "coalesce(album.album_artist, artist.name) COLLATE NOCASE, album.title COLLATE NOCASE";
@@ -2076,7 +2152,8 @@ function readGenreStats(cacheKey, compute) {
   return stats;
 }
 
-function getLibraryGenreStats({ sourceFilter, availableOnly }) {
+function getLibraryGenreStats({ sourceFilter, availableOnly: requested }) {
+  const availableOnly = requested === LIBRARY_VIEW || requested === true;
   return readGenreStats(
     genreStatsScope(sourceFilter, availableOnly),
     () => computeLibraryGenreStats(db, { sourceFilter, availableOnly }),

@@ -65,6 +65,7 @@ const providerServer = await createMockHttpServer((request, response) => {
       JSON.stringify({
         id: fallbackResolvedMbid,
         title: "Fallback Album",
+        artists: [{ id: "fallback-artist", artistname: "Fallback Artist" }],
         images: [{ CoverType: "Cover", Url: "https://images.example/fallback.jpg" }],
       }),
     );

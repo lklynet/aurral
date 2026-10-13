@@ -21,6 +21,7 @@ const [
   { db },
   { registerArtists },
   { libraryManager },
+  { resolveDownloadRoot },
 ] = await setupIsolatedBackend(
   "aurral-library-removal",
   "backend/services/downloadJobs/downloadTracker.js",
@@ -33,6 +34,7 @@ const [
   "backend/config/db-sqlite.js",
   "backend/routes/library/handlers/artists.js",
   "backend/services/libraryManager.js",
+  "backend/services/downloadPaths.js",
 );
 
 const routes = new Map();
@@ -88,7 +90,7 @@ async function createAurralAlbum({ trackCount = 2, filesFor = [0, 1], artist: ex
     artistId: artist.id,
     title: `Removal Album ${sequence}`,
   });
-  const albumDir = path.join(isolatedState.dataDir, "aurral-root", `album-${sequence}`);
+  const albumDir = path.join(resolveDownloadRoot(), `album-${sequence}`);
   await fs.mkdir(albumDir, { recursive: true });
   const tracks = [];
   for (let index = 0; index < trackCount; index += 1) {
@@ -281,28 +283,21 @@ test("album removal stops before changing anything when downloads cannot be canc
   }
 });
 
-test("album removal is refused while Aurral monitors the artist, and Lidarr albums are refused", async () => {
+test("removing an album of a monitored artist records an exclusion, and Lidarr albums are refused", async () => {
   const { artist, album, tracks } = await createAurralAlbum();
-  managementStore.setLibraryManagement({
-    entityKind: "artist",
-    entityId: artist.id,
-    managedBy: "aurral",
-    monitorMode: "all",
-  });
+  makeMonitoredArtist(artist);
 
-  const monitored = await removeAlbum(album, true);
-  assert.equal(monitored.statusCode, 409);
-  assert.equal(monitored.body.code, "artist_monitored");
-  assert.notEqual(albumRow(album.id), undefined);
-  assert.equal(await exists(tracks[0].filePath), true);
-
-  managementStore.setLibraryManagement({
-    entityKind: "artist",
-    entityId: artist.id,
-    managedBy: "aurral",
-    monitorMode: "none",
-  });
-  assert.equal((await removeAlbum(album, false)).statusCode, 200);
+  const removed = await removeAlbum(album, true);
+  assert.equal(removed.statusCode, 200);
+  assert.equal(removed.body.excluded, true);
+  assert.equal(albumRow(album.id), undefined);
+  assert.equal(await exists(tracks[0].filePath), false);
+  assert.deepEqual(
+    libraryManager.listMonitoringExclusions({ artistMbid: artist.mbid })
+      .map(({ kind, mbid, title }) => ({ kind, mbid, title })),
+    [{ kind: "album", mbid: album.mbid, title: album.title }],
+  );
+  assert.ok(managementStore.getLibraryManagementEntry("artist", artist.id)?.monitorRules);
 
   const lidarr = await createAurralAlbum({ trackCount: 1 });
   managementStore.setLibraryManagement({ entityKind: "album", entityId: lidarr.album.id, managedBy: "lidarr" });
@@ -313,12 +308,14 @@ test("album removal is refused while Aurral monitors the artist, and Lidarr albu
   assert.notEqual(albumRow(lidarr.album.id), undefined);
 });
 
-function makeMonitoredArtist(artist, monitorMode = "all") {
+function makeMonitoredArtist(artist, monitored = true) {
+  const now = Date.now();
   managementStore.setLibraryManagement({
     entityKind: "artist",
     entityId: artist.id,
     managedBy: "aurral",
-    monitorMode,
+    monitorMode: monitored ? "all" : "none",
+    monitorRules: monitored ? { default: true, catalogAt: now, newSince: now } : null,
   });
 }
 
@@ -346,7 +343,7 @@ test("removing a monitored Aurral artist clears its albums, files, and monitorin
   const planned = [];
   t.mock.method(libraryManager, "planAurralArtistMonitoring", async (artist) => {
     planned.push(artist.mbid);
-    return { releases: [] };
+    return { releases: [], topTracks: [] };
   });
   await libraryManager.reconcileAurralMonitoring();
   assert.equal(planned.includes(first.artist.mbid), false);
@@ -354,7 +351,7 @@ test("removing a monitored Aurral artist clears its albums, files, and monitorin
 
 test("removing an Aurral artist without files keeps them on disk", async () => {
   const { artist, album, tracks } = await createAurralAlbum();
-  makeMonitoredArtist(artist, "none");
+  makeMonitoredArtist(artist, false);
 
   const response = await removeArtist(artist, false);
 
@@ -363,6 +360,58 @@ test("removing an Aurral artist without files keeps them on disk", async () => {
   assert.equal(albumRow(album.id), undefined);
   assert.equal(await exists(tracks[0].filePath), true);
   assert.equal(await exists(tracks[1].filePath), true);
+});
+
+function withoutMusicBrainzId(artist) {
+  db.prepare("UPDATE library_artists SET mbid = NULL, identity_key = ? WHERE id = ?")
+    .run(`name:artist:untagged ${artist.id}`, artist.id);
+  return { ...artist, mbid: null };
+}
+
+test("an ingested artist without a MusicBrainz ID is deleted with its files", async () => {
+  const created = await createAurralAlbum();
+  const artist = withoutMusicBrainzId(created.artist);
+  const albumDir = path.dirname(created.tracks[0].filePath);
+  await fs.writeFile(path.join(albumDir, "1.lrc"), "[00:00.00]la");
+  await fs.writeFile(path.join(albumDir, "cover.jpg"), "art");
+  const other = libraryStore.upsertLibraryArtist({
+    identityKey: "mbid:dddddddd-dddd-4ddd-8ddd-000000000001",
+    mbid: "dddddddd-dddd-4ddd-8ddd-000000000001",
+    name: String(artist.id),
+    metadata: { id: artist.id },
+  });
+
+  const response = await callRoute("DELETE /artists/:mbid", { mbid: String(artist.id) }, true);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(artistRow(artist.id), undefined);
+  assert.equal(albumRow(created.album.id), undefined);
+  assert.equal(await exists(albumDir), false);
+  assert.ok(artistRow(other.id));
+});
+
+test("removing the last album of an artist Aurral does not follow removes the artist", async () => {
+  const unfollowed = await createAurralAlbum();
+  const followed = await createAurralAlbum();
+  makeMonitoredArtist(followed.artist, false);
+
+  assert.equal((await removeAlbum(unfollowed.album, true)).statusCode, 200);
+  assert.equal((await removeAlbum(followed.album, true)).statusCode, 200);
+
+  assert.equal(artistRow(unfollowed.artist.id), undefined);
+  assert.ok(artistRow(followed.artist.id));
+});
+
+test("an artist without a MusicBrainz ID that Lidarr manages is left to Lidarr", async () => {
+  const created = await createAurralAlbum();
+  const artist = withoutMusicBrainzId(created.artist);
+  managementStore.setLibraryManagement({ entityKind: "album", entityId: created.album.id, managedBy: "lidarr" });
+
+  const response = await callRoute("DELETE /artists/:mbid", { mbid: String(artist.id) }, true);
+
+  assert.equal(response.statusCode, 409);
+  assert.ok(artistRow(artist.id));
+  for (const track of created.tracks) assert.equal(await exists(track.filePath), true);
 });
 
 test("a failed artist removal stops monitoring and finishes on retry", async () => {
@@ -383,6 +432,7 @@ test("a failed artist removal stops monitoring and finishes on retry", async () 
     const artistState = managementStore.getLibraryManagementEntry("artist", first.artist.id);
     assert.equal(artistState?.managedBy, "aurral");
     assert.equal(artistState?.monitorMode, "none");
+    assert.equal(artistState?.monitorRules, null);
 
     provider.status = 204;
     const retried = await removeArtist(first.artist, true);
@@ -471,4 +521,39 @@ test("album removal never deletes a file Lidarr also lists as available", async 
       .get("lidarr", tracks[0].filePath)?.available,
     1,
   );
+});
+
+test("album removal never deletes a reused file outside the Downloads Folder", async () => {
+  const { album, tracks, jobFor } = await createAurralAlbum({ trackCount: 2, filesFor: [1] });
+  const lidarrPath = path.join(isolatedState.baseDir, "music", `reused-${album.id}.flac`);
+  await fs.mkdir(path.dirname(lidarrPath), { recursive: true });
+  await fs.writeFile(lidarrPath, "lidarr audio");
+  const reusedJob = jobFor(0);
+  downloadTracker.setDone(reusedJob, lidarrPath, album.title, lidarrPath);
+
+  const response = await removeAlbum(album, true);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(await exists(lidarrPath), true);
+  assert.equal(await exists(tracks[1].filePath), false);
+  assert.equal(albumRow(album.id), undefined);
+});
+
+test("album removal deletes files in a Downloads Folder subfolder whose name starts with two dots", async () => {
+  const { album, tracks } = await createAurralAlbum({ trackCount: 1, filesFor: [] });
+  const filePath = path.join(resolveDownloadRoot(), "..Live", `dotted-${album.id}.flac`);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, "audio");
+  libraryStore.upsertLibraryMediaFile({
+    trackId: tracks[0].id,
+    albumId: album.id,
+    source: "aurral",
+    path: filePath,
+    available: true,
+  });
+
+  const response = await removeAlbum(album, true);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(await exists(filePath), false);
 });

@@ -1,9 +1,10 @@
 import {
   RELEASE_LIST_VIEW_MODE_KEY,
-} from "./constants";
-import { TAG_COLORS } from "../discoverUtils";
+} from "./constants.js";
+import { TAG_COLORS } from "../discoverUtils.js";
 import { shouldTriggerAlbumSearch } from "../../utils/albumAddAction.js";
 import { formatDate } from "../../utils/dateTime.js";
+import { formatCompactNumber } from "../../utils/numberFormat.js";
 
 export const readReleaseListViewMode = () => {
   if (typeof window === "undefined") return "grid";
@@ -117,7 +118,7 @@ export const formatLifeSpan = (lifeSpan) => {
 
 export const getArtistType = (type) => {
   const types = {
-    Person: "Solo Artist",
+    Person: "Solo artist",
     Group: "Band",
     Orchestra: "Orchestra",
     Choir: "Choir",
@@ -251,7 +252,8 @@ export const resolveReleaseLibraryDisplay = (libraryInfo, downloadStatus) => {
   const trackCount = Number(libraryInfo.trackCount || 0);
   const hasFiles = sizeOnDisk > 0 || trackFileCount > 0;
   const isComplete =
-    trackCount > 0 ? percent >= 100 || trackFileCount >= trackCount : hasFiles;
+    libraryInfo.trackListComplete !== false &&
+    (trackCount > 0 ? percent >= 100 || trackFileCount >= trackCount : hasFiles);
 
   if (isComplete) {
     return withAction({
@@ -263,7 +265,7 @@ export const resolveReleaseLibraryDisplay = (libraryInfo, downloadStatus) => {
   }
 
   const activeStatus = String(downloadStatus?.status || "").trim();
-  if (activeStatus) {
+  if (activeStatus && activeStatus !== "partial") {
     const labels = {
       adding: "Adding...",
       searching: "Searching...",
@@ -281,10 +283,10 @@ export const resolveReleaseLibraryDisplay = (libraryInfo, downloadStatus) => {
     });
   }
 
-  if (percent > 0) {
+  if (libraryInfo.trackListComplete === false || percent > 0) {
     return withAction({
       kind: "incomplete",
-      label: `Incomplete · ${percent}%`,
+      label: libraryInfo.trackListComplete === false ? "Incomplete" : `Incomplete · ${percent}%`,
       isComplete: false,
       isInLibrary: true,
     });
@@ -323,7 +325,7 @@ export const getReleaseMetric = (releaseGroup) => {
 
   const fans = typeof releaseGroup?.fans === "number" ? releaseGroup.fans : 0;
   return {
-    label: fans > 0 ? fans.toLocaleString() : "",
+    label: fans > 0 ? formatCompactNumber(fans) : "",
     sortValue: fans,
     type: "fans",
     title: fans > 0 ? `${fans.toLocaleString()} listeners` : "",
@@ -364,17 +366,6 @@ export const buildAurralPick = ({ releaseGroups = [], getAlbumStatus } = {}) => 
     reasonLabel: "Popular missing release",
   };
 };
-
-export const encodeLastfmPathSegment = (value) =>
-  encodeURIComponent(String(value || "").trim())
-    .replace(/%20/g, "+")
-    .replace(/%26/g, "&");
-
-export const buildLastfmArtistUrl = (artistName) =>
-  `https://www.last.fm/music/${encodeLastfmPathSegment(artistName)}`;
-
-export const buildLastfmAlbumUrl = (artistName, albumTitle) =>
-  `${buildLastfmArtistUrl(artistName)}/${encodeLastfmPathSegment(albumTitle)}`;
 
 export const isLibraryPlaybackTrack = (track) =>
   track?.previewProvider === "lidarr" || !!track?.streamPath;

@@ -8,15 +8,17 @@ import {
   cleanupIsolatedState,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
+import { createFakeNavidrome } from "../helpers/fakeNavidrome.js";
 
 const [
   isolatedState,
   { db },
-  { userOps },
+  { userOps, dbOps },
   { flowPlaylistConfig },
   { createPlaybackPlaylistIdentity, createPlaybackPlaylistSnapshot },
   { navidromePlaylistPointerStore },
   { NavidromePlaybackDestination },
+  { NavidromeClient },
 ] = await setupIsolatedBackend(
   "navidrome-playback-destination",
   "backend/config/db-sqlite.js",
@@ -25,6 +27,7 @@ const [
   "backend/services/playback/playbackDestination.js",
   "backend/services/navidrome/navidromePlaylistPointerStore.js",
   "backend/services/playback/navidromePlaybackDestination.js",
+  "backend/services/navidrome.js",
 );
 
 const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
@@ -90,6 +93,18 @@ function createClient({ configured = true, playlists = [], songs = {} } = {}) {
   };
 }
 
+async function withNavidrome(navidrome, run) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = navidrome.fetch;
+  try {
+    return await run(new NavidromePlaybackDestination(downloadRoot, {
+      client: new NavidromeClient("http://navidrome.test", "user", "password"),
+    }));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 function rejectMissingPlaylist(client, playlistId) {
   const getPlaylist = client.getPlaylist.bind(client);
   client.getPlaylist = async (id) => {
@@ -104,6 +119,7 @@ function rejectMissingPlaylist(client, playlistId) {
 
 test.beforeEach(async () => {
   await resetDatabase(db);
+  dbOps.updateSettings({ pathMappings: [] });
   await fs.rm(downloadRoot, { recursive: true, force: true });
 });
 
@@ -112,9 +128,12 @@ test.after(async () => {
 });
 
 test("ensures the Navidrome library without creating an M3U playlist", async () => {
+  dbOps.updateSettings({ pathMappings: [{ source: "all", remote: "/music-aurral", local: downloadRoot }] });
   const owner = userOps.createUser("jody", "hash", "user");
   const flow = flowPlaylistConfig.createFlow({ name: "Morning Mix", ownerUserId: owner.id });
   const client = createClient({ songs: { Song: { id: "song-1" } } });
+  client.findSong = async (_title, _artist, track) =>
+    track.path === "/music-aurral/Artist/Song.flac" ? { id: "song-1" } : null;
   const destination = new NavidromePlaybackDestination(downloadRoot, { client });
 
   assert.deepEqual(await destination.ensureLibrary(), { ok: true });
@@ -126,7 +145,7 @@ test("ensures the Navidrome library without creating an M3U playlist", async () 
         displayName: flow.name,
         tracks: [
           {
-            path: "/music/Artist/Song.flac",
+            path: path.join(downloadRoot, "Artist", "Song.flac"),
             title: "Song",
             artist: "Artist",
             durationMs: 245600,
@@ -137,7 +156,8 @@ test("ensures the Navidrome library without creating an M3U playlist", async () 
     { ok: true },
   );
 
-  assert.deepEqual(client.calls.ensured, [destination.mediaLibraryRoot.replace(/\\/g, "/")]);
+  assert.deepEqual(client.calls.ensured, ["/music-aurral"]);
+  assert.deepEqual(client.calls.created, [{ name: "jody - Morning Mix", songIds: ["song-1"] }]);
   await assert.rejects(
     fs.access(path.join(destination.libraryRoot, "jody - Morning Mix.m3u")),
   );
@@ -301,6 +321,164 @@ test("bounds concurrent Navidrome song lookups and preserves track order", async
   assert.deepEqual(client.calls.created[0].songIds, tracks.map((_, index) => `song-${index}`));
 });
 
+test("finds newly scanned tracks without rereading the library or the whole playlist on each publish", async () => {
+  dbOps.updateSettings({ pathMappings: [{ source: "navidrome", remote: "/music-aurral", local: downloadRoot }] });
+  const indexed = (title) => ({
+    id: title,
+    libraryPath: "/music-aurral",
+    path: `Artist/${title}.flac`,
+    title,
+    artist: "Artist",
+  });
+  const publishTwice = async ({ librarySize, playlistSize }) => {
+    const playlist = flowPlaylistConfig.createStaticPlaylist({ name: `${playlistSize} of ${librarySize}` });
+    const ready = Array.from({ length: playlistSize - 1 }, (_, index) => `Ready ${index}`);
+    const navidrome = createFakeNavidrome({
+      libraries: [
+        { id: 1, name: "Music Library", path: "/music" },
+        { id: 2, name: "Aurral Playlists", path: "/music-aurral" },
+      ],
+      songs: [
+        ...Array.from({ length: librarySize }, (_, index) => ({
+          id: `library-${index}`,
+          libraryPath: "/music",
+          path: `Artist ${index}/Album/Song.flac`,
+          title: `Song ${index}`,
+          artist: `Artist ${index}`,
+          album: "Album",
+        })),
+        ...ready.map(indexed),
+      ],
+    });
+    return withNavidrome(navidrome, async (destination) => {
+      destination._scheduleCatchup = () => {};
+      assert.deepEqual(await destination.ensureLibrary(), { ok: true });
+      const snapshot = createPlaybackPlaylistSnapshot({
+        entityId: playlist.id,
+        displayName: playlist.name,
+        tracks: [...ready, "Scanned Later"].map((title) => ({
+          path: path.join(downloadRoot, "Artist", `${title}.flac`),
+          title,
+          artist: "Artist",
+        })),
+      });
+      const publish = async () => {
+        const before = navidrome.songRequests.length;
+        assert.deepEqual(await destination.publishPlaylist(snapshot), { ok: true });
+        return {
+          songRequests: navidrome.songRequests.length - before,
+          songIds: navidrome.playlists.map(({ songIds }) => [...songIds]),
+        };
+      };
+      const first = await publish();
+      navidrome.songs.push(indexed("Scanned Later"));
+      const second = await publish();
+      assert.deepEqual([first.songIds, second.songIds], [[ready], [[...ready, "Scanned Later"]]]);
+      return { first: first.songRequests, second: second.songRequests };
+    });
+  };
+
+  const small = await publishTwice({ librarySize: 10, playlistSize: 2 });
+  const largeLibrary = await publishTwice({ librarySize: 5_000, playlistSize: 2 });
+  const largePlaylist = await publishTwice({ librarySize: 10, playlistSize: 20 });
+
+  assert.deepEqual(largeLibrary, small);
+  assert.equal(largePlaylist.second, small.second);
+});
+
+test("publishes to Navidrome versions that cannot look up songs by path", async () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Older Navidrome" });
+  const song = (id, libraryPath, title) => ({
+    id,
+    libraryPath,
+    path: `Artist/Album/${title}.flac`,
+    title,
+    artist: "Artist",
+    album: "Album",
+  });
+  const navidrome = createFakeNavidrome({
+    serverVersion: "0.61.2 (aa84e645)",
+    failSongRequest: (params) => params.has("path"),
+    libraries: [
+      { id: 1, name: "Music Library", path: "/music" },
+      { id: 2, name: "Aurral Playlists", path: downloadRoot },
+    ],
+    songs: [
+      song("lidarr-copy", "/music", "Shared"),
+      song("aurral-copy", downloadRoot, "Shared"),
+      song("only-copy", downloadRoot, "Only"),
+      song("censored-copy", downloadRoot, "F**k Love"),
+    ],
+  });
+
+  const result = await withNavidrome(navidrome, async (destination) => {
+    destination._scheduleCatchup = () => {};
+    assert.deepEqual(await destination.ensureLibrary(), { ok: true });
+    return destination.publishPlaylist(createPlaybackPlaylistSnapshot({
+      entityId: playlist.id,
+      displayName: playlist.name,
+      tracks: ["Shared", "Only", "F**k Love"].map((title) => ({
+        path: path.join(downloadRoot, "Artist", "Album", `${title}.flac`),
+        title,
+        artist: "Artist",
+      })),
+    }));
+  });
+
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(
+    navidrome.playlists.map(({ songIds }) => songIds),
+    [["aurral-copy", "only-copy", "censored-copy"]],
+  );
+});
+
+test("keeps the Navidrome playlist unchanged when a song lookup fails", async () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Lookup Outage" });
+  const names = ["First", "Second", "Third"];
+  const navidrome = createFakeNavidrome({
+    libraries: [{ id: 1, name: "Aurral Playlists", path: downloadRoot }],
+    songs: names.map((title) => ({
+      id: title,
+      libraryPath: downloadRoot,
+      path: `Artist/${title}.flac`,
+      title,
+      artist: "Artist",
+    })),
+    playlists: [{ id: "saved-id", name: playlist.name, songIds: ["First", "Second"] }],
+    failSongRequest: (params) => params.get("path") !== "Artist/First.flac",
+  });
+  navidromePlaylistPointerStore.setPointer(playlist.id, "global", {
+    playlistId: "saved-id",
+    title: playlist.name,
+  });
+  let catchups = 0;
+
+  await withNavidrome(navidrome, async (destination) => {
+    destination._scheduleCatchup = () => {
+      catchups += 1;
+    };
+    assert.deepEqual(await destination.ensureLibrary(), { ok: true });
+    await destination.publishPlaylist(createPlaybackPlaylistSnapshot({
+      entityId: playlist.id,
+      displayName: playlist.name,
+      tracks: names.map((title) => ({
+        path: path.join(downloadRoot, "Artist", `${title}.flac`),
+        title,
+        artist: "Artist",
+      })),
+    }));
+  });
+
+  assert.deepEqual(navidrome.playlists, [
+    { id: "saved-id", name: playlist.name, songIds: ["First", "Second"] },
+  ]);
+  assert.equal(catchups, 1);
+  assert.equal(
+    navidromePlaylistPointerStore.getPointer(playlist.id, "global").playlistId,
+    "saved-id",
+  );
+});
+
 test("creates an empty API playlist without waiting for a scan", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Empty" });
   const client = createClient();
@@ -343,6 +521,7 @@ test("preserves an existing API playlist while a new run has no indexed tracks",
 });
 
 test("keeps an M3U fallback when no songs are indexed", async () => {
+  dbOps.updateSettings({ pathMappings: [{ source: "navidrome", remote: "/music-aurral", local: downloadRoot }] });
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Unindexed" });
   const client = createClient();
   const destination = new NavidromePlaybackDestination(downloadRoot, { client });
@@ -351,14 +530,14 @@ test("keeps an M3U fallback when no songs are indexed", async () => {
     createPlaybackPlaylistSnapshot({
       entityId: playlist.id,
       displayName: playlist.name,
-      tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
+      tracks: [{ path: path.join(downloadRoot, "song.flac"), title: "Song", artist: "Artist" }],
     }),
   );
 
   assert.deepEqual(client.calls.created, []);
   assert.equal(
     await fs.readFile(path.join(destination.libraryRoot, "Unindexed.m3u"), "utf8"),
-    "#EXTM3U\n#EXTINF:0,Artist - Song\n/music/song.flac\n",
+    "#EXTM3U\n#EXTINF:0,Artist - Song\n/music-aurral/song.flac\n",
   );
 });
 

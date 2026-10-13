@@ -18,8 +18,6 @@ const DEPRECATIONS = {
     "A client called /api/weekly-flow. Use /api/playlists instead. Aurral 3.0 removes /api/weekly-flow.",
   "weekly-flow-channel":
     "A client subscribed to the weekly-flow WebSocket channel. Use the playlists channel instead. Aurral 3.0 removes weekly-flow.",
-  "image-proxy-query":
-    "An old image link (/api/image-proxy?src=) was requested. Aurral 3.0 removes this route.",
 };
 
 const notedThisProcess = new Set();

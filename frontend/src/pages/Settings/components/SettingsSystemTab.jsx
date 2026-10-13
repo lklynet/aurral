@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Check, Copy, RotateCcw } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import { getApiKey, rotateApiKey } from "../../../utils/api/endpoints/auth";
@@ -8,27 +9,18 @@ import { SettingsSelect } from "./SettingsField";
 import PillToggle from "../../../components/PillToggle";
 import { setDateTimeFormat } from "../../../utils/dateTime.js";
 import Tooltip from "../../../components/Tooltip";
+import { queryKeys } from "../../../queryClient.js";
 
 export function SettingsSystemTab({ health, settings, updateSettings, showSuccess, showError }) {
-  const [apiKey, setApiKey] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const apiKeyQuery = useQuery({
+    queryKey: queryKeys.apiKey,
+    queryFn: async ({ signal }) => (await getApiKey({ signal }))?.apiKey || null,
+  });
+  const apiKey = apiKeyQuery.data ?? null;
+  const loading = apiKeyQuery.isPending;
   const [rotating, setRotating] = useState(false);
   const [copied, setCopied] = useState(false);
-
-  const fetchKey = useCallback(async () => {
-    try {
-      const res = await getApiKey();
-      setApiKey(res?.apiKey || null);
-    } catch {
-      setApiKey(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchKey();
-  }, [fetchKey]);
 
   const handleCopy = async () => {
     if (!apiKey) return;
@@ -49,7 +41,7 @@ export function SettingsSystemTab({ health, settings, updateSettings, showSucces
     setRotating(true);
     try {
       const res = await rotateApiKey();
-      setApiKey(res?.apiKey || null);
+      queryClient.setQueryData(queryKeys.apiKey, res?.apiKey || null);
       showSuccess("API key rotated");
     } catch {
       showError("Failed to rotate API key");
@@ -103,10 +95,10 @@ export function SettingsSystemTab({ health, settings, updateSettings, showSucces
           <div className="settings-system__row">
             <div className="settings-system__copy">
               <label className="settings-system__label" htmlFor="subsonic-favorite-auto-keep">
-                Favorite Flow tracks
+                Favorite flow tracks
               </label>
               <p className="settings-system__description">
-                Keep a Flow track in the permanent Library when a Subsonic client favorites it.
+                Keep a flow track in the permanent Library when a Subsonic client favorites it.
               </p>
             </div>
             <div className="settings-system__value">
@@ -122,7 +114,7 @@ export function SettingsSystemTab({ health, settings, updateSettings, showSucces
                     },
                   })
                 }
-                aria-label="Keep Flow tracks when favorited through Subsonic"
+                aria-label="Keep flow tracks when favorited through Subsonic"
               />
             </div>
           </div>

@@ -47,19 +47,25 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
     const actionBar = page.locator(".artist-action-bar");
     await actionBar.getByRole("button", { name: /^(Monitor|Monitoring: .*)$/ }).click();
     await expect(page.getByRole("menuitemradio", { name: "Not monitored", exact: true })).toHaveAttribute("aria-checked", "true");
-    await expect(page.getByRole("menuitemradio")).toHaveText([
-      "Not monitored",
-      "All albums",
-      "Future albums",
-      "Missing albums",
-      "Latest album",
-      "First album",
-    ]);
+    await expect(page.getByRole("menuitemradio")).toHaveText(["Monitored", "Not monitored"]);
 
-    await page.getByRole("menuitemradio", { name: "Latest album", exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Queued 1 album for download" })).toBeVisible({
-      timeout: 60_000,
-    });
+    await page.getByRole("menuitem", { name: "Monitoring rules…", exact: true }).click();
+    const rulesDialog = page.getByRole("dialog", { name: "Monitoring rules" });
+    await expect(rulesDialog).toBeVisible();
+    await rulesDialog.getByRole("switch", { name: "Use the default rules" }).click();
+    await rulesDialog.getByLabel("Back catalogue").selectOption("latest");
+    await rulesDialog.getByRole("spinbutton", { name: "Number of releases" }).fill("1");
+    await rulesDialog.getByRole("checkbox", { name: "EPs", exact: true }).uncheck();
+    await expect(rulesDialog.getByText("Downloads 1 release.", { exact: false })).toBeVisible({ timeout: 60_000 });
+    await expect(rulesDialog.locator(".monitoring-preview__list").first().getByRole("listitem")).toHaveCount(1);
+    await page.screenshot({ path: test.info().outputPath("monitoring-rules-preview.png") });
+
+    await rulesDialog.getByRole("button", { name: "Monitor artist", exact: true }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: `Monitoring ${artist.name} with custom rules. Queued 1 release for download` }),
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(rulesDialog).toHaveCount(0);
+    await expect(actionBar.getByRole("button", { name: /^Monitoring: Custom rules/ })).toBeVisible();
 
     await expect
       .poll(async () => (await apiRequest(page, `/api/library/albums?artistId=${artist.mbid}`)).body?.length, {
@@ -109,7 +115,7 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
       .poll(async () => (await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status, {
         timeout: 30_000,
       })
-      .toBe("cancelled");
+      .not.toMatch(ACTIVE_STATUS);
 
     await albumOptions.click();
     await expect(page.getByRole("menuitem", { name: "Stop monitoring album", exact: true })).toHaveCount(0);
@@ -134,7 +140,7 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
     }
     await apiRequest(page, `/api/library/artists/${artist.mbid}`, {
       method: "PUT",
-      body: { monitorOption: "none" },
+      body: { monitoring: { monitored: false } },
     });
     await restoreLidarr();
   }

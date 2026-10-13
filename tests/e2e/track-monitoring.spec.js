@@ -22,6 +22,7 @@ function createLibrary({ albumMonitored = true, pendingDownload = false } = {}) 
     title: entry.title,
     artistName: artist.name,
     monitored: entry.monitored,
+    keepFile: entry.keepFile === true,
     albums: [{ albumId: 802, discNumber: 1, trackNumber: index + 1 }],
     files: entry.available
       ? [{ id: entry.id, albumId: 802, source: "aurral", format: "flac", durationMs: 180000, available: true }]
@@ -79,9 +80,18 @@ async function fixture(page, library) {
     if (path === "/library/canonical") return json(library.page());
     const trackWrite = path.match(/^\/library\/tracks\/aurral\/(\d+)$/);
     if (trackWrite && request.method() === "PUT") {
-      const { monitored } = request.postDataJSON();
-      library.writes.push({ id: Number(trackWrite[1]), monitored });
+      await library.writeGate;
+      if (library.failWrites) return json({ error: "Fixture write failed" }, 500);
+      const { monitored, keepFile } = request.postDataJSON();
       const entry = library.tracks.find((candidate) => candidate.id === Number(trackWrite[1]));
+      if (keepFile !== undefined) {
+        library.writes.push({ id: entry.id, keepFile });
+        entry.keepFile = keepFile;
+        const cancelledJobIds = keepFile && library.upgrading ? ["fixture-upgrade"] : [];
+        if (cancelledJobIds.length) library.upgrading = false;
+        return json({ canonicalId: String(entry.id), keepFile, cancelledJobIds });
+      }
+      library.writes.push({ id: Number(trackWrite[1]), monitored });
       entry.monitored = monitored;
       const cancelledJobIds = !monitored && library.pendingDownload && !entry.available ? ["fixture-job"] : [];
       if (cancelledJobIds.length) library.pendingDownload = false;
@@ -142,6 +152,33 @@ test("unmonitoring a track survives a reload and monitoring it again clears the 
   expect(library.writes).toEqual([{ id: 811, monitored: false }, { id: 811, monitored: true }]);
 });
 
+test("keeping a file cancels its upgrade, survives a reload, and can be undone", async ({ page }) => {
+  const library = createLibrary();
+  library.upgrading = true;
+  await fixture(page, library);
+  await page.goto("/library/album/802");
+
+  await trackOptions(page, "Missing Track").click();
+  await expect(page.getByRole("menuitem", { name: "Keep this file", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await chooseFromTrackMenu(page, "Kept Track", "Keep this file");
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "Keeping Kept Track. Aurral won't replace it with an upgrade, and the upgrade in progress was cancelled.",
+    }),
+  ).toBeVisible();
+  expect(library.writes).toEqual([{ id: 811, keepFile: true }]);
+
+  await page.reload();
+  await trackOptions(page, "Kept Track").click();
+  await expect(page.getByRole("menuitem", { name: "Keep this file", exact: true })).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "Allow upgrades", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Aurral can upgrade Kept Track again." })).toBeVisible();
+  expect(library.writes).toEqual([{ id: 811, keepFile: true }, { id: 811, keepFile: false }]);
+  expect(library.tracks.find((entry) => entry.id === 811).monitored).toBe(true);
+});
+
 test("a track with an unfinished download asks before cancelling it", async ({ page }) => {
   const library = createLibrary({ pendingDownload: true });
   await fixture(page, library);
@@ -171,4 +208,20 @@ test("a track in an unmonitored album can still be unmonitored on its own", asyn
   await chooseFromTrackMenu(page, "Kept Track", "Stop monitoring track");
   await expect(trackRow(page, "Kept Track").getByRole("img", { name: "Not monitored" })).toBeVisible();
   expect(library.writes).toEqual([{ id: 811, monitored: false }]);
+});
+
+test("stopping monitoring marks the track at once and takes the marker back if the server refuses", async ({ page }) => {
+  const library = createLibrary();
+  let releaseWrite;
+  library.writeGate = new Promise((resolve) => { releaseWrite = resolve; });
+  library.failWrites = true;
+  await fixture(page, library);
+  await page.goto("/library/album/802");
+
+  const row = trackRow(page, "Kept Track");
+  await chooseFromTrackMenu(page, "Kept Track", "Stop monitoring track");
+  await expect(row.getByRole("img", { name: "Not monitored" })).toBeVisible();
+  releaseWrite();
+  await expect(page.getByRole("alert").filter({ hasText: "Could not stop monitoring Kept Track. Nothing changed." })).toBeVisible();
+  await expect(row.getByRole("img", { name: "Not monitored" })).toHaveCount(0);
 });

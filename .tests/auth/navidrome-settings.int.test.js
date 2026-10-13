@@ -129,9 +129,18 @@ test("admin can update and test Navidrome after onboarding", async () => {
     password: "local-password",
   };
   const requestStartIndex = navidromeRequests.length;
+  const libraryMapping = {
+    source: "navidrome",
+    remote: "/music-aurral",
+    local: path.join(isolatedState.baseDir, "weekly-flow"),
+  };
   const saved = await apiFetch("/api/settings", {
     method: "POST",
     body: JSON.stringify({
+      pathMappings: [
+        { ...libraryMapping, source: "lidarr", remote: "/unrelated-library" },
+        libraryMapping,
+      ],
       integrations: {
         navidrome: {
           ...credentials,
@@ -146,11 +155,15 @@ test("admin can update and test Navidrome after onboarding", async () => {
   assert.equal(saved.payload.integrations.navidrome.username, "local-user");
   assert.equal(Object.hasOwn(saved.payload.integrations.navidrome, "m3uPathMode"), false);
   assert.equal(Object.hasOwn(saved.payload.integrations.navidrome, "pathMappings"), false);
+  assert.ok(saved.payload.pathMappings.some((mapping) =>
+    mapping.source === libraryMapping.source
+    && mapping.remote === libraryMapping.remote
+    && mapping.local === libraryMapping.local));
   const libraryRequest = await waitForLibraryRequest(requestStartIndex);
   await waitForLibraryVerification(requestStartIndex);
   assert.deepEqual(libraryRequest?.body, {
     name: "Aurral Playlists",
-    path: path.join(isolatedState.baseDir, "weekly-flow"),
+    path: "/music-aurral",
   });
 
   const tested = await apiFetch("/api/settings/navidrome/test", {

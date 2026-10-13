@@ -131,3 +131,101 @@ test("reports malformed stylesheets as source-located findings", () => {
   assert.equal(findings[0].ruleId, "aurral/css-parse-error");
   assert.match(findings[0].message, /broken\.css:1/);
 });
+
+const ruleFindings = (findings, ruleId) =>
+  findings.filter((finding) => finding.ruleId === ruleId).map(({ line }) => line);
+
+test("reports raw motion durations and easings outside the motion tokens", () => {
+  const findings = lintCss(`
+    :root {
+      --aurral-duration-fast: 150ms;
+      --aurral-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    }
+    .card {
+      transition: opacity 0.2s ease;
+      transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+      animation: fade-in 200ms ease-out;
+      transition: opacity var(--aurral-duration-fast) var(--aurral-ease-standard);
+      transition: none;
+      transition-delay: 0s;
+      animation: loader 1.6s var(--aurral-ease-standard) -0.4s infinite;
+      transition-duration: 0.01ms;
+    }
+  `, { filePath: "card.css", tokenNames });
+
+  assert.deepEqual(ruleFindings(findings, "aurral/no-raw-motion"), [7, 8, 9]);
+});
+
+test("flags easing keywords in looping animations while allowing their cycle length", () => {
+  const findings = lintCss(`
+    .loader {
+      animation: loader 1.6s ease-in-out infinite;
+    }
+  `, { filePath: "loader.css", tokenNames });
+
+  assert.deepEqual(ruleFindings(findings, "aurral/no-raw-motion"), [3]);
+});
+
+test("reports raw z-index numbers outside the layer tokens", () => {
+  const findings = lintCss(`
+    :root {
+      --aurral-z-popover: 60;
+    }
+    .menu {
+      z-index: 95 !important;
+      z-index: 1;
+      z-index: var(--aurral-z-popover);
+      z-index: calc(var(--aurral-z-popover) + 1);
+      z-index: auto;
+      z-index: var(--local-layer);
+    }
+  `, { filePath: "menu.css", tokenNames });
+
+  assert.deepEqual(ruleFindings(findings, "aurral/no-raw-z-index"), [6, 7, 11]);
+});
+
+test("reports viewport-height units that ignore mobile browser toolbars", () => {
+  const findings = lintCss(`
+    .shell {
+      height: 100vh;
+      max-height: min(32rem, calc(100vh - 6rem));
+      min-height: 100dvh;
+      top: 35svh;
+      width: 50vw;
+    }
+  `, { filePath: "shell.css", tokenNames });
+
+  assert.deepEqual(ruleFindings(findings, "aurral/no-vh"), [3, 4]);
+});
+
+test("reports hover styles that would stick after a tap on touch screens", () => {
+  const findings = lintCss(`
+    .card:hover {
+      background: var(--aurral-surface);
+    }
+    .card:focus-visible,
+    .card:is(:hover, .is-open) {
+      background: var(--aurral-surface);
+    }
+    @media (max-width: 767px) {
+      .card:hover {
+        background: var(--aurral-surface);
+      }
+    }
+    @media (hover: hover) and (pointer: fine) {
+      .card:hover {
+        background: var(--aurral-surface);
+      }
+      @media (max-width: 767px) {
+        .row:hover {
+          background: var(--aurral-surface);
+        }
+      }
+    }
+    .card:focus-visible {
+      background: var(--aurral-surface);
+    }
+  `, { filePath: "card.css", tokenNames });
+
+  assert.deepEqual(ruleFindings(findings, "aurral/no-ungated-hover"), [2, 5, 10]);
+});

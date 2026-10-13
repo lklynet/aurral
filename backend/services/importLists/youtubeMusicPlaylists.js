@@ -1,5 +1,4 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { Innertube } from "youtubei.js";
 import createRateLimiter from "../apiClients/rateLimiter.js";
 import {
   buildPlaylistTrackIdentity,
@@ -182,7 +181,10 @@ const normalizeRows = (rows) => {
 
 export class YoutubeMusicPlaylistClient {
   constructor({
-    createInnertube = (options) => Innertube.create(options),
+    createInnertube = async (options) => {
+      const { Innertube } = await import("youtubei.js");
+      return Innertube.create(options);
+    },
     fetchImpl = globalThis.fetch,
     requestTimeoutMs = 30_000,
     operationTimeoutMs = 4 * 60_000,

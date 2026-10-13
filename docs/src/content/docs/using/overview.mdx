@@ -29,11 +29,11 @@ Matches from your Library appear first, in their own section, and open the Libra
 
 Library lists the artists, albums, and tracks that Aurral has indexed. You can search, sort, play tracks, mark favorites, and open artist and album pages. See [Library](/using/library/).
 
-When Lidarr is connected, Lidarr manages your artists and albums and keeps their files in its root folders. Without Lidarr, Aurral manages them and keeps their files in the Downloads Folder. Either way, Aurral downloads the tracks for playlists and flows. See [Who manages your library](/using/library/#who-manages-your-library).
+When Lidarr is connected, Lidarr manages the artists and albums you add and keeps their files in its root folders. Without Lidarr, Aurral manages them and keeps their files in the Downloads Folder. Either way, Aurral downloads the tracks for playlists and flows. Turning Lidarr off removes its music from the Library. See [Who manages your library](/using/library/#who-manages-your-library).
 
 Artist and album pages have a Discover view and a Library view. Select **Open in library** or **Open in Discover** to switch between them.
 
-The manager in charge can also monitor an artist and download its new albums. See [Monitor music](/using/library/#monitor-music).
+The manager in charge can also monitor an artist and download its releases. See [Monitor music](/using/library/#monitor-music).
 
 ### Playlists and Flows
 
@@ -71,11 +71,14 @@ When an admin configures Ticketmaster, **Shows** lists nearby concerts for libra
 
 Profile holds your personal settings:
 
-- **Appearance.** Choose a built-in palette, and **System**, **Light**, or **Dark** mode. Aurral saves the choice on the current device. You can also browse terminal.sexy color schemes. A light and a dark version of one scheme share one card and follow the selected mode. Use **Find a scheme** to search the collection and add schemes to your list.
+- **Appearance.** Choose **System**, **Light**, or **Dark** mode and a theme. Every theme has a light and a dark version. When a theme has only one, Aurral generates the other. Your choice is saved to your account, so it follows you to other devices.
+  - **Create theme** starts from the current theme. Pick a background, text, and accent color for each mode. Aurral adjusts text and accent colors that would be hard to read.
+  - **Import** accepts an exported Aurral theme or a base16 or base24 scheme. Find schemes in the [Tinted Gallery](https://tinted-theming.github.io/tinted-gallery/) and paste the scheme's source file.
+  - **Match album art** takes the accent color from the cover of what's playing and lightly tints the background with it.
 - **Listening history.** Choose **Local only**, Last.fm, ListenBrainz, or Koito.
 - **Connected accounts.** Link a Google or Plex account that you can use to sign in. See [Users and authentication](/admin/users/#sign-in-with-google-or-plex).
 - **Plex account.** Link your own Plex account for your playlists.
-- **Library defaults.** Choose your default Lidarr root folder and quality profile.
+- **Library defaults.** Choose your default Lidarr root folder and quality profile. This section shows only while Lidarr is connected.
 - **Discovery tastes.** Reset your recommendation feedback, or open your blocklist.
 
 ### Settings
@@ -92,6 +95,7 @@ Settings holds the admin configuration. It has these tabs:
 | **Lidarr** | Lidarr connection, the **Enabled** switch, defaults, and library display |
 | **Indexers** | Prowlarr connection, indexers, and indexer priorities |
 | **Download clients** | Quality profile, Downloads Folder, remote path mappings, and download clients |
+| **Monitoring** | Default monitoring rules for Aurral's artists, searches for missing tracks, and what you removed from monitoring |
 | **Playback** | Navidrome, Plex, Jellyfin, scrobbling, and cover art |
 | **Connect** | Gotify, webhooks, Last.fm, Ticketmaster, Google sign-in, and Inbox |
 | **RSS news** | RSS feeds and feed groups |
@@ -100,7 +104,7 @@ Settings holds the admin configuration. It has these tabs:
 
 Use the search field in Settings to find a setting by name.
 
-Settings and Profile save each change automatically. Connection tests and sync actions have their own buttons.
+Settings and Profile save each change automatically. Connection tests and sync actions have their own buttons. The default monitoring rules have a **Save** button, and Aurral shows what a change would download before it applies it.
 
 To set the date and time format for all users, open **Settings > System > Display**. Choose the browser default, day first, or year first.
 

@@ -1,4 +1,5 @@
 import { WebSocketServer } from 'ws';
+import { EventEmitter } from "node:events";
 import { dbOps, userOps } from "../db/helpers/index.js";
 import { logger } from "./logger.js";
 import { noteDeprecatedUsage } from "./deprecatedUsage.js";
@@ -18,8 +19,9 @@ const isAuthRequired = () => {
   return isProxyAuthEnabled() || users.length > 0 || legacyPasswords.length > 0;
 };
 
-class WebSocketService {
+class WebSocketService extends EventEmitter {
   constructor() {
+    super();
     this.wss = null;
     this.clients = new Set();
     this.subscriptions = new Map();
@@ -91,12 +93,16 @@ class WebSocketService {
 
     ws.on('close', () => {
       this.clients.delete(client);
+      delete client._lastPlaylistStatusHashByChannel;
+      this.emit("subscriptions-changed");
       logger.info("system", "Client disconnected", { clientId, totalClients: this.clients.size });
     });
 
     ws.on('error', (error) => {
       logger.error("system", "Client error", { clientId, error: error.message });
       this.clients.delete(client);
+      delete client._lastPlaylistStatusHashByChannel;
+      this.emit("subscriptions-changed");
     });
 
     this.send(client, {
@@ -139,11 +145,14 @@ class WebSocketService {
       channels,
       subscriptions: Array.from(client.subscriptions),
     });
+    this.emit("subscriptions-changed");
   }
 
   handleUnsubscribe(client, channels) {
     for (const channel of channels) {
       client.subscriptions.delete(channel);
+      client._lastPlaylistStatusHashByChannel?.delete(channel);
+      if (channel === "*") delete client._lastPlaylistStatusHashByChannel;
     }
     
     this.send(client, {
@@ -151,6 +160,7 @@ class WebSocketService {
       channels,
       subscriptions: Array.from(client.subscriptions),
     });
+    this.emit("subscriptions-changed");
   }
 
   send(client, data) {
@@ -232,12 +242,14 @@ class WebSocketService {
       if (Number(client.user?.id) !== targetUserId) continue;
       this.clients.delete(client);
       client.subscriptions.clear();
+      delete client._lastPlaylistStatusHashByChannel;
       client.user = null;
       try {
         client.ws.close(4403, "Account inactive");
       } catch {}
       disconnected++;
     }
+    if (disconnected) this.emit("subscriptions-changed");
     return disconnected;
   }
 
@@ -275,6 +287,7 @@ class WebSocketService {
       this.clients.clear();
       this.wss.close();
       this.wss = null;
+      this.emit("subscriptions-changed");
     }
   }
 }

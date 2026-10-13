@@ -216,6 +216,26 @@ test("tag search and flow plans read the user's own pool", async () => {
   assert.ok(basedOn.some((artist) => artist.name === LIKED.name));
 });
 
+test("flows without an owner read the first admin's pool", async () => {
+  userOps.updateUser(alice.id, { role: "admin" });
+  try {
+    const source = new FlowTrackSource();
+    let harvested = [];
+    source._harvestTopTracksFromArtists = async (artists) => {
+      harvested = artists.map((artist) => artist.name);
+      return [];
+    };
+    await source.buildFlowRunPlan({
+      ownerUserId: null,
+      size: 2,
+      mix: { discover: 100, mix: 0, trending: 0, focus: 0 },
+    });
+    assert.ok(harvested.includes(FROM_LIKED.name));
+  } finally {
+    userOps.updateUser(alice.id, { role: "user" });
+  }
+});
+
 test("tag search lists the tag's artists in Last.fm order without the user's recommendations", async () => {
   const { status, body } = await requestApi(
     alice.id,

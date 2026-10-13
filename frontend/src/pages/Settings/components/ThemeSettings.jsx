@@ -1,529 +1,470 @@
 import { createPortal } from "react-dom";
-import { useEffect, useId, useRef, useState } from "react";
-import { Check, Monitor, Moon, Palette, Plus, Search, Sun, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Check, Download, FileUp, Monitor, Moon, Pencil, Plus, Sun, Trash2 } from "lucide-react";
+import PillToggle from "../../../components/PillToggle";
 import TooltipButton from "../../../components/TooltipButton.jsx";
-import { DotLoader } from "../../../components/DotLoader";
-import { useModalDialog } from "../../../hooks/useModalDialog.js";
+import { ModalShell } from "../../../components/PlaylistModals.jsx";
+import { useToast } from "../../../contexts/ToastContext";
+import { useThemeDocument } from "../../../hooks/useThemeDocument.js";
+import { normalizeHexColor } from "../../../utils/themeColor.js";
 import {
-  applyThemePreview,
-  applyThemeSelection,
   BUILT_IN_THEMES,
-  getCustomThemes,
-  getThemeColorsForMode,
-  getThemeSettings,
-  installCustomTheme,
+  findTheme,
+  getThemePalette,
+  getThemeSeed,
+  isCustomTheme,
+  normalizeTheme,
+  previewTheme,
   removeCustomTheme,
-  replaceCustomTheme,
-  setThemeSelection,
-  THEME_APPEARANCES,
-  subscribeToCustomThemes,
-  subscribeToThemeChanges,
+  resolveThemeMode,
+  restoreCustomTheme,
+  saveCustomTheme,
+  selectTheme,
+  setMatchArtwork,
+  setThemeAppearance,
+  THEME_MODES,
 } from "../../../utils/theme.js";
-import {
-  importTerminalSexyTheme,
-  loadTerminalSexyCatalog,
-  searchTerminalSexyThemes,
-  selectTerminalSexyFeaturedThemes,
-} from "../../../utils/terminalSexyThemes.js";
+import { parseThemeText, serializeThemeFile, THEME_GALLERY_URL } from "../../../utils/themeImport.js";
 import "./themeSettings.css";
 
 const APPEARANCE_OPTIONS = [
   { id: "system", label: "System", Icon: Monitor },
   { id: "light", label: "Light", Icon: Sun },
   { id: "dark", label: "Dark", Icon: Moon },
-].filter((option) => THEME_APPEARANCES.includes(option.id));
+];
 
-function previewMode(theme, mode) {
-  if (mode === "dark" && getThemeColorsForMode(theme, "dark")) return "dark";
-  if (mode === "light" && getThemeColorsForMode(theme, "light")) return "light";
-  return theme.appearance;
-}
+const MODE_LABELS = { light: "Light", dark: "Dark" };
 
-function ModePreview({ appearance }) {
-  const light = getThemeColorsForMode(BUILT_IN_THEMES[0], "light");
-  const dark = getThemeColorsForMode(BUILT_IN_THEMES[0], "dark");
-  const colors = appearance === "dark" ? dark : light;
+const SEED_FIELDS = [
+  { role: "background", label: "Background" },
+  { role: "text", label: "Text" },
+  { role: "accent", label: "Accent" },
+];
+
+function MiniWindow({ palette, className = "" }) {
   return (
     <span
-      className={`theme-settings__mode-preview is-${appearance}`}
+      className={`theme-settings__window${className ? ` ${className}` : ""}`}
       style={{
-        "--theme-preview-canvas": colors.surface,
-        "--theme-preview-chrome": colors.chrome,
-        "--theme-preview-raised": colors.surfaceRaised,
-        "--theme-preview-border": colors.border,
-        "--theme-preview-text": colors.text,
-        "--theme-preview-muted": colors.textMuted,
-        "--theme-preview-accent": colors.accent,
-        "--theme-preview-light-canvas": light.surface,
-        "--theme-preview-light-chrome": light.chrome,
-        "--theme-preview-light-raised": light.surfaceRaised,
-        "--theme-preview-light-border": light.border,
-        "--theme-preview-light-text": light.text,
-        "--theme-preview-light-muted": light.textMuted,
-        "--theme-preview-light-accent": light.accent,
-        "--theme-preview-dark-canvas": dark.surface,
-        "--theme-preview-dark-chrome": dark.chrome,
-        "--theme-preview-dark-raised": dark.surfaceRaised,
-        "--theme-preview-dark-border": dark.border,
-        "--theme-preview-dark-text": dark.text,
-        "--theme-preview-dark-muted": dark.textMuted,
-        "--theme-preview-dark-accent": dark.accent,
+        "--window-chrome": palette.chrome,
+        "--window-surface": palette.surface,
+        "--window-border": palette.border,
+        "--window-text": palette.text,
+        "--window-muted": palette.textMuted,
+        "--window-accent": palette.accent,
       }}
-      aria-hidden="true"
     >
-      <span className="theme-settings__mode-preview-sidebar" />
-      <span className="theme-settings__mode-preview-main" />
-      <span className="theme-settings__mode-preview-panel" />
+      <span className="theme-settings__window-sidebar">
+        <span className="is-active" />
+        <span />
+        <span />
+      </span>
+      <span className="theme-settings__window-main">
+        <span className="is-title" />
+        <span />
+        <span className="is-short" />
+        <span className="is-accent" />
+      </span>
     </span>
   );
 }
 
-function AppearanceModeCard({ option, active, onSelect }) {
-  const Icon = option.Icon;
+function ModePreview({ theme, appearance }) {
+  const light = getThemePalette(theme, "light");
+  const dark = getThemePalette(theme, "dark");
   return (
-    <button
-      type="button"
-      className={`theme-settings__mode-card${active ? " is-active" : ""}`}
-      aria-pressed={active}
-      onClick={onSelect}
-    >
-      <ModePreview appearance={option.id} />
-      <span className="theme-settings__mode-card-label">
-        <Icon aria-hidden="true" />
-        {option.label}
-      </span>
-    </button>
+    <span className="theme-settings__mode-preview" aria-hidden="true">
+      <MiniWindow palette={appearance === "light" ? light : dark} />
+      {appearance === "system" ? <MiniWindow palette={light} className="is-system-light" /> : null}
+    </span>
   );
 }
 
-function ThemeSwatch({ colors, loading = false }) {
+function ThemeSwatch({ palette }) {
   return (
     <span
-      className={`theme-settings__swatch${loading ? " is-loading" : ""}`}
-      style={colors ? { background: colors.surface, borderColor: colors.border } : undefined}
+      className="theme-settings__swatch"
+      style={{ background: palette.surface, borderColor: palette.border }}
       aria-hidden="true"
     >
-      {loading ? (
-        <DotLoader size="xs" label={null} />
-      ) : colors ? (
-        <>
-          <span className="theme-settings__swatch-bar" style={{ background: colors.chrome }} />
-          <span className="theme-settings__swatch-line" style={{ background: colors.text }} />
-          <span className="theme-settings__swatch-line is-short" style={{ background: colors.textMuted }} />
-          <span className="theme-settings__swatch-accent" style={{ background: colors.accent }} />
-        </>
-      ) : <Palette />}
+      <span className="theme-settings__swatch-bar" style={{ background: palette.chrome }} />
+      <span className="theme-settings__swatch-line" style={{ background: palette.text }} />
+      <span className="theme-settings__swatch-line is-short" style={{ background: palette.textMuted }} />
+      <span className="theme-settings__swatch-accent" style={{ background: palette.accent }} />
     </span>
   );
 }
 
-function ThemeCard({ theme, active, mode, custom, metaLabel, onSelect, onRemove }) {
-  const colors = getThemeColorsForMode(theme, previewMode(theme, mode)) || theme.colors;
+function ThemeCard({ theme, mode, active, onSelect, onEdit }) {
+  const custom = isCustomTheme(theme);
   return (
     <div className={`theme-settings__card${active ? " is-active" : ""}${custom ? " is-custom" : ""}`}>
-      <button
-        type="button"
-        className="theme-settings__card-select"
-        aria-pressed={active}
-        onClick={onSelect}
-      >
-        <ThemeSwatch colors={colors} />
+      <button type="button" className="theme-settings__card-select" aria-pressed={active} onClick={onSelect}>
+        <ThemeSwatch palette={getThemePalette(theme, mode)} />
         <span className="theme-settings__card-copy">
-          <span className="theme-settings__card-label">{theme.label}</span>
-          <span className="theme-settings__card-meta">{metaLabel || (custom ? "Added" : "Built in")}</span>
+          <span className="theme-settings__card-label">{theme.name}</span>
+          <span className="theme-settings__card-meta">{custom ? "Yours" : "Built in"}</span>
         </span>
         {active ? <Check className="theme-settings__active-icon" aria-hidden="true" /> : null}
       </button>
-      {custom && onRemove ? (
+      {custom ? (
         <TooltipButton
           type="button"
-          className="btn btn-icon btn-xs btn-ghost-danger theme-settings__remove"
-          onClick={onRemove}
-          label={`Remove ${theme.label}`}
+          className="btn btn-icon btn-xs btn-ghost theme-settings__edit"
+          onClick={onEdit}
+          label={`Edit ${theme.name}`}
         >
-          <Trash2 aria-hidden="true" />
+          <Pencil aria-hidden="true" />
         </TooltipButton>
       ) : null}
     </div>
   );
 }
 
-function schemeModeLabel(scheme) {
-  const modes = Object.keys(scheme.sources || {}).filter((mode) => mode === "light" || mode === "dark");
-  return modes.length > 1 ? modes.join(" + ") : modes[0] || "classic";
-}
-
-function SchemeCard({ scheme, theme, mode, active, loading, installing, installBusy, installed, onPreview, onAdd }) {
-  const colors = theme ? getThemeColorsForMode(theme, previewMode(theme, mode)) || theme.colors : null;
+function ColorField({ fieldKey, label, value, placeholder, onChange, onInvalidChange }) {
+  const id = useId();
+  const [text, setText] = useState(value || "");
+  const invalid = text.trim() !== "" && !normalizeHexColor(text);
+  useEffect(() => setText((current) => (normalizeHexColor(current) === value ? current : value || "")), [value]);
+  useEffect(() => {
+    onInvalidChange(fieldKey, invalid);
+    return () => onInvalidChange(fieldKey, false);
+  }, [fieldKey, invalid, onInvalidChange]);
   return (
-    <article className={`theme-settings__scheme-card${active ? " is-previewing" : ""}`}>
-      <button
-        type="button"
-        className="theme-settings__scheme-preview"
-        aria-pressed={active}
-        aria-label={`Preview ${scheme.label}`}
-        onClick={onPreview}
-        disabled={loading || installing}
-      >
-        <ThemeSwatch colors={colors} loading={loading} />
-        <span className="theme-settings__card-copy">
-          <span className="theme-settings__card-label">{scheme.label}</span>
-          <span className="theme-settings__card-meta">{scheme.category} · {schemeModeLabel(scheme)}</span>
-        </span>
-        {active ? <span className="theme-settings__scheme-state">Preview</span> : null}
-      </button>
-      <div className="theme-settings__scheme-actions">
-        <button
-          type="button"
-          className="btn btn-ghost"
-          disabled={loading || installing || installBusy || installed}
-          onClick={onAdd}
-        >
-          {loading || installing ? <DotLoader size="sm" label={null} /> : installed ? <Check aria-hidden="true" /> : <Plus aria-hidden="true" />}
-          {loading ? "Loading…" : installing ? "Adding…" : installed ? "Added" : "Add"}
-        </button>
+    <div className="theme-settings__color-field">
+      <label className="theme-settings__color-label" htmlFor={id}>{label}</label>
+      <div className="theme-settings__color-inputs">
+        <input
+          type="color"
+          className="theme-settings__color-swatch"
+          value={value || placeholder}
+          aria-label={`${label} color picker`}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <input
+          id={id}
+          type="text"
+          className="input theme-settings__color-text"
+          value={text}
+          placeholder={placeholder}
+          spellCheck={false}
+          autoComplete="off"
+          aria-invalid={invalid}
+          onChange={(event) => {
+            setText(event.target.value);
+            const color = normalizeHexColor(event.target.value);
+            if (color) onChange(color);
+            else if (!event.target.value.trim()) onChange(null);
+          }}
+        />
       </div>
-    </article>
+    </div>
   );
 }
 
-function SchemeSearchModal({
-  open,
-  query,
-  results,
-  searching,
-  error,
-  previewing,
-  loading,
-  installing,
-  mode,
-  onClose,
-  onQueryChange,
-  onSearch,
-  onPreview,
-  onAdd,
-  isInstalled,
-  isPreviewing,
-  getTheme,
-  selectedThemeId,
-  onSelect,
-  onRemove,
-}) {
-  const titleId = useId();
-  const { dialogRef, handleBackdropClick } = useModalDialog({ open, onClose });
-  if (!open) return null;
+function ThemeEditor({ draft, title, onClose, onSaved, onRemoved, showError }) {
+  const [name, setName] = useState(draft.name);
+  const [seeds, setSeeds] = useState({ light: draft.light || null, dark: draft.dark || null });
+  const [mode, setMode] = useState(() => {
+    const current = resolveThemeMode();
+    return seeds[current] ? current : seeds.dark ? "dark" : "light";
+  });
+  const [error, setError] = useState("");
+  const [invalidFields, setInvalidFields] = useState(() => new Set());
+  const nameId = useId();
+
+  const setFieldInvalid = useCallback((fieldKey, invalid) => {
+    setInvalidFields((current) => {
+      if (current.has(fieldKey) === invalid) return current;
+      const next = new Set(current);
+      if (invalid) next.add(fieldKey);
+      else next.delete(fieldKey);
+      return next;
+    });
+  }, []);
+
+  const validation = useMemo(() => {
+    if (invalidFields.size) return { error: "Enter colors as hex values, like #1b1d2a." };
+    try {
+      return { theme: normalizeTheme({ id: draft.id || "draft", name: name || "Untitled", ...seeds }) };
+    } catch (validationError) {
+      return { error: validationError.message };
+    }
+  }, [draft.id, invalidFields, name, seeds]);
+
+  useEffect(() => {
+    if (validation.theme) previewTheme(validation.theme, mode);
+  }, [mode, validation]);
+
+  useEffect(() => () => previewTheme(null), []);
+
+  const other = mode === "dark" ? "light" : "dark";
+  const seed = seeds[mode];
+  const generatedSeed = validation.theme ? getThemeSeed(validation.theme, mode) : null;
+
+  const updateSeed = (role, color) => {
+    setError("");
+    setSeeds((current) => {
+      const next = { ...current[mode] };
+      if (color) next[role] = color;
+      else delete next[role];
+      return { ...current, [mode]: next };
+    });
+  };
+
+  const handleSave = () => {
+    try {
+      const saved = saveCustomTheme({ id: draft.id, name, ...seeds });
+      onSaved(saved);
+    } catch (saveError) {
+      setError(saveError.message);
+    }
+  };
+
+  const handleExport = () => {
+    const url = URL.createObjectURL(new Blob([serializeThemeFile({ name: name.trim() || "Untitled", ...seeds })], { type: "application/json" }));
+    const link = Object.assign(document.createElement("a"), {
+      href: url,
+      download: `${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "theme"}.aurral-theme.json`,
+    });
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleRemove = () => {
+    const removed = removeCustomTheme(draft.id);
+    if (removed) onRemoved(removed);
+    else showError?.("That theme was already removed.");
+  };
+
   return createPortal(
-    <div className="artist-modal-backdrop theme-settings__modal-backdrop" onClick={handleBackdropClick}>
-      <div
-        ref={dialogRef}
-        className="theme-settings__search-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-      >
-        <div className="theme-settings__modal-header">
-          <div>
-            <h3 id={titleId}>Find a scheme</h3>
-            <p>Search terminal.sexy, preview a scheme, then add it.</p>
-          </div>
-          <TooltipButton
-            type="button"
-            className="btn btn-icon btn-xs btn-ghost"
-            onClick={onClose}
-            label="Close"
-          >
-            <X aria-hidden="true" />
-          </TooltipButton>
-        </div>
-        <form className="theme-settings__search" role="search" onSubmit={(event) => { event.preventDefault(); onSearch(); }}>
-          <Search aria-hidden="true" />
-          <input
-            type="search"
-            value={query}
-            autoFocus
-            placeholder="Try Solarized, Monokai, or Dawn"
-            aria-label="Search terminal.sexy schemes"
-            onChange={(event) => onQueryChange(event.target.value)}
-          />
-          <button type="submit" className="btn btn-secondary" disabled={!query.trim() || searching || Boolean(installing)}>
-            {searching ? <DotLoader size="sm" label={null} /> : <Search aria-hidden="true" />} Search
+    <ModalShell
+      open
+      title={title}
+      onClose={onClose}
+      className="theme-settings__dialog"
+      footer={
+        <>
+          {draft.id ? (
+            <button type="button" className="btn btn-ghost-danger theme-settings__footer-start" onClick={handleRemove}>
+              <Trash2 aria-hidden="true" /> Remove theme
+            </button>
+          ) : null}
+          {draft.id ? (
+            <button type="button" className="btn btn-ghost" onClick={handleExport} disabled={Boolean(validation.error)}>
+              <Download aria-hidden="true" /> Export
+            </button>
+          ) : null}
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={handleSave} disabled={Boolean(validation.error)}>
+            Save theme
           </button>
-        </form>
-        {previewing ? <p className="theme-settings__preview-note" role="status">Previewing {previewing.label}. Add it to keep this theme.</p> : null}
-        {error ? <p className="theme-settings__error" role="alert">{error}</p> : null}
-        {searching ? <p className="theme-settings__status" role="status"><DotLoader size="sm" label={null} /> Finding schemes…</p> : null}
-        {results ? (
-          results.length ? (
-            <div className="theme-settings__grid">
-              {results.map((scheme) => {
-                const theme = getTheme(scheme);
-                return theme && isInstalled(scheme) ? (
-                  <ThemeCard
-                    key={scheme.id}
-                    theme={theme}
-                    active={selectedThemeId === theme.id && !previewing}
-                    mode={mode}
-                    custom
-                    onSelect={() => onSelect(theme.id)}
-                    onRemove={() => onRemove(theme)}
+        </>
+      }
+    >
+      <div className="theme-settings__editor">
+        <div>
+          <label className="artist-field-label" htmlFor={nameId}>Name</label>
+          <input
+            id={nameId}
+            type="text"
+            className="input"
+            value={name}
+            maxLength={48}
+            onChange={(event) => {
+              setName(event.target.value);
+              setError("");
+            }}
+          />
+        </div>
+        <div className="theme-settings__tabs" role="group" aria-label="Colors to edit">
+          {THEME_MODES.slice().reverse().map((tabMode) => (
+            <button
+              key={tabMode}
+              type="button"
+              aria-pressed={mode === tabMode}
+              className={`theme-settings__tab${mode === tabMode ? " is-active" : ""}`}
+              onClick={() => setMode(tabMode)}
+            >
+              {MODE_LABELS[tabMode]}
+            </button>
+          ))}
+        </div>
+        <div className="theme-settings__tab-panel">
+          {seed ? (
+            <>
+              <div className="theme-settings__color-grid">
+                {SEED_FIELDS.map(({ role, label }) => (
+                  <ColorField
+                    key={`${mode}-${role}`}
+                    fieldKey={`${mode}-${role}`}
+                    label={label}
+                    value={seed[role]}
+                    placeholder={role === "text" ? (mode === "dark" ? "#f5f5f5" : "#171717") : "#000000"}
+                    onChange={(color) => updateSeed(role, color)}
+                    onInvalidChange={setFieldInvalid}
                   />
-                ) : (
-                  <SchemeCard
-                    key={scheme.id}
-                    scheme={scheme}
-                    theme={theme}
-                    mode={mode}
-                    active={isPreviewing(scheme)}
-                    loading={loading === scheme.id}
-                    installing={installing === scheme.id}
-                    installBusy={Boolean(installing)}
-                    installed={isInstalled(scheme)}
-                    onPreview={() => void onPreview(scheme)}
-                    onAdd={() => void onAdd(scheme)}
-                  />
-                );
-              })}
+                ))}
+              </div>
+              {seeds[other] ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost theme-settings__inline-action"
+                  onClick={() => setSeeds((current) => ({ ...current, [mode]: null }))}
+                >
+                  Generate {mode} colors from {other}
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <div className="theme-settings__generated">
+              <p className="settings-page__hint">
+                {MODE_LABELS[mode]} colors are generated from your {other} colors.
+              </p>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={!generatedSeed}
+                onClick={() => setSeeds((current) => ({ ...current, [mode]: generatedSeed }))}
+              >
+                Customize {mode} colors
+              </button>
             </div>
-          ) : <p className="theme-settings__empty">No terminal.sexy schemes found. Try a broader search.</p>
+          )}
+          <p className="settings-page__hint">
+            Aurral adjusts text and accent colors that would be hard to read.
+          </p>
+        </div>
+        {error || validation.error ? (
+          <p className="artist-error-text" role="alert">{error || validation.error}</p>
         ) : null}
       </div>
-    </div>,
+    </ModalShell>,
+    document.body,
+  );
+}
+
+function ThemeImport({ onClose, onParsed }) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+  const fileRef = useRef(null);
+  const mountedRef = useRef(true);
+  const textId = useId();
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const parse = (source) => {
+    try {
+      onParsed(parseThemeText(source));
+    } catch (parseError) {
+      setError(parseError.message);
+    }
+  };
+
+  return createPortal(
+    <ModalShell
+      open
+      title="Import theme"
+      description="Paste an Aurral theme file or a base16 or base24 scheme."
+      onClose={onClose}
+      className="theme-settings__dialog"
+      footer={
+        <>
+          <button type="button" className="btn btn-ghost theme-settings__footer-start" onClick={() => fileRef.current?.click()}>
+            <FileUp aria-hidden="true" /> Choose file
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={() => parse(text)} disabled={!text.trim()}>
+            Continue
+          </button>
+        </>
+      }
+    >
+      <div className="theme-settings__editor">
+        <label className="artist-field-label" htmlFor={textId}>Theme</label>
+        <textarea
+          id={textId}
+          className="arr-input arr-textarea theme-settings__import-text"
+          value={text}
+          rows={8}
+          spellCheck={false}
+          placeholder={'name: "Nord"\nvariant: "dark"\npalette:\n  base00: "#2E3440"\n  ...'}
+          onChange={(event) => {
+            setText(event.target.value);
+            setError("");
+          }}
+        />
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json,.yaml,.yml,application/json,text/yaml"
+          hidden
+          onChange={async (event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (!file) return;
+            const contents = await file.text();
+            if (!mountedRef.current) return;
+            setText(contents);
+            parse(contents);
+          }}
+        />
+        <p className="settings-page__hint">
+          Find hundreds of schemes in the{" "}
+          <a href={THEME_GALLERY_URL} target="_blank" rel="noreferrer">Tinted Gallery</a>.
+          Open a scheme&apos;s source file and paste it here.
+        </p>
+        {error ? <p className="artist-error-text" role="alert">{error}</p> : null}
+      </div>
+    </ModalShell>,
     document.body,
   );
 }
 
 export function ThemeSettings({ showSuccess, showError }) {
-  const [settings, setSettings] = useState(getThemeSettings);
-  const [customThemes, setCustomThemes] = useState(getCustomThemes);
-  const [featuredThemes, setFeaturedThemes] = useState(null);
-  const [featuredError, setFeaturedError] = useState("");
-  const [terminalSexySearchOpen, setTerminalSexySearchOpen] = useState(false);
-  const [terminalSexyQuery, setTerminalSexyQuery] = useState("");
-  const [terminalSexyResults, setTerminalSexyResults] = useState(null);
-  const [terminalSexySearching, setTerminalSexySearching] = useState(false);
-  const [terminalSexyInstalling, setTerminalSexyInstalling] = useState(null);
-  const [terminalSexyPreviewing, setTerminalSexyPreviewing] = useState(null);
-  const [terminalSexyLoading, setTerminalSexyLoading] = useState(null);
-  const [terminalSexyError, setTerminalSexyError] = useState("");
-  const themeCacheRef = useRef(new Map());
-  const searchAbortRef = useRef(null);
-  const previewAbortRef = useRef(null);
-  const previewRef = useRef(null);
-  const mountedRef = useRef(true);
+  const themeDocument = useThemeDocument();
+  const [dialog, setDialog] = useState(null);
+  const mode = resolveThemeMode(themeDocument.appearance);
+  const selected = findTheme(themeDocument.themeId, themeDocument) || BUILT_IN_THEMES[0];
+  const { addToast } = useToast();
 
-  useEffect(() => {
-    const refresh = () => {
-      const nextSettings = getThemeSettings();
-      setSettings(nextSettings);
-      setCustomThemes([...getCustomThemes()]);
-      if (previewRef.current) applyThemePreview(previewRef.current.theme, nextSettings.appearance);
-    };
-    const unsubscribeTheme = subscribeToThemeChanges(refresh);
-    const unsubscribeCustom = subscribeToCustomThemes(refresh);
-    return () => {
-      unsubscribeTheme();
-      unsubscribeCustom();
-    };
-  }, []);
+  const openCreate = () => {
+    setDialog({
+      type: "editor",
+      title: "Create theme",
+      draft: {
+        name: isCustomTheme(selected) ? `${selected.name} copy` : selected.id === "aurral" ? "My theme" : `My ${selected.name}`,
+        light: selected.light,
+        dark: selected.dark,
+      },
+    });
+  };
 
-  useEffect(() => {
-    mountedRef.current = true;
-    const controller = new AbortController();
-    const loadFeatured = async () => {
-      try {
-        const catalog = await loadTerminalSexyCatalog();
-        const schemes = selectTerminalSexyFeaturedThemes(catalog);
-        const resolved = await Promise.all(schemes.map(async (scheme) => {
-          try {
-            const theme = await importTerminalSexyTheme(scheme, { signal: controller.signal });
-            themeCacheRef.current.set(scheme.id, theme);
-            const existing = getCustomThemes().find((item) => item.id === theme.id);
-            if (existing && !existing.variants && theme.variants) {
-              try {
-                replaceCustomTheme(theme);
-                if (!previewRef.current && getThemeSettings().themeId === theme.id) applyThemeSelection(getThemeSettings());
-              } catch (migrationError) {
-                if (!controller.signal.aborted) setFeaturedError(migrationError instanceof Error ? migrationError.message : "An existing theme could not be updated.");
-              }
+  const handleRemoved = (removed) => {
+    setDialog(null);
+    addToast(
+      {
+        message: `${removed.theme.name} removed`,
+        action: {
+          label: "Undo",
+          onClick: () => {
+            try {
+              restoreCustomTheme(removed);
+            } catch (restoreError) {
+              showError?.(restoreError.message);
             }
-            return { ...scheme, theme };
-          } catch (error) {
-            if (!controller.signal.aborted) setFeaturedError(error instanceof Error ? error.message : "Featured terminal.sexy schemes could not be loaded.");
-            return null;
-          }
-        }));
-        if (!controller.signal.aborted && mountedRef.current) {
-          const available = resolved.filter(Boolean);
-          setFeaturedThemes(available);
-          if (!available.length) setFeaturedError("Featured terminal.sexy schemes could not be loaded. Search to retry.");
-        }
-      } catch (error) {
-        if (!controller.signal.aborted && mountedRef.current) {
-          setFeaturedThemes([]);
-          setFeaturedError(error instanceof Error ? error.message : "Featured terminal.sexy schemes could not be loaded.");
-        }
-      }
-    };
-    void loadFeatured();
-    return () => controller.abort();
-  }, []);
-
-  useEffect(() => () => {
-    mountedRef.current = false;
-    searchAbortRef.current?.abort();
-    previewAbortRef.current?.abort();
-    if (previewRef.current) applyThemeSelection(getThemeSettings());
-  }, []);
-
-  const clearPreview = () => {
-    const hadPreview = Boolean(previewRef.current);
-    previewAbortRef.current?.abort();
-    previewAbortRef.current = null;
-    previewRef.current = null;
-    setTerminalSexyPreviewing(null);
-    setTerminalSexyLoading(null);
-    if (hadPreview) applyThemeSelection(getThemeSettings());
+          },
+        },
+      },
+      "success",
+      8000,
+    );
   };
-
-  const rememberTheme = (scheme, theme) => {
-    themeCacheRef.current.set(scheme.id, theme);
-    return theme;
-  };
-
-  const handleModeChange = (appearance) => {
-    setThemeSelection(settings.themeId, appearance);
-    if (previewRef.current) applyThemePreview(previewRef.current.theme, appearance);
-  };
-
-  const handleSelect = (themeId) => {
-    clearPreview();
-    setThemeSelection(themeId, settings.appearance);
-  };
-
-  const openSearch = () => {
-    setTerminalSexyError("");
-    setTerminalSexyResults(null);
-    setTerminalSexySearchOpen(true);
-  };
-
-  const closeSearch = () => {
-    searchAbortRef.current?.abort();
-    searchAbortRef.current = null;
-    clearPreview();
-    setTerminalSexySearching(false);
-    setTerminalSexyError("");
-    setTerminalSexyResults(null);
-    setTerminalSexySearchOpen(false);
-  };
-
-  const handleTerminalSexySearch = async () => {
-    const query = terminalSexyQuery.trim();
-    if (!query) return;
-    searchAbortRef.current?.abort();
-    const controller = new AbortController();
-    searchAbortRef.current = controller;
-    setTerminalSexySearching(true);
-    setTerminalSexyError("");
-    setTerminalSexyResults(null);
-    try {
-      const results = await searchTerminalSexyThemes(query, { signal: controller.signal });
-      if (!controller.signal.aborted && mountedRef.current) setTerminalSexyResults(results);
-    } catch (searchError) {
-      if (!controller.signal.aborted && mountedRef.current) setTerminalSexyError(searchError instanceof Error ? searchError.message : "Terminal.sexy search failed.");
-    } finally {
-      if (searchAbortRef.current === controller && mountedRef.current) {
-        searchAbortRef.current = null;
-        setTerminalSexySearching(false);
-      }
-    }
-  };
-
-  const handleTerminalSexyPreview = async (scheme) => {
-    setTerminalSexyError("");
-    previewAbortRef.current?.abort();
-    previewAbortRef.current = null;
-    setTerminalSexyLoading(null);
-    const cached = themeCacheRef.current.get(scheme.id);
-    if (cached) {
-      previewRef.current = { schemeId: scheme.id, theme: cached };
-      setTerminalSexyPreviewing({ schemeId: scheme.id, label: scheme.label });
-      applyThemePreview(cached, settings.appearance);
-      return;
-    }
-    const controller = new AbortController();
-    previewAbortRef.current = controller;
-    setTerminalSexyLoading(scheme.id);
-    try {
-      const theme = rememberTheme(scheme, await importTerminalSexyTheme(scheme, { signal: controller.signal }));
-      if (!controller.signal.aborted && mountedRef.current) {
-        previewRef.current = { schemeId: scheme.id, theme };
-        setTerminalSexyPreviewing({ schemeId: scheme.id, label: scheme.label });
-        applyThemePreview(theme, settings.appearance);
-      }
-    } catch (previewError) {
-      if (!controller.signal.aborted && mountedRef.current) {
-        const message = previewError instanceof Error ? previewError.message : `Could not preview ${scheme.label}.`;
-        setTerminalSexyError(message);
-        showError?.(message);
-      }
-    } finally {
-      if (previewAbortRef.current === controller && mountedRef.current) {
-        previewAbortRef.current = null;
-        setTerminalSexyLoading(null);
-      }
-    }
-  };
-
-  const handleTerminalSexyInstall = async (scheme) => {
-    if (terminalSexyInstalling) return;
-    const existing = getCustomThemes().find((theme) => theme.id === scheme.id);
-    if (existing) {
-      clearPreview();
-      setThemeSelection(existing.id, settings.appearance);
-      setTerminalSexySearchOpen(false);
-      return;
-    }
-    setTerminalSexyInstalling(scheme.id);
-    setTerminalSexyError("");
-    try {
-      const theme = themeCacheRef.current.get(scheme.id) || await importTerminalSexyTheme(scheme);
-      const installed = installCustomTheme(theme);
-      clearPreview();
-      setThemeSelection(installed.id, settings.appearance);
-      setTerminalSexySearchOpen(false);
-      showSuccess?.(`${installed.label} added`);
-    } catch (installError) {
-      const message = installError instanceof Error ? installError.message : "That terminal.sexy scheme could not be added.";
-      setTerminalSexyError(message);
-      showError?.(message);
-    } finally {
-      setTerminalSexyInstalling(null);
-    }
-  };
-
-  const handleFeaturedThemeSelect = (scheme) => {
-    const existing = getCustomThemes().find((theme) => theme.id === scheme.theme.id);
-    try {
-      const installed = existing || installCustomTheme(scheme.theme);
-      clearPreview();
-      setThemeSelection(installed.id, settings.appearance);
-    } catch (selectError) {
-      const message = selectError instanceof Error ? selectError.message : `Could not select ${scheme.label}.`;
-      showError?.(message);
-    }
-  };
-
-  const handleRemove = (theme) => {
-    if (!window.confirm(`Remove the added theme “${theme.label}”?`)) return;
-    clearPreview();
-    removeCustomTheme(theme.id);
-    if (settings.themeId === theme.id) setThemeSelection(BUILT_IN_THEMES[0].id, settings.appearance);
-  };
-
-  const isInstalled = (scheme) => customThemes.some((theme) => theme.id === scheme.id);
-  const isPreviewing = (scheme) => terminalSexyPreviewing?.schemeId === scheme.id;
-  const featuredThemeIds = new Set((featuredThemes || []).map((scheme) => scheme.theme?.id).filter(Boolean));
 
   return (
     <div className="theme-settings">
@@ -531,14 +472,21 @@ export function ThemeSettings({ showSuccess, showError }) {
         <div className="theme-settings__section-heading">
           <h4 id="theme-mode-heading">Color scheme</h4>
         </div>
-        <div className="theme-settings__mode-grid" aria-label="Color scheme mode">
-          {APPEARANCE_OPTIONS.map((option) => (
-            <AppearanceModeCard
-              key={option.id}
-              option={option}
-              active={settings.appearance === option.id}
-              onSelect={() => handleModeChange(option.id)}
-            />
+        <div className="theme-settings__mode-grid" role="group" aria-labelledby="theme-mode-heading">
+          {APPEARANCE_OPTIONS.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              type="button"
+              className={`theme-settings__mode-card${themeDocument.appearance === id ? " is-active" : ""}`}
+              aria-pressed={themeDocument.appearance === id}
+              onClick={() => setThemeAppearance(id)}
+            >
+              <ModePreview theme={selected} appearance={id} />
+              <span className="theme-settings__mode-card-label">
+                <Icon aria-hidden="true" />
+                {label}
+              </span>
+            </button>
           ))}
         </div>
       </section>
@@ -547,69 +495,60 @@ export function ThemeSettings({ showSuccess, showError }) {
         <div className="theme-settings__section-heading">
           <h4 id="theme-themes-heading">Themes</h4>
           <div className="theme-settings__section-actions">
-            {featuredThemes === null ? <span className="theme-settings__section-status" role="status"><DotLoader size="sm" label={null} /> Loading schemes…</span> : null}
-            <button type="button" className="btn btn-secondary" onClick={openSearch}>
-              <Search aria-hidden="true" /> Find a scheme
+            <button type="button" className="btn btn-ghost" onClick={() => setDialog({ type: "import" })}>
+              <FileUp aria-hidden="true" /> Import
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={openCreate}>
+              <Plus aria-hidden="true" /> Create theme
             </button>
           </div>
         </div>
-        <div className="theme-settings__grid" aria-label="Themes">
-          {BUILT_IN_THEMES.map((theme) => (
+        <div className="theme-settings__grid" role="group" aria-labelledby="theme-themes-heading">
+          {[...BUILT_IN_THEMES, ...themeDocument.themes].map((theme) => (
             <ThemeCard
               key={theme.id}
               theme={theme}
-              active={settings.themeId === theme.id && !terminalSexyPreviewing}
-              mode={settings.appearance}
-              onSelect={() => handleSelect(theme.id)}
-            />
-          ))}
-          {featuredThemes ? featuredThemes.map((scheme) => (
-            <ThemeCard
-              key={scheme.id}
-              theme={scheme.theme}
-              metaLabel="terminal.sexy"
-              active={settings.themeId === scheme.theme.id && !terminalSexyPreviewing}
-              mode={settings.appearance}
-              onSelect={() => handleFeaturedThemeSelect(scheme)}
-            />
-          )) : null}
-          {customThemes.filter((theme) => !featuredThemeIds.has(theme.id)).map((theme) => (
-            <ThemeCard
-              key={theme.id}
-              theme={theme}
-              active={settings.themeId === theme.id && !terminalSexyPreviewing}
-              mode={settings.appearance}
-              custom
-              onSelect={() => handleSelect(theme.id)}
-              onRemove={() => handleRemove(theme)}
+              mode={mode}
+              active={selected.id === theme.id}
+              onSelect={() => selectTheme(theme.id)}
+              onEdit={() => setDialog({ type: "editor", title: "Edit theme", draft: theme })}
             />
           ))}
         </div>
-        {featuredError ? <p className="theme-settings__error" role="alert">{featuredError}</p> : null}
+        <div className="theme-settings__switch-row">
+          <div className="theme-settings__switch-copy">
+            <label className="theme-settings__switch-label" htmlFor="theme-match-artwork">Match album art</label>
+            <p className="settings-page__hint">Tint the accent and background from the cover of what&apos;s playing.</p>
+          </div>
+          <PillToggle
+            id="theme-match-artwork"
+            checked={themeDocument.matchArtwork}
+            aria-label="Match album art"
+            onChange={(event) => setMatchArtwork(event.target.checked)}
+          />
+        </div>
       </section>
 
-      <SchemeSearchModal
-        open={terminalSexySearchOpen}
-        query={terminalSexyQuery}
-        results={terminalSexyResults}
-        searching={terminalSexySearching}
-        error={terminalSexyError}
-        previewing={terminalSexyPreviewing}
-        loading={terminalSexyLoading}
-        installing={terminalSexyInstalling}
-        mode={settings.appearance}
-        onClose={closeSearch}
-        onQueryChange={setTerminalSexyQuery}
-        onSearch={() => void handleTerminalSexySearch()}
-        onPreview={handleTerminalSexyPreview}
-        onAdd={handleTerminalSexyInstall}
-        isInstalled={isInstalled}
-        isPreviewing={isPreviewing}
-        getTheme={(scheme) => themeCacheRef.current.get(scheme.id) || customThemes.find((theme) => theme.id === scheme.id)}
-        selectedThemeId={settings.themeId}
-        onSelect={handleSelect}
-        onRemove={handleRemove}
-      />
+      {dialog?.type === "import" ? (
+        <ThemeImport
+          onClose={() => setDialog(null)}
+          onParsed={(draft) => setDialog({ type: "editor", title: "Review imported theme", draft })}
+        />
+      ) : null}
+      {dialog?.type === "editor" ? (
+        <ThemeEditor
+          key={dialog.draft.id || dialog.title}
+          draft={dialog.draft}
+          title={dialog.title}
+          showError={showError}
+          onClose={() => setDialog(null)}
+          onSaved={(theme) => {
+            setDialog(null);
+            showSuccess?.(`${theme.name} saved`);
+          }}
+          onRemoved={handleRemoved}
+        />
+      ) : null}
     </div>
   );
 }

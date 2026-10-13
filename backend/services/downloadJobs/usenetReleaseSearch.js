@@ -112,13 +112,33 @@ function titleWords(value) {
 // release title adds the year, format, and group around the artist and
 // album, so the whole-title similarity used before rejected short albums:
 // "Lemonade" in "Beyonce feat. Kendrick Lamar - Lemonade (2016) MP3".
-function containsPhrase(words, phrase) {
+function phraseSpans(words, phrase) {
   const target = titleWords(phrase);
-  if (target.length === 0) return false;
+  const spans = [];
+  if (target.length === 0) return spans;
   for (let start = 0; start + target.length <= words.length; start += 1) {
-    if (target.every((word, offset) => words[start + offset] === word)) return true;
+    if (target.every((word, offset) => words[start + offset] === word)) {
+      spans.push([start, start + target.length]);
+    }
   }
-  return false;
+  return spans;
+}
+
+function containsPhrase(words, phrase) {
+  return phraseSpans(words, phrase).length > 0;
+}
+
+// A self-titled album only counts when its title appears apart from the
+// artist's name: "A New Found Glory - From The Screen To Your Stereo" names
+// the artist once and is a different album. "Queen II" still names both.
+function containsAlbumApartFromArtist(words, album, artists) {
+  const artistSpans = artists.flatMap((name) => phraseSpans(words, name));
+  const apart = ([start, end], [artistStart, artistEnd]) => artistEnd <= start || end <= artistStart;
+  const inside = ([start, end], [artistStart, artistEnd]) =>
+    start <= artistStart && artistEnd <= end && artistEnd - artistStart < end - start;
+  return phraseSpans(words, album).some((span) =>
+    artistSpans.some((artistSpan) => apart(span, artistSpan))
+    || artistSpans.every((artistSpan) => apart(span, artistSpan) || inside(span, artistSpan)));
 }
 
 function withoutCredits(title) {
@@ -164,7 +184,8 @@ export function rankUsenetReleases(releases, context, options = {}) {
 
     // Identity gate: the artist (any artist for a compilation) and the album
     // or track title appear in the release title.
-    const hasAlbum = request.albums.some((album) => containsPhrase(words, album));
+    const hasAlbum = request.albums.some((album) => containsAlbumApartFromArtist(words, album,
+      request.compilation ? [] : request.artists));
     const hasArtist = (request.compilation && hasAlbum)
       || request.artists.some((name) => containsPhrase(words, name));
     const hasTrack = request.tracks.some((track) => containsPhrase(words, track));

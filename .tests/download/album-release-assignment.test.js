@@ -66,6 +66,16 @@ test("album assignment validates files against the edition that arrived", async 
     assert.equal(result.releaseId, "edition");
     assert.deepEqual(result.accepted.map(({ jobId }) => jobId), ["first", "second"]);
 
+    parsed.set(paths[1], tags("Second", 3, 216));
+    const longer = await assign([{ id: "longer", tracks: [
+      { title: "Intro", trackNumber: 1, durationMs: 60000 },
+      { title: "First", trackNumber: 2, durationMs: 200000 },
+      { title: "Second", trackNumber: 3, durationMs: 216000 },
+    ] }]);
+    assert.equal(longer.releaseId, "longer");
+    assert.deepEqual(longer.accepted.map(({ jobId }) => jobId), ["first", "second"]);
+    parsed.set(paths[1], tags("Second", 3, 201));
+
     const themes = ["02 Theme.flac", "06 Theme.flac"].map((name) => join(root, name));
     for (const filePath of themes) await writeFile(filePath, "fixture");
     parsed.set(themes[0], tags("Theme", 2, 90)).set(themes[1], tags("Theme", 6, 90));
@@ -78,6 +88,41 @@ test("album assignment validates files against the edition that arrived", async 
       parseAudio: async (filePath) => parsed.get(filePath),
     });
     assert.equal(repeated.accepted.length, 2);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("album assignment accepts a file tagged with a recording ID MusicBrainz merged away", async () => {
+  const root = await mkdtemp(join(tmpdir(), "aurral-album-merged-"));
+  try {
+    const paths = ["01 First.flac", "02 Second.flac"].map((name) => join(root, name));
+    for (const filePath of paths) await writeFile(filePath, "fixture");
+    const tags = (title, no, mbid) => ({
+      common: { title, artist: "The Band", album: "Album", track: { no }, musicbrainz_recordingid: mbid },
+      format: { duration: 200, lossless: true, sampleRate: 44100, bitsPerSample: 16, container: "FLAC" },
+    });
+    const first = "11111111-1111-4111-8111-111111111111";
+    const second = "22222222-2222-4222-8222-222222222222";
+    const mergedSecond = "33333333-3333-4333-8333-333333333333";
+    const parsed = new Map([[paths[0], tags("First", 1, first)], [paths[1], tags("Second", 2, mergedSecond)]]);
+    const jobs = [
+      { id: "first", trackName: "First", artistName: "The Band", albumName: "Album", durationMs: 200000, trackNumber: 1, trackMbid: first },
+      { id: "second", trackName: "Second", artistName: "The Band", albumName: "Album", durationMs: 200000, trackNumber: 2, trackMbid: second },
+    ];
+    const assign = (albumJobs) => assignDownloadedAlbumFiles({
+      jobs: albumJobs, filePaths: paths, source: "soulseek",
+      releases: [{ id: "release", tracks: [
+        { title: "First", trackNumber: 1, durationMs: 200000, recordingMbid: first, recordingMbidAliases: [] },
+        { title: "Second", trackNumber: 2, durationMs: 200000, recordingMbid: second, recordingMbidAliases: [mergedSecond] },
+      ] }],
+      parseAudio: async (filePath) => parsed.get(filePath),
+    });
+    assert.deepEqual((await assign(jobs)).accepted.map(({ jobId }) => jobId), ["first", "second"]);
+
+    parsed.set(paths[1], tags("Second", 2, second));
+    const oldJobs = [jobs[0], { ...jobs[1], trackMbid: mergedSecond }];
+    assert.deepEqual((await assign(oldJobs)).accepted.map(({ jobId }) => jobId), ["first", "second"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

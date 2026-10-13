@@ -1,6 +1,8 @@
 import { lastfmRequest } from "../apiClients/index.js";
 import * as musicData from "../musicDataSource/index.js";
 import { getUserDiscovery } from "../discovery/userDiscovery.js";
+import { userOps } from "../../db/helpers/index.js";
+import { logger } from "../logger.js";
 import { normalizeWeightMap } from "../playlists/flowPlaylistConfig.js";
 import { getBlockedArtistKeys } from "../discovery/feedback.js";
 import { mapWithConcurrency } from "../discovery/helpers.js";
@@ -330,7 +332,15 @@ export class FlowTrackSource {
     if (options?.discoveryCache && typeof options.discoveryCache === "object") {
       return options.discoveryCache;
     }
-    return getUserDiscovery(options?.ownerUserId ?? null, 0).body;
+    return getUserDiscovery(options?.ownerUserId ?? this._firstActiveAdminId(), 0).body;
+  }
+
+  _firstActiveAdminId() {
+    const adminIds = userOps
+      .getAllUsers()
+      .filter((user) => user.role === "admin" && user.status === "active")
+      .map((user) => user.id);
+    return adminIds.length > 0 ? Math.min(...adminIds) : null;
   }
 
   _normalizeTrackReason(value, fallback = "Flow selection") {
@@ -1417,6 +1427,10 @@ export class FlowTrackSource {
       nonLibraryExcludeArtistKeys.add(entry);
     }
     const listenHistoryProfile = options?.listenHistoryProfile || null;
+    const skipSource = (sourceName) => (error) => {
+      logger.warn("flows", `Skipped the ${sourceName} source for flow ${flow?.id || "preview"}: ${error.message}`);
+      return [];
+    };
     const [discoverTracks, mixTracks, trendingTracks, focusCandidates] = await Promise.all([
       harvestTargets.discover > 0
         ? this.getDiscoverTracks(this._harvestLimitFor(harvestTargets.discover), {
@@ -1425,14 +1439,14 @@ export class FlowTrackSource {
             reason: "From discovery recommendations",
             excludeArtistKeys: nonLibraryExcludeArtistKeys,
             listenHistoryProfile,
-          }).catch(() => [])
+          }).catch(skipSource("discover"))
         : [],
       harvestTargets.mix > 0
         ? this.getMixTracks(this._harvestLimitFor(harvestTargets.mix), {
             ...options,
             deepDive: flow?.deepDive === true,
             reason: "From your library mix",
-          }).catch(() => [])
+          }).catch(skipSource("mix"))
         : [],
       harvestTargets.trending > 0
         ? this.getTrendingTracks(this._harvestLimitFor(harvestTargets.trending), {
@@ -1441,7 +1455,7 @@ export class FlowTrackSource {
             reason: "From trending artists",
             excludeArtistKeys: nonLibraryExcludeArtistKeys,
             listenHistoryProfile,
-          }).catch(() => [])
+          }).catch(skipSource("trending"))
         : [],
       harvestTargets.focus > 0
         ? this._getFocusCandidates(this._harvestLimitFor(harvestTargets.focus), {
@@ -1450,7 +1464,7 @@ export class FlowTrackSource {
             deepDive: flow?.deepDive === true,
             excludeArtistKeys: nonLibraryExcludeArtistKeys,
             excludeTrackKeys,
-          }).catch(() => [])
+          }).catch(skipSource("focus"))
         : [],
     ]);
     return {

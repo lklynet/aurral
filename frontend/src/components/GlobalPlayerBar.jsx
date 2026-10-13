@@ -1,13 +1,15 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router";
 import {
   ChevronDown,
+  ListMusic,
   Music,
   Pause,
   Play,
   Repeat,
   Repeat1,
+  Share,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -17,56 +19,18 @@ import {
 } from "lucide-react";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import TooltipButton from "./TooltipButton";
+import { PlayerQueuePanel, UpNextQueue } from "./PlayerQueue";
+import { PlayerMiniProgress, PlayerSeek } from "./PlayerProgress";
 import { useModalDialog } from "../hooks/useModalDialog.js";
-import { useImageGradientColors } from "../utils/imageColors.js";
+import { PLAYER_SHORTCUTS, usePlayerShortcuts } from "../hooks/usePlayerShortcuts.js";
+import { useNowPlayingTitle } from "../hooks/useDocumentTitle";
+import { useLibraryShareAction, useShareAction } from "../hooks/useShareAction.js";
+import { useCollectionTint } from "./CollectionHeader";
+import ArtworkImage from "./ArtworkImage";
 
 const SHEET_EXIT_MS = 260;
 const SHEET_DISMISS_DISTANCE = 120;
-
-function formatTime(seconds) {
-  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
-  const total = Math.floor(seconds);
-  const mins = Math.floor(total / 60);
-  const secs = total % 60;
-  return `${mins}:${String(secs).padStart(2, "0")}`;
-}
-
-const UpNextList = memo(function UpNextList({ playbackQueue, currentIndex, repeatMode, skipTo }) {
-  const upNext = playbackQueue
-    .map((track, index) => ({ track, index }))
-    .slice(currentIndex + 1)
-    .concat(
-      repeatMode === "all"
-        ? playbackQueue.map((track, index) => ({ track, index })).slice(0, currentIndex)
-        : [],
-    );
-  if (upNext.length === 0) return null;
-  return (
-    <section className="now-playing__queue" aria-label="Up next">
-      <h3 className="now-playing__queue-title">Up next</h3>
-      <ol className="now-playing__queue-list">
-        {upNext.map(({ track, index }) => (
-          <li key={`${track.id}-${index}`}>
-            <button
-              type="button"
-              className="now-playing__queue-item"
-              onClick={() => skipTo(index)}
-            >
-              <span className="now-playing__queue-copy">
-                <span className="now-playing__queue-name">{track.title}</span>
-                {track.artist ? (
-                  <span className="now-playing__queue-artist">{track.artist}</span>
-                ) : null}
-              </span>
-              <Play className="now-playing__queue-play" aria-hidden="true" />
-            </button>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-});
-
+const SEEK_SHORTCUT_SECONDS = 5;
 function GlobalPlayerBar() {
   const {
     currentTrack,
@@ -74,9 +38,12 @@ function GlobalPlayerBar() {
     isActive,
     isPlaying,
     isLoading,
+    isStarting,
     duration,
     volume,
+    muted,
     setVolume,
+    toggleMute,
     isShuffleEnabled,
     repeatMode,
     togglePlayPause,
@@ -87,14 +54,19 @@ function GlobalPlayerBar() {
     toggleRepeat,
     seek,
     getPosition,
-    playbackQueue,
-    currentIndex,
-    skipTo,
   } = useAudioQueue();
-  const [position, setPosition] = useState(0);
-  const lastVolumeRef = useRef(volume > 0 ? volume : 0.7);
+  const sharePlain = useShareAction();
+  const shareLibrary = useLibraryShareAction();
   const location = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
+  const queuePanelId = useId();
+  const queueTriggerRef = useRef(null);
+  const queueCloseRef = useRef(null);
+  const closeQueue = useCallback(() => {
+    setQueueOpen(false);
+    queueTriggerRef.current?.focus({ preventScroll: true });
+  }, []);
   const [sheetPresence, setSheetPresence] = useState("closed");
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -106,20 +78,42 @@ function GlobalPlayerBar() {
     onClose: closeSheet,
     initialFocusRef: sheetCloseRef,
   });
-  const artColors = useImageGradientColors(sheetPresence !== "closed" ? currentTrack?.artwork : null);
+  const artTint = useCollectionTint(currentTrack?.artwork);
 
   useEffect(() => {
     setSheetOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
-    if (!isActive) setSheetOpen(false);
+    if (isActive) return;
+    setSheetOpen(false);
+    setQueueOpen(false);
   }, [isActive]);
+
+  useEffect(() => {
+    if (queueOpen) queueCloseRef.current?.focus({ preventScroll: true });
+  }, [queueOpen]);
+
+  useEffect(() => {
+    if (!queueOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.querySelector(".player-queue__item.is-dragging")) return;
+      const panel = document.getElementById(queuePanelId);
+      const target = event.target instanceof Node ? event.target : null;
+      if (!panel?.contains(target) && target !== queueTriggerRef.current) return;
+      event.preventDefault();
+      closeQueue();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [closeQueue, queueOpen, queuePanelId]);
 
   useEffect(() => {
     const desktop = window.matchMedia("(min-width: 768px)");
     const closeOnDesktop = () => {
       if (desktop.matches) setSheetOpen(false);
+      else setQueueOpen(false);
     };
     desktop.addEventListener("change", closeOnDesktop);
     return () => desktop.removeEventListener("change", closeOnDesktop);
@@ -142,65 +136,60 @@ function GlobalPlayerBar() {
     };
   }, [sheetOpen]);
 
-  useEffect(() => {
-    if (volume > 0) {
-      lastVolumeRef.current = volume;
-    }
-  }, [volume]);
+  const seekBy = (offset) => {
+    if (!duration) return;
+    const nextPosition = Math.min(Math.max(getPosition() + offset, 0), duration);
+    seek(nextPosition);
+  };
 
-  useEffect(() => {
-    if (!isActive) {
-      setPosition(0);
-      return undefined;
-    }
-    const tick = () => setPosition(getPosition());
-    if (!isPlaying) {
-      tick();
-      return undefined;
-    }
-    tick();
-    const interval = window.setInterval(tick, 250);
-    return () => window.clearInterval(interval);
-  }, [getPosition, isActive, isPlaying]);
+  usePlayerShortcuts(isActive && Boolean(currentTrack), {
+    playPause: togglePlayPause,
+    previous: playPrevious,
+    next: playNext,
+    seekBack: () => seekBy(-SEEK_SHORTCUT_SECONDS),
+    seekForward: () => seekBy(SEEK_SHORTCUT_SECONDS),
+    mute: toggleMute,
+  });
+
+  useNowPlayingTitle(
+    isActive && currentTrack && (isPlaying || isStarting)
+      ? [currentTrack.title, currentTrack.artist].filter(Boolean).join(" · ")
+      : "",
+  );
 
   if (!isActive || !currentTrack) {
     return null;
   }
 
-  const volumePercent = Math.round(volume * 100);
-  const progress = duration > 0 ? Math.min((position / duration) * 100, 100) : 0;
+  const volumePercent = muted ? 0 : Math.round(volume * 100);
   const artistMbid = String(currentTrack.artistMbid || "").trim();
   const albumMbid = String(currentTrack.albumMbid || "").trim();
   const artistLabel = currentTrack.artist || "";
   const albumLabel = currentTrack.album || "";
   const artistPath = artistMbid ? `/artist/${artistMbid}` : "";
   const albumPath = artistMbid && albumMbid ? `/artist/${artistMbid}/release/${albumMbid}` : "";
+  const canShareTrack = Boolean(currentTrack.title && artistLabel);
+  const shareTrack = () =>
+    (currentTrack.libraryTrackId ? shareLibrary : sharePlain)(
+      {
+        kind: "track",
+        trackMbid: currentTrack.trackMbid,
+        libraryTrackId: currentTrack.libraryTrackId,
+        libraryAlbumId: currentTrack.libraryAlbumId,
+        albumMbid,
+        artistMbid,
+        title: currentTrack.title,
+        artistName: artistLabel,
+        albumTitle: albumLabel,
+      },
+      currentTrack.title,
+    );
   const metaLink = (label, path) =>
     label ? path ? <Link to={path} className="global-player__link">{label}</Link> : label : null;
 
   const handleVolumeChange = (event) => {
     const nextVolume = Math.min(Math.max(Number(event.target.value) || 0, 0), 100);
-    if (nextVolume > 0) {
-      lastVolumeRef.current = nextVolume / 100;
-    }
     setVolume(nextVolume / 100);
-  };
-
-  const handleToggleMute = () => {
-    if (volume <= 0) {
-      const restored = lastVolumeRef.current > 0 ? lastVolumeRef.current : 0.7;
-      setVolume(restored);
-      return;
-    }
-    lastVolumeRef.current = volume;
-    setVolume(0);
-  };
-
-  const handleSeek = (event) => {
-    if (!duration) return;
-    const nextPosition = Math.min(Math.max(Number(event.currentTarget.value) || 0, 0), duration);
-    seek(nextPosition);
-    setPosition(nextPosition);
   };
 
   const handleSheetPointerDown = (event) => {
@@ -229,18 +218,18 @@ function GlobalPlayerBar() {
     setDragOffset(0);
   };
 
-  const artwork = (className) => (
+  const artwork = (className, thumbnail = true) => (
     <span className={className} aria-hidden="true">
       {currentTrack.artwork ? (
-        <img src={currentTrack.artwork} alt="" loading="lazy" />
+        <ArtworkImage src={currentTrack.artwork} thumbnail={thumbnail} sizes="3rem" alt="" loading="eager" />
       ) : (
         <Music />
       )}
     </span>
   );
 
-  const playPauseLabel = isPlaying ? "Pause" : "Play";
-  const PlayPauseIcon = isPlaying ? Pause : Play;
+  const playPauseLabel = isPlaying || isStarting ? "Pause" : "Play";
+  const PlayPauseIcon = isPlaying || isStarting ? Pause : Play;
   const repeatLabel =
     repeatMode === "one"
       ? "Repeat one track"
@@ -249,11 +238,14 @@ function GlobalPlayerBar() {
         : "Enable repeat";
 
   return (
-    <div className="global-player" role="region" aria-label="Global audio player">
+    <div
+      className="global-player"
+      role="region"
+      aria-label="Global audio player"
+      style={artTint ? { "--player-tint": artTint } : undefined}
+    >
       <div className="global-player__mini">
-        <span className="global-player__mini-progress" aria-hidden="true">
-          <span style={{ width: `${progress}%` }} />
-        </span>
+        <PlayerMiniProgress />
         <button
           type="button"
           className="global-player__mini-open"
@@ -274,7 +266,7 @@ function GlobalPlayerBar() {
           type="button"
           className="global-player__mini-control"
           onClick={togglePlayPause}
-          disabled={isLoading}
+          aria-busy={isLoading || undefined}
           aria-label={playPauseLabel}
         >
           <PlayPauseIcon aria-hidden="true" />
@@ -303,7 +295,7 @@ function GlobalPlayerBar() {
             tabIndex={-1}
             style={{
               "--now-playing-drag": `${dragOffset}px`,
-              "--now-playing-tint": artColors?.top || "var(--aurral-surface)",
+              "--now-playing-tint": artTint || "var(--aurral-surface)",
             }}
             data-dragging={isDragging || undefined}
             onPointerDown={handleSheetPointerDown}
@@ -322,18 +314,30 @@ function GlobalPlayerBar() {
                 <ChevronDown aria-hidden="true" />
               </button>
               <span className="now-playing__eyebrow">Now playing</span>
-              <button
-                type="button"
-                className="now-playing__icon-button"
-                onClick={clearQueue}
-                aria-label="Stop and clear queue"
-              >
-                <X aria-hidden="true" />
-              </button>
+              <span className="now-playing__header-actions">
+                {canShareTrack ? (
+                  <button
+                    type="button"
+                    className="now-playing__icon-button"
+                    onClick={shareTrack}
+                    aria-label="Share track"
+                  >
+                    <Share aria-hidden="true" />
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="now-playing__icon-button"
+                  onClick={clearQueue}
+                  aria-label="Stop and clear queue"
+                >
+                  <X aria-hidden="true" />
+                </button>
+              </span>
             </div>
 
             <div className="now-playing__body">
-              {artwork("global-player__art now-playing__art")}
+              {artwork("global-player__art now-playing__art", false)}
 
               <div className="now-playing__meta">
                 <h2 className="now-playing__title">{currentTrack.title}</h2>
@@ -351,25 +355,7 @@ function GlobalPlayerBar() {
                 ) : null}
               </div>
 
-              <div className="now-playing__progress">
-                <input
-                  type="range"
-                  className="now-playing__seek"
-                  min="0"
-                  max={duration || 0}
-                  step="0.1"
-                  value={Math.min(position, duration || 0)}
-                  onChange={handleSeek}
-                  aria-label="Playback position"
-                  aria-valuetext={`${formatTime(position)} of ${formatTime(duration)}`}
-                  disabled={!duration}
-                  style={{ "--seek-percent": `${progress}%` }}
-                />
-                <div className="now-playing__times">
-                  <span>{formatTime(position)}</span>
-                  <span>{formatTime(duration)}</span>
-                </div>
-              </div>
+              <PlayerSeek variant="sheet" />
 
               <div className="now-playing__controls">
                 <button
@@ -393,7 +379,7 @@ function GlobalPlayerBar() {
                   type="button"
                   className="now-playing__control now-playing__control--primary"
                   onClick={togglePlayPause}
-                  disabled={isLoading}
+                  aria-busy={isLoading || undefined}
                   aria-label={playPauseLabel}
                 >
                   <PlayPauseIcon aria-hidden="true" />
@@ -417,20 +403,20 @@ function GlobalPlayerBar() {
                 </button>
               </div>
 
-              <UpNextList
-                playbackQueue={playbackQueue}
-                currentIndex={currentIndex}
-                repeatMode={repeatMode}
-                skipTo={skipTo}
-              />
+              <UpNextQueue className="now-playing__queue" />
             </div>
           </div>
         </div>,
         document.body,
       ) : null}
 
+      {queueOpen ? (
+        <PlayerQueuePanel id={queuePanelId} onClose={closeQueue} closeRef={queueCloseRef} />
+      ) : null}
+
       <div className="global-player__inner">
         <div className="global-player__track">
+          {artwork("global-player__art global-player__art--bar")}
           <div className="global-player__meta">
             <div className="global-player__title-row">
               <span className="global-player__title">{currentTrack.title}</span>
@@ -453,6 +439,7 @@ function GlobalPlayerBar() {
         <div className="global-player__main">
           <div className="global-player__controls">
             <TooltipButton
+              tooltipPlacement="top"
               label={isShuffleEnabled ? "Disable shuffle" : "Enable shuffle"}
               onClick={toggleShuffle}
               className={`btn btn-secondary btn-sm btn-icon global-player__control global-player__shuffle${isShuffleEnabled ? " is-active" : ""}`}
@@ -460,28 +447,38 @@ function GlobalPlayerBar() {
               <Shuffle className="artist-icon-sm" />
             </TooltipButton>
             <TooltipButton
-              label="Previous track"
+              tooltipPlacement="top"
+              title={`Previous track (${PLAYER_SHORTCUTS.previous.label})`}
+              aria-label="Previous track"
+              aria-keyshortcuts={PLAYER_SHORTCUTS.previous.keys}
               onClick={playPrevious}
               className="btn btn-secondary btn-sm btn-icon global-player__control"
             >
               <SkipBack className="artist-icon-sm" />
             </TooltipButton>
             <TooltipButton
-              label={isPlaying ? "Pause" : "Play"}
+              tooltipPlacement="top"
+              title={`${playPauseLabel} (${PLAYER_SHORTCUTS.playPause.label})`}
+              aria-label={playPauseLabel}
+              aria-keyshortcuts={PLAYER_SHORTCUTS.playPause.keys}
               onClick={togglePlayPause}
               className="btn btn-accent btn-sm btn-icon global-player__control global-player__control--primary"
-              disabled={isLoading}
+              aria-busy={isLoading || undefined}
             >
               {isPlaying ? <Pause className="artist-icon-sm" /> : <Play className="artist-icon-sm" />}
             </TooltipButton>
             <TooltipButton
-              label="Next track"
+              tooltipPlacement="top"
+              title={`Next track (${PLAYER_SHORTCUTS.next.label})`}
+              aria-label="Next track"
+              aria-keyshortcuts={PLAYER_SHORTCUTS.next.keys}
               onClick={playNext}
               className="btn btn-secondary btn-sm btn-icon global-player__control"
             >
               <SkipForward className="artist-icon-sm" />
             </TooltipButton>
             <TooltipButton
+              tooltipPlacement="top"
               label={
                 repeatMode === "one"
                   ? "Repeat one track"
@@ -500,35 +497,38 @@ function GlobalPlayerBar() {
             </TooltipButton>
           </div>
 
-          <div className="global-player__progress-wrap">
-            <span className="global-player__progress-time global-player__progress-time--current">
-              {formatTime(position)}
-            </span>
-            <span className="global-player__progress-track" aria-hidden="true">
-              <span className="global-player__progress-fill" style={{ width: `${progress}%` }} />
-            </span>
-            <input
-              type="range"
-              className="global-player__progress"
-              min="0"
-              max={duration || 0}
-              step="0.1"
-              value={Math.min(position, duration || 0)}
-              onChange={handleSeek}
-              aria-label="Playback position"
-              aria-valuetext={`${formatTime(position)} of ${formatTime(duration)}`}
-              disabled={!duration}
-            />
-            <span className="global-player__progress-time global-player__progress-time--duration">
-              {formatTime(duration)}
-            </span>
-          </div>
+          <PlayerSeek variant="bar" />
         </div>
 
         <div className="global-player__side">
+          {canShareTrack ? (
+            <TooltipButton
+              tooltipPlacement="top"
+              label="Share track"
+              onClick={shareTrack}
+              className="btn btn-ghost btn-icon btn-xs"
+            >
+              <Share className="artist-icon-sm" />
+            </TooltipButton>
+          ) : null}
           <TooltipButton
-            label={volumePercent <= 0 ? "Unmute" : "Mute"}
-            onClick={handleToggleMute}
+            tooltipPlacement="top"
+            ref={queueTriggerRef}
+            title={queueOpen ? "Hide queue" : "Show queue"}
+            aria-label="Queue"
+            aria-expanded={queueOpen}
+            aria-controls={queueOpen ? queuePanelId : undefined}
+            onClick={() => (queueOpen ? closeQueue() : setQueueOpen(true))}
+            className={`btn btn-ghost btn-icon btn-xs global-player__queue-toggle${queueOpen ? " is-active" : ""}`}
+          >
+            <ListMusic className="artist-icon-sm" />
+          </TooltipButton>
+          <TooltipButton
+            tooltipPlacement="top"
+            title={`${volumePercent <= 0 ? "Unmute" : "Mute"} (${PLAYER_SHORTCUTS.mute.label})`}
+            aria-label={volumePercent <= 0 ? "Unmute" : "Mute"}
+            aria-keyshortcuts={PLAYER_SHORTCUTS.mute.keys}
+            onClick={toggleMute}
             className="btn btn-ghost btn-icon btn-xs global-player__volume-toggle"
           >
             {volumePercent <= 0 ? (
@@ -549,6 +549,7 @@ function GlobalPlayerBar() {
             aria-label="Volume"
           />
           <TooltipButton
+            tooltipPlacement="top"
             label="Close player"
             onClick={clearQueue}
             className="btn btn-ghost btn-icon btn-xs global-player__close"

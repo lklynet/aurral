@@ -1,3 +1,4 @@
+import { gunzipSync, gzipSync } from "node:zlib";
 import { db } from "../../config/db-sqlite.js";
 
 const getImageStmt = db.prepare("SELECT * FROM images_cache WHERE mbid = ?");
@@ -41,6 +42,25 @@ const setMusicbrainzArtistMbidCacheStmt = db.prepare(
 );
 const cleanOldMusicbrainzArtistMbidCacheStmt = db.prepare(
   "DELETE FROM musicbrainz_artist_mbid_cache WHERE updated_at < ?"
+);
+
+const getMetadataResponseStmt = db.prepare(
+  "SELECT response, fresh_until, stale_until FROM metadata_response_cache WHERE cache_key = ?"
+);
+const setMetadataResponseStmt = db.prepare(
+  "INSERT OR REPLACE INTO metadata_response_cache (cache_key, response, fresh_until, stale_until) VALUES (?, ?, ?, ?)"
+);
+const deleteMetadataResponseStmt = db.prepare(
+  "DELETE FROM metadata_response_cache WHERE cache_key = ?"
+);
+const clearMetadataResponsesStmt = db.prepare("DELETE FROM metadata_response_cache");
+const cleanExpiredMetadataResponsesStmt = db.prepare(
+  "DELETE FROM metadata_response_cache WHERE stale_until < ?"
+);
+const trimMetadataResponsesStmt = db.prepare(
+  `DELETE FROM metadata_response_cache WHERE cache_key IN (
+    SELECT cache_key FROM metadata_response_cache ORDER BY stale_until DESC LIMIT -1 OFFSET ?
+  )`
 );
 
 export default function register(dbOps) {
@@ -153,5 +173,47 @@ export default function register(dbOps) {
   dbOps.cleanOldMusicbrainzArtistMbidCache = function (maxAgeDays = 90) {
     const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
     return cleanOldMusicbrainzArtistMbidCacheStmt.run(cutoff);
+  };
+
+  dbOps.getMetadataResponse = function (cacheKey) {
+    const row = getMetadataResponseStmt.get(cacheKey);
+    if (!row) return null;
+    if (row.stale_until < Date.now()) {
+      deleteMetadataResponseStmt.run(cacheKey);
+      return null;
+    }
+    try {
+      return {
+        value: JSON.parse(gunzipSync(row.response).toString("utf8")),
+        freshUntil: row.fresh_until,
+        staleUntil: row.stale_until,
+      };
+    } catch {
+      deleteMetadataResponseStmt.run(cacheKey);
+      return null;
+    }
+  };
+
+  dbOps.setMetadataResponse = function (cacheKey, { value, freshUntil, staleUntil }) {
+    setMetadataResponseStmt.run(
+      cacheKey,
+      gzipSync(JSON.stringify(value)),
+      freshUntil,
+      staleUntil,
+    );
+  };
+
+  dbOps.deleteMetadataResponse = function (cacheKey) {
+    return deleteMetadataResponseStmt.run(cacheKey);
+  };
+
+  dbOps.clearMetadataResponses = function () {
+    return clearMetadataResponsesStmt.run();
+  };
+
+  dbOps.cleanMetadataResponses = function (maxEntries) {
+    const expired = cleanExpiredMetadataResponsesStmt.run(Date.now()).changes;
+    const trimmed = trimMetadataResponsesStmt.run(maxEntries).changes;
+    return expired + trimmed;
   };
 }

@@ -6,6 +6,7 @@ import { useArtistPreviewPlayback } from "../hooks/useArtistPreviewPlayback";
 import { Music, Play } from "lucide-react";
 import { DotLoader } from "./DotLoader";
 import Tooltip from "./Tooltip";
+import ArtworkImage from "./ArtworkImage";
 const queue = [];
 let active = 0;
 const MAX_CONCURRENT = 4;
@@ -57,6 +58,9 @@ const ArtistImage = ({
   enablePreviewPlayback = false,
   isInLibrary = false,
   loading = "lazy",
+  thumbnail = true,
+  sizes = "200px",
+  onImageLoad,
 }) => {
   const [currentSrc, setCurrentSrc] = useState(() => normalizeMediaUrl(src));
   const [isLoading, setIsLoading] = useState(true);
@@ -231,6 +235,7 @@ const ArtistImage = ({
 
   const handleLoad = () => {
     setIsLoading(false);
+    onImageLoad?.(currentSrc);
   };
 
   const handleError = () => {
@@ -259,12 +264,11 @@ const ArtistImage = ({
 
   const previewButton = canPlayArtistPreview ? (
     <Tooltip content={`Play ${artistName || "artist"} top tracks`}>
-      <span
-        role="button"
-        tabIndex={isLoadingPreview ? -1 : 0}
+      <button
+        type="button"
+        tabIndex={isLoadingPreview ? -1 : undefined}
         className={`artist-image-preview-button${isArtistPreviewActive ? " is-active" : ""}${isLoadingPreview ? " is-loading" : ""}`}
         onClick={handlePreviewClick}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); playArtistPreview(); } }}
         aria-disabled={isLoadingPreview}
         aria-label={`Play ${artistName || "artist"} top tracks`}
       >
@@ -273,7 +277,7 @@ const ArtistImage = ({
         ) : (
           <Play className="artist-image-preview-button__icon" fill="currentColor" />
         )}
-      </span>
+      </button>
     </Tooltip>
   ) : null;
 
@@ -327,9 +331,11 @@ const ArtistImage = ({
         </div>
       )}
       {currentSrc && (
-        <img
+        <ArtworkImage
           ref={imgRef}
           src={currentSrc}
+          thumbnail={thumbnail}
+          sizes={sizes}
           alt={alt || "Artist cover"}
           className={`artist-image-media ${showLoading && isLoading ? "is-loading" : "is-loaded"}`}
           onLoad={handleLoad}

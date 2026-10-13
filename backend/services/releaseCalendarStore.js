@@ -46,6 +46,30 @@ const markReleaseAbsent = db.prepare(`
   WHERE release_group_mbid = ? AND artist_id = ?
 `);
 
+const selectCalendarArtists = db.prepare(`
+  SELECT id, mbid
+  FROM library_artists
+  WHERE mbid IS NOT NULL AND TRIM(mbid) != ''
+  ORDER BY id
+`);
+
+const selectArtistRefreshes = db.prepare(`
+  SELECT artist_id, refreshed_at, failed_at
+  FROM library_release_calendar_artists
+`);
+
+const upsertArtistRefreshed = db.prepare(`
+  INSERT INTO library_release_calendar_artists (artist_id, refreshed_at, failed_at)
+  VALUES (?, ?, NULL)
+  ON CONFLICT(artist_id) DO UPDATE SET refreshed_at = excluded.refreshed_at, failed_at = NULL
+`);
+
+const upsertArtistFailed = db.prepare(`
+  INSERT INTO library_release_calendar_artists (artist_id, refreshed_at, failed_at)
+  VALUES (?, NULL, ?)
+  ON CONFLICT(artist_id) DO UPDATE SET failed_at = excluded.failed_at
+`);
+
 const ownedReleaseGroupCondition = (releaseGroupMbid) => `EXISTS (
   SELECT 1
   FROM library_albums AS owned_album
@@ -87,6 +111,27 @@ export function upsertReleaseCalendarEntry({
     timestamp,
     timestamp,
   );
+}
+
+export function listReleaseCalendarArtists() {
+  return selectCalendarArtists.all();
+}
+
+export function getReleaseCalendarArtistRefreshes() {
+  return new Map(
+    selectArtistRefreshes.all().map((row) => [
+      String(row.artist_id),
+      { refreshedAt: Number(row.refreshed_at) || 0, failedAt: Number(row.failed_at) || 0 },
+    ]),
+  );
+}
+
+export function markReleaseCalendarArtistRefreshed(artistId, refreshedAt) {
+  upsertArtistRefreshed.run(Number(artistId), Number(refreshedAt));
+}
+
+export function markReleaseCalendarArtistFailed(artistId, failedAt) {
+  upsertArtistFailed.run(Number(artistId), Number(failedAt));
 }
 
 export function getArtistReleaseCalendar(artistId) {

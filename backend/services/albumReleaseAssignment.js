@@ -1,7 +1,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import { parseFile } from "music-metadata";
-import { assignReleaseFiles, parseListingTitle } from "./trackMatching/nativeMatcher.js";
+import { assignReleaseFiles, parseListingTitle, readRecordingMbid } from "./trackMatching/nativeMatcher.js";
 import { validateDownloadedTrackFile } from "./trackMatching/postDownloadValidator.js";
 import { buildResolvedJobTrack } from "./downloadUtils.js";
 import { candidateReleasesForJobs } from "./albumReleases.js";
@@ -18,7 +18,7 @@ function fileEvidence(filePath, parsed) {
     artists: [parsed?.common?.artist].filter(Boolean),
     durationMs: positiveDurationMs(parsed),
     trackNumber: parsed?.common?.track?.no || listing.trackNumber || null,
-    recordingMbid: parsed?.common?.musicbrainz_recordingid || null,
+    recordingMbid: readRecordingMbid(parsed?.common?.musicbrainz_recordingid),
   };
 }
 
@@ -49,10 +49,11 @@ function assignBestRelease(jobs, files, releases) {
 }
 
 function requestForRelease(job, release, track) {
-  const request = buildResolvedJobTrack(job);
+  const request = { ...buildResolvedJobTrack(job), recordingMbidAliases: track.recordingMbidAliases };
   if (!release.titles) return request;
   return {
     ...request,
+    durationMs: track.durationMs || request.durationMs,
     trackNumber: track.trackNumber,
     albumTrackTitles: release.titles,
   };
@@ -98,8 +99,9 @@ export async function assignDownloadedAlbumFiles({
       options: { parseFile: parseAudio, strict: true },
     });
     if (validation.valid) {
-      const trackNumber = release.tracks[pair.trackIndex].trackNumber || null;
-      accepted.push({ jobId: job.id, filePath: entry.filePath, trackNumber, validation });
+      const { trackNumber = null, discNumber = null } = release.tracks[pair.trackIndex];
+      accepted.push({ jobId: job.id, filePath: entry.filePath, trackNumber: trackNumber || null,
+        discNumber: trackNumber ? discNumber || null : null, validation });
       unassignedJobIds.delete(job.id);
     } else {
       rejected.push({ jobId: job.id, reason: validation.reason || "no match" });

@@ -6,7 +6,6 @@ import path from "node:path";
 
 import { db } from "../../backend/config/db-sqlite.js";
 import { scanMusicRoot } from "../../backend/services/libraryFileScanner.js";
-import { indexLidarrLibrary } from "../../backend/services/libraryLidarrIndexer.js";
 import {
   getLibraryArtistMbids,
   getLibrary,
@@ -284,29 +283,7 @@ test("getLibrary merges sources and preserves normalized hierarchy", async () =>
     filePath = await createAudioFile(root, "Query Fixture/Canonical Reads/01 One Source, Two Files.flac");
     await scanMusicRoot({ rootPath: root, source, metadataReader: async () => metadata });
 
-    await indexLidarrLibrary({
-      client: {
-        isConfigured: () => true,
-        request: async () => [{ id: 7, artistName: "Query Fixture", foreignArtistId: metadata.common.musicbrainz_albumartistid }],
-        getAllAlbums: async () => [{
-          id: 8,
-          artistId: 7,
-          title: "Canonical Reads",
-          foreignAlbumId: metadata.common.musicbrainz_releasegroupid,
-          path: path.join(root, "Query Fixture", "Canonical Reads"),
-        }],
-        getTracksByAlbumId: async () => [{
-          id: 9,
-          albumId: 8,
-          title: "One Source, Two Files",
-          trackNumber: 1,
-          foreignRecordingId: metadata.common.musicbrainz_recordingid,
-          trackFileId: 10,
-        }],
-        getTrackFilesByAlbumId: async () => [{ id: 10, path: filePath, trackIds: [9] }],
-        getRootFolders: async () => [{ path: root }],
-      },
-    });
+    await scanMusicRoot({ rootPath: root, source: "lidarr", metadataReader: async () => metadata });
 
     const all = getLibrary();
     assert.strictEqual(getLibrary(), all);

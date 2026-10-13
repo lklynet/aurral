@@ -13,6 +13,7 @@ export const ISOLATED_QUEUE_GROUPS = Object.freeze({
   "weekly-flow-operation": "downloads",
   "slskd-pipeline": "downloads",
   "playlist-mbid-enrichment": "downloads",
+  "library-files": "downloads",
 });
 
 export const ISOLATED_WORKER_GROUPS = Object.freeze(

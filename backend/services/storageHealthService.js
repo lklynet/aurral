@@ -17,6 +17,7 @@ import {
   getPathMappings,
   looksLikeExternalOnlyPath,
   resolveLocalPath,
+  resolveRemotePath,
 } from "./pathMappings.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { commitDownloadedFile } from "./downloadUtils.js";
@@ -444,7 +445,7 @@ async function checkDownloadsSection() {
         detail: rootOverlaps
           .map((warning) => `${warning.lidarrRoot}: ${warning.message}`)
           .join(" "),
-        fix: "Overlapping roots are allowed, but Lidarr can rename, import, or delete files under an overlapping root.",
+        fix: "Use separate folders. While they overlap, Lidarr can rename, import, or delete files in the shared folder, and Aurral leaves files in a Lidarr root folder to Lidarr.",
       }),
     );
   }
@@ -678,14 +679,14 @@ async function checkSlskdSection() {
     extraSteps: (connection) => {
       if (connection.soulseekConnected === false) {
         return [
-          healthStep("soulseek", "warn", "Soulseek network is not connected", {
-            detail: "slskd is started but the network is not connected",
-            fix: "Open slskd, log in, and connect to the Soulseek server before starting downloads.",
+          healthStep("soulseek", "warn", "Soulseek is not logged in", {
+            detail: connection.message,
+            fix: "Open slskd and check that it connects and logs in to the Soulseek server. Soulseek downloads wait until it does.",
           }),
         ];
       }
       return [
-        healthStep("soulseek", "pass", "Soulseek network is connected", {
+        healthStep("soulseek", "pass", "Soulseek is logged in", {
           detail: connection.serverState || "Connected",
         }),
       ];
@@ -766,7 +767,9 @@ async function checkNavidromeSection() {
     return buildSection("navidrome", "Navidrome playback", steps);
   }
 
-  const expectedLibraryPath = normalizeSeparators(resolveDownloadRoot());
+  const expectedLibraryPath = normalizeSeparators(
+    resolveRemotePath(resolveDownloadRoot(), getPathMappings("navidrome")),
+  );
   const expectedLibraryCandidates = [expectedLibraryPath];
 
   let libraries = [];
@@ -807,7 +810,7 @@ async function checkNavidromeSection() {
   for (const library of relevantLibraries) {
     const libraryPath = String(library?.path || "").trim();
     if (!libraryPath) continue;
-    const readablePath = await checkPathReadable(libraryPath);
+    const readablePath = await checkPathReadable(libraryPath, "navidrome");
     if (!readablePath) {
       unreadableLibraries.push(libraryPath);
     }
@@ -855,7 +858,7 @@ async function checkNativePlaybackSection() {
   if (trackCount === 0) {
     return buildSection("native-playback", "Aurral-native playback", [
       healthStep("indexed", "warn", "Library media is ready for native playback", {
-        fix: "Connect Lidarr, let the library index refresh, then run Storage Health again.",
+        fix: "Add music to the Downloads Folder or connect Lidarr, then scan the Library and run Storage Health again.",
       }),
     ]);
   }

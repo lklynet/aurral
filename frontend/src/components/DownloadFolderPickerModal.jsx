@@ -148,7 +148,7 @@ export default function DownloadFolderPickerModal({
       >
         <div className="file-browser-modal__header">
           <h3 id="file-browser-title" className="file-browser-modal__title">
-            File Browser
+            File browser
           </h3>
           <button
             type="button"

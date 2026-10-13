@@ -1,19 +1,22 @@
 import {
   enqueueHonkerStartupTasks,
   configureHonkerQueueWake,
-  getHonkerDb,
   getHonkerQueueByName,
   hasClaimableHonkerJobs,
   hasExpiredHonkerClaims,
   getHonkerQueueNextClaimAt,
   listBackgroundGroupsWithWork,
+  getNextBackgroundWorkAt,
   startHonkerScheduler,
 } from "./honkerDb.js";
+import { recoverExitedWorkerJobs, recoverJobsClaimedBeforeStart } from "./backgroundJobRecovery.js";
 import { createBackgroundProcessSupervisor } from "./backgroundProcessSupervisor.js";
 import { ISOLATED_QUEUE_GROUPS, isQueueOwnedByGroup } from "./backgroundWorkerQueues.js";
 import { getHonkerWorkerStatuses, isHonkerShuttingDown, registerHonkerShutdownHandler } from "./honkerWorkerRuntime.js";
 import { HONKER_QUEUE_NAMES } from "./honkerDb.js";
 import { configureDownloadOwnerClient } from "./downloadJobs/downloadOwnerClient.js";
+import { getDatabaseRevision } from "../config/db-sqlite.js";
+import { dbOps } from "../db/helpers/index.js";
 
 let backgroundWorkersStarted = false;
 let workerSupervisorStarted = false;
@@ -26,6 +29,7 @@ let supervisedGroup = null;
 let backgroundProcessSupervisor = null;
 let lastExpiredSweepAt = 0;
 let stopLibraryFileWatcher = null;
+let lastWorkerDatabaseRevision = null;
 
 export function getIsolatedWorkerStatuses() {
   return backgroundProcessSupervisor?.getWorkerStatuses() || [];
@@ -43,6 +47,7 @@ const WORKER_STARTS = {
   "system-task-maintenance": ["./systemTaskWorker.js", "startMaintenanceTaskWorker"],
   "system-task-inbox": ["./systemTaskWorker.js", "startInboxTaskWorker"],
   "library-scan": ["./libraryScanWorker.js", "startLibraryScanWorker"],
+  "library-files": ["./libraryFiles/libraryFileWorker.js", "startLibraryFileWorker"],
   "_outbox:notifications": ["./notificationOutboxWorker.js", "startNotificationOutboxWorker"],
   "_outbox:play-events": ["./playEventOutboxWorker.js", "startPlayEventOutboxWorker"],
   "slskd-pipeline": ["./downloadPipelineWorker.js", "startDownloadPipelineWorker"],
@@ -65,6 +70,7 @@ function startQueueWorker([modulePath, startName], queueName) {
       if (!isHonkerShuttingDown() && workerSupervisorStarted) module[startName]();
     })
     .catch((error) => {
+      lastWorkerDatabaseRevision = null;
       console.warn(`[AppRuntime] Failed to start ${queueName}:`, error?.message || error);
     })
     .finally(() => startingQueues.delete(queueName));
@@ -121,6 +127,11 @@ function sweepExpiredWorkerQueues(group) {
 function checkQueuedBackgroundWork(group = null) {
   if (process.env.AURRAL_TEST_SERVER === "1" || isHonkerShuttingDown()) return;
   let nextClaimAt = null;
+  const previousRevision = lastWorkerDatabaseRevision;
+  lastWorkerDatabaseRevision = null;
+  const revision = getDatabaseRevision();
+  if (revision !== previousRevision) dbOps.invalidateSettingsCache();
+  let inspected = true;
   sweepExpiredWorkerQueues(group);
   const running = new Set(getHonkerWorkerStatuses().filter((worker) => worker.running).map((worker) => worker.name));
   for (const worker of QUEUE_WORKERS) {
@@ -136,6 +147,7 @@ function checkQueuedBackgroundWork(group = null) {
         nextClaimAt = queueNextClaimAt;
       }
     } catch (error) {
+      inspected = false;
       console.warn(
         `[AppRuntime] Failed to inspect ${worker.queue} queue:`,
         error?.message || error,
@@ -143,6 +155,15 @@ function checkQueuedBackgroundWork(group = null) {
     }
   }
   scheduleSupervisorWake(nextClaimAt);
+  lastWorkerDatabaseRevision = inspected ? revision : null;
+}
+
+function checkWorkerDatabaseChanges(group) {
+  try {
+    if (getDatabaseRevision() !== lastWorkerDatabaseRevision) checkQueuedBackgroundWork(group);
+  } catch (error) {
+    console.warn("[AppRuntime] Failed to check database changes:", error?.message || error);
+  }
 }
 
 export function startWorkerSupervisor({ group = null } = {}) {
@@ -152,7 +173,7 @@ export function startWorkerSupervisor({ group = null } = {}) {
   workerSupervisorStarted = true;
   supervisedGroup = group;
   checkQueuedBackgroundWork(group);
-  workerSupervisorInterval = setInterval(() => checkQueuedBackgroundWork(group), WORKER_SUPERVISOR_POLL_MS);
+  workerSupervisorInterval = setInterval(() => checkWorkerDatabaseChanges(group), WORKER_SUPERVISOR_POLL_MS);
   workerSweepInterval = setInterval(() => {
     if (sweepExpiredWorkerQueues(group) > 0) checkQueuedBackgroundWork(group);
   }, 30000);
@@ -165,6 +186,7 @@ export function startWorkerSupervisor({ group = null } = {}) {
 function stopWorkerSupervisor() {
   workerSupervisorStarted = false;
   supervisedGroup = null;
+  lastWorkerDatabaseRevision = null;
   clearSupervisorWakeTimer();
   clearInterval(workerSweepInterval);
   workerSweepInterval = null;
@@ -218,63 +240,14 @@ export function hasQueuedBackgroundWork(group = supervisedGroup) {
     isQueueOwnedByGroup(worker.queue, group) && hasClaimableHonkerJobs(worker.queue));
 }
 
-export async function recoverExitedWorkerJobs(group, pid, logger = console, reason = null) {
-  if (!Number.isInteger(pid) || pid <= 0) return;
-  const workerId = `aurral-${pid}`;
-  const database = getHonkerDb();
-  const rows = database.query(
-    "SELECT id, queue, payload FROM _honker_live WHERE worker_id = ? AND state = 'processing'",
-    [workerId],
-  );
-  for (const row of rows) {
-    if (ISOLATED_QUEUE_GROUPS[row.queue] !== group) continue;
-    try {
-      if (row.queue === "library-scan") {
-        const { restoreLibraryScanAfterWorkerExit } = await import("./libraryScanWorker.js");
-        restoreLibraryScanAfterWorkerExit(row.id);
-      }
-      if (row.queue === "discovery-user-refresh") {
-        try {
-          const { markInterruptedUserDiscoveryRefresh } = await import("./discovery/provider.js");
-          const userId = Number(JSON.parse(row.payload || "{}").userId);
-          if (Number.isInteger(userId) && userId > 0) {
-            markInterruptedUserDiscoveryRefresh(userId, reason || "Background worker process exited");
-          }
-        } catch (error) {
-          logger.warn?.("[AppRuntime] Could not update discovery status:", error?.message || error);
-        }
-      }
-      try {
-        const { recordHonkerTaskRunFinished } = await import("./honkerTaskStatus.js");
-        const runs = database.query(
-          "SELECT id FROM honker_task_runs WHERE job_id = ? AND worker_id = ? AND status = 'running'",
-          [row.id, workerId],
-        );
-        for (const run of runs) {
-          recordHonkerTaskRunFinished(run.id, "failed", reason || "Background worker process exited");
-        }
-      } catch (error) {
-        logger.warn?.(`[AppRuntime] Could not update ${row.queue} task history:`, error?.message || error);
-      }
-      // Honker registers retry on its queue connection, not on the raw query connection.
-      getHonkerQueueByName(row.queue)._retry(
-        row.id, workerId, 1, reason || "Background worker process exited",
-      );
-    } catch (error) {
-      logger.warn?.(`[AppRuntime] Could not requeue ${row.queue} job ${row.id}:`, error?.message || error);
-    }
-  }
-  if (group === "downloads") {
-    const { downloadTracker } = await import("./downloadJobs/downloadTracker.js");
-    downloadTracker.resetDownloadingToPending();
-  }
-}
-
 export function startBackgroundWorkers({ logger = console } = {}) {
   if (backgroundWorkersStarted || process.env.AURRAL_TEST_SERVER === "1") {
     return false;
   }
   backgroundWorkersStarted = true;
+  recoverJobsClaimedBeforeStart(logger).catch((error) => {
+    logger.warn?.("[AppRuntime] Could not recover jobs from before the restart:", error?.message || error);
+  });
   import("./honkerTaskStatus.js")
     .then(({ clearStaleHonkerJobs }) => clearStaleHonkerJobs())
     .then((result) => {
@@ -302,7 +275,9 @@ export function startBackgroundWorkers({ logger = console } = {}) {
   }
   backgroundProcessSupervisor = createBackgroundProcessSupervisor({
     logger,
-    findGroupsWithWork: () => (isHonkerShuttingDown() ? [] : listBackgroundGroupsWithWork()),
+    getWorkRevision: getDatabaseRevision,
+    getNextWorkAt: getNextBackgroundWorkAt,
+    findGroupsWithWork: (now) => (isHonkerShuttingDown() ? [] : listBackgroundGroupsWithWork(now)),
     onMessage(message, _group, child) {
       if (message?.type === "queue-wake") {
         const owner = ISOLATED_QUEUE_GROUPS[message.queue];

@@ -3,6 +3,11 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffec
 import { Check, ChevronRight, MoreVertical } from "lucide-react";
 import TooltipButton from "./TooltipButton";
 import { DotLoader } from "./DotLoader";
+import RouteLink from "./RouteLink";
+
+const MENU_ITEM_SELECTOR = "button:not(:disabled), a[role=menuitem]";
+const LONG_PRESS_MS = 500;
+const LONG_PRESS_SLOP_PX = 10;
 
 let activeMenuCloser = null;
 
@@ -210,13 +215,64 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     if (!contextMenu) return undefined;
     const target = menuRootRef.current?.closest("[data-library-menu-target]");
     if (!target) return undefined;
+    let pressTimer = null;
+    let press = null;
+    let pressOpened = false;
+    const cancelPress = () => {
+      window.clearTimeout(pressTimer);
+      pressTimer = null;
+      press = null;
+    };
     const handleContextMenu = (event) => {
       if (event.defaultPrevented) return;
       event.preventDefault();
+      if (pressOpened) return;
+      if (press) pressOpened = true;
+      cancelPress();
       openAt(event.clientX, event.clientY);
     };
+    const handlePointerDown = (event) => {
+      pressOpened = false;
+      cancelPress();
+      if (event.pointerType === "mouse" || !event.isPrimary) return;
+      press = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      pressTimer = window.setTimeout(() => {
+        const { x, y } = press;
+        cancelPress();
+        pressOpened = true;
+        navigator.vibrate?.(10);
+        openAt(x, y);
+      }, LONG_PRESS_MS);
+    };
+    const handlePointerMove = (event) => {
+      if (!press || event.pointerId !== press.id) return;
+      if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > LONG_PRESS_SLOP_PX) {
+        cancelPress();
+      }
+    };
+    const handleClick = (event) => {
+      if (!pressOpened) return;
+      pressOpened = false;
+      event.preventDefault();
+      event.stopPropagation();
+    };
     target.addEventListener("contextmenu", handleContextMenu);
-    return () => target.removeEventListener("contextmenu", handleContextMenu);
+    target.addEventListener("pointerdown", handlePointerDown);
+    target.addEventListener("pointermove", handlePointerMove);
+    target.addEventListener("pointerup", cancelPress);
+    target.addEventListener("pointercancel", cancelPress);
+    target.addEventListener("click", handleClick, true);
+    window.addEventListener("scroll", cancelPress, true);
+    return () => {
+      cancelPress();
+      target.removeEventListener("contextmenu", handleContextMenu);
+      target.removeEventListener("pointerdown", handlePointerDown);
+      target.removeEventListener("pointermove", handlePointerMove);
+      target.removeEventListener("pointerup", cancelPress);
+      target.removeEventListener("pointercancel", cancelPress);
+      target.removeEventListener("click", handleClick, true);
+      window.removeEventListener("scroll", cancelPress, true);
+    };
   }, [contextMenu, openAt]);
 
   useEffect(() => {
@@ -268,7 +324,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     if (!open) return;
     const panel = menuRef.current;
     if (!panel) return;
-    const firstItem = [...panel.querySelectorAll("button:not(:disabled)")].find(
+    const firstItem = [...panel.querySelectorAll(MENU_ITEM_SELECTOR)].find(
       (button) => !button.closest(".artist-menu-submenu"),
     );
     (firstItem || panel).focus({ preventScroll: true });
@@ -327,7 +383,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
   const handleMenuKeyDown = (event) => {
     const keys = ["ArrowDown", "ArrowUp", "Home", "End"];
     if (!keys.includes(event.key)) return;
-    const buttons = [...(menuRef.current?.querySelectorAll("button:not(:disabled)") || [])]
+    const buttons = [...(menuRef.current?.querySelectorAll(MENU_ITEM_SELECTOR) || [])]
       .filter((button) => button.checkVisibility());
     if (!buttons.length) return;
     event.preventDefault();
@@ -358,6 +414,29 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
                 items={item.submenuItems}
                 onClose={closeMenu}
               />
+              {item.id === additionalItemsAfter && renderAdditionalItems?.({ closeMenu })}
+            </div>
+          );
+        }
+        if (item.to && !item.disabled) {
+          return (
+            <div key={item.id}>
+              {item.separatorBefore ? <div className="native-library-item-menu__separator" /> : null}
+              <RouteLink
+                to={item.to}
+                state={item.state}
+                role="menuitem"
+                className="artist-menu-item"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  closeMenu();
+                }}
+              >
+                <span className="artist-menu-item__main">
+                  {Icon ? <Icon className="artist-icon-sm" /> : null}
+                  {item.label}
+                </span>
+              </RouteLink>
               {item.id === additionalItemsAfter && renderAdditionalItems?.({ closeMenu })}
             </div>
           );

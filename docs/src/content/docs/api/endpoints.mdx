@@ -6,12 +6,11 @@ description: This page lists all HTTP routes for the current Aurral API.
 This page lists the routes for the current Aurral release. All paths start at
 the Aurral origin.
 
-:::caution
-The Aurral web interface uses these routes. The routes are not a public contract
-with version numbers. Read the [API overview](/api/overview/) for authentication
-and compatibility information. An API key gives administrator access. Routes
-that change data are not read-only.
-:::
+The [app API contract](/api/app-contract/) defines stable request and response
+fields for official apps. Public `GET /api/health/bootstrap` reports the API
+version and implemented features. Read the [API overview](/api/overview/) for
+authentication. An API key gives administrator access. Routes that change data
+are not read-only.
 
 `GET` and media routes read data. `POST`, `PUT`, `PATCH`, and `DELETE` routes
 can change Aurral, Lidarr, files, users, or external services.
@@ -28,8 +27,8 @@ can change Aurral, Lidarr, files, users, or external services.
 | `POST` | `/api/auth/login` | Create a password-login session |
 | `POST` | `/api/auth/logout` | End a login session |
 | `GET` | `/api/auth/me` | Current authenticated identity |
-| `GET` | `/api/auth/api-key` | Read or create the instance API key |
-| `POST` | `/api/auth/api-key/rotate` | Replace the instance API key |
+| `GET` | `/api/auth/api-key` | Read or create the instance API key. Administrators only |
+| `POST` | `/api/auth/api-key/rotate` | Replace the instance API key. Administrators only |
 | `POST` | `/api/auth/reauth` | Confirm the current password with `{ "currentPassword": "…" }` before a sensitive account change |
 | `GET` | `/api/auth/oidc/login` | Start an OpenID Connect login |
 | `POST` | `/api/auth/oidc/exchange` | Exchange an OpenID Connect code for a session |
@@ -84,7 +83,13 @@ WebSocket connections.
 | `POST` | `/api/library/artists` | Add an artist |
 | `GET` | `/api/library/artists/:mbid/monitoring` | Get the active manager's monitoring for an artist |
 | `PUT` | `/api/library/artists/:mbid` | Update artist monitoring |
-| `DELETE` | `/api/library/artists/:mbid?manager=aurral\|lidarr` | Delete an artist from Lidarr and Aurral, or from one manager with `manager`. Returns `503` and deletes nothing when Lidarr cannot be reached |
+| `POST` | `/api/library/artists/:mbid/monitoring/preview` | Plan an Aurral artist's monitoring with `{ "monitoring": … }` without saving it |
+| `GET` | `/api/library/monitoring/defaults` | Read the default monitoring rules and how many artists use them |
+| `POST` | `/api/library/monitoring/defaults/preview` | Count what new default rules would download with `{ "rules": … }`. Admin only |
+| `PUT` | `/api/library/monitoring/defaults` | Save the default monitoring rules with `{ "rules": … }`. Admin only |
+| `GET` | `/api/library/monitoring/exclusions?artistMbid=` | List the albums and tracks deleted from monitoring, for one artist or all |
+| `DELETE` | `/api/library/monitoring/exclusions/:id` | Let monitoring download an excluded album or track again |
+| `DELETE` | `/api/library/artists/:mbid?manager=aurral\|lidarr` | Delete an artist from Lidarr and Aurral, or from one manager with `manager`. An artist without a MusicBrainz ID takes its Library `id` instead and is deleted from Aurral. Returns `503` and deletes nothing when Lidarr cannot be reached |
 | `POST` | `/api/library/artists/:mbid/refresh` | Refresh an artist in Lidarr |
 | `PUT` | `/api/library/canonical/artists/:id/mbid` | Set a library artist's MusicBrainz ID with `{ "mbid": "…" }`, or clear it with `{ "mbid": null }` |
 | `GET` | `/api/library/albums?artistId=:id&managedBy=aurral\|lidarr` | List an artist's albums. Send the artist's `managedBy` so a Lidarr ID is never read as an Aurral ID |
@@ -93,16 +98,24 @@ WebSocket connections.
 | `POST` | `/api/library/albums/request` | Request an album from search data |
 | `PUT` | `/api/library/albums/:id` | Update an album |
 | `DELETE` | `/api/library/albums/:id` | Delete an album |
-| `PUT` | `/api/library/albums/aurral/:canonicalId` | Monitor or stop monitoring an Aurral-managed album and all of its tracks with `{ "monitored": true \| false }`. Monitoring returns `409` while Lidarr is connected |
+| `PUT` | `/api/library/albums/aurral/:canonicalId` | Monitor or stop monitoring an Aurral-managed album and all of its tracks with `{ "monitored": true \| false }` |
 | `GET` | `/api/library/albums/aurral/:canonicalId/status` | Get the download status of an Aurral-managed album |
 | `POST` | `/api/library/albums/aurral/:canonicalId/cancel` | Cancel queued and active downloads for an Aurral-managed album |
 | `DELETE` | `/api/library/albums/aurral/:canonicalId?deleteFiles=true\|false` | Remove an Aurral-managed album |
 | `GET` | `/api/library/tracks` | List album tracks |
 | `DELETE` | `/api/library/tracks/:id` | Delete a library track file and prune Library records when no media remains |
-| `PUT` | `/api/library/tracks/aurral/:canonicalId` | Monitor or stop monitoring a track with `{ "monitored": true \| false }`. In a Lidarr album, this controls only Aurral's own download and upgrades of the track |
+| `PUT` | `/api/library/tracks/aurral/:canonicalId` | Monitor or stop monitoring a track with `{ "monitored": true \| false }`. In a Lidarr album, this controls only Aurral's own download and upgrades of the track. `{ "keepFile": true \| false }` instead stops or allows upgrades of the track's file, and keeping it cancels an upgrade in progress |
 | `POST` | `/api/library/refresh` | Queue a library scan. `mode` is `quick`, the default, or `full` to read every file again |
 | `GET` | `/api/library/refresh` | Read the ID and status of the scheduled library scan |
 | `GET` | `/api/library/refresh/:jobId` | Read the status of a library scan |
+| `GET` | `/api/library/files` | Read the latest ingest or clean up operation. Admin only |
+| `POST` | `/api/library/files/ingest/check` | Check an ingest folder with `{ "sourcePath": "…" }`: music file count, whether Hardlink works, and any Lidarr root folder it is in |
+| `POST` | `/api/library/files/ingest` | Start an ingest with `{ "sourcePath": "…", "mode": "move" \| "copy" \| "hardlink", "monitor": "none" \| "tracks" \| "albums", "fillTags": true }`. `monitor` defaults to `none`, and `fillTags` to `false`. Returns `409` while another operation runs |
+| `POST` | `/api/library/files/cleanup` | Start renaming Library files in the Downloads Folder to Aurral's names and filling in their missing tags. Returns `409` while another operation runs |
+| `GET` | `/api/library/files/operations/:id` | Read an operation's status, progress, and counts |
+| `GET` | `/api/library/files/operations/:id/items` | Read an operation's files. Optional `status`, `offset`, and `limit` up to 200 |
+| `POST` | `/api/library/files/operations/:id/cancel` | Stop an ingest or clean up after the current file. Files already done stay done |
+| `POST` | `/api/library/files/operations/:id/remove-sources` | Remove the files a Move ingest kept because the Library has their track, or the duplicate copies a clean up found. Each is checked again first. Returns `400` for a Copy or Hardlink ingest and `409` while another operation runs |
 | `GET` | `/api/library/canonical` | Read one page of Library items. Requires a supported `kind`, and `pageSize` from 1 to 100 |
 | `GET` | `/api/library/favorites` | Read the current user's library favorites |
 | `POST` | `/api/library/favorites` | Add or remove a library favorite. Requires a user session |
@@ -114,7 +127,7 @@ WebSocket connections.
 | `GET` | `/api/library/lookup/:mbid` | Check whether an artist is in the library |
 | `POST` | `/api/library/lookup/batch` | Check multiple artists |
 | `POST` | `/api/library/albums/lookup/batch` | Check multiple albums |
-| `GET` | `/api/library/recent` | List 20 recently added artists |
+| `GET` | `/api/library/recent` | List the 20 artists with the newest library files |
 | `GET` | `/api/library/recent-releases` | List recent missing releases |
 | `GET` | `/api/library/downloads` | List download jobs |
 | `GET` | `/api/library/downloads/status` | Get the statuses for the required `albumIds` query. Use `aurral:<canonicalId>` for Aurral albums |
@@ -124,10 +137,12 @@ WebSocket connections.
 | `POST` | `/api/library/downloads/album/search` | Trigger a Lidarr album search |
 | `POST` | `/api/library/downloads/tracks/:trackId/research` | Search for a replacement of an Aurral library track. Send the `albumId`. Returns `409` when a search for the track is already running |
 
-Lidarr manages artists and albums when it is connected, and Aurral manages
-them otherwise. The artist and album add routes accept an optional `managedBy`
-value. A value other than the active manager returns `409` with
-`library_manager_unavailable`.
+New artists and albums go to Lidarr when it is connected, and to Aurral
+otherwise. Artists and albums that Aurral already has stay Aurral's. The artist
+and album add routes accept an optional `managedBy` value. A value other than
+the active manager returns `409` with `library_manager_unavailable`, except
+`aurral` for an album that Aurral already manages. A `GET /api/library/albums`
+list for a Lidarr artist also includes that artist's Aurral albums.
 
 Aurral album routes take the Library album ID, `canonicalId`, not a Lidarr album ID. They
 return `409` with the current manager when Lidarr manages the album. An album
@@ -138,28 +153,58 @@ status is one of `complete`, `downloading`, `queued`, `blocked`, `cancelled`,
 a `message`. Album add and request responses include the same status as
 `albumStatus`.
 
-`PUT /api/library/artists/:mbid` sets the active manager's monitoring. Send
-`{ "monitorOption": "…", "artistName": "…" }`. With Lidarr, the route adds the
+`PUT /api/library/artists/:mbid` sets the active manager's monitoring. With
+Lidarr, send `{ "monitorOption": "…", "artistName": "…" }` with `none`,
+`existing`, `all`, `future`, `missing`, `latest`, or `first`. The route adds the
 artist to Lidarr when needed, which requires the `addArtist` permission, and
-hands Lidarr any album it starts monitoring that Aurral has tracks from.
-Aurral accepts `none`, `all`, `latest`, `first`, and `future`.
-Lidarr also accepts `existing` and `missing`. The monitoring read returns
-`{ manager, added, monitorOption, inAurral, error }`, where `inAurral` says
-whether Aurral holds part of the artist, and `monitorOption` is `null`
-when the artist's Lidarr monitoring was changed in Lidarr itself.
+hands Lidarr any album it starts monitoring that Aurral has tracks from. The
+monitoring read returns `{ manager, added, monitorOption, inAurral, error }`,
+where `inAurral` says whether Aurral holds part of the artist, and
+`monitorOption` is `null` when the artist's Lidarr monitoring was changed in
+Lidarr itself. Lidarr rejects `monitoring` with `lidarr_monitoring`.
 
-For Aurral, the response includes `monitoring.releaseGroupIds` for the albums
-being queued and `monitoring.skipped` with a reason for each skipped album. If
-artist metadata is unavailable, the route returns `503` with
-`metadata_unavailable` and keeps the previous mode. `POST /api/library/artists`
-accepts the same `monitorOption`. For Lidarr, `none` adds the artist without
+For Aurral, send `{ "monitoring": { "monitored": true, "useDefault": true } }`,
+`{ "monitoring": { "monitored": true, "useDefault": false, "rules": … } }`, or
+`{ "monitoring": { "monitored": false } }`. Rules have these fields, and a
+missing field takes the factory default:
+
+| Field | Values | Default |
+| --- | --- | --- |
+| `catalog` | `none`, `all`, `since`, or `latest` | `all` |
+| `sinceYear` | The first year for `since` | `null` |
+| `latestCount` | 1 to 10 releases for `latest` | `1` |
+| `newReleases` | `true` or `false` | `true` |
+| `types` | One or more of `album`, `ep`, and `single` | `["album", "ep"]` |
+| `extraTypes` | `live`, `compilation`, `soundtrack`, `remix`, `demo`, `dj-mix`, and `mixtape/street` | `[]` |
+| `edition` | `standard` or `expanded` | `standard` |
+| `topTracks` | 0 to 50 | `0` |
+
+Rules that take nothing, with `catalog` `none`, `newReleases` off, and no top
+tracks, return `400` with `invalid_monitor_rules`. Older clients can send
+`monitorOption` instead: `all` uses the default rules, `future` and `latest`
+become the matching rules, and `none` stops monitoring. Other options return
+`400` with `unsupported_monitor_mode`.
+
+The Aurral monitoring read and update return `monitored`, `useDefault`,
+`rules`, and `defaultRules`. The update and the preview also return
+`monitoring` with `releaseGroupIds` and `releases` for the releases being
+queued, `topTracks`, `skipped` with a `reason` for each skipped release
+(`complete`, `covered`, `excluded`, `unmonitored`, `managed_by_lidarr`, or
+`metadata_unavailable`), and `skippedTracks` with a `reason` for each skipped
+top track (`excluded`, `in_library`, `on_release`, or `queued`). If artist
+metadata is unavailable, the route returns `503` with `metadata_unavailable`
+and keeps the previous monitoring. `POST /api/library/artists` accepts the same
+`monitoring` and `monitorOption`. For Lidarr, `none` adds the artist without
 monitoring, and leaving it out uses the Lidarr default.
 
 `DELETE /api/library/albums/aurral/:canonicalId` and
 `DELETE /api/library/artists/:mbid` for an Aurral-managed artist cancel
 unfinished downloads first. They return `409` with `download_cancellation_failed`
-when a download client does not confirm the cancellation, and album removal
-returns `409` with `artist_monitored` while Aurral monitors the album's artist.
+when a download client does not confirm the cancellation. Removing an album
+records an exclusion, so the artist's monitoring leaves it out, and the
+response has `excluded: true`. Requesting the album, or deleting its exclusion,
+lets monitoring download it again. Deleting a track file records a track
+exclusion that keeps it out of the artist's top tracks.
 
 Cancelling an album stops pending and active downloads and keeps tracks that
 already finished. Requesting the album again retries cancelled and failed
@@ -203,15 +248,40 @@ detail route instead.
 | --- | --- | --- |
 | `GET` | `/api/search` | Search artists, albums, or tags |
 | `GET` | `/api/search/unified` | Unified search suggestions or results |
+| `GET` | `/api/search/link` | Find the MusicBrainz artist, album, and track for a streaming-service link |
 | `GET` | `/api/requests` | List current artist and album requests |
 | `DELETE` | `/api/requests/:mbid` | Remove an artist request |
 | `DELETE` | `/api/requests/album/:albumId` | Remove an album request |
 
 `GET /api/search` requires `q`. Its optional `scope` is `artist` (default),
 `album`, or `tag`. The route also accepts `limit` and `offset`. Album searches
-accept `releaseTypes` and `sort`. `GET /api/requests` accepts `refresh=true` to
+accept `releaseTypes` and `sort`. `GET /api/search/link` requires an encoded `url`. It accepts album, track, and
+artist links from `open.spotify.com`, `music.apple.com`, `music.youtube.com`,
+`tidal.com`, `deezer.com`, `song.link`, and `album.link`. It returns:
+
+```json
+{
+  "kind": "track",
+  "artist": { "name": "Daft Punk", "mbid": "056e4f3e-d505-4dad-8ec1-d04f521cbb56" },
+  "album": { "title": "Discovery", "mbid": "48117b90-a16e-34ca-a514-19c702df1158" },
+  "track": { "title": "One More Time", "mbid": null },
+  "source": "appleMusic"
+}
+```
+
+`source` is `spotify`, `appleMusic`, `youtubeMusic`, `tidal`, `deezer`, or
+`songlink`. A `null` ID means no MusicBrainz match. YouTube Music track links do
+not report an album, so their `album` is `null`. Aurral reads names from each
+service's public pages or lookup API. Spotify album and track links go through
+song.link. Other links return `400`. A link the service cannot find returns
+`404`, and an unreachable service returns `502`. Aurral caches each link's names
+for a day.
+
+`GET /api/requests` accepts `refresh=true` to
 rebuild the list. A refreshed list reuses Lidarr's queue and history when
-Aurral read them in the last 10 seconds.
+Aurral read them in the last 10 seconds. Aurral items include
+`canonicalAlbumId` and `requestGroupId` when they're known, and album downloads
+include `albumGrab.canonicalAlbumId`.
 
 ## Discovery
 
@@ -259,6 +329,15 @@ no feed could be refreshed.
 | `POST` | `/api/inbox/read-all` | Mark the current user's Inbox items as read |
 | `PATCH` | `/api/inbox/:id` | Read, save, unsave, dismiss, or add an Inbox item |
 
+## Shared links
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/share-links` | List the current user's live listen links |
+| `GET` | `/api/share-links/availability` | Count the Library tracks a track, album, or artist would share |
+| `POST` | `/api/share-links` | Create a listen link with an expiry and an optional download permission |
+| `DELETE` | `/api/share-links/:id` | Stop sharing a link |
+
 ## Playlists and flows
 
 The prefix is `/api/playlists`. The older `/api/weekly-flow` prefix
@@ -271,6 +350,7 @@ The routes call a static playlist a shared playlist.
 | `GET` | `/api/playlists/status` | Download worker, flow, and static playlist status |
 | `GET` | `/api/playlists/jobs` | List Library and accessible flow and playlist jobs |
 | `GET` | `/api/playlists/jobs/:playlistId` | List jobs for a flow or static playlist |
+| `POST` | `/api/playlists/jobs/:jobId/cancel` | Cancel a pending or downloading song without changing its monitoring |
 | `POST` | `/api/playlists/research-missing` | Re-search every missing track in Wanted |
 | `GET` | `/api/playlists/jobs/:jobId/manual-search/sources` | List the download clients available for a manual search |
 | `POST` | `/api/playlists/jobs/:jobId/manual-search` | Search one download client for a track. Send `sourceId`, and `mode` set to `missing` or `replacement` |
@@ -316,6 +396,16 @@ The routes call a static playlist a shared playlist.
 
 The repeated `playlists` segment in
 `/api/playlists/playlists/:playlistId/retry-cycle` is the current route.
+
+Cancelling a song needs `accessFlow` and access to its playlist, or the user who
+requested the Library download. Other users get `403`. The track stays
+monitored, and other songs in the same album download keep downloading. The
+response holds the job's new `status` and `cleanupFailed`. When a download
+client can't confirm cleanup, the job stays `cancel_requested`; cancel again
+once the client is back. A finished job returns `409`.
+
+Searching again for a cancelled song from an album returns `409`. Request the
+album again to retry it. Other cancelled songs can be searched again.
 
 ### Spotify import
 
@@ -375,6 +465,8 @@ These routes retrieve public playlists anonymously. Preview accepts a supported 
 | `PATCH` | `/api/users/me/lidarr-preferences` | Update current user's Lidarr preferences |
 | `GET` | `/api/users/me/discover-layout` | Current user's discovery layout |
 | `PATCH` | `/api/users/me/discover-layout` | Update current user's discovery layout |
+| `GET` | `/api/users/me/theme` | Current user's theme settings and saved themes, or `null` |
+| `PUT` | `/api/users/me/theme` | Replace the current user's theme settings. Returns `400` when the theme is invalid |
 | `POST` | `/api/users/me/password` | Change current user's password |
 | `GET` | `/api/users/me/plex-link/status` | Read the current user's Plex link |
 | `POST` | `/api/users/me/plex-link/oauth/pin` | Start Plex linking for the current user |
@@ -465,10 +557,11 @@ setup, Aurral does not require a credential for these routes.
 | --- | --- | --- |
 | `GET` | `/api/filesystem/browse` | Browse server directories |
 | `POST` | `/api/filesystem/ensure` | Create or validate a server directory |
-| `GET` | `/api/image-proxy` | Resolve a legacy proxied image URL through the native image cache |
+| `POST` | `/api/image-proxy` | Cache a remote image and return its same-origin `/api/image-proxy/:cacheKey` URL |
 | `GET` | `/api/image-proxy/:cacheKey` | Fetch a cached native-library image |
 
-Image-proxy routes are public. Before onboarding, filesystem routes do not
+Fetching a cached image is public. Caching a new image requires a signed-in
+user. Before onboarding, filesystem routes do not
 require authentication. After onboarding, Aurral requires an administrator
 credential for filesystem routes. Aurral accepts the instance API key. Do not
 expose an Aurral server directly to the public internet. Some `/api` routes do

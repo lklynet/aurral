@@ -16,6 +16,7 @@ import {
   resolveDownloadRoot,
 } from "../downloadPaths.js";
 import { scheduleLibraryScan } from "../libraryScanWorker.js";
+import { enqueueSystemTaskJob, findActiveHonkerJob } from "../honkerDb.js";
 import { getDownloadClient } from "../download/downloadClientSettings.js";
 import {
   assertPlaybackDestination,
@@ -33,10 +34,7 @@ const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
 
 export class PlaylistManager {
-  constructor(
-    downloadRoot = resolveDownloadRoot(),
-    { triggerEnsureOnInit = process.env.NODE_ENV !== "test" } = {},
-  ) {
+  constructor(downloadRoot = resolveDownloadRoot()) {
     this.downloadRoot = resolveDownloadRoot(downloadRoot);
     this.playlistFilesRoot = path.join(this.downloadRoot, PLAYLIST_FILES_DIR);
     this.libraryRoot = path.join(this.playlistFilesRoot, "_playlists");
@@ -57,7 +55,7 @@ export class PlaylistManager {
     this._ensureInFlight = null;
     this._refreshInFlight = new Map();
     this._verifiedArtworkFiles = new Set();
-    this.updateConfig(triggerEnsureOnInit);
+    this.updateConfig(false);
   }
 
   updateConfig(triggerEnsurePlaylists = true) {
@@ -306,6 +304,15 @@ export class PlaylistManager {
       await this._activePlaybackSnapshots(),
       () => this._activePlaybackSnapshots(),
     );
+  }
+
+  schedulePlaybackScan() {
+    this.updateConfig(false);
+    if (!this.destinationRegistry.destinations.some((destination) => destination.isConfigured())) return null;
+    const pending = findActiveHonkerJob("system-task", (_payload, job) => job.state === "pending", {
+      payloadKind: "playback-library-scan",
+    });
+    return pending?.id ?? enqueueSystemTaskJob({ kind: "playback-library-scan" }, { delaySeconds: 5 });
   }
 
   async scanLibrary() {

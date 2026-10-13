@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { execFileSync, fork } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+import v8 from "node:v8";
+import { setupIsolatedBackend, cleanupIsolatedState } from "./helpers/backendTestHarness.js";
 import { createBackgroundProcessSupervisor } from "../backend/services/backgroundProcessSupervisor.js";
 import {
   ISOLATED_WORKER_GROUPS,
@@ -54,6 +58,25 @@ test("only the owning process supervises isolated queues", () => {
 });
 
 const quietLogger = { warn() {}, error() {} };
+const heapFixture = fileURLToPath(new URL("./fixtures/heap-limit-background-child.mjs", import.meta.url));
+
+function withEnv(t, name, value) {
+  const previous = process.env[name];
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+  t.after(() => {
+    if (previous === undefined) delete process.env[name];
+    else process.env[name] = previous;
+  });
+}
+
+function forkHeapFixture(onReady) {
+  return (_entry, _args, options) => {
+    const child = fork(heapFixture, [], { ...options, stdio: ["ignore", "ignore", "ignore", "ipc"] });
+    child.once("message", () => onReady(child));
+    return child;
+  };
+}
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 function createFakeFork() {
@@ -326,13 +349,14 @@ test("flow restart waits for job recovery", async () => {
 test("only the worker with an overdue job is terminated", async () => {
   const children = new Map();
   const killed = [];
+  const errors = [];
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["inbox", "maintenance"],
     findGroupsWithWork: () => ["inbox", "maintenance"],
     jobTimeoutsMs: { inbox: 25, maintenance: 25 },
     unresponsiveMs: 1000,
     watchdogIntervalMs: 10,
-    logger: quietLogger,
+    logger: { warn() {}, error: (line) => errors.push(line) },
     forkProcess: (_entry, _args, options) => {
       const group = options.env.AURRAL_BACKGROUND_WORKER_GROUP;
       const child = new EventEmitter();
@@ -351,11 +375,180 @@ test("only the worker with an overdue job is terminated", async () => {
   });
   try {
     supervisor.start();
-    children.get("inbox").emit("message", { type: "job-started", jobId: 42 });
+    children.get("inbox").emit("message", {
+      type: "heartbeat", workers: [], memory: { rss: 300 * 1024 * 1024, heapUsed: 200 * 1024 * 1024 },
+    });
+    children.get("inbox").emit("message", {
+      type: "job-started", queue: "system-task-inbox", jobId: 42, payload: '{"kind":"disposable"}',
+    });
     await new Promise((resolve) => setTimeout(resolve, 65));
     assert.deepEqual(killed, ["inbox"]);
     assert.deepEqual(supervisor.getGroups(), ["inbox", "maintenance"]);
+    assert.deepEqual(errors, [
+      '[BackgroundWorkers] inbox system-task-inbox job 42 timed out; running system-task-inbox job 42 {"kind":"disposable"}; last memory 300 MB RSS, 200 MB heap; restarting its worker',
+    ]);
   } finally {
     await supervisor.stop();
+  }
+});
+
+test("a worker that runs out of heap stops at the configured limit and the log names its job", async (t) => {
+  withEnv(t, "NODE_OPTIONS", undefined);
+  withEnv(t, "AURRAL_WORKER_MAX_HEAP_MB", "64");
+  const warned = Promise.withResolvers();
+  const supervisor = createBackgroundProcessSupervisor({
+    groups: ["notifications"],
+    findGroupsWithWork: () => ["notifications"],
+    logger: { warn: (line) => warned.resolve(line), error() {} },
+    forkProcess: forkHeapFixture((child) => child.send({
+      type: "run-job",
+      queue: "_outbox:notifications",
+      jobId: 42,
+      payload: '{"kind":"disposable"}',
+      defaultHeapLimit: v8.getHeapStatistics().heap_size_limit,
+    })),
+  });
+  t.after(() => supervisor.stop());
+  supervisor.start();
+  assert.match(
+    await warned.promise,
+    /^\[BackgroundWorkers\] notifications exited \(SIGABRT\); running _outbox:notifications job 42 \{"kind":"disposable"\}; last memory \d+ MB RSS, \d+ MB heap; restarting$/,
+  );
+});
+
+test("a heap limit set in NODE_OPTIONS reaches background workers unchanged", async (t) => {
+  withEnv(t, "NODE_OPTIONS", "--max-old-space-size=123");
+  withEnv(t, "AURRAL_WORKER_MAX_HEAP_MB", undefined);
+  const expected = Number(execFileSync(process.execPath, ["-p", "v8.getHeapStatistics().heap_size_limit"]));
+  const reported = Promise.withResolvers();
+  const supervisor = createBackgroundProcessSupervisor({
+    groups: ["library"],
+    findGroupsWithWork: () => ["library"],
+    logger: quietLogger,
+    forkProcess: forkHeapFixture((child) => child.send({ type: "report-heap-limit" })),
+    onMessage: (message) => {
+      if (message.type === "heap-limit") reported.resolve(message.bytes);
+    },
+  });
+  t.after(() => supervisor.stop());
+  supervisor.start();
+  assert.equal(await reported.promise, expected);
+});
+
+test("a failed deadline inspection retries without requiring another commit", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout", "setInterval"], now: 0 });
+  const { launches, forkProcess } = createFakeFork();
+  let fail = true;
+  const supervisor = createBackgroundProcessSupervisor({
+    groups: ["library"], forkProcess, logger: quietLogger,
+    getWorkRevision: () => "unchanged",
+    getNextWorkAt: () => Date.now() < 1000 ? 1000 : null,
+    findGroupsWithWork: () => {
+      if (Date.now() < 1000) return [];
+      if (fail) { fail = false; throw new Error("Database temporarily busy"); }
+      return ["library"];
+    },
+  });
+  try {
+    supervisor.start();
+    t.mock.timers.tick(1000);
+    assert.deepEqual(launches, []);
+    t.mock.timers.tick(1000);
+    assert.deepEqual(supervisor.getGroups(), ["library"]);
+  } finally {
+    await supervisor.stop();
+  }
+});
+
+test("idle demand checks skip queue scans and discover unannounced commits", async (t) => {
+  const [state, { db }, honker] = await setupIsolatedBackend(
+    "idle-demand", "backend/config/db-sqlite.js", "backend/services/honkerDb.js",
+  );
+  const queue = honker.getMaintenanceTaskQueue();
+  const revision = db.prepare("SELECT data_version, total_changes() AS changes FROM pragma_data_version");
+  const { launches, forkProcess } = createFakeFork();
+  let inspections = 0;
+  let crossDeadline = false;
+  const supervisor = createBackgroundProcessSupervisor({
+    groups: ["maintenance", "scheduler"],
+    forkProcess,
+    getWorkRevision: () => JSON.stringify(revision.get()),
+    getNextWorkAt: honker.getNextBackgroundWorkAt,
+    findGroupsWithWork: (now) => {
+      inspections++;
+      const groups = honker.listBackgroundGroupsWithWork(now);
+      if (crossDeadline) {
+        crossDeadline = false;
+        t.mock.timers.setTime(Date.now() + 1100);
+      }
+      return groups;
+    },
+  });
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: Math.floor(Date.now() / 1000) * 1000 });
+  try {
+    supervisor.start();
+    t.mock.timers.tick(60000);
+    assert.equal(inspections, 1, "an unchanged database must not be repeatedly scanned");
+    assert.deepEqual(launches, []);
+    const delayedId = queue.enqueue({ kind: "session-cleanup" }, { runAt: Math.floor(Date.now() / 1000) + 5 });
+    t.mock.timers.tick(2000);
+    assert.deepEqual(launches, [], "a future job must stay pending");
+    t.mock.timers.tick(3000);
+    assert.deepEqual(supervisor.getGroups(), ["maintenance"], "unchanged delayed work must wake at its deadline");
+    launches[0].emit("message", { type: "ready" });
+    launches[0].emit("message", { type: "idle" });
+    queue.cancel(delayedId);
+    exitIdle(launches[0]);
+    await flush();
+    t.mock.timers.tick(2000);
+    assert.deepEqual(supervisor.getGroups(), []);
+    const immediateId = queue.enqueue({ kind: "session-cleanup" });
+    t.mock.timers.tick(2000);
+    assert.deepEqual(supervisor.getGroups(), ["maintenance"]);
+    queue.cancel(immediateId);
+    launches[1].emit("message", { type: "ready" });
+    launches[1].emit("message", { type: "idle" });
+    exitIdle(launches[1]);
+    await flush();
+    t.mock.timers.tick(2000);
+    for (const kind of ["pending", "processing", "schedule"]) {
+      const dueAt = Math.floor(Date.now() / 1000) + 1;
+      let crossingId;
+      let scheduler;
+      const name = "disposable-crossing-schedule";
+      if (kind === "schedule") {
+        scheduler = honker.getHonkerDb().scheduler();
+        scheduler.add({ name, queue: "system-task-maintenance", schedule: "@every 1h", payload: { kind: "session-cleanup" } });
+        const tx = honker.getHonkerDb().transaction();
+        tx.execute("UPDATE _honker_scheduler_tasks SET next_fire_at = ? WHERE name = ?", [dueAt, name]);
+        tx.commit();
+      } else {
+        crossingId = queue.enqueue({ kind: "session-cleanup" }, { runAt: kind === "pending" ? dueAt : dueAt - 120 });
+        if (kind === "processing") {
+          assert.equal(queue.claimOne("disposable-crossing-owner")?.id, crossingId);
+          const tx = honker.getHonkerDb().transaction();
+          tx.execute("UPDATE _honker_live SET claim_expires_at = ? WHERE id = ?", [dueAt, crossingId]);
+          tx.commit();
+        }
+      }
+      crossDeadline = true;
+      const group = kind === "schedule" ? "scheduler" : "maintenance";
+      supervisor.wake(group);
+      t.mock.timers.tick(1);
+      assert.deepEqual(supervisor.getGroups(), [group], `${kind} work crossed during inspection must still launch its owner`);
+      if (scheduler) scheduler.remove(name);
+      else queue.cancel(crossingId);
+      const child = launches.at(-1);
+      child.emit("message", { type: "ready" });
+      child.emit("message", { type: "idle" });
+      exitIdle(child);
+      await flush();
+      t.mock.timers.tick(2000);
+      assert.deepEqual(supervisor.getGroups(), []);
+    }
+  } finally {
+    await supervisor.stop();
+    t.mock.timers.reset();
+    await cleanupIsolatedState(state);
   }
 });

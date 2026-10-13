@@ -324,12 +324,7 @@ export class PlexClient {
 
   async scanLibrary(sectionId) {
     if (!this.isConfigured() || sectionId == null) return null;
-    try {
-      return await this.request(`/library/sections/${sectionId}/refresh`);
-    } catch (err) {
-      console.warn("[Plex] scanLibrary failed:", err?.message);
-      return null;
-    }
+    return this.request(`/library/sections/${sectionId}/refresh`);
   }
 
   /**

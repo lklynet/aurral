@@ -13,7 +13,7 @@
 ![Discord](https://img.shields.io/discord/1457052417580339285?style=flat)
 [![Sponsor](https://img.shields.io/github/sponsors/lklynet?label=Sponsor&logo=GitHub-Sponsors&logoColor=fe8a76)](https://github.com/sponsors/lklynet/)
 
-Aurral is self-hosted music discovery that works on its own or alongside Lidarr. Best-in-class recommendations, rotating flows, playlist downloads, and a library that Aurral, Lidarr, or both can manage.
+Aurral is self-hosted music discovery with its own music library. Best-in-class recommendations, rotating flows, playlist downloads, and a library that Aurral manages, with Lidarr as an optional add-on.
 
 ## Quick links
 
@@ -25,7 +25,7 @@ Aurral is self-hosted music discovery that works on its own or alongside Lidarr.
 
 - **Discover**: Personal recommendations, trends, tags, recent and upcoming releases, discover playlists, artist news, and nearby shows.
 - **Search**: Find artists and albums, preview tracks, and add them to Aurral or Lidarr with your defaults.
-- **Library**: Browse, play, and search the artists, albums, and tracks that Aurral and Lidarr manage. Monitor Aurral artists for new albums without Lidarr.
+- **Library**: Browse, play, and search your artists, albums, and tracks. Monitor artists for new albums, with or without Lidarr.
 - **Playlists**: Run scheduled flows, adopt discover playlists such as Release Radar, import Spotify, YouTube Music, Last.fm, or ListenBrainz playlists, and convert flows to fixed tracklists.
 - **Activity**: Queue, history, and Wanted views for album requests and yt-dlp, slskd, Usenet, and deemix downloads. Cancel, retry, upgrade, or choose a download yourself.
 - **Integrations**: Lidarr, Last.fm, ListenBrainz, Koito, yt-dlp, slskd, Prowlarr, SABnzbd, NZBGet, deemix, Navidrome, Plex, Jellyfin, Ticketmaster, Gotify, and webhooks.

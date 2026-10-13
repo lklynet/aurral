@@ -1,3 +1,4 @@
+import path from "node:path";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { cancelDownloadJobs } from "./downloadJobs/downloadCancellation.js";
 import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.js";
@@ -13,24 +14,27 @@ export const isAurralAlbumJob = (job) => job.playlistType === "library" && job.m
 // release ID that a scan stored as the album's mbid.
 const albumKeys = (albumMbids) => new Set([albumMbids].flat().map(normalizeKey).filter(Boolean));
 
-export function findAurralAlbumJobs(albumMbids) {
-  const keys = albumKeys(albumMbids);
-  if (keys.size === 0) return [];
-  return downloadTracker.getAll().filter(
-    (job) => isAurralAlbumJob(job) && keys.has(normalizeKey(job.albumMbid)),
-  );
+export function indexAurralAlbumJobs(albumMbids) {
+  const requested = albumKeys(albumMbids);
+  const jobsByAlbum = new Map();
+  const position = new Map();
+  if (requested.size > 0) {
+    for (const job of downloadTracker.getByAlbumMbid((albumMbid) => requested.has(normalizeKey(albumMbid)))) {
+      if (!isAurralAlbumJob(job)) continue;
+      const albumKey = normalizeKey(job.albumMbid);
+      const jobs = jobsByAlbum.get(albumKey) || [];
+      jobs.push(job);
+      jobsByAlbum.set(albumKey, jobs);
+      position.set(job, position.size);
+    }
+  }
+  return (mbids) => [...albumKeys(mbids)]
+    .flatMap((key) => jobsByAlbum.get(key) || [])
+    .sort((left, right) => position.get(left) - position.get(right));
 }
 
-export function indexAurralAlbumJobs() {
-  const jobsByAlbum = new Map();
-  for (const job of downloadTracker.getAll()) {
-    const albumKey = normalizeKey(job.albumMbid);
-    if (!albumKey || !isAurralAlbumJob(job)) continue;
-    const jobs = jobsByAlbum.get(albumKey) || [];
-    jobs.push(job);
-    jobsByAlbum.set(albumKey, jobs);
-  }
-  return (albumMbids) => [...albumKeys(albumMbids)].flatMap((key) => jobsByAlbum.get(key) || []);
+export function findAurralAlbumJobs(albumMbids) {
+  return indexAurralAlbumJobs(albumMbids)(albumMbids);
 }
 
 export function jobMatchesTrack(job, track) {
@@ -129,7 +133,7 @@ export function summarizeAurralAlbum({ tracks = [], jobs = [], sourceConfigured,
   };
 }
 
-async function cancelActiveAurralJobs(activeJobs, albumMbid) {
+async function cancelActiveAurralJobs(activeJobs, albumMbid, { lock = true } = {}) {
   if (activeJobs.length === 0) {
     return { cancelledJobIds: [], cleanupFailed: false };
   }
@@ -145,7 +149,7 @@ async function cancelActiveAurralJobs(activeJobs, albumMbid) {
   }
 
   try {
-    await cancelDownloadWorkForJobs(activeJobs);
+    await cancelDownloadWorkForJobs(activeJobs, { lock });
   } catch (error) {
     logger.warn("library", "Aurral album cancellation is waiting on download provider cleanup", {
       albumMbid,
@@ -168,6 +172,40 @@ export async function cancelAurralAlbumJobs(albumMbid) {
   );
 }
 
+export async function cancelTrackDownload(jobId) {
+  const { withPlaylistMutationLock } = await import("./downloadJobs/mutationGuards.js");
+  const job = downloadTracker.getJob(jobId);
+  if (!job) return { statusCode: 404, error: "Track not found" };
+  return withPlaylistMutationLock(job.playlistId || job.playlistType, async () => {
+    const current = downloadTracker.getJob(jobId);
+    if (!current) return { statusCode: 404, error: "Track not found" };
+    if (!ACTIVE_JOB_STATUSES.has(current.status)) {
+      return { statusCode: 409, error: "Track download is already finished", status: current.status };
+    }
+    const { listHonkerJobs } = await import("./honkerDb.js");
+    const grab = listHonkerJobs("slskd-pipeline").find(({ payload }) =>
+      payload?.albumGrab === true && payload.albumGroupJobIds?.includes(jobId));
+    const peers = (grab?.payload.albumGroupJobIds || []).filter((id) => id !== jobId)
+      .map((id) => downloadTracker.getJob(id))
+      .filter((peer) => peer?.status === "downloading" && !downloadTracker.isSlskdDispatched(peer.id));
+    if (grab && peers.length > 0) {
+      if (grab.payload.jobId === jobId) {
+        const { db } = await import("../config/db-sqlite.js");
+        const { replaceAlbumDownloadLeaderInTransaction } = await import("./downloadJobs/downloadOwnership.js");
+        const redirect = db.transaction(() =>
+          replaceAlbumDownloadLeaderInTransaction(jobId, peers[0].id, { retainCancelled: true }))();
+        downloadTracker.reconcileCommittedJobs([redirect]);
+      }
+      cancelDownloadJobs([jobId]);
+      downloadTracker.setCancelled(jobId);
+      downloadTracker.clearSlskdPipelineState(jobId);
+      return { jobId, status: "cancelled", cleanupFailed: false };
+    }
+    const { cleanupFailed } = await cancelActiveAurralJobs([current], null, { lock: false });
+    return { jobId, status: downloadTracker.getJob(jobId).status, cleanupFailed };
+  });
+}
+
 export async function cancelLibraryTrackJobs(track) {
   return cancelActiveAurralJobs(
     downloadTracker.getAll().filter((job) =>
@@ -175,6 +213,20 @@ export async function cancelLibraryTrackJobs(track) {
       ACTIVE_JOB_STATUSES.has(job.status) &&
       jobMatchesTrack(job, track) &&
       (Boolean(job.trackMbid) || normalizeKey(job.artistName) === normalizeKey(track.artistName))),
+    null,
+  );
+}
+
+export async function cancelFileUpgradeJobs(filePaths) {
+  const paths = new Set(filePaths.map((filePath) => path.resolve(filePath)));
+  const upgradedPath = (job) => downloadTracker.getJob(job.upgradeForJobId)?.finalPath;
+  return cancelActiveAurralJobs(
+    downloadTracker.getAll().filter((job) =>
+      job.upgradeForJobId &&
+      !job.manualReplacementSearch &&
+      ACTIVE_JOB_STATUSES.has(job.status) &&
+      upgradedPath(job) &&
+      paths.has(path.resolve(upgradedPath(job)))),
     null,
   );
 }

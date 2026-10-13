@@ -38,9 +38,9 @@ db.pragma("synchronous = NORMAL");
 // fails with SQLITE_BUSY without waiting when another process writes first.
 const createTransaction = db.transaction.bind(db);
 db.transaction = (fn) => createTransaction(fn).immediate;
-db.pragma("cache_size = -24000");
+db.pragma("cache_size = -2000");
 db.pragma("mmap_size = 25165824");
-db.pragma("temp_store = MEMORY");
+db.pragma("temp_store = FILE");
 
 function tryAddColumn(sql) {
   try {
@@ -122,6 +122,35 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_lastfm_link_states_expiry
     ON lastfm_link_states(expires_at);
 
+  CREATE TABLE IF NOT EXISTS share_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    target_ref TEXT NOT NULL,
+    album_ref TEXT,
+    payload TEXT NOT NULL,
+    title TEXT NOT NULL,
+    artist_name TEXT NOT NULL,
+    allow_download INTEGER NOT NULL DEFAULT 0,
+    expires_at INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_share_links_user
+    ON share_links(user_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS subsonic_play_queues (
+    user_id INTEGER PRIMARY KEY,
+    song_ids TEXT NOT NULL,
+    current_song TEXT,
+    position INTEGER,
+    changed_at INTEGER NOT NULL,
+    changed_by TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS subsonic_stars (
     user_id INTEGER NOT NULL,
     entity_kind TEXT NOT NULL,
@@ -184,6 +213,7 @@ db.exec(`
     release_year TEXT,
     duration_ms INTEGER,
     track_number INTEGER,
+    disc_number INTEGER,
     album_track_count INTEGER,
     album_track_titles TEXT,
     artist_aliases TEXT,
@@ -263,6 +293,13 @@ db.exec(`
     updated_at INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS metadata_response_cache (
+    cache_key TEXT PRIMARY KEY,
+    response BLOB NOT NULL,
+    fresh_until INTEGER NOT NULL,
+    stale_until INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS artist_overrides (
     mbid TEXT PRIMARY KEY,
     musicbrainz_id TEXT,
@@ -315,6 +352,13 @@ db.exec(`
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     PRIMARY KEY (release_group_mbid, artist_id),
+    FOREIGN KEY (artist_id) REFERENCES library_artists(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS library_release_calendar_artists (
+    artist_id INTEGER PRIMARY KEY,
+    refreshed_at INTEGER,
+    failed_at INTEGER,
     FOREIGN KEY (artist_id) REFERENCES library_artists(id) ON DELETE CASCADE
   );
 
@@ -481,6 +525,34 @@ db.exec(`
     cleaned_at INTEGER
   );
 
+  CREATE TABLE IF NOT EXISTS library_file_operations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    status TEXT NOT NULL,
+    options_json TEXT NOT NULL,
+    summary_json TEXT,
+    error TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    finished_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS library_file_operation_items (
+    operation_id INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    source_path TEXT NOT NULL,
+    target_path TEXT,
+    status TEXT NOT NULL,
+    reason TEXT,
+    details_json TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (operation_id, position),
+    FOREIGN KEY (operation_id) REFERENCES library_file_operations(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_library_file_operation_items_status
+    ON library_file_operation_items(operation_id, status, position);
+
   CREATE TABLE IF NOT EXISTS honker_task_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     job_id INTEGER NOT NULL,
@@ -503,6 +575,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_playlist_download_jobs_playlist_id ON playlist_download_jobs(playlist_id);
   CREATE INDEX IF NOT EXISTS idx_images_cache_cache_age ON images_cache(cache_age);
   CREATE INDEX IF NOT EXISTS idx_musicbrainz_artist_mbid_cache_updated_at ON musicbrainz_artist_mbid_cache(updated_at);
+  CREATE INDEX IF NOT EXISTS idx_metadata_response_cache_stale_until ON metadata_response_cache(stale_until);
   CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
   CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
@@ -641,6 +714,15 @@ db.transaction(() => {
   db.prepare(
     "UPDATE discovery_cache SET value = 'listenbrainz' WHERE key = 'provider' AND value = 'listenbrainz-fallback'",
   ).run();
+}).immediate();
+
+const nameGuessesMigrationKey = "migration:name-guesses-v1";
+db.transaction(() => {
+  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(nameGuessesMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  db.prepare("DELETE FROM musicbrainz_artist_mbid_cache WHERE artist_name_key NOT LIKE 'library:%'").run();
+  db.prepare("DELETE FROM deezer_mbid_cache WHERE cache_key LIKE 'dz:%' OR cache_key LIKE 'aa:%'").run();
 }).immediate();
 
 const releaseCalendarPrimaryKey = db
@@ -823,6 +905,7 @@ for (const [name, type] of [
   ["upgrade_for_job_id", "TEXT"],
   ["manual_replacement_search", "INTEGER NOT NULL DEFAULT 0"],
   ["album_grab_attempted", "INTEGER NOT NULL DEFAULT 0"],
+  ["disc_number", "INTEGER"],
 ]) {
   if (!tableColumns.includes(name)) {
     tryAddColumn(`ALTER TABLE playlist_download_jobs ADD COLUMN ${name} ${type}`);
@@ -1068,6 +1151,88 @@ db.transaction(() => {
   `);
 }).immediate();
 
+tryAddColumn("ALTER TABLE library_management ADD COLUMN monitor_rules TEXT");
+tryAddColumn("ALTER TABLE library_tracks ADD COLUMN keep_file INTEGER NOT NULL DEFAULT 0");
+db.exec(`
+  CREATE TABLE IF NOT EXISTS library_monitoring_exclusions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    exclusion_key TEXT NOT NULL,
+    mbid TEXT,
+    artist_mbid TEXT,
+    artist_name TEXT,
+    title TEXT NOT NULL,
+    normalized_title TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE (kind, exclusion_key)
+  );
+  CREATE INDEX IF NOT EXISTS idx_library_monitoring_exclusions_artist
+    ON library_monitoring_exclusions (artist_mbid);
+`);
+
+// Aurral artists move from one monitor mode to monitoring rules. "all" uses
+// the default rules, which match it. "first" never followed new releases, so
+// its album stays monitored and the artist stops being monitored.
+const aurralMonitoringRulesMigrationKey = "migration:aurral-monitoring-rules-v1";
+db.transaction(() => {
+  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(aurralMonitoringRulesMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  const artists = db.prepare(`
+    SELECT management.entity_id AS id, management.monitor_mode AS mode, management.updated_at AS updatedAt,
+      CASE WHEN json_valid(artist.metadata_json)
+        THEN json_extract(artist.metadata_json, '$.monitorStartedAt') END AS startedAt
+    FROM library_management AS management
+    JOIN library_artists AS artist ON artist.id = management.entity_id
+    WHERE management.entity_kind = 'artist'
+      AND management.managed_by = 'aurral'
+      AND management.monitor_rules IS NULL
+      AND COALESCE(management.monitor_mode, 'none') != 'none'
+  `).all();
+  const rulesFor = (catalog) => ({
+    catalog,
+    sinceYear: null,
+    latestCount: 1,
+    newReleases: true,
+    types: ["album", "ep"],
+    extraTypes: [],
+    edition: "standard",
+    topTracks: 0,
+  });
+  const setRules = db.prepare(
+    "UPDATE library_management SET monitor_rules = ? WHERE entity_kind = 'artist' AND entity_id = ?",
+  );
+  const stopMonitoring = db.prepare(`
+    UPDATE library_management SET monitor_mode = 'none'
+    WHERE entity_kind = 'artist' AND entity_id = ?
+  `);
+  const markUnmonitored = db.prepare(`
+    UPDATE library_artists
+    SET metadata_json = json_set(metadata_json, '$.monitored', json('false'), '$.monitor', 'none',
+      '$.monitorOption', 'none', '$.addOptions.monitor', 'none')
+    WHERE id = ? AND json_valid(metadata_json)
+  `);
+  const migratedAt = Date.now();
+  for (const artist of artists) {
+    const mode = String(artist.mode).trim().toLowerCase();
+    if (mode === "first") {
+      stopMonitoring.run(artist.id);
+      markUnmonitored.run(artist.id);
+      continue;
+    }
+    // Latest took whichever release was newest at each scan, so its cutoffs
+    // start now rather than when the mode was chosen.
+    const since = {
+      future: Number(artist.startedAt) || Number(artist.updatedAt) || migratedAt,
+      latest: migratedAt,
+    }[mode] ?? (Number(artist.updatedAt) || migratedAt);
+    const stored = mode === "future" || mode === "latest"
+      ? { default: false, rules: rulesFor(mode === "future" ? "none" : "latest") }
+      : { default: true };
+    setRules.run(JSON.stringify({ ...stored, catalogAt: since, newSince: since }), artist.id);
+  }
+}).immediate();
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS playlist_download_jobs_revision (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -1109,5 +1274,12 @@ const existingDownloadFolder = db
   .prepare("SELECT value FROM settings WHERE key = ?")
   .get("downloadFolderPath");
 syncDownloadFolderPath(existingDownloadFolder?.value || null);
+
+const databaseRevisionStmt = db.prepare("SELECT data_version, total_changes() AS changes FROM pragma_data_version");
+
+export function getDatabaseRevision() {
+  const { data_version, changes } = databaseRevisionStmt.get();
+  return `${data_version}:${changes}`;
+}
 
 export { db };

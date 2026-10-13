@@ -18,3 +18,9 @@ export const getActivityPollIntervalMs = ({ isConnected, isListLikeView } = {}) 
 
 export const getBootstrapPollIntervalMs = ({ isConnected } = {}) =>
   isConnected ? BOOTSTRAP_CONNECTED_POLL_MS : BOOTSTRAP_DISCONNECTED_POLL_MS;
+
+export const canPrefetchInBackground = () => {
+  if (typeof document !== "undefined" && document.visibilityState === "hidden") return false;
+  if (typeof navigator !== "undefined" && navigator.connection?.saveData === true) return false;
+  return true;
+};

@@ -9,11 +9,11 @@ import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import ArtistImage from "../../../components/ArtistImage";
 import { ArtistContextMenu } from "../../../components/ArtistContextMenu";
 import TooltipButton from "../../../components/TooltipButton";
+import RouteLink from "../../../components/RouteLink";
 export function ArtistDetailsSimilar({
   loadingSimilar,
   similarArtists,
   similarArtistsScrollRef,
-  onArtistClick,
   onArtistFeedback,
   artistFeedbackLookup,
 }) {
@@ -88,7 +88,7 @@ export function ArtistDetailsSimilar({
     <section className="artist-section">
       <div className="artist-similar-header">
         <h2 className="artist-section-title">
-          Fans Also Like
+          Fans also like
           {loadingSimilar && <DotLoader size="sm" label={null} />}
         </h2>
         <div className="artist-scroll-controls">
@@ -134,31 +134,10 @@ export function ArtistDetailsSimilar({
                 <div
                   key={similar.id}
                   className="artist-similar-card"
-                  onClick={() =>
-                    onArtistClick(
-                      similar.id,
-                      similar.name,
-                      typeof libraryLookup[artistId] === "boolean"
-                        ? libraryLookup[artistId]
-                        : undefined,
-                    )
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onArtistClick(
-                        similar.id,
-                        similar.name,
-                        typeof libraryLookup[artistId] === "boolean"
-                          ? libraryLookup[artistId]
-                          : undefined,
-                      );
-                    }
-                  }}
-                  tabIndex={0}
-                  role="button"
+                  data-artwork-scope
+                  data-library-menu-target
                 >
-                  <div className="artist-similar-avatar">
+                  <div className="artist-similar-avatar" data-artwork>
                     <ArtistImage
                       src={similar.image}
                       mbid={getArtistRecordId(similar)}
@@ -175,11 +154,22 @@ export function ArtistDetailsSimilar({
                     )}
                   </div>
                   <div className="artist-similar-name-row">
-                    <div className="artist-similar-name-block">
+                    <RouteLink
+                      to={`/artist/${similar.id}`}
+                      state={{
+                        artistName: similar.name,
+                        artistImage: similar.image || undefined,
+                        ...(typeof libraryLookup[artistId] === "boolean"
+                          ? { inLibrary: libraryLookup[artistId] }
+                          : {}),
+                      }}
+                      className="artist-similar-name-block card-link"
+                      aria-label={`Open ${similar.name}`}
+                    >
                       <h3 className="artist-similar-name">{similar.name}</h3>
                       {artistId && libraryLookup[artistId] && <SearchLibraryCheck size="sm" />}
-                    </div>
-                    <div onClick={(event) => event.stopPropagation()} role="none">
+                    </RouteLink>
+                    <div className="artist-discover-card__menu">
                       <ArtistContextMenu
                         artist={similar}
                         isInLibrary={!!libraryLookup[artistId]}

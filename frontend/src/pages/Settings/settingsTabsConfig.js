@@ -3,7 +3,9 @@ import {
   Compass,
   Database,
   Download,
+  FolderCog,
   HardDrive,
+  Eye,
   ListChecks,
   Monitor,
   Music,
@@ -20,6 +22,8 @@ export const SETTINGS_TABS = [
   { id: "lidarr", label: "Lidarr", icon: Server },
   { id: "indexers", label: "Indexers", icon: DatabaseSearch },
   { id: "download-clients", label: "Download clients", icon: Download },
+  { id: "library-files", label: "Library files", icon: FolderCog },
+  { id: "monitoring", label: "Monitoring", icon: Eye },
   { id: "playback", label: "Playback", icon: Music },
   { id: "connect", label: "Connect", icon: Bell },
   { id: "rss-news", label: "RSS news", icon: Rss },
@@ -70,7 +74,7 @@ const SETTINGS_SEARCH_METADATA = {
     sections: ["Scheduled", "Workers", "Queue"],
     services: {
       "Background tasks": "jobs workers",
-      "Playlist Operations": "playlist flow worker",
+      "Playlist operations": "playlist flow worker",
     },
     fields: {
       Scheduled: "next run interval schedule",
@@ -119,7 +123,7 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   "download-clients": {
-    sections: ["Quality profile", "Downloads folder", "Remote path mappings", "Connection", "Behavior", "Downloads", "Advanced"],
+    sections: ["Quality profile", "Downloads folder", "Review queue", "Remote path mappings", "Connection", "Behavior", "Downloads", "Advanced"],
     services: {
       slskd: "Soulseek download client",
       "yt-dlp": "YouTube web download client",
@@ -132,9 +136,7 @@ const SETTINGS_SEARCH_METADATA = {
       Qualities: "FLAC MP3 M4A 128 192 256 320 bitrate hi-res standard allowed cutoff drag rank",
       "Automatic upgrades": "upgrade searches Flow Static tracks",
       "Upgrade interval": "days between checks",
-      "Missing tracks": "search again retry failed missing album tracks schedule",
-      "Search again for missing tracks": "retry failed missing album tracks automatic schedule on off",
-      "Search interval": "days between missing track searches",
+      "Maximum wait (hours)": "review queue held tracks deny automatically timeout",
       Path: "downloads folder media library",
       "Applies to": "remote path mapping source client all",
       "Remote path": "download client path mapping",
@@ -156,6 +158,31 @@ const SETTINGS_SEARCH_METADATA = {
       "Completed download path": "NZBGet import folder",
       "Add NZBs paused": "NZBGet pause queue",
       "Clean up after runs": "SABnzbd history cleanup",
+    },
+  },
+  "library-files": {
+    sections: ["Ingest a folder", "Clean up Library"],
+    services: {
+      Ingest: "import existing music library folder move copy hardlink Lidarr root monitor",
+      "Clean up Library": "rename organize tags files naming folders media management",
+    },
+    fields: {
+      Folder: "source folder existing music import",
+      Mode: "move copy hardlink",
+      Monitor: "monitored unmonitored upgrade tracks albums",
+      "Fill in missing tags": "tagging retag MusicBrainz IDs genre year track numbers metadata",
+    },
+  },
+  monitoring: {
+    sections: ["Default rules", "Missing tracks", "Removed from monitoring"],
+    services: {
+      "Artist monitoring": "monitor artists automatically download releases",
+    },
+    fields: {
+      "Default rules": "monitor artists back catalogue discography new releases latest since year albums EPs singles live compilations soundtracks remixes demos DJ mixes mixtapes edition deluxe expanded top tracks popular",
+      "Search again for missing tracks": "retry failed missing album tracks automatic schedule on off",
+      "Search interval": "days between missing track searches",
+      "Removed from monitoring": "excluded deleted albums tracks allow again exclusions",
     },
   },
   playback: {

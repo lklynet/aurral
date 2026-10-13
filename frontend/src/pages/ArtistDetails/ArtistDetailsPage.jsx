@@ -18,9 +18,11 @@ import {
 } from "../../utils/api/endpoints/playlists.js";
 import {
   buildStaticPlaylistTrackPayload,
+  getArtistHeroImage,
   getCoverImage,
   reserveUniquePlaylistName,
 } from "./utils";
+import { useArtworkWash } from "../../utils/imageColors";
 import { useArtistTasteFeedback } from "../../hooks/useArtistTasteFeedback";
 import { useStaticPlaylists } from "../../hooks/useStaticPlaylists";
 
@@ -28,6 +30,8 @@ import { useParams, useLocation } from "react-router";
 import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
 import { Music, X } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
+import { SkeletonRail, SkeletonStatus } from "../../components/Skeletons";
+import { normalizeMediaUrl } from "../../utils/normalizeMediaUrl";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
@@ -52,6 +56,7 @@ import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { queryKeys } from "../../queryClient.js";
 import TooltipButton from "../../components/TooltipButton";
 import CrossViewLink from "../../components/CrossViewLink";
+import RouteLink from "../../components/RouteLink";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ArtistDetailsPage() {
@@ -114,6 +119,10 @@ function ArtistDetailsPage() {
     ],
     initialLibraryHint,
     appearsOnLimit: ARTIST_DETAILS_APPEARS_ON_LIMIT,
+    seedImage:
+      typeof locationState?.artistImage === "string"
+        ? normalizeMediaUrl(locationState.artistImage) || null
+        : null,
   });
   const canAddArtist = hasPermission("addArtist");
   const {
@@ -222,6 +231,8 @@ function ArtistDetailsPage() {
     enabled: false,
   });
   const libraryArtistRecordId = libraryLookup.data?.libraryArtistId || null;
+  const lidarrManagesArtist =
+    libraryDestination.primary === "lidarr" && libraryArtist?.managedBy !== "aurral";
 
   const preview = usePreviewPlayer(mbid, artistNameFromNav, artist);
   const {
@@ -265,7 +276,7 @@ function ArtistDetailsPage() {
       return;
     }
     if (deezerArtistId && !/^\d+$/.test(deezerArtistId)) {
-      setIdsError("Deezer Artist ID must be numeric.");
+      setIdsError("Deezer artist ID must be numeric.");
       return;
     }
     setIdsError("");
@@ -449,11 +460,19 @@ function ArtistDetailsPage() {
     }
   };
 
+  const heroWash = useArtworkWash(getArtistHeroImage(coverImages));
+
   if (loading) {
     return (
-      <div className="artist-loading">
-        <DotLoader size="2xl" label={null} />
-      </div>
+      <SkeletonStatus label="Loading artist" className="artist-details-page">
+        <section className="artist-hero">
+          <div className="artist-hero__inner">
+            <div className="artist-hero__fallback skeleton-block" />
+          </div>
+        </section>
+        <SkeletonRail />
+        <SkeletonRail />
+      </SkeletonStatus>
     );
   }
 
@@ -462,14 +481,11 @@ function ArtistDetailsPage() {
       <div className="artist-error-panel">
         <div>
           <Music className="artist-error-icon" />
-          <h3 className="artist-error-title">Error Loading Artist</h3>
+          <h3 className="artist-error-title">Error loading artist</h3>
           <p className="artist-error-copy">{error}</p>
-          <button
-            onClick={() => navigate("/search")}
-            className="btn btn-primary artist-hidden-mobile"
-          >
-            Back to Search
-          </button>
+          <RouteLink to="/search" className="btn btn-primary artist-hidden-mobile">
+            Back to search
+          </RouteLink>
         </div>
       </div>
     );
@@ -487,12 +503,21 @@ function ArtistDetailsPage() {
   };
 
   return (
-    <div className="artist-details-page">
+    <div
+      className="artist-details-page"
+      style={
+        heroWash
+          ? {
+              "--artwork-wash": `light-dark(${heroWash.light}, ${heroWash.dark})`,
+              "--artwork-wash-dark": heroWash.dark,
+            }
+          : undefined
+      }
+    >
       <ArtistDetailsHero
         artist={artist}
         coverImages={coverImages}
         onCoverError={handleCoverError}
-        onNavigate={(path) => navigate(path)}
       />
 
       <ArtistDetailsActionBar
@@ -511,7 +536,7 @@ function ArtistDetailsPage() {
         loadingLibrary={loadingLibrary}
         canChangeMonitoring={canChangeMonitoring}
         canAddArtist={canAddArtist}
-        canRefreshArtist={canChangeMonitoring}
+        canRefreshArtist={canChangeMonitoring && lidarrManagesArtist}
         buildingQueue={buildingQueue}
         isArtistPlaybackActive={isArtistPlaybackActive}
         handlePreviewPlayAll={handlePreviewPlayAll}
@@ -582,6 +607,7 @@ function ArtistDetailsPage() {
           canDeleteAlbum={canDeleteAlbum}
           handleDeleteAlbumClick={library.handleDeleteAlbumClick}
           canReSearchAlbum={canAddAlbum}
+          lidarrConnected={libraryDestination.primary === "lidarr"}
           handleReSearchAlbum={library.handleReSearchAlbum}
           handleReSearchMissingDownloads={library.handleReSearchMissingDownloads}
           onVisibleCoverIdsChange={setVisibleLibraryCoverIds}
@@ -603,11 +629,10 @@ function ArtistDetailsPage() {
           requestingAlbum={library.requestingAlbum}
           artistName={artistDisplayName}
           onVisibleCoverIdsChange={setVisibleReleaseGroupCoverIds}
-          onViewAll={() =>
-            navigate(`/artist/${artist.id}/albums`, {
-              state: { artistName: artist.name, inLibrary: existsInLibrary },
-            })
-          }
+          viewAllLink={{
+            to: `/artist/${artist.id}/albums`,
+            state: { artistName: artist.name, inLibrary: existsInLibrary },
+          }}
         />
       )}
 
@@ -627,11 +652,10 @@ function ArtistDetailsPage() {
           requestingAlbum={library.requestingAlbum}
           artistName={artistDisplayName}
           onVisibleCoverIdsChange={setVisibleAppearsOnCoverIds}
-          onViewAll={() =>
-            navigate(`/artist/${artist.id}/appears-on`, {
-              state: { artistName: artist.name, inLibrary: existsInLibrary },
-            })
-          }
+          viewAllLink={{
+            to: `/artist/${artist.id}/appears-on`,
+            state: { artistName: artist.name, inLibrary: existsInLibrary },
+          }}
         />
       )}
 
@@ -639,9 +663,9 @@ function ArtistDetailsPage() {
         artist={artist}
         libraryArtist={libraryArtist}
         appSettings={appSettings}
+        lidarrConnected={lidarrManagesArtist}
         existsInLibrary={existsInLibrary}
         coverImages={coverImages}
-        onNavigate={(path) => navigate(path)}
       />
 
       {(loadingSimilar || similarArtists.length > 0) && (
@@ -649,14 +673,6 @@ function ArtistDetailsPage() {
           loadingSimilar={loadingSimilar}
           similarArtists={similarArtists}
           similarArtistsScrollRef={similarArtistsScrollRef}
-          onArtistClick={(id, name, inLibrary = undefined) =>
-            navigate(`/artist/${id}`, {
-              state: {
-                artistName: name,
-                ...(typeof inLibrary === "boolean" ? { inLibrary } : {}),
-              },
-            })
-          }
           onArtistFeedback={handleArtistTasteFeedback}
           artistFeedbackLookup={artistFeedbackLookup}
         />
@@ -741,7 +757,7 @@ function EditArtistIdsModal({
       >
         <div className="artist-modal__header">
           <h3 id={titleId} className="artist-modal__title">
-            Edit Artist IDs
+            Edit artist IDs
           </h3>
           <TooltipButton
             type="button"
@@ -775,7 +791,7 @@ function EditArtistIdsModal({
             />
           </div>
           <div>
-            <label className="artist-field-label">Deezer Artist ID</label>
+            <label className="artist-field-label">Deezer artist ID</label>
             <input
               type="text"
               value={values.deezerArtistId}

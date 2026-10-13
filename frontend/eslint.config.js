@@ -76,4 +76,17 @@ export default [
       "aurral/no-native-tooltip": "error",
     },
   },
+  {
+    files: ["src/**/*.jsx"],
+    ignores: ["src/components/Layout.jsx", "src/pages/Login.jsx", "src/pages/SsoComplete.jsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXOpeningElement[name.name='main']",
+          message: "Layout renders the page's only <main>. Use a <div> or <section> for page roots.",
+        },
+      ],
+    },
+  },
 ];

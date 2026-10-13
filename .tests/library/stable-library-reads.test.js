@@ -744,11 +744,24 @@ test("a failed provider scan keeps the library artist and marks it stale", () =>
 
   try {
     finishLibraryScan(scanId, { status: "failed", error: "provider unavailable" });
+    assert.equal(getLibraryArtistProjection({ reference: artist.id })[0]?.stale, false);
+
+    const album = upsertLibraryAlbum({ identityKey: `${identityKey}:album`, artistId: artist.id, title: "Stale" });
+    const track = upsertLibraryTrack({ identityKey: `${identityKey}:track`, title: "Stale", artistName: artist.name });
+    linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+    upsertLibraryMediaFile({
+      trackId: track.id,
+      albumId: album.id,
+      source: "lidarr",
+      path: `/music/${identityKey}.flac`,
+      available: true,
+    });
     const projection = getLibraryArtistProjection({ reference: artist.id });
     assert.equal(projection[0]?.name, "Stale Read Artist");
     assert.equal(projection[0]?.stale, true);
   } finally {
     db.prepare("DELETE FROM library_scan_runs WHERE id = ?").run(scanId);
+    db.prepare("DELETE FROM library_tracks WHERE identity_key = ?").run(`${identityKey}:track`);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }
 });

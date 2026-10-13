@@ -3,12 +3,22 @@ import { db } from "../config/db-sqlite.js";
 const LIBRARY_OWNERS = new Set(["aurral", "lidarr"]);
 const ENTITY_KINDS = new Set(["artist", "album"]);
 
+// Monitoring rules belong to one manager and mode. A write that changes either
+// without giving rules clears them, so stale rules never come back.
 const upsertStmt = db.prepare(`
-  INSERT INTO library_management (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?)
+  INSERT INTO library_management
+    (entity_kind, entity_id, managed_by, monitor_mode, monitor_rules, created_at, updated_at)
+  VALUES (@kind, @id, @owner, @mode, @rules, @now, @now)
   ON CONFLICT (entity_kind, entity_id) DO UPDATE SET
     managed_by = excluded.managed_by,
     monitor_mode = excluded.monitor_mode,
+    monitor_rules = CASE
+      WHEN @rulesGiven = 1 THEN excluded.monitor_rules
+      WHEN library_management.managed_by = excluded.managed_by
+        AND library_management.monitor_mode IS excluded.monitor_mode
+        THEN library_management.monitor_rules
+      ELSE NULL
+    END,
     updated_at = excluded.updated_at
 `);
 
@@ -17,13 +27,23 @@ const clearStmt = db.prepare(
 );
 
 const selectAllStmt = db.prepare(
-  "SELECT entity_kind, entity_id, managed_by, monitor_mode, updated_at FROM library_management",
+  "SELECT entity_kind, entity_id, managed_by, monitor_mode, monitor_rules, updated_at FROM library_management",
 );
 
 const dataVersionStmt = db.prepare("PRAGMA data_version");
 let cache = null;
 let cacheDataVersion = null;
 let changeListeners = [];
+
+function parseRules(value) {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 function refreshExternalChanges() {
   const dataVersion = dataVersionStmt.get()?.data_version;
@@ -44,6 +64,7 @@ function getCache() {
         map.set(row.entity_id, {
           managedBy: row.managed_by,
           monitorMode: row.monitor_mode || null,
+          monitorRules: parseRules(row.monitor_rules),
           updatedAt: row.updated_at || null,
         });
       }
@@ -72,6 +93,11 @@ function notifyChanged() {
 
 export function invalidateLibraryManagementCache() {
   cache = null;
+}
+
+export function notifyLibraryManagementChanged() {
+  invalidateLibraryManagementCache();
+  notifyChanged();
 }
 
 export function getLibraryManagementEntry(entityKind, entityId) {
@@ -103,6 +129,7 @@ export function setLibraryManagement({
   entityId,
   managedBy,
   monitorMode = null,
+  monitorRules,
 } = {}) {
   const kind = String(entityKind || "").trim();
   const id = Number(entityId);
@@ -119,8 +146,16 @@ export function setLibraryManagement({
   const normalizedMonitorMode = monitorMode == null
     ? null
     : String(monitorMode).trim() || null;
-  const now = Date.now();
-  upsertStmt.run(kind, id, owner, normalizedMonitorMode, now, now);
+  const rulesGiven = monitorRules !== undefined;
+  upsertStmt.run({
+    kind,
+    id,
+    owner,
+    mode: normalizedMonitorMode,
+    rules: rulesGiven && monitorRules ? JSON.stringify(monitorRules) : null,
+    rulesGiven: rulesGiven ? 1 : 0,
+    now: Date.now(),
+  });
   invalidateLibraryManagementCache();
   notifyChanged();
   return getLibraryManagementEntry(kind, id);

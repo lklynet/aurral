@@ -5,11 +5,12 @@ import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger } from "./logger.js";
 import {
   buildSourceCandidates,
-  hasUsableSearchCandidates,
+  prefilterCandidates,
   toPipelineCandidate,
   usableEvaluationEntries,
   validateDownloadedTrackFile,
 } from "./trackMatching/index.js";
+import { readYoutubeUpload } from "./trackMatching/youtubeEvidence.js";
 import { buildYtdlpSearchQueries } from "./downloadJobs/ytdlpSearch.js";
 import { resolveDownloadRoot } from "./downloadPaths.js";
 import {
@@ -40,13 +41,16 @@ export function isYtdlpLiveResult(result) {
   return LIVE_STATUSES.has(String(result?.liveStatus || "").trim().toLowerCase());
 }
 
+// The release audio on the artist's channel is the copy to download, so the
+// next query runs until a usable one turns up.
 export function hasEnoughCandidates(aggregated, resolvedTrack) {
-  // Node-only pre-filter: no matcher process is spawned during searches.
-  return hasUsableSearchCandidates({
+  const artistNames = [resolvedTrack.artistName, ...(resolvedTrack.artistAliases || [])].filter(Boolean);
+  return prefilterCandidates({
     source: "ytdlp",
-    results: aggregated.filter((result) => !isYtdlpLiveResult(result)),
+    candidates: aggregated.filter((result) => !isYtdlpLiveResult(result)),
     request: resolvedTrack,
-  });
+  }).some((entry) => !entry.rejected
+    && readYoutubeUpload(entry.candidate.title, entry.candidate.provider?.uploader, artistNames).officialAudio);
 }
 
 async function handleYtdlpSearch(payload, helpers) {
@@ -68,7 +72,7 @@ async function handleYtdlpSearch(payload, helpers) {
     ...buildResolvedTrack(job, payload.track),
     upgradeForJobId: payload.upgradeForJobId || null,
   };
-  const queries = buildYtdlpSearchQueries(resolvedTrack);
+  const { queries, fallbackQuery } = buildYtdlpSearchQueries(resolvedTrack);
   const deniedIds = new Set(
     (Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [])
       .filter((entry) => Array.isArray(entry) && entry[0] === "ytdlp")
@@ -77,8 +81,9 @@ async function handleYtdlpSearch(payload, helpers) {
   const aggregated = [];
   const seen = new Set();
   let lastError = "";
-  for (const query of queries) {
+  for (const query of [...queries, fallbackQuery].filter(Boolean)) {
     if (hasEnoughCandidates(aggregated, resolvedTrack)) break;
+    if (query === fallbackQuery && aggregated.length > 0) break;
     try {
       const results = await ytdlpClient.search(query, { limit: 5 });
       mergeSearchResults(aggregated, seen, results.filter((entry) => !deniedIds.has(String(entry.id || "").trim())), (entry) =>

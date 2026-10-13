@@ -10,7 +10,7 @@ export const ALBUM_SORT_OPTIONS = [
 export const ALBUM_RELEASE_TABS = [
   { value: "all", label: "All" },
   { value: "albums", label: "Albums" },
-  { value: "singles", label: "EP & Singles" },
+  { value: "singles", label: "EPs & singles" },
   { value: "compilations", label: "Compilations" },
 ];
 export const UNIFIED_FILTER_OPTIONS = [

@@ -8,6 +8,7 @@ import {
   isAlbumCompleteInLibrary,
   shouldTriggerAlbumSearch,
 } from "../../frontend/src/utils/albumAddAction.js";
+import { resolveReleaseLibraryDisplay } from "../../frontend/src/pages/ArtistDetails/utils.js";
 
 test("shouldTriggerAlbumSearch follows monitored state", () => {
   assert.equal(shouldTriggerAlbumSearch({ status: "available" }), false);
@@ -63,4 +64,17 @@ test("an unmonitored Aurral album counts the release's tracks, so a downloaded s
   ]) {
     assert.equal(countReleaseTracks(library, 4), library);
   }
+});
+
+test("release display keeps albums with an incomplete track list incomplete", () => {
+  const lookup = { inLibrary: true, managedBy: "aurral", monitored: true,
+    trackListComplete: false, trackCount: 1, trackFileCount: 1 };
+  const display = resolveReleaseLibraryDisplay(countReleaseTracks(lookup, 12));
+  assert.equal(display.isComplete, false);
+  assert.equal(display.kind, "incomplete");
+  assert.equal(display.label, "Incomplete");
+  assert.equal(resolveReleaseLibraryDisplay(lookup, { status: "partial" }).kind, "incomplete");
+  const complete = resolveReleaseLibraryDisplay({ ...lookup, trackListComplete: true, percentOfTracks: 100 });
+  assert.equal(complete.isComplete, true);
+  assert.equal(complete.label, "In library");
 });
