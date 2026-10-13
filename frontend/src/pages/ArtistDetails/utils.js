@@ -224,6 +224,46 @@ export const formatAlbumDuration = (durationMs) => {
   return `${minutes} min`;
 };
 
+const getReleaseTypeLabel = (release) => {
+  const types = [
+    release?.["primary-type"],
+    ...(Array.isArray(release?.["secondary-types"]) ? release["secondary-types"] : []),
+  ].filter(Boolean);
+  return types.length ? types.join(" · ") : null;
+};
+
+export const mergeReleaseDetails = (baseRelease, details) => {
+  if (!details) return baseRelease;
+  return {
+    ...baseRelease,
+    title: details.title || baseRelease.title,
+    "first-release-date": details["first-release-date"] || baseRelease["first-release-date"],
+    "primary-type": details["primary-type"] || baseRelease["primary-type"],
+    "secondary-types":
+      Array.isArray(details["secondary-types"]) && details["secondary-types"].length
+        ? details["secondary-types"]
+        : baseRelease["secondary-types"],
+    rating: details.rating || baseRelease.rating || null,
+    _coverUrl: details.coverUrl || baseRelease._coverUrl || "",
+  };
+};
+
+export const buildReleaseHeaderMeta = (release, tracks = []) => {
+  const typeLabel = getReleaseTypeLabel(release);
+  const trackCount = Array.isArray(tracks) ? tracks.length : 0;
+  const metric = getReleaseMetric(release);
+  const meta = [
+    formatReleaseDate(release),
+    typeLabel,
+    trackCount > 0 ? `${trackCount} track${trackCount === 1 ? "" : "s"}` : null,
+    formatAlbumDuration(sumTrackDurationMs(tracks)),
+    metric.label ? `${metric.label} ${metric.type === "rating" ? "rating" : "listeners"}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return { typeLabel, meta };
+};
+
 export const resolveReleaseLibraryDisplay = (libraryInfo, downloadStatus) => {
   const withAction = (display) => ({
     ...display,
