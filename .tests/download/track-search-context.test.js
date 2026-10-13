@@ -453,6 +453,28 @@ test("a download credited to an artist and a guest takes the lead artist, and no
   assert.equal(resolved.artistMbid, "dance-gavin-dance");
   assert.equal(resolved.albumMbid, null);
   assert.equal(resolved.trackMbid, null);
+
+  for (const complete of [false, true]) {
+    const existing = await resolveTrackSearchContext({
+      artistName: "Dance Gavin Dance feat. Andrew Wells",
+      artistMbid: "dance-gavin-dance",
+      artistAliases: ["Dance Gavin Dance"],
+      trackName: "Afterburner",
+      albumName: "Afterburner",
+      albumMbid: "other-afterburner",
+      ...(complete ? {
+        trackMbid: "other-afterburner-1",
+        durationMs: 200000,
+        trackNumber: 1,
+        albumTrackTitles: ["Afterburner"],
+      } : {}),
+    });
+    assert.equal(existing.artistMbid, "dance-gavin-dance");
+    assert.equal(existing.albumMbid, null);
+    assert.equal(existing.trackMbid, null);
+    assert.equal(existing.trackNumber, null);
+    assert.deepEqual(existing.albumTrackTitles, []);
+  }
 });
 
 test("a download credited with \"&\" takes the artist MusicBrainz names with \"and\"", async (t) => {
@@ -494,6 +516,22 @@ test("a download takes the album of its title that lists the song, over the albu
   assert.equal(resolved.albumMbid, "teal");
   assert.equal(resolved.trackMbid, "teal-1");
   assert.equal(resolved.trackNumber, 1);
+
+  const complete = await resolveTrackSearchContext({
+    artistName: "Weezer",
+    artistMbid: "weezer",
+    artistAliases: ["Weezer"],
+    trackName: "Africa",
+    albumName: "Weezer",
+    albumMbid: "blue",
+    trackMbid: "blue-1",
+    durationMs: 200000,
+    trackNumber: 1,
+    albumTrackTitles: ["Africa"],
+  });
+  assert.equal(complete.albumMbid, "teal");
+  assert.equal(complete.trackMbid, "teal-1");
+  assert.deepEqual(complete.albumTrackTitles, ["Africa", "Everybody Wants to Rule the World"]);
 
   const unsearched = await resolveTrackSearchContext({
     artistName: "Weezer",

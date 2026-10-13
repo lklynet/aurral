@@ -364,16 +364,25 @@ export async function resolveTrackSearchContext(track) {
   if (!base.artistName || !base.trackName) {
     return base;
   }
-  if (hasReleaseIdentity(base)) {
-    const releaseContext = await fetchReleaseContext(base.albumMbid);
-    if (
-      releaseContext?.albumName &&
-      base.albumName &&
-      !matchesAlbumTitle(releaseContext.albumName, base.albumName)
-    ) {
+
+  let releaseContext = null;
+  if (base.albumMbid) {
+    releaseContext = await fetchReleaseContext(base.albumMbid);
+    const otherAlbum = releaseContext?.albumName
+      && base.albumName
+      && !matchesAlbumTitle(releaseContext.albumName, base.albumName);
+    const credited = releaseContext?.artists?.some((artist) =>
+      (base.artistMbid && String(artist?.id || "").toLowerCase() === base.artistMbid.toLowerCase())
+      || isCreditedArtist(base.artistName, artist));
+    if (otherAlbum || (releaseContext && (!credited || !(await holdsTrack(base.albumMbid, base))))) {
       base.albumMbid = null;
       base.trackMbid = null;
-    } else if (releaseContext) {
+      releaseContext = null;
+    }
+  }
+
+  if (hasReleaseIdentity(base)) {
+    if (releaseContext) {
       const matchedTrack = applyReleaseContext(base, releaseContext);
       if (matchedTrack?.durationMs) base.durationMs = matchedTrack.durationMs;
       if (base.artistAliases.length === 0 && base.artistMbid) {
@@ -413,18 +422,6 @@ export async function resolveTrackSearchContext(track) {
     base.artistMbid = await musicbrainzResolveArtistMbidByName(base.artistName);
   }
 
-  let releaseContext = null;
-  if (base.albumMbid) {
-    releaseContext = await fetchReleaseContext(base.albumMbid);
-    const otherAlbum = releaseContext?.albumName
-      && base.albumName
-      && !matchesAlbumTitle(releaseContext.albumName, base.albumName);
-    if (otherAlbum || (releaseContext && !(await holdsTrack(base.albumMbid, base)))) {
-      base.albumMbid = null;
-      base.trackMbid = null;
-      releaseContext = null;
-    }
-  }
   if (!base.albumMbid && base.albumName) {
     const releaseGroup = await resolveReleaseGroup(base);
     if (releaseGroup?.id) {
