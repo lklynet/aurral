@@ -622,6 +622,12 @@ test("uses an exact indexed recording MBID when the path differs", async () => {
   const navidrome = createFakeNavidrome({
     libraries,
     songs: [{
+      id: "missing-mbid-match",
+      libraryPath: "/data/music",
+      path: "Old Flow/track.flac",
+      mbzRecordingID: "recording-mbid",
+      missing: true,
+    }, {
       id: "mbid-match",
       libraryPath: "/data/music",
       path: "Artist/Album/track.flac",
@@ -636,6 +642,14 @@ test("uses an exact indexed recording MBID when the path differs", async () => {
     }));
 
   assert.equal(song.id, "mbid-match");
+
+  navidrome.songs[1].missing = true;
+  const missing = await withNavidrome(navidrome, async () => (await connectToLibraries(libraries))
+    .findSong("Wanted title", "Wanted artist", {
+      mbid: "recording-mbid",
+      path: "/data/music/Other/track.flac",
+    }));
+  assert.equal(missing, null);
 });
 
 test("falls back to one title and artist match when the path is not indexed", async () => {
@@ -662,6 +676,11 @@ test("falls back to one title and artist match when the path is not indexed", as
 
   assert.equal(ambiguous, null);
   assert.equal(byAlbum.id, "Live Album");
+
+  navidrome.songs[1].missing = true;
+  const playable = await withNavidrome(navidrome, async () => (await connectToLibraries(libraries))
+    .findSong("Song", "Artist", { path: "/downloads/Song.flac" }));
+  assert.equal(playable.id, "Album");
 });
 
 test("reuses one native login across concurrent song lookups", async () => {

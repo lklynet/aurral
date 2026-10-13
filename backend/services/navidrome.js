@@ -223,6 +223,7 @@ export class NavidromeClient {
   async _searchSongs(filters) {
     const query = new URLSearchParams({
       ...filters,
+      missing: "false",
       _start: "0",
       _end: String(NAVIDROME_SONG_LOOKUP_LIMIT),
     });

@@ -17,6 +17,7 @@ function startsWithLike(value) {
 
 function matchesSongFilters(song, params) {
   for (const [key, value] of params) {
+    if (key === "missing" && Boolean(song.missing) !== (value === "true")) return false;
     if (key === "path" && !startsWithLike(value).test(song.path)) return false;
     if (key === "mbz_recording_id" && song.mbzRecordingID !== value) return false;
     if (key === "title") {
