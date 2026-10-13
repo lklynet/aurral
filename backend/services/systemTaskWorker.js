@@ -83,6 +83,16 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       await runDueImportSourceSyncs();
       return;
     }
+    case "playback-library-scan": {
+      const { playlistManager } = await import("./playlists/playlistManager.js");
+      playlistManager.updateConfig(false);
+      const results = await playlistManager.scanLibrary();
+      const failures = (results || []).filter((result) => !result.ok);
+      if (failures.length) {
+        throw new Error(failures.map((result) => `${result.destination}: ${result.error.message}`).join("; "));
+      }
+      return;
+    }
     case "library-index-refresh": {
       return;
     }

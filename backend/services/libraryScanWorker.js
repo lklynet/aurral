@@ -381,7 +381,10 @@ const {
       throw new Error(`Lidarr library indexing failed: ${scanResult.lidarr.error}`);
     }
     const { playlistManager } = await import("./playlists/playlistManager.js");
-    await playlistManager.scanLibrary();
+    if (force || changedPaths?.length > 0 || scanResult?.local?.changed || scanResult?.lidarr?.changed ||
+      scanResult?.flow?.changed || scanResult?.lidarrRemoved) {
+      playlistManager.schedulePlaybackScan();
+    }
     websocketService.broadcast("library", { type: "library_scan_completed" });
   },
   resolveRetry(error, job) {

@@ -16,6 +16,7 @@ import {
   resolveDownloadRoot,
 } from "../downloadPaths.js";
 import { scheduleLibraryScan } from "../libraryScanWorker.js";
+import { enqueueSystemTaskJob, findActiveHonkerJob } from "../honkerDb.js";
 import { getDownloadClient } from "../download/downloadClientSettings.js";
 import {
   assertPlaybackDestination,
@@ -303,6 +304,15 @@ export class PlaylistManager {
       await this._activePlaybackSnapshots(),
       () => this._activePlaybackSnapshots(),
     );
+  }
+
+  schedulePlaybackScan() {
+    this.updateConfig(false);
+    if (!this.destinationRegistry.destinations.some((destination) => destination.isConfigured())) return null;
+    const pending = findActiveHonkerJob("system-task", (_payload, job) => job.state === "pending", {
+      payloadKind: "playback-library-scan",
+    });
+    return pending?.id ?? enqueueSystemTaskJob({ kind: "playback-library-scan" }, { delaySeconds: 5 });
   }
 
   async scanLibrary() {

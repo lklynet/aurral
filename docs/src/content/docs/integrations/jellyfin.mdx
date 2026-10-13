@@ -34,4 +34,4 @@ When you delete a flow or static playlist in Aurral, or turn off a flow, Aurral 
 
 Aurral reads the audio library of the matched Jellyfin user. It finds each track by its exact path in Jellyfin first. If the path does not match, it uses the MusicBrainz recording ID, but only when exactly one track has that ID. It never guesses by title or artist. Aurral publishes only the tracks that it finds, so a missing track does not stop the rest of the playlist.
 
-When you change the Jellyfin settings, Aurral updates the playlists and starts a library scan in the background. Other settings changes do not start this update. A normal library scan request also refreshes the Jellyfin library. If Jellyfin is still indexing files, Aurral retries the incomplete playlists over the next few minutes.
+When you change the Jellyfin settings, Aurral updates the playlists and starts a library scan in the background. Other settings changes do not start this update. File changes and full Library scans queue a Jellyfin scan. Requests made close together share one scan. If Jellyfin is still indexing files, Aurral retries the incomplete playlists over the next few minutes.

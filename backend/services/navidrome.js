@@ -526,12 +526,7 @@ export class NavidromeClient {
 
   async scanLibrary() {
     if (!this.isConfigured()) return null;
-    try {
-      return await this.request("startScan");
-    } catch (err) {
-      console.warn("[Navidrome] scanLibrary failed:", err?.message);
-      return null;
-    }
+    return this.request("startScan");
   }
 
   async ensureAurralLibrary(libraryPath) {

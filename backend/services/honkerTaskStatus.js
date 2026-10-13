@@ -90,6 +90,10 @@ export const QUEUE_DEFINITIONS = [
 ];
 
 export const SYSTEM_TASK_LABELS = {
+  "playback-library-scan": {
+    label: "Media server scan",
+    description: "Refreshes connected media servers after files change.",
+  },
   "weekly-flow-refresh": {
     label: "Playlist schedule check",
     description: "Queues enabled playlist flows that are due to run.",
