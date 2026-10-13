@@ -8,6 +8,7 @@ const listenbrainzCache = createCache(300);
 const listenbrainzLookupCache = createCache(3600, 200);
 const LISTENBRAINZ_LOOKUP_FAILURE_TTL_SECONDS = 300;
 const LISTENBRAINZ_POPULARITY_BATCH_SIZE = 1000;
+const LISTENBRAINZ_METADATA_BATCH_SIZE = 100;
 
 const listenbrainzLimiter = createRateLimiter(350);
 const LISTENBRAINZ_USER_AGENT = `${APP_NAME}/${APP_VERSION} ( https://github.com/lklynet/aurral )`;
@@ -238,6 +239,27 @@ export const listenbrainzGetReleaseGroupListens = (releaseGroupMbids) =>
       }
     }
     return listens;
+  });
+
+const isReleaseGroupMetadata = (batch) =>
+  Boolean(batch) && typeof batch === "object" && !Array.isArray(batch) && !("error" in batch);
+
+export const listenbrainzGetReleaseGroupDates = (releaseGroupMbids) =>
+  cachedListenbrainzLookup(`dates:${releaseGroupMbids.join(",")}`, async () => {
+    const batches = await Promise.all(
+      toBatches(releaseGroupMbids, LISTENBRAINZ_METADATA_BATCH_SIZE).map((mbids) =>
+        listenbrainzRequest("/1/metadata/release_group/", { release_group_mbids: mbids.join(",") }),
+      ),
+    );
+    if (!batches.every(isReleaseGroupMetadata)) {
+      throw new TypeError("ListenBrainz release group metadata is not keyed by MBID");
+    }
+    const dates = new Map();
+    for (const [mbid, metadata] of batches.flatMap(Object.entries)) {
+      const date = metadata?.release_group?.date;
+      if (typeof date === "string" && date) dates.set(mbid, date);
+    }
+    return dates;
   });
 
 export { listenbrainzCache, listenbrainzLookupCache };

@@ -8,7 +8,7 @@ import { json, openArtistStream, stubFetch } from "./helpers/artistStream.js";
 const plaid = (n) => {
   const id = (release) => `${release}${n}0000000-0000-4000-8000-000000000000`.slice(0, 36);
   const releases = {
-    doubleFigure: { id: id(1), title: "Double Figure", type: "Album" },
+    doubleFigure: { id: id(1), title: "Double Figure", type: "Album", date: "2001-05-28" },
     factMix: { id: id(2), title: "FACT Mix 287: Plaid", type: "Album", secondaryTypes: ["Compilation", "DJ-mix"] },
     notForThrees: { id: id(3), title: "Not for Threes", type: "Album" },
     polymer: { id: id(4), title: "Polymer", type: "Album" },
@@ -29,6 +29,7 @@ const plaid = (n) => {
         OldIds: [],
         ReleaseStatuses: ["Official"],
         SecondaryTypes: release.secondaryTypes || [],
+        ReleaseDate: release.date,
         Title: release.title,
         Type: release.type,
       })),
@@ -44,6 +45,9 @@ const popularityRow = ({ id }, listens, listeners) => ({
 
 const isListenBrainzPopularity = (url) =>
   url.hostname === "api.listenbrainz.org" && url.pathname === "/1/popularity/release-group";
+
+const isListenBrainzMetadata = (url) =>
+  url.hostname === "api.listenbrainz.org" && url.pathname === "/1/metadata/release_group/";
 
 const summarize = (releaseGroups) =>
   releaseGroups.map((releaseGroup) => ({
@@ -86,10 +90,11 @@ async function getArtistDetails(mbid) {
   return body;
 }
 
-const stubPlaid = (t, artist, listenBrainz) =>
+const stubPlaid = (t, artist, listenBrainz, metadata = () => json({}, 404)) =>
   stubFetch(t, (url, init) => {
     if (url.pathname === `/artist/${artist.mbid}`) return json(artist.provider(artist.mbid));
     if (isListenBrainzPopularity(url)) return listenBrainz(JSON.parse(init.body));
+    if (isListenBrainzMetadata(url)) return metadata(url.searchParams.get("release_group_mbids").split(","));
     return json({}, 404);
   });
 
@@ -147,10 +152,19 @@ listenBrainzFailures.forEach(([failure, respond], index) => {
   test(`when ListenBrainz ${failure}, the artist stream still sends the discography and does not ask again right away`, async (t) => {
     const artist = plaid(3 + index);
     let popularityRequests = 0;
-    stubPlaid(t, artist, () => {
-      popularityRequests += 1;
-      return respond();
-    });
+    let metadataRequests = 0;
+    stubPlaid(
+      t,
+      artist,
+      () => {
+        popularityRequests += 1;
+        return respond();
+      },
+      () => {
+        metadataRequests += 1;
+        return respond();
+      },
+    );
 
     for (let load = 0; load < 2; load += 1) {
       const stream = openArtistStream(artist.mbid);
@@ -159,8 +173,51 @@ listenBrainzFailures.forEach(([failure, respond], index) => {
       assert.deepEqual(await discographyOf(stream), unscoredPlaid);
       await stream.waitFor(({ event }) => event === "complete");
     }
-    assert.equal(popularityRequests, 1);
+    assert.deepEqual({ popularityRequests, metadataRequests }, { popularityRequests: 1, metadataRequests: 1 });
   });
+});
+
+test("the artist stream fills missing release dates from ListenBrainz and keeps the dates it already has", async (t) => {
+  const artist = plaid(6);
+  const { releases } = artist;
+  const listenBrainzDates = {
+    [releases.doubleFigure.id]: "2001-05-26",
+    [releases.factMix.id]: "2011-09-30",
+    [releases.notForThrees.id]: "1997-10-27",
+    [releases.polymer.id]: "2019-06",
+  };
+  const asked = [];
+  stubPlaid(t, artist, () => json([]), (mbids) => {
+    asked.push(mbids);
+    return json(
+      Object.fromEntries(
+        mbids.map((mbid) => [
+          mbid,
+          { release_group: { name: "", type: "Album", date: listenBrainzDates[mbid] ?? null } },
+        ]),
+      ),
+    );
+  });
+
+  const stream = openArtistStream(artist.mbid);
+  t.after(() => stream.close());
+  const { data } = await stream.waitFor(
+    ({ event, data }) => event === "artist" && "release-groups" in data,
+  );
+
+  assert.deepEqual(
+    data["release-groups"].map((releaseGroup) => [releaseGroup.title, releaseGroup["first-release-date"]]),
+    [
+      ["Double Figure", "2001-05-28"],
+      ["FACT Mix 287: Plaid", "2011-09-30"],
+      ["Not for Threes", "1997-10-27"],
+      ["Polymer", "2019-06"],
+      ["Double Figure", null],
+    ],
+  );
+  assert.deepEqual(asked, [
+    [releases.factMix.id, releases.notForThrees.id, releases.polymer.id, releases.doubleFigureSingle.id],
+  ]);
 });
 
 test("the artist stream sends the discography without listeners when ListenBrainz does not answer in time", async (t) => {
