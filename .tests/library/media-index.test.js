@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { access, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -1050,7 +1050,7 @@ test("an unchanged local rescan skips metadata parsing", async () => {
   }
 });
 
-test("a targeted local rescan only parses changed files", async () => {
+test("a targeted local rescan refreshes a named file even when its size and timestamp are unchanged", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-targeted-"));
   const source = `test-targeted-${process.pid}`;
   const filePaths = [];
@@ -1065,7 +1065,10 @@ test("a targeted local rescan only parses changed files", async () => {
 
     await scanMusicRoot({ rootPath: root, source, metadataReader });
     metadataReads.length = 0;
-    await writeFile(filePaths[0], "changed fixture");
+    const indexed = getLibrarySnapshot().files.find((file) => file.path === filePaths[0]);
+    await utimes(filePaths[0], indexed.mtime_ms / 1000, indexed.mtime_ms / 1000);
+    db.prepare("UPDATE library_media_files SET mtime_ms = ? WHERE source = ? AND path = ?")
+      .run((await stat(filePaths[0])).mtimeMs, source, filePaths[0]);
     await scanMusicRoot({
       rootPath: root,
       source,

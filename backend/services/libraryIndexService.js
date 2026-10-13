@@ -1,7 +1,7 @@
 import path from "node:path";
 import { db } from "../config/db-sqlite.js";
 import { resolveDownloadRoot } from "./downloadPaths.js";
-import { scanMusicRoot, scanMusicRoots } from "./libraryFileScanner.js";
+import { createPathScopeMatcher, scanMusicRoot, scanMusicRoots } from "./libraryFileScanner.js";
 import {
   assignLibraryArtistMbid,
   getLibraryMediaPaths,
@@ -75,22 +75,24 @@ function getLibraryFlowPaths() {
   return [...new Set(rows.map((row) => path.resolve(String(row.final_path))))];
 }
 
-async function syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force) {
-  const flowPaths = pathsWithin(musicRoot, getLibraryFlowPaths());
+async function syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force, changedPaths = null) {
+  const targeted = Array.isArray(changedPaths);
+  const matchesScope = targeted ? createPathScopeMatcher(changedPaths) : () => true;
+  const flowPaths = pathsWithin(musicRoot, getLibraryFlowPaths()).filter(matchesScope);
   const scan = await scanMusicRoot({
     rootPath: musicRoot,
     source: "flow",
     filePaths: flowPaths,
-    force,
+    force: force || targeted,
     metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
-    syncSearch: false,
+    syncSearch: targeted,
   });
   const included = new Set(flowPaths);
   const removedPaths = [...getLibraryMediaPaths("flow")].filter(
-    (filePath) => !included.has(filePath),
+    (filePath) => matchesScope(filePath) && !included.has(filePath),
   );
   const removed = removeLibraryMediaFiles("flow", removedPaths);
-  return { ...scan, changed: scan.changed || removed > 0 };
+  return { ...scan, removed, changed: scan.changed || removed > 0 };
 }
 
 async function canonicalizeAurralArtistNames(jobMetadataByPath, paths = null) {
@@ -183,8 +185,8 @@ export async function scanConfiguredLibrary({
           syncSearch: targeted,
           isExcluded: createLibraryScanExclusion("aurral", { downloadRoot: musicRoot, lidarrRoots: lidarrFolders }),
         });
-    if (!targeted) {
-      flow = await syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force);
+    if (!targeted || localPaths.length > 0) {
+      flow = await syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force, targeted ? localPaths : null);
     }
     if (!targeted || localPaths.length > 0) {
       await canonicalizeAurralArtistNames(jobMetadataByPath, targeted ? localPaths : null);
@@ -233,7 +235,7 @@ export async function scanConfiguredLibrary({
     throw error;
   } finally {
     if (scanFailed || artistsResolved || lidarrRemoved || local?.changed || lidarr?.changed || flow?.changed) {
-      if (!targeted || scanFailed || artistsResolved) rebuildLibrarySearchIndex();
+      if (!targeted || scanFailed || artistsResolved || flow?.removed > 0) rebuildLibrarySearchIndex();
       if (!targeted) rebuildLibraryGenreStats();
     }
   }

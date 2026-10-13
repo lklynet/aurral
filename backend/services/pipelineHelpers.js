@@ -110,7 +110,7 @@ export async function recordPipelineJobSuccess({
   if (downloadTracker.setDone(job.id, committedFinalPath, album) === false) return false;
   if (quality) downloadTracker.updateQuality(job.id, quality);
 
-  if (job.playlistType === "library" && job.managedBy === "aurral" && committedFinalPath) {
+  if (job.managedBy !== "lidarr" && committedFinalPath) {
     const { scheduleLibraryScan } = await import("./libraryScanWorker.js");
     scheduleLibraryScan({
       includeLidarr: false,

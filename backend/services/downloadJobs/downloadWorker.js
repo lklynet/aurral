@@ -666,7 +666,7 @@ export class DownloadWorker {
           `playlist-finalize:${playlistKey}`,
           async () => {
             console.log(
-              `[DownloadWorker] All jobs complete for ${playlistType}, ensuring playlists...`,
+              `[DownloadWorker] All jobs complete for ${playlistType}, refreshing playlist...`,
             );
             try {
               const { removeUnusedPlaybackFiles, createPlaybackDeletionGuard } = await import("../playback/playbackFileRetention.js");
@@ -675,14 +675,13 @@ export class DownloadWorker {
             } catch {}
             try {
               playlistManager.updateConfig(false);
-              await playlistManager.ensurePlaylists();
-              await playlistManager.scheduleScanLibrary(true);
+              await playlistManager.refreshPlaylist(playlistType);
               if (flowPlaylistConfig.isEnabled(playlistType)) {
                 flowPlaylistConfig.scheduleNextRun(playlistType);
               }
             } catch (error) {
               console.error(
-                `[DownloadWorker] Failed to ensure playlists for ${playlistType}:`,
+                `[DownloadWorker] Failed to refresh playlist for ${playlistType}:`,
                 error.message,
               );
             }

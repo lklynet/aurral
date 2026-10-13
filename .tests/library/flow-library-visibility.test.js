@@ -93,7 +93,7 @@ function createFlow(name, showInLibrary) {
   return flowPlaylistConfig.updateFlow(flow.id, { showInLibrary });
 }
 
-const scan = () => scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
+const scan = (changedPaths = null) => scanConfiguredLibrary({ musicRoot: root, includeLidarr: false, changedPaths });
 
 const libraryTrackTitles = () =>
   getLibrary({ availableOnly: true })
@@ -114,11 +114,11 @@ test("flow tracks join the library only while their flow opts in", async () => {
   addDoneJob(flow.id, filePath, "Opt In");
   const filesBefore = await listFiles(root);
 
-  await scan();
+  await scan([filePath]);
   assert.deepEqual(libraryTrackTitles(), []);
 
   flowPlaylistConfig.updateFlow(flow.id, { showInLibrary: true });
-  await scan();
+  await scan([filePath]);
   assert.deepEqual(libraryTrackTitles(), ["Opt In"]);
 
   flowPlaylistConfig.updateFlow(flow.id, { showInLibrary: false });
@@ -139,13 +139,18 @@ test("tracks that leave an included flow leave the library", async () => {
   await scan();
   assert.deepEqual(libraryTrackTitles(), ["Kept", "Rotated"]);
 
+  const added = await writeTrack(`aurral-weekly-flow/${flow.id}/Flow Artist - Added.wav`);
+  addDoneJob(flow.id, added, "Added");
+  await scan([added]);
+  assert.deepEqual(libraryTrackTitles(), ["Added", "Kept", "Rotated"]);
+
   db.prepare("DELETE FROM playlist_download_jobs WHERE id = ?").run(rotatedJob);
   await rm(rotated);
-  await scan();
-  assert.deepEqual(getLibrary({ availableOnly: false }).tracks.map((t) => t.title), ["Kept"]);
+  await scan([rotated]);
+  assert.deepEqual(libraryTrackTitles(), ["Added", "Kept"]);
 
   flowPlaylistConfig.deleteFlow(flow.id);
-  await scan();
+  await scan([path.dirname(kept)]);
   assert.deepEqual(getLibrary({ availableOnly: false }).tracks, []);
 });
 

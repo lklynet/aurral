@@ -26,6 +26,8 @@ const [
   cancellationModule,
   { processPipelinePayload },
   { getDownloadClient },
+  { getScheduledLibraryScanJobId },
+  { getLibraryScanQueue },
 ] = await setupIsolatedBackend(
   "download-review-routing",
   "backend/services/downloadJobs/downloadTracker.js",
@@ -40,6 +42,8 @@ const [
   "backend/services/downloadJobs/downloadCancellation.js",
   "backend/services/downloadPipeline.js",
   "backend/services/download/downloadClientSettings.js",
+  "backend/services/libraryScanWorker.js",
+  "backend/services/honkerDb.js",
 );
 
 const { blockPipelineJobForReview, finalizePipelineJobSuccess } = pipelineHelpersModule;
@@ -163,36 +167,28 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("pipeline completion leaves the library scan to playlist completion", async (t) => {
-  const scheduleScanLibrary = t.mock.method(playlistManager, "scheduleScanLibrary", () => 1);
-  const refreshPlaylist = t.mock.method(playlistManager, "refreshPlaylist", async () => null);
-  const wake = t.mock.method(downloadWorker, "wake", () => {});
-  const checkPlaylistComplete = t.mock.method(
-    downloadWorker,
-    "checkPlaylistComplete",
-    async () => {},
-  );
+test("pipeline completion queues only committed files and settling does not expand the scan", async () => {
+  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  const committedPaths = [];
+  for (const playlistType of ["library", "flow-playlist", "static-playlist"]) {
+    const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: playlistType }, playlistType);
+    const filePath = path.join(process.env.DOWNLOAD_FOLDER, "Artist", `${playlistType}.flac`);
+    committedPaths.push(filePath);
+    await finalizePipelineJobSuccess({
+      downloadTracker,
+      job: downloadTracker.getJob(jobId),
+      committedFinalPath: filePath,
+    });
+    assert.equal(downloadTracker.getJob(jobId).status, "done");
+    assert.equal(downloadTracker.getJob(jobId).finalPath, filePath);
+  }
 
-  await finalizePipelineJobSuccess({
-    downloadTracker: {
-      setDone() {},
-    },
-    job: {
-      id: "pipeline-job",
-      playlistType: "flow-playlist",
-      artistName: "Artist",
-      trackName: "Track",
-    },
-    committedFinalPath: "/library/Artist/Track.flac",
-  });
-
-  assert.equal(scheduleScanLibrary.mock.callCount(), 0);
-  assert.deepEqual(refreshPlaylist.mock.calls.map((call) => call.arguments), [["flow-playlist"]]);
-  assert.deepEqual(wake.mock.calls.map((call) => call.arguments), [[0]]);
-  assert.deepEqual(
-    checkPlaylistComplete.mock.calls.map((call) => call.arguments),
-    [["flow-playlist"]],
-  );
+  const scanId = getScheduledLibraryScanJobId();
+  assert.ok(getLibraryScanQueue().getJob(scanId));
+  const registry = dbOps.getJSONSetting("pendingLibraryScanJob");
+  assert.deepEqual(registry.changedPaths, committedPaths);
+  assert.notEqual(registry.force, true);
+  assert.equal(registry.includeLidarr, false);
 });
 
 async function writeOneSecondMp3(filePath, { title = "Correct Track", artist = "Artist Name", seconds = 1 } = {}) {
