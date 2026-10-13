@@ -1287,6 +1287,16 @@ test("updatePlaylist removes the songs at the positions getPlaylist returned and
   for (const song of after) {
     assert.equal((await request("stream", { id: song.id })).response.status, 200);
   }
+  const cleared = responseJson(await request("updatePlaylist", { playlistId: id, songIndexToRemove: ["0", "1"] }));
+  assert.equal(cleared.status, "ok");
+  assert.deepEqual(await entries(), []);
+  const readded = responseJson(await request("updatePlaylist", { playlistId: id, songIdToAdd: after.map((song) => song.id) }));
+  assert.equal(readded.status, "ok");
+  const restored = await entries();
+  assert.deepEqual(restored.map((song) => song.title), ["Canonical Song", "Kept Song"]);
+  for (const song of after) {
+    assert.equal((await request("stream", { id: song.id })).response.status, 200);
+  }
   await stat(editableKeptPath);
 });
 
