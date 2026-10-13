@@ -294,21 +294,25 @@ btest("matching embedded recording MBID verifies even with odd tags", async () =
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
 });
 
-btest("strong tags with a conflicting duration require review, never automatic import", async () => {
-  const outcome = await validateDownloadedTrackFile({
+btest("strong tags with a near duration go to review, a far one is another recording", async () => {
+  const validate = (durationSec) => validateDownloadedTrackFile({
     request: GET_LUCKY,
     filePath: "/staging/Get Lucky.flac",
     source: "deemix",
     options: {
       parseFile: stubParseFile(
-        stubParsed({ title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories" }, 610),
+        stubParsed({ title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories" }, durationSec),
       ),
     },
   });
-  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
-  assert.equal(outcome.blocked, true);
-  assert.ok(outcome.contradictions.includes("duration"));
-  assert.equal(outcome.reason, "downloaded file is 362.0s longer than the requested track");
+  const near = await validate(268);
+  assert.equal(near.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
+  assert.equal(near.blocked, true);
+  assert.equal(near.reason, "downloaded file is 20.0s longer than the requested track");
+  const far = await validate(610);
+  assert.equal(far.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+  assert.equal(far.blocked, false);
+  assert.ok(far.contradictions.includes("duration"));
 });
 
 btest("an exact title and artist allow another edition's length, a partial title does not", async () => {
@@ -695,4 +699,32 @@ test("release selection with an unreadable file set returns nothing usable", { s
   });
   assert.equal(selection.filePath, null);
   assert.equal(selection.validation, null);
+});
+
+test("a release without the requested song holds none of the artist's other songs", async () => {
+  const parsed = new Map([
+    ["/staging/01 Kiss Me.flac", stubParsed({ title: "Kiss Me", artist: "A New Found Glory", track: 1 }, 174)],
+    ["/staging/02 The Glory of Love.flac", stubParsed({ title: "The Glory of Love", artist: "A New Found Glory", track: 2 }, 165)],
+    ["/staging/03 My Heart Will Go On.flac", stubParsed({ title: "My Heart Will Go On", artist: "A New Found Glory", track: 3 }, 170)],
+  ]);
+  const outcome = await selectVerifiedDownloadedFile({
+    request: { artistName: "New Found Glory", artistAliases: ["A New Found Glory"], trackName: "Better Off Dead",
+      albumName: "New Found Glory", durationMs: 168461 },
+    filePaths: [...parsed.keys()],
+    source: "usenet",
+    options: { parseFile: async (filePath) => parsed.get(filePath) },
+  });
+  assert.equal(outcome.filePath, null);
+  assert.equal(outcome.validation.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+  assert.equal(outcome.validation.blocked, false);
+});
+
+test("a bonus-track note on the requested title does not make the album copy another song", async () => {
+  const outcome = await validateDownloadedTrackFile({
+    request: { artistName: "Girls", trackName: "Life In San Francisco (Australian Bonus Track)", durationMs: 139050 },
+    filePath: "/staging/14 Life in San Francisco.flac",
+    source: "usenet",
+    options: { parseFile: stubParseFile(stubParsed({ title: "Life in San Francisco", artist: "Girls" }, 136)) },
+  });
+  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, outcome.reason);
 });

@@ -152,6 +152,22 @@ const isKeptFile = (filePath) => {
   return keptFilePathsStmt.all().some((keptPath) => path.resolve(keptPath) === resolved);
 };
 
+// An upgrade skips the download worker, so it reads the release tracklist,
+// track count, and artist aliases here, as every other download does. Without
+// them a release cannot be matched against the album it should hold.
+async function resolveUpgradeSearchContext(upgradeJobId) {
+  try {
+    const { resolveTrackSearchContext } = await import("./downloadJobs/trackSearchContext.js");
+    const job = downloadTracker.getJob(upgradeJobId);
+    if (job) downloadTracker.updateMetadata(upgradeJobId, await resolveTrackSearchContext(job));
+  } catch (error) {
+    logger.warn("downloads", "Could not read release details for a quality upgrade", {
+      jobId: upgradeJobId,
+      reason: safeLogDiagnostic(error),
+    });
+  }
+}
+
 export async function queueQualityUpgrade(job) {
   if (!job?.id || job.status !== "done" || !isAurralOwnedPath(job.finalPath)) {
     return "ineligible";
@@ -166,6 +182,7 @@ export async function queueQualityUpgrade(job) {
   if (downloadTracker.findActiveUpgradeJob(current)) return "already-queued";
   const upgradeJobId = downloadTracker.addUpgradeJob(current);
   if (!upgradeJobId) return "ineligible";
+  await resolveUpgradeSearchContext(upgradeJobId);
   const queuedUpgrade = downloadTracker.getJob(upgradeJobId);
   if (!downloadTracker.enqueueDownloadPipeline(upgradeJobId)) {
     downloadTracker.removeJob(upgradeJobId);

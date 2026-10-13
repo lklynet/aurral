@@ -8,13 +8,15 @@ import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../he
 
 const [state, { db }, { dbOps }, { downloadTracker }, { NzbgetClient },
   { removeNzbgetDownloadFolder }, { getDownloadClient }, { processUsenetPipelinePayload },
-  { syncPathMappings }, { approveBlockedJob, denyBlockedJob }] = await setupIsolatedBackend(
+  { syncPathMappings }, { approveBlockedJob, denyBlockedJob }, { processPipelinePayload },
+  { prowlarrClient }] = await setupIsolatedBackend(
   "nzbget-cleanup",
   "backend/config/db-sqlite.js", "backend/db/helpers/index.js",
   "backend/services/downloadJobs/downloadTracker.js", "backend/services/nzbgetClient.js",
   "backend/services/nzbgetCleanup.js", "backend/services/download/downloadClientSettings.js",
   "backend/services/usenetOrchestrator.js", "backend/services/pathMappings.js",
-  "backend/services/downloadJobs/blockedJobReview.js",
+  "backend/services/downloadJobs/blockedJobReview.js", "backend/services/downloadPipeline.js",
+  "backend/services/prowlarrClient.js",
 );
 const exec = promisify(execFile);
 let sequence = 0;
@@ -197,6 +199,14 @@ async function pipelineFixture(t, { deleteLeftovers = true, durationMs = 1000, q
       resolvedAlbumName: "Album" } } };
 }
 
+const finishThroughPipeline = (t, payload) => {
+  t.mock.method(prowlarrClient, "isConfigured", () => true);
+  for (const id of ["slskd", "deemix", "ytdlp", "sabnzbd"]) {
+    t.mock.method(getDownloadClient(id), "isConfigured", () => false);
+  }
+  return processPipelinePayload(payload);
+};
+
 const historyDeletes = (deleted) =>
   deleted.mock.calls.filter((call) => call.arguments[0] === "HistoryFinalDelete").length;
 
@@ -233,8 +243,8 @@ test("a failed import keeps the download and its history", async (t) => {
 
 for (const [decision, review] of [["approved", approveBlockedJob], ["denied", denyBlockedJob]]) {
   test(`a song held for review keeps its download until it is ${decision}`, async (t) => {
-    const { jobId, payload, deleted } = await pipelineFixture(t, { durationMs: 180000 });
-    await processUsenetPipelinePayload(payload);
+    const { jobId, payload, deleted } = await pipelineFixture(t, { durationMs: 15000 });
+    await finishThroughPipeline(t, payload);
     assert.equal(downloadTracker.getJob(jobId).status, "blocked");
     assert.equal(await exists(path.join(folder(), "Unwanted.flac")), true);
     assert.equal(deleted.mock.callCount(), 0);
@@ -245,14 +255,14 @@ for (const [decision, review] of [["approved", approveBlockedJob], ["denied", de
 }
 
 test("removing a song held for review removes its download", async (t) => {
-  const { jobId, payload, deleted } = await pipelineFixture(t, { durationMs: 180000 });
+  const { jobId, payload, deleted } = await pipelineFixture(t, { durationMs: 15000 });
   const removed = new Promise((resolve) => {
     deleted.mock.mockImplementation(async (command) => {
       if (command === "HistoryFinalDelete") resolve();
       return true;
     });
   });
-  await processUsenetPipelinePayload(payload);
+  await finishThroughPipeline(t, payload);
   assert.equal(downloadTracker.getJob(jobId).status, "blocked");
   downloadTracker.removeJob(jobId);
   await removed;

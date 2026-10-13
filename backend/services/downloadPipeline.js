@@ -89,6 +89,7 @@ async function discardHeldForReview(payload) {
     id: payload.jobId,
     stagingPath: held.sourcePath,
     downloadSource: held.source,
+    downloadClient: held.metadata?.downloadClient,
     downloadClientId: held.transferId,
     remoteUsername: held.username,
   });

@@ -44,6 +44,9 @@ export const POST_DOWNLOAD_DECISIONS = {
 
 const MANUAL_RELEASE_FILE_TITLE_THRESHOLD = 70;
 const STRICT_DURATION_GAP_MS = 1000;
+// Beyond this, a file with the requested title is a different edit, a
+// hidden-track rip, or a different song, never something worth a review.
+const REVIEW_MAX_DURATION_GAP_MS = 30000;
 
 function readTagText(value) {
   return String(value || "").trim() || null;
@@ -288,6 +291,7 @@ export async function validateDownloadedTrackFile({
   const durationOnlyConflict = hasOriginalIdentityTags
     && verification.contradictions.length === 1
     && verification.contradictions[0] === "duration"
+    && verification.durationGapMs <= REVIEW_MAX_DURATION_GAP_MS
     && verification.evidence.includes("title")
     && verification.evidence.includes("artist");
   const tagsConfirmIdentity = Boolean(readTagText(parsed?.common?.title))
@@ -311,27 +315,33 @@ export async function validateDownloadedTrackFile({
   const titleAgrees = source !== "ytdlp" || verification.titleSimilarity === 1;
   const matched = titleAgrees && (verification.decision === "matched"
     || (exactIdentity && verification.contradictions.length === 0 && verification.durationGapMs != null));
+  const reviewable = durationOnlyConflict
+    || (verification.decision !== "no_match" && hasOriginalIdentityTags);
+  // The Library already has a copy, so an automatic upgrade that is not
+  // verified is dropped instead of asking anyone to review it.
+  const automaticUpgrade = Boolean(trackRequest.upgradeForJobId) && !trackRequest.manualReplacementSearch;
   const decision = matched && !durationUncertain
     ? POST_DOWNLOAD_DECISIONS.VERIFIED
-    : durationOnlyConflict
+    : reviewable && !automaticUpgrade
       ? POST_DOWNLOAD_DECISIONS.AMBIGUOUS
-      : verification.decision === "no_match" || !hasOriginalIdentityTags
-      ? POST_DOWNLOAD_DECISIONS.CONFLICTED
-      : POST_DOWNLOAD_DECISIONS.AMBIGUOUS;
-  const reason = decision === POST_DOWNLOAD_DECISIONS.CONFLICTED
-    ? contradictions.length
-      ? `downloaded file contradicts the requested recording: ${contradictions.join(", ")}`
-      : "downloaded file has no original identity tags"
-    : decision === POST_DOWNLOAD_DECISIONS.AMBIGUOUS
-      ? describeReviewReason({
-        verification,
-        titleAgrees,
-        artists: youtube ? youtube.artists : actual.artists,
-        actualDurationMs,
-        requestedDurationMs: trackRequest.durationMs,
-        maxDurationGapMs,
-      })
-      : null;
+      : POST_DOWNLOAD_DECISIONS.CONFLICTED;
+  const reviewReason = decision !== POST_DOWNLOAD_DECISIONS.VERIFIED && reviewable
+    ? describeReviewReason({
+      verification,
+      titleAgrees,
+      artists: youtube ? youtube.artists : actual.artists,
+      actualDurationMs,
+      requestedDurationMs: trackRequest.durationMs,
+      maxDurationGapMs,
+    })
+    : null;
+  const reason = decision === POST_DOWNLOAD_DECISIONS.VERIFIED
+    ? null
+    : reviewReason
+      ? reviewReason
+      : contradictions.length
+        ? `downloaded file contradicts the requested recording: ${contradictions.join(", ")}`
+        : "downloaded file has no original identity tags";
   logger.debug("matcher", "post-download validation", {
     source, stage: "post-download", decision,
     durationDiffMs: verification.durationGapMs,

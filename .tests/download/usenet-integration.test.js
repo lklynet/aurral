@@ -541,6 +541,17 @@ test("Usenet release titles match by their words, not by overall similarity", ()
   ], { artistName: "Portishead", albumName: "Portishead", trackName: "Humming" });
   assert.deepEqual(selfTitled.map(([title]) => title), ["Portishead - Portishead (1997) FLAC"]);
 
+  const otherAlbumByName = admitted([
+    "A New Found Glory-From The Screen To Your Stereo-16BIT-WEB-FLAC-2000-VEXED",
+    "New Found Glory-New Found Glory-CD-FLAC-2000-FATHEAD",
+  ], { artistName: "New Found Glory", artistAliases: ["A New Found Glory"], albumName: "New Found Glory",
+    trackName: "Better Off Dead" });
+  assert.deepEqual(otherAlbumByName.map(([title]) => title), ["New Found Glory-New Found Glory-CD-FLAC-2000-FATHEAD"]);
+
+  const namedInAlbum = admitted(["Queen II (1974) FLAC"],
+    { artistName: "Queen", albumName: "Queen II", trackName: "White Queen" });
+  assert.equal(namedInAlbum.length, 1);
+
   const bookends = admitted([
     "Simon and Garfunkel - Bookends (1968) FLAC",
     "Simon & Garfunkel - Bookends (1968) MP3",

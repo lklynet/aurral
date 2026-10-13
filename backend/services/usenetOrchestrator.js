@@ -33,7 +33,7 @@ import {
   hasNextCandidate,
   buildNextCandidatePayload,
   mergeSearchResults,
-  blockPipelineJobForReview,
+  holdForReview,
   finalizePipelineJobSuccess,
 } from "./pipelineHelpers.js";
 import {
@@ -63,10 +63,38 @@ function getUsenetClientKey(preferredKey = null) {
   return getUsenetClient(preferredKey).key;
 }
 
+const isAutomaticUpgrade = (job) => Boolean(job?.upgradeForJobId) && !job.manualReplacementSearch;
+
+function otherJobsOnNzb(clientKey, nzbId, jobId) {
+  const id = String(nzbId ?? "").trim();
+  if (!id) return [];
+  return downloadTracker.getAll().filter((entry) => entry.id !== jobId
+    && isAutomaticUpgrade(entry) && entry.status === "downloading"
+    && entry.downloadSource === "usenet" && entry.downloadClient === clientKey
+    && String(entry.downloadClientId ?? "").trim() === id);
+}
+
+// Upgrades for several tracks of one album usually rank the same release
+// first. They share its download instead of each fetching the whole album.
+// Only automatic upgrades share, because they never hold a file for review.
+const pendingUpgradeSubmissions = new Map();
+
+function sharedUpgradeNzb(clientKey, release, jobId) {
+  const guid = String(release?.guid || "").trim();
+  if (!guid) return null;
+  const owner = downloadTracker.getAll().find((entry) => entry.id !== jobId
+    && isAutomaticUpgrade(entry) && entry.status === "downloading"
+    && entry.downloadSource === "usenet" && entry.downloadClient === clientKey
+    && entry.releaseGuid === guid && entry.downloadClientId != null);
+  return owner?.downloadClientId ?? pendingUpgradeSubmissions.get(`${clientKey}\0${guid}`) ?? null;
+}
+
 // Both clients drop the queue and history entry. SABnzbd also deletes the
-// job's files; NZBGet does with deleteFiles, unless its setting is off.
+// job's files; NZBGet does with deleteFiles, unless its setting is off. A
+// download another upgrade still reads is left to the last one.
 async function removeUsenetItem(payload, jobId, options = {}) {
   const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
+  if (otherJobsOnNzb(client.key, payload.nzbId, jobId).length > 0) return;
   for (const [entry, remove] of [
     ["queue", () => client.deleteQueueItem(payload.nzbId)],
     ["history", () => client.deleteHistoryItem(payload.nzbId, options)],
@@ -360,6 +388,41 @@ async function handleUsenetDownload(payload, helpers) {
 
   const client = getUsenetClient(payload.manualDownloadClient);
   const clientKey = getUsenetClientKey(payload.manualDownloadClient);
+  const releaseMetadata = {
+    downloadSource: "usenet",
+    downloadClient: clientKey,
+    releaseGuid: release.guid,
+    releaseTitle: release.title,
+    indexerId: release.indexerId,
+    indexerName: release.indexer,
+    remoteUsername: release.indexer,
+    remoteFilename: release.title,
+  };
+  const pollPayload = (nzbId) => ({
+    ...payload,
+    phase: "poll",
+    source: "usenet",
+    downloadClient: clientKey,
+    nzbId,
+    candidate,
+    candidateIndex: index,
+    pollAttempts: 0,
+  });
+  const upgrade = isAutomaticUpgrade(job) && Boolean(String(release.guid || "").trim());
+  const submissionKey = `${clientKey}\0${String(release.guid || "").trim()}`;
+  let settleSubmission = null;
+  const claimSubmission = () => {
+    pendingUpgradeSubmissions.set(submissionKey, new Promise((resolve) => { settleSubmission = resolve; }));
+  };
+  const shared = upgrade ? sharedUpgradeNzb(clientKey, release, job.id) : null;
+  if (upgrade && shared == null) claimSubmission();
+  const sharedNzbId = shared == null ? null : await shared;
+  if (sharedNzbId != null) {
+    if (!isPipelinePayloadActive(payload)) return null;
+    downloadTracker.updateDownloadMetadata(job.id, { ...releaseMetadata, downloadClientId: sharedNzbId });
+    return pollPayload(sharedNzbId);
+  }
+  if (upgrade && !settleSubmission) claimSubmission();
   let submission;
   try {
     const nzb = await prowlarrClient.downloadNzb(release.downloadUrl);
@@ -371,17 +434,7 @@ async function handleUsenetDownload(payload, helpers) {
         dupeKey: `aurral-${job.id}`,
         dupeScore: Number(candidate.score || 0),
       });
-      downloadTracker.updateDownloadMetadata(job.id, {
-        downloadSource: "usenet",
-        downloadClient: clientKey,
-        downloadClientId: appended.nzbId,
-        releaseGuid: release.guid,
-        releaseTitle: release.title,
-        indexerId: release.indexerId,
-        indexerName: release.indexer,
-        remoteUsername: release.indexer,
-        remoteFilename: release.title,
-      });
+      downloadTracker.updateDownloadMetadata(job.id, { ...releaseMetadata, downloadClientId: appended.nzbId });
       return appended;
     });
   } catch (error) {
@@ -394,19 +447,14 @@ async function handleUsenetDownload(payload, helpers) {
     });
     if (hasNextCandidate(payload)) return buildNextCandidatePayload(payload, RELEASE_RESET);
     return helpers.failOrTryNextSource(payload, job, message);
+  } finally {
+    if (settleSubmission) {
+      settleSubmission(submission?.result?.nzbId ?? null);
+      pendingUpgradeSubmissions.delete(submissionKey);
+    }
   }
   if (submission.cancelled || !isPipelinePayloadActive(payload)) return null;
-  const appended = submission.result;
-  return {
-    ...payload,
-    phase: "poll",
-    source: "usenet",
-    downloadClient: clientKey,
-    nzbId: appended.nzbId,
-    candidate,
-    candidateIndex: index,
-    pollAttempts: 0,
-  };
+  return pollPayload(submission.result.nzbId);
 }
 
 async function handleUsenetPoll(payload, helpers) {
@@ -492,17 +540,23 @@ async function handleUsenetFinalize(payload, helpers) {
     await removeUsenetItem(payload, job.id, { deleteFiles: true, historyItem });
     return null;
   }
-  if (
-    blockPipelineJobForReview({
-      downloadTracker,
-      job,
-      validation: found.validation,
-      sourcePath: found.filePath,
-    })
-  ) {
-    return null;
+  // A file worth a review keeps its download while the other releases and
+  // sources are tried, as every other source does.
+  if (found.filePath && found.validation?.blocked && !payload.heldForReview) {
+    const heldPayload = {
+      ...payload,
+      heldForReview: holdForReview(job, {
+        source: "usenet",
+        sourcePath: found.filePath,
+        reason: found.validation.reason,
+        transferId: payload.nzbId,
+      }),
+    };
+    return hasNextCandidate(payload)
+      ? buildNextCandidatePayload(heldPayload, RELEASE_RESET)
+      : helpers.failOrTryNextSource(heldPayload, job, heldPayload.heldForReview.reason);
   }
-  if (!found.filePath) {
+  if (!found.filePath || found.validation?.blocked) {
     const reason = found.validation?.reason
       || "Usenet download completed, but no matching audio file was found";
     await removeUsenetItem(payload, job.id, { deleteFiles: true, historyItem });

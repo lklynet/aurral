@@ -436,6 +436,8 @@ test("automatic upgrades reach monitored Library tracks that Aurral did not down
     assert.equal(await qualityProfileService.runQualityUpgradeCheck({ force: true }), 1);
     const upgrade = downloadTracker.getJob(queued[0]);
     assert.equal(downloadTracker.getJob(upgrade.upgradeForJobId).finalPath, monitored);
+    assert.equal(upgrade.albumTrackCount, 2);
+    assert.deepEqual(upgrade.albumTrackTitles, ["Low", "Left"]);
     assert.equal(downloadTracker.getAll().some((job) => job.finalPath === unmonitored), false);
   } finally {
     downloadTracker.enqueueDownloadPipeline = originalEnqueue;

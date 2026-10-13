@@ -380,6 +380,7 @@ export async function resolveTrackSearchContext(track) {
     if (otherAlbum || (releaseContext && (!credited || !(await holdsTrack(base.albumMbid, base))))) {
       base.albumMbid = null;
       base.trackMbid = null;
+      base.albumTrackTitles = [];
       releaseContext = null;
     }
   }
@@ -448,7 +449,8 @@ export async function resolveTrackSearchContext(track) {
     if (matchedTrack) {
       matchedTrackDurationMs = matchedTrack.durationMs || null;
     }
-  } else {
+  } else if (!base.albumTrackTitles?.length) {
+    // A tracklist the job brought from the Library still describes its album.
     base.albumTrackCount = null;
     base.albumTrackTitles = [];
     base.trackNumber = null;

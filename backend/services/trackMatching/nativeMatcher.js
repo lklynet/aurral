@@ -10,7 +10,7 @@ import { isVariousArtistsCredit } from "./titleText.js";
 import { UUID_REGEX } from "../../../lib/uuid.js";
 
 export const MATCH_POLICY = Object.freeze({
-  version: "aurral-native-4",
+  version: "aurral-native-5",
   maxDurationGapMs: 10000,
   selectedDurationGapMs: 2000,
   minTitleSimilarity: 0.7,
@@ -83,7 +83,7 @@ function variants(title) {
 
 function coreMatchTitle(title) {
   return (stripPromoDescriptors(title) || String(title || ""))
-    .replace(/\s*[[(][^\])]*\b(?:live|remix|acoustic|instrumental|demo|edit|karaoke|cover|nightcore|mix|remaster(?:ed)?|feat\.?|ft\.?|featuring|official audio|official video|visualizer|lyrics|album version|original version)\b[^\])]*[\])]/giu, "")
+    .replace(/\s*[[(][^\])]*\b(?:live|remix|acoustic|instrumental|demo|edit|karaoke|cover|nightcore|mix|remaster(?:ed)?|feat\.?|ft\.?|featuring|official audio|official video|visualizer|lyrics|album version|original version|bonus|hidden track)\b[^\])]*[\])]/giu, "")
     .replace(/\s+[-–—]\s+(?:(?:radio|extended|club|dance|single|album)\s+)?(?:edit|mix|live|remix|acoustic|instrumental|demo|karaoke|remaster(?:ed)?)\b.*$/iu, "")
     .replace(/\s+\b(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "")
     .trim();
@@ -409,6 +409,12 @@ export function verifyDownloadedRecording(request, observed, policy = MATCH_POLI
   if (observed.fileNameTitle
     && variants(request.title).join("|") !== variants(observed.fileNameTitle).join("|")) {
     result.contradictions.push("filename-variant");
+  }
+  // Another song by the same artist with a similar length is not a near
+  // match: without its title or recording ID, a file is a different song.
+  if (!result.evidence.includes("recording-mbid") && !result.evidence.includes("title")
+    && !result.contradictions.includes("title")) {
+    result.contradictions.push("title");
   }
   let decision = "ambiguous";
   if (result.contradictions.length) decision = "no_match";

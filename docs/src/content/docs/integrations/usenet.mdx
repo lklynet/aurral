@@ -82,7 +82,9 @@ A release that fails to download, or that holds no file for the track, is not of
 
 After Aurral imports a download, or the download fails, it removes the item from the client's queue and history and deletes the files that Aurral did not import. For NZBGet, turn off **Delete leftover files** to keep those files. Aurral deletes only the folder NZBGet created for the download. If a post-processing script moved the files elsewhere, Aurral leaves them and the history item in place. When two NZBGet downloads have the same name, NZBGet puts both in one folder, and Aurral removes that folder only with the last of them.
 
-If a file matches the requested track except for its length, or its title or artist only partly matches, Aurral holds it in **Activity > Queue**. You can preview, approve, or deny it. Aurral keeps the rest of that download until you approve, deny, or remove the song. See [Track matching](/development/track-matching/) for the length rules.
+If a file has the requested title but its length or artist credit is a little off, Aurral holds it and tries the other releases and download sources first. If none of them verifies, the file waits in **Activity > Queue**, where you can preview, approve, or deny it. Aurral keeps the rest of that download until you approve, deny, or remove the song. Automatic upgrades never wait for review. See [Track matching](/development/track-matching/) for the rules.
+
+Upgrades for several tracks of one album that pick the same release share one download of it.
 
 ## Quality and upgrades
 
