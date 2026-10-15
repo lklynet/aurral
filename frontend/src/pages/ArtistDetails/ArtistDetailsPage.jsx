@@ -349,9 +349,12 @@ function ArtistDetailsPage() {
       albumName: releaseGroup?.title || "",
       artistMbid: mbid || "",
       albumMbid: releaseGroup?.id || "",
+      releaseMbid: track?.releaseMbid,
       trackMbid: track?.mbid || track?.id || "",
       releaseYear: year,
       durationMs: track?.length,
+      trackNumber: track?.trackNumber,
+      discNumber: track?.discNumber,
       reason: null,
     });
   };

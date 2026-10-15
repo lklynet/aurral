@@ -987,6 +987,7 @@ function LibraryPage() {
       if (!track || firstAvailableFile(track) || isPreviewLibrary) return null;
       const album = getAlbumForTrack(track);
       const artist = getArtistForAlbum(album);
+      const relation = track?.albums?.find((entry) => String(entry.albumId) === String(album?.id));
       const payload = {
         artistName: artist?.name || track?.artistName || "",
         trackName: track?.title || track?.trackName || "",
@@ -996,6 +997,8 @@ function LibraryPage() {
         trackMbid: track?.mbid || track?.trackMbid || "",
         releaseYear: yearOf(album?.releaseDate),
         durationMs: trackDurationMs(track),
+        trackNumber: relation?.trackNumber || null,
+        discNumber: relation?.discNumber || null,
         canonicalTrackId: /^\d+$/.test(String(track?.id ?? "")) ? String(track.id) : null,
       };
       if (!payload.artistName || !payload.trackName) {

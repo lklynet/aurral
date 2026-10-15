@@ -145,7 +145,7 @@ export function toNormalizedRelease(raw) {
     trackCount:
       raw?.track_count != null && Number.isFinite(Number(raw.track_count))
         ? Number(raw.track_count)
-        : tracks.length,
+        : null,
     tracks,
     releaseDate: normalizeString(raw?.releasedate || raw?.releaseDate) || null,
     disambiguation: normalizeString(raw?.disambiguation) || "",

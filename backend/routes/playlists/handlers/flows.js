@@ -374,18 +374,22 @@ export function registerFlows(router) {
         uniqueCompletedJobsByIdentity.set(identity, job);
       }
       const uniqueCompletedJobs = [...uniqueCompletedJobsByIdentity.values()];
-      const tracks = uniqueCompletedJobs.map((job) => ({
+      const trackFromJob = (job) => ({
         artistName: job.artistName,
         trackName: job.trackName,
         albumName: job.albumName || null,
         artistMbid: job.artistMbid || null,
         albumMbid: job.albumMbid || null,
+        releaseMbid: job.releaseMbid || null,
         trackMbid: job.trackMbid || null,
         releaseYear: job.releaseYear || null,
         durationMs: job.durationMs || null,
+        trackNumber: job.trackNumber || null,
+        discNumber: job.discNumber || null,
         artistAliases: job.artistAliases || [],
         reason: job.reason || null,
-      }));
+      });
+      const tracks = uniqueCompletedJobs.map(trackFromJob);
       playlist = flowPlaylistConfig.createStaticPlaylist({
         name: requestedName || `${flow.name} Static`,
         sourceName: flow.name,
@@ -405,21 +409,7 @@ export function registerFlows(router) {
           throw new Error(`Track file is missing: ${job.finalPath}`);
         }
 
-        const jobId = downloadTracker.addJob(
-          {
-            artistName: job.artistName,
-            trackName: job.trackName,
-            albumName: job.albumName || null,
-            artistMbid: job.artistMbid || null,
-            albumMbid: job.albumMbid || null,
-            trackMbid: job.trackMbid || null,
-            releaseYear: job.releaseYear || null,
-            durationMs: job.durationMs || null,
-            artistAliases: job.artistAliases || [],
-            reason: job.reason || null,
-          },
-          playlist.id,
-        );
+        const jobId = downloadTracker.addJob(trackFromJob(job), playlist.id);
         if (jobId) {
           downloadTracker.setDone(jobId, safeSourcePath, job.albumName || null);
         }

@@ -1,8 +1,7 @@
 import path from "node:path";
 import { recordAlbumGrabQueued, recordAlbumGrabPhase, recordAlbumTrackState } from "./albumGrabActivity.js";
-import { downloadTracker } from "./downloadJobs/downloadTracker.js";
+import { downloadTracker, NO_RELEASE_REASON } from "./downloadJobs/downloadTracker.js";
 import { assignDownloadedAlbumFiles } from "./albumReleaseAssignment.js";
-import { loadAlbumReleases } from "./albumReleases.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
 import { resolveDownloadRoot } from "./downloadPaths.js";
 import {
@@ -18,23 +17,38 @@ import {
   getPayloadCandidate,
   hasNextCandidate,
 } from "./pipelineHelpers.js";
-import { isPipelinePayloadActive, withPipelineCommitLock } from "./downloadJobs/downloadCancellation.js";
+import {
+  getActiveDownloadAttemptId,
+  isDownloadJobCancelled,
+  isPipelinePayloadActive,
+  withPipelineCommitLock,
+} from "./downloadJobs/downloadCancellation.js";
 import { downloadDestinationForJob } from "./downloadJobs/downloadOwnership.js";
+import { attemptRelease } from "./releaseResolver.js";
 
 const NOT_IN_ALBUM_REASON = "Track was not in the album download";
+const NO_RELEASE_FILLED_REASON = "No release from this source filled the missing tracks";
+
+const albumGroupJobIds = (payload) => payload?.albumGroupJobIds || [payload?.jobId];
+
+const sameRequest = (job, leader) => (leader.upgradeForJobId
+  ? Boolean(job.upgradeForJobId)
+  : (job.requestGroupId || null) === (leader.requestGroupId || null));
 
 export function albumGrabJobs(payload) {
   const leader = downloadTracker.getJob(payload.jobId);
-  if (!leader?.requestGroupId || payload.albumGrab !== true) return [];
-  return (payload.albumGroupJobIds || []).map((id) => downloadTracker.getJob(id)).filter((job) =>
-    job && job.requestGroupId === leader.requestGroupId && job.albumMbid === leader.albumMbid
+  if (!leader || payload.albumGrab !== true) return [];
+  return albumGroupJobIds(payload).map((id) => downloadTracker.getJob(id)).filter((job) =>
+    job && sameRequest(job, leader) && job.albumMbid === leader.albumMbid
     && ["pending", "downloading"].includes(job.status));
 }
 
-function heldAlbumGrabJobs(payload) {
-  return (payload?.albumGroupJobIds || []).filter((id) => id !== payload.jobId)
-    .map((id) => downloadTracker.getJob(id))
-    .filter((job) => job?.status === "downloading" && !downloadTracker.isSlskdDispatched(job.id));
+// The tracks an attempt still holds, its leading track included: live, and
+// not given back or claimed by another attempt since.
+export function heldAlbumGrabJobs(payload) {
+  return albumGroupJobIds(payload).map((id) => downloadTracker.getJob(id))
+    .filter((job) => job && ["pending", "downloading"].includes(job.status) && !isDownloadJobCancelled(job.id)
+      && getActiveDownloadAttemptId(job.id) === payload.downloadAttemptId);
 }
 
 // The union of every album job's blocked sources, so one album attempt
@@ -47,7 +61,7 @@ export function deniedAlbumSources(jobs, source) {
 
 // Blocks the attempted release for every track it did not fill, so neither
 // the next album attempt nor a per-track search takes it again.
-function blockAlbumGrabSource(payload, jobs) {
+export function blockAlbumGrabSource(payload, jobs) {
   const candidate = getPayloadCandidate(payload);
   for (const job of jobs) {
     if (payload.source === "slskd") {
@@ -63,57 +77,71 @@ function blockAlbumGrabSource(payload, jobs) {
   }
 }
 
-// Like an import in Lidarr, a download that is a whole edition settles the
-// album on that edition: tracks it does not have stop being wanted instead
-// of being searched one by one. An album that asked for the expanded edition
-// keeps searching for the rest.
-async function settleAlbumEdition(payload, edition) {
-  if (!edition) return;
-  const onEdition = new Set(edition.jobIds);
-  if (!edition.jobIds.every((id) => downloadTracker.getJob(id)?.status === "done")) return;
-  const others = albumGrabJobs(payload).filter((job) => !onEdition.has(job.id));
-  if (others.length === 0) return;
-  const { libraryManager } = await import("./libraryManager.js");
-  if (libraryManager.albumWantsExpandedEdition(others[0].albumMbid)) return;
-  for (const job of others) downloadTracker.setCancelled(job.id);
-  libraryManager.unmonitorAlbumOnlyTracks(others[0].albumMbid, others.map((job) => job.trackMbid));
-  recordAlbumGrabPhase(payload,
-    `Downloaded edition has ${onEdition.size} tracks; ${others.length} from another edition are no longer wanted`);
-}
-
-// Tries the next ranked folder or release for the tracks an attempt left
-// unfilled. When the leading track was filled, another unfilled track leads.
-export function continueAlbumGrab(payload, resetFields = {}) {
-  const remaining = albumGrabJobs(payload);
-  if (remaining.length < 2 || !hasNextCandidate(payload)) return null;
+// When the leading track was filled, another unfilled track leads, with the
+// file it holds for review instead of the filled track's.
+function regroupAlbumGrab(payload, remaining) {
   const leaderId = remaining.some((job) => job.id === payload.jobId)
     ? payload.jobId
     : remaining[0].id;
   downloadTracker.markSlskdDispatched(leaderId);
-  return buildNextCandidatePayload({
+  return {
     ...payload,
     jobId: leaderId,
     albumGroupJobIds: [leaderId, ...remaining.map((job) => job.id).filter((id) => id !== leaderId)],
-  }, resetFields);
+    heldForReview: leaderId === payload.jobId
+      ? payload.heldForReview
+      : downloadTracker.getJob(leaderId)?.heldForReview || null,
+  };
 }
 
-export function releaseAlbumGrabJobs(payload, reason = null, reasons = new Map()) {
+// Tries the next ranked folder or release for the tracks an attempt left
+// unfilled.
+export function continueAlbumGrab(payload, resetFields = {}) {
+  const remaining = albumGrabJobs(payload);
+  if (remaining.length === 0 || !hasNextCandidate(payload)) return null;
+  return buildNextCandidatePayload(regroupAlbumGrab(payload, remaining), resetFields);
+}
+
+// After the last release of a source, the next album source in configured
+// order searches for the tracks still unfilled before any track search.
+export async function nextAlbumSource(payload, reason = NO_RELEASE_FILLED_REASON) {
+  const remaining = albumGrabJobs(payload);
+  if (remaining.length === 0) return null;
+  const { buildNextSourcePayload } = await import("./downloadPipeline.js");
+  const next = buildNextSourcePayload(payload, payload.source, reason);
+  return next ? regroupAlbumGrab(next, remaining) : null;
+}
+
+// The worker stops when it runs out of work while an album holds its
+// tracks, so the tracks an album gives back need it started again.
+function giveBack(payload, jobs, reason, reasons = new Map(), options = {}) {
   let released = false;
-  for (const job of heldAlbumGrabJobs(payload)) {
-    released = downloadTracker.setPending(job.id, reasons.get(job.id) || reason) || released;
+  for (const job of jobs) {
+    released = downloadTracker.releaseFromAlbumGrab(job.id, reasons.get(job.id) || reason, options) || released;
   }
-  if (released) {
-    recordAlbumGrabPhase(payload, reason || "Album attempt ended; searching for missing tracks");
-  }
-  // The worker stops when it runs out of work while an album holds its
-  // tracks, so the tracks the album left pending need it started again.
-  void import("./downloadJobs/downloadWorker.js")
-    .then(({ startWorkerIfPending }) => startWorkerIfPending())
+  if (!released) return;
+  recordAlbumGrabPhase(payload, reason || "Album attempt ended; searching for missing tracks");
+  void import("./downloadJobs/mutationGuards.js")
+    .then(({ wakeDownloadWorker }) => wakeDownloadWorker())
     .catch(() => {});
+}
+
+// The attempt tried its release for these tracks, so each searches for
+// itself from now on.
+export function releaseAlbumGrabJobs(payload, reason = null, reasons = new Map()) {
+  giveBack(payload, heldAlbumGrabJobs(payload).filter((job) => job.id !== payload.jobId), reason, reasons);
+}
+
+// The attempt ended before its source judged the release, so these tracks
+// can still start another attempt.
+export function returnUntriedAlbumGrabJobs(payload, jobs, reason, { retry = false } = {}) {
+  for (const job of jobs) downloadTracker.setAlbumGrabAttempted(job.id, false);
+  giveBack(payload, jobs, reason, new Map(), { asRetryCycle: retry });
 }
 
 export function fallbackAlbumGrabToTracks(payload, reason = null, reasons = new Map()) {
   recordAlbumGrabPhase(payload, reason || "Album attempt ended; searching for missing tracks");
+  downloadTracker.endUpgradeReleaseDownload(payload.downloadAttemptId);
   releaseAlbumGrabJobs(payload, reason, reasons);
   return {
     ...payload,
@@ -124,9 +152,10 @@ export function fallbackAlbumGrabToTracks(payload, reason = null, reasons = new 
     candidates: [],
     candidate: null,
     candidateIndex: 0,
-    triedSources: [],
+    triedSources: [...(downloadTracker.getJob(payload.jobId)?.quickSearchedSources || [])],
     sourceErrors: [],
     queueUuid: null,
+    queueUuids: null,
     nzbId: null,
     batchId: null,
     downloadedPath: null,
@@ -150,8 +179,15 @@ export async function finishAlbumGrab(payload, {
   const jobs = albumGrabJobs(payload);
   if (jobs.length === 0) return null;
   recordAlbumGrabQueued(payload, jobs);
-  const releases = await loadAlbumReleases(jobs[0].albumMbid);
-  const assigned = await assignDownloadedAlbumFiles({ jobs, filePaths, source, releases });
+  const manifest = await attemptRelease(payload, downloadTracker.getJob(payload.jobId));
+  if (!manifest) return fallbackAlbumGrabToTracks(payload, NO_RELEASE_REASON);
+  // Only a listing the release judge accepted proves the release. A Usenet
+  // title never does, and a candidate queued before candidates said so is
+  // judged by its files like one.
+  const assigned = await assignDownloadedAlbumFiles({
+    jobs, filePaths, source, manifest,
+    verified: getPayloadCandidate(payload)?.releaseVerified === true,
+  });
   const reasons = new Map(assigned.rejected.map(({ jobId, reason }) =>
     [jobId, `Album file failed verification: ${reason}`]));
   const playlistRoot = resolveDownloadRoot();
@@ -188,11 +224,10 @@ export async function finishAlbumGrab(payload, {
       });
     }
   }
-  await settleAlbumEdition(payload, assigned.edition);
   if (assigned.accepted.length === 0 || (filePaths || []).length > assigned.unreadableCount) {
     blockAlbumGrabSource(payload, albumGrabJobs(payload));
   }
-  const next = continueAlbumGrab(payload, resetFields);
+  const next = continueAlbumGrab(payload, resetFields) || await nextAlbumSource(payload);
   if (next) return next;
   const leader = downloadTracker.getJob(payload.jobId);
   if (leader?.status === "done") {

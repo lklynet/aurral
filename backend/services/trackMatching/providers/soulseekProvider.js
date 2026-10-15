@@ -270,6 +270,8 @@ export function buildSoulseekCandidates(results, request, options = {}) {
       if (parsed?.artist && parsed.matched && !candidate.artists.length) {
         candidate.artists = [parsed.artist];
       }
+      const sizeBytes = Number(item?.size);
+      if (sizeBytes > 0) candidate.sizeBytes = sizeBytes;
       const advertisedDurationMs = readAdvertisedDurationMs(item);
       if (advertisedDurationMs && !candidate.durationMs) {
         candidate.durationMs = advertisedDurationMs;

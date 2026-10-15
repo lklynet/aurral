@@ -50,3 +50,17 @@ export async function discardReviewFile(job) {
     });
   }
 }
+
+// A file a source held for review while the job searched on. One already
+// gone was discarded or imported, so its download is left alone.
+export async function discardHeldFile(jobId, held) {
+  if (!held?.sourcePath || !(await fs.stat(held.sourcePath).catch(() => null))) return;
+  await discardReviewFile({
+    id: jobId,
+    stagingPath: held.sourcePath,
+    downloadSource: held.source,
+    downloadClient: held.metadata?.downloadClient,
+    downloadClientId: held.transferId,
+    remoteUsername: held.username,
+  });
+}

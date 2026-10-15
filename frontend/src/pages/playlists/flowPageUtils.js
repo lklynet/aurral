@@ -398,6 +398,14 @@ export const buildReleaseRadarFlowFromForm = (flow, draft) =>
     sizeError: "Max tracks must be a positive number",
   });
 
+const positiveInteger = (value) => (Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null);
+
+const albumPlacement = (track) => ({
+  releaseMbid: String(track?.releaseMbid || "").trim() || null,
+  trackNumber: positiveInteger(track?.trackNumber),
+  discNumber: positiveInteger(track?.discNumber),
+});
+
 export const normalizePlaylistTrackEntry = (track) => {
   if (!track || typeof track !== "object" || Array.isArray(track)) return null;
   const artistName = String(
@@ -425,6 +433,7 @@ export const normalizePlaylistTrackEntry = (track) => {
     durationMs: normalizeDurationMs(track.durationMs),
     artistAliases: normalizeArtistAliases(track.artistAliases),
     reason: track.reason ? String(track.reason).trim() : null,
+    ...albumPlacement(track),
   };
 };
 
@@ -446,6 +455,7 @@ export const buildStaticTracklistPayload = ({ name, sourceName, sourceFlowId, tr
     releaseYear: track.releaseYear ? String(track.releaseYear).trim() : null,
     durationMs: normalizeDurationMs(track.durationMs),
     artistAliases: normalizeArtistAliases(track.artistAliases),
+    ...albumPlacement(track),
   })),
 });
 

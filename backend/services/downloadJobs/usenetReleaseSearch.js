@@ -14,7 +14,11 @@ import {
   getYear,
 } from "../providers/brainzmashRanking.js";
 import { coreAlbumTitle, isVariousArtistsCredit, otherProductMarker } from "../trackMatching/titleText.js";
-import { checkVariantCompatibility } from "../trackMatching/semanticPolicy.js";
+import {
+  checkVariantCompatibility,
+  labelContradictions,
+  prepareVariantRequest,
+} from "../trackMatching/semanticPolicy.js";
 
 const AUDIO_CATEGORY_MIN = 3000;
 const AUDIO_CATEGORY_MAX = 3999;
@@ -163,11 +167,16 @@ function readReleaseRequest(context) {
     albums: [albumName, coreAlbumTitle(albumName)].filter(Boolean),
     trackName,
     tracks: [trackName, withoutCredits(trackName)].filter(Boolean),
+    secondaryTypes: context?.secondaryTypes || [],
   };
 }
 
 export function rankUsenetReleases(releases, context, options = {}) {
   const request = readReleaseRequest(context);
+  const albumVersions = prepareVariantRequest({ albumName: request.albumName, artists: request.artists,
+    secondaryTypes: request.secondaryTypes, releaseTracks: context?.releaseTracks });
+  const trackVersions = prepareVariantRequest({ albumName: request.albumName, artists: request.artists,
+    secondaryTypes: request.secondaryTypes, trackName: request.trackName });
   const expectedYear = getYear(context?.releaseYear);
   const seen = new Set();
   const ranked = [];
@@ -189,10 +198,12 @@ export function rankUsenetReleases(releases, context, options = {}) {
     const hasArtist = (request.compilation && hasAlbum)
       || request.artists.some((name) => containsPhrase(words, name));
     const hasTrack = request.tracks.some((track) => containsPhrase(words, track));
-    // A single or track release must be the requested version: a remix or
-    // radio edit of the track is not downloaded for the original.
-    const otherVersion = hasTrack
-      && !checkVariantCompatibility({ trackName: request.trackName }, { title }).compatible;
+    // A release must be the requested version: a remix or radio edit of the
+    // track is not downloaded for the original, nor an acoustic album for the
+    // album. Every version word in the title counts, however it is noted,
+    // unless the request names it; an album is not asked for its tracks'.
+    const otherVersion = labelContradictions(title, hasAlbum ? albumVersions : trackVersions).length > 0
+      || (hasTrack && !checkVariantCompatibility(null, { title }, trackVersions).compatible);
     const otherProduct = otherProductMarker(title,
       [request.albumName, request.trackName, ...request.artists], { album: hasAlbum });
     const admissible = hasAudioCategory(release) && hasArtist && (hasAlbum || hasTrack)
@@ -229,6 +240,11 @@ export function rankUsenetReleases(releases, context, options = {}) {
   return ranked.sort((left, right) => {
     if (left.releaseAdmissible !== right.releaseAdmissible) {
       return left.releaseAdmissible ? -1 : 1;
+    }
+    // The requested album holds the track at its place on the release, so
+    // it comes before a single or another release with the track.
+    if (Boolean(left.resolvedAlbumName) !== Boolean(right.resolvedAlbumName)) {
+      return left.resolvedAlbumName ? -1 : 1;
     }
     if (right.score !== left.score) return right.score - left.score;
     return String(left.raw.file).localeCompare(String(right.raw.file));

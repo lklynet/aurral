@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import {
   MATCH_POLICY,
-  assessRelease,
   decideRecording,
   parseListingTitle,
   verifyDownloadedRecording,
 } from "../../backend/services/trackMatching/nativeMatcher.js";
+import { judgeRelease } from "../../backend/services/trackMatching/releaseJudge.js";
 import { loadFixtureSet, measureFixtureDecisions } from "./fixture-corpus.js";
 
 const releases = readFileSync(new URL("./fixtures/source-releases.jsonl", import.meta.url), "utf8")
@@ -38,17 +38,25 @@ function requestFor(item) {
 }
 
 function fileCandidate(raw) {
-  return { key: raw.key, ...parseListingTitle(raw.path), durationMs: raw.duration_ms };
+  return { key: raw.key, path: raw.path, ...parseListingTitle(raw.path), durationMs: raw.duration_ms };
 }
 
-function releaseCandidate(raw) {
-  return { tracks: raw.tracks.map((track) => ({
-    title: track.title,
-    artists: [track.artist_credit || raw.artist_credit],
-    durationMs: track.duration_ms,
-    recordingMbid: track.recording_mbid,
-    trackNumber: track.position,
-  })) };
+function releaseManifest(raw) {
+  return {
+    releaseMbid: raw.release_mbid,
+    title: raw.title,
+    artistNames: [raw.artist_credit],
+    tracks: raw.tracks.map((track) => ({
+      title: track.title,
+      artists: [track.artist_credit || raw.artist_credit],
+      artistAliases: track.artist_aliases || [],
+      durationMs: track.duration_ms || null,
+      trackNumber: track.position,
+      discNumber: track.disc || 1,
+      recordingMbid: track.recording_mbid,
+      recordingMbidAliases: [],
+    })),
+  };
 }
 
 function decide(item) {
@@ -70,8 +78,8 @@ function decide(item) {
     const selectable = raw.folders.flatMap((folder) => {
       const fits = candidateReleases.map((release) => ({
         release,
-        fit: assessRelease(releaseCandidate(release), { files: folder.files.map(fileCandidate) }),
-      })).filter(({ fit }) => fit.decision === "selectable")
+        fit: judgeRelease(releaseManifest(release), { files: folder.files.map(fileCandidate) }),
+      })).filter(({ fit }) => fit.kind === "exact")
         .sort((left, right) => right.fit.fit - left.fit.fit);
       return fits[0] ? [{ folder, ...fits[0] }] : [];
     })
@@ -82,8 +90,8 @@ function decide(item) {
       const trackIndex = chosen.release.tracks.findIndex(
         (track) => track.recording_mbid === raw.target_recording_mbid,
       );
-      const pair = chosen.fit.assignment.pairs.find((entry) => entry.trackIndex === trackIndex);
-      const selected = pair && chosen.folder.files[pair.fileIndex];
+      const fileIndex = chosen.fit.fileForTrack[trackIndex];
+      const selected = fileIndex != null && chosen.folder.files[fileIndex];
       const evidence = selected && fileCandidate(selected);
       const safeSelection = evidence && (
         evidence.title

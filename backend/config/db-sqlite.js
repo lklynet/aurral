@@ -209,6 +209,7 @@ db.exec(`
     reason TEXT,
     artist_mbid TEXT,
     album_mbid TEXT,
+    release_mbid TEXT,
     track_mbid TEXT,
     release_year TEXT,
     duration_ms INTEGER,
@@ -248,7 +249,10 @@ db.exec(`
     quality_upgrade_checked_at INTEGER,
     upgrade_for_job_id TEXT,
     manual_replacement_search INTEGER NOT NULL DEFAULT 0,
-    album_grab_attempted INTEGER NOT NULL DEFAULT 0
+    album_grab_attempted INTEGER NOT NULL DEFAULT 0,
+    request_kind TEXT NOT NULL DEFAULT 'track',
+    quick_searched_sources TEXT NOT NULL DEFAULT '[]',
+    held_for_review TEXT
   );
 
   CREATE TABLE IF NOT EXISTS weekly_flow_download_cancellations (
@@ -905,7 +909,12 @@ for (const [name, type] of [
   ["upgrade_for_job_id", "TEXT"],
   ["manual_replacement_search", "INTEGER NOT NULL DEFAULT 0"],
   ["album_grab_attempted", "INTEGER NOT NULL DEFAULT 0"],
+  ["album_grab_failures", "INTEGER NOT NULL DEFAULT 0"],
+  ["request_kind", "TEXT NOT NULL DEFAULT 'track'"],
+  ["quick_searched_sources", "TEXT NOT NULL DEFAULT '[]'"],
+  ["held_for_review", "TEXT"],
   ["disc_number", "INTEGER"],
+  ["release_mbid", "TEXT"],
 ]) {
   if (!tableColumns.includes(name)) {
     tryAddColumn(`ALTER TABLE playlist_download_jobs ADD COLUMN ${name} ${type}`);

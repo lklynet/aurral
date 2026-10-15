@@ -1,4 +1,4 @@
-import { buildTrackRequest } from "./trackIdentity.js";
+import { buildTrackRequest, recordingRequest } from "./trackIdentity.js";
 import { getCapabilities, normalizeCandidate } from "./candidateNormalizer.js";
 import {
   decideRecording,
@@ -7,28 +7,24 @@ import {
   MATCH_POLICY,
   parseListingTitle,
 } from "./nativeMatcher.js";
-import { parseYoutubeTitle, readYoutubeUpload } from "./youtubeEvidence.js";
+import { isRequestedYoutubeAlbum, parseYoutubeTitle, readYoutubeUpload } from "./youtubeEvidence.js";
 
 const DECISION_RANK = { accept: 0, verify: 1, review: 2, reject: 3 };
+
+// A YouTube Music song names its artists, album, and length the way a store
+// does, unlike a video, whose artist and title have to be read from its title.
+function isYoutubeSong(candidate) {
+  return candidate.source === "ytdlp" && candidate.raw?.song === true;
+}
 
 function normalizeSourceCandidates(source, candidates, request) {
   const capabilities = getCapabilities(source);
   const knownArtistNames = [request.artistName, ...(request.artistAliases || [])].filter(Boolean);
   return candidates.map((entry) => entry?.source ? entry : normalizeCandidate(source, entry, {
-    capabilities,
+    capabilities: entry?.song === true ? { ...capabilities, structuredArtist: true } : capabilities,
     parseFilename: Boolean(capabilities.filename && !entry?.title),
     knownArtistNames,
   })).filter(Boolean);
-}
-
-function matcherRequest(request) {
-  return {
-    title: request.trackName,
-    artists: request.artistName ? [request.artistName] : [],
-    artistAliases: request.artistAliases || [],
-    durationMs: request.durationMs,
-    recordingMbid: request.recordingMbid,
-  };
 }
 
 function requestArtistNames(request) {
@@ -40,6 +36,7 @@ function youtubeMatcherCandidate(candidate, request) {
   const claim = parseYoutubeTitle(candidate.title, names, request.trackName);
   const upload = readYoutubeUpload(candidate.title, candidate.provider?.uploader, names);
   return {
+    ...candidate,
     title: claim.title,
     versionTitle: claim.versionTitle,
     artists: [claim.artist, upload.channelArtist].filter(Boolean),
@@ -49,9 +46,10 @@ function youtubeMatcherCandidate(candidate, request) {
 }
 
 function matcherCandidate(candidate, request, evidence) {
-  if (candidate.source === "ytdlp") return youtubeMatcherCandidate(candidate, request);
+  if (candidate.source === "ytdlp" && !isYoutubeSong(candidate)) return youtubeMatcherCandidate(candidate, request);
   const parsed = candidate.path ? parseListingTitle(candidate.path) : null;
   return {
+    ...candidate,
     title: candidate.filenameTitle || parsed?.title || candidate.cleanedTitle || candidate.title,
     artists: candidate.artists?.length ? candidate.artists
       : evidence?.folder?.artistScore >= 92 ? [request.artistName].filter(Boolean) : [],
@@ -68,7 +66,7 @@ function isOfficialYoutubeAudio(candidate, request) {
 function evaluate(request, normalized, providerEvidence) {
   const evidenceFor = (candidate, index) => typeof providerEvidence === "function"
     ? providerEvidence(candidate, index) : providerEvidence?.[index] || null;
-  const assessed = decideRecording(matcherRequest(request), normalized.map((candidate, index) =>
+  const assessed = decideRecording(recordingRequest(request), normalized.map((candidate, index) =>
     matcherCandidate(candidate, request, evidenceFor(candidate, index))));
   const evaluations = assessed.candidates.map((match, index) => {
     const candidate = normalized[index];
@@ -93,17 +91,33 @@ function evaluate(request, normalized, providerEvidence) {
     const strongFolder = evidence?.folder?.artistScore >= 92
       && evidence?.folder?.albumScore >= 92
       && match.titleSimilarity === 1;
-    const decision = locked || contradiction || match.titleSimilarity < MATCH_POLICY.minTitleSimilarity
+    // A song with the requested artist, title, and length is the recording.
+    // On the requested album it leaves nothing to choose between, even
+    // beside another copy of it. On another album it may be another mix or
+    // a live take with the same title, so it is checked after download like
+    // any upload. Any other song must be on the requested album.
+    const song = isYoutubeSong(candidate);
+    const songOnRequestedAlbum = song && isRequestedYoutubeAlbum(request, candidate.album);
+    const exactSong = song && match.contradictions.length === 0 && match.titleSimilarity === 1
+      && match.artistSimilarity >= MATCH_POLICY.minArtistSimilarity
+      && match.durationGapMs != null && match.durationGapMs <= MATCH_POLICY.selectedDurationGapMs;
+    const songOffAlbum = song && !songOnRequestedAlbum;
+    const decision = locked || contradiction || songOffAlbum && !exactSong
+      || match.titleSimilarity < MATCH_POLICY.minTitleSimilarity
       ? "reject"
-      : assessed.selectedIndex === index && !evidence?.folder?.yearConflicting
+      : exactSong && songOnRequestedAlbum
         ? "accept"
-        : match.score >= MATCH_POLICY.selectableScore && match.evidence.length >= 2 || strongFolder
-          ? "verify" : "review";
+        : exactSong
+          ? "verify"
+          : assessed.selectedIndex === index && !evidence?.folder?.yearConflicting
+            ? "accept"
+            : match.score >= MATCH_POLICY.selectableScore && match.evidence.length >= 2 || strongFolder
+              ? "verify" : "review";
     return {
       candidateIndex: index,
       candidate,
       decision,
-      reason: locked ? "locked" : contradiction ? "contradiction" : null,
+      reason: locked ? "locked" : contradiction ? "contradiction" : songOffAlbum && !exactSong ? "other-album" : null,
       reasons: [...match.contradictions,
         ...(!candidate.artists?.length && !evidence?.folder?.artistScore ? ["requested artist missing"] : [])],
       contradictions: [...match.contradictions,
@@ -124,9 +138,11 @@ function evaluate(request, normalized, providerEvidence) {
       folderScore: Number(evidence?.folder?.tracklistScore || 0)
         + Number(evidence?.folder?.albumScore || 0) / 10,
       officialAudio: isOfficialYoutubeAudio(candidate, request),
+      songOnRequestedAlbum,
       policyVersion: MATCH_POLICY.version,
     };
   }).sort((left, right) => DECISION_RANK[left.decision] - DECISION_RANK[right.decision]
+    || Number(right.songOnRequestedAlbum) - Number(left.songOnRequestedAlbum)
     || Number(right.officialAudio) - Number(left.officialAudio)
     || left.distance - right.distance || right.folderScore - left.folderScore
     || left.candidateIndex - right.candidateIndex);
@@ -154,7 +170,7 @@ function evaluate(request, normalized, providerEvidence) {
 export function prefilterCandidates({ request, source, candidates = [] } = {}) {
   const trackRequest = request || buildTrackRequest({});
   const normalized = normalizeSourceCandidates(source, candidates, trackRequest);
-  const assessment = decideRecording(matcherRequest(trackRequest), normalized.map((candidate) =>
+  const assessment = decideRecording(recordingRequest(trackRequest), normalized.map((candidate) =>
     matcherCandidate(candidate, trackRequest, null)));
   return normalized.map((candidate, index) => {
     const contradictions = assessment.candidates[index].contradictions;

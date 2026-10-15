@@ -70,13 +70,15 @@ Aurral searches the way Lidarr does. If an indexer supports music search by arti
 
 Aurral cleans the text first: it drops a leading "The", removes accents, and replaces punctuation with spaces, so `AC/DC` is searched as `AC DC`. A compilation is searched as `VA` with the album title, and then by the title alone.
 
-A release matches when its title contains the artist and the album or track title. A compilation release needs only the album title. A single in another version, such as a remix or a radio edit, does not match the original track. A discography, box set, bootleg, tribute, or karaoke release does not match either, and an album does not match a live or greatest-hits release, unless the request names one. Aurral checks every downloaded file before it imports it.
+A release matches when its title contains the artist and the album or track title. A compilation release needs only the album title. A release in another version does not match. A remix or radio edit single does not match the original track, unless the track, album, or artist you asked for names that version. A release whose title names a live, acoustic, instrumental, karaoke, or other version anywhere does not match the album or the track, unless the track, album, or artist you asked for names that version. That includes a note about extras, as in "Album (Deluxe & Live EP Bonus Edition)", and scene names such as "Artist-Album_Live-WEB-2013-GRP". A release group that MusicBrainz lists as live, remix, or demo names that version for both. A discography, box set, bootleg, or tribute release does not match either, and an album does not match a greatest-hits release, unless the request names one. Aurral checks every downloaded file before it imports it.
 
 Like Lidarr, Aurral downloads the NZB from Prowlarr itself and sends the file to SABnzbd or NZBGet, so the download client does not need to reach Prowlarr. If the indexer returns an error page instead of an NZB, for example at its daily limit, Aurral tries the next release.
 
 Aurral watches SABnzbd or NZBGet for as long as the client holds the download, including while it is paused. If the download leaves the client without a history entry, Aurral tries the next release.
 
-For an Aurral album, one NZB can fill several tracks. If the NZB leaves tracks unfilled, Aurral tries the next release for those tracks before it searches for them one by one. For other requests, Aurral imports the checked track into the Downloads Folder.
+For a track whose album Aurral knows, Aurral first searches for the album alone, even for a single track, a playlist track, a flow track, or an upgrade. A **Re-search** replacement skips this step. A release title does not show the tracklist, so Aurral downloads the NZB and then checks the downloaded files against the requested release. The download counts only when it holds every track of the release, each within 2 seconds of the track's length on the release, no other song, and no unreadable audio file. Aurral then imports the tracks you want and deletes the rest. A download that is not exactly the release imports nothing, and Aurral does not offer that NZB again for any of the tracks. Aurral then tries the next release, and then the next download source that can supply the release.
+
+When no source has the release, Aurral searches for each track on its own. Among matching releases in one quality tier, a release of the requested album comes before a single.
 
 A release that fails to download, or that holds no file for the track, is not offered again for that track.
 
@@ -84,7 +86,7 @@ After Aurral imports a download, or the download fails, it removes the item from
 
 If a file has the requested title but its length or artist credit is a little off, Aurral holds it and tries the other releases and download sources first. If none of them verifies, the file waits in **Activity > Queue**, where you can preview, approve, or deny it. Aurral keeps the rest of that download until you approve, deny, or remove the song. Automatic upgrades never wait for review. See [Track matching](/development/track-matching/) for the rules.
 
-Upgrades for several tracks of one album that pick the same release share one download of it.
+Upgrades that start together look for their album's release together and share one download of it, even when the tracks came from different requests or playlists. Automatic upgrades and **Search all** start all upgrades of an album together. An upgrade that starts while another upgrade downloads a release of the same album waits for that download to end, for up to 30 minutes, and then downloads its release in full. NZBGet puts two downloads of one NZB in one folder, and a release title does not name the pressing, so two releases of one album can be the same NZB. Upgrades that go on to search for their tracks one by one share one download of a release they all pick.
 
 ## Quality and upgrades
 
@@ -105,6 +107,8 @@ Aurral can use slskd, Usenet, deemix, and yt-dlp together. Each source has a **S
 
 If a source fails, Aurral tries the next source for the same track. To try another source first, give it a lower number.
 
-For an Aurral album, Aurral first tries to download the whole release from slskd, Usenet, or deemix, in priority order. Tracks that the release does not fill continue one by one through all sources.
+Before Aurral searches for a single track, it looks for the exact release of the track's album on slskd, Usenet, and deemix, in priority order. It does this for Library albums, static playlists, flows, single tracks, and quality upgrades whose album Aurral knows. **Re-search** replacements skip this step. yt-dlp cannot supply a release, so this step passes over it. When you download one track, or a playlist or flow adds one, and yt-dlp ranks above slskd, Usenet, and deemix, Aurral searches yt-dlp for the track first and looks for the release only if yt-dlp has no match. An album you download never starts on yt-dlp.
+
+The release is the edition that Aurral asked for, with its full tracklist. A source supplies it only when its folder, album, or download holds every track of that release and no other song. A deluxe edition with a bonus track and a shorter edition are different releases. A second copy of a song in another format is fine. Aurral downloads or imports only the tracks you want from it. Tracks that no release fills continue on their own through all sources, in priority order. If the metadata service cannot be reached before the release step, Aurral checks again each minute for up to 30 minutes, then searches for each track. If it cannot be reached after a release has finished downloading, Aurral keeps the download and checks again each minute for up to 30 minutes before it searches for each track.
 
 See [Activity](/using/activity/) to follow the downloads.

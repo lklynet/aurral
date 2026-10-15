@@ -6,6 +6,7 @@ import { flowTrackSource } from "../flows/flowTrackSource.js";
 import { buildFlowRunPlanIsolated } from "../flows/flowPlanRunner.js";
 import { dbOps, userOps } from "../../db/helpers/index.js";
 import { resolveTrackSearchContext } from "./trackSearchContext.js";
+import { MAX_RELEASE_WAITS, readReleaseManifest, RELEASE_WAIT_SECONDS } from "../releaseResolver.js";
 import { getListenHistoryProfile } from "../listeningHistory.js";
 import { indexUnmonitoredJobs } from "../aurralUnmonitoredJobs.js";
 import { safeLogDiagnostic } from "../logger.js";
@@ -46,6 +47,7 @@ const JOB_COOLDOWN_MS = 750;
 const REUSE_REPAIR_INTERVAL_MS = 30 * 60 * 1000;
 const WORKER_STOPPED_CODE = "WORKER_STOPPED";
 const PLAYLIST_MUTATION_CODE = "PLAYLIST_MUTATION_IN_PROGRESS";
+const RELEASE_WAIT_REASON = "Waiting for metadata to read the album release";
 // The worker hands a job to the pipeline only while fewer jobs than its
 // concurrency are searching, so a large playlist does not start every
 // provider search at once.
@@ -70,6 +72,7 @@ export class DownloadWorker {
     this.blockedPlaylistTypes = new Set();
     this.runGeneration = 0;
     this.playlistFinalizing = new Set();
+    this.releaseWaits = new Map();
     this.downloadMetrics = {
       completedTracks: 0,
       completedTrackAttempts: 0,
@@ -235,12 +238,49 @@ export class DownloadWorker {
   }
 
   _getNextReadyPendingJob(lastPlaylistType = null) {
+    const now = Date.now();
     return downloadTracker.getNextPendingMatching(
       (job) =>
         !this.activeJobs.has(job.id) &&
+        !(this.releaseWaits.get(job.id)?.readyAt > now) &&
         isPlaylistOwnerActive(job?.playlistId || job?.playlistType),
       lastPlaylistType,
     );
+  }
+
+  // A track that searches by release waits while metadata cannot be read,
+  // so a brief outage never sends it to a search for the track alone. After
+  // the last wait it searches without its release.
+  _waitForRelease(job) {
+    const waits = (this.releaseWaits.get(job.id)?.waits || 0) + 1;
+    if (waits > MAX_RELEASE_WAITS) {
+      this.releaseWaits.delete(job.id);
+      return false;
+    }
+    this.releaseWaits.set(job.id, { waits, readyAt: Date.now() + RELEASE_WAIT_SECONDS * 1000 });
+    downloadTracker.deferPendingToBack(job.id, RELEASE_WAIT_REASON, { keepRetryTier: true });
+    return true;
+  }
+
+  // Once an album's release reads, none of its tracks waits any longer.
+  _endReleaseWaits(job) {
+    for (const jobId of this.releaseWaits.keys()) {
+      const waiting = downloadTracker.getJob(jobId);
+      if (waiting && jobId !== job.id && (!job.albumMbid || waiting.albumMbid !== job.albumMbid)) continue;
+      this.releaseWaits.delete(jobId);
+      if (waiting?.status === "pending" && waiting.error === RELEASE_WAIT_REASON) {
+        downloadTracker.deferPendingToBack(jobId, null, { keepRetryTier: true });
+      }
+    }
+  }
+
+  _scheduleReleaseWaits() {
+    let readyAt = Infinity;
+    for (const [jobId, wait] of this.releaseWaits) {
+      if (downloadTracker.getJob(jobId)?.status !== "pending") this.releaseWaits.delete(jobId);
+      else readyAt = Math.min(readyAt, wait.readyAt);
+    }
+    if (Number.isFinite(readyAt)) this._scheduleProcessIn(readyAt - Date.now());
   }
 
   getWorkerSettings() {
@@ -454,6 +494,7 @@ export class DownloadWorker {
         }
         const job = this._getNextReadyPendingJob(this.lastDequeuedPlaylistType);
         if (!job) {
+          this._scheduleReleaseWaits();
           break;
         }
         this.lastDequeuedPlaylistType = job.playlistType;
@@ -570,8 +611,12 @@ export class DownloadWorker {
 
     try {
       let phaseStart = process.hrtime.bigint();
-      const resolvedTrack = await resolveTrackSearchContext(job);
+      const { metadataUnreachable, ...resolvedTrack } = await resolveTrackSearchContext(job);
       this._assertJobCanContinue(job, runGeneration);
+      // A quick search needs no release, so a track that starts with one
+      // never waits for metadata.
+      if (metadataUnreachable && downloadTracker.canAwaitRelease(job)
+        && !downloadTracker.startsWithQuickSearch(job) && this._waitForRelease(job)) return;
       downloadTracker.updateMetadata(job.id, resolvedTrack);
       Object.assign(job, resolvedTrack);
       const { existingFileMode } = this.getWorkerSettings();
@@ -624,8 +669,14 @@ export class DownloadWorker {
       ) {
         return;
       }
+      const { manifest: release, unreachable } = downloadTracker.startsWithQuickSearch(job)
+        ? {}
+        : await readReleaseManifest(job.albumMbid, job.releaseMbid);
       this._assertJobCanContinue(job, runGeneration);
-      if (!downloadTracker.enqueueDownloadPipeline(job.id)) {
+      if (unreachable && !metadataUnreachable && downloadTracker.canSearchByRelease(job)
+        && this._waitForRelease(job)) return;
+      if (!unreachable && !metadataUnreachable) this._endReleaseWaits(job);
+      if (!downloadTracker.enqueueDownloadPipeline(job.id, { release })) {
         throw new Error("Failed to enqueue the download pipeline");
       }
       return;

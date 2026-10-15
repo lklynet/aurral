@@ -35,6 +35,7 @@ import {
 } from "./downloadJobs/downloadCancellation.js";
 
 const ytdlpClient = getDownloadClient("ytdlp");
+const SONG_READS = 6;
 const LIVE_STATUSES = new Set(["is_live", "was_live", "post_live", "is_upcoming"]);
 
 export function isYtdlpLiveResult(result) {
@@ -78,17 +79,14 @@ async function handleYtdlpSearch(payload, helpers) {
       .filter((entry) => Array.isArray(entry) && entry[0] === "ytdlp")
       .map((entry) => String(entry[1] || "").trim()),
   );
-  const aggregated = [];
-  const seen = new Set();
+  const found = { songs: [], videos: [] };
+  const seen = { songs: new Set(), videos: new Set() };
+  const resultKey = (entry) => String(entry.id || entry.url || "").trim().toLowerCase();
   let lastError = "";
-  for (const query of [...queries, fallbackQuery].filter(Boolean)) {
-    if (hasEnoughCandidates(aggregated, resolvedTrack)) break;
-    if (query === fallbackQuery && aggregated.length > 0) break;
+  const searchOnce = async (kind, query, options) => {
     try {
-      const results = await ytdlpClient.search(query, { limit: 5 });
-      mergeSearchResults(aggregated, seen, results.filter((entry) => !deniedIds.has(String(entry.id || "").trim())), (entry) =>
-        String(entry.id || entry.url || "").trim().toLowerCase(),
-      );
+      const results = await ytdlpClient.search(query, options);
+      mergeSearchResults(found[kind], seen[kind], results.filter((entry) => !deniedIds.has(String(entry.id || "").trim())), resultKey);
     } catch (error) {
       lastError = error?.message || String(error);
       logger.warn("ytdlp", "yt-dlp search failed", {
@@ -97,28 +95,58 @@ async function handleYtdlpSearch(payload, helpers) {
         error: lastError,
       });
     }
-  }
-
-  // Live streams are not recordings of the requested track.
-  const downloadableResults = aggregated.filter(
-    (result) => !isYtdlpLiveResult(result),
-  );
-  const evaluation = await buildSourceCandidates({
+  };
+  // A song id is also a video id. Once videos are searched, a video replaces
+  // the song with its id, so a song judged off the requested album can still
+  // win as the artist's own upload.
+  const searchedResults = () => {
+    const videoKeys = new Set(found.videos.map(resultKey));
+    return [...found.songs.filter((song) => !videoKeys.has(resultKey(song))), ...found.videos];
+  };
+  const evaluateResults = (results) => buildSourceCandidates({
     source: "ytdlp",
-    results: downloadableResults,
+    // Live streams are not recordings of the requested track.
+    results: results.filter((result) => !isYtdlpLiveResult(result)),
     request: resolvedTrack,
   });
+  const holdsTrack = (evaluation) => evaluation.evaluations.some((entry) =>
+    entry.decision === "accept" || entry.decision === "verify");
+
+  // YouTube Music lists the release audio with its artists, album, and
+  // length. Its search reads the next few songs only while none read so far
+  // could be the track, and video search runs only when none of its songs is.
+  if (queries[0]) {
+    await searchOnce("songs", queries[0], {
+      songs: true,
+      limit: SONG_READS,
+      wanted: (song) => !deniedIds.has(song.id) && prefilterCandidates({
+        source: "ytdlp",
+        candidates: [{ ...song, song: true }],
+        request: resolvedTrack,
+      })[0]?.rejected === false,
+      decided: async (songs) => holdsTrack(await evaluateResults(songs)),
+    });
+  }
+  let evaluation = await evaluateResults(searchedResults());
+  if (!holdsTrack(evaluation)) {
+    for (const query of [...queries, fallbackQuery].filter(Boolean)) {
+      if (hasEnoughCandidates(found.videos, resolvedTrack)) break;
+      if (query === fallbackQuery && found.videos.length > 0) break;
+      await searchOnce("videos", query, { limit: 5 });
+    }
+    evaluation = await evaluateResults(searchedResults());
+  }
   const candidates = usableEvaluationEntries(evaluation)
     .filter((entry) => !deniedIds.has(String(entry.candidate?.provider?.id || "").trim()))
     .map(toPipelineCandidate);
   if (candidates.length === 0) {
     const message =
-      lastError && aggregated.length === 0
+      lastError && searchedResults().length === 0
         ? `yt-dlp search failed: ${lastError}`
         : "No suitable yt-dlp search results";
     return helpers.failOrTryNextSource(payload, job, message, {
       queryCount: queries.length,
-      rawResultCount: aggregated.length,
+      rawResultCount: searchedResults().length,
       rankedCount: evaluation.evaluations.length,
     });
   }

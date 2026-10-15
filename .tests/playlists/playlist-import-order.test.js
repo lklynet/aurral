@@ -1087,8 +1087,9 @@ test("ListenBrainz sync uses the shared import update path", async (t) => {
         syncIntervalHours: 24,
       },
     });
+    const releaseMbid = "6d2e1b50-3a4c-4e5f-8a6b-7c8d9e0f1a2b";
     listenbrainzPlaylistClient.getGeneratedPlaylistTracks = async () => ({
-      tracks: [{ artistName: "New Artist", trackName: "New Song" }],
+      tracks: [{ artistName: "New Artist", trackName: "New Song", releaseMbid, trackNumber: 3, discNumber: 2 }],
       stats: { incomplete: 0, duplicate: 0 },
     });
 
@@ -1113,8 +1114,16 @@ test("ListenBrainz sync uses the shared import update path", async (t) => {
         durationMs: null,
         artistAliases: [],
         reason: null,
+        releaseMbid,
+        trackNumber: 3,
+        discNumber: 2,
       },
     ]);
+    assert.deepEqual(
+      db.prepare("SELECT track_name, release_mbid, track_number, disc_number FROM playlist_download_jobs WHERE playlist_type = ?")
+        .all(playlist.id),
+      [{ track_name: "New Song", release_mbid: releaseMbid, track_number: 3, disc_number: 2 }],
+    );
     const completed = info.mock.calls.find((call) =>
       call.arguments[1] === "Playlist import sync completed");
     assert.equal(completed?.arguments[2]?.playlistId, playlist.id);

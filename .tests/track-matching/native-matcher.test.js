@@ -5,9 +5,6 @@ import {
   normalizeMatchText,
   parseListingTitle,
   decideRecording,
-  assignReleaseFiles,
-  assessRelease,
-  selectReleaseSession,
   verifyDownloadedRecording,
 } from "../../backend/services/trackMatching/nativeMatcher.js";
 
@@ -23,7 +20,7 @@ test("normalization folds diacritics, punctuation, and spacing", () => {
   assert.equal(normalizeMatchText("Sigur   Rós"), "sigur ros");
 });
 
-test("distinct non-Latin titles cannot be selected, assigned, or verified", () => {
+test("distinct non-Latin titles cannot be selected or verified", () => {
   for (const [expected, offered] of [
     ["時", "詩"], ["愛", "哀"], ["Мой", "Мои"], ["かみ", "がみ"],
     ["Мой любимый город", "Мои любимый город"], ["Song がみ", "Song かみ"], ["कि", "की"],
@@ -32,7 +29,6 @@ test("distinct non-Latin titles cannot be selected, assigned, or verified", () =
     const wanted = { title: expected, artists: ["X"], durationMs: 200000, recordingMbid: "ff339055-7335-4a88-8377-55e41514beb0" };
     const candidate = { ...wanted, title: offered };
     assert.equal(decideRecording(wanted, [candidate]).decision, "skip", `${expected}/${offered}`);
-    assert.deepEqual(assignReleaseFiles([wanted], [candidate]).pairs, [], `${expected}/${offered}`);
     assert.equal(verifyDownloadedRecording(wanted, candidate).decision, "no_match", `${expected}/${offered}`);
     assert.equal(verifyDownloadedRecording(wanted, {
       ...wanted, fileNameTitle: offered,
@@ -86,6 +82,23 @@ test("listing titles parse common album file layouts without changing song subti
   ];
   for (const [path, title] of examples) assert.equal(parseListingTitle(path).title, title);
   assert.equal(parseListingTitle("1-02 Song.flac").trackNumber, 2);
+  for (const [path, trackNumber] of [["Track 01.flac", 1], ["Track07.mp3", 7], ["Audio Track 12.flac", 12],
+    ["Track Star.flac", null]]) {
+    assert.equal(parseListingTitle(path).trackNumber, trackNumber, path);
+  }
+  for (const [path, discNumber] of [
+    ["2-05 Song.flac", 2], ["Evil Genius - CD2 - 01 Off the Boat.flac", 2], ["[3.01] Song.flac", 3],
+    ["Album/CD 2/01 Song.flac", 2], ["Album/Disc 02/07.flac", 2], ["Album/01 Song.flac", undefined],
+    ["Album/CD 2 - Live/01 Song.flac", 2], ["Album/Disc Two/01 Song.flac", 2], ["Album/CD1 [FLAC]/01 Song.flac", 1],
+    ["Album/Disc 1 - Dawn to Dusk/01 Song.flac", 1], ["Album/Discovery/01 Song.flac", undefined],
+    ["Album/Disco 2000/01 Song.flac", undefined], ["Album (2LP)/LP 2/01 Song.flac", 2],
+    ["Album (3LP)/LP2/D6. Song.mp3", 2], ["Album (2LP)/LP 2 - Side C/01 Song.flac", 2],
+  ]) assert.equal(parseListingTitle(path).discNumber, discNumber, path);
+  for (const [path, album, discNumber] of [
+    ["Ratatat/LP4 [FLAC]/01 Bilar.flac", "LP4", undefined], ["Liam Payne/LP1 (2019)/01 Strip That Down.flac", "LP1", undefined],
+    ["Ratatat/LP4/01 Bilar.mp3", "LP3", 4], ["Album (2LP)/LP 2/01 Song.flac", "Album", 2], ["Album/CD2/01 Song.flac", "Album", 2],
+    ["Ratatat/LP4 - Other Album/01 Bilar.flac", "LP4", 4],
+  ]) assert.equal(parseListingTitle(path, { album }).discNumber, discNumber, `${path} on ${album}`);
 });
 
 test("known recording, variant, and duration contradictions cannot be rescued by title", () => {
@@ -105,6 +118,16 @@ test("matching live versions compare the song core while retaining variant ident
     title: "Hoppipolla (Live)", artists: ["Sigur Ros"], durationMs: 275000,
   }]);
   assert.equal(result.decision, "selectable");
+});
+
+test("a version the request's album or title names is no contradiction, and one it does not name is", () => {
+  const liveAlbum = { ...request, title: "Hoppipolla", albumName: "Live at Wembley" };
+  assert.equal(decideRecording(liveAlbum, [{
+    title: "Hoppipolla (Live)", artists: ["Sigur Ros"], durationMs: 275000,
+  }]).decision, "selectable");
+  assert.equal(decideRecording(request, [{
+    title: "Hoppipolla", artists: ["Sigur Ros"], durationMs: 275000, album: "Takk... (Acoustic)",
+  }]).decision, "skip");
 });
 
 test("a declared extended mix conflicts with a plain request", () => {
@@ -160,105 +183,25 @@ test("one uncorroborated candidate needs an exact duration for automatic selecti
   }]).decision, "selectable");
 });
 
-test("one-to-one release assignment handles scrambled files and leaves wrong variants out", () => {
-  const tracks = [
-    { title: "First Song", artists: ["The Band"], durationMs: 180000, trackNumber: 1 },
-    { title: "Second Song", artists: ["The Band"], durationMs: 200000, trackNumber: 2 },
-  ];
-  const files = [
-    { title: "Second Song", artists: ["The Band"], durationMs: 200000, trackNumber: 2 },
-    { title: "First Song", artists: ["The Band"], durationMs: 180000, trackNumber: 1 },
-    { title: "First Song (Live)", artists: ["The Band"], durationMs: 180000 },
-  ];
-  const assignment = assignReleaseFiles(tracks, files);
-  assert.deepEqual(assignment.pairs.map((pair) => [pair.trackIndex, pair.fileIndex]), [[0, 1], [1, 0]]);
-  assert.deepEqual(assignment.unassignedFileIndexes, [2]);
-  const assessment = assessRelease({ tracks }, { files });
-  assert.equal(assessment.decision, "selectable");
-  assert.equal(assessment.coverage, 1);
-});
-
-test("release assignment keeps the highest-scoring complete pairing", () => {
-  const tracks = [
-    { title: "Interlude", artists: ["The Band"], durationMs: 100000 },
-    { title: "Interlude", artists: ["The Band"], durationMs: 101000 },
-  ];
-  const files = [
-    { title: "Interlude", artists: ["The Band"], durationMs: 100000 },
-    { title: "Interlude", artists: ["The Band"], durationMs: 102000 },
-  ];
-  assert.deepEqual(assignReleaseFiles(tracks, files).pairs.map((pair) => pair.fileIndex), [0, 1]);
-});
-
-test("an exact album listing can fit when filenames lack artist tags", () => {
-  const titles = Array.from({ length: 11 }, (_, index) => `Song ${index + 1}`);
-  const result = assessRelease(
-    { tracks: titles.map((title) => ({
-      title, artists: ["The Band"], durationMs: 180000,
-    })) },
-    { files: titles.map((title) => ({
-      title, durationMs: 180000,
-    })) },
-  );
-  assert.equal(result.decision, "selectable");
-  assert.equal(result.coverage, 1);
-});
-
-test("release context assigns a numbered file with no title only when position and duration agree", () => {
-  const tracks = [
-    { title: "First Song", artists: ["The Band"], durationMs: 180000, trackNumber: 1 },
-    { title: "Second Song", artists: ["The Band"], durationMs: 200000, trackNumber: 2 },
-  ];
-  const files = [
-    { title: "First Song", durationMs: 180000, trackNumber: 1 },
-    { ...parseListingTitle("02.flac"), durationMs: 200000 },
-  ];
-  assert.deepEqual(assignReleaseFiles(tracks, files).pairs.map((pair) => pair.fileIndex), [0, 1]);
-  assert.equal(assessRelease({ tracks }, { files }).decision, "selectable");
-  files[1] = { title: "Different Song", durationMs: 200000, trackNumber: 2 };
-  assert.deepEqual(assignReleaseFiles(tracks, files).unassignedTrackIndexes, [1]);
-});
-
-test("a listing without lengths fits when exact titles sit at their positions", () => {
-  const tracks = ["First Song", "Second Song", "Third Song"].map((title, index) => ({
-    title, artists: ["The Band"], durationMs: 180000 + index * 10000, trackNumber: index + 1,
-  }));
-  const files = tracks.map(({ title, trackNumber }) => ({ title, trackNumber }));
-  assert.equal(assessRelease({ tracks }, { files }).decision, "selectable");
-  const shuffled = [
-    { title: "First Song", trackNumber: 2 },
-    { title: "Second Song", trackNumber: 3 },
-    { title: "Third Song", trackNumber: 1 },
-  ];
-  assert.equal(assessRelease({ tracks }, { files: shuffled }).decision, "skip");
-});
-
-test("every three-track file order keeps a one-to-one assignment", () => {
-  const tracks = ["Alpha", "Bravo", "Charlie"].map((title, index) => ({
-    title, durationMs: 180000 + index * 10000,
-  }));
-  for (const a of [0, 1, 2]) for (const b of [0, 1, 2]) for (const c of [0, 1, 2]) {
-    if (new Set([a, b, c]).size !== 3) continue;
-    const order = [a, b, c];
-    const files = order.map((index) => ({ ...tracks[index] }));
-    const result = assignReleaseFiles(tracks, files);
-    assert.deepEqual(result.pairs.map((pair) => pair.fileIndex),
-      [0, 1, 2].map((index) => order.indexOf(index)));
+test("post-download verification reads versions from the title, file name, album, and folder together", () => {
+  const acoustic = { title: "Apology (Acoustic)", artists: ["The Band"], durationMs: 200000, albumName: "Album" };
+  const file = { title: "Apology (Acoustic)", artists: ["The Band"], durationMs: 200000 };
+  assert.equal(verifyDownloadedRecording(acoustic, { ...file, filename: "15 Apology.flac", fileNameTitle: "Apology" }).decision, "matched");
+  assert.equal(verifyDownloadedRecording(acoustic, { ...file, album: "Album (Acoustic)", path: "/staging/Album (Acoustic)/15 Apology.flac" }).decision, "matched");
+  const plain = { ...acoustic, title: "Apology" };
+  const offered = { ...file, title: "Apology" };
+  for (const [observed, variant] of [
+    [{ ...offered, path: "/staging/The Band/Album (Acoustic)/15 Apology.flac" }, "acoustic"],
+    [{ ...offered, filename: "15 Apology (Live).flac", fileNameTitle: "Apology (Live)" }, "live"],
+  ]) {
+    const result = verifyDownloadedRecording(plain, observed);
+    assert.equal(result.decision, "no_match", JSON.stringify(observed));
+    assert.ok(result.contradictions.includes(variant), JSON.stringify(result.contradictions));
   }
-});
-
-test("duplicate titles use track position and leave a duplicate file unassigned", () => {
-  const tracks = [
-    { title: "Interlude", artists: ["The Band"], durationMs: 50000, trackNumber: 1 },
-    { title: "Interlude", artists: ["The Band"], durationMs: 50000, trackNumber: 2 },
-  ];
-  const files = [
-    { title: "Interlude", artists: ["The Band"], durationMs: 50000, trackNumber: 2 },
-    { title: "Interlude", artists: ["The Band"], durationMs: 50000, trackNumber: 2 },
-  ];
-  const result = assignReleaseFiles(tracks, files);
-  assert.deepEqual(result.pairs.map(({ trackIndex }) => trackIndex), [1]);
-  assert.deepEqual(result.unassignedTrackIndexes, [0]);
+  assert.equal(verifyDownloadedRecording({ title: "Live Forever", artists: ["Oasis"], durationMs: 276000 }, {
+    title: "Live Forever", artists: ["Oasis"], durationMs: 276000,
+    filename: "05 - Live Forever.flac", fileNameTitle: "Live Forever",
+  }).decision, "matched");
 });
 
 test("post-download verification requires corroboration and rejects original tag conflicts", () => {
@@ -270,31 +213,6 @@ test("post-download verification requires corroboration and rejects original tag
     title: "Hoppipolla", artists: ["Sigur Ros"], durationMs: 275000,
     recordingMbid: "cc82ee93-62b1-4424-8ea0-a24d775161e5",
   }).decision, "matched");
-});
-
-test("release session requires the requested slot and lets the caller order equal folders", () => {
-  const release = { key: "release", tracks: [
-    { title: "First Song", artists: ["The Band"], durationMs: 180000, recordingMbid: "e0996a37-c13d-44c3-8060-74939d43fa37" },
-    { title: "Second Song", artists: ["The Band"], durationMs: 200000, recordingMbid: "352f7829-a238-4b00-8cc1-2b0c2613c756" },
-  ] };
-  const good = { key: "good", files: [
-    { title: "First Song", durationMs: 180000 },
-    { title: "Second Song", durationMs: 200000 },
-  ] };
-  const wrongSlot = { key: "wrong", files: [
-    { title: "First Song", durationMs: 180000 },
-    { title: "Second Song (Live)", durationMs: 200000 },
-  ] };
-  assert.equal(selectReleaseSession({ releases: [release], folders: [good, wrongSlot],
-    requestedRecordingMbid: "352f7829-a238-4b00-8cc1-2b0c2613c756" }).selected?.folder.key, "good");
-  assert.equal(selectReleaseSession({ releases: [release], folders: [wrongSlot],
-    requestedRecordingMbid: "352f7829-a238-4b00-8cc1-2b0c2613c756" }).decision, "skip");
-  const copies = [good, { ...good, key: "copy" }];
-  assert.equal(selectReleaseSession({ releases: [release], folders: copies,
-    requestedRecordingMbid: "352f7829-a238-4b00-8cc1-2b0c2613c756" }).selected.folder.key, "good");
-  assert.equal(selectReleaseSession({ releases: [release], folders: copies,
-    requestedRecordingMbid: "352f7829-a238-4b00-8cc1-2b0c2613c756",
-    compare: (left, right) => right.folderIndex - left.folderIndex }).selected.folder.key, "copy");
 });
 
 test("a Various Artists credit on the request neither conflicts with nor confirms an artist", () => {

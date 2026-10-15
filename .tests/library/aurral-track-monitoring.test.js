@@ -185,6 +185,26 @@ test("a track unmonitored while its album is turned back on is not queued", asyn
   assert.equal(albumJobs(albumMbid).some((job) => job.trackMbid === tracks[1].mbid), false);
 });
 
+test("one track asked for is a track request, asking for the album's missing tracks makes every queued one an album request, and a failed one asked for alone is a track request again", async () => {
+  const { album, tracks } = await createAlbum({ tracks: ["missing", "missing", "missing"] });
+  const requestKinds = () => Object.fromEntries(db.prepare(
+    "SELECT track_mbid, request_kind FROM playlist_download_jobs WHERE track_mbid IN (?, ?, ?)",
+  ).all(...tracks.map((track) => track.mbid)).map((row) => [row.track_mbid.slice(-2), row.request_kind]));
+
+  const single = await libraryManager.monitorAurralTrack({ canonicalTrackId: tracks[0].id });
+  assert.equal(single.queuedJobIds.length, 1);
+  assert.deepEqual(requestKinds(), { "00": "track" });
+
+  await libraryManager.searchAurralAlbumMissingTracks(album.id);
+  assert.deepEqual(requestKinds(), { "00": "album", "01": "album", "02": "album" });
+
+  const second = downloadTracker.getAll().find((job) => job.trackMbid === tracks[1].mbid);
+  downloadTracker.setFailed(second.id, "No source had the track");
+  const retried = await libraryManager.monitorAurralTrack({ canonicalTrackId: tracks[1].id });
+  assert.deepEqual(retried.queuedJobIds, [second.id]);
+  assert.deepEqual(requestKinds(), { "00": "album", "01": "track", "02": "album" });
+});
+
 test("unmonitoring a track without an MBID leaves a same-titled track's download alone", async () => {
   const { album, albumMbid, tracks, jobIds } = await createAlbum({ tracks: ["missing", "pending"] });
   const untagged = libraryStore.upsertLibraryTrack({

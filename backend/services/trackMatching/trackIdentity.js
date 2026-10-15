@@ -41,6 +41,8 @@ export function buildTrackRequest(context = {}) {
       context.durationMs != null && Number.isFinite(Number(context.durationMs))
         ? Math.max(0, Math.round(Number(context.durationMs)))
         : null,
+    pressingDurationsMs: (Array.isArray(context.pressingDurationsMs) ? context.pressingDurationsMs : [])
+      .map(cleanPositiveInt).filter(Boolean),
     artistMbid: cleanText(context.artistMbid),
     albumMbid: cleanText(context.albumMbid || context.releaseGroupMbid),
     releaseMbid: cleanText(context.releaseMbid),
@@ -50,5 +52,27 @@ export function buildTrackRequest(context = {}) {
     variants: extractVariants(trackName),
     albumTrackCount: cleanPositiveInt(context.albumTrackCount),
     albumTrackTitles: cleanTextList(context.albumTrackTitles),
+    secondaryTypes: cleanTextList(context.secondaryTypes),
+  };
+}
+
+// The request the matcher compares with, the same for an offered candidate
+// and a downloaded file, so a file is held to the lengths and names its
+// listing was. A file imported with the whole `importedRelease` may sit in a
+// folder that names a version the release's own tracks are.
+export function recordingRequest(request, importedRelease = null) {
+  return {
+    title: request.trackName,
+    artists: request.artistName ? [request.artistName] : [],
+    artistAliases: request.artistAliases || [],
+    durationMs: request.durationMs,
+    pressingDurationsMs: request.pressingDurationsMs,
+    recordingMbid: request.recordingMbid,
+    recordingMbidAliases: request.recordingMbidAliases,
+    albumName: request.albumName,
+    trackNumber: request.trackNumber,
+    albumTrackTitles: request.albumTrackTitles,
+    releaseTracks: importedRelease?.tracks || [],
+    secondaryTypes: request.secondaryTypes,
   };
 }

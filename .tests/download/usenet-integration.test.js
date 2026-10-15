@@ -7,6 +7,8 @@ import {
   createMockHttpServer,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
+import { brainzmashGroup, serveGroups } from "../helpers/releaseFixture.js";
+import { OTHER_VERSION_LABELS, SAME_VERSION_LABELS } from "../track-matching/version-labels.js";
 
 const [
   isolatedState,
@@ -460,6 +462,8 @@ for (const albumGrab of [false, true]) {
       });
       assert.equal(result.phase, "download");
       assert.deepEqual(result.candidates.map((entry) => entry.raw.guid), ["allowed-1", "allowed-2"]);
+      // A release title cannot prove the tracklist; the download is judged later.
+      assert.ok(result.candidates.every((entry) => entry.releaseVerified === (albumGrab ? false : undefined)));
       assert.deepEqual(downloadTracker.getJob(jobId).deniedRemoteSources,
         originalDenials);
     } finally {
@@ -467,6 +471,25 @@ for (const albumGrab of [false, true]) {
     }
   });
 }
+
+test("a Usenet track search tries the requested album before a single of the track within a quality tier", async (t) => {
+  t.mock.method(prowlarrClient, "getEnabledUsenetIndexers", async () => []);
+  for (const [name, albumFormat, expected] of [
+    ["Order", "FLAC", ["album", "single"]],
+    ["Quality", "MP3", ["single", "album"]],
+  ]) {
+    const releases = [["single", `${name} Band - A Song (2020) FLAC`], ["album", `${name} Band - Zebra Album ${albumFormat}`]]
+      .map(([guid, title], index) => ({ guid, title, protocol: "usenet", downloadUrl: `https://nzb.invalid/${name}/${guid}`,
+        indexerId: index + 1, size: 100 * 1024 * 1024, categories: [3010] }));
+    const search = t.mock.method(prowlarrClient, "search", async () => releases);
+    const jobId = downloadTracker.addJob({ artistName: `${name} Band`, trackName: "A Song", albumName: "Zebra Album",
+      releaseYear: "2020", durationMs: 180000 }, "usenet-order");
+    const result = await searchUntilDone({ phase: "search", source: "usenet", jobId },
+      { failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }) });
+    assert.deepEqual(result.candidates.map((entry) => entry.raw.guid), expected);
+    search.mock.restore();
+  }
+});
 
 test("a Usenet search runs one Prowlarr query per pipeline step", async (t) => {
   for (const [name, results, error] of [
@@ -494,14 +517,21 @@ test("a Usenet search runs one Prowlarr query per pipeline step", async (t) => {
 test("a Usenet compilation grab searches as VA and by its title, never by a track artist", async (t) => {
   t.mock.method(prowlarrClient, "getEnabledUsenetIndexers", async () => [{ id: 1, musicSearch: true }]);
   const search = t.mock.method(prowlarrClient, "search", async () => []);
+  const albumName = "Guardians of the Galaxy: Awesome Mix, Vol. 1: Original Motion Picture Soundtrack";
   const ids = [["Blue Swede", "Hooked on a Feeling"], ["Raspberries", "Go All the Way"]]
     .map(([artistName, trackName], index) => downloadTracker.addJob({
       artistName, trackName, trackNumber: index + 1, durationMs: 180000,
-      albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1: Original Motion Picture Soundtrack",
-      albumMbid: "usenet-compilation", requestGroupId: "usenet-compilation",
+      albumName, albumMbid: "usenet-compilation", requestGroupId: "usenet-compilation",
     }, "library"));
-  await searchUntilDone({ phase: "search", source: "usenet", jobId: ids[0], albumGrab: true,
-    albumGroupJobIds: ids }, { failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }) });
+  const credits = [["Blue Swede", "Hooked on a Feeling"], ["Raspberries", "Go All the Way"]];
+  await serveGroups(t, [brainzmashGroup({ id: "usenet-compilation", title: albumName, artist: "Various Artists",
+    artistId: "89ad4ac3-39f7-470e-963a-56509c546377",
+    trackArtists: credits.map(([name]) => ({ id: `${name}-artist`, name })),
+    releases: [{ id: "usenet-compilation-release", tracks: credits.map(([artistName, title]) =>
+      ({ title, artistId: `${artistName}-artist`, durationMs: 180000 })) }] })]);
+  await searchUntilDone({ phase: "search", source: "usenet", jobId: ids[0], albumGrab: true, albumGroupJobIds: ids,
+    releaseMbid: "usenet-compilation-release" },
+  { failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }) });
   assert.deepEqual(search.mock.calls.map((call) => call.arguments[0]), [
     "VA Guardians of the Galaxy Awesome Mix Vol 1",
     "Guardians of the Galaxy Awesome Mix Vol 1",
@@ -565,6 +595,9 @@ test("a Usenet single in another version is not offered for the original track",
     "Daft Punk Pharrell Williams Nile Rodgers-Get Lucky Radio Edit -24BIT-WEBFLAC-2013-STASIAUDIO",
     "Daft Punk - Get Lucky (feat. Pharrell Williams) [2013] FLAC",
     "Daft Punk - Random Access Memories (2013) FLAC",
+    "Daft Punk - Random Access Memories (Acoustic) (2013) FLAC",
+    "Daft Punk - Random Access Memories Instrumentals (2013) FLAC",
+    "Daft Punk - Random Access Memories (Remixes) WEB FLAC",
   ], { artistName: "Daft Punk", albumName: "Random Access Memories", trackName: "Get Lucky" });
   assert.deepEqual(releases.map(([title, kind]) => `${kind}: ${title}`).sort(), [
     "album: Daft Punk - Random Access Memories (2013) FLAC",
@@ -576,6 +609,60 @@ test("a Usenet single in another version is not offered for the original track",
     "Michael Jackson - Thriller (1982) FLAC",
   ], { artistName: "Michael Jackson", albumName: "Thriller", trackName: "Thriller" });
   assert.deepEqual(titleTrack.map(([title]) => title), ["Michael Jackson - Thriller (1982) FLAC"]);
+
+  const oceanAvenue = ["Yellowcard - Ocean Avenue Acoustic (2013) FLAC", "Yellowcard - Ocean Avenue (2003) FLAC"];
+  const yellowcard = { artistName: "Yellowcard", trackName: "Way Away" };
+  assert.deepEqual(admitted(oceanAvenue, { ...yellowcard, albumName: "Ocean Avenue" }),
+    [["Yellowcard - Ocean Avenue (2003) FLAC", "album"]]);
+  assert.deepEqual(admitted(oceanAvenue, { ...yellowcard, albumName: "Ocean Avenue Acoustic" }),
+    [["Yellowcard - Ocean Avenue Acoustic (2013) FLAC", "album"]]);
+
+  const alive = ["KISS - Alive! (Live) (1975) FLAC"];
+  const kiss = { artistName: "KISS", albumName: "Alive!", trackName: "Deuce" };
+  assert.deepEqual(admitted(alive, { ...kiss, secondaryTypes: ["Live"] }), [[alive[0], "album"]]);
+  assert.deepEqual(admitted(alive, { ...kiss, secondaryTypes: [] }), []);
+
+  assert.deepEqual(admitted(["Faith No More - Angel Dust (Deluxe Edition) FLAC"],
+    { artistName: "Faith No More", albumName: "Angel Dust (Deluxe Edition)", trackName: "Easy (Live in Munich)" }),
+  [["Faith No More - Angel Dust (Deluxe Edition) FLAC", "album"]]);
+
+  const scene = admitted([
+    "Daft_Punk-Random_Access_Memories-WEB-2013-GRP",
+    "Daft_Punk-Random_Access_Memories_Instrumentals-WEB-2013-GRP",
+    "Daft_Punk-Random_Access_Memories_Remixes-WEB-2013-GRP",
+    "Daft_Punk-Random_Access_Memories_(The_Remixes)-WEB-2013-GRP",
+    "Daft_Punk-Random_Access_Memories_Live-WEB-2013-GRP",
+    "Daft.Punk-Random.Access.Memories.Live.2013.FLAC-GRP",
+  ], { artistName: "Daft Punk", albumName: "Random Access Memories", trackName: "Get Lucky" });
+  assert.deepEqual(scene, [["Daft_Punk-Random_Access_Memories-WEB-2013-GRP", "album"]]);
+});
+
+test("a Usenet release named for another version is not offered however its title notes it, for any track", () => {
+  for (const trackName of ["First Song", "Album"]) {
+    const context = { artistName: "The Band", albumName: "Album", trackName };
+    assert.deepEqual(admitted(OTHER_VERSION_LABELS.map(([title]) => title), context), [], trackName);
+    assert.deepEqual(admitted(SAME_VERSION_LABELS, context).map(([title]) => title).toSorted(), SAME_VERSION_LABELS.toSorted(),
+      trackName);
+  }
+  assert.deepEqual(admitted(["Live - Throwing Copper (1994) FLAC", "Live - Throwing Copper (Live at Woodstock 1999) FLAC"],
+    { artistName: "Lïve", albumName: "Throwing Copper", trackName: "Selling the Drama" }),
+  [["Live - Throwing Copper (1994) FLAC", "album"]]);
+  assert.deepEqual(admitted(["Wings - Live and Let Die (1973) FLAC"],
+    { artistName: "Wings", albumName: "Red Rose Speedway", trackName: "Live and Let Die" }),
+  [["Wings - Live and Let Die (1973) FLAC", "track"]]);
+  assert.deepEqual(admitted(["The Band - Song (Live at Wembley) FLAC", "The Band - Album (Live at Wembley) FLAC"],
+    { artistName: "The Band", albumName: "Album", trackName: "Song (Live at Wembley)" }),
+  [["The Band - Song (Live at Wembley) FLAC", "track"]]);
+
+  const liveDisc = ["The Band - Album (Deluxe Edition) (Bonus Live Disc) FLAC"];
+  const deluxe = { artistName: "The Band", albumName: "Album", trackName: "First Song" };
+  const tracks = (...discs) => discs.flatMap((titles, disc) => titles.map((title) => ({ title, discNumber: disc + 1 })));
+  assert.deepEqual(admitted(liveDisc, { ...deluxe,
+    releaseTracks: tracks(["First Song", "Second Song", "Third Song"], ["First Song (Live at Wembley)"]) }),
+  [[liveDisc[0], "album"]]);
+  assert.deepEqual(admitted(liveDisc, { ...deluxe, releaseTracks: tracks(["First Song", "Second Song"]) }), []);
+  assert.deepEqual(admitted(["The Band - Album (Live at Wembley) FLAC", "The Band - Album [Live] FLAC"], { ...deluxe,
+    releaseTracks: tracks(["First Song", "Second Song", "Third Song", "First Song (Live at the Troubadour)"]) }), []);
 });
 
 test("a compilation track takes a single by its own artist from Usenet", () => {

@@ -271,10 +271,12 @@ export function PlaylistTracks({
       albumName: String(track?.albumName || "").trim() || null,
       artistMbid: String(track?.artistMbid || "").trim() || null,
       albumMbid: String(track?.albumMbid || "").trim() || null,
+      releaseMbid: track?.releaseMbid || null,
       trackMbid: String(track?.trackMbid || "").trim() || null,
       releaseYear: track?.releaseYear || null,
       durationMs: track?.durationMs || null,
       trackNumber: track?.trackNumber,
+      discNumber: track?.discNumber,
       albumTrackCount: track?.albumTrackCount,
       albumTrackTitles: track?.albumTrackTitles,
     };

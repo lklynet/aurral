@@ -11,7 +11,9 @@ import {
   getNormalizedText,
   rankAlbumCandidates,
   rankArtistCandidates,
+  runningOrder,
   scoreTextMatch,
+  withPressingDurations,
 } from "./brainzmashRanking.js";
 import {
   toLegacyArtist,
@@ -380,23 +382,6 @@ function tally(releases, key) {
   return counts;
 }
 
-function tracksInOrder(release) {
-  return [...release.tracks]
-    .sort((left, right) => (left.mediumNumber || 1) - (right.mediumNumber || 1)
-      || (left.trackNumber || 0) - (right.trackNumber || 0));
-}
-
-function runningOrder(release) {
-  return tracksInOrder(release).map((track) => getNormalizedText(track.title)).join("\n");
-}
-
-function median(values) {
-  const sorted = values.filter((value) => Number(value) > 0).sort((left, right) => left - right);
-  if (sorted.length === 0) return null;
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
-}
-
 // The album is the official tracklist most of its releases share: pressings
 // of the standard edition far outnumber deluxe editions and box sets, which
 // can run to 90 tracks, and misprints that swap tracks. A tie goes to the
@@ -440,17 +425,7 @@ function chooseTracklist(pool, trackCount) {
     const commoner = orderCounts.get(orders.get(release)) - orderCounts.get(orders.get(best));
     return commoner > 0 || (commoner === 0 && discs(release) < discs(best)) ? release : best;
   });
-  // Pressings of one tracklist list a track a few seconds apart, and some
-  // round to whole seconds, so each track takes its median length.
-  const pressings = sameCount.filter((release) => orders.get(release) === orders.get(chosen)).map(tracksInOrder);
-  const ordered = tracksInOrder(chosen);
-  return {
-    ...chosen,
-    tracks: chosen.tracks.map((track) => {
-      const index = ordered.indexOf(track);
-      return { ...track, durationMs: median(pressings.map((tracks) => tracks[index]?.durationMs)) ?? track.durationMs };
-    }),
-  };
+  return withPressingDurations(sameCount, chosen);
 }
 
 function storeAlbumReleaseMappings(album) {
@@ -473,10 +448,12 @@ export async function getAlbumByMbid(albumMbid, { signal, forceRefresh = false }
   return normalized;
 }
 
-export async function getAlbumTracksByAlbumMbid(albumMbid) {
+export async function getAlbumTracksByAlbumMbid(albumMbid, { chooseRelease = selectAlbumRelease } = {}) {
   const album = await getAlbumByMbid(albumMbid);
-  const release = selectAlbumRelease(album);
-  return Array.isArray(release?.tracks) ? release.tracks : [];
+  const release = chooseRelease(album);
+  return Array.isArray(release?.tracks)
+    ? release.tracks.map((track) => ({ ...track, releaseMbid: release.id || null }))
+    : [];
 }
 
 export async function searchArtists(query, { limit = 24, offset = 0, signal } = {}) {

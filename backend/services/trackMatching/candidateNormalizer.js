@@ -104,6 +104,29 @@ export function getFileBaseName(filePath) {
   return ext ? fileName.slice(0, -ext.length) : fileName;
 }
 
+const LOSSLESS_EXTENSIONS = new Set([".flac", ".alac", ".ape", ".wav", ".aiff", ".aif", ".wv"]);
+const LOSSY_EXTENSIONS = new Set([".mp3", ".aac", ".m4a", ".ogg", ".oga", ".opus", ".wma"]);
+// Real Soulseek listings put every real lossless file
+// above 77 kbit/s and every real lossy file at 16 kbit/s or more. Generated
+// silence, truncated shares, and game stems sit below these floors.
+const MIN_KBPS = { lossless: 48, lossy: 12 };
+
+// The encoded bitrate of a file whose size cannot hold music of its length,
+// or null. A ".m4a" may hold ALAC, so it gets the lossy floor unless
+// `lossless` says what the file holds. A track MusicBrainz titles
+// "[silence]" is digital silence on the release, and its real file is tiny.
+export function implausibleBitrateKbps({ path: filePath, lossless = null, sizeBytes, durationMs, trackTitle = null }) {
+  if (/^\s*\[silence\]\s*$/iu.test(String(trackTitle || ""))) return null;
+  const extension = getFileExtension(filePath);
+  const kind = lossless === true || (lossless == null && LOSSLESS_EXTENSIONS.has(extension)) ? "lossless"
+    : lossless === false || LOSSY_EXTENSIONS.has(extension) ? "lossy" : null;
+  const size = positiveNumber(sizeBytes);
+  const duration = positiveNumber(durationMs);
+  if (!kind || !size || !duration) return null;
+  const kbps = (size * 8) / duration;
+  return kbps < MIN_KBPS[kind] ? kbps : null;
+}
+
 // Splits "Artist - Title" style segments. Returns null when the text does not
 // look like an artist/title pair.
 export function splitArtistTitleSegments(text) {

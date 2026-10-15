@@ -359,6 +359,9 @@ export class FlowTrackSource {
     durationMs,
     artistAliases,
     reason,
+    releaseMbid = null,
+    trackNumber = null,
+    discNumber = null,
   }) {
     const safeArtist = String(artistName || "").trim();
     const safeTrack = String(trackName || "").trim();
@@ -386,6 +389,7 @@ export class FlowTrackSource {
       durationMs: safeDuration,
       artistAliases: normalizedAliases,
       reason: this._normalizeTrackReason(reason),
+      ...(releaseMbid ? { releaseMbid, trackNumber, discNumber } : {}),
     };
   }
 
@@ -1989,6 +1993,9 @@ export class FlowTrackSource {
             entry?.durationMs != null && Number.isFinite(Number(entry.durationMs))
               ? Math.max(0, Math.round(Number(entry.durationMs)))
               : null,
+          releaseMbid: entry?.releaseMbid || null,
+          trackNumber: entry?.trackPosition ?? null,
+          discNumber: entry?.mediumNumber ?? null,
           rank: Number.isFinite(rank)
             ? rank
             : Number.isFinite(fallbackRank)
@@ -2067,6 +2074,9 @@ export class FlowTrackSource {
       albumMbid,
       trackMbid: pick?.trackMbid || null,
       durationMs: pick?.durationMs || null,
+      releaseMbid: pick?.releaseMbid,
+      trackNumber: pick?.trackNumber,
+      discNumber: pick?.discNumber,
       releaseYear,
       reason: "New release from an artist in your library",
     });

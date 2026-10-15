@@ -9,18 +9,32 @@ import {
   cleanupIsolatedState,
   createMockHttpServer,
 } from "../helpers/backendTestHarness.js";
+import { brainzmashGroup, serveGroups } from "../helpers/releaseFixture.js";
 
 const execFileAsync = promisify(execFile);
-const [state, { dbOps }, { downloadTracker }, { processDeemixPipelinePayload }, { downloadWorker }] =
+const [state, { dbOps }, { downloadTracker }, { processDeemixPipelinePayload }, { downloadWorker },
+  { beginDownloadAttempt, setActiveDownloadAttemptId }] =
   await setupIsolatedBackend(
-    "deemix-album-grab",
-    "backend/db/helpers/index.js",
-    "backend/services/downloadJobs/downloadTracker.js",
-    "backend/services/deemixOrchestrator.js",
-    "backend/services/downloadJobs/downloadWorker.js",
-  );
+  "deemix-album-grab",
+  "backend/db/helpers/index.js",
+  "backend/services/downloadJobs/downloadTracker.js",
+  "backend/services/deemixOrchestrator.js",
+  "backend/services/downloadJobs/downloadWorker.js",
+  "backend/services/downloadJobs/downloadCancellation.js",
+);
 
 test.after(async () => cleanupIsolatedState(state));
+
+// Serves the requested release, in the group `${id}-group`, from the
+// metadata provider and returns its ID.
+async function serveRelease(t, id, title, tracks, { artist = "The Band", artistId = "album-artist" } = {}) {
+  const trackArtists = [...new Set(tracks.map(([, , trackArtist]) => trackArtist).filter(Boolean))]
+    .map((name) => ({ id: `${name}-artist`, name }));
+  await serveGroups(t, [brainzmashGroup({ id: `${id}-group`, title, artist, artistId, trackArtists, releases: [{
+    id, tracks: tracks.map(([trackTitle, durationMs, trackArtist]) => ({ title: trackTitle, durationMs,
+      ...(trackArtist ? { artistId: `${trackArtist}-artist` } : {}) })) }] })]);
+  return id;
+}
 
 test("one deemix album queue fills verified siblings and retries only a missing track elsewhere", async (t) => {
   const downloads = join(state.baseDir, "deemix-downloads");
@@ -69,18 +83,21 @@ test("one deemix album queue fills verified siblings and retries only a missing 
     } });
     const group = "deemix-album-group";
     const ids = ["First", "Second"].map((trackName, index) => downloadTracker.addJob({
-      artistName: "The Band", albumName: "Album", albumMbid: "album-mbid",
+      artistName: "The Band", albumName: "Album", albumMbid: "deemix-two-group",
       trackName, trackNumber: index + 1, durationMs: 1000,
       requestGroupId: group, albumTrackCount: 2,
       albumTrackTitles: ["First", "Second"],
     }, "library"));
     downloadTracker.setDownloading(ids[1]);
+    const downloadAttemptId = beginDownloadAttempt(ids[0]);
+    setActiveDownloadAttemptId(ids[1], downloadAttemptId);
     const helpers = { failOrTryNextSource: (_, __, reason) => {
       throw new Error(`unexpected source fallback: ${reason}`);
     } };
-    const initial = { phase: "search", source: "deemix", jobId: ids[0],
+    const initial = { phase: "search", source: "deemix", jobId: ids[0], downloadAttemptId,
       playlistId: "library", playlistGeneration: 0, destination: "The Band/Album",
-      albumGrab: true, albumGroupJobIds: ids };
+      albumGrab: true, albumGroupJobIds: ids,
+      releaseMbid: await serveRelease(t, "deemix-two", "Album", [["First", 1000], ["Second", 1000]]) };
     const searched = await processDeemixPipelinePayload(initial, helpers);
     assert.equal(searched.phase, "download");
     const queued = await processDeemixPipelinePayload(searched, helpers);
@@ -109,8 +126,8 @@ test("one deemix album queue fills verified siblings and retries only a missing 
     assert.match(imported.albumGrab.fallbackReason, /not in the album download/);
     assert.equal(activity.find((item) => item.jobId === ids[1]).actualDownloadSource, null);
 
-    const retry = await processDeemixPipelinePayload({ ...initial, jobId: ids[1],
-      albumGrab: false, albumGroupJobIds: null }, helpers);
+    const retry = await processDeemixPipelinePayload({ ...initial, jobId: ids[1], downloadAttemptId: beginDownloadAttempt(ids[1]),
+      albumGrab: false, albumGroupJobIds: null, releaseMbid: null }, helpers);
     assert.deepEqual(retry.candidates.map((candidate) => candidate.raw.id), ["77-2"]);
   } finally {
     await mock.close();
@@ -119,15 +136,17 @@ test("one deemix album queue fills verified siblings and retries only a missing 
 
 function albumJobs(group) {
   return ["First", "Second"].map((trackName, index) => downloadTracker.addJob({
-    artistName: "The Band", albumName: "Album", albumMbid: group,
+    artistName: "The Band", albumName: "Album", albumMbid: "deemix-standard-group",
     trackName, trackNumber: index + 1, durationMs: 180000,
     requestGroupId: group, albumTrackCount: 2, albumTrackTitles: ["First", "Second"],
   }, "library"));
 }
 
-async function searchWith(client, ids) {
+const serveStandard = (t) => serveRelease(t, "deemix-standard", "Album", [["First", 180000], ["Second", 180000]]);
+
+async function searchWith(ids, releaseMbid) {
   return processDeemixPipelinePayload({ phase: "search", source: "deemix", jobId: ids[0],
-    albumGrab: true, albumGroupJobIds: ids }, {
+    albumGrab: true, albumGroupJobIds: ids, releaseMbid }, {
     failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }),
   });
 }
@@ -135,7 +154,7 @@ async function searchWith(client, ids) {
 const albumTrack = (title, index, overrides = {}) => ({ id: `${index}`, title, artist: "The Band",
   durationSec: 180, trackNumber: index + 1, readable: true, ...overrides });
 
-test("deemix album grab picks the album whose tracklist holds the requested tracks", async (t) => {
+test("deemix album grab takes only an album whose whole tracklist is the requested release", async (t) => {
   const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
   const client = getDownloadClient("deemix");
   const tracklists = {
@@ -143,17 +162,22 @@ test("deemix album grab picks the album whose tracklist holds the requested trac
     wrong: ["Unrelated", "Songs"].map((title, index) => albumTrack(title, index)),
     locked: ["First", "Second"].map((title, index) => albumTrack(title, index, { readable: false })),
     deluxe: ["First", "Second", "Bonus"].map((title, index) => albumTrack(title, index)),
+    hidden: ["First", "Second", "Bonus"].map((title, index) => albumTrack(title, index, { readable: index < 2 })),
+    exact: ["First", "Second"].map((title, index) => albumTrack(title, index)),
   };
   t.mock.method(client, "searchAlbums", async () => [
     { id: "other", title: "Other Album", url: "https://album.invalid/other" },
     { id: "wrong", title: "Album", url: "https://album.invalid/wrong" },
     { id: "locked", title: "Album", url: "https://album.invalid/locked" },
     { id: "deluxe", title: "Album (Deluxe Edition)", url: "https://album.invalid/deluxe" },
+    { id: "hidden", title: "Album", url: "https://album.invalid/hidden" },
+    { id: "exact", title: "Album", url: "https://album.invalid/exact" },
   ]);
   const tracklist = t.mock.method(client, "getAlbumTracks", async (id) => tracklists[id]);
-  const result = await searchWith(client, albumJobs("deemix-tracklist"));
+  const result = await searchWith(albumJobs("deemix-tracklist"), await serveStandard(t));
   assert.equal(result.phase, "download");
-  assert.deepEqual(result.candidates.map((candidate) => candidate.raw.albumId), ["deluxe"]);
+  assert.deepEqual(result.candidates.map((candidate) => [candidate.raw.albumId, candidate.kind,
+    candidate.releaseVerified]), [["exact", "album", true]]);
   assert.ok(!tracklist.mock.calls.some((call) => call.arguments[0] === "other"));
 });
 
@@ -165,7 +189,7 @@ test("deemix album grab tries the plain album query when the advanced one finds 
     : { id: "42", title: "Album", url: "https://album.invalid/42" }]);
   t.mock.method(client, "getAlbumTracks", async (id) => (id === "single" ? ["Other"] : ["First", "Second"])
     .map((title, index) => albumTrack(title, index)));
-  const result = await searchWith(client, albumJobs("deemix-plain"));
+  const result = await searchWith(albumJobs("deemix-plain"), await serveStandard(t));
   assert.equal(search.mock.callCount(), 2);
   assert.equal(result.candidates[0].raw.albumId, "42");
 });
@@ -180,13 +204,15 @@ test("deemix searches a compilation by its album title alone", async (t) => {
     albumTrack("Hooked on a Feeling", 0, { artist: "Blue Swede" }),
     albumTrack("Go All the Way", 1, { artist: "Raspberries" }),
   ]);
+  const albumName = "Guardians of the Galaxy: Awesome Mix, Vol. 1: Original Motion Picture Soundtrack";
   const ids = [["Blue Swede", "Hooked on a Feeling"], ["Raspberries", "Go All the Way"]]
     .map(([artistName, trackName], index) => downloadTracker.addJob({
       artistName, trackName, trackNumber: index + 1, durationMs: 180000,
-      albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1: Original Motion Picture Soundtrack",
-      albumMbid: "deemix-compilation", requestGroupId: "deemix-compilation",
+      albumName, albumMbid: "deemix-compilation-group", requestGroupId: "deemix-compilation",
     }, "library"));
-  const result = await searchWith(client, ids);
+  const result = await searchWith(ids, await serveRelease(t, "deemix-compilation", albumName, [
+    ["Hooked on a Feeling", 180000, "Blue Swede"], ["Go All the Way", 180000, "Raspberries"],
+  ], { artist: "Various Artists", artistId: "89ad4ac3-39f7-470e-963a-56509c546377" }));
   assert.equal(result.candidates[0].raw.albumId, "mix");
   assert.ok(search.mock.calls.every((call) => !/Blue Swede|Raspberries/.test(call.arguments[0])));
 });

@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { Worker } from "node:worker_threads";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 import {
   setupIsolatedBackend,
@@ -17,6 +19,8 @@ const [
   flowHandlerUtils,
   flowHandlersModule,
   libraryScanWorker,
+  { downloadTracker },
+  { playlistManager },
 ] =
   await setupIsolatedBackend(
     "playlist-config",
@@ -26,6 +30,8 @@ const [
     "backend/routes/playlists/handlers/utils.js",
     "backend/routes/playlists/handlers/flows.js",
     "backend/services/libraryScanWorker.js",
+    "backend/services/downloadJobs/downloadTracker.js",
+    "backend/services/playlists/playlistManager.js",
   );
 const { flowPlaylistConfig, normalizeImportSource, tracksShareMembership, invalidateFlowPlaylistConfigCache } = playlistConfigModule;
 const { validateFlowPayload } = flowHandlerUtils;
@@ -278,6 +284,53 @@ test("keeps flow tracks out of the library until a flow opts in", async () => {
   assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, false);
   assert.notEqual(getScheduledLibraryScanJobId(), null);
   clearScheduledLibraryScan();
+});
+
+test("saving a flow as a playlist keeps each track's release and disc", async (t) => {
+  t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+  t.mock.method(playlistManager, "scheduleScanLibrary", async () => {});
+  const flow = flowPlaylistConfig.createFlow({ name: "Weekly Keep", size: 20, mix: { discover: 100 }, scheduleDays: [1] });
+  const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "aurral-weekly-flow", flow.id, "Keep.flac");
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, "disposable audio");
+  const releaseMbid = "7e3f2c61-4b5d-4f60-9b7c-8d9e0f1a2b3c";
+  const flowJobId = downloadTracker.addJob({
+    artistName: "Flow Artist", trackName: "Keep", albumName: "Kept", albumMbid: "8f4a3d72-5c6e-4071-8c8d-9e0f1a2b3c4d",
+    releaseMbid, trackNumber: 4, discNumber: 2,
+  }, flow.id);
+  downloadTracker.setDone(flowJobId, file);
+  let saveHandler;
+  registerFlows({
+    post(routePath, ...handlers) {
+      if (routePath === "/flows/:flowId/static-playlist") saveHandler = handlers.at(-1);
+    },
+    put() {},
+    delete() {},
+    get() {},
+  });
+  const response = {
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(value) {
+      this.body = value;
+      return this;
+    },
+  };
+
+  await saveHandler({ params: { flowId: flow.id }, body: { name: "Kept Mix" }, user: { id: 1, role: "admin" } }, response);
+
+  assert.equal(response.statusCode, 200);
+  const playlistId = response.body.playlist.id;
+  const [track] = flowPlaylistConfig.getStaticPlaylist(playlistId).tracks;
+  assert.deepEqual([track.trackName, track.releaseMbid, track.discNumber, track.trackNumber], ["Keep", releaseMbid, 2, 4]);
+  assert.deepEqual(
+    db.prepare("SELECT release_mbid, track_number, disc_number FROM playlist_download_jobs WHERE playlist_type = ?").all(playlistId),
+    [{ release_mbid: releaseMbid, track_number: 4, disc_number: 2 }],
+  );
 });
 
 test("rejects non-boolean listening history payloads", () => {

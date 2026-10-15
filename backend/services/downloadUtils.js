@@ -110,7 +110,11 @@ export function buildResolvedJobTrack(job, payloadTrack = {}) {
     albumName: job.albumName || track.albumName,
     artistMbid: job.artistMbid || track.artistMbid,
     albumMbid: job.albumMbid || track.albumMbid,
+    releaseMbid: job.releaseMbid || track.releaseMbid || null,
     trackMbid: job.trackMbid || track.trackMbid,
+    recordingMbidAliases: normalizeStringList(
+      (job.recordingMbidAliases?.length ? job.recordingMbidAliases : null) || track.recordingMbidAliases,
+    ),
     releaseYear: job.releaseYear || track.releaseYear,
     durationMs: job.durationMs ?? track.durationMs ?? null,
     trackNumber: normalizePositiveInteger(job.trackNumber ?? track.trackNumber),

@@ -93,7 +93,7 @@ The default profile accepts all tiers, with **FLAC standard** as the cutoff.
 
 Aurral uses the names and bitrates in search results to rank candidates. It does not trust them to accept a file. After the download, Aurral reads the file and rejects it if its format, bitrate, sample rate, or bit depth does not match an enabled tier. A file with unknown quality is rejected.
 
-A quality rejection does not go to **Activity > Queue**. Queue review is only for tracks with an unclear identity or duration, including upgrade downloads.
+A quality rejection does not go to **Activity > Queue**. Queue review is only for tracks with an unclear identity or duration, including **Re-search** replacements.
 
 ## Track upgrades
 
@@ -108,9 +108,9 @@ If an upgrade search for a track is already queued, Aurral says so. Any user who
 
 To schedule upgrades, turn on **Automatic upgrades** in the quality profile. It is off by default. **Upgrade interval** sets the days between checks for each track, from 1 to 365. The default is 2 days. Automatic upgrades cover every monitored Library track in the Downloads Folder, including music that Aurral did not download.
 
-Upgrade downloads wait behind downloads of missing tracks. Aurral searches slskd, Usenet, and deemix for upgrades, in your source priority order. It stops at the first source that gives a valid, better file. It then waits for the next interval before it tries that track again. Aurral does not use yt-dlp for upgrades.
+Upgrade downloads wait behind downloads of missing tracks. Aurral searches slskd, Usenet, and deemix for upgrades, in your source priority order. It first looks for the release of the track's album and takes only that track from it. Upgrades that start together for several tracks of one album look for their release once, even when the tracks are in different playlists. Automatic upgrades and **Search all** start all upgrades of an album together. They skip the playlists of a suspended or disabled user until the account is active again. An upgrade that starts while another one downloads a release of the same album waits for that download, for up to 30 minutes. If no source has the release, it searches for the track alone. It stops at the first source that gives a valid, better file. It then waits for the next interval before it tries that track again. Aurral does not use yt-dlp for upgrades.
 
-If an upgrade download matches the track but its duration is very different, Aurral holds it in **Activity > Queue**. You can preview, approve, or deny it. If you approve it, Aurral replaces the existing file.
+Aurral never holds an upgrade for review. If it cannot verify a better file, it drops it and keeps the file you have.
 
 ## Next steps
 

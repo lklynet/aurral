@@ -7,6 +7,7 @@ import {
   cleanupIsolatedState,
 } from "../helpers/backendTestHarness.js";
 import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.js";
+import { clearReleaseManifests } from "../../backend/services/releaseResolver.js";
 import { pickResolvedDurationMs } from "../../backend/services/providers/brainzmashRanking.js";
 import { toNormalizedTrack } from "../../backend/services/providers/brainzmashMappers.js";
 
@@ -416,8 +417,10 @@ function stubMetadata(t, respond) {
     },
   });
   clearMetadataProviderCaches();
+  clearReleaseManifests();
   t.after(() => {
     clearMetadataProviderCaches();
+    clearReleaseManifests();
     dbOps.updateSettings(originalSettings);
   });
   t.mock.method(axios, "get", async (url, options) => ({ data: respond(new URL(url).pathname, options?.params || {}) ?? {} }));
@@ -528,12 +531,23 @@ test("a download takes the album of its title that lists the song, over the albu
     trackName: "Africa",
     albumName: "Weezer",
     albumMbid: "blue",
+    releaseMbid: "blue-release",
     trackMbid: "blue-1",
     durationMs: 200000,
     trackNumber: 1,
     albumTrackTitles: ["Africa"],
   });
   assert.equal(complete.albumMbid, "teal");
+  assert.equal(complete.releaseMbid, "teal-release");
+
+  const unplaced = await resolveTrackSearchContext({ ...complete, albumName: "Records", albumMbid: null,
+    trackName: "Records", trackMbid: null });
+  assert.equal(unplaced.albumMbid, "records");
+  assert.equal(unplaced.releaseMbid, null);
+  const dropped = await resolveTrackSearchContext({ ...complete, artistMbid: "weezer", albumName: null, albumMbid: null,
+    trackMbid: null, albumTrackTitles: [] });
+  assert.equal(dropped.albumMbid, null);
+  assert.equal(dropped.releaseMbid, null);
   assert.equal(complete.trackMbid, "teal-1");
   assert.deepEqual(complete.albumTrackTitles, ["Africa", "Everybody Wants to Rule the World"]);
 
@@ -552,4 +566,130 @@ test("a download takes the album of its title that lists the song, over the albu
 
   const single = await resolveTrackSearchContext({ artistName: "Weezer", trackName: "Records", albumName: "Records" });
   assert.equal(single.albumMbid, "records");
+});
+
+const editionAlbum = () => {
+  const band = artistEntry("edition-band", "Edition Band");
+  const song = (trackname, recordingid, trackposition, durationms, extra = {}) =>
+    ({ id: `${recordingid}-${trackposition}`, trackname, recordingid, trackposition, mediumnumber: 1, durationms, ...extra });
+  return {
+    id: "edition-album", title: "Edition Album", type: "Album", artistid: band.id, artists: [band],
+    releases: [
+      { id: "edition-standard", status: "Official", tracks: [song("Opener", "opener", 1, 200000, { oldrecordingids: ["opener-merged"] }),
+        song("Middle", "middle", 2, 210000)] },
+      { id: "edition-reissue", status: "Official", tracks: [song("Opener", "opener", 1, 200000), song("Middle", "middle", 2, 210000)] },
+      { id: "edition-deluxe", status: "Official", tracks: [song("Bonus Intro", "intro", 1, 60000), song("Opener", "opener", 2, 201000),
+        song("Middle", "middle", 3, 211000), song("Middle (Acoustic)", "middle-acoustic", 4, 190000)] },
+    ],
+  };
+};
+
+test("a track's tracklist, place, and length all come from the edition its release ID pins, and a pin without the track stays", async (t) => {
+  const album = editionAlbum();
+  stubMetadata(t, (path) => (path === "/album/edition-album" ? album : null));
+  const resolved = await resolveTrackSearchContext({
+    artistName: "Edition Band", artistMbid: "edition-band", artistAliases: ["Edition Band"], trackName: "Middle",
+    albumName: "Edition Album", albumMbid: "edition-album", releaseMbid: "edition-deluxe", trackMbid: "middle",
+    durationMs: 210000, trackNumber: 2, albumTrackTitles: ["Opener", "Middle"],
+  });
+  assert.equal(resolved.releaseMbid, "edition-deluxe");
+  assert.deepEqual(resolved.albumTrackTitles, ["Bonus Intro", "Opener", "Middle", "Middle (Acoustic)"]);
+  assert.equal(resolved.albumTrackCount, 4);
+  assert.equal(resolved.trackNumber, 3);
+  assert.equal(resolved.durationMs, 211000);
+
+  for (const releaseMbid of ["edition-standard", "EDITION-STANDARD"]) {
+    const unplaced = await resolveTrackSearchContext({
+      artistName: "Edition Band", artistMbid: "edition-band", trackName: "Middle (Acoustic)",
+      albumName: "Edition Album", albumMbid: "edition-album", releaseMbid,
+    });
+    assert.equal(unplaced.releaseMbid, releaseMbid);
+  }
+});
+
+test("a track that names only its release and album title is searched on that release", async (t) => {
+  const album = editionAlbum();
+  stubMetadata(t, (path) => {
+    if (path === "/search/album") return [{ id: album.id, title: album.title, type: "Album", artistid: album.artistid, artists: album.artists }];
+    return path === "/album/edition-album" ? album : null;
+  });
+  const resolved = await resolveTrackSearchContext({
+    artistName: "Edition Band", trackName: "Middle", albumName: "Edition Album", releaseMbid: "edition-deluxe",
+  });
+  assert.equal(resolved.albumMbid, "edition-album");
+  assert.equal(resolved.releaseMbid, "edition-deluxe");
+  assert.equal(resolved.trackNumber, 3);
+  assert.equal(resolved.durationMs, 211000);
+});
+
+test("an album ID the metadata provider does not know is replaced by the album its title names", async (t) => {
+  const album = editionAlbum();
+  stubMetadata(t, (path) => {
+    if (path === "/search/album") return [{ id: album.id, title: album.title, type: "Album", artistid: album.artistid, artists: album.artists }];
+    if (path === "/album/edition-deluxe") throw Object.assign(new Error("Not Found"), { response: { status: 404 } });
+    return path === "/album/edition-album" ? album : null;
+  });
+  const resolved = await resolveTrackSearchContext({
+    artistName: "Edition Band", trackName: "Middle", albumName: "Edition Album", albumMbid: "edition-deluxe",
+  });
+  assert.equal(resolved.albumMbid, "edition-album");
+  assert.equal(resolved.trackNumber, 2);
+});
+
+test("an album ID is kept while the metadata provider is down, and its release is read once it is back", async (t) => {
+  const album = { ...editionAlbum(), id: "outage-album" };
+  let down = true;
+  stubMetadata(t, (path) => {
+    if (down && path.startsWith("/album/")) throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+    return path === "/album/outage-album" ? album : null;
+  });
+  const track = {
+    artistName: "Edition Band", artistMbid: "edition-band", artistAliases: ["Edition Band"], trackName: "Middle",
+    albumName: "Edition Album", albumMbid: "outage-album", releaseMbid: "edition-deluxe", trackMbid: "middle",
+    durationMs: 211000, trackNumber: 3, albumTrackTitles: ["Bonus Intro", "Opener", "Middle", "Middle (Acoustic)"],
+  };
+  const during = await resolveTrackSearchContext(track);
+  assert.equal(during.albumMbid, "outage-album");
+  assert.equal(during.releaseMbid, "edition-deluxe");
+
+  down = false;
+  clearReleaseManifests();
+  const after = await resolveTrackSearchContext(track);
+  assert.equal(after.releaseMbid, "edition-deluxe");
+  assert.equal(after.trackMbid, "middle");
+});
+
+test("a merged recording ID is repaired to the current recording and kept as its alias", async (t) => {
+  const album = editionAlbum();
+  stubMetadata(t, (path) => (path === "/album/edition-album" ? album : null));
+  const resolved = await resolveTrackSearchContext({
+    artistName: "Edition Band", artistMbid: "edition-band", artistAliases: ["Edition Band"], trackName: "Opener",
+    albumName: "Edition Album", albumMbid: "edition-album", trackMbid: "opener-merged",
+    durationMs: 200000, trackNumber: 1, albumTrackTitles: ["Opener", "Middle"],
+  });
+  assert.equal(resolved.trackMbid, "opener");
+  assert.deepEqual(resolved.recordingMbidAliases, ["opener-merged"]);
+  assert.equal(resolved.releaseMbid, "edition-standard");
+
+  album.releases.push({ id: "edition-single", status: "Official", tracks: [
+    { id: "middle-single", trackname: "Middle", recordingid: "middle", trackposition: 1, mediumnumber: 1, durationms: 210000 }] });
+  const unplaced = await resolveTrackSearchContext({
+    artistName: "Edition Band", artistMbid: "edition-band", artistAliases: ["Edition Band"], trackName: "Opener",
+    albumName: "Edition Album", albumMbid: "edition-album", releaseMbid: "edition-single", trackMbid: "opener-merged",
+    durationMs: 200000, trackNumber: 1, albumTrackTitles: ["Middle"],
+  });
+  assert.equal(unplaced.trackMbid, "opener");
+  assert.deepEqual(unplaced.recordingMbidAliases, ["opener-merged"]);
+});
+
+test("a song's other version never stands in for it on the album", async (t) => {
+  const album = editionAlbum();
+  stubMetadata(t, (path) => (path === "/album/edition-album" ? album : null));
+  const resolved = await resolveTrackSearchContext({
+    artistName: "Edition Band", artistMbid: "edition-band", artistAliases: ["Edition Band"], trackName: "Middle (Acoustic)",
+    albumName: "Edition Album", albumMbid: "edition-album",
+  });
+  assert.equal(resolved.trackMbid, "middle-acoustic");
+  assert.equal(resolved.trackNumber, 4);
+  assert.equal(resolved.releaseMbid, "edition-deluxe");
 });

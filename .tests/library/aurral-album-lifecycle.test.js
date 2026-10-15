@@ -24,8 +24,9 @@ const [
   { finishAlbumGrab },
   { scanMusicRoot },
   { resolveDownloadRoot },
-  { clearMetadataProviderCaches },
+  { clearApiCaches },
   { db },
+  { resolveReleaseManifest },
 ] = await setupIsolatedBackend(
   "aurral-album-lifecycle",
   "backend/services/downloadJobs/downloadTracker.js",
@@ -42,8 +43,9 @@ const [
   "backend/services/albumGrab.js",
   "backend/services/libraryFileScanner.js",
   "backend/services/downloadPaths.js",
-  "backend/services/providers/brainzmashProvider.js",
+  "backend/services/apiClients/clearCache.js",
   "backend/config/db-sqlite.js",
+  "backend/services/releaseResolver.js",
 );
 
 const { downloadTracker, DownloadTracker } = trackerModule;
@@ -60,6 +62,13 @@ const server = await new Promise((resolve) => {
   const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
 });
 const baseUrl = `http://127.0.0.1:${server.address().port}`;
+// The payload of a Soulseek folder the release judge verified before download.
+async function verifiedGrab(ids) {
+  return { jobId: ids[0], albumGrab: true, albumGroupJobIds: ids, source: "slskd", playlistId: "library",
+    releaseMbid: (await resolveReleaseManifest(downloadTracker.getJob(ids[0])))?.releaseMbid ?? null,
+    candidate: { releaseVerified: true, raw: { user: "peer", files: [] } } };
+}
+
 async function apiRequest(route, method = "GET") {
   const response = await fetch(`${baseUrl}${route}`, { method });
   return { status: response.status, body: await response.json() };
@@ -775,7 +784,7 @@ test("active downloads list in-flight albums, artists, and tracks so buttons sur
   }
 });
 
-test("an album asks for its most common edition and a whole shorter edition completes it", async (t) => {
+test("an album asks for its most common edition and a shorter download leaves its missing tracks wanted", async (t) => {
   const artistMbid = "eeeeeeee-eeee-4eee-8eee-000000000001";
   const albumMbid = "eeeeeeee-eeee-4eee-8eee-000000000002";
   const recording = (index) => `eeeeeeee-eeee-4eee-8eee-10000000000${index}`;
@@ -807,14 +816,14 @@ test("an album asks for its most common edition and a whole shorter edition comp
   dbOps.updateSettings({ ...originalSettings, integrations: { ...originalSettings.integrations,
     slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
     metadata: { ...originalSettings.integrations?.metadata, baseUrl: metadata.url, enableNarrowFallbacks: false } } });
-  clearMetadataProviderCaches();
+  clearApiCaches();
   downloadWorker.start = async () => {};
   lidarrClient.isConfigured = () => false;
   t.after(async () => {
     downloadWorker.start = originalWorkerStart;
     lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
-    clearMetadataProviderCaches();
+    clearApiCaches();
     await metadata.close();
   });
 
@@ -827,32 +836,39 @@ test("an album asks for its most common edition and a whole shorter edition comp
 
   const folder = path.join(isolatedState.baseDir, "edition-download");
   await fs.mkdir(folder, { recursive: true });
-  const filePaths = [];
-  for (const [song, position] of [[2, 1], [3, 2]]) {
+  const writeSong = async (song, position) => {
     const filePath = path.join(folder, `0${position} Edition Song ${song}.flac`);
-    await promisify(execFile)("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
+    await promisify(execFile)("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
       "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac", "-metadata", `title=Edition Song ${song}`,
-      "-metadata", "artist=Edition Artist", "-metadata", `track=${position}`, "-metadata", `disc=${position}`,
-      filePath]);
-    filePaths.push(filePath);
-  }
-  await finishAlbumGrab({ jobId: ids[0], albumGrab: true, albumGroupJobIds: ids, source: "slskd",
-    playlistId: "library" }, { filePaths, source: "soulseek" });
-  assert.deepEqual(ids.map((id) => downloadTracker.getJob(id).status), ["cancelled", "done", "done"]);
+      "-metadata", "artist=Edition Artist", "-metadata", `track=${position}`, filePath]);
+    return filePath;
+  };
+  const grab = await verifiedGrab(ids);
+  assert.equal(grab.releaseMbid, "deluxe");
+  const shorter = [await writeSong(2, 1), await writeSong(3, 2)];
+  await finishAlbumGrab({ ...grab, source: "usenet", candidate: { raw: { release: { guid: "shorter" } } } },
+    { filePaths: shorter, source: "usenet" });
+  assert.deepEqual(ids.map((id) => downloadTracker.getJob(id).status), ["pending", "pending", "pending"]);
+  assert.deepEqual(ids.map((id) => downloadTracker.getJob(id).deniedRemoteSources), ids.map(() => [["usenet", "shorter"]]));
+
+  for (const id of ids) downloadTracker.setDownloading(id);
+  const next = await finishAlbumGrab(grab, { filePaths: [await writeSong(2, 2), await writeSong(3, 3)],
+    source: "soulseek" });
+  assert.deepEqual([next.jobId, next.albumGrab, next.phase], [ids[0], false, "search"]);
+  assert.deepEqual(ids.map((id) => downloadTracker.getJob(id).status), ["downloading", "done", "done"]);
   assert.deepEqual(ids.slice(1).map((id) => path.basename(downloadTracker.getJob(id).finalPath)),
-    ["01 - Edition Song 2.flac", "02 - Edition Song 3.flac"]);
+    ["02 - Edition Song 2.flac", "03 - Edition Song 3.flac"]);
+  assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE mbid = ?").pluck().get(recording(1)), 1);
 
   await scanMusicRoot({ rootPath: resolveDownloadRoot(), source: "aurral" });
   invalidateAllDownloadStatusesCache();
   const status = await callRoute("GET /albums/aurral/:canonicalId/status",
     { canonicalId: String(requested.body.album.id) });
-  assert.equal(status.body.status, "complete");
-  assert.equal(status.body.counts.total, 2);
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM library_album_tracks WHERE album_id = ?")
-    .get(requested.body.album.id).count, 3);
+  assert.notEqual(status.body.status, "complete");
+  assert.equal(status.body.counts.total, 3);
 });
 
-test("an album that wants the expanded edition keeps its extra tracks after a standard download", async (t) => {
+test("an album that wants the expanded edition keeps wanting the extra track a download lacks", async (t) => {
   const artistMbid = "eeeeeeee-eeee-4eee-8eee-000000000021";
   const albumMbid = "eeeeeeee-eeee-4eee-8eee-000000000022";
   const release = (id, count) => ({ id, status: "Official", tracks: Array.from({ length: count }, (_, index) => ({
@@ -877,7 +893,7 @@ test("an album that wants the expanded edition keeps its extra tracks after a st
   dbOps.updateSettings({ ...originalSettings, integrations: { ...originalSettings.integrations,
     slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
     metadata: { ...originalSettings.integrations?.metadata, baseUrl: metadata.url, enableNarrowFallbacks: false } } });
-  clearMetadataProviderCaches();
+  clearApiCaches();
   downloadWorker.start = async () => {};
   lidarrClient.isConfigured = () => false;
   const defaults = libraryManager.getMonitoringDefaultsState().rules;
@@ -891,7 +907,7 @@ test("an album that wants the expanded edition keeps its extra tracks after a st
     downloadWorker.start = originalWorkerStart;
     lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
-    clearMetadataProviderCaches();
+    clearApiCaches();
     await metadata.close();
   });
 
@@ -901,6 +917,7 @@ test("an album that wants the expanded edition keeps its extra tracks after a st
   ids = requested.body.jobIds;
   assert.deepEqual(ids.map((id) => downloadTracker.getJob(id).trackName),
     ["Expanded Song 1", "Expanded Song 2", "Expanded Song 3"]);
+  assert.deepEqual(ids.map((id) => downloadTracker.getJob(id).releaseMbid), ["deluxe", "deluxe", "deluxe"]);
 
   const folder = path.join(isolatedState.baseDir, "expanded-download");
   await fs.mkdir(folder, { recursive: true });
@@ -912,8 +929,7 @@ test("an album that wants the expanded edition keeps its extra tracks after a st
       "-metadata", "artist=Expanded Artist", "-metadata", `track=${song}`, filePath]);
     filePaths.push(filePath);
   }
-  await finishAlbumGrab({ jobId: ids[0], albumGrab: true, albumGroupJobIds: ids, source: "slskd",
-    playlistId: "library" }, { filePaths, source: "soulseek" });
+  await finishAlbumGrab(await verifiedGrab(ids), { filePaths, source: "soulseek" });
   assert.deepEqual(ids.map((id) => downloadTracker.getJob(id).status), ["done", "done", "pending"]);
   const missing = db.prepare("SELECT monitored FROM library_tracks WHERE mbid = ?")
     .get("eeeeeeee-eeee-4eee-8eee-300000000003");
@@ -944,14 +960,14 @@ test("a two-disc album downloads a title it repeats on each disc to two names", 
   dbOps.updateSettings({ ...originalSettings, integrations: { ...originalSettings.integrations,
     slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
     metadata: { ...originalSettings.integrations?.metadata, baseUrl: metadata.url, enableNarrowFallbacks: false } } });
-  clearMetadataProviderCaches();
+  clearApiCaches();
   downloadWorker.start = async () => {};
   lidarrClient.isConfigured = () => false;
   t.after(async () => {
     downloadWorker.start = originalWorkerStart;
     lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
-    clearMetadataProviderCaches();
+    clearApiCaches();
     await metadata.close();
   });
 
@@ -973,8 +989,7 @@ test("a two-disc album downloads a title it repeats on each disc to two names", 
       "-metadata", `MUSICBRAINZ_TRACKID=${recording(index)}`, filePath]);
     filePaths.push(filePath);
   }
-  await finishAlbumGrab({ jobId: ids[0], albumGrab: true, albumGroupJobIds: ids, source: "slskd",
-    playlistId: "library" }, { filePaths, source: "soulseek" });
+  await finishAlbumGrab(await verifiedGrab(ids), { filePaths, source: "soulseek" });
   assert.deepEqual(ids.map((id) => [downloadTracker.getJob(id).status, path.basename(downloadTracker.getJob(id).finalPath)]), [
     ["done", "01 - Bomb.flac"],
     ["done", "02 - Swim.flac"],
@@ -983,16 +998,16 @@ test("a two-disc album downloads a title it repeats on each disc to two names", 
   ]);
 });
 
-test("an album asks for each track's typical length across pressings of its tracklist", async (t) => {
+test("an album asks for its release's own lengths and fills a missing one from pressings of the same recordings", async (t) => {
   const artistMbid = "eeeeeeee-eeee-4eee-8eee-000000000011";
   const albumMbid = "eeeeeeee-eeee-4eee-8eee-000000000012";
-  const pressing = (id, lengths) => ({ id, status: "Official", tracks: lengths.map((durationms, index) => ({
-    id: `${id}-${index}`, recordingid: `eeeeeeee-eeee-4eee-8eee-20000000000${index + 1}`,
+  const pressing = (id, lengths, recording = 2) => ({ id, status: "Official", tracks: lengths.map((durationms, index) => ({
+    id: `${id}-${index}`, recordingid: `eeeeeeee-eeee-4eee-8eee-${recording}0000000000${index + 1}`,
     trackname: `Pressing Song ${index + 1}`, artistid: artistMbid, durationms,
     trackposition: index + 1, mediumnumber: 1,
   })) });
-  const releases = [pressing("vinyl", [296000, 250000]), pressing("cd", [301106, 254893]),
-    pressing("digital", [301000, 254000])];
+  const releases = [pressing("vinyl", [296000, null]), pressing("cd", [301106, 254893]),
+    pressing("digital", [301000, 254000]), pressing("rerecorded", [247000, 208000], 3)];
   const metadata = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
     if (new URL(request.url, "http://127.0.0.1").pathname !== `/album/${albumMbid}`) {
@@ -1009,21 +1024,21 @@ test("an album asks for each track's typical length across pressings of its trac
   dbOps.updateSettings({ ...originalSettings, integrations: { ...originalSettings.integrations,
     slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
     metadata: { ...originalSettings.integrations?.metadata, baseUrl: metadata.url, enableNarrowFallbacks: false } } });
-  clearMetadataProviderCaches();
+  clearApiCaches();
   downloadWorker.start = async () => {};
   lidarrClient.isConfigured = () => false;
   t.after(async () => {
     downloadWorker.start = originalWorkerStart;
     lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
-    clearMetadataProviderCaches();
+    clearApiCaches();
     await metadata.close();
   });
 
   const requested = await callRoute("POST /albums/request", {}, { albumMbid, albumName: "Pressing Album",
     artistMbid, artistName: "Pressing Artist", managedBy: "aurral" });
   assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
-  assert.deepEqual(requested.body.jobIds.map((id) => downloadTracker.getJob(id).durationMs), [301000, 254000]);
+  assert.deepEqual(requested.body.jobIds.map((id) => downloadTracker.getJob(id).durationMs), [296000, 254447]);
 });
 
 test("asking for an album downloads the missing tracks of the edition its track list shows", async (t) => {
@@ -1033,7 +1048,8 @@ test("asking for an album downloads the missing tracks of the edition its track 
   const release = (id, recordings) => ({ id, status: "Official",
     tracks: recordings.map((recordingIndex, index) => ({
       id: `${id}-${index}`, recordingid: recording(recordingIndex), trackname: `Listed Song ${index + 1}`,
-      artistid: artistMbid, durationms: 1000, trackposition: index + 1, mediumnumber: 1,
+      artistid: recordingIndex === 3 ? "1a1a1a1a-1a1a-4a1a-8a1a-000000000013" : artistMbid, durationms: 1000,
+      trackposition: index + 1, mediumnumber: 1,
     })) });
   const metadata = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
@@ -1043,7 +1059,8 @@ test("asking for an album downloads the missing tracks of the edition its track 
       return;
     }
     response.end(JSON.stringify({ id: albumMbid, title: "Listed Album", artistid: artistMbid,
-      artists: [{ id: artistMbid, artistname: "Listed Artist" }],
+      artists: [{ id: artistMbid, artistname: "Listed Artist" },
+        { id: "1a1a1a1a-1a1a-4a1a-8a1a-000000000013", artistname: "Listed Guest" }],
       releases: [release("listed-standard", [1, 4]), release("listed-reissue", [1, 4]), release("listed-deluxe", [1, 2, 3])] }));
   });
   const originalSettings = dbOps.getSettings();
@@ -1052,14 +1069,14 @@ test("asking for an album downloads the missing tracks of the edition its track 
   dbOps.updateSettings({ ...originalSettings, integrations: { ...originalSettings.integrations,
     slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
     metadata: { ...originalSettings.integrations?.metadata, baseUrl: metadata.url, enableNarrowFallbacks: false } } });
-  clearMetadataProviderCaches();
+  clearApiCaches();
   downloadWorker.start = async () => {};
   lidarrClient.isConfigured = () => false;
   t.after(async () => {
     downloadWorker.start = originalWorkerStart;
     lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
-    clearMetadataProviderCaches();
+    clearApiCaches();
     await metadata.close();
   });
   const artist = libraryStore.upsertLibraryArtist({ identityKey: `mbid:${artistMbid}`, mbid: artistMbid, name: "Listed Artist" });
@@ -1080,26 +1097,17 @@ test("asking for an album downloads the missing tracks of the edition its track 
   assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
   assert.deepEqual(requested.body.jobIds.map((id) => downloadTracker.getJob(id).trackName), ["Listed Song 2", "Listed Song 3"]);
   assert.equal(db.prepare("SELECT COUNT(*) FROM library_album_tracks WHERE album_id = ?").pluck().get(album.id), 3);
-});
+  assert.deepEqual(requested.body.jobIds.map((id) => downloadTracker.getJob(id).releaseMbid), ["listed-deluxe", "listed-deluxe"]);
+  assert.equal(db.prepare("SELECT artist_name FROM library_tracks WHERE mbid = ?").pluck().get(recording(3)), "Listed Guest");
 
-test("settling an album on an edition leaves a track another album has monitored", () => {
-  const albumMbid = "ffffffff-ffff-4fff-8fff-000000000001";
-  const artist = libraryStore.upsertLibraryArtist({ identityKey: "mbid:ffffffff-ffff-4fff-8fff-000000000002",
-    mbid: "ffffffff-ffff-4fff-8fff-000000000002", name: "Shared Artist" });
-  const albumFor = (identityKey, title, mbid = null) => libraryStore.upsertLibraryAlbum({
-    identityKey, mbid, releaseGroupMbid: mbid, artistId: artist.id, title });
-  const album = albumFor(`release-group:${albumMbid}`, "Shared Album", albumMbid);
-  const single = albumFor("release-group:ffffffff-ffff-4fff-8fff-000000000003", "Shared Single");
-  const tracks = [1, 2].map((index) => libraryStore.upsertLibraryTrack({
-    identityKey: `recording:ffffffff-ffff-4fff-8fff-10000000000${index}`,
-    mbid: `ffffffff-ffff-4fff-8fff-10000000000${index}`, title: `Shared Song ${index}`,
-  }));
-  tracks.forEach((track, index) => libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id,
-    trackNumber: index + 1 }));
-  libraryStore.linkLibraryAlbumTrack({ albumId: single.id, trackId: tracks[1].id, trackNumber: 1 });
-  libraryManager.unmonitorAlbumOnlyTracks(albumMbid, tracks.map((track) => track.mbid));
-  const monitored = (track) => db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(track.id).monitored;
-  assert.deepEqual(tracks.map(monitored), [0, 1]);
+  db.prepare("UPDATE library_albums SET metadata_json = json_set(metadata_json, '$.trackList.release', 'listed-standard') WHERE id = ?")
+    .run(album.id);
+  const job = downloadTracker.getJob(requested.body.jobIds[1]);
+  const manifest = await resolveReleaseManifest({ ...job, releaseMbid: null });
+  assert.equal(manifest.releaseMbid, "listed-deluxe");
+  assert.deepEqual(manifest.tracks.map((track) => track.artists), [["Listed Artist"], ["Listed Artist"], ["Listed Guest"]]);
+  assert.equal(await resolveReleaseManifest({ ...job, releaseMbid: null, trackName: "Listed Song 4", trackMbid: recording(4),
+    trackNumber: 2 }), null);
 });
 
 test("an album scanned with its release ID stays one album through downloads and scans", async () => {

@@ -97,17 +97,10 @@ function getAccessibleManualSearchJob(user, jobId, { mode = "missing", playlistI
   return job;
 }
 
-function toPublicJob({ stagingPath: _stagingPath, finalPath, externalPath: _externalPath, ...job }) {
+function toPublicJob({ stagingPath: _stagingPath, heldForReview: _heldForReview, finalPath, externalPath: _externalPath,
+  ...job }) {
   const streamFormat = finalPath ? path.extname(finalPath).slice(1).toLowerCase() : "";
   return { ...job, streamFormat: streamFormat || null };
-}
-
-async function runQualityChecksLocally(playlistIds) {
-  let queued = 0;
-  for (const playlistId of playlistIds) {
-    queued += await runQualityUpgradeCheck({ force: true, playlistId, limit: 500 });
-  }
-  return queued;
 }
 
 export function registerJobs(router) {
@@ -280,7 +273,7 @@ export function registerJobs(router) {
     const playlistIds = getAccessiblePlaylistIds(req.user);
     const checkedIds = [LIBRARY_JOB_TYPE, ...playlistIds];
     const queued = isDownloadOwnerProcess()
-      ? await runQualityChecksLocally(checkedIds)
+      ? await runQualityUpgradeCheck({ force: true, playlistIds: checkedIds, limit: 500 })
       : await requestDownloadOwner("runQualityUpgradeChecks", [checkedIds, 500], {
         timeoutMs: 30 * 60 * 1000,
       });

@@ -3,7 +3,7 @@ title: yt-dlp
 description: Download tracks from YouTube with the built-in yt-dlp source.
 ---
 
-yt-dlp is the built-in fallback download source. It searches YouTube for the artist and title of a track.
+yt-dlp is the built-in fallback download source. It searches YouTube Music, then YouTube, for the artist and title of a track.
 
 yt-dlp extracts the audio with ffmpeg. Aurral writes the audio to a staging folder outside your media folders, checks it, tags it, and then moves it into the Downloads Folder.
 
@@ -20,17 +20,19 @@ For an installation without Docker, install `yt-dlp` and `ffmpeg` on the host. A
 3. If necessary, set **Source priority** or **Staging path**.
 4. Select **Test connection**.
 
-The default priority of yt-dlp is `50`. The other sources have lower numbers, so Aurral tries them first.
+The default priority of yt-dlp is `50`. The other sources have lower numbers, so Aurral tries them first. To get single tracks fast, give yt-dlp a lower number than the other sources. A track you download on its own then comes from yt-dlp first, and an album still starts on its release.
 
 ## Behavior
 
 yt-dlp downloads the tracks that the other sources cannot find. It can also be your only download source. It always downloads one track at a time. It never downloads a whole album at once.
 
-Aurral searches YouTube for the artist and title, then for the artist and title with "official audio" until it finds the artist's own audio upload. A compilation track is searched by its own artist. If neither search finds anything, Aurral searches for the title and artist.
+Aurral first searches the songs on YouTube Music for the artist and title. YouTube Music names each song's artists, album, and length, so Aurral can tell the album's own audio from covers and other versions. It reads up to six songs, three at a time, and reads the next three only when the first three do not hold the requested track. This usually takes about 4 seconds. After 6 seconds, Aurral stops waiting for YouTube Music.
 
-Aurral prefers the release audio on the artist's own channel, such as the "Artist - Topic" uploads, then ranks the other results by title, artist, and duration. It skips karaoke, covers, live versions, sped-up or slowed edits, clean edits, and similar unwanted results.
+Aurral skips songs by another artist, such as covers and tribute acts. It also skips songs whose title has version wording that the request does not have, such as "Radio Edit", "(Live)", "Acoustic", "Karaoke", "Stereo Mix", or "Alternate Take". An album named for the version, such as "Pet Sounds (Stereo Mix)", has it. Remaster, "Mono", and "feat." wording does not matter. A song with the same title and length on another album, such as a compilation, is used only after the requested album's copy. Aurral checks it more strictly after the download, because an album such as a live album does not always say what it is.
 
-Before Aurral accepts the download, it checks the artist and title that yt-dlp wrote into the file, together with the video title, against the requested track. It ignores upload wording such as "Official Music Video" or "(Audio)", and it reads "Title - Artist" and "Artist「Title」" titles too. The title must match exactly. The release audio on the artist's channel, including its lyric videos and visualizers, may differ from the requested length by up to 10 seconds, like another edition of the album. A music video or an upload on another channel must be within 2 seconds. It does not use the file name, because yt-dlp names files by video ID.
+If YouTube Music has no usable song, Aurral searches YouTube videos for the artist and title, then for the artist and title with "official audio" until it finds the artist's own audio upload. A compilation track is searched by its own artist. If neither search finds anything, Aurral searches for the title and artist. Aurral prefers the release audio on the artist's own channel, such as the "Artist - Topic" uploads, then ranks the other videos by title, artist, and duration. It skips karaoke, covers, live versions, sped-up or slowed edits, clean edits, and similar unwanted videos.
+
+Before Aurral accepts the download, it checks the title and artist that yt-dlp wrote into the file against the requested track. The title must match exactly. For a video, Aurral also reads the video title. It ignores upload wording such as "Official Music Video" or "(Audio)", and it reads "Title - Artist" and "Artist「Title」" titles too. A song from the requested album on YouTube Music, and the release audio on the artist's channel, including its lyric videos and visualizers, may differ from the requested length by up to 10 seconds, like another edition of the album. Any other download must be within 2 seconds. Aurral does not use the file name, because yt-dlp names files by video ID.
 
 If YouTube refuses a download with HTTP 403, Aurral runs it once more with fresh links before it tries the next result.
 

@@ -25,17 +25,17 @@ For a track that Aurral downloads for an album, select **Open** to go to the alb
 
 ### Album downloads
 
-When Aurral downloads a whole album release at once, Activity shows its tracks in one album row. Expand the row to see each track's status and review controls.
+When Aurral looks for two or more missing tracks of a Library album on one release, Activity shows those tracks in one album row. Expand the row to see each track's status and review controls.
 
 - The row shows how many tracks are ready.
 - The row stays in **Queue** while any track is active or waits for review.
 - In **History**, the row shows **Completed** only when every track is ready. A failed or missing track leaves the album incomplete.
 
-If the release leaves tracks unfilled, Aurral first tries the next ranked folder or release for them. If Aurral then falls back to downloading tracks one by one, those tracks stay in the same album row. The info action shows the reason for the fallback and the download sources. A request that only ever downloads track by track shows one row for each track.
+If the release leaves tracks unfilled, Aurral first tries the next ranked folder or release for them, and then the next download source that can supply the release. If Aurral then falls back to downloading tracks one by one, those tracks stay in the same album row. The info action shows the reason for the fallback and the download sources. Other requests show one row for each track.
 
 ### Review a track
 
-Aurral holds a download for review when the file has the requested title but its duration or artist credit is a little off. A file from Soulseek, Usenet, or yt-dlp waits while Aurral tries the other results and download sources, and goes to review only if none of them verifies. A file from deemix goes to review at once. Another song by the same artist is never held for review, and neither is an automatic upgrade: Aurral drops a file it cannot verify and keeps the one you have.
+Aurral holds a download for review when the file has the requested title but its duration or artist credit is a little off. A file from Soulseek, Usenet, or yt-dlp waits while Aurral tries the other results and download sources, and goes to review only if none of them verifies. The file stays with its track through a restart, and while an album download that failed starts again. If you deny it, Aurral searches for the track again from the start, its album's release included. A file from deemix goes to review at once. Another song by the same artist is never held for review, and neither is an automatic upgrade: Aurral drops a file it cannot verify and keeps the one you have.
 
 Each review row shows the requested track, artist, and album, the path of the downloaded file, the match scores, and the duration. Preview the track, then approve or deny it.
 

@@ -1210,12 +1210,12 @@ test("remastered files numbered as one disc list each song of their edition once
   });
 });
 
-test("an untagged file at a listed song's place is that song when its title is spelled another way or names a guest, not when it is another version", async (t) => {
+test("an untagged file at a listed song's place is that song when its title is spelled another way or names a guest or its mix, not when it is another version", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-place-"));
   const artist = `Place List ${process.pid}`;
   const title = `Place ${process.pid}`;
   const album = listedAlbum(artist, uuid("dddddddd", 8), title, 80,
-    ["Tongue Tied", "Fly", "Hooray", "The Rat House", "Today", "Stand by Me Tonight", "Get Down With Me", "Anchor", "Glide (Sped Up)", "Drift (Extended)", "Halo", "Spark"]);
+    ["Tongue Tied", "Fly", "Hooray", "The Rat House", "Today", "Stand by Me Tonight", "Get Down With Me", "Anchor", "Glide (Sped Up)", "Drift (Extended)", "Halo", "Spark", "Echo", "Ember", "Fable"]);
   t.after(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
@@ -1234,6 +1234,9 @@ test("an untagged file at a listed song's place is that song when its title is s
   await untagged("Drift", 10);
   await untagged("Halo (feat. Live)", 11);
   await untagged("Spark feat. Live", 12);
+  await untagged("Echo (Mono)", 13);
+  await untagged("Ember - Mono Version", 14);
+  await untagged("Fable (Stereo Mix)", 15);
   await withReleaseGroups({ [album.releaseGroup]: album.group }, async () => {
     await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
 
@@ -1241,6 +1244,9 @@ test("an untagged file at a listed song's place is that song when its title is s
       ["Anchor", "have"],
       ["Drift (Extended)", "missing"],
       ["Drift", "have"],
+      ["Echo", "have"],
+      ["Ember", "have"],
+      ["Fable", "have"],
       ["Fly", "have"],
       ["Get Down With Me", "missing"],
       ["Glide (Sped Up)", "missing"],

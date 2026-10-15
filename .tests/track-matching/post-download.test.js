@@ -65,6 +65,47 @@ function stubParseFile(parsed) {
   return async () => parsed;
 }
 
+test("original album and folder version evidence blocks an unrequested recording", async () => {
+  for (const [album, filePath, variant] of [
+    ["Random Access Memories (Acoustic)", "/staging/08 Get Lucky.flac", "acoustic"],
+    ["Random Access Memories (Live)", "/staging/08 Get Lucky.flac", "live"],
+    ["Random Access Memories (Remixes)", "/staging/08 Get Lucky.flac", "remix"],
+    ["Random Access Memories", "/staging/Daft Punk/Random Access Memories (Karaoke)/08 Get Lucky.flac", "karaoke"],
+  ]) {
+    const result = await validateDownloadedTrackFile({
+      request: GET_LUCKY, filePath, source: "soulseek",
+      options: { parseFile: stubParseFile(stubParsed({ title: "Get Lucky", artist: "Daft Punk", album })) },
+    });
+    assert.equal(result.valid, false, `${album}/${filePath}`);
+    assert.equal(result.blocked, false);
+    assert.ok(result.contradictions.includes(variant), JSON.stringify(result.contradictions));
+  }
+});
+
+test("an explicitly requested album version and a manual selection keep their identity", async () => {
+  const parsed = stubParsed({ title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories (Acoustic)" });
+  for (const [request, manualSelection] of [
+    [{ ...GET_LUCKY, albumName: "Random Access Memories (Acoustic)" }, false],
+    [GET_LUCKY, true],
+  ]) {
+    const result = await validateDownloadedTrackFile({
+      request, filePath: "/staging/Daft Punk/Random Access Memories (Acoustic)/08 Get Lucky.flac",
+      source: "soulseek", options: { parseFile: stubParseFile(parsed), manualSelection },
+    });
+    assert.equal(result.valid, true, JSON.stringify(result));
+  }
+});
+
+test("release verification keeps the pinned duration even when the original tags match", async () => {
+  const result = await validateDownloadedTrackFile({
+    request: GET_LUCKY, filePath: "/staging/08 Get Lucky.flac", source: "soulseek",
+    options: { release: { title: "Random Access Memories" },
+      parseFile: stubParseFile(stubParsed({ title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories" }, 253)) },
+  });
+  assert.equal(result.valid, false);
+  assert.ok(result.contradictions.includes("duration"));
+});
+
 test("original non-Latin tag contradictions block import even with matching filenames", async () => {
   for (const [trackName, title] of [
     ["Мой", "Мои"], ["かみ", "がみ"], ["時", "詩"], ["愛", "哀"],
@@ -465,23 +506,28 @@ test("each artist in a multi-artist credit is artist evidence, with or without a
 });
 
 test("review reasons name every missing piece of recording evidence", async () => {
-  const outcome = await validateDownloadedTrackFile({
+  const validate = (artist) => validateDownloadedTrackFile({
     request: GET_LUCKY,
     filePath: "/staging/abc123.mp3",
     source: "ytdlp",
     options: {
       parseFile: stubParseFile(stubParsed(
-        { title: "Get Lucky", artist: "Daft Punk Tribute" },
+        { title: "Get Lucky", artist },
         244,
         { lossless: false, bitrate: 320000, container: "MPEG", codec: "MPEG 1 Layer 3" },
       )),
     },
   });
+  const outcome = await validate("Daft Pank");
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
   assert.equal(
     outcome.reason,
     "downloaded file is 4.0s shorter than the requested track and has an artist tag that only partly matches the requested artist",
   );
+  // A tribute act is another recording, not a partial artist match to review.
+  const tribute = await validate("Daft Punk Tribute");
+  assert.equal(tribute.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+  assert.ok(tribute.contradictions.includes("cover"), JSON.stringify(tribute.contradictions));
 });
 
 test("weak identity tags are conflicted regardless of duration", async () => {
@@ -567,7 +613,7 @@ test.after(() => {
   if (ffmpegFixtureDir) rmSync(ffmpegFixtureDir, { recursive: true, force: true });
 });
 
-function generateTaggedAudio(fileName, { title, artist, durationSec = 4 }) {
+function generateTaggedAudio(fileName, { title, artist, durationSec = 4, signal = "anullsrc=r=44100:cl=stereo" }) {
   const filePath = join(ffmpegFixtureDir, fileName);
   execFileSync(
     "ffmpeg",
@@ -576,7 +622,7 @@ function generateTaggedAudio(fileName, { title, artist, durationSec = 4 }) {
       "-f",
       "lavfi",
       "-i",
-      `anullsrc=r=44100:cl=stereo`,
+      signal,
       "-t",
       String(durationSec),
       "-metadata",
@@ -620,6 +666,25 @@ test("real tagged audio: karaoke tags conflict before any metadata write", { ski
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
   assert.ok(outcome.contradictions.includes("karaoke"));
   assert.equal(outcome.parsedTags.title, "Get Lucky (Karaoke Version)");
+});
+
+test("a silent FLAC too small for its length fails before identity, and real audio of that length verifies", { skip: hasFfmpeg ? false : "ffmpeg unavailable" }, async () => {
+  const request = { artistName: "The Used", trackName: "Let It Bleed", albumName: "In Love and Death", durationMs: 190693 };
+  const tags = { title: "Let It Bleed", artist: "The Used", durationSec: 190.693 };
+  const silent = await validateDownloadedTrackFile({
+    request, filePath: generateTaggedAudio("silent.flac", tags), source: "soulseek",
+  });
+  assert.equal(silent.decision, POST_DOWNLOAD_DECISIONS.FAILED);
+  assert.match(silent.reason, /kbit\/s/);
+  const tone = await validateDownloadedTrackFile({
+    request, filePath: generateTaggedAudio("tone.flac", { ...tags, signal: "sine=f=440" }), source: "soulseek",
+  });
+  assert.equal(tone.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  const pregap = await validateDownloadedTrackFile({
+    request: { ...request, trackName: "[silence]" }, source: "soulseek",
+    filePath: generateTaggedAudio("pregap.flac", { ...tags, title: "[silence]" }),
+  });
+  assert.equal(pregap.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
 });
 
 test("real audio without tags falls back to secondary evidence and stays conflicted", { skip: hasFfmpeg ? false : "ffmpeg unavailable" }, async () => {

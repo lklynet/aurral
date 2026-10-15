@@ -72,10 +72,7 @@ async function handleDownloadOwnerCommand(message) {
     } else if (method === "runQualityUpgradeChecks") {
       const { runQualityUpgradeCheck } = await import("./qualityProfileService.js");
       const [playlistIds, limit = 500] = args;
-      result = 0;
-      for (const playlistId of playlistIds) {
-        result += await runQualityUpgradeCheck({ force: true, playlistId, limit });
-      }
+      result = await runQualityUpgradeCheck({ force: true, playlistIds, limit });
     } else if (method === "queueQualityUpgradeForJob") {
       const [{ queueQualityUpgrade }, { downloadTracker }] = await Promise.all([
         import("./qualityProfileService.js"),

@@ -14,7 +14,7 @@ import {
 const [
   isolatedState,
   { db },
-  { dbOps },
+  { dbOps, userOps },
   { downloadTracker },
   cancellationModule,
   { flowPlaylistConfig },
@@ -736,16 +736,18 @@ test("records queued upgrade history if the pipeline removes the live job immedi
 test("search all stays within the requesting user's playlist access", async () => {
   const ownedPlaylistId = "c0de1f39-226f-4ab8-8f37-09d8adf47b5a";
   const otherPlaylistId = "a2b9ae35-7fb7-474e-a0d4-8ac4bdb8d9e6";
+  const owner = userOps.createUser("search-all-owner", "hash");
+  const other = userOps.createUser("search-all-other", "hash");
   flowPlaylistConfig.createStaticPlaylist({
     id: ownedPlaylistId,
     name: "Owned wanted",
-    ownerUserId: 7,
+    ownerUserId: owner.id,
     tracks: [{ artistName: "Artist", trackName: "Missing", albumName: "Album" }],
   });
   flowPlaylistConfig.createStaticPlaylist({
     id: otherPlaylistId,
     name: "Other wanted",
-    ownerUserId: 8,
+    ownerUserId: other.id,
     tracks: [{ artistName: "Artist", trackName: "Private", albumName: "Album" }],
   });
   const jobId = downloadTracker.addJob(
@@ -800,7 +802,7 @@ test("search all stays within the requesting user's playlist access", async () =
 
   const originalStart = downloadWorker.start;
   downloadWorker.start = async () => {};
-  requestUser = { role: "user", id: 7 };
+  requestUser = { role: "user", id: owner.id };
   try {
     const missingResponse = await fetch(`${baseUrl}/research-missing`, { method: "POST" });
     const missingPayload = await missingResponse.json();

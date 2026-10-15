@@ -5,9 +5,7 @@ import {
   processPipelinePayload,
   enqueuePendingJobsWithoutBatch,
   failPipelineJob,
-  ALBUM_GRAB_ENDED_REASON,
 } from "./downloadPipeline.js";
-import { releaseAlbumGrabJobs } from "./albumGrab.js";
 import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.js";
 import { isAnyDownloadSourceConfigured } from "./downloadSourceService.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
@@ -26,10 +24,6 @@ async function processLockedPipelineJob(payload, dependencies = {}) {
     }
     const nextPayload = await processPayload(payload);
     if (nextPayload?.albumGrab === true) recordAlbumGrabPhase(nextPayload);
-    if (payload?.albumGrab === true
-      && !(nextPayload?.albumGrab === true && isPipelinePayloadActive(nextPayload))) {
-      releaseAlbumGrabJobs(payload, ALBUM_GRAB_ENDED_REASON);
-    }
     await continuePayload(nextPayload);
   } catch (error) {
     if (payload?.manualSelection !== true) throw error;
@@ -73,7 +67,7 @@ const {
       message,
       stack: error?.stack || null,
     });
-    return withDownloadPayloadMutation(job.payload, (payload) => failPipelineJob(payload, message));
+    return withDownloadPayloadMutation(job.payload, async (payload) => continuePipeline(await failPipelineJob(payload, message)));
   },
 });
 

@@ -46,6 +46,7 @@ import { removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.js";
 import { resolveDownloadRoot } from "./downloadPaths.js";
 import { activeLidarrRoots, libraryFolderOwner } from "./libraryFolders.js";
 import { removePlaylistTracksWithoutDownloads } from "./playlists/trackRemoval.js";
+import { chooseRequestedRelease } from "./releaseResolver.js";
 import {
   cancelAurralAlbumJobs,
   cancelAurralTrackJobs,
@@ -140,9 +141,13 @@ const setTrackKeepFileStmt = db.prepare("UPDATE library_tracks SET keep_file = ?
 
 const trackIdByMbidStmt = db.prepare("SELECT id FROM library_tracks WHERE mbid = ? ORDER BY id LIMIT 1");
 
-const trackOnOtherAlbumStmt = db.prepare(
-  "SELECT 1 FROM library_album_tracks WHERE track_id = ? AND album_id != ? LIMIT 1",
-);
+const trackIdByMbidOnAlbumStmt = db.prepare(`
+  SELECT track.id FROM library_tracks AS track
+  JOIN library_album_tracks AS link ON link.track_id = track.id
+  JOIN library_albums AS album ON album.id = link.album_id
+  WHERE track.mbid = ? AND (lower(album.release_group_mbid) = ? OR lower(album.mbid) = ?)
+  ORDER BY track.id LIMIT 1
+`);
 
 const setAlbumTracksMonitoredStmt = db.prepare(`
   UPDATE library_tracks SET monitored = ?
@@ -1639,6 +1644,18 @@ export class LibraryManager {
       albumJobs.find((job) => job.requestGroupId)?.requestGroupId ||
       randomUUID();
     const albumTrackTitles = albumTracks.map((track) => track.title).filter(Boolean);
+    const releaseMbid = album.metadata?.requestedRelease || null;
+    const requestedTrackIds = Array.isArray(options.trackIds)
+      ? new Set(options.trackIds.map(Number))
+      : null;
+    const requestKind = requestedTrackIds ? "track" : "album";
+    // A job kept from an earlier request asks for the edition asked for now.
+    // One it restarts is the kind of request asked for now, and a queued job
+    // a whole-album request covers becomes part of it.
+    const askForEdition = (job, { restarted = true } = {}) => {
+      if (releaseMbid && job.releaseMbid !== releaseMbid) downloadTracker.updateMetadata(job.id, { releaseMbid });
+      if (restarted || requestKind === "album") downloadTracker.setRequestKind(job.id, requestKind);
+    };
     const compilation = isVariousArtistsCredit(artist?.name, artist?.mbid);
     // A compilation track's job keeps the album's "Various Artists" credit,
     // which tags and media servers group the album by, and matches files by
@@ -1648,9 +1665,6 @@ export class LibraryManager {
       ? [...new Set([track.artistName, ...(track.metadata?.artistAliases || [])])]
         .filter((name) => name && !isVariousArtistsCredit(name))
       : artist?.metadata?.aliases || []);
-    const requestedTrackIds = Array.isArray(options.trackIds)
-      ? new Set(options.trackIds.map(Number))
-      : null;
     const missingTracks = albumTracks.filter((track) =>
       track.available !== true &&
       track.monitored !== false &&
@@ -1681,6 +1695,7 @@ export class LibraryManager {
         job.status === "pending" || job.status === "downloading" || job.status === "cancel_requested",
       );
       if (activeJob) {
+        askForEdition(activeJob, { restarted: false });
         trackedJobIds.push(activeJob.id);
         continue;
       }
@@ -1708,9 +1723,10 @@ export class LibraryManager {
           }
           continue;
         }
-        const retriedCompletedJob = applyJobChange(() => downloadTracker.setPending(completedJob.id, "Completed file is missing", {
-          asRetryCycle: true,
-        }), track.id);
+        const retriedCompletedJob = applyJobChange(() => {
+          askForEdition(completedJob);
+          return downloadTracker.setPending(completedJob.id, "Completed file is missing", { asRetryCycle: true });
+        }, track.id);
         if (retriedCompletedJob.skipped) return { status: "skipped" };
         if (retriedCompletedJob.value) {
           jobIds.push(completedJob.id);
@@ -1726,6 +1742,7 @@ export class LibraryManager {
       if (retryJob) {
         const retriedJob = applyJobChange(() => {
           restoreDownloadJobCancellations([retryJob.id]);
+          askForEdition(retryJob);
           return downloadTracker.setPending(retryJob.id, "Retrying missing Aurral album track", {
             asRetryCycle: true,
           });
@@ -1750,6 +1767,7 @@ export class LibraryManager {
           albumName: album.title,
           artistMbid: artist?.mbid || null,
           albumMbid,
+          releaseMbid,
           trackMbid: track.mbid || null,
           releaseYear: album.releaseDate ? String(album.releaseDate).slice(0, 4) : null,
           durationMs: track.metadata?.durationMs,
@@ -1763,6 +1781,7 @@ export class LibraryManager {
           reason: "Aurral album request",
         },
         "library",
+        { requestKind },
       ), track.id);
       if (queuedJob.skipped) return { status: "skipped" };
       const jobId = queuedJob.value;
@@ -2426,7 +2445,7 @@ export class LibraryManager {
     });
   }
 
-  async setAurralTrackMonitoring(canonicalId, { monitored } = {}) {
+  async setAurralTrackMonitoring(canonicalId, { monitored, albumMbid = null } = {}) {
     if (typeof monitored !== "boolean") {
       return { error: "monitored must be true or false", statusCode: 400, code: "invalid_monitored" };
     }
@@ -2460,7 +2479,10 @@ export class LibraryManager {
         return { canonicalId: String(trackId), monitored, cancelledJobIds, queuedJobIds, cleanupFailed, albumManaged: false };
       }
       if (monitored) {
-        const album = aurralAlbums.find((entry) => isMonitoredAurralAlbum(entry.id)) || aurralAlbums[0];
+        const group = String(albumMbid || "").trim().toLowerCase();
+        const album = (group && aurralAlbums.find((entry) => albumJobKeys(entry)
+          .some((key) => String(key || "").toLowerCase() === group)))
+          || aurralAlbums.find((entry) => isMonitoredAurralAlbum(entry.id)) || aurralAlbums[0];
         const result = await serializeMonitoringUpdate(_albumMonitoringUpdates, album.id, () =>
           this._finishAurralAlbum(album.id, { trackIds: [trackId] }));
         queuedJobIds.push(...(result?.jobIds || []));
@@ -2500,25 +2522,17 @@ export class LibraryManager {
     return { canonicalId: String(trackId), keepFile, ...cancellation };
   }
 
-  // Monitoring belongs to the recording, so a track another album also has
-  // stays monitored.
-  unmonitorAlbumOnlyTracks(albumMbid, trackMbids = []) {
-    const album = libraryForAlbum(albumMbid).albums[0];
-    if (!album) return;
-    const trackIds = trackMbids.map((mbid) => String(mbid || "").trim()).filter(Boolean)
-      .map((mbid) => trackIdByMbidStmt.get(mbid)?.id)
-      .filter((trackId) => trackId && !trackOnOtherAlbumStmt.get(trackId, album.id));
-    for (const trackId of trackIds) setTrackMonitoredStmt.run(0, trackId);
-    if (trackIds.length > 0) invalidateLibraryQueryCache({ persistedGenres: false });
-  }
-
-  async monitorAurralTrack({ canonicalTrackId = null, trackMbid = null } = {}) {
+  // A track asked for from an album's page goes to that album when the
+  // Library holds it there.
+  async monitorAurralTrack({ canonicalTrackId = null, trackMbid = null, albumMbid = null } = {}) {
     const mbid = String(trackMbid || "").trim();
+    const group = String(albumMbid || "").trim().toLowerCase();
     const trackId = /^\d+$/.test(String(canonicalTrackId ?? "").trim())
       ? Number(canonicalTrackId)
-      : (mbid && trackIdByMbidStmt.get(mbid)?.id) || null;
+      : (mbid && ((group && trackIdByMbidOnAlbumStmt.get(mbid, group, group)?.id)
+        || trackIdByMbidStmt.get(mbid)?.id)) || null;
     if (!trackId) return null;
-    const result = await this.setAurralTrackMonitoring(trackId, { monitored: true });
+    const result = await this.setAurralTrackMonitoring(trackId, { monitored: true, albumMbid });
     return result?.error || result?.albumManaged === false ? null : result;
   }
 
@@ -2721,9 +2735,13 @@ export class LibraryManager {
       });
     }
 
-    const listedRelease = edition !== "expanded" && existingAlbum?.metadata?.trackList?.release;
-    const selectedRelease = metadata?.releases?.find((release) => release.id === listedRelease && release.tracks?.length)
-      || selectAlbumRelease(metadata, { edition });
+    // The edition an album was asked for stays its edition when it is asked
+    // for again, whatever release its files later turn out to be.
+    const selectedRelease = chooseRequestedRelease(metadata, {
+      requestedRelease: existingAlbum?.metadata?.edition === edition ? existingAlbum.metadata.requestedRelease : null,
+      listedRelease: existingAlbum?.metadata?.trackList?.release,
+      edition,
+    });
     const tracks = (Array.isArray(selectedRelease?.tracks) ? selectedRelease.tracks : [])
       .map((track) => ({
         ...track,
@@ -2748,8 +2766,12 @@ export class LibraryManager {
     const compilation = isVariousArtistsCredit(artist.name, artist.mbid);
     const trackArtists = new Map(providerArtists.map((entry) =>
       [String(entry?.id || "").trim().toLowerCase(), entry]));
-    const trackArtist = (track) => (compilation
-      && trackArtists.get(String(track.artistId || "").trim().toLowerCase())) || null;
+    // A track another artist is credited with names that artist on any album.
+    const albumArtistId = String(providerArtist?.id || "").trim().toLowerCase();
+    const trackArtist = (track) => {
+      const credited = trackArtists.get(String(track.artistId || "").trim().toLowerCase()) || null;
+      return compilation || String(credited?.id || "").trim().toLowerCase() !== albumArtistId ? credited : null;
+    };
     const trackArtistName = (track) => String(trackArtist(track)?.name || "").trim() || null;
     const resolvedAlbumName = String(metadata?.title || albumName || "").trim();
     if (!resolvedAlbumName) {
@@ -2781,6 +2803,7 @@ export class LibraryManager {
           monitored: options.monitored !== false,
           trackListComplete: true,
           edition,
+          requestedRelease: selectedRelease?.id || null,
           monitor: monitorMode || "none",
           monitorOption: monitorMode || "none",
           albumType: metadata?.type || "Album",
@@ -2804,7 +2827,7 @@ export class LibraryManager {
             durationMs: track.durationMs,
             mediumNumber: track.mediumNumber,
             trackNumber: track.trackPosition || track.trackNumber || 0,
-            ...(trackArtist(track)?.aliases?.length ? { artistAliases: trackArtist(track).aliases } : {}),
+            ...(compilation && trackArtist(track)?.aliases?.length ? { artistAliases: trackArtist(track).aliases } : {}),
           },
         });
         linkLibraryAlbumTrack({

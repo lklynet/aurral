@@ -85,8 +85,8 @@ test("yt-dlp live results cannot satisfy the search early-exit check", () => {
 test("yt-dlp searches a compilation track by its own artist and reverses an empty search", async (t) => {
   const client = getDownloadClient("ytdlp");
   const queries = [];
-  t.mock.method(client, "search", async (query) => {
-    queries.push(query);
+  t.mock.method(client, "search", async (query, options = {}) => {
+    queries.push(options.songs ? `songs: ${query}` : query);
     return query.startsWith("Go All the Way")
       ? [{ id: "song", title: "Go All the Way", channel: "Raspberries - Topic", durationSec: 203, url: "https://example.test/song" }]
       : [];
@@ -98,6 +98,7 @@ test("yt-dlp searches a compilation track by its own artist and reverses an empt
   const next = await processYtdlpPipelinePayload({ phase: "search", source: "ytdlp", jobId },
     { failOrTryNextSource: (_payload, _job, reason) => ({ failed: reason }) });
   assert.deepEqual(queries, [
+    "songs: Raspberries Go All the Way",
     "Raspberries Go All the Way",
     "Raspberries Go All the Way official audio",
     "Go All the Way Raspberries",

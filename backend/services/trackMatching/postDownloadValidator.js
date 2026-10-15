@@ -18,20 +18,28 @@
 // `valid`/`blocked` fields (VERIFIED→valid, AMBIGUOUS→blocked) so the
 // existing review routing keeps working unchanged.
 
+import path from "node:path";
+import { stat } from "node:fs/promises";
 import { parseFile } from "music-metadata";
-import { buildTrackRequest } from "./trackIdentity.js";
-import { getFileName, getFileBaseName, claimedTitle, parseFilenameArtistTitle } from "./candidateNormalizer.js";
-import { getCoreTitle } from "./semanticPolicy.js";
+import { buildTrackRequest, recordingRequest } from "./trackIdentity.js";
 import {
-  assignReleaseFiles,
+  claimedTitle,
+  getFileBaseName,
+  getFileName,
+  implausibleBitrateKbps,
+  parseFilenameArtistTitle,
+} from "./candidateNormalizer.js";
+import {
   MATCH_POLICY,
   parseListingTitle,
   readRecordingMbid,
   titleSimilarity,
   verifyDownloadedRecording,
 } from "./nativeMatcher.js";
-import { readYoutubeFile } from "./youtubeEvidence.js";
-import { getNormalizedText, scoreTextMatch } from "../providers/brainzmashRanking.js";
+import { judgeRelease } from "./releaseJudge.js";
+import { manifestIndexFor } from "../releaseManifest.js";
+import { isRequestedYoutubeAlbum, readYoutubeFile } from "./youtubeEvidence.js";
+import { scoreTextMatch } from "../providers/brainzmashRanking.js";
 import { validateParsedQuality } from "../qualityProfileService.js";
 import { logger } from "../logger.js";
 
@@ -79,6 +87,22 @@ function stripLeadingTrackNumber(baseName) {
 export function readDurationMsFromParsed(parsed) {
   const seconds = Number(parsed?.format?.duration || 0);
   return seconds > 0 ? Math.round(seconds * 1000) : null;
+}
+
+// A downloaded file as the release judge reads a listing entry.
+export function downloadedFileEvidence(filePath, parsed, { album = null } = {}) {
+  const listing = parseListingTitle(filePath, { album });
+  return {
+    title: String(parsed?.common?.title || listing.title || "").trim(),
+    artists: [parsed?.common?.artist].filter(Boolean),
+    durationMs: readDurationMsFromParsed(parsed),
+    trackNumber: parsed?.common?.track?.no || listing.trackNumber || null,
+    discNumber: parsed?.common?.disc?.no || listing.discNumber || null,
+    recordingMbid: readRecordingMbid(parsed?.common?.musicbrainz_recordingid),
+    album: String(parsed?.common?.album || "").trim() || null,
+    filename: path.basename(filePath),
+    path: filePath,
+  };
 }
 
 // Builds the canonical candidate representation from what the FILE itself
@@ -197,6 +221,26 @@ export async function validateDownloadedTrackFile({
   const actual = buildActualFileCandidate(parsed, filePath, source, candidate);
   const actualDurationMs = actual.durationMs;
 
+  const kbps = implausibleBitrateKbps({
+    path: filePath,
+    lossless: typeof parsed?.format?.lossless === "boolean" ? parsed.format.lossless : null,
+    sizeBytes: (await stat(filePath).catch(() => null))?.size,
+    durationMs: actualDurationMs,
+    trackTitle: trackRequest.trackName,
+  });
+  if (kbps != null) {
+    return {
+      decision: POST_DOWNLOAD_DECISIONS.FAILED,
+      valid: false,
+      blocked: false,
+      reason: `downloaded file is ${kbps.toFixed(1)} kbit/s, too small for its length to hold music`,
+      filePath,
+      actual: { tags: actual, durationMs: actualDurationMs },
+      actualDurationMs,
+      parsedTags: actual,
+    };
+  }
+
   const quality = validateParsedQuality(parsed, filePath, {
     upgradeForJobId: trackRequest.upgradeForJobId || null,
     manualReplacementSearch: trackRequest.manualReplacementSearch,
@@ -246,7 +290,9 @@ export async function validateDownloadedTrackFile({
   const hasYtdlpIdFilename = source === "ytdlp"
     && getFileBaseName(actual.filename) === readTagText(actual.provider.id);
   const requestedArtists = [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(Boolean);
-  const youtube = source === "ytdlp"
+  // A YouTube Music song is tagged with its own track, artists, and album, so
+  // its tags are read as any other file's.
+  const youtube = source === "ytdlp" && actual.raw?.song !== true
     ? readYoutubeFile({
       tagTitle: actual.title,
       tagArtists: actual.artists,
@@ -254,16 +300,8 @@ export async function validateDownloadedTrackFile({
       channel: actual.provider.uploader,
     }, requestedArtists, trackRequest.trackName)
     : null;
-  const verification = verifyDownloadedRecording({
-    title: trackRequest.trackName,
-    artists: requestedArtists,
-    durationMs: trackRequest.durationMs,
-    recordingMbid: trackRequest.recordingMbid,
-    recordingMbidAliases: trackRequest.recordingMbidAliases,
-    albumName: trackRequest.albumName,
-    trackNumber: trackRequest.trackNumber,
-    albumTrackTitles: trackRequest.albumTrackTitles,
-  }, {
+  const importedRelease = options.albumImport === true ? options.release : null;
+  const verification = verifyDownloadedRecording(recordingRequest(trackRequest, importedRelease), {
     title: youtube ? youtube.title : actual.title,
     versionTitle: youtube?.versionTitle,
     fileNameTitle: !hasYtdlpIdFilename && (
@@ -274,9 +312,11 @@ export async function validateDownloadedTrackFile({
     durationMs: actualDurationMs,
     recordingMbid: actual.recordingMbid,
     album: actual.album,
+    path: actual.path,
+    filename: hasYtdlpIdFilename ? null : actual.filename,
     trackNumber: actual.trackNumber,
     discNumber: actual.discNumber,
-  });
+  }, options.release ? { ...MATCH_POLICY, maxDurationGapMs: MATCH_POLICY.selectedDurationGapMs } : MATCH_POLICY);
   const hasOriginalIdentityTags = Boolean(readTagText(parsed?.common?.title)
     || readTagText(parsed?.common?.artist));
   const contradictions = verification.contradictions.map((entry) => {
@@ -300,10 +340,14 @@ export async function validateDownloadedTrackFile({
   // Editions of one recording differ by a few seconds of mastering, fade, or
   // silence, so an exact title and artist allow the matcher's full duration
   // window, as Lidarr does. A YouTube upload needs to be the artist's own
-  // audio upload too: re-uploads are often re-timed.
-  const releaseAudio = !youtube || youtube.officialAudio;
+  // audio upload too: re-uploads are often re-timed. A YouTube Music song on
+  // another album may be another mix or a live take of the same title.
+  const releaseAudio = youtube ? youtube.officialAudio
+    : source !== "ytdlp" || isRequestedYoutubeAlbum(trackRequest, actual.album || actual.raw?.album);
   const exactIdentity = tagsConfirmIdentity && verification.titleSimilarity === 1 && releaseAudio;
-  const maxDurationGapMs = exactIdentity
+  const maxDurationGapMs = options.release
+    ? MATCH_POLICY.selectedDurationGapMs
+    : exactIdentity
     ? MATCH_POLICY.maxDurationGapMs
     : strict && !tagsConfirmIdentity
       ? STRICT_DURATION_GAP_MS
@@ -367,9 +411,10 @@ export async function validateDownloadedTrackFile({
 }
 
 // Selects the best matching audio file from a downloaded release folder.
-// Uses native one-to-one assignment when the request carries a tracklist so
-// the right file is picked even among same-looking names;
-// otherwise every file is validated individually and the strongest VERIFIED
+// With the release the track is on, the release judge places each file, so
+// only the files at the track's place are its candidates and a file placed
+// at another track never is, even with the same title on another disc.
+// Otherwise every file is validated individually and the strongest VERIFIED
 // result wins.
 export async function selectVerifiedDownloadedFile({
   request,
@@ -397,36 +442,20 @@ export async function selectVerifiedDownloadedFile({
     }
   }
 
-  const tracklist = Array.isArray(trackRequest.albumTrackTitles)
-    ? trackRequest.albumTrackTitles : [];
-  if (options.manualSelection !== true && tracklist.length >= 2 && parsedFiles.length >= 2) {
-    const targetKey = getNormalizedText(getCoreTitle(trackRequest.trackName));
-    const targetIndex = tracklist.findIndex((title) =>
-      getNormalizedText(getCoreTitle(title)) === targetKey);
-    if (targetIndex >= 0) {
-      const tracks = tracklist.map((title, index) => ({
-        title,
-        trackNumber: index + 1,
-        durationMs: index === targetIndex ? trackRequest.durationMs : null,
-      }));
-      const files = parsedFiles.map(({ parsed, filePath }) => ({
-        title: readTagText(parsed?.common?.title) || getFileBaseName(filePath),
-        artists: [parsed?.common?.artist].filter(Boolean),
-        durationMs: readDurationMsFromParsed(parsed),
-        trackNumber: parsed?.common?.track?.no || null,
-      }));
-      const assignment = assignReleaseFiles(tracks, files);
-      const pair = assignment.pairs.find((entry) => entry.trackIndex === targetIndex);
-      if (pair) {
-        const assigned = parsedFiles[pair.fileIndex];
-        const validation = await validateDownloadedTrackFile({
-          request: trackRequest, candidate, filePath: assigned.filePath, source, options,
-        });
-        if (validation.decision === POST_DOWNLOAD_DECISIONS.VERIFIED) {
-          return { filePath: assigned.filePath, validation };
-        }
-      }
-    }
+  const { release, ...fileOptions } = options;
+  const releaseIndex = release && options.manualSelection !== true ? manifestIndexFor(release, trackRequest) : null;
+  let pool = parsedFiles;
+  let poolOptions = fileOptions;
+  if (releaseIndex != null && parsedFiles.length > 0) {
+    const verdict = judgeRelease(release, {
+      files: parsedFiles.map(({ filePath, parsed }) => downloadedFileEvidence(filePath, parsed, { album: release.title })),
+    });
+    const copies = verdict.copiesForTrack[releaseIndex];
+    const placed = new Set(verdict.assignment.pairs.map((pair) => pair.fileIndex));
+    pool = copies.length > 0
+      ? copies.map((index) => parsedFiles[index])
+      : parsedFiles.filter((_, index) => !placed.has(index));
+    poolOptions = options;
   }
 
   if (options.manualSelection === true && parsedFiles.length > 1) {
@@ -471,13 +500,13 @@ export async function selectVerifiedDownloadedFile({
 
   let best = null;
   let strongestRejected = null;
-  for (const { filePath } of parsedFiles) {
+  for (const { filePath } of pool) {
     const validation = await validateDownloadedTrackFile({
       request: trackRequest,
       candidate,
       filePath,
       source,
-      options,
+      options: poolOptions,
     });
     // Conflicted files are never import candidates: only verified files and
     // genuinely ambiguous ones (review-worthy) come back from here.

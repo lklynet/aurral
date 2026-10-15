@@ -1,0 +1,111 @@
+{
+  "songLists": {
+    "The Used I Caught Fire": [
+      {"id":"FfaeB0jZAso","title":"I Caught Fire"},
+      {"id":"4kBsDJYjC-8","title":"The Taste of Ink"},
+      {"id":"BrtusfA2vds","title":"Buried Myself Alive"},
+      {"id":"bKNqZ4nGBtI","title":"Guys Like You Make Us Look Bad"},
+      {"id":"-yLXNaG0MRs","title":"Tunnel"}
+    ],
+    "Queen Bohemian Rhapsody": [
+      {"id":"BSTsnWoslP4","title":"Bohemian Rhapsody"},
+      {"id":"alPQ0geh0hM","title":"Bohemian Rhapsody (2019 Remastered Edition)"},
+      {"id":"Eyi-1APybjE","title":"Bohemian Rhapsody"},
+      {"id":"_Xsu44ppnFQ","title":"Bohemian Rhapsody x Walk It Talk It"},
+      {"id":"_xwmsnDWfxQ","title":"Bohemian Rhapsody"}
+    ],
+    "Daft Punk Get Lucky": [
+      {"id":"4D7u5KF7SP8","title":"Get Lucky (feat. Pharrell Williams and Nile Rodgers)"},
+      {"id":"Rgrt_8mXrK8","title":"Get Lucky (Radio Edit - feat. Pharrell Williams and Nile Rodgers)"},
+      {"id":"NOMa56y_Was","title":"End of Line (From \"TRON: Legacy\"/Score)"},
+      {"id":"2KPIShmFouY","title":"Get Lucky"},
+      {"id":"28DL6VcWIb0","title":"Get Lucky"}
+    ],
+    "Fleetwood Mac Dreams": [
+      {"id":"swJOIjjW69U","title":"Dreams (2004 Remaster)"},
+      {"id":"5oWyMakvQew","title":"Dreams (2004 Remaster)"},
+      {"id":"m8i5WiWCN-c","title":"Dreams"},
+      {"id":"QQcZ6iRhHC4","title":"Rhiannon (Will You Ever Win) (Single; 2017 Remaster)"},
+      {"id":"abPU2PigKrg","title":"Dreams"}
+    ],
+    "The Used Let It Bleed": [
+      {"id":"tMgH40LmQds","title":"Let It Bleed"},
+      {"id":"Fs3h2a-JxHA","title":"Let It Bleed"},
+      {"id":"BmNVevCwZRk","title":"Let It Bleed (Instrumental Version)"},
+      {"id":"3Jbc8724ywI","title":"Meant to Die"},
+      {"id":"G-IO9taAlrs","title":"Sound Effects and Overdramatics"}
+    ],
+    "宇多田ヒカル First Love": [
+      {"id":"wcBbqRlOn5s","title":"First Love - From THE FIRST TAKE"},
+      {"id":"GYeOVn0PhSk","title":"One Last Kiss"},
+      {"id":"t21dyImwINM","title":"First Love (2022 Mix)"},
+      {"id":"BGMfbFzONp8","title":"First Love"},
+      {"id":"KvVk6FvnKj0","title":"First Love"},
+      {"id":"ceWbCc-3uKY","title":"First Love"},
+      {"id":"AERJ5nlE7Sg","title":"First Love Originally Performed By 宇多田ヒカル （オルゴール） - First Love (Music Box)"},
+      {"id":"4QuBvujZk1I","title":"First Love -1KEY（カラオケ）[Originally Performed By 宇多田ヒカル] - First Love -1KEY (Karaoke) [Originally Performed By Utada Hikaru]"},
+      {"id":"Li1i_AHV7DY","title":"First Love +1KEY（カラオケ）[Originally Performed By 宇多田ヒカル] - First Love +1KEY (Karaoke) [Originally Performed By Utada Hikaru]"},
+      {"id":"Yo9wMUJWGyY","title":"First Love Originally Performed By 宇多田ヒカル （アンティークオルゴール） - First Love (Music Box)"}
+    ],
+    "Black Sabbath Black Sabbath": [
+      {"id":"zBj4HtEWFGY","title":"Black Sabbath"},
+      {"id":"4YbD40UMwHQ","title":"Black Sabbath"},
+      {"id":"L8Clm7GcdQE","title":"Snowblind (Live)"},
+      {"id":"jN0h_x5qHgo","title":"Children of the Grave"},
+      {"id":"RivQ1QsXjxg","title":"Psycho Man"},
+      {"id":"62n3aMkW6hs","title":"Black Sabbath (Live) [2008 Remaster]"},
+      {"id":"I-ZQZC4lUfk","title":"Paranoid"},
+      {"id":"gWUOhrFI9o0","title":"God Is Dead?"},
+      {"id":"3TJkO9VNxwk","title":"Iron Man"},
+      {"id":"dgPv9_sPiME","title":"Hand of Doom (2012 - Remaster)"}
+    ],
+    "宇多田ヒカル First Love - From THE FIRST TAKE": [
+      {"id":"wcBbqRlOn5s","title":"First Love - From THE FIRST TAKE"},
+      {"id":"wJjNrQZ98c0","title":"ファーストラヴ - First Love"},
+      {"id":"a-VRJTzaoo8","title":"初恋 - First love"},
+      {"id":"S3vk9HkdGuY","title":"Play a Love Song"},
+      {"id":"fNaRizRKqAY","title":"あなた - Anata"},
+      {"id":"N0JPj2joZmM","title":"First love"},
+      {"id":"hIzL7is7rHk","title":"FIRST LOVE"},
+      {"id":"hccBlozZddg","title":"First Love (Instrumental)"},
+      {"id":"NubuObFY6dw","title":"First Love"},
+      {"id":"cLZJELLtYf8","title":"First Love"}
+    ]
+  },
+  "songs": {
+    "28DL6VcWIb0": {"track":"Get Lucky","artists":["The Countdown Kids"],"album":"Covers By Kids","duration":247,"channel":"The Countdown Kids","live_status":"not_live"},
+    "2KPIShmFouY": {"track":"Get Lucky","artists":["Funk Punk"],"album":"Get Lucky","duration":250,"channel":"Funk Punk - Topic","live_status":"not_live"},
+    "4D7u5KF7SP8": {"track":"Get Lucky (feat. Pharrell Williams and Nile Rodgers)","artists":["Daft Punk","Pharrell Williams","Nile Rodgers"],"album":"Random Access Memories","duration":370,"channel":"Daft Punk","live_status":"not_live"},
+    "4YbD40UMwHQ": {"track":"Black Sabbath (2014 Remaster)","artists":["Black Sabbath"],"album":"We Sold Our Soul for Rock 'N' Roll","duration":378,"channel":"Black Sabbath","live_status":"not_live"},
+    "5oWyMakvQew": {"track":"Dreams (2004 Remaster)","artists":["Fleetwood Mac"],"album":"Rumours","duration":258,"channel":"Fleetwood Mac","live_status":"not_live"},
+    "BGMfbFzONp8": {"track":"First Love","artists":["Judy Goodvibes","Judy Goodvibes"],"album":"First Love","duration":241,"channel":"Judy Goodvibes","live_status":"not_live"},
+    "BSTsnWoslP4": {"track":"Bohemian Rhapsody","artists":["Queen"],"album":"A Night At The Opera","duration":354,"channel":"Queen Official","live_status":"not_live"},
+    "Eyi-1APybjE": {"track":"Bohemian Rhapsody","artists":["Brooklyn Duo"],"album":"Brooklyn Sessions VI","duration":384,"channel":"Brooklyn Duo","live_status":"not_live"},
+    "Fs3h2a-JxHA": {"track":"Let It Bleed","artists":["The Used"],"album":"Post Hardcore Hellraisers","duration":191,"channel":"The Used","live_status":"not_live"},
+    "KvVk6FvnKj0": {"track":"First Love","artists":["ReAmped Covers"],"album":"First Love","duration":237,"channel":"ReAmped Covers - Topic","live_status":"not_live"},
+    "alPQ0geh0hM": {"track":"Bohemian Rhapsody (2019 Remastered Edition)","artists":["Bohemian Rhapsody"],"album":"Greatest Hits II","duration":355,"channel":"Bohemian Rhapsody - Il tributo ai Queen","live_status":"not_live"},
+    "ceWbCc-3uKY": {"track":"First Love","artists":["May J."],"album":"平成ラブソングカバーズ supported by DAM","duration":263,"channel":"May J.","live_status":"not_live"},
+    "m8i5WiWCN-c": {"track":"Dreams (2018 Remaster)","artists":["Fleetwood Mac"],"album":"50 Years - Don't Stop","duration":257,"channel":"Fleetwood Mac","live_status":"not_live"},
+    "swJOIjjW69U": {"track":"Dreams (2004 Remaster)","artists":["Fleetwood Mac"],"album":"Rumours","duration":258,"channel":"Fleetwood Mac","live_status":"not_live"},
+    "t21dyImwINM": {"track":"First Love (2022 Mix)","artists":["Hikaru Utada"],"album":"SCIENCE FICTION","duration":262,"channel":"Hikaru Utada","live_status":"not_live"},
+    "tMgH40LmQds": {"track":"Let It Bleed","artists":["The Used"],"album":"In Love and Death","duration":191,"channel":"The Used","live_status":"not_live"},
+    "wcBbqRlOn5s": {"track":"First Love - From THE FIRST TAKE","artists":["Hikaru Utada"],"album":"First Love - From THE FIRST TAKE","duration":259,"channel":"Hikaru Utada","live_status":"not_live"},
+    "zBj4HtEWFGY": {"track":"Black Sabbath","artists":["Black Sabbath"],"album":"The Ultimate Collection","duration":377,"channel":"Black Sabbath","live_status":"not_live"}
+  },
+  "videos": {
+    "宇多田ヒカル First Love": [
+      {"id":"o1sUaVJUeB0","title":"宇多田ヒカル - First Love","url":"https://www.youtube.com/watch?v=o1sUaVJUeB0","channel":"Hikaru Utada","duration":258,"live_status":null},
+      {"id":"iBUV7dxGhno","title":"Hikaru Utada - First Love / THE FIRST TAKE","url":"https://www.youtube.com/watch?v=iBUV7dxGhno","channel":"THE FIRST TAKE","duration":314,"live_status":null},
+      {"id":"GcpsTmDO9k0","title":"Hiakru Utada 「First Love」Music Video(4K UPGRADE )","url":"https://www.youtube.com/watch?v=GcpsTmDO9k0","channel":"Hikaru Utada","duration":256,"live_status":null},
+      {"id":"rRhfpdyvQ5Y","title":"Hikaru Utada 「First Love」(HIKARU UTADA SCIENCE FICTION TOUR 2024)","url":"https://www.youtube.com/watch?v=rRhfpdyvQ5Y","channel":"Hikaru Utada","duration":260,"live_status":null},
+      {"id":"GFFa_E8avmA","title":"宇多田ヒカル   FirstLove   FULLALBUM 　高音質","url":"https://www.youtube.com/watch?v=GFFa_E8avmA","channel":"maskplaza　マスク屋さん","duration":3301,"live_status":null}
+    ],
+    "Nirvana Come as You Are": [
+      {"id":"vabnZ9-ex7o","title":"Nirvana - Come As You Are (Official Music Video)","url":"https://www.youtube.com/watch?v=vabnZ9-ex7o","channel":"Nirvana","duration":225,"live_status":null},
+      {"id":"9I9c20LHmzY","title":"Nirvana - Come As You Are (Lyrics)","url":"https://www.youtube.com/watch?v=9I9c20LHmzY","channel":"7clouds Rock","duration":219,"live_status":null},
+      {"id":"0oi1fGhaJl8","title":"Come as You Are - Nirvana","url":"https://www.youtube.com/watch?v=0oi1fGhaJl8","channel":"RockSongs","duration":220,"live_status":null},
+      {"id":"pPH3Fn5Qtns","title":"Nirvana - Come As You Are","url":"https://www.youtube.com/watch?v=pPH3Fn5Qtns","channel":"Grunge +","duration":222,"live_status":null},
+      {"id":"z9LiPuVRyU8","title":"Nirvana - Come As You Are (Live On MTV Unplugged, 1993 / Unedited)","url":"https://www.youtube.com/watch?v=z9LiPuVRyU8","channel":"Nirvana","duration":276,"live_status":null}
+    ]
+  }
+}

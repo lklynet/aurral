@@ -1,6 +1,6 @@
 import { UUID_REGEX } from "../../../../lib/uuid.js";
 import { dbOps } from "../../../db/helpers/index.js";
-import { cacheMiddleware } from "../../../middleware/cache.js";
+import { cacheMiddleware, noCache } from "../../../middleware/cache.js";
 import {
   fetchReleaseGroupCoverUrl,
   resolveReleaseGroupCoversBatch,
@@ -16,6 +16,7 @@ import {
   toLegacyReleaseGroupSummary,
 } from "../../../services/providers/brainzmashMappers.js";
 import { logger } from "../../../services/logger.js";
+import { chooseLibraryRelease } from "../../../services/releaseResolver.js";
 
 export function registerReleaseGroup(router) {
   router.post("/release-groups/ratings", async (req, res) => {
@@ -176,7 +177,7 @@ export function registerReleaseGroup(router) {
 
   router.get(
     "/release-group/:mbid/tracks",
-    cacheMiddleware(86400),
+    noCache,
     async (req, res) => {
       try {
         const { mbid } = req.params;
@@ -210,7 +211,7 @@ export function registerReleaseGroup(router) {
             ? req.query.deezerAlbumId.trim()
             : "";
 
-        const tracks = await getAlbumTracksByAlbumMbid(mbid);
+        const tracks = await getAlbumTracksByAlbumMbid(mbid, { chooseRelease: chooseLibraryRelease });
         let deezerArtistId = "";
         if (artistMbid) {
           const override = dbOps.getArtistOverride(artistMbid);
@@ -243,7 +244,9 @@ export function registerReleaseGroup(router) {
             title: track.title,
             trackName: track.title,
             trackNumber: track.trackPosition || track.trackNumber || 0,
+            discNumber: track.mediumNumber || 1,
             position: track.trackPosition || track.trackNumber || 0,
+            releaseMbid: track.releaseMbid || null,
             length: track.durationMs || null,
             preview_url: track.preview_url || null,
             previewProvider: track.previewProvider || null,

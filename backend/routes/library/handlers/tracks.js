@@ -4,6 +4,7 @@ import { noCache } from "../../../middleware/cache.js";
 import { hasPermission, verifyTokenAuth } from "../../../middleware/auth.js";
 import { requireAdmin, requireAuth, requirePermission } from "../../../middleware/requirePermission.js";
 import { getAlbumTracksByAlbumMbid } from "../../../services/providers/brainzmashProvider.js";
+import { chooseLibraryRelease } from "../../../services/releaseResolver.js";
 import { enrichTracksWithDeezerPreviews } from "../../../services/apiClients/index.js";
 import fsp from "fs/promises";
 import path from "path";
@@ -188,13 +189,15 @@ export function registerTracks(router) {
           }));
         } else {
           try {
-            const metadataTracks = await getAlbumTracksByAlbumMbid(releaseGroupMbid);
+            const metadataTracks = await getAlbumTracksByAlbumMbid(releaseGroupMbid, { chooseRelease: chooseLibraryRelease });
             if (metadataTracks.length > 0) {
               tracks = metadataTracks.map((track) => ({
                 id: track.recordingId || track.id,
                 mbid: track.recordingId || track.id,
                 trackName: track.title,
                 trackNumber: track.trackPosition || track.trackNumber || 0,
+                discNumber: track.mediumNumber || 1,
+                releaseMbid: track.releaseMbid || null,
                 title: track.title,
                 path: null,
                 hasFile: false,

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { parseListenBrainzPlaylist } from "../../backend/services/importLists/listenbrainzTracks.js";
 
-test("parseListenBrainzPlaylist maps JSPF tracks and reports skipped entries", () => {
+test("parseListenBrainzPlaylist maps JSPF tracks, keeps the listed release, and reports skipped entries", () => {
   const { tracks, stats } = parseListenBrainzPlaylist({
     playlist: {
       track: [
@@ -15,7 +15,7 @@ test("parseListenBrainzPlaylist maps JSPF tracks and reports skipped entries", (
           extension: {
             "https://musicbrainz.org/doc/jspf#track": {
               artist_identifiers: ["https://musicbrainz.org/artist/artist-mbid"],
-              release_identifier: "https://musicbrainz.org/release/album-mbid",
+              release_identifier: "https://musicbrainz.org/release/5c1f1a40-29a4-4b3d-9c3e-0e1f2a3b4c5d",
             },
           },
         },
@@ -28,7 +28,7 @@ test("parseListenBrainzPlaylist maps JSPF tracks and reports skipped entries", (
           extension: {
             "https://musicbrainz.org/doc/jspf#track": {
               artist_identifiers: ["https://musicbrainz.org/artist/artist-mbid"],
-              release_identifier: "https://musicbrainz.org/release/album-mbid",
+              release_identifier: "https://musicbrainz.org/release/5c1f1a40-29a4-4b3d-9c3e-0e1f2a3b4c5d",
             },
           },
         },
@@ -43,12 +43,13 @@ test("parseListenBrainzPlaylist maps JSPF tracks and reports skipped entries", (
       trackName: "Song A",
       albumName: "Album A",
       artistMbid: "artist-mbid",
-      albumMbid: "album-mbid",
+      albumMbid: null,
       trackMbid: "track-mbid",
       releaseYear: null,
       durationMs: 185000,
       artistAliases: [],
       reason: null,
+      releaseMbid: "5c1f1a40-29a4-4b3d-9c3e-0e1f2a3b4c5d",
     },
   ]);
   assert.deepEqual(stats, { incomplete: 1, duplicate: 1 });

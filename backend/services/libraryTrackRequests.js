@@ -41,7 +41,7 @@ export async function requestLibraryTrack(track, { canonicalTrackId = null, user
     return { queued: false, skipped: true };
   }
   const monitoredTrack = automatic ? null : await (await import("./libraryManager.js"))
-    .libraryManager.monitorAurralTrack({ canonicalTrackId, trackMbid: track.trackMbid });
+    .libraryManager.monitorAurralTrack({ canonicalTrackId, trackMbid: track.trackMbid, albumMbid: track.albumMbid });
   if (monitoredTrack) {
     for (const jobId of monitoredTrack.queuedJobIds) {
       recordTrackJobQueued(downloadTracker.getJob(jobId), user);

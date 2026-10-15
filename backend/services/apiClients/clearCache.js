@@ -14,9 +14,11 @@ import {
 } from "./deezer.js";
 import { youtubeVideoCache } from "./crossProvider.js";
 import { clearMetadataProviderCaches } from "../providers/brainzmashProvider.js";
+import { clearReleaseManifests } from "../releaseResolver.js";
 
 export function clearApiCaches() {
   clearMetadataProviderCaches();
+  clearReleaseManifests();
   lastfmCache.flushAll();
   listenbrainzCache.flushAll();
   listenbrainzLookupCache.flushAll();

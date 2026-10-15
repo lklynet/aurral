@@ -1,4 +1,5 @@
 import { getDownloadClient } from "../download/downloadClientSettings.js";
+import { deemixQueueIds } from "../deemixClient.js";
 import {
   getHonkerQueueByName,
   listHonkerJobs,
@@ -183,8 +184,8 @@ async function cancelDeemixWork(payloads, jobs) {
   const queueIds = new Set();
   const failures = [];
   for (const payload of payloads) {
-    if (payload?.source === "deemix" && payload?.queueUuid) {
-      queueIds.add(normalizeId(payload.queueUuid));
+    if (payload?.source === "deemix") {
+      for (const queueId of deemixQueueIds(payload)) queueIds.add(normalizeId(queueId));
     }
   }
   for (const job of jobs) {
@@ -421,9 +422,20 @@ export async function cancelDownloadWorkForJobs(jobs = [], { lock = true } = {})
     return cancelProviderWork([...pipeline.payloads, ...captured.flatMap((work) => work.payloads)],
       [...currentJobs, ...captured.flatMap((work) => work.jobs)], providerWork);
   };
-  const providers = lock
-    ? await withPlaylistCancellationLocks(playlistIds, cancel)
-    : await cancel();
+  // An album attempt led by a cancelled track still holds the tracks that
+  // were not cancelled, and they start again untried.
+  const settle = async () => {
+    const { settleDroppedAlbumGrab } = await import("../downloadPipeline.js");
+    for (const payload of pipeline.payloads) await settleDroppedAlbumGrab(payload);
+  };
+  let providers;
+  try {
+    providers = lock
+      ? await withPlaylistCancellationLocks(playlistIds, cancel)
+      : await cancel();
+  } finally {
+    await settle();
+  }
   clearCancellationWork(normalizedJobs);
   return {
     cancelled: pipeline.cancelled,

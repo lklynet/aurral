@@ -323,9 +323,12 @@ function ReleasePage() {
         albumName: release.title || "",
         artistMbid: artistMbid || "",
         albumMbid: releaseMbid || "",
+        releaseMbid: track?.releaseMbid,
         trackMbid: track?.mbid || track?.id || "",
         releaseYear: year,
         durationMs: track?.length,
+        trackNumber: track?.trackNumber,
+        discNumber: track?.discNumber,
         reason: null,
       });
     },

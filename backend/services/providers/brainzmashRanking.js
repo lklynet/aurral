@@ -279,3 +279,64 @@ export function rankAlbumCandidates(
     return String(left?.title || "").localeCompare(String(right?.title || ""));
   });
 }
+
+export function tracksInOrder(release) {
+  const disc = (track) => Number(track?.mediumNumber ?? track?.discNumber) || 1;
+  return [...(release?.tracks || [])]
+    .sort((left, right) => disc(left) - disc(right) || (left.trackNumber || 0) - (right.trackNumber || 0));
+}
+
+export function runningOrder(release) {
+  return tracksInOrder(release).map((track) => getNormalizedText(track.title)).join("\n");
+}
+
+export function median(values) {
+  const sorted = values.filter((value) => Number(value) > 0).sort((left, right) => left - right);
+  if (sorted.length === 0) return null;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+}
+
+const lowerId = (value) => String(value || "").trim().toLowerCase();
+const isOfficial = (release) => String(release?.status || "").toLowerCase() === "official";
+
+function recordingIds(track, aliases) {
+  const recording = lowerId(track?.recordingId || track?.recordingMbid);
+  return [recording, ...(track?.oldRecordingIds || track?.recordingMbidAliases || []),
+    ...(aliases.get(recording) || [])].map(lowerId).filter(Boolean);
+}
+
+// Each track's lengths, in running order, on the other pressings of a
+// release: the same running order, only official ones among releases that
+// have any, and the same recording at that place. A rip of an LP listed with
+// its sleeve lengths may come from a CD pressing, so those lengths match too,
+// but a remix or re-recording with the same titles does not. `aliases` maps
+// a recording ID to the IDs merged into it.
+export function pressingLengths(releases, release, aliases = new Map()) {
+  const own = lowerId(release?.id || release?.releaseMbid);
+  const order = runningOrder(release);
+  const officialOnly = releases.some(isOfficial);
+  const pressings = releases.filter((entry) => entry !== release
+    && (!own || lowerId(entry?.id || entry?.releaseMbid) !== own)
+    && (!officialOnly || isOfficial(entry))
+    && entry?.tracks?.length === release.tracks.length && runningOrder(entry) === order)
+    .map(tracksInOrder);
+  return tracksInOrder(release).map((track, index) => {
+    const recordings = recordingIds(track, aliases);
+    return pressings.map((tracks) => tracks[index])
+      .filter((entry) => recordingIds(entry, aliases).some((recording) => recordings.includes(recording)))
+      .map((entry) => Number(entry.durationMs)).filter((length) => length > 0);
+  });
+}
+
+// A release keeps the lengths it lists, and a length it lacks is the median
+// of its pressings' lengths.
+export function withPressingDurations(releases, release) {
+  const ordered = tracksInOrder(release);
+  const lengths = pressingLengths(releases, release);
+  return {
+    ...release,
+    tracks: release.tracks.map((track) => ({ ...track,
+      durationMs: track.durationMs > 0 ? track.durationMs : median(lengths[ordered.indexOf(track)]) ?? track.durationMs })),
+  };
+}

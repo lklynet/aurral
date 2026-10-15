@@ -9,6 +9,7 @@ import {
   readLidarrQueueItemStatus,
   resolveAlbumSearchOutcome,
 } from "../../../services/albumSearchState.js";
+import { UUID_REGEX } from "../../../../lib/uuid.js";
 import { logger } from "../../../services/logger.js";
 import { requestLibraryTrack } from "../../../services/libraryTrackRequests.js";
 import { resolveAurralOwnedTrackJob } from "../../../services/libraryTrackResearchService.js";
@@ -354,16 +355,19 @@ export function registerDownloads(router) {
 
   router.post("/downloads/track", requireAuth, requirePermission("addAlbum"), async (req, res) => {
     const body = req.body || {};
+    const releaseMbid = String(body.releaseMbid || "").trim();
     const track = {
       artistName: String(body.artistName || "").trim(),
       trackName: String(body.trackName || "").trim(),
       albumName: String(body.albumName || "").trim() || null,
       artistMbid: String(body.artistMbid || "").trim() || null,
       albumMbid: String(body.albumMbid || "").trim() || null,
+      releaseMbid: UUID_REGEX.test(releaseMbid) ? releaseMbid : null,
       trackMbid: String(body.trackMbid || "").trim() || null,
       releaseYear: String(body.releaseYear || "").trim() || null,
       durationMs: body.durationMs,
       trackNumber: body.trackNumber,
+      discNumber: body.discNumber,
       albumTrackCount: body.albumTrackCount,
       albumTrackTitles: body.albumTrackTitles,
     };

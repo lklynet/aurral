@@ -34,7 +34,7 @@ export function parseListenBrainzPlaylist(payload) {
       albumName: String(track?.album || "").trim() || null,
       trackMbid: getIdentifier(track?.identifier, TRACK_URI_PREFIX),
       artistMbid,
-      albumMbid: getIdentifier(extension.release_identifier, RELEASE_URI_PREFIX),
+      releaseMbid: getIdentifier(extension.release_identifier, RELEASE_URI_PREFIX),
       durationMs: Number.isFinite(Number(track?.duration)) ? Number(track.duration) : null,
     });
   }

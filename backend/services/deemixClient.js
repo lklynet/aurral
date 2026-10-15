@@ -65,6 +65,13 @@ export function buildQueueUuid(trackId, bitrate) {
   return `track_${String(trackId || "").trim()}_${normalizeInteger(bitrate, FLAC_BITRATE)}`;
 }
 
+// The deemix queue items a download step holds: one track or album, or each
+// wanted track of a release queued by its own URL.
+export function deemixQueueIds(payload) {
+  return [...new Set([payload?.queueUuid, ...(payload?.queueUuids || [])]
+    .map((id) => String(id || "").trim()).filter(Boolean))];
+}
+
 export function readDeemixAlbumQueue(item) {
   const status = String(item?.status || "");
   const finished = ["completed", "withErrors", "failed"].includes(status);

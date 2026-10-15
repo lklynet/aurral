@@ -17,7 +17,7 @@ import { orderAdvertisedQualityCandidates, getAdvertisedQualityRank } from "../.
 import { getQualityProfile } from "../../backend/services/qualityProfileService.js";
 
 const result = (overrides) => ({
-  size: 100,
+  size: 30000000,
   slots: true,
   bitrate: 900,
   speed: 700000,
@@ -839,6 +839,21 @@ btest("the correct-duration file wins over a longer off-duration copy in the sam
   const usable = usableEvaluationEntries(evaluation);
   assert.equal(usable.length, 1);
   assert.match(usable[0].candidate.raw.file, /\/Teardrop\.mp3$/);
+});
+
+btest("a copy whose listed size cannot hold its length is not offered, even at the exact length", async () => {
+  const track = { artistName: "The Used", trackName: "Let It Bleed", albumName: "In Love and Death", durationMs: 190693 };
+  const silent = result({ user: "fast", file: "Music/The Used/In Love and Death/03 - Let It Bleed.flac",
+    length: 190.693, size: 39336, speed: 9000000 });
+  const real = result({ user: "slow", file: "Music/The Used/In Love and Death/03 - Let It Bleed.flac",
+    length: 191, size: 23300000, speed: 100000 });
+  assert.deepEqual(usableEvaluationEntries(await evaluate([silent, real], track))
+    .map((entry) => [entry.candidate.raw.user, entry.decision]), [["slow", "accept"]]);
+
+  const pregap = result({ user: "fast", file: "Music/The Used/In Love and Death/07 - [silence].flac",
+    length: 4, size: 10755, speed: 9000000 });
+  assert.deepEqual(usableEvaluationEntries(await evaluate([pregap],
+    { ...track, trackName: "[Silence]", durationMs: 4000 })).map((entry) => entry.candidate.raw.user), ["fast"]);
 });
 
 btest("quality ordering within identity: profile-eligible tier wins", async () => {

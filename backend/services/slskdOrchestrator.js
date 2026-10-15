@@ -30,10 +30,10 @@ import {
   deniedAlbumSources,
   finishAlbumGrab,
 } from "./albumGrab.js";
-import { selectSoulseekAlbumFolder } from "./albumReleaseSearch.js";
-import { isCompilationJobs, loadAlbumReleases, withRecordingAliases } from "./albumReleases.js";
+import { selectSoulseekAlbumFolder, soulseekReleaseCopies } from "./albumReleaseSearch.js";
+import { attemptTrackRequest } from "./releaseManifest.js";
+import { attemptRelease } from "./releaseResolver.js";
 import {
-  buildResolvedJobTrack as buildResolvedTrack,
   commitDownloadedFile,
   joinUnderRoot,
   buildTrackFileName,
@@ -114,7 +114,7 @@ function selectAlbumFolders(aggregated, searchOptions) {
   return selectSoulseekAlbumFolder(aggregated.filter((raw) =>
     !isDeniedSoulseekFile(raw, searchOptions.deniedSourceKeys)
     && !searchOptions.isUserBlacklisted?.(raw.user)), searchOptions.albumJobs, {
-    releases: searchOptions.albumReleases || [],
+    manifest: searchOptions.manifest,
     profile: searchOptions.qualityProfile || getQualityProfile(),
   });
 }
@@ -808,10 +808,11 @@ async function handleSearch(payload, helpers) {
     });
     recordTrackJobHistory("recordTrackJobSearching", job);
   }
-  const resolvedTrack = buildResolvedTrack(job, payload.track);
+  const release = await attemptRelease(payload, job);
+  const resolvedTrack = attemptTrackRequest(job, release, payload.track);
   const albumJobs = payload.albumGrab === true ? albumGrabJobs(payload) : null;
   const queries = payload.searchQueries || (albumJobs
-    ? buildAlbumSearchTiers({ ...resolvedTrack, compilation: isCompilationJobs(albumJobs) })
+    ? buildAlbumSearchTiers({ ...resolvedTrack, compilation: release?.compilation === true })
     : buildSlskdSearchTierGroups(resolvedTrack)).flatMap((tier) => tier.queries);
   const currentTier = payload.upgradeForJobId
     ? downloadTracker.getJob(payload.upgradeForJobId)?.qualityTier
@@ -829,7 +830,7 @@ async function handleSearch(payload, helpers) {
     currentTier,
     upgrade: payload.upgrade === true,
     albumJobs,
-    albumReleases: albumJobs ? await loadAlbumReleases(job.albumMbid) : [],
+    manifest: release,
   };
   const step = await advanceSlskdSearch(
     { ...payload, searchQueries: queries },
@@ -855,6 +856,7 @@ async function handleSearch(payload, helpers) {
         raw: { user: candidate.group.user, files: candidate.files },
         resolvedAlbumName: job.albumName,
         score: candidate.fit,
+        releaseVerified: true,
       })),
       policyVersion: selection.policyVersion,
     };
@@ -876,6 +878,9 @@ async function handleSearch(payload, helpers) {
     readBitrate: (entry) => entry.candidate?.raw?.bitrate ?? entry.candidate?.raw?.bitRate,
   });
   const profile = getQualityProfile();
+  // A copy from a folder of the pinned release is that recording, so it goes
+  // ahead of an equally good copy from anywhere else.
+  const releaseCopies = soulseekReleaseCopies(aggregated, release, job);
   const ordered = qualityOrdered
     .map((entry, index) => ({
       entry,
@@ -886,6 +891,7 @@ async function handleSearch(payload, helpers) {
         profile,
       ),
       decisionRank: { accept: 0, verify: 1, review: 2 }[entry.decision] ?? 3,
+      releaseRank: releaseCopies.has(`${entry.candidate?.raw?.user}\0${entry.candidate?.raw?.file}`) ? 0 : 1,
       distance: Number.isFinite(entry.distance) ? entry.distance : Number.POSITIVE_INFINITY,
       variantScore: Number(entry.variantScore || 0),
       queuePenalty: Number(searchOptions.getUserQueuePenalty?.(entry.candidate?.raw?.user) || 0),
@@ -894,6 +900,7 @@ async function handleSearch(payload, helpers) {
       (left, right) =>
         left.tierRank - right.tierRank ||
         left.decisionRank - right.decisionRank ||
+        left.releaseRank - right.releaseRank ||
         left.distance - right.distance ||
         right.variantScore - left.variantScore ||
         left.queuePenalty - right.queuePenalty ||
@@ -1311,10 +1318,10 @@ async function handleFinalize(payload, helpers) {
   const finalDir = joinUnderRoot(playlistRoot, destination);
   const finalName = buildTrackFileName(job, ext || ".mp3");
   const finalPath = path.join(finalDir, finalName);
-  const resolvedTrack = await withRecordingAliases({
-    ...buildResolvedTrack(job, payload.track),
+  const resolvedTrack = {
+    ...attemptTrackRequest(job, await attemptRelease(payload, job), payload.track),
     upgradeForJobId: payload.upgradeForJobId || null,
-  }, job.albumMbid);
+  };
   const validation = await validateDownloadedTrackFile({
     request: resolvedTrack,
     candidate: candidate?.candidate || candidate,
@@ -1342,7 +1349,7 @@ async function handleFinalize(payload, helpers) {
       trackName: job.trackName,
       candidateIndex,
       decision: candidate?.evaluation?.decision || null,
-      expectedDurationMs: buildResolvedTrack(job, payload.track).durationMs,
+      expectedDurationMs: resolvedTrack.durationMs,
       actualDurationMs: validation.actualDurationMs ?? null,
       reason: validation.reason,
       remoteFile,
@@ -1428,6 +1435,19 @@ async function handleFinalize(payload, helpers) {
     return null;
   }
   return committed.result;
+}
+
+// The running search and queued transfers of a payload dropped before its
+// step finished with them.
+export async function discardSlskdWork(payload) {
+  if (!slskdClient.isConfigured()) return;
+  if (payload.activeSearch?.id) {
+    searchMonitors.delete(payload.activeSearch.id);
+    await stopSearch(payload.activeSearch.id);
+  }
+  for (const transfer of [...(payload.albumTransfers || []), payload.legacyTransfer].filter(Boolean)) {
+    await cleanupTransferForPayload(payload, transfer);
+  }
 }
 
 export async function discardSlskdDownload({ sourcePath, transferId, username }) {

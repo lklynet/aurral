@@ -1,69 +1,16 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import { parseFile } from "music-metadata";
-import { assignReleaseFiles, parseListingTitle, readRecordingMbid } from "./trackMatching/nativeMatcher.js";
-import { validateDownloadedTrackFile } from "./trackMatching/postDownloadValidator.js";
-import { buildResolvedJobTrack } from "./downloadUtils.js";
-import { candidateReleasesForJobs } from "./albumReleases.js";
-
-function positiveDurationMs(parsed) {
-  const seconds = Number(parsed?.format?.duration);
-  return Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : null;
-}
-
-function fileEvidence(filePath, parsed) {
-  const listing = parseListingTitle(filePath);
-  return {
-    title: String(parsed?.common?.title || listing.title || "").trim(),
-    artists: [parsed?.common?.artist].filter(Boolean),
-    durationMs: positiveDurationMs(parsed),
-    trackNumber: parsed?.common?.track?.no || listing.trackNumber || null,
-    recordingMbid: readRecordingMbid(parsed?.common?.musicbrainz_recordingid),
-  };
-}
-
-function rankAssignment(release, files) {
-  const assignment = assignReleaseFiles(release.tracks, files);
-  const filled = new Set(assignment.pairs.map((pair) => pair.trackIndex));
-  return {
-    release,
-    assignment,
-    pairs: assignment.pairs.length,
-    positions: assignment.pairs.filter((pair) => Number(release.tracks[pair.trackIndex].trackNumber) > 0
-      && Number(release.tracks[pair.trackIndex].trackNumber) === Number(files[pair.fileIndex].trackNumber)).length,
-    unfilled: release.tracks.filter((track, index) => track.onRelease && !filled.has(index)).length,
-    score: assignment.pairs.reduce((sum, pair) => sum + pair.score, 0),
-  };
-}
-
-// Like an import in Lidarr, the files decide which edition arrived: the
-// release that assigns the most files, with the most matching positions,
-// leaving the fewest of its own tracks unfilled, most closely, wins.
-function assignBestRelease(jobs, files, releases) {
-  return candidateReleasesForJobs(jobs, releases)
-    .map((release) => rankAssignment(release, files))
-    .reduce((best, entry) => (entry.pairs - best.pairs
-      || entry.positions - best.positions
-      || best.unfilled - entry.unfilled
-      || entry.score - best.score) > 0 ? entry : best);
-}
-
-function requestForRelease(job, release, track) {
-  const request = { ...buildResolvedJobTrack(job), recordingMbidAliases: track.recordingMbidAliases };
-  if (!release.titles) return request;
-  return {
-    ...request,
-    durationMs: track.durationMs || request.durationMs,
-    trackNumber: track.trackNumber,
-    albumTrackTitles: release.titles,
-  };
-}
+import { downloadedFileEvidence, validateDownloadedTrackFile } from "./trackMatching/postDownloadValidator.js";
+import { mapRequest, trackRequestFor } from "./releaseManifest.js";
+import { judgeRelease } from "./trackMatching/releaseJudge.js";
 
 export async function assignDownloadedAlbumFiles({
   jobs,
   filePaths,
   source,
-  releases = [],
+  manifest,
+  verified = false,
   parseAudio = parseFile,
 }) {
   const readable = [];
@@ -76,47 +23,38 @@ export async function assignDownloadedAlbumFiles({
     if (!stat?.isFile()) continue;
     try {
       const parsed = await parseAudio(resolved, { duration: true });
-      readable.push({ filePath: resolved, evidence: fileEvidence(resolved, parsed) });
+      readable.push({ filePath: resolved, evidence: downloadedFileEvidence(resolved, parsed, { album: manifest.title }) });
     } catch {
       // An unreadable file cannot be imported.
     }
   }
-  const { release, assignment } = assignBestRelease(
-    jobs,
-    readable.map((entry) => entry.evidence),
-    releases,
-  );
+  const unreadableCount = (filePaths || []).length - readable.length;
+  const failedRelease = (reason) => ({
+    accepted: [], rejected: jobs.map((job) => ({ jobId: job.id, reason })), unreadableCount,
+  });
+  const verdict = judgeRelease(manifest, { files: readable.map((entry) => entry.evidence) });
+  if (!verified && (unreadableCount || verdict.kind !== "exact")) {
+    return failedRelease(unreadableCount ? "The album contains unreadable audio" : verdict.reason);
+  }
+  const { wanted } = mapRequest(manifest, jobs);
   const accepted = [];
   const rejected = [];
-  const unassignedJobIds = new Set(jobs.map((job) => job.id));
-  for (const pair of assignment.pairs) {
-    const job = jobs[pair.trackIndex];
+  for (const pair of verdict.assignment.pairs) {
+    const job = jobs.find((entry) => entry.id === wanted.get(pair.trackIndex));
+    if (!job) continue;
     const entry = readable[pair.fileIndex];
     const validation = await validateDownloadedTrackFile({
-      request: requestForRelease(job, release, release.tracks[pair.trackIndex]),
+      request: { ...trackRequestFor(job, manifest, pair.trackIndex), upgradeForJobId: job.upgradeForJobId },
       filePath: entry.filePath,
       source,
-      options: { parseFile: parseAudio, strict: true },
+      options: { parseFile: parseAudio, strict: true, release: manifest, albumImport: true },
     });
     if (validation.valid) {
-      const { trackNumber = null, discNumber = null } = release.tracks[pair.trackIndex];
-      accepted.push({ jobId: job.id, filePath: entry.filePath, trackNumber: trackNumber || null,
-        discNumber: trackNumber ? discNumber || null : null, validation });
-      unassignedJobIds.delete(job.id);
+      const { trackNumber, discNumber } = manifest.tracks[pair.trackIndex];
+      accepted.push({ jobId: job.id, filePath: entry.filePath, trackNumber, discNumber, validation });
     } else {
       rejected.push({ jobId: job.id, reason: validation.reason || "no match" });
     }
   }
-  return {
-    accepted,
-    rejected,
-    unassignedJobIds: [...unassignedJobIds],
-    unreadableCount: (filePaths || []).length - readable.length,
-    releaseId: release.id,
-    edition: release.id && release.requestedAll ? {
-      id: release.id,
-      jobIds: jobs.filter((job, index) => release.tracks[index].onRelease).map((job) => job.id),
-    } : null,
-    policyVersion: assignment.policyVersion,
-  };
+  return { accepted, rejected, unreadableCount };
 }

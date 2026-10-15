@@ -52,11 +52,18 @@ If slskd is not logged in to the Soulseek server, for example during a temporary
 
 If slskd is still not logged in after 45 minutes, Aurral tries the next download source, or marks the track as failed if there is none. **Test connection** and **Storage health** report slskd as not logged in while this lasts.
 
-## Albums
+## Releases
 
-For an Aurral album, Aurral searches for the album alone and looks for a folder that holds the missing tracks. It compares the folder with every edition of the album in MusicBrainz. When several folders fit, Aurral prefers a complete folder, then the best tier in your quality profile, then the closest match, then a user with a free upload slot, a short queue, and a fast upload. It skips folders in a tier that the quality profile turns off, and folders named as a live, bootleg, box set, or greatest-hits release unless the album is one.
+For a track whose album Aurral knows, Aurral first searches for the album alone and looks for a folder that holds exactly the requested release. This includes a single track, a playlist track, and a flow track. It includes upgrades too, but not a **Re-search** replacement. Aurral checks every audio file in the folder, including files in a tier that your quality profile turns off. The folder must meet all of these conditions:
 
-Aurral downloads only the files that fill missing tracks. Afterwards it removes the files it did not import, and the folders its imports emptied, from slskd's download folder. If the folder leaves tracks unfilled, Aurral tries the next ranked folder, from a different user, before it searches for those tracks one by one.
+- Its path names the album, and its path or file names name the artist.
+- It holds every track of the release, each at its own place. When Soulseek reports a file's length, it must be within 2 seconds of the track's length on the release. Tracks you already have must be there too.
+- It holds no other song. A deluxe folder with a bonus track is a different release. A second copy of a song, such as an MP3 next to a FLAC, is fine.
+- No track or folder name is a live, acoustic, remix, or other version, unless the artist, album, or track you asked for names that version, or MusicBrainz lists the album as a live, remix, or demo release. A version in a note about extras counts too, so a folder such as "Album (Reissue + Live In London Bonus Disc)" is passed over. A folder named as a box set, bootleg, discography, or greatest-hits release does not count unless the album is one.
+
+Aurral downloads only the files of the tracks you want, and picks the best copy in your quality profile. If a wanted track has no copy in a tier that the profile accepts, Aurral passes over the folder. When several folders fit, Aurral prefers the best tier in your quality profile, then the closest match, then a user with a free upload slot, a short queue, and a fast upload.
+
+Afterwards Aurral removes the files it did not import, and the folders its imports emptied, from slskd's download folder. If the folder leaves tracks unfilled, Aurral tries the next ranked folder, from a different user, and then the next download source that can supply the release. When no source has the release, Aurral searches for each track on its own. Among results in the same quality tier that match equally well, a file from a folder of the track's own release comes first.
 
 ## Transfers
 

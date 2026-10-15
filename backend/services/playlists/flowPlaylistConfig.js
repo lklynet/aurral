@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "crypto";
 import { dbOps } from "../../db/helpers/index.js";
 import { downloadTracker } from "../downloadJobs/downloadTracker.js";
 import { getDiscoverPlaylistPreset } from "../../config/discoverPlaylistPresets.js";
+import { UUID_REGEX } from "../../../lib/uuid.js";
 
 const LEGACY_TYPES = ["discover", "mix", "trending"];
 export const isRetiredFlow = (flow) => flow?.type === "editorial";
@@ -293,6 +294,8 @@ const normalizeFlow = (flow) => {
   };
 };
 
+const positiveInteger = (value) => (Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null);
+
 export const normalizePlaylistTrack = (track) => {
   if (!track || typeof track !== "object" || Array.isArray(track)) return null;
   const artistName = String(
@@ -308,11 +311,14 @@ export const normalizePlaylistTrack = (track) => {
   const trackMbid = String(
     track.trackMbid ?? track.recordingMbid ?? track.recordingId ?? track.mbid ?? "",
   ).trim();
+  const releaseMbid = String(track.releaseMbid ?? "").trim();
   const releaseYear = String(track.releaseYear ?? track.year ?? "").trim();
   const durationMs =
     track.durationMs != null && Number.isFinite(Number(track.durationMs))
       ? Math.max(0, Math.round(Number(track.durationMs)))
       : null;
+  const trackNumber = positiveInteger(track.trackNumber);
+  const discNumber = positiveInteger(track.discNumber);
   const artistAliases = Array.isArray(track.artistAliases)
     ? track.artistAliases.map((entry) => String(entry || "").trim()).filter(Boolean)
     : [];
@@ -330,6 +336,9 @@ export const normalizePlaylistTrack = (track) => {
     durationMs,
     artistAliases,
     reason: reason || null,
+    ...(UUID_REGEX.test(releaseMbid) ? { releaseMbid } : {}),
+    ...(trackNumber ? { trackNumber } : {}),
+    ...(discNumber ? { discNumber } : {}),
     ...(canonicalJobId ? { canonicalJobId } : {}),
     ...(membershipId ? { membershipId } : {}),
   };
@@ -441,6 +450,9 @@ export const rebuildStaticPlaylistTracksFromJobs = (configTracks, jobs) => {
       durationMs: job?.durationMs || null,
       artistAliases: job?.artistAliases || [],
       reason: job?.reason || null,
+      releaseMbid: job?.releaseMbid,
+      trackNumber: job?.trackNumber,
+      discNumber: job?.discNumber,
     });
     if (track) remainingTracks.push(track);
   }

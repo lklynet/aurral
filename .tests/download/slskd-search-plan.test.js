@@ -86,6 +86,8 @@ test("hasSlskdSearchCandidates waits for a small floor of valid candidates", () 
     }),
     true,
   );
+  const silent = validResults.map((entry) => ({ ...entry, length: 240, size: 50000 }));
+  assert.equal(hasSlskdSearchCandidates(silent, fataTrack, { preferredFormat: "flac" }), false);
 });
 
 test("Soulseek early exit ignores denied files and blacklisted peers", () => {

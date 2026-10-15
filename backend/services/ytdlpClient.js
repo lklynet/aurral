@@ -7,6 +7,9 @@ import { resolveYtdlpStagingRoot } from "./downloadFolderConfig.js";
 
 const DEFAULT_BINARY = "yt-dlp";
 const SEARCH_LIMIT = 5;
+const SONG_SEARCH_LIMIT = 10;
+const SONG_SEARCH_BUDGET_MS = 6000;
+const SONG_READ_BATCH = 3;
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const AUDIO_FORMAT = "m4a";
 const activeDownloads = new Map();
@@ -84,7 +87,7 @@ function isConfiguredFor(config = null) {
   return isEnabledFor(config) && resolveBinaryExists(getBinaryPath());
 }
 
-function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel } = {}) {
+function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel, signal } = {}) {
   return new Promise((resolve, reject) => {
     const isolatedProcessGroup = process.platform !== "win32";
     const child = spawn(getBinaryPath(), buildYtdlpInvocationArgs(args), {
@@ -129,10 +132,19 @@ function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel } = {}) {
         }, 250)
       : null;
     if (typeof cancellationTimer?.unref === "function") cancellationTimer.unref();
+    const abort = () => {
+      if (terminationError) return;
+      terminationError = signal.reason instanceof Error ? signal.reason : new Error("yt-dlp stopped");
+      clearTimeout(timer);
+      signalProcess("SIGKILL");
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
     function clearTimers() {
       clearTimeout(timer);
       if (forcedKillTimer) clearTimeout(forcedKillTimer);
       if (cancellationTimer) clearInterval(cancellationTimer);
+      signal?.removeEventListener("abort", abort);
     }
     function settleReject(error) {
       if (settled) return;
@@ -189,10 +201,93 @@ async function testConnectionFor(config = null, { force: _force = false } = {}) 
   }
 }
 
-async function searchFor(_config = null, query, { limit = SEARCH_LIMIT } = {}) {
+function readJsonLines(stdout) {
+  return String(stdout || "").split("\n").flatMap((line) => {
+    try {
+      return line.trim() ? [JSON.parse(line)] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+function readDurationSec(value) {
+  return Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : null;
+}
+
+function songUrl(id) {
+  return `https://music.youtube.com/watch?v=${encodeURIComponent(id)}`;
+}
+
+function isSongUrl(url) {
+  return /^https:\/\/music\.youtube\.com\//u.test(String(url || ""));
+}
+
+function readSong(stdout, { id, title }) {
+  const [entry] = readJsonLines(stdout);
+  if (!entry) return null;
+  const artists = Array.isArray(entry.artists) ? entry.artists : [entry.artist];
+  return {
+    id,
+    title: String(entry.track || entry.title || title).trim(),
+    url: songUrl(id),
+    channel: String(entry.channel || entry.uploader || "").trim(),
+    durationSec: readDurationSec(entry.duration),
+    liveStatus: String(entry.live_status || "").trim().toLowerCase(),
+    artists: [...new Set(artists.map((name) => String(name || "").trim()).filter(Boolean))],
+    album: String(entry.album || "").trim() || null,
+    song: true,
+  };
+}
+
+// The song search lists only ids and titles, so the songs `wanted` keeps are
+// read in full for YouTube Music's own artists, album, and length, a few at a
+// time. `decided` is asked after each batch, so every read a batch starts
+// counts and one search gives the same songs each time; the search stops once
+// it agrees. The whole search also has one short deadline, since one read now
+// and then stalls for many seconds: the reads still running are killed and
+// the songs in hand are returned. A song that cannot be read (age-gated,
+// removed) is left out.
+async function searchSongs(query, { limit, wanted = () => true, decided = () => false }) {
+  const stop = new AbortController();
+  const deadline = setTimeout(() => stop.abort(
+    new Error(`YouTube Music search took longer than ${SONG_SEARCH_BUDGET_MS}ms`)), SONG_SEARCH_BUDGET_MS);
+  try {
+    const { stdout } = await runYtdlp(
+      [
+        "--flat-playlist",
+        "--dump-json",
+        "--no-warnings",
+        "--playlist-end",
+        String(SONG_SEARCH_LIMIT),
+        `https://music.youtube.com/search?q=${encodeURIComponent(query)}#songs`,
+      ],
+      { signal: stop.signal },
+    );
+    const listed = readJsonLines(stdout)
+      .map((entry) => ({ id: String(entry.id || "").trim(), title: String(entry.title || "").trim() }))
+      .filter((entry) => entry.id && wanted(entry))
+      .slice(0, limit);
+    const songs = [];
+    for (let first = 0; first < listed.length && !stop.signal.aborted; first += SONG_READ_BATCH) {
+      await Promise.all(listed.slice(first, first + SONG_READ_BATCH).map((entry, offset) => runYtdlp(
+        ["--skip-download", "--dump-json", "--no-warnings", "--", songUrl(entry.id)],
+        { signal: stop.signal },
+      ).then(({ stdout: read }) => { songs[first + offset] = readSong(read, entry); }, () => {})));
+      if (stop.signal.aborted || await decided(songs.filter(Boolean))) break;
+    }
+    return songs.filter(Boolean);
+  } finally {
+    clearTimeout(deadline);
+    stop.abort();
+  }
+}
+
+async function searchFor(_config = null, query, { limit = SEARCH_LIMIT, songs = false, wanted, decided } = {}) {
   const trimmed = String(query || "").trim();
   if (!trimmed) return [];
   const capped = Math.min(Math.max(Number(limit) || SEARCH_LIMIT, 1), 10);
+  if (songs) return searchSongs(trimmed, { limit: capped, wanted, decided });
   const { stdout } = await runYtdlp(
     [
       "--flat-playlist",
@@ -203,31 +298,20 @@ async function searchFor(_config = null, query, { limit = SEARCH_LIMIT } = {}) {
     ],
     { timeoutMs: 60000 },
   );
-  const results = [];
-  for (const line of String(stdout || "").split("\n")) {
-    const raw = line.trim();
-    if (!raw) continue;
-    try {
-      const entry = JSON.parse(raw);
-      const id = String(entry.id || entry.url || "").trim();
-      if (!id) continue;
-      results.push({
-        id,
-        title: String(entry.title || "").trim(),
-        url:
-          String(entry.webpage_url || entry.url || "").trim() ||
-          `https://www.youtube.com/watch?v=${id}`,
-        channel: String(entry.channel || entry.uploader || "").trim(),
-        durationSec:
-          Number.isFinite(Number(entry.duration)) && Number(entry.duration) > 0
-            ? Number(entry.duration)
-            : null,
-        liveStatus: String(entry.live_status || "").trim().toLowerCase(),
-      });
-    } catch {
-    }
-  }
-  return results;
+  return readJsonLines(stdout).flatMap((entry) => {
+    const id = String(entry.id || entry.url || "").trim();
+    if (!id) return [];
+    return [{
+      id,
+      title: String(entry.title || "").trim(),
+      url:
+        String(entry.webpage_url || entry.url || "").trim() ||
+        `https://www.youtube.com/watch?v=${id}`,
+      channel: String(entry.channel || entry.uploader || "").trim(),
+      durationSec: readDurationSec(entry.duration),
+      liveStatus: String(entry.live_status || "").trim().toLowerCase(),
+    }];
+  });
 }
 
 function resolveStagingDir(config, jobId) {
@@ -257,13 +341,14 @@ async function downloadAudioFor(config = null, videoUrl, { jobId, shouldCancel }
   await fsPromises.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
   await fsPromises.mkdir(stagingDir, { recursive: true });
   const outTemplate = path.join(stagingDir, "%(id)s.%(ext)s");
+  // A YouTube Music song carries its own track and artist tags, and a dash in
+  // "Hey Jude - Remastered 2015" is not an "Artist - Title" separator.
   const args = [
     "--no-playlist",
     "--no-warnings",
     "-x",
     "--embed-metadata",
-    "--parse-metadata",
-    "title:^(?P<artist>.+?)\\s+[-–—]\\s+(?P<title>.+)$",
+    ...(isSongUrl(url) ? [] : ["--parse-metadata", "title:^(?P<artist>.+?)\\s+[-–—]\\s+(?P<title>.+)$"]),
     "--audio-format",
     AUDIO_FORMAT,
     "--audio-quality",

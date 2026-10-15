@@ -5,7 +5,7 @@ description: Download tagged tracks and albums from Deezer through deemix.
 
 [deemix](https://github.com/bambanah/deemix) is a self-hosted Deezer downloader. It returns tagged files with cover art. Aurral can use it as a download source for flows, playlists, and Aurral albums.
 
-Aurral talks to the deemix web server. For an Aurral album, it picks the Deezer album that matches the requested tracks and adds one album URL to the deemix queue. For a flow or playlist track, it adds one track URL. Aurral imports only the files that pass its checks.
+Aurral talks to the deemix web server. From a Deezer album that is exactly the requested release, it adds the URL of each track you want to the deemix queue, or the album URL when you want every track. A search for a single track adds that track's URL. Aurral imports only the files that pass its checks.
 
 Aurral does not store your ARL. Sign in once in the deemix web UI. Aurral reuses that sign-in through the deemix API.
 
@@ -37,9 +37,16 @@ Aurral tries download sources in priority order. It ranks Deezer results by titl
 
 Aurral checks each downloaded file in the same way as files from other sources. It then writes the title, artist, album, album artist, year, and track number into the file.
 
-For an Aurral album, Aurral searches Deezer for the album and checks each matching album's tracklist against the missing tracks. A deluxe or remastered edition counts as the same album. Aurral queues the album whose tracklist covers the most missing tracks.
+For a track whose album Aurral knows, Aurral first searches Deezer for that album. It does this for a single track, a playlist track, a flow track, and an upgrade too, but not for a **Re-search** replacement. A Deezer album counts only when its full tracklist is exactly the requested release, including tracks that your account cannot stream:
 
-If an album download finishes with errors, Aurral assigns the finished files to their tracks. The missing and failed tracks continue one by one through the other sources. One file never fills two tracks.
+- Its artist and title name the requested artist and album.
+- It has every track of the release, each within 2 seconds of the track's length on the release.
+- It has no other song. A deluxe edition with a bonus track is a different release.
+- No track is a live, acoustic, remix, or other version, unless the artist, album, or track you asked for names that version, or MusicBrainz lists the album as a live, remix, or demo release.
+
+Your account must be able to stream every track you want from that album. Aurral queues only the tracks you want, and queues the whole album only when you want every track. When no Deezer album is exactly the release, Aurral tries the next download source that can supply the release, and then searches for each track on its own.
+
+If an album download finishes with errors, Aurral assigns the finished files to their tracks. The missing and failed tracks continue through the next matching album and the other sources. One file never fills two tracks.
 
 A track that fails Aurral's checks is not offered again for that request.
 

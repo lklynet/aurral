@@ -110,6 +110,15 @@ export function getEnabledDownloadSources() {
 
 export const ALBUM_GRAB_SOURCE_IDS = ["slskd", "usenet", "deemix"];
 
+// The enabled sources that download only a track and rank above every
+// enabled album source, in priority order. A track request searches these
+// before its release.
+export function getQuickSearchSources() {
+  const sources = getEnabledDownloadSources();
+  const firstAlbumSource = sources.findIndex((source) => ALBUM_GRAB_SOURCE_IDS.includes(source.id));
+  return firstAlbumSource > 0 ? sources.slice(0, firstAlbumSource).map((source) => source.id) : [];
+}
+
 export function isAlbumGrabSourceConfigured() {
   return getEnabledDownloadSources().some((source) => ALBUM_GRAB_SOURCE_IDS.includes(source.id));
 }

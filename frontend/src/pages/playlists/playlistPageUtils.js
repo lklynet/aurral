@@ -121,9 +121,12 @@ export function exportPlaylistTracklist(entry, jobs, { sourceFlowId = null } = {
       albumName: job.albumName || null,
       artistMbid: job.artistMbid || null,
       albumMbid: job.albumMbid || null,
+      releaseMbid: job.releaseMbid || null,
       trackMbid: job.trackMbid || null,
       releaseYear: job.releaseYear || null,
       durationMs: job.durationMs || null,
+      trackNumber: job.trackNumber || null,
+      discNumber: job.discNumber || null,
       artistAliases: job.artistAliases || [],
     }))
     .filter((track) => track.artistName && track.trackName);

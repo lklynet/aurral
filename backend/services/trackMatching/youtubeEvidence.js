@@ -1,6 +1,7 @@
 import { splitArtistTitleSegments } from "./candidateNormalizer.js";
 import { isPromoGroup, stripPromoDescriptors } from "./semanticPolicy.js";
-import { bestArtistSimilarity, MATCH_POLICY, normalizeMatchText, titleSimilarity } from "./nativeMatcher.js";
+import { bestArtistSimilarity, isSameAlbumTitle, MATCH_POLICY, normalizeMatchText, titleSimilarity } from "./nativeMatcher.js";
+import { coreAlbumTitle } from "./titleText.js";
 
 const VIDEO_WORDS = /\b(?:video|mv|clip)\b/iu;
 const LYRIC_VIDEO = /\blyrics?\s+video\b/giu;
@@ -87,4 +88,10 @@ export function readYoutubeFile({ tagTitle, tagArtists = [], videoTitle, channel
     artists: credited.length ? credited : [fromVideo?.artist].filter(Boolean),
     officialAudio: upload.officialAudio,
   };
+}
+
+// Whether a YouTube Music song's album is the requested one. A request that
+// names no album has no other album to rule out.
+export function isRequestedYoutubeAlbum(request, album) {
+  return !request.albumName || isSameAlbumTitle(coreAlbumTitle(request.albumName), coreAlbumTitle(album));
 }
