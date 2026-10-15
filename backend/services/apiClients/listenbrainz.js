@@ -5,6 +5,10 @@ import { logger } from "../logger.js";
 import { APP_NAME, APP_VERSION, LISTENBRAINZ_API } from "../../config/constants.js";
 
 const listenbrainzCache = createCache(300);
+const listenbrainzLookupCache = createCache(3600, 200);
+const LISTENBRAINZ_LOOKUP_FAILURE_TTL_SECONDS = 300;
+const LISTENBRAINZ_POPULARITY_BATCH_SIZE = 1000;
+const LISTENBRAINZ_METADATA_BATCH_SIZE = 100;
 
 const listenbrainzLimiter = createRateLimiter(350);
 const LISTENBRAINZ_USER_AGENT = `${APP_NAME}/${APP_VERSION} ( https://github.com/lklynet/aurral )`;
@@ -98,11 +102,13 @@ export const listenbrainzSubmit = async ({ token, baseUrl = LISTENBRAINZ_API, ev
 export async function listenbrainzRequest(
   path,
   params = {},
-  { token = null, baseUrl = LISTENBRAINZ_API, timeoutMs = LISTENBRAINZ_TIMEOUT_MS } = {},
+  { token = null, baseUrl = LISTENBRAINZ_API, timeoutMs = LISTENBRAINZ_TIMEOUT_MS, data } = {},
 ) {
   const root = normalizeListenbrainzBaseUrl(baseUrl);
   const isAuthenticated = Boolean(String(token || "").trim());
-  const cacheKey = isAuthenticated ? null : `lb:${root}:${path}:${JSON.stringify(params)}`;
+  const cacheKey = isAuthenticated
+    ? null
+    : `lb:${root}:${path}:${JSON.stringify(params)}${data ? `:${JSON.stringify(data)}` : ""}`;
   if (cacheKey) {
     const cached = listenbrainzCache.get(cacheKey);
     if (cached !== undefined) return cached;
@@ -141,8 +147,8 @@ export async function listenbrainzRequest(
       retryCount++
     ) {
       try {
-        const response = await listenbrainzLimiter.schedule(() =>
-          axios.get(`${root}${path}`, {
+        const response = await listenbrainzLimiter.schedule(() => {
+          const config = {
             params,
             headers: {
               "User-Agent": LISTENBRAINZ_USER_AGENT,
@@ -151,8 +157,11 @@ export async function listenbrainzRequest(
             timeout: timeoutMs,
             validateStatus: (status) =>
               (status >= 200 && status < 300) || status === 204,
-          }),
-        );
+          };
+          return data
+            ? axios.post(`${root}${path}`, data, config)
+            : axios.get(`${root}${path}`, config);
+        });
         const payload = response.status === 204 ? null : response.data;
         if (cacheKey) listenbrainzCache.set(cacheKey, payload);
         return payload;
@@ -192,4 +201,65 @@ export async function listenbrainzRequest(
   }
 }
 
-export { listenbrainzCache };
+const toBatches = (items, size) =>
+  Array.from({ length: Math.ceil(items.length / size) }, (_, index) =>
+    items.slice(index * size, (index + 1) * size),
+  );
+
+const toListenCount = (value) => (Number.isInteger(value) && value > 0 ? value : null);
+
+async function cachedListenbrainzLookup(cacheKey, lookup) {
+  const cached = listenbrainzLookupCache.get(cacheKey);
+  if (cached) return cached;
+  try {
+    const value = await lookup();
+    listenbrainzLookupCache.set(cacheKey, value);
+    return value;
+  } catch {
+    const empty = new Map();
+    listenbrainzLookupCache.set(cacheKey, empty, LISTENBRAINZ_LOOKUP_FAILURE_TTL_SECONDS);
+    return empty;
+  }
+}
+
+export const listenbrainzGetReleaseGroupListens = (releaseGroupMbids) =>
+  cachedListenbrainzLookup(`listens:${releaseGroupMbids.join(",")}`, async () => {
+    const batches = await Promise.all(
+      toBatches(releaseGroupMbids, LISTENBRAINZ_POPULARITY_BATCH_SIZE).map((mbids) =>
+        listenbrainzRequest("/1/popularity/release-group", {}, { data: { release_group_mbids: mbids } }),
+      ),
+    );
+    if (!batches.every(Array.isArray)) throw new TypeError("ListenBrainz popularity is not a list");
+    const listens = new Map();
+    for (const row of batches.flat()) {
+      const listenCount = toListenCount(row?.total_listen_count);
+      const listenerCount = toListenCount(row?.total_user_count);
+      if (listenCount && listenerCount) {
+        listens.set(row.release_group_mbid, { listenCount, listenerCount });
+      }
+    }
+    return listens;
+  });
+
+const isReleaseGroupMetadata = (batch) =>
+  Boolean(batch) && typeof batch === "object" && !Array.isArray(batch) && !("error" in batch);
+
+export const listenbrainzGetReleaseGroupDates = (releaseGroupMbids) =>
+  cachedListenbrainzLookup(`dates:${releaseGroupMbids.join(",")}`, async () => {
+    const batches = await Promise.all(
+      toBatches(releaseGroupMbids, LISTENBRAINZ_METADATA_BATCH_SIZE).map((mbids) =>
+        listenbrainzRequest("/1/metadata/release_group/", { release_group_mbids: mbids.join(",") }),
+      ),
+    );
+    if (!batches.every(isReleaseGroupMetadata)) {
+      throw new TypeError("ListenBrainz release group metadata is not keyed by MBID");
+    }
+    const dates = new Map();
+    for (const [mbid, metadata] of batches.flatMap(Object.entries)) {
+      const date = metadata?.release_group?.date;
+      if (typeof date === "string" && date) dates.set(mbid, date);
+    }
+    return dates;
+  });
+
+export { listenbrainzCache, listenbrainzLookupCache };

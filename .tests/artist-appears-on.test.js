@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { registerAppearsOn } from "../backend/routes/artists/handlers/appearsOn.js";
-import { registerStream } from "../backend/routes/artists/handlers/stream.js";
+import { json, openArtistStream, stubFetch } from "./helpers/artistStream.js";
 
 const VARIOUS_ARTISTS = "89ad4ac3-39f7-470e-963a-56509c546377";
 const GUEST_HOST = "22222222-2222-4222-8222-222222222222";
@@ -24,20 +24,6 @@ const mbRelease = ({ id, groupId, title, date, by }) => ({
     "artist-credit": by,
   },
 });
-
-const json = (body, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-
-function stubFetch(t, handler) {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (url) => handler(new URL(String(url)));
-  t.after(() => {
-    globalThis.fetch = originalFetch;
-  });
-}
 
 const isTrackArtistBrowse = (url, mbid) =>
   url.hostname === "musicbrainz.org" &&
@@ -70,62 +56,6 @@ async function postAppearsOn(mbid, body = {}) {
     },
   );
   return { statusCode, body: payload };
-}
-
-function openStream(mbid) {
-  const routes = new Map();
-  registerStream({
-    get(path, ...handlers) {
-      routes.set(path, handlers.at(-1));
-    },
-  });
-  const writes = [];
-  let closeStream = () => {};
-  routes.get("/:mbid/stream")(
-    {
-      params: { mbid },
-      query: { artistName: "Guest Artist", appearsOnLimit: "24" },
-      headers: {},
-      socket: { destroyed: false },
-      on(event, handler) {
-        if (event === "close") closeStream = handler;
-      },
-    },
-    {
-      setHeader() {},
-      status() {
-        return this;
-      },
-      json() {
-        return this;
-      },
-      write(value) {
-        writes.push(value);
-      },
-      flush() {},
-      end() {},
-    },
-  );
-  const events = () => {
-    const parsed = [];
-    for (let index = 0; index + 1 < writes.length; index += 2) {
-      parsed.push({
-        event: writes[index].slice("event: ".length).trim(),
-        data: JSON.parse(writes[index + 1].slice("data: ".length)),
-      });
-    }
-    return parsed;
-  };
-  const waitFor = async (predicate) => {
-    const deadline = Date.now() + 3000;
-    while (Date.now() < deadline) {
-      const match = events().find(predicate);
-      if (match) return match;
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-    assert.fail("stream event did not arrive");
-  };
-  return { events, waitFor, close: () => closeStream() };
 }
 
 test("appears-on lists other artists' releases once each, newest first, and never the artist's own", async (t) => {
@@ -176,7 +106,7 @@ test("artist stream sends appearances without waiting for the discography", asyn
     return json({}, 404);
   });
 
-  const stream = openStream(mbid);
+  const stream = openArtistStream(mbid, { artistName: "Guest Artist", appearsOnLimit: "24" });
   t.after(() => {
     releaseDiscography();
     stream.close();

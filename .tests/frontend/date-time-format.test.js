@@ -64,10 +64,10 @@ test("counts calendar days when the hour does not matter", () => {
 });
 
 test("release listener counts read compactly with the full count kept for the tooltip", () => {
-  const metric = getReleaseMetric({ fans: 1_234_567 });
+  const metric = getReleaseMetric({ listenerCount: 1_234_567 });
 
   assert.equal(metric.label, "1.2M");
-  assert.equal(metric.title, "1,234,567 listeners");
-  assert.equal(getReleaseMetric({ fans: 950 }).label, "950");
-  assert.equal(getReleaseMetric({ fans: 0 }).label, "");
+  assert.equal(metric.title, "1,234,567 listeners on ListenBrainz");
+  assert.equal(getReleaseMetric({ listenerCount: 950 }).label, "950");
+  assert.equal(getReleaseMetric({ listenerCount: 0 }).label, "");
 });

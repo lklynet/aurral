@@ -1,5 +1,5 @@
 import { lastfmCache } from "./lastfm.js";
-import { listenbrainzCache } from "./listenbrainz.js";
+import { listenbrainzCache, listenbrainzLookupCache } from "./listenbrainz.js";
 import { deezerArtistCache } from "./deezer.js";
 import {
   musicbrainzArtistNameCache,
@@ -19,6 +19,7 @@ export function clearApiCaches() {
   clearMetadataProviderCaches();
   lastfmCache.flushAll();
   listenbrainzCache.flushAll();
+  listenbrainzLookupCache.flushAll();
   deezerArtistCache.flushAll();
   musicbrainzArtistNameCache.flushAll();
   musicbrainzReleaseGroupsCache.flushAll();

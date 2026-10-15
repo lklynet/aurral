@@ -349,7 +349,22 @@ export const resolveReleaseLibraryDisplay = (libraryInfo, downloadStatus) => {
   });
 };
 
+const getReleaseListeners = (releaseGroup) =>
+  Number.isFinite(releaseGroup?.listenerCount) && releaseGroup.listenerCount > 0
+    ? releaseGroup.listenerCount
+    : 0;
+
 export const getReleaseMetric = (releaseGroup) => {
+  const listeners = getReleaseListeners(releaseGroup);
+  if (listeners > 0) {
+    return {
+      label: formatCompactNumber(listeners),
+      sortValue: listeners,
+      type: "listeners",
+      title: `${listeners.toLocaleString()} listeners on ListenBrainz`,
+    };
+  }
+
   const ratingValue =
     releaseGroup?.rating?.value != null && Number.isFinite(Number(releaseGroup.rating.value))
       ? Number(releaseGroup.rating.value)
@@ -357,53 +372,58 @@ export const getReleaseMetric = (releaseGroup) => {
   if (ratingValue != null) {
     return {
       label: ratingValue.toFixed(1),
-      sortValue: ratingValue * 1000000,
+      sortValue: 0,
       type: "rating",
       title: `Rating: ${ratingValue.toFixed(1)}`,
     };
   }
 
-  const fans = typeof releaseGroup?.fans === "number" ? releaseGroup.fans : 0;
-  return {
-    label: fans > 0 ? formatCompactNumber(fans) : "",
-    sortValue: fans,
-    type: "fans",
-    title: fans > 0 ? `${fans.toLocaleString()} listeners` : "",
-  };
+  return { label: "", sortValue: 0, type: "listeners", title: "" };
 };
 
+const RELEASE_KIND_ORDER = ["Album", "EP", "Single"];
+
+const getReleaseKindRank = (releaseGroup) => {
+  if (releaseGroup?.["secondary-types"]?.length) return RELEASE_KIND_ORDER.length;
+  const rank = RELEASE_KIND_ORDER.indexOf(releaseGroup?.["primary-type"]);
+  return rank === -1 ? RELEASE_KIND_ORDER.length : rank;
+};
+
+const compareReleaseGroupsByPopularity = (a, b) =>
+  getReleaseMetric(b).sortValue - getReleaseMetric(a).sortValue ||
+  getReleaseKindRank(a) - getReleaseKindRank(b) ||
+  String(b?.["first-release-date"] || "").localeCompare(String(a?.["first-release-date"] || ""));
+
 export const sortReleaseGroupsByPopularity = (releaseGroups = []) =>
-  [...releaseGroups].sort((a, b) => getReleaseMetric(b).sortValue - getReleaseMetric(a).sortValue);
+  [...releaseGroups].sort(compareReleaseGroupsByPopularity);
 
 export const getPopularReleaseGroups = (releaseGroups = [], limit = 6) =>
   sortReleaseGroupsByPopularity(releaseGroups).slice(0, limit);
 
-export const isOwnedReleaseGroup = (getAlbumStatus, releaseGroupId) => {
-  const status = getAlbumStatus?.(releaseGroupId);
-  return status?.status === "available" || status?.status === "added";
+const isUnrequestedReleaseGroup = (getAlbumStatus, releaseGroupId) => {
+  const status = getAlbumStatus?.(releaseGroupId)?.status;
+  return !status || status === "unmonitored";
 };
 
-export const buildAurralPick = ({ releaseGroups = [], getAlbumStatus } = {}) => {
-  const releaseGroup = sortReleaseGroupsByPopularity(releaseGroups).find(
-    (item) => item?.id && !isOwnedReleaseGroup(getAlbumStatus, item.id),
-  );
+export const buildAurralPick = ({
+  releaseGroups = [],
+  getAlbumStatus,
+  requestedReleaseGroupId = null,
+} = {}) => {
+  const releaseGroup =
+    releaseGroups.find((item) => item?.id && item.id === requestedReleaseGroupId) ||
+    releaseGroups
+      .filter((item) => item?.id && isUnrequestedReleaseGroup(getAlbumStatus, item.id))
+      .sort(
+        (a, b) =>
+          getReleaseKindRank(a) - getReleaseKindRank(b) || compareReleaseGroupsByPopularity(a, b),
+      )[0];
   if (!releaseGroup) return null;
-  const metric = getReleaseMetric(releaseGroup);
   return {
-    id: releaseGroup.id,
-    source: "release",
     releaseGroupId: releaseGroup.id,
     title: releaseGroup.title || "Untitled release",
-    year: getReleaseYear(releaseGroup),
     type: releaseGroup["primary-type"] || "Release",
     releaseGroup,
-    libraryAlbum: null,
-    downloadStatus: null,
-    status: "missing",
-    statusLabel: "Missing",
-    reason: "Popular missing release",
-    metric,
-    reasonLabel: "Popular missing release",
   };
 };
 

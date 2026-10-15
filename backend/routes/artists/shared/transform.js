@@ -1,5 +1,9 @@
 import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import {
+  listenbrainzGetReleaseGroupDates,
+  listenbrainzGetReleaseGroupListens,
+} from "../../../services/apiClients/listenbrainz.js";
+import {
   getArtistTagLists,
   getSimilarArtists,
 } from "../../../services/musicDataSource/index.js";
@@ -51,6 +55,36 @@ export async function getSimilarArtistCards(
       image: buildImageProxyUrl(artist.image),
       match: Math.round(artist.match * 100),
     }));
+}
+
+const LISTENBRAINZ_WAIT_MS = 2000;
+const LISTENBRAINZ_DATE_LOOKUP_LIMIT = 300;
+
+const settleWithin = (waitMs, lookups) => {
+  let timer;
+  const deadline = new Promise((resolve) => {
+    timer = setTimeout(resolve, waitMs, new Map());
+  });
+  return Promise.all(lookups.map((lookup) => Promise.race([lookup, deadline]))).finally(() =>
+    clearTimeout(timer),
+  );
+};
+
+export async function withListenBrainzStats(releaseGroups) {
+  if (!releaseGroups.length) return releaseGroups;
+  const undatedIds = releaseGroups
+    .filter((releaseGroup) => !releaseGroup["first-release-date"])
+    .slice(0, LISTENBRAINZ_DATE_LOOKUP_LIMIT)
+    .map(({ id }) => id);
+  const [listens, dates] = await settleWithin(LISTENBRAINZ_WAIT_MS, [
+    listenbrainzGetReleaseGroupListens(releaseGroups.map(({ id }) => id)),
+    listenbrainzGetReleaseGroupDates(undatedIds),
+  ]);
+  return releaseGroups.map((releaseGroup) => ({
+    ...releaseGroup,
+    ...listens.get(releaseGroup.id),
+    "first-release-date": releaseGroup["first-release-date"] || dates.get(releaseGroup.id) || null,
+  }));
 }
 
 export function buildArtistBase(name, resolvedMbid, metadataArtist = null) {

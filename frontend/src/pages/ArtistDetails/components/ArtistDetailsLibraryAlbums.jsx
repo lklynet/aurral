@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import { getLibraryAlbumLink } from "../../../utils/searchNavigation";
-import { isVisibleLibraryAlbum } from "../utils";
+import { getReleaseMetric, isVisibleLibraryAlbum } from "../utils";
 import { canSearchLibraryAlbum } from "../../../utils/libraryDestination";
 import TooltipButton from "../../../components/TooltipButton";
 import Tooltip from "../../../components/Tooltip";
@@ -50,14 +50,14 @@ export function ArtistDetailsLibraryAlbums({
 
   const releaseGroups = artist?.["release-groups"] || [];
   const popularityById = new Map(
-    releaseGroups.map((rg) => [rg.id, typeof rg?.fans === "number" ? rg.fans : 0]),
+    releaseGroups.map((rg) => [rg.id, getReleaseMetric(rg).sortValue]),
   );
-  const getAlbumFans = (album) => {
+  const getAlbumPopularity = (album) => {
     const rgId = album.mbid || album.foreignAlbumId;
     return popularityById.get(rgId) || 0;
   };
   const sortedAlbums = [...downloadedAlbums].sort((a, b) => {
-    const diff = getAlbumFans(b) - getAlbumFans(a);
+    const diff = getAlbumPopularity(b) - getAlbumPopularity(a);
     if (diff !== 0) return diff;
     const dateA = a.releaseDate || "";
     const dateB = b.releaseDate || "";

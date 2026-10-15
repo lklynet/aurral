@@ -19,6 +19,7 @@ import {
   getArtistTagPayload,
   buildArtistBase,
   getSimilarArtistCards,
+  withListenBrainzStats,
 } from "../shared/transform.js";
 
 export function registerStream(router) {
@@ -126,7 +127,9 @@ export function registerStream(router) {
               hydrateLimit: appearsOnLimit ? 6 : 0,
               signal: requestController.signal,
             },
-          ).catch(() => []);
+          )
+            .catch(() => [])
+            .then(withListenBrainzStats);
           const discographyTask = Promise.all([
             metadataArtistPromise,
             namePromise,

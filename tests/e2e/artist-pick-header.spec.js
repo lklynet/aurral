@@ -28,7 +28,7 @@ const tracks = Array.from({ length: 7 }, (_, index) => ({
 
 const cover = "/pick-header-cover.svg";
 
-async function fixture(page, { withCover = false } = {}) {
+async function fixture(page, { withCover = false, releaseGroups = [album] } = {}) {
   await page.route(`**${cover}`, (route) =>
     route.fulfill({
       contentType: "image/svg+xml",
@@ -48,7 +48,7 @@ async function fixture(page, { withCover = false } = {}) {
     if (path === "/health") return json({ lidarrConfigured: true });
     if (path === `/artists/${artist.id}/stream`) {
       const events = {
-        artist: { ...artist, "release-groups": [album] },
+        artist: { ...artist, "release-groups": releaseGroups },
         cover: { images: [] },
         library: { exists: false },
         complete: {},
@@ -147,6 +147,69 @@ test("the artist pick keeps its actions in one row on a tablet", async ({ page }
     names,
   );
   expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(4);
+});
+
+test("the artist pick header counts ListenBrainz listeners ahead of the rating", async ({ page }) => {
+  await fixture(page, { releaseGroups: [{ ...album, listenerCount: 2621, listenCount: 17712 }] });
+  await page.goto(`/artist/${artist.id}`);
+  const panel = page.locator(".artist-pick-panel");
+  await expect(panel.getByText("May 26, 2001 · Album · 7 tracks · 1 hr 10 min · 2.6K listeners", { exact: true }))
+    .toBeVisible();
+});
+
+test("artist page release cards give their ListenBrainz listeners to screen readers and on hover", async ({ page }) => {
+  await fixture(page, { releaseGroups: [{ ...album, listenerCount: 2621, listenCount: 17712 }] });
+  await page.goto(`/artist/${artist.id}`);
+  const metric = page.locator(".artist-release-card").filter({ hasText: album.title }).locator(".artist-release-card__metric");
+  await expect(metric).toMatchAriaSnapshot("- paragraph: 2,621 listeners on ListenBrainz");
+  await metric.hover();
+  await expect(page.getByRole("tooltip", { name: "2,621 listeners on ListenBrainz" })).toBeVisible();
+});
+
+test("the artist pick stays on the album the user downloads", async ({ page }) => {
+  const single = {
+    id: "pick-header-single",
+    title: "Pick Header Single",
+    "primary-type": "Single",
+    "secondary-types": [],
+    "first-release-date": "2004-02-02",
+    listenerCount: 90,
+    listenCount: 140,
+  };
+  await fixture(page, { releaseGroups: [{ ...album, listenerCount: 2621, listenCount: 17712 }, single] });
+  const libraryAlbum = { id: 70, mbid: album.id, foreignAlbumId: album.id, title: album.title, monitored: true };
+  let requested = false;
+  await page.route("**/api/library/downloads/active", (route) =>
+    route.fulfill({ json: { albums: requested ? [album.id] : [], artists: [], tracks: [] } }),
+  );
+  await page.route("**/api/library/albums/request", (route) => {
+    requested = true;
+    return route.fulfill({
+      json: {
+        status: "searching",
+        artist: { id: 7, mbid: artist.id, foreignArtistId: artist.id, artistName: artist.name },
+        album: libraryAlbum,
+      },
+    });
+  });
+  await page.route(
+    (url) => url.pathname === "/api/library/albums" && url.searchParams.get("artistId") === "7",
+    (route) => route.fulfill({ json: [libraryAlbum] }),
+  );
+  await page.route("**/api/library/downloads/status**", (route) =>
+    route.fulfill({ json: { [libraryAlbum.id]: { status: "searching" } } }),
+  );
+  await page.goto(`/artist/${artist.id}`);
+  const panel = page.locator(".artist-pick-panel");
+  await expect(panel.getByRole("heading", { level: 2 })).toHaveText(album.title);
+
+  await panel.getByRole("button", { name: "Download album", exact: true }).click();
+
+  await expect(page.getByText(`Searching for ${album.title}`, { exact: true })).toBeVisible();
+  await expect(
+    panel.locator(".native-library-detail__actions").getByRole("button", { name: "Downloading", exact: true }),
+  ).toBeDisabled();
+  await expect(panel.getByRole("heading", { level: 2 })).toHaveText(album.title);
 });
 
 async function panelCornerColors(panel) {
