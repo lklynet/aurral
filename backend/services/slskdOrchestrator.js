@@ -1441,7 +1441,7 @@ async function handleFinalize(payload, helpers) {
 }
 
 export async function discardSlskdSearch(payload) {
-  if (!payload?.activeSearch?.id || !slskdClient.isConfigured()) return;
+  if (!payload.activeSearch?.id || !slskdClient.isConfigured()) return;
   searchMonitors.delete(payload.activeSearch.id);
   await stopSearch(payload.activeSearch.id);
 }
