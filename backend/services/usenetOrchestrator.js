@@ -664,7 +664,7 @@ async function handleUsenetFinalize(payload, helpers) {
       downloadTracker,
       job,
       committedFinalPath,
-      album: candidate?.resolvedAlbumName || job.albumName,
+      album: job.albumName || candidate?.resolvedAlbumName,
       quality: found.validation?.quality,
     });
   });
