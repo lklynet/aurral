@@ -7,7 +7,6 @@ import { indexUnmonitoredJobs } from "./aurralUnmonitoredJobs.js";
 import { resolveDownloadRoot, isPathInsideRoot } from "./downloadPaths.js";
 import { getEnabledDownloadSources } from "./downloadSourceService.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
-import { readReleaseManifest } from "./releaseResolver.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { isPlaylistOwnerActive } from "./downloadJobs/playlistOwnerStatus.js";
 import {
@@ -154,10 +153,11 @@ const isKeptFile = (filePath) => {
   return keptFilePathsStmt.all().some((keptPath) => path.resolve(keptPath) === resolved);
 };
 
-// An upgrade skips the download worker, so it reads the release tracklist,
-// track count, and artist aliases here, as every other download does. Without
-// them a release cannot be matched against the album it should hold. It then
-// searches by that release first, and by the track when none matches.
+// The worker resolves only the upgrade it starts, and that upgrade's release
+// attempt takes in the others of its album. So each upgrade reads its release
+// tracklist, track count, and artist aliases here. Without them a release
+// cannot be matched against the album it should hold. It then searches by
+// that release first, and by the track when none matches.
 async function resolveUpgradeSearchContext(upgradeJobId) {
   try {
     const { resolveTrackSearchContext } = await import("./downloadJobs/trackSearchContext.js");
@@ -190,9 +190,10 @@ async function addQualityUpgrade(job) {
   return { upgradeJobId, sourceJobId: current.id };
 }
 
-// Upgrades added together start together, so the first one's release
-// attempt takes in the others of its release and reads the download whole.
-// One already in such an attempt is queued with it.
+// Upgrades added together wait for the download worker together, so the
+// first one it starts leads a release attempt that takes in the others of its
+// release and reads the download whole. One already in such an attempt is
+// queued with it.
 async function startQualityUpgrades(upgrades) {
   try {
     return await startEachQualityUpgrade(upgrades);
@@ -202,7 +203,7 @@ async function startQualityUpgrades(upgrades) {
   }
 }
 
-// An upgrade added but never started would block its track's next check.
+// An upgrade added but never queued would block its track's next check.
 function removeUnstartedUpgrades(upgrades) {
   for (const { upgradeJobId } of upgrades) {
     if (downloadTracker.getJob(upgradeJobId)?.status === "pending" && !downloadTracker.isSlskdDispatched(upgradeJobId)) {
@@ -220,17 +221,14 @@ async function startEachQualityUpgrade(upgrades) {
       statuses.push("ineligible");
       continue;
     }
-    if (upgrade.status === "pending") {
-      const { manifest: release } = await readReleaseManifest(upgrade.albumMbid, upgrade.releaseMbid);
-      if (!downloadTracker.enqueueDownloadPipeline(upgradeJobId, { release })) {
-        downloadTracker.removeJob(upgradeJobId);
-        statuses.push("ineligible");
-        continue;
-      }
-    }
+    if (upgrade.status === "pending") downloadTracker.setPending(upgradeJobId);
     downloadTracker.markQualityUpgradeChecked(sourceJobId);
     recordTrackJobQueued(upgrade);
     statuses.push("queued");
+  }
+  if (statuses.includes("queued")) {
+    const { wakeDownloadWorker } = await import("./downloadJobs/mutationGuards.js");
+    await wakeDownloadWorker();
   }
   return statuses;
 }
@@ -321,8 +319,8 @@ async function listUpgradeCandidatesByAlbum({ force, owners, profile }) {
 }
 
 // One check covers every owner it is given, `limit` upgrades each, or
-// `limit` in all when it is given none. The upgrades of each album start
-// as soon as they are added, so no later one could have joined them.
+// `limit` in all when it is given none. The upgrades of each album are
+// queued as soon as they are added, so no later one could have joined them.
 export async function runQualityUpgradeCheck({ force = false, playlistIds = null, limit = 25 } = {}) {
   const profile = getQualityProfile();
   if (!force && !profile.automaticUpgrades) return 0;

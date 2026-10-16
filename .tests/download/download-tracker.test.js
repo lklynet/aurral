@@ -107,7 +107,7 @@ test("a single track in a playlist reserves a release attempt before track-only 
   assert.equal(queued.length, 1);
 });
 
-test("an upgrade tries its pinned release alone, no attempt for its album takes it in, and one given back searches at once", async () => {
+test("an upgrade tries its pinned release alone, no attempt for its album takes it in, and one given back waits for the download worker to search for its track", async () => {
   const settings = dbOps.getSettings();
   dbOps.updateSettings({ ...settings, integrations: {
     ...settings.integrations, slskd: { enabled: true, url: "http://127.0.0.1:9" },
@@ -131,9 +131,10 @@ test("an upgrade tries its pinned release alone, no attempt for its album takes 
     [true, [upgradeId], "upgrade-album-release", ["slskd", "usenet", "deemix"]]);
 
   tracker.releaseFromAlbumGrab(upgradeId, "The album download ended before this track was imported");
-  assert.equal(queued.length, 3);
+  assert.equal(queued.length, 2);
+  assert.equal(tracker.getNextPending()?.id, upgradeId);
+  assert.equal(tracker.enqueueDownloadPipeline(upgradeId, { release }), true);
   assert.deepEqual([queued[2].jobId, queued[2].albumGrab, queued[2].upgradeForJobId], [upgradeId, undefined, doneId]);
-  assert.equal(tracker.getNextPending(), null);
 });
 
 test("a queued album grab exposes durable membership without replacing track activity", async () => {
@@ -462,6 +463,22 @@ test("a web-side tracker preserves pending upgrades but excludes them from norma
   } finally {
     process.env.NODE_ENV = previousEnv;
   }
+});
+
+test("an upgrade released to the worker keeps its place after the tracker reloads committed jobs, and one still being added stays out", () => {
+  const tracker = new DownloadTracker();
+  const [releasedSource, addingSource] = ["First", "Second"].map((trackName) => {
+    const id = tracker.addJob({ artistName: "Artist", trackName }, "library");
+    tracker.setDone(id, `/library/${trackName}.mp3`, "Album");
+    return id;
+  });
+  const releasedId = tracker.addUpgradeJob(tracker.getJob(releasedSource));
+  tracker.setPending(releasedId);
+  tracker.addUpgradeJob(tracker.getJob(addingSource));
+
+  tracker.reconcileCommittedJobs();
+
+  assert.deepEqual(tracker.peekPending().map((job) => job.id), [releasedId]);
 });
 
 test("worker does not select a job that is already active", () => {

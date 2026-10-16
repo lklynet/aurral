@@ -588,17 +588,9 @@ export class DownloadTracker {
       && entry.payload.albumGroupJobIds?.includes(jobId)) || null;
   }
 
-  // The download worker never takes an upgrade, so an upgrade an attempt
-  // gives back searches for its track at once.
   releaseFromAlbumGrab(id, reason = null, options = {}) {
     setActiveDownloadAttemptId(id, null);
-    if (!this.jobs.get(id)?.upgradeForJobId) return this.setPending(id, reason, options);
-    if (!this.setPending(id, reason)) return false;
-    this.pendingSet.delete(id);
-    this._removeFromPendingQueues(id);
-    this.setAlbumGrabAttempted(id, true);
-    this.enqueueDownloadPipeline(id);
-    return false;
+    return this.setPending(id, reason, options);
   }
 
   // Album attempts that ended on a step that failed every retry since the
@@ -617,9 +609,9 @@ export class DownloadTracker {
   }
 
   // A track that starts its search by release, so the worker resolves its
-  // release before it is queued. An upgrade reads its release where it is
-  // queued, a manual search never searches by release, and a track a release
-  // attempt already tried searches for itself.
+  // release before it is queued. The worker reads an upgrade's release when
+  // it starts the upgrade, a manual search never searches by release, and a
+  // track a release attempt already tried searches for itself.
   canSearchByRelease(job) {
     return !job.upgradeForJobId && searchesByRelease(job) && isAlbumGrabSourceConfigured();
   }
@@ -909,7 +901,10 @@ export class DownloadTracker {
     }
   }
 
+  // An upgrade waits for the worker only once the upgrade check releases it
+  // with the rest of its album, so a rebuild keeps only the released ones.
   _rebuildStatsByPlaylistType() {
+    const releasedUpgrades = new Set([...this.pendingSet].filter((id) => this.jobs.get(id)?.upgradeForJobId));
     this.statsByPlaylistType.clear();
     this.globalStats = this._emptyStats();
     this.pendingFreshQueue = [];
@@ -918,7 +913,7 @@ export class DownloadTracker {
     this.pendingRetrySet = new Set();
     for (const job of this.jobs.values()) {
       this._applyStatusDelta(job.playlistType, null, job.status);
-      if (job.status === "pending" && !job.upgradeForJobId) {
+      if (job.status === "pending" && (!job.upgradeForJobId || releasedUpgrades.has(job.id))) {
         this.pendingFreshQueue.push(job.id);
         this.pendingSet.add(job.id);
       }
