@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState, createMockHttpServer, resetDatabase } from "../helpers/backendTestHarness.js";
 
-const [state, { db }, { dbOps }, { downloadTracker }, { getDownloadClient }, { processPipelinePayload }] =
+const [state, { db }, { dbOps }, { downloadTracker, DownloadTracker }, { getDownloadClient }, { processPipelinePayload }] =
   await setupIsolatedBackend(
     "slskd-search-steps",
     "backend/config/db-sqlite.js",
@@ -309,6 +309,30 @@ test("a transfer that fails while Soulseek logs in is retried from the same peer
   assert.equal(resumed.candidateIndex, 0);
   assert.deepEqual(soulseek.enqueues, ["first-peer", "first-peer"]);
   assert.equal(transferHistoryCount(), 0);
+});
+
+test("a restart that drops an upgrade deletes the upgrade's running search from slskd", async (t) => {
+  const soulseek = await startSoulseek(t);
+  soulseek.loggedIn = true;
+  const doneId = downloadTracker.addJob({ artistName: "Restart Band", trackName: "Song",
+    albumName: "Restart Album", durationMs: 200000 }, "library");
+  downloadTracker.setDone(doneId, "/library/Restart Band/Restart Album/01 - Song.mp3");
+  const upgradeId = downloadTracker.addUpgradeJob(downloadTracker.getJob(doneId));
+  const searching = await processPipelinePayload({ phase: "search", source: "slskd", jobId: upgradeId,
+    upgradeForJobId: doneId });
+  const searchId = searching.activeSearch.id;
+  const trackedSearches = () => db.prepare(
+    "SELECT COUNT(*) AS count FROM weekly_flow_download_provider_work WHERE work_id = ?").get(searchId).count;
+  assert.deepEqual(soulseek.searches.map((search) => search.id), [searchId]);
+  assert.equal(trackedSearches(), 1);
+
+  downloadTracker.resetDownloadingToPending();
+  const restarted = new DownloadTracker();
+  assert.equal(restarted.getJob(upgradeId), null);
+
+  assert.equal(await processPipelinePayload(searching), null);
+  assert.deepEqual(soulseek.deleted, [`/api/v0/searches/${searchId}`]);
+  assert.equal(trackedSearches(), 0);
 });
 
 for (const phase of ["search", "download"]) {
