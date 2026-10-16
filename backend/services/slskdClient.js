@@ -237,6 +237,10 @@ function summarizeBatchFailures(failures) {
   return messages.length > 0 ? messages.join("; ") : "all files failed";
 }
 
+function searchStillQueuedError() {
+  return new Error("slskd is busy: the search is still waiting in its queue");
+}
+
 function soulseekLoggedOutError(detail) {
   const error = new Error(`${SOULSEEK_LOGGED_OUT_MESSAGE}: ${detail}`);
   error.code = SOULSEEK_LOGGED_OUT_CODE;
@@ -325,7 +329,7 @@ class SearchMonitor {
     this.gracePeriodMs = Math.max(0, Number(options.gracePeriodMs ?? DEFAULT_SEARCH_GRACE_PERIOD_MS));
     this.hardDeadline = Number(options.deadline) || Infinity;
     this.startWindows(Number(options.startedAt) || Date.now());
-    this.queued = options.queued === true;
+    this.queued = options.queued !== false;
     this.totalFiles = 0;
     this.hasSeenFiles = false;
     this.latest = null;
@@ -365,17 +369,15 @@ class SearchMonitor {
     return { done: true, data };
   }
 
-  expire() {
-    if (this.queued) throw new Error("slskd is busy: the search is still waiting in its queue");
-    return this.finish(this.latest);
-  }
-
   async poll({ earlyExitWhen, shouldCancel, signal } = {}) {
     const cancelled = () => signal?.aborted || shouldCancel?.();
     try {
       if (cancelled()) { await this.stop(); return { done: true, data: null }; }
       const cutoff = this.queued ? this.hardDeadline : this.cutoff();
-      if (Date.now() >= cutoff) return this.expire();
+      if (Date.now() >= cutoff) {
+        if (this.queued) throw searchStillQueuedError();
+        return this.finish(this.latest);
+      }
       let data;
       try {
         data = await this.client.getSearch(this.searchId, {
@@ -384,17 +386,19 @@ class SearchMonitor {
         });
       } catch (error) {
         if (cancelled()) { await this.stop(); return { done: true, data: null }; }
-        if (Date.now() >= cutoff) return this.expire();
+        if (Date.now() >= cutoff) {
+          if (this.queued) throw searchStillQueuedError();
+          return this.finish(this.latest);
+        }
         throw error;
       }
       if (cancelled()) { await this.stop(); return { done: true, data: null }; }
       // slskd runs a few searches at once and queues the rest. A queued search
-      // has not asked anyone yet, so its windows start once it runs, and it
-      // keeps its place in the queue instead of counting as no results.
+      // has not asked anyone yet, so its windows start once it runs.
       const wasQueued = this.queued;
       this.queued = isSearchQueued(data);
       if (this.queued) {
-        if (Date.now() >= this.hardDeadline) return this.expire();
+        if (Date.now() >= this.hardDeadline) throw searchStillQueuedError();
         return { done: false, data, waitMs: Math.min(2000, Math.max(1, this.hardDeadline - Date.now())) };
       }
       if (wasQueued) this.startWindows(Date.now());
