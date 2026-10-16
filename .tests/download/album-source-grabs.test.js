@@ -94,7 +94,7 @@ test("one Usenet NZB fills two sibling jobs", async (t) => {
   const append = t.mock.method(client, "appendNzb", async () => ({ nzbId: "nzb-one" }));
   t.mock.method(client, "getHistoryItem", async () => ({ Status: "SUCCESS", FinalDir: album.folder }));
   const candidate = { raw: { release: { title: "The Band - Album", guid: "release-one",
-    downloadUrl: "https://nzb.test/release" } }, score: 10, resolvedAlbumName: "Album" };
+    downloadUrl: "https://nzb.test/release" } }, score: 10, resolvedAlbumName: "Other Release" };
   const queued = await processUsenetPipelinePayload({ ...album.payload, candidates: [candidate],
     candidateIndex: 0 }, { failOrTryNextSource: (_, __, reason) => { throw new Error(reason); } });
   assert.equal(append.mock.callCount(), 1);
@@ -104,7 +104,7 @@ test("one Usenet NZB fills two sibling jobs", async (t) => {
   await processUsenetPipelinePayload(polled);
   for (const id of album.ids) {
     const job = downloadTracker.getJob(id);
-    assert.equal(job.status, "done");
+    assert.deepEqual([job.status, job.albumName], ["done", "Album"]);
     assert.ok((await stat(job.finalPath)).isFile());
   }
   const { getAurralHistoryRequests } = await import("../../backend/services/aurralHistoryService.js");
