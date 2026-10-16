@@ -364,8 +364,6 @@ function refreshJobs(jobs) {
   });
 }
 
-// Aurral records each slskd search it starts under its job before slskd sees
-// it. A restart can remove the job before any step stops the search.
 export async function stopOrphanedSlskdSearches() {
   const client = getDownloadClient("slskd");
   if (!client?.isConfigured?.()) return;
