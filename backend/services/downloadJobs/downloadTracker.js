@@ -1185,6 +1185,11 @@ export class DownloadTracker {
     return id;
   }
 
+  queueFirst(ids) {
+    const first = new Set(ids);
+    this.pendingFreshQueue = [...ids, ...this.pendingFreshQueue.filter((id) => !first.has(id))];
+  }
+
   addReplacementSearchJob(sourceJob) {
     if (!sourceJob?.id || sourceJob.status !== "done" || !sourceJob.finalPath) return null;
     if (this.findActiveUpgradeJob(sourceJob)) return null;

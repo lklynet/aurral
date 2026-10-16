@@ -193,9 +193,11 @@ async function prepareQualityUpgrade(job) {
 // Adds an album's upgrades with no wait between them, so the worker cannot
 // start one before the rest are there to join its release attempt. Each one
 // is checked again here, since the track may have changed while its release
-// details were read. Returns each one's status.
-async function addQualityUpgrades(prepared) {
+// details were read. `first` puts them ahead of upgrades already waiting.
+// Returns each one's status.
+async function addQualityUpgrades(prepared, { first = false } = {}) {
   const { recordTrackJobQueued } = await import("./aurralHistoryService.js");
+  const queuedIds = [];
   const statuses = prepared.map(({ sourceJobId, context }) => {
     const source = downloadTracker.getJob(sourceJobId);
     const blocker = upgradeBlocker(source);
@@ -205,9 +207,11 @@ async function addQualityUpgrades(prepared) {
     downloadTracker.updateMetadata(upgradeJobId, context);
     downloadTracker.markQualityUpgradeChecked(sourceJobId);
     recordTrackJobQueued(downloadTracker.getJob(upgradeJobId));
+    queuedIds.push(upgradeJobId);
     return "queued";
   });
-  if (statuses.includes("queued")) {
+  if (first) downloadTracker.queueFirst(queuedIds);
+  if (queuedIds.length > 0) {
     const { wakeDownloadWorker } = await import("./downloadJobs/mutationGuards.js");
     await wakeDownloadWorker();
   }
@@ -217,7 +221,7 @@ async function addQualityUpgrades(prepared) {
 export async function queueQualityUpgrade(job) {
   const prepared = await prepareQualityUpgrade(job);
   if (prepared.status) return prepared.status;
-  const [status] = await addQualityUpgrades([prepared]);
+  const [status] = await addQualityUpgrades([prepared], { first: true });
   return status;
 }
 
