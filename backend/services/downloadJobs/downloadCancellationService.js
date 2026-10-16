@@ -1,5 +1,6 @@
 import { getDownloadClient } from "../download/downloadClientSettings.js";
 import { deemixQueueIds } from "../deemixClient.js";
+import { mapWithConcurrency } from "../discovery/helpers.js";
 import {
   getHonkerQueueByName,
   listHonkerJobs,
@@ -368,7 +369,7 @@ export async function stopOrphanedSlskdSearches() {
   const client = getDownloadClient("slskd");
   if (!client?.isConfigured?.()) return;
   const failures = [];
-  await Promise.all(listOrphanedDownloadProviderWork("slskd-search").map((searchId) => attemptProviderCleanup(
+  await mapWithConcurrency(listOrphanedDownloadProviderWork("slskd-search"), 4, (searchId) => attemptProviderCleanup(
     failures,
     "slskd",
     "Could not stop a search left by a removed download",
@@ -379,7 +380,7 @@ export async function stopOrphanedSlskdSearches() {
       }
       clearDownloadProviderWork({ provider: "slskd-search", workId: searchId });
     },
-  )));
+  ));
   throwProviderCleanupFailures("slskd", failures);
 }
 
