@@ -677,7 +677,7 @@ test("a compilation track takes a single by its own artist from Usenet", () => {
 async function runUntilSettled(payload) {
   const helpers = { failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }) };
   let result = payload;
-  while (["search", "download"].includes(result?.phase)) result = await processUsenetPipelinePayload(result, helpers);
+  while (["search", "download", "poll"].includes(result?.phase)) result = await processUsenetPipelinePayload(result, helpers);
   return result;
 }
 
@@ -741,4 +741,40 @@ test("an indexer that answers HTTP 429 gets no NZB request from any job until it
   t.mock.timers.tick(30 * 60 * 1000);
   await run("Limited Four");
   assert.deepEqual(requests.slice(4), ["/2/Limited-Four"]);
+});
+
+test("a track spends its two NZB grabs on indexers that answer, not on ones that are limited", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2000-01-02T12:00:00Z") });
+  const requests = [];
+  const server = await createMockHttpServer((req, res) => {
+    requests.push(req.url);
+    const retryAfter = { 1: "600", 2: "0" }[req.url.split("/")[1]];
+    if (retryAfter) {
+      res.writeHead(429, { "Retry-After": retryAfter, "Content-Type": "text/xml" });
+      res.end('<error code="429" description="Grab limit reached"/>');
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/x-nzb" });
+    res.end('<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"></nzb>');
+  });
+  t.after(() => server.close());
+  t.mock.method(prowlarrClient, "getEnabledUsenetIndexers", async () => []);
+  t.mock.method(prowlarrClient, "search", async (query) => {
+    const artistName = query.split(" ").slice(0, 2).join(" ");
+    return trackReleases(artistName, (indexerId) => `${server.url}/${indexerId}/${artistName.replace(" ", "-")}`);
+  });
+  const appended = t.mock.method(nzbgetClient, "appendNzb", async () => ({ nzbId: requests.length }));
+  t.mock.method(nzbgetClient, "getHistoryItem", async (nzbId) => ({ NZBID: nzbId, Status: "FAILURE/HEALTH" }));
+  t.mock.method(nzbgetClient, "deleteQueueItem", async () => true);
+  t.mock.method(nzbgetClient, "deleteHistoryItem", async () => true);
+  const run = (artistName) => runUntilSettled({ phase: "search", source: "usenet",
+    jobId: downloadTracker.addJob({ artistName, trackName: "Atomic", durationMs: 230000 }, "usenet-grab-slots") });
+
+  const first = await run("Grab One");
+  assert.deepEqual(requests, ["/1/Grab-One", "/2/Grab-One", "/3/Grab-One", "/4/Grab-One"]);
+  assert.equal(first.error, "Usenet download failed: FAILURE/HEALTH");
+
+  await run("Grab Two");
+  assert.deepEqual(requests.slice(4), ["/2/Grab-Two", "/3/Grab-Two", "/4/Grab-Two"]);
+  assert.equal(appended.mock.callCount(), 4);
 });
