@@ -190,12 +190,7 @@ async function prepareQualityUpgrade(job) {
   return { sourceJobId: current.id, context: await readUpgradeSearchContext(current) };
 }
 
-// Adds an album's upgrades with no wait between them, so the worker cannot
-// start one before the rest are there to join its release attempt. Each one
-// is checked again here, since the track may have changed while its release
-// details were read. `first` puts them ahead of upgrades already waiting.
-// Returns each one's status.
-async function addQualityUpgrades(prepared, { first = false } = {}) {
+async function addUpgradesAtOnce(prepared, { aheadOfWaiting = false } = {}) {
   const { recordTrackJobQueued } = await import("./aurralHistoryService.js");
   const queuedIds = [];
   const statuses = prepared.map(({ sourceJobId, context }) => {
@@ -210,7 +205,7 @@ async function addQualityUpgrades(prepared, { first = false } = {}) {
     queuedIds.push(upgradeJobId);
     return "queued";
   });
-  if (first) downloadTracker.queueFirst(queuedIds);
+  if (aheadOfWaiting) downloadTracker.queueFirst(queuedIds);
   if (queuedIds.length > 0) {
     const { wakeDownloadWorker } = await import("./downloadJobs/mutationGuards.js");
     await wakeDownloadWorker();
@@ -221,7 +216,7 @@ async function addQualityUpgrades(prepared, { first = false } = {}) {
 export async function queueQualityUpgrade(job) {
   const prepared = await prepareQualityUpgrade(job);
   if (prepared.status) return prepared.status;
-  const [status] = await addQualityUpgrades([prepared], { first: true });
+  const [status] = await addUpgradesAtOnce([prepared], { aheadOfWaiting: true });
   return status;
 }
 
@@ -321,7 +316,7 @@ export async function runQualityUpgradeCheck({ force = false, playlistIds = null
       prepared.push(upgrade);
       addedByOwner.set(counted, (addedByOwner.get(counted) || 0) + 1);
     }
-    queued += (await addQualityUpgrades(prepared)).filter((status) => status === "queued").length;
+    queued += (await addUpgradesAtOnce(prepared)).filter((status) => status === "queued").length;
   }
   return queued;
 }

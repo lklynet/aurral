@@ -632,8 +632,6 @@ test("Search all starts the upgrades of one release's tracks from different requ
   assert.equal(downloadTracker.getAll().some((job) => job.upgradeForJobId), false);
 });
 
-// The worker runs at concurrency 1, and a search it starts stays in its
-// search phase until `endSearch` moves every search on.
 async function gateUpgradeSearches(t, groups) {
   await downloadWorker.waitForIdle();
   if (downloadWorker.running) await downloadWorker.stopAndDrain();
@@ -677,7 +675,7 @@ async function gateUpgradeSearches(t, groups) {
       .map((entry) => downloadTracker.getJob(entry.payload.jobId)?.upgradeForJobId),
     waiting: () => downloadTracker.getAll().filter((job) => job.upgradeForJobId && job.status === "pending"
       && !downloadTracker.isSlskdDispatched(job.id)).map((job) => job.upgradeForJobId),
-    endSearch: async () => {
+    moveSearchesToPoll: async () => {
       const nextSearch = new Promise((resolve) => {
         searchQueued = resolve;
       });
@@ -700,7 +698,7 @@ test("Search all leaves its upgrades to the download worker, which starts one al
   await downloadWorker.waitForIdle();
   assert.deepEqual(gate.searching(), [sourceIds[0]]);
 
-  await gate.endSearch();
+  await gate.moveSearchesToPoll();
   assert.deepEqual(gate.searching(), [sourceIds[1]]);
   assert.deepEqual(gate.waiting(), [sourceIds[2]]);
 });
@@ -718,7 +716,7 @@ test("an upgrade asked for while Search all's upgrades wait for the worker start
   await downloadWorker.waitForIdle();
   assert.deepEqual(gate.searching(), [backlog[0]]);
 
-  await gate.endSearch();
+  await gate.moveSearchesToPoll();
   assert.deepEqual(gate.searching(), [askedFor]);
   assert.deepEqual(gate.waiting().sort(), backlog.slice(1).sort());
 });
