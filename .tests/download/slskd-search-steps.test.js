@@ -111,6 +111,29 @@ test("a Soulseek search that slskd keeps queued past five minutes waits for it t
   assert.match(ran.candidates[0].raw.file, /Queued Album\\01 - Song\.flac$/);
 });
 
+test("a Soulseek search that starts running just before its monitor is rebuilt keeps its results", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  const responses = folderResponses("Late Band", "Late Album", ["Song"]);
+  const createdAt = Date.now();
+  const { created } = mockSearch(t, []);
+  t.mock.method(client, "getSearch", async () => {
+    const elapsed = Date.now() - createdAt;
+    if (elapsed < 9 * 60 * 1000 + 50000) return { state: "Queued", responses: [] };
+    if (elapsed < 10 * 60 * 1000 + 30000) return { state: "InProgress", fileCount: 3, responses: [] };
+    return { state: "Completed, Succeeded", fileCount: 3, responses };
+  });
+  const jobId = downloadTracker.addJob({ artistName: "Late Band", trackName: "Song", durationMs: 200000 }, "library");
+
+  let next = await processPipelinePayload({ phase: "search", source: "slskd", jobId });
+  while (next?.phase === "search" && Date.now() - createdAt < 15 * 60 * 1000) {
+    t.mock.timers.tick(next.delaySeconds * 1000);
+    next = await processPipelinePayload(next);
+  }
+  assert.equal(next.phase, "download");
+  assert.equal(created.mock.callCount(), 1);
+  assert.match(next.candidates[0].raw.file, /Late Album\\01 - Song\.flac$/);
+});
+
 test("tracks from one album reuse the album search", async (t) => {
   const responses = folderResponses("Shared Band", "Shared Album", ["First", "Second"]);
   const { created } = mockSearch(t, [{ state: "Completed, Succeeded", fileCount: 6, responses }]);
