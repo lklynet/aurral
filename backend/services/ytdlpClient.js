@@ -166,7 +166,7 @@ function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel, signal } = {}) 
       if (settled) return;
       settled = true;
       clearTimers();
-      if (terminationError) {
+      if (terminationError && code !== 0) {
         signalProcess("SIGKILL");
         reject(terminationError);
         return;
@@ -271,7 +271,7 @@ async function searchSongs(query, { limit, wanted = () => true, decided = () => 
     const songs = [];
     for (let first = 0; first < listed.length && !stop.signal.aborted; first += SONG_READ_BATCH) {
       await Promise.all(listed.slice(first, first + SONG_READ_BATCH).map((entry, offset) => runYtdlp(
-        ["--skip-download", "--dump-json", "--no-warnings", "--extractor-args", "youtube:skip=hls", "--", songUrl(entry.id)],
+        ["--skip-download", "--dump-json", "--no-warnings", "--", songUrl(entry.id)],
         { signal: stop.signal },
       ).then(({ stdout: read }) => { songs[first + offset] = readSong(read, entry); }, (error) => {
         logger.warn("ytdlp", "Could not read YouTube Music song", {

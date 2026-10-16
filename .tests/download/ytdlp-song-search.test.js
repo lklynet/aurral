@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { access, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseFile } from "music-metadata";
@@ -116,17 +117,26 @@ async function readPid(id) {
   return line ? Number(line.split(" ")[0]) : null;
 }
 
-const isRunning = (pid) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 async function waitFor(condition) {
-  while (!(await condition())) await new Promise((resolve) => setImmediate(resolve));
+  let value;
+  while (!(value = await condition())) await new Promise((resolve) => setImmediate(resolve));
+  return value;
+}
+
+const startedPid = (id) => waitFor(() => readPid(id));
+
+function hasExited(pid) {
+  try {
+    return execFileSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim().startsWith("Z");
+  } catch {
+    return true;
+  }
+}
+
+// Waits without yielding, so the search has not yet handled the exits.
+function waitForExit(pids) {
+  const giveUp = Date.now() + 10000;
+  while (!pids.every(hasExited)) assert.ok(Date.now() < giveUp, `yt-dlp ${pids} did not exit`);
 }
 
 function warnings(t) {
@@ -180,7 +190,7 @@ test("yt-dlp keeps reading a song that finishes 10 seconds into the YouTube Musi
   const searching = search({
     artistName: "Daft Punk", trackName: "Get Lucky", albumName: "Random Access Memories", durationMs: 369000,
   });
-  await waitFor(async () => (await calls()).includes("read 4D7u5KF7SP8"));
+  await startedPid("4D7u5KF7SP8");
   t.mock.timers.tick(10000);
   const { next } = await searching;
   assert.equal(next.phase, "download", next.failed);
@@ -192,10 +202,9 @@ test("yt-dlp keeps the songs a stalled read's batch holds at the search deadline
   await useFixtures((fixtures) => { fixtures.songs["5oWyMakvQew"].delay = 600000; });
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const searching = search({ artistName: "Fleetwood Mac", trackName: "Dreams", albumName: "Rumours", durationMs: 257000 });
-  await waitFor(async () => {
-    const pids = await Promise.all(["swJOIjjW69U", "m8i5WiWCN-c", "5oWyMakvQew"].map(readPid));
-    return pids.every(Boolean) && !isRunning(pids[0]) && !isRunning(pids[1]);
-  });
+  const [read, readToo] = await Promise.all(["swJOIjjW69U", "m8i5WiWCN-c"].map(startedPid));
+  await startedPid("5oWyMakvQew");
+  waitForExit([read, readToo]);
   t.mock.timers.tick(60000);
   const { next } = await searching;
   assert.deepEqual(choices(next), [["swJOIjjW69U", "accept"], ["m8i5WiWCN-c", "verify"]]);
@@ -216,8 +225,7 @@ test("yt-dlp gives up on a stalled song read at the search deadline and searches
     artistName: "宇多田ヒカル", artistAliases: ["Utada Hikaru", "Hikaru Utada"],
     trackName: "First Love", albumName: "First Love", durationMs: 257000,
   });
-  await waitFor(async () => (await calls()).includes("read BGMfbFzONp8"));
-  const stalled = await readPid("BGMfbFzONp8");
+  const stalled = await startedPid("BGMfbFzONp8");
   t.mock.timers.tick(60000);
   const { next } = await searching;
   assert.equal(next.candidates[0].raw.id, "o1sUaVJUeB0");
