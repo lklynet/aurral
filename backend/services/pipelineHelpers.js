@@ -49,6 +49,8 @@ const HELD_METADATA_KEYS = [
   "downloadClientId",
   "releaseGuid",
   "releaseTitle",
+  "indexerId",
+  "indexerName",
   "remoteUsername",
   "remoteFilename",
 ];

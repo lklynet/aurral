@@ -1,8 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
-const [state, { db }, { dbOps }, { downloadTracker }, { getDownloadClient }, { processPipelinePayload }] =
+const [state, { db }, { dbOps }, { downloadTracker }, { getDownloadClient }, { processPipelinePayload },
+  { holdForReview }] =
   await setupIsolatedBackend(
     "source-switch-metadata",
     "backend/config/db-sqlite.js",
@@ -10,6 +13,7 @@ const [state, { db }, { dbOps }, { downloadTracker }, { getDownloadClient }, { p
     "backend/services/downloadJobs/downloadTracker.js",
     "backend/services/download/downloadClientSettings.js",
     "backend/services/downloadPipeline.js",
+    "backend/services/pipelineHelpers.js",
   );
 
 test.after(() => cleanupIsolatedState(state));
@@ -28,10 +32,19 @@ function storedMetadata(jobId) {
     remote_filename AS remoteFilename FROM playlist_download_jobs WHERE id = ?`).get(jobId) };
 }
 
-test("a job that moves from yt-dlp to slskd names only slskd's download", async (t) => {
+function useOnlySources(t, ...sources) {
   for (const id of ["slskd", "deemix", "ytdlp", "nzbget", "sabnzbd"]) {
-    t.mock.method(getDownloadClient(id), "isConfigured", () => ["ytdlp", "slskd"].includes(id));
+    t.mock.method(getDownloadClient(id), "isConfigured", () => sources.includes(id));
   }
+}
+
+function jobMetadata(jobId) {
+  const job = downloadTracker.getJob(jobId);
+  return Object.fromEntries(METADATA_KEYS.map((key) => [key, job[key] ?? null]));
+}
+
+test("a job that moves from yt-dlp to slskd names only slskd's download", async (t) => {
+  useOnlySources(t, "ytdlp", "slskd");
   t.mock.method(getDownloadClient("ytdlp"), "downloadAudio", async () => ({ filePath: "" }));
   const slskd = getDownloadClient("slskd");
   t.mock.method(slskd, "enqueueBatch", async ({ username }) => ({ username, transfers: [{ id: "transfer-1" }] }));
@@ -62,6 +75,38 @@ test("a job that moves from yt-dlp to slskd names only slskd's download", async 
     remoteFilename: "Music\\The Cure\\Boys Don't Cry.flac",
   };
   assert.deepEqual(storedMetadata(jobId), expected);
-  const job = downloadTracker.getJob(jobId);
-  assert.deepEqual(Object.fromEntries(METADATA_KEYS.map((key) => [key, job[key] ?? null])), expected);
+  assert.deepEqual(jobMetadata(jobId), expected);
+});
+
+test("a Usenet file held while slskd is tried goes to review with its own release and indexer", async (t) => {
+  useOnlySources(t, "nzbget", "slskd");
+  t.mock.method(getDownloadClient("slskd"), "enqueueBatch", async () => { throw new Error("peer refused"); });
+  const jobId = downloadTracker.addJob({ artistName: "The Cure", trackName: "Fire in Cairo" }, "library");
+  downloadTracker.setDownloading(jobId);
+  const usenet = {
+    downloadSource: "usenet",
+    downloadClient: "nzbget",
+    downloadClientId: "41",
+    releaseGuid: "nzb-guid",
+    releaseTitle: "The.Cure-Boys.Dont.Cry-FLAC",
+    indexerId: "3",
+    indexerName: "Indexer",
+    remoteUsername: "Indexer",
+    remoteFilename: "The.Cure-Boys.Dont.Cry-FLAC",
+  };
+  downloadTracker.updateDownloadMetadata(jobId, usenet);
+  const sourcePath = path.join(state.baseDir, "held-usenet", "Fire in Cairo.flac");
+  await mkdir(path.dirname(sourcePath), { recursive: true });
+  await writeFile(sourcePath, "held");
+  const heldForReview = holdForReview(downloadTracker.getJob(jobId), { source: "usenet", sourcePath,
+    reason: "Duration differs", transferId: "41" });
+
+  const next = await processPipelinePayload({ jobId, source: "slskd", phase: "download", candidateIndex: 0,
+    triedSources: ["usenet"], heldForReview,
+    candidates: [{ raw: { user: "peer", file: "Music\\The Cure\\Fire in Cairo.flac", size: 30000000 } }] });
+
+  assert.equal(next, null);
+  assert.equal(downloadTracker.getJob(jobId).status, "blocked");
+  assert.deepEqual(storedMetadata(jobId), usenet);
+  assert.deepEqual(jobMetadata(jobId), usenet);
 });
