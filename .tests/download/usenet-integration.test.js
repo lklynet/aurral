@@ -760,3 +760,25 @@ test("a track spends its two NZB grabs on indexers that answer, not on ones that
   assert.deepEqual(requests.slice(4), ["/2/Grab-Two", "/3/Grab-Two", "/4/Grab-Two"]);
   assert.equal(appended.mock.callCount(), 4);
 });
+
+test("a track spends a grab on a broken NZB but not on a Newznab error", async (t) => {
+  const requests = [];
+  const server = await createMockHttpServer((req, res) => {
+    requests.push(req.url);
+    res.writeHead(200, { "Content-Type": "application/x-nzb" });
+    res.end(["1", "2"].includes(req.url.split("/")[1])
+      ? '<?xml version="1.0"?><error code="300" description="No such item"/>'
+      : '<?xml version="1.0"?><nz');
+  });
+  t.after(() => server.close());
+  t.mock.method(prowlarrClient, "getEnabledUsenetIndexers", async () => []);
+  t.mock.method(prowlarrClient, "search", async () =>
+    trackReleases("Broken Grab", (indexerId) => `${server.url}/${indexerId}/broken`));
+  const jobId = downloadTracker.addJob({ artistName: "Broken Grab", trackName: "Atomic", durationMs: 230000 },
+    "usenet-broken-nzb");
+
+  const result = await runUntilSettled({ phase: "search", source: "usenet", jobId });
+
+  assert.deepEqual(requests, ["/1/broken", "/2/broken", "/3/broken", "/4/broken"]);
+  assert.equal(result.error, "The indexer did not return an NZB file");
+});
