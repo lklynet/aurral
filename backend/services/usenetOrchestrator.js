@@ -46,7 +46,7 @@ import { attemptTrackRequest } from "./releaseManifest.js";
 import { attemptRelease } from "./releaseResolver.js";
 
 const MIN_USENET_CANDIDATES = 2;
-const MAX_DOWNLOAD_CANDIDATES = 5;
+const MAX_ALBUM_NZB_GRABS = 5;
 const MAX_TRACK_NZB_GRABS = 2;
 const POLL_DELAY_SECONDS = 5;
 const MAX_MISSING_POLLS = 60;
@@ -386,7 +386,7 @@ async function handleUsenetSearch(payload, helpers) {
     readName: (entry) => entry?.raw?.release?.title,
     },
   );
-  const candidates = selectRankedUsenetCandidates(qualityRanked, albumGrab ? MAX_DOWNLOAD_CANDIDATES : MAX_TRACK_NZB_GRABS).map((entry) => ({
+  const candidates = selectRankedUsenetCandidates(qualityRanked, albumGrab ? MAX_ALBUM_NZB_GRABS : MAX_TRACK_NZB_GRABS).map((entry) => ({
     raw: entry.raw,
     score: entry.score,
     scores: entry.scores,
