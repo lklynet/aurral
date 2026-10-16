@@ -15,7 +15,8 @@ const [state, { dbOps, userOps }, { downloadTracker }, { getDownloadClient },
   { buildSlskdRankingHistoryOptions }, { prowlarrClient },
   { beginDownloadAttempt, getActiveDownloadAttemptId, setActiveDownloadAttemptId },
   { queueQualityUpgrade, runQualityUpgradeCheck }, { resolveDownloadRoot }, { registerJobs },
-  { flowPlaylistConfig }] = await setupIsolatedBackend(
+  { flowPlaylistConfig }, { getHonkerDb, getPipelineQueue, listHonkerJobs },
+  { stopDownloadPipelineWorker }] = await setupIsolatedBackend(
   "album-source-grabs",
   "backend/db/helpers/index.js",
   "backend/services/downloadJobs/downloadTracker.js",
@@ -30,6 +31,8 @@ const [state, { dbOps, userOps }, { downloadTracker }, { getDownloadClient },
   "backend/services/downloadPaths.js",
   "backend/routes/playlists/handlers/jobs.js",
   "backend/services/playlists/flowPlaylistConfig.js",
+  "backend/services/honkerDb.js",
+  "backend/services/downloadPipelineWorker.js",
 );
 
 test.after(async () => {
@@ -556,11 +559,8 @@ test("an upgrade whose user is disabled while the upgrade check runs is not held
     [upgrades.sourceIds[0]]);
 });
 
-test("Search all starts the upgrades of one release's tracks from different requests in the Library and a static playlist as one attempt and one Usenet download, and both land", async (t) => {
-  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Upgrade mix" });
-  const upgrades = await releaseUpgrades(t, "upgrade-all-release",
-    { requestGroupIds: [null, "playlist-request"], owners: ["library", playlist.id] });
-  const { append } = mockNzbget(t, upgrades.folder);
+// Selects Search all on Wanted > Cutoff unmet as an admin.
+async function searchAllUpgrades(t) {
   const app = express();
   app.use((req, _res, next) => {
     req.user = { role: "admin" };
@@ -573,9 +573,17 @@ test("Search all starts the upgrades of one release's tracks from different requ
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
   t.after(() => server.close());
-
   const response = await fetch(`http://127.0.0.1:${server.address().port}/quality-upgrades`, { method: "POST" });
-  assert.equal((await response.json()).queued, 2);
+  return response.json();
+}
+
+test("Search all starts the upgrades of one release's tracks from different requests in the Library and a static playlist as one attempt and one Usenet download, and both land", async (t) => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Upgrade mix" });
+  const upgrades = await releaseUpgrades(t, "upgrade-all-release",
+    { requestGroupIds: [null, "playlist-request"], owners: ["library", playlist.id] });
+  const { append } = mockNzbget(t, upgrades.folder);
+
+  assert.equal((await searchAllUpgrades(t)).queued, 2);
   assert.equal(upgrades.queued.length, 1);
   const [attempt] = upgrades.queued;
   assert.deepEqual(attempt.albumGroupJobIds.map((id) => downloadTracker.getJob(id).upgradeForJobId), upgrades.sourceIds);
@@ -586,6 +594,59 @@ test("Search all starts the upgrades of one release's tracks from different requ
   assert.deepEqual(upgrades.landed(),
     [["done", "01 - First.flac", "flac-standard"], ["done", "02 - Second.flac", "flac-standard"]]);
   assert.equal(downloadTracker.getAll().some((job) => job.upgradeForJobId), false);
+});
+
+test("Search all leaves its upgrades to the download worker, which starts one album's search at a time at concurrency 1", async (t) => {
+  for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
+  const clearSearches = () => {
+    const transaction = getHonkerDb().transaction();
+    transaction.execute("DELETE FROM _honker_live WHERE queue = 'slskd-pipeline'");
+    transaction.commit();
+  };
+  clearSearches();
+  const groups = ["gated-first", "gated-second", "gated-third"];
+  await serveGroups(t, groups.map((group) => brainzmashGroup({ id: group, title: group, artist: "The Band",
+    artistId: "the-band", releases: [{ id: `${group}-release`, tracks: [{ title: "Only", durationMs: 1000 }] }] })));
+  useSlskd();
+  const { concurrency } = downloadWorker.getWorkerSettings();
+  downloadWorker.updateWorkerSettings({ concurrency: 1 });
+  const sourceIds = groups.map((group) => {
+    const id = downloadTracker.addJob({ artistName: "The Band", albumName: group, albumMbid: group,
+      releaseMbid: `${group}-release`, trackName: "Only", trackNumber: 1, durationMs: 1000 }, "library");
+    downloadTracker.setDone(id, join(resolveDownloadRoot(), "The Band", group, "01 - Only.mp3"), group);
+    downloadTracker.updateQuality(id, { tier: "mp3-128" });
+    return id;
+  });
+  let searchQueued = () => {};
+  t.mock.method(downloadTracker, "enqueuePipeline", (payload) => {
+    getPipelineQueue().enqueue(payload, { runAt: Math.floor(Date.now() / 1000) + 3600 });
+    searchQueued();
+  });
+  t.after(async () => {
+    await downloadWorker.stopAndDrain();
+    await stopDownloadPipelineWorker();
+    downloadWorker.updateWorkerSettings({ concurrency });
+    for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
+    clearSearches();
+  });
+  const searching = () => listHonkerJobs("slskd-pipeline").filter((entry) => entry.payload?.phase === "search")
+    .map((entry) => downloadTracker.getJob(entry.payload.jobId)?.upgradeForJobId);
+
+  assert.equal((await searchAllUpgrades(t)).queued, 3);
+  await downloadWorker.waitForIdle();
+  assert.deepEqual(searching(), [sourceIds[0]]);
+
+  const nextSearch = new Promise((resolve) => {
+    searchQueued = resolve;
+  });
+  const transaction = getHonkerDb().transaction();
+  transaction.execute("UPDATE _honker_live SET payload = json_set(payload, '$.phase', 'poll') WHERE queue = 'slskd-pipeline'");
+  transaction.commit();
+  await nextSearch;
+  await downloadWorker.waitForIdle();
+  assert.deepEqual(searching(), [sourceIds[1]]);
+  assert.deepEqual(downloadTracker.getAll().filter((job) => job.upgradeForJobId && job.status === "pending"
+    && !downloadTracker.isSlskdDispatched(job.id)).map((job) => job.upgradeForJobId), [sourceIds[2]]);
 });
 
 test("the upgrade check starts each album's upgrades before it adds the next album's, and removes the ones it could not start", async (t) => {
