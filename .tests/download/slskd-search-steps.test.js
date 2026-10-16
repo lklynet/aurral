@@ -361,7 +361,7 @@ test("after a restart Aurral deletes only its slskd searches whose jobs no longe
   downloadTracker.resetDownloadingToPending();
   new DownloadTracker();
   soulseek.down = true;
-  await assert.rejects(processSystemTask({ kind: "slskd-search-cleanup" }));
+  await assert.rejects(processSystemTask({ kind: "slskd-search-cleanup" }), { message: "Could not cancel slskd work" });
   assert.deepEqual(trackedSlskdSearchIds(), [dropped.activeSearch.id, live.activeSearch.id].sort());
 
   soulseek.down = false;

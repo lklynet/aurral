@@ -149,7 +149,7 @@ async function cancelSlskdWork(payloads, jobs, providerWork = []) {
     });
     throw new Error("slskd is not configured; tracked work cannot be cancelled");
   }
-  for (const searchId of searchIds) {
+  await mapWithConcurrency([...searchIds], 4, async (searchId) => {
     const deleted = await attemptProviderCleanup(
       failures,
       "slskd",
@@ -162,7 +162,7 @@ async function cancelSlskdWork(payloads, jobs, providerWork = []) {
       },
     );
     if (deleted) clearDownloadProviderWork({ provider: "slskd-search", workId: searchId });
-  }
+  });
   for (const transfer of transfers.values()) {
     await attemptProviderCleanup(
       failures,
@@ -366,22 +366,8 @@ function refreshJobs(jobs) {
 }
 
 export async function stopOrphanedSlskdSearches() {
-  const client = getDownloadClient("slskd");
-  if (!client?.isConfigured?.()) return;
-  const failures = [];
-  await mapWithConcurrency(listOrphanedDownloadProviderWork("slskd-search"), 4, (searchId) => attemptProviderCleanup(
-    failures,
-    "slskd",
-    "Could not stop a search left by a removed download",
-    { searchId },
-    async () => {
-      if (!(await client.deleteSearch(searchId, { timeout: 20000 }))) {
-        throw new Error("slskd did not confirm search cancellation");
-      }
-      clearDownloadProviderWork({ provider: "slskd-search", workId: searchId });
-    },
-  ));
-  throwProviderCleanupFailures("slskd", failures);
+  if (!getDownloadClient("slskd")?.isConfigured?.()) return;
+  await cancelSlskdWork([], [], listOrphanedDownloadProviderWork("slskd-search"));
 }
 
 export function markDownloadWorkCancelledForJobs(jobs = []) {

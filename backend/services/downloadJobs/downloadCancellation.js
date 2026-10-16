@@ -227,13 +227,14 @@ export function listDownloadProviderWork({
 }
 
 const orphanedProviderWorkStmt = db.prepare(
-  `SELECT DISTINCT work_id FROM weekly_flow_download_provider_work AS work
+  `SELECT job_id, playlist_id, provider, work_id, username, created_at
+   FROM weekly_flow_download_provider_work AS work
    WHERE provider = ? AND NOT EXISTS (SELECT 1 FROM playlist_download_jobs AS job WHERE job.id = work.job_id)
-   ORDER BY work_id`,
+   ORDER BY created_at, work_id`,
 );
 
 export function listOrphanedDownloadProviderWork(provider) {
-  return orphanedProviderWorkStmt.all(normalizeId(provider)).map((row) => row.work_id);
+  return orphanedProviderWorkStmt.all(normalizeId(provider));
 }
 
 export function clearDownloadProviderWork({ provider, workId } = {}) {
