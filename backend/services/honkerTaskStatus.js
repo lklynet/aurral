@@ -114,13 +114,9 @@ export const SYSTEM_TASK_LABELS = {
     label: "Startup playlist reuse repair",
     description: "Checks reusable playlist links after Aurral starts.",
   },
-  "slskd-search-cleanup": {
-    label: "Startup Soulseek search cleanup",
-    description: "Stops slskd searches Aurral started for downloads that no longer exist.",
-  },
   "weekly-flow-startup-check": {
     label: "Startup playlist schedule check",
-    description: "Resumes pending playlist work after Aurral starts.",
+    description: "Resumes pending playlist work after Aurral starts, then stops slskd searches left by downloads that no longer exist.",
   },
   "playlist-startup-publish": {
     label: "Startup playlist publish",
