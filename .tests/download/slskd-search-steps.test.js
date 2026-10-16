@@ -116,7 +116,8 @@ test("a Soulseek search that starts running just before its monitor is rebuilt k
   const responses = folderResponses("Late Band", "Late Album", ["Song"]);
   const createdAt = Date.now();
   const { created } = mockSearch(t, []);
-  t.mock.method(client, "getSearch", async () => {
+  t.mock.method(client, "getSearch", async (id, options) => {
+    if (options.timeout < 50) throw new Error("This operation was aborted");
     const elapsed = Date.now() - createdAt;
     if (elapsed < 9 * 60 * 1000 + 50000) return { state: "Queued", responses: [] };
     if (elapsed < 10 * 60 * 1000 + 30000) return { state: "InProgress", fileCount: 3, responses: [] };
