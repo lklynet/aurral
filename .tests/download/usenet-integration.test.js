@@ -706,7 +706,7 @@ test("a Usenet track search fetches at most two NZBs before it tries the next so
 });
 
 test("an indexer that answers HTTP 429 gets no NZB request from any job until its Retry-After passes", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-15T12:00:00Z") });
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2000-01-01T12:00:00Z") });
   const requests = [];
   const server = await createMockHttpServer((req, res) => {
     requests.push(req.url);
@@ -723,22 +723,22 @@ test("an indexer that answers HTTP 429 gets no NZB request from any job until it
   t.mock.method(prowlarrClient, "search", async (query) => {
     const artistName = query.split(" ").slice(0, 2).join(" ");
     return trackReleases(artistName, (indexerId) => `${server.url}/${indexerId}/${artistName.replace(" ", "-")}`)
-      .filter((release) => release.indexerId <= 2);
+      .filter((release) => release.indexerId <= (artistName === "Limited Two" ? 1 : 2));
   });
   const run = (artistName) => runUntilSettled({ phase: "search", source: "usenet",
     jobId: downloadTracker.addJob({ artistName, trackName: "Atomic", durationMs: 230000 }, "usenet-rate-limit") });
 
   const first = await run("Limited One");
   const second = await run("Limited Two");
-  assert.deepEqual(requests, ["/1/Limited-One", "/2/Limited-One", "/2/Limited-Two"]);
+  assert.deepEqual(requests, ["/1/Limited-One", "/2/Limited-One"]);
   assert.equal(first.error, "The indexer did not return an NZB file");
-  assert.equal(second.error, "The indexer did not return an NZB file");
+  assert.equal(second.error, "Indexer 1 has reached its NZB limit. Aurral will ask it again in 10 minutes.");
 
   t.mock.timers.tick(601 * 1000);
   await run("Limited Three");
-  assert.deepEqual(requests.slice(3), ["/1/Limited-Three", "/2/Limited-Three"]);
+  assert.deepEqual(requests.slice(2), ["/1/Limited-Three", "/2/Limited-Three"]);
 
   t.mock.timers.tick(30 * 60 * 1000);
   await run("Limited Four");
-  assert.deepEqual(requests.slice(5), ["/2/Limited-Four"]);
+  assert.deepEqual(requests.slice(4), ["/2/Limited-Four"]);
 });

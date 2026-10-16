@@ -19,7 +19,9 @@ function readRetryAfterMs(value) {
 }
 
 function nzbLimitError(indexer, until) {
-  return new Error(`${indexer || "The indexer"} is limiting NZB downloads until ${new Date(until).toISOString()}`);
+  const minutes = Math.max(1, Math.ceil((until - Date.now()) / 60000));
+  const wait = minutes >= 120 ? `${Math.round(minutes / 60)} hours` : `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  return new Error(`${indexer || "The indexer"} has reached its NZB limit. Aurral will ask it again in ${wait}.`);
 }
 
 function normalizePositiveInteger(value, fallback) {
