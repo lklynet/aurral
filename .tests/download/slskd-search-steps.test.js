@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState, createMockHttpServer, resetDatabase } from "../helpers/backendTestHarness.js";
 
-const [state, { db }, { dbOps }, { downloadTracker, DownloadTracker }, { getDownloadClient }, { processPipelinePayload }] =
+const [state, { db }, { dbOps }, { downloadTracker, DownloadTracker }, { getDownloadClient }, { processPipelinePayload },
+  { processSystemTask }] =
   await setupIsolatedBackend(
     "slskd-search-steps",
     "backend/config/db-sqlite.js",
@@ -10,6 +11,7 @@ const [state, { db }, { dbOps }, { downloadTracker, DownloadTracker }, { getDown
     "backend/services/downloadJobs/downloadTracker.js",
     "backend/services/download/downloadClientSettings.js",
     "backend/services/downloadPipeline.js",
+    "backend/services/systemTaskWorker.js",
   );
 
 test.after(() => cleanupIsolatedState(state));
@@ -311,15 +313,25 @@ test("a transfer that fails while Soulseek logs in is retried from the same peer
   assert.equal(transferHistoryCount(), 0);
 });
 
-test("a restart that drops an upgrade deletes the upgrade's running search from slskd", async (t) => {
-  const soulseek = await startSoulseek(t);
-  soulseek.loggedIn = true;
-  const doneId = downloadTracker.addJob({ artistName: "Restart Band", trackName: "Song",
+async function startUpgradeSearch(artistName) {
+  const doneId = downloadTracker.addJob({ artistName, trackName: "Song",
     albumName: "Restart Album", durationMs: 200000 }, "library");
-  downloadTracker.setDone(doneId, "/library/Restart Band/Restart Album/01 - Song.mp3");
+  downloadTracker.setDone(doneId, `/library/${artistName}/Restart Album/01 - Song.mp3`);
   const upgradeId = downloadTracker.addUpgradeJob(downloadTracker.getJob(doneId));
   const searching = await processPipelinePayload({ phase: "search", source: "slskd", jobId: upgradeId,
     upgradeForJobId: doneId });
+  return { upgradeId, searching };
+}
+
+function trackedSlskdSearchIds() {
+  return db.prepare("SELECT work_id FROM weekly_flow_download_provider_work WHERE provider = 'slskd-search' ORDER BY work_id")
+    .all().map((row) => row.work_id);
+}
+
+test("a restart that drops an upgrade deletes the upgrade's running search from slskd", async (t) => {
+  const soulseek = await startSoulseek(t);
+  soulseek.loggedIn = true;
+  const { upgradeId, searching } = await startUpgradeSearch("Restart Band");
   const searchId = searching.activeSearch.id;
   const trackedSearches = () => db.prepare(
     "SELECT COUNT(*) AS count FROM weekly_flow_download_provider_work WHERE work_id = ?").get(searchId).count;
@@ -333,6 +345,24 @@ test("a restart that drops an upgrade deletes the upgrade's running search from 
   assert.equal(await processPipelinePayload(searching), null);
   assert.deepEqual(soulseek.deleted, [`/api/v0/searches/${searchId}`]);
   assert.equal(trackedSearches(), 0);
+});
+
+test("after a restart Aurral deletes only its slskd searches whose jobs no longer exist", async (t) => {
+  const soulseek = await startSoulseek(t);
+  soulseek.loggedIn = true;
+  const { searching: dropped } = await startUpgradeSearch("Orphan Band");
+  t.mock.timers.tick(5000);
+  const liveId = downloadTracker.addJob({ artistName: "Live Band", trackName: "Live Song",
+    albumName: "Live Album", durationMs: 200000 }, "library");
+  const live = await processPipelinePayload({ phase: "search", source: "slskd", jobId: liveId });
+  assert.equal(soulseek.searches.length, 2);
+
+  downloadTracker.resetDownloadingToPending();
+  new DownloadTracker();
+  await processSystemTask({ kind: "slskd-search-cleanup" });
+
+  assert.deepEqual(soulseek.deleted, [`/api/v0/searches/${dropped.activeSearch.id}`]);
+  assert.deepEqual(trackedSlskdSearchIds(), [live.activeSearch.id]);
 });
 
 for (const phase of ["search", "download"]) {
