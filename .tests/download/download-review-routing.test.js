@@ -676,6 +676,7 @@ btest("deemix reuses an existing final path instead of creating a duplicate", as
             album: "Album Name",
             file: "Artist Name - Correct Track",
           },
+          resolvedAlbumName: "Other Release",
         },
         candidateIndex: 0,
       },
@@ -689,6 +690,7 @@ btest("deemix reuses an existing final path instead of creating a duplicate", as
     assert.equal(result, null);
     assert.equal(downloadTracker.getJob(jobId)?.status, "done");
     assert.equal(downloadTracker.getJob(jobId)?.finalPath, targetPath);
+    assert.equal(downloadTracker.getJob(jobId)?.albumName, "Album Name");
     assert.equal(await readFile(targetPath, "utf8"), "existing-audio");
     await assert.rejects(() => access(sourcePath));
     await assert.rejects(() => access(path.join(path.dirname(targetPath), "Correct Track (2).mp3")));
@@ -904,12 +906,13 @@ btest("a download is tagged after it reaches the Library, so a slow download fol
   const slskdJobId = addJob("Other Track", 2);
   await processPipelinePayload({ phase: "finalize", source: "slskd", jobId: slskdJobId, candidateIndex: 0,
     destination: "slow-mount/Artist Name/Album Name",
-    candidates: [{ raw: { user: "peer", file: "Music\\Artist Name\\02 Other Track.mp3", size: 0 } }] });
+    candidates: [{ raw: { user: "peer", file: "Music\\Artist Name\\02 Other Track.mp3", size: 0 },
+      resolvedAlbumName: "Other Release" }] });
 
   for (const [jobId, trackNumber] of [[usenetJobId, 1], [slskdJobId, 2]]) {
     const job = downloadTracker.getJob(jobId);
     assert.equal(job.status, "done", job.error);
     const { common } = await parseFile(job.finalPath);
-    assert.deepEqual([common.album, common.track.no], ["Album Name", trackNumber]);
+    assert.deepEqual([job.albumName, common.album, common.track.no], ["Album Name", "Album Name", trackNumber]);
   }
 });

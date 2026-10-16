@@ -327,7 +327,8 @@ async function quickSearchDownloaded(t, name, artist, seconds, { unavailable } =
   downloadTracker.updateDownloadMetadata(track, { downloadSource: "ytdlp", downloadClient: "ytdlp",
     releaseGuid: `${name}-video` });
   const step = { ...claimQueued(track), source: "ytdlp", phase: "finalize", downloadedPath: staged,
-    candidates: [{ raw: { id: `${name}-video`, title: "Second" } }], candidateIndex: 0 };
+    candidates: [{ raw: { id: `${name}-video`, title: "Second" }, resolvedAlbumName: "Second (Single)" }],
+    candidateIndex: 0 };
   assert.equal(step.quickSearch, true);
   return { sources, track, step };
 }
@@ -337,7 +338,7 @@ test("a song the quick search imports ends the job before any release search", a
   assert.equal(await runToEnd(step, sources), null);
   assert.deepEqual(sources.searched(), []);
   const job = downloadTracker.getJob(track);
-  assert.deepEqual([job.status, job.downloadSource], ["done", "ytdlp"]);
+  assert.deepEqual([job.status, job.downloadSource, job.albumName], ["done", "ytdlp", "imported Album"]);
   assert.match(path.basename(job.finalPath), /Second\.mp3$/);
   await access(job.finalPath);
 });
