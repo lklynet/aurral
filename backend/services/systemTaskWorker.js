@@ -116,6 +116,11 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       }
       return;
     }
+    case "slskd-search-cleanup": {
+      const { stopOrphanedSlskdSearches } = await import("./downloadJobs/downloadCancellationService.js");
+      await stopOrphanedSlskdSearches();
+      return;
+    }
     case "weekly-flow-startup-check": {
       const { startWorkerIfPending } = await import("./downloadJobs/downloadWorker.js");
       await startWorkerIfPending();

@@ -207,6 +207,7 @@ async function startSoulseek(t) {
       if (req.method === "GET" && req.url.startsWith("/api/v0/transfers/downloads/")) {
         return send(200, { id: req.url.split("/").pop(), state: soulseek.transferState });
       }
+      if (req.method === "DELETE" && soulseek.down) return send(503, "");
       if (req.method === "DELETE") soulseek.deleted.push(req.url.split("?")[0]);
       if (req.method === "GET" && req.url.startsWith("/api/v0/events")) return send(200, []);
       return send(404, "");
@@ -359,8 +360,12 @@ test("after a restart Aurral deletes only its slskd searches whose jobs no longe
 
   downloadTracker.resetDownloadingToPending();
   new DownloadTracker();
+  soulseek.down = true;
   await processSystemTask({ kind: "slskd-search-cleanup" });
+  assert.deepEqual(trackedSlskdSearchIds(), [dropped.activeSearch.id, live.activeSearch.id].sort());
 
+  soulseek.down = false;
+  await processSystemTask({ kind: "slskd-search-cleanup" });
   assert.deepEqual(soulseek.deleted, [`/api/v0/searches/${dropped.activeSearch.id}`]);
   assert.deepEqual(trackedSlskdSearchIds(), [live.activeSearch.id]);
 });

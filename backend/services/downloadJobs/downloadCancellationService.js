@@ -363,6 +363,37 @@ function refreshJobs(jobs) {
   });
 }
 
+const orphanedSlskdSearchesStmt = db.prepare(
+  `SELECT DISTINCT work.work_id
+   FROM weekly_flow_download_provider_work AS work
+   LEFT JOIN playlist_download_jobs AS job ON job.id = work.job_id
+   WHERE work.provider = 'slskd-search'
+     AND (job.id IS NULL OR job.status = 'cancelled' OR EXISTS (
+       SELECT 1 FROM weekly_flow_download_job_cancellations AS cancellation
+       WHERE cancellation.job_id = work.job_id))`,
+);
+
+// Aurral records each slskd search it starts under its job before slskd sees
+// it. A restart can remove the job before any step stops the search.
+export async function stopOrphanedSlskdSearches() {
+  const client = getDownloadClient("slskd");
+  if (!client?.isConfigured?.()) return 0;
+  let stopped = 0;
+  for (const { work_id: searchId } of orphanedSlskdSearchesStmt.all()) {
+    const deleted = await client.deleteSearch(searchId, { timeout: 20000 }).catch((error) => {
+      logger.warn("slskd", "Could not stop a search left by a removed download", {
+        searchId,
+        reason: error?.message || String(error),
+      });
+      return false;
+    });
+    if (!deleted) continue;
+    clearDownloadProviderWork({ provider: "slskd-search", workId: searchId });
+    stopped += 1;
+  }
+  return stopped;
+}
+
 export function markDownloadWorkCancelledForJobs(jobs = []) {
   const normalizedJobs = Array.isArray(jobs) ? jobs.filter((job) => job?.id) : [];
   const rows = listHonkerJobs(PIPELINE_QUEUE);

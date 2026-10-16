@@ -122,6 +122,7 @@ test("startup only queues due bootstrap work and a pending migration", () => {
     "playlist-startup-migration",
     "stored-data-migration",
     "identity-marker-migration",
+    "slskd-search-cleanup",
     "weekly-flow-startup-check",
     "playlist-startup-publish",
     "upgrade-readiness-check",
@@ -144,6 +145,7 @@ test("startup only queues due bootstrap work and a pending migration", () => {
   clearQueue();
   honkerDb.enqueueHonkerStartupTasks();
   assert.deepEqual(queuedKinds(), [
+    "slskd-search-cleanup",
     "weekly-flow-startup-check",
     "playlist-startup-publish",
     "upgrade-readiness-check",
