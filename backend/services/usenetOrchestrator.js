@@ -166,6 +166,7 @@ const RELEASE_RESET = Object.freeze({ nzbId: null, history: null, missingPolls: 
 
 const hasNextRelease = (payload) => hasNextCandidate(payload)
   && (payload.albumGrab === true || Number(payload.nzbGrabs || 0) < MAX_TRACK_NZB_GRABS);
+const withNzbGrab = (payload) => ({ ...payload, nzbGrabs: Number(payload.nzbGrabs || 0) + 1 });
 
 // A release that failed or held no matching file is blocked for every track
 // it was meant to fill.
@@ -489,7 +490,7 @@ async function handleUsenetDownload(payload, helpers) {
   let submission;
   try {
     const nzb = await prowlarrClient.downloadNzb(release.downloadUrl, release);
-    payload = { ...payload, nzbGrabs: Number(payload.nzbGrabs || 0) + 1 };
+    payload = withNzbGrab(payload);
     if (!isPipelinePayloadActive(payload)) return null;
     submission = await withPipelineCommitLock(payload, async () => {
       const appended = await client.appendNzb({
@@ -502,6 +503,7 @@ async function handleUsenetDownload(payload, helpers) {
       return appended;
     });
   } catch (error) {
+    if (error?.nzbGrabSpent) payload = withNzbGrab(payload);
     const message = error?.message || String(error);
     logger.warn("usenet", "Usenet release could not be sent to the download client", {
       jobId: job.id,

@@ -412,8 +412,11 @@ export class ProwlarrClient {
       throw new Error(`The indexer did not return the NZB: HTTP ${response.status}`);
     }
     const content = Buffer.from(response.data || []);
-    if (!/<nzb[\s>]/iu.test(content.subarray(0, 65536).toString("utf8"))) {
-      throw new Error("The indexer did not return an NZB file");
+    const head = content.subarray(0, 65536).toString("utf8");
+    if (!/<nzb[\s>]/iu.test(head)) {
+      const error = new Error("The indexer did not return an NZB file");
+      error.nzbGrabSpent = !/<error[\s>]/iu.test(head);
+      throw error;
     }
     return content;
   }
