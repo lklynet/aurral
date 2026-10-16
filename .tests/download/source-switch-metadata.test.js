@@ -80,8 +80,12 @@ test("a job that moves from yt-dlp to slskd names only slskd's download", async 
 
 test("a Usenet file held while slskd is tried goes to review with its own release and indexer", async (t) => {
   useOnlySources(t, "nzbget", "slskd");
-  t.mock.method(getDownloadClient("slskd"), "enqueueBatch", async () => { throw new Error("peer refused"); });
   const jobId = downloadTracker.addJob({ artistName: "The Cure", trackName: "Fire in Cairo" }, "library");
+  let enqueuedFrom = null;
+  t.mock.method(getDownloadClient("slskd"), "enqueueBatch", async () => {
+    enqueuedFrom = jobMetadata(jobId);
+    throw new Error("peer refused");
+  });
   downloadTracker.setDownloading(jobId);
   const usenet = {
     downloadSource: "usenet",
@@ -105,6 +109,9 @@ test("a Usenet file held while slskd is tried goes to review with its own releas
     triedSources: ["usenet"], heldForReview,
     candidates: [{ raw: { user: "peer", file: "Music\\The Cure\\Fire in Cairo.flac", size: 30000000 } }] });
 
+  assert.deepEqual(enqueuedFrom, { ...Object.fromEntries(METADATA_KEYS.map((key) => [key, null])),
+    downloadSource: "slskd", downloadClient: "slskd", remoteUsername: "peer",
+    remoteFilename: "Music\\The Cure\\Fire in Cairo.flac" });
   assert.equal(next, null);
   assert.equal(downloadTracker.getJob(jobId).status, "blocked");
   assert.deepEqual(storedMetadata(jobId), usenet);
