@@ -22,9 +22,10 @@ const METADATA_KEYS = ["downloadSource", "downloadClient", "downloadClientId", "
   "indexerId", "indexerName", "remoteUsername", "remoteFilename"];
 
 function storedMetadata(jobId) {
-  const row = db.prepare(`SELECT download_source, download_client, download_client_id, release_guid, release_title,
-    indexer_id, indexer_name, remote_username, remote_filename FROM playlist_download_jobs WHERE id = ?`).get(jobId);
-  return Object.fromEntries(METADATA_KEYS.map((key, index) => [key, Object.values(row)[index]]));
+  return { ...db.prepare(`SELECT download_source AS downloadSource, download_client AS downloadClient,
+    download_client_id AS downloadClientId, release_guid AS releaseGuid, release_title AS releaseTitle,
+    indexer_id AS indexerId, indexer_name AS indexerName, remote_username AS remoteUsername,
+    remote_filename AS remoteFilename FROM playlist_download_jobs WHERE id = ?`).get(jobId) };
 }
 
 test("a job that moves from yt-dlp to slskd names only slskd's download", async (t) => {
