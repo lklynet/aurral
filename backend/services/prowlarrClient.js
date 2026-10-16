@@ -21,9 +21,11 @@ function readRetryAfterMs(value) {
 }
 
 function nzbLimitError(indexer, until) {
-  const minutes = Math.max(1, Math.ceil((until - Date.now()) / 60000));
+  const minutes = Math.ceil((until - Date.now()) / 60000);
+  const message = `${indexer || "The indexer"} has reached its NZB limit.`;
+  if (minutes <= 0) return new Error(message);
   const wait = minutes >= 120 ? `${Math.round(minutes / 60)} hours` : `${minutes} minute${minutes === 1 ? "" : "s"}`;
-  return new Error(`${indexer || "The indexer"} has reached its NZB limit. Aurral will ask it again in ${wait}.`);
+  return new Error(`${message} Aurral will ask it again in ${wait}.`);
 }
 
 function normalizePositiveInteger(value, fallback) {
