@@ -587,8 +587,11 @@ const loadPendingPlaylistImportHistory = async (user) => {
   }
 };
 
+// A release attempt downloads for every track of its album, so a track it
+// holds is active while the attempt is.
 const isPipelineActiveForJob = async (jobId) =>
-  isHonkerQueueActive("slskd-pipeline", (payload) => payload?.jobId === jobId);
+  isHonkerQueueActive("slskd-pipeline", (payload) =>
+    payload?.jobId === jobId || payload?.albumGroupJobIds?.includes(jobId) === true);
 
 const buildHistoryJobFromEntry = (entry) => ({
   id: entry.metadata?.jobId || entry.id,

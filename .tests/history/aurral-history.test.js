@@ -30,7 +30,7 @@ const { lidarrClient } = await importFromRepo("backend/services/lidarrClient.js"
 test.beforeEach(() => {
   resetDatabase(db);
   const transaction = getHonkerDb().transaction();
-  transaction.execute("DELETE FROM _honker_live WHERE queue = ?", ["weekly-flow-operation"]);
+  transaction.execute("DELETE FROM _honker_live WHERE queue IN (?, ?)", ["weekly-flow-operation", "slskd-pipeline"]);
   transaction.commit();
   downloadTracker.clearAll();
 });
@@ -305,34 +305,32 @@ test("pending playlist imports appear in activity before the worker starts", asy
   assert.equal(entry?.subtitle, "ListenBrainz · 1 track waiting for download");
 });
 
-test("getAurralHistoryRequests fails stale active download history", async () => {
-  const jobId = downloadTracker.addJob(
-    {
-      artistName: "Artist",
-      trackName: "Stale Song",
-    },
-    "playlist-1",
-  );
-  upsertAurralHistory({
-    referenceId: jobId,
-    kind: "track_download",
-    title: "Searching slskd for Stale Song",
-    subtitle: "Artist · Playlist",
-    status: "processing",
-    statusLabel: "Searching",
-    metadata: {
-      jobId,
-      trackName: "Stale Song",
-      artistName: "Artist",
-      playlistId: "playlist-1",
-      downloadSource: "slskd",
-    },
-    createdAt: Date.now() - 20 * 60 * 1000,
+test("getAurralHistoryRequests fails stale active download history, but not a track its album's release attempt still downloads", async () => {
+  const staleDownload = (trackName) => {
+    const jobId = downloadTracker.addJob({ artistName: "Artist", trackName }, "playlist-1");
+    upsertAurralHistory({
+      referenceId: jobId,
+      kind: "track_download",
+      title: `Searching slskd for ${trackName}`,
+      subtitle: "Artist · Playlist",
+      status: "processing",
+      statusLabel: "Searching",
+      metadata: { jobId, trackName, artistName: "Artist", playlistId: "playlist-1", downloadSource: "slskd" },
+      createdAt: Date.now() - 20 * 60 * 1000,
+    });
+    downloadTracker.setDownloading(jobId);
+    const job = downloadTracker.getJob(jobId);
+    job.createdAt = Date.now() - 20 * 60 * 1000;
+    job.startedAt = job.createdAt;
+    return jobId;
+  };
+  const jobId = staleDownload("Stale Song");
+  const waitingId = staleDownload("Waiting Song");
+  getHonkerDb().queue("slskd-pipeline").enqueue({
+    jobId: "lead-job",
+    albumGrab: true,
+    albumGroupJobIds: ["lead-job", waitingId],
   });
-  downloadTracker.setDownloading(jobId);
-  const job = downloadTracker.getJob(jobId);
-  job.createdAt = Date.now() - 20 * 60 * 1000;
-  job.startedAt = job.createdAt;
 
   const entries = await getAurralHistoryRequests();
   const entry = entries.find((item) => item.jobId === jobId);
@@ -340,6 +338,8 @@ test("getAurralHistoryRequests fails stale active download history", async () =>
   assert.equal(entry?.status, "failed");
   assert.equal(entry?.inQueue, false);
   assert.equal(downloadTracker.getJob(jobId)?.status, "failed");
+  assert.equal(entries.find((item) => item.jobId === waitingId)?.status, "processing");
+  assert.equal(downloadTracker.getJob(waitingId)?.status, "downloading");
 });
 
 test("getAurralHistoryRequests fails orphaned download history", async () => {
