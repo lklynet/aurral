@@ -1419,7 +1419,7 @@ async function handleFinalize(payload, helpers) {
       downloadTracker,
       job,
       committedFinalPath,
-      album: candidate?.resolvedAlbumName || job.albumName,
+      album: job.albumName || candidate?.resolvedAlbumName,
       quality: validation.quality,
       onSuccess: () => cleanupSuccessfulRunArtifacts(payload, transfer),
     });
