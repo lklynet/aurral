@@ -167,6 +167,17 @@ async function readUpgradeSearchContext(job) {
   }
 }
 
+function upgradeBlocker(job) {
+  if (!job?.id || job.status !== "done" || !isAurralOwnedPath(job.finalPath)) return "ineligible";
+  if (getQualityState({ tier: job.qualityTier }, getQualityProfile()) === "preferred") return "ineligible";
+  if (!hasUpgradeSource()) return "ineligible";
+  if (isKeptFile(job.finalPath)) return "kept";
+  if (downloadTracker.findActiveUpgradeJob(job)) return "already-queued";
+  const playlistId = job.playlistId || job.playlistType;
+  if (!isPipelinePayloadActive({ playlistId, playlistGeneration: job.playlistGeneration })) return "ineligible";
+  return null;
+}
+
 // Returns what adding the upgrade of a done track needs, or why it has none.
 async function prepareQualityUpgrade(job) {
   if (!job?.id || job.status !== "done" || !isAurralOwnedPath(job.finalPath)) {
@@ -174,46 +185,40 @@ async function prepareQualityUpgrade(job) {
   }
   if (!job.qualityCheckedAt) await classifyQualityJob(job);
   const current = downloadTracker.getJob(job.id);
-  if (getQualityState({ tier: current?.qualityTier }, getQualityProfile()) === "preferred") {
-    return { status: "ineligible" };
-  }
-  if (!hasUpgradeSource()) return { status: "ineligible" };
-  if (isKeptFile(current.finalPath)) return { status: "kept" };
-  if (downloadTracker.findActiveUpgradeJob(current)) return { status: "already-queued" };
+  const blocker = upgradeBlocker(current);
+  if (blocker) return { status: blocker };
   return { sourceJobId: current.id, context: await readUpgradeSearchContext(current) };
 }
 
 // Adds an album's upgrades with no wait between them, so the worker cannot
-// start one before the rest are there to join its release attempt. Returns
-// how many it queued.
+// start one before the rest are there to join its release attempt. Each one
+// is checked again here, since the track may have changed while its release
+// details were read. Returns each one's status.
 async function addQualityUpgrades(prepared) {
   const { recordTrackJobQueued } = await import("./aurralHistoryService.js");
-  let queued = 0;
-  for (const { sourceJobId, context } of prepared) {
-    const upgradeJobId = downloadTracker.addUpgradeJob(downloadTracker.getJob(sourceJobId));
-    if (!upgradeJobId) continue;
+  const statuses = prepared.map(({ sourceJobId, context }) => {
+    const source = downloadTracker.getJob(sourceJobId);
+    const blocker = upgradeBlocker(source);
+    if (blocker) return blocker;
+    const upgradeJobId = downloadTracker.addUpgradeJob(source);
+    if (!upgradeJobId) return "ineligible";
     downloadTracker.updateMetadata(upgradeJobId, context);
-    const upgrade = downloadTracker.getJob(upgradeJobId);
-    if (!isPipelinePayloadActive({ jobId: upgradeJobId, playlistId: upgrade.playlistId,
-      playlistGeneration: upgrade.playlistGeneration })) {
-      downloadTracker.removeJob(upgradeJobId);
-      continue;
-    }
     downloadTracker.markQualityUpgradeChecked(sourceJobId);
-    recordTrackJobQueued(upgrade);
-    queued += 1;
-  }
-  if (queued > 0) {
+    recordTrackJobQueued(downloadTracker.getJob(upgradeJobId));
+    return "queued";
+  });
+  if (statuses.includes("queued")) {
     const { wakeDownloadWorker } = await import("./downloadJobs/mutationGuards.js");
     await wakeDownloadWorker();
   }
-  return queued;
+  return statuses;
 }
 
 export async function queueQualityUpgrade(job) {
   const prepared = await prepareQualityUpgrade(job);
   if (prepared.status) return prepared.status;
-  return await addQualityUpgrades([prepared]) > 0 ? "queued" : "ineligible";
+  const [status] = await addQualityUpgrades([prepared]);
+  return status;
 }
 
 function classifyLibraryFileQuality(file) {
@@ -312,7 +317,7 @@ export async function runQualityUpgradeCheck({ force = false, playlistIds = null
       prepared.push(upgrade);
       addedByOwner.set(counted, (addedByOwner.get(counted) || 0) + 1);
     }
-    queued += await addQualityUpgrades(prepared);
+    queued += (await addQualityUpgrades(prepared)).filter((status) => status === "queued").length;
   }
   return queued;
 }

@@ -710,13 +710,12 @@ export class DownloadWorker {
   }
 
   async _enqueueUpgrade(job, runGeneration) {
+    if (!isAnyDownloadSourceConfigured()) throw new Error(getDownloadSourceNotConfiguredMessage());
     const { manifest: release } = await readReleaseManifest(job.albumMbid, job.releaseMbid);
     this._assertJobCanContinue(job, runGeneration);
     if (downloadTracker.enqueueDownloadPipeline(job.id, { release })) return;
     if (downloadTracker.getJob(job.id)?.status !== "pending" || downloadTracker.isSlskdDispatched(job.id)) return;
-    const { finalizeQualityUpgradeFailure } = await import("../qualityProfileService.js");
-    await finalizeQualityUpgradeFailure(job, isAnyDownloadSourceConfigured()
-      ? "The upgrade could not be queued" : getDownloadSourceNotConfiguredMessage());
+    throw new Error("The upgrade could not be queued");
   }
 
   async checkPlaylistComplete(playlistType) {

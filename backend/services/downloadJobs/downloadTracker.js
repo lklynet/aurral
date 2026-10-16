@@ -1179,8 +1179,9 @@ export class DownloadTracker {
       playlistId,
       playlistGeneration: sourceJob.playlistGeneration,
     });
-    this.jobs.get(id).upgradeForJobId = sourceJob.id;
-    this._update(this.jobs.get(id));
+    const job = this.jobs.get(id);
+    job.upgradeForJobId = sourceJob.id;
+    this._update(job);
     return id;
   }
 

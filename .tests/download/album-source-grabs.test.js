@@ -16,7 +16,9 @@ const [state, { dbOps, userOps }, { downloadTracker }, { getDownloadClient },
   { beginDownloadAttempt, cancelPlaylistDownloadGeneration, getActiveDownloadAttemptId, setActiveDownloadAttemptId },
   { queueQualityUpgrade, runQualityUpgradeCheck }, { resolveDownloadRoot }, { registerJobs },
   { flowPlaylistConfig }, { getHonkerDb, getPipelineQueue, listHonkerJobs },
-  { stopDownloadPipelineWorker }, { getAurralHistoryRequests }] = await setupIsolatedBackend(
+  { stopDownloadPipelineWorker }, { getAurralHistoryRequests },
+  { upsertLibraryArtist, upsertLibraryAlbum, upsertLibraryTrack, linkLibraryAlbumTrack, upsertLibraryMediaFile },
+  { libraryManager }] = await setupIsolatedBackend(
   "album-source-grabs",
   "backend/db/helpers/index.js",
   "backend/services/downloadJobs/downloadTracker.js",
@@ -34,6 +36,8 @@ const [state, { dbOps, userOps }, { downloadTracker }, { getDownloadClient },
   "backend/services/honkerDb.js",
   "backend/services/downloadPipelineWorker.js",
   "backend/services/aurralHistoryService.js",
+  "backend/services/libraryMediaStore.js",
+  "backend/services/libraryManager.js",
 );
 
 test.after(async () => {
@@ -761,6 +765,38 @@ test("a track removed while its upgrade's release details are read gets no upgra
   assert.deepEqual(downloadTracker.getAll(), []);
 });
 
+test("a track whose file is kept while its upgrade's release details are read gets no upgrade", async (t) => {
+  for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
+  const original = join(resolveDownloadRoot(), "The Band", "kept-upgrade", "01 - First.mp3");
+  const artist = upsertLibraryArtist({ identityKey: "name:kept-upgrade", name: "The Band", syncSearch: false });
+  const album = upsertLibraryAlbum({ identityKey: "name:kept-upgrade:album", artistId: artist.id,
+    title: "kept-upgrade", syncSearch: false });
+  const track = upsertLibraryTrack({ identityKey: "name:kept-upgrade:first", title: "First",
+    artistName: "The Band", syncSearch: false });
+  linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, syncSearch: false });
+  upsertLibraryMediaFile({ trackId: track.id, albumId: album.id, source: "aurral", path: original, available: true });
+  const keeping = { result: null };
+  await serveGroups(t, [], { missing: () => {
+    keeping.result ??= libraryManager.setTrackKeepFile(String(track.id), { keepFile: true });
+    return true;
+  } });
+  useSlskd();
+  await mkdir(dirname(original), { recursive: true });
+  await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc", "-t", "1",
+    "-c:a", "libmp3lame", "-b:a", "128k", original]);
+  const id = downloadTracker.addJob({ artistName: "The Band", albumName: "kept-upgrade", albumMbid: "kept-upgrade",
+    trackName: "First", trackNumber: 1, durationMs: 1000 }, "library");
+  downloadTracker.setDone(id, original, "kept-upgrade");
+  downloadTracker.updateQuality(id, { tier: "mp3-128" });
+  const runWorker = await holdDownloadWorker(t);
+
+  assert.equal(await queueQualityUpgrade(downloadTracker.getJob(id)), "kept");
+  assert.equal((await keeping.result)?.keepFile, true);
+  await runWorker();
+  assert.equal(downloadTracker.findActiveUpgradeJob(downloadTracker.getJob(id)), null);
+  assert.equal(downloadTracker.getJob(id).finalPath, original);
+});
+
 test("an upgrade still waiting for the worker when every download source is turned off ends as no upgrade and keeps its file", async (t) => {
   for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
   await serveGroups(t, []);
@@ -805,11 +841,9 @@ test("a static playlist track whose downloads were cancelled gets no upgrade", a
   downloadTracker.setDone(id, original, "cancelled-upgrade");
   downloadTracker.updateQuality(id, { tier: "mp3-128" });
   cancelPlaylistDownloadGeneration(playlist.id);
-  const runWorker = await holdDownloadWorker(t);
 
   assert.equal(await queueQualityUpgrade(downloadTracker.getJob(id)), "ineligible");
-  await runWorker();
-  assert.equal(downloadTracker.findActiveUpgradeJob(downloadTracker.getJob(id)), null);
+  assert.deepEqual(downloadTracker.getAll().filter((job) => job.upgradeForJobId), []);
   assert.equal(downloadTracker.getJob(id).qualityUpgradeCheckedAt ?? null, null);
 });
 
