@@ -1440,14 +1440,17 @@ async function handleFinalize(payload, helpers) {
   return committed.result;
 }
 
+export async function discardSlskdSearch(payload) {
+  if (!payload?.activeSearch?.id || !slskdClient.isConfigured()) return;
+  searchMonitors.delete(payload.activeSearch.id);
+  await stopSearch(payload.activeSearch.id);
+}
+
 // The running search and queued transfers of a payload dropped before its
 // step finished with them.
 export async function discardSlskdWork(payload) {
   if (!slskdClient.isConfigured()) return;
-  if (payload.activeSearch?.id) {
-    searchMonitors.delete(payload.activeSearch.id);
-    await stopSearch(payload.activeSearch.id);
-  }
+  await discardSlskdSearch(payload);
   for (const transfer of [...(payload.albumTransfers || []), payload.legacyTransfer].filter(Boolean)) {
     await cleanupTransferForPayload(payload, transfer);
   }

@@ -3,7 +3,7 @@ import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger } from "./logger.js";
 import { enqueuePipelineJob, listHonkerJobs } from "./honkerDb.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
-import { discardSlskdWork, processSlskdPipelinePayload, SLSKD_NOT_CONFIGURED_MESSAGE } from "./slskdOrchestrator.js";
+import { discardSlskdSearch, discardSlskdWork, processSlskdPipelinePayload, SLSKD_NOT_CONFIGURED_MESSAGE } from "./slskdOrchestrator.js";
 import { discardUsenetWork, processUsenetPipelinePayload } from "./usenetOrchestrator.js";
 import { processYtdlpPipelinePayload } from "./ytdlpOrchestrator.js";
 import { discardDeemixWork, processDeemixPipelinePayload } from "./deemixOrchestrator.js";
@@ -367,7 +367,10 @@ export async function processPipelinePayload(payload) {
 }
 
 async function processSourcePayload(payload) {
-  if (!isPipelinePayloadActive(payload)) return null;
+  if (!isPipelinePayloadActive(payload)) {
+    await discardSlskdSearch(payload);
+    return null;
+  }
   const currentJob = downloadTracker.getJob(payload.jobId);
   const inactiveOwner = deferForInactiveOwner(payload, currentJob);
   if (inactiveOwner) return inactiveOwner;
