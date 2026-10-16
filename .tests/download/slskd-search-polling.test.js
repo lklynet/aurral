@@ -182,3 +182,18 @@ test("a search waiting in slskd's queue gets its full windows once it runs", asy
   const result = slskdClient.flattenSearchResults(await pending);
   assert.deepEqual(result.map((file) => file.file), ["Song.flac"]);
 });
+
+test("a search still queued in slskd at the caller's deadline reports slskd as busy, not as no results", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 1000 });
+  t.mock.method(slskdClient, "createSearch", async () => ({ id: "busy-search" }));
+  const deleted = t.mock.method(slskdClient, "deleteSearch", async () => true);
+  t.mock.method(slskdClient, "getSearch", async () => ({ state: "Queued", responses: [] }));
+  const pending = slskdClient.searchQuery("Artist Busy", { timeoutMs: 10000 });
+  const outcome = assert.rejects(pending, /busy/i);
+  for (let step = 0; step < 12; step += 1) {
+    await new Promise(setImmediate);
+    t.mock.timers.tick(1000);
+  }
+  await outcome;
+  assert.deepEqual(deleted.mock.calls.map((call) => call.arguments[0]), ["busy-search"]);
+});

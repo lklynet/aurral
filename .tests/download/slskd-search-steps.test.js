@@ -80,6 +80,37 @@ test("a Soulseek search advances one poll per pipeline step", async (t) => {
   assert.ok(third.candidates.length > 0);
 });
 
+test("a Soulseek search that slskd keeps queued past five minutes waits for it to run", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  const responses = folderResponses("Queued Band", "Queued Album", ["Song"]);
+  let running = false;
+  const { created } = mockSearch(t, []);
+  t.mock.method(client, "getSearch", async () => running
+    ? { state: "Completed, Succeeded", fileCount: 3, responses }
+    : { state: "Queued", responses: [] });
+  const jobId = downloadTracker.addJob({ artistName: "Queued Band", albumName: "Queued Album",
+    trackName: "Song", durationMs: 200000 }, "library");
+
+  const started = await processPipelinePayload({ phase: "search", source: "slskd", jobId });
+  const queuedAt = Date.now();
+  let next = started;
+  while (Date.now() - queuedAt < 10 * 60 * 1000) {
+    t.mock.timers.tick(next.delaySeconds * 1000);
+    next = await processPipelinePayload(next);
+    assert.equal(next.phase, "search");
+    assert.equal(next.activeSearch?.id, started.activeSearch.id);
+  }
+  assert.equal(created.mock.callCount(), 1);
+  assert.notEqual(downloadTracker.getJob(jobId).status, "failed");
+
+  running = true;
+  t.mock.timers.tick(next.delaySeconds * 1000);
+  const ran = await processPipelinePayload(next);
+  assert.equal(ran.phase, "download");
+  assert.equal(created.mock.callCount(), 1);
+  assert.match(ran.candidates[0].raw.file, /Queued Album\\01 - Song\.flac$/);
+});
+
 test("tracks from one album reuse the album search", async (t) => {
   const responses = folderResponses("Shared Band", "Shared Album", ["First", "Second"]);
   const { created } = mockSearch(t, [{ state: "Completed, Succeeded", fileCount: 6, responses }]);
