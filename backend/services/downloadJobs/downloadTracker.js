@@ -608,10 +608,6 @@ export class DownloadTracker {
     updateAlbumGrabFailuresStmt.run(count, job.id);
   }
 
-  // A track that starts its search by release, so the worker resolves its
-  // release before it is queued. The worker reads an upgrade's release when
-  // it starts the upgrade, a manual search never searches by release, and a
-  // track a release attempt already tried searches for itself.
   canSearchByRelease(job) {
     return !job.upgradeForJobId && searchesByRelease(job) && isAlbumGrabSourceConfigured();
   }
@@ -901,10 +897,7 @@ export class DownloadTracker {
     }
   }
 
-  // An upgrade waits for the worker only once the upgrade check releases it
-  // with the rest of its album, so a rebuild keeps only the released ones.
   _rebuildStatsByPlaylistType() {
-    const releasedUpgrades = new Set([...this.pendingSet].filter((id) => this.jobs.get(id)?.upgradeForJobId));
     this.statsByPlaylistType.clear();
     this.globalStats = this._emptyStats();
     this.pendingFreshQueue = [];
@@ -913,7 +906,7 @@ export class DownloadTracker {
     this.pendingRetrySet = new Set();
     for (const job of this.jobs.values()) {
       this._applyStatusDelta(job.playlistType, null, job.status);
-      if (job.status === "pending" && (!job.upgradeForJobId || releasedUpgrades.has(job.id))) {
+      if (job.status === "pending" && !job.manualReplacementSearch) {
         this.pendingFreshQueue.push(job.id);
         this.pendingSet.add(job.id);
       }
@@ -1186,12 +1179,8 @@ export class DownloadTracker {
       playlistId,
       playlistGeneration: sourceJob.playlistGeneration,
     });
-    const job = this.jobs.get(id);
-    job.upgradeForJobId = sourceJob.id;
-    this.pendingSet.delete(id);
-    this.pendingRetrySet.delete(id);
-    this._removeFromPendingQueues(id);
-    this._update(job);
+    this.jobs.get(id).upgradeForJobId = sourceJob.id;
+    this._update(this.jobs.get(id));
     return id;
   }
 

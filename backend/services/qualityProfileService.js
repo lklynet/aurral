@@ -9,6 +9,7 @@ import { getEnabledDownloadSources } from "./downloadSourceService.js";
 import { logger, safeLogDiagnostic } from "./logger.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { isPlaylistOwnerActive } from "./downloadJobs/playlistOwnerStatus.js";
+import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.js";
 import {
   classifyAudioQuality,
   getQualityState,
@@ -153,26 +154,21 @@ const isKeptFile = (filePath) => {
   return keptFilePathsStmt.all().some((keptPath) => path.resolve(keptPath) === resolved);
 };
 
-// The worker resolves only the upgrade it starts, and that upgrade's release
-// attempt takes in the others of its album. So each upgrade reads its release
-// tracklist, track count, and artist aliases here. Without them a release
-// cannot be matched against the album it should hold. It then searches by
-// that release first, and by the track when none matches.
-async function resolveUpgradeSearchContext(upgradeJobId) {
+async function readUpgradeSearchContext(job) {
   try {
     const { resolveTrackSearchContext } = await import("./downloadJobs/trackSearchContext.js");
-    const job = downloadTracker.getJob(upgradeJobId);
-    if (job) downloadTracker.updateMetadata(upgradeJobId, await resolveTrackSearchContext(job));
+    return await resolveTrackSearchContext(job);
   } catch (error) {
     logger.warn("downloads", "Could not read release details for a quality upgrade", {
-      jobId: upgradeJobId,
+      jobId: job.id,
       reason: safeLogDiagnostic(error),
     });
+    return {};
   }
 }
 
-// Returns the upgrade job added for a done track, or why it has none.
-async function addQualityUpgrade(job) {
+// Returns what adding the upgrade of a done track needs, or why it has none.
+async function prepareQualityUpgrade(job) {
   if (!job?.id || job.status !== "done" || !isAurralOwnedPath(job.finalPath)) {
     return { status: "ineligible" };
   }
@@ -184,60 +180,40 @@ async function addQualityUpgrade(job) {
   if (!hasUpgradeSource()) return { status: "ineligible" };
   if (isKeptFile(current.finalPath)) return { status: "kept" };
   if (downloadTracker.findActiveUpgradeJob(current)) return { status: "already-queued" };
-  const upgradeJobId = downloadTracker.addUpgradeJob(current);
-  if (!upgradeJobId) return { status: "ineligible" };
-  await resolveUpgradeSearchContext(upgradeJobId);
-  return { upgradeJobId, sourceJobId: current.id };
+  return { sourceJobId: current.id, context: await readUpgradeSearchContext(current) };
 }
 
-// Upgrades added together wait for the download worker together, so the
-// first one it starts leads a release attempt that takes in the others of its
-// release and reads the download whole. One already in such an attempt is
-// queued with it.
-async function startQualityUpgrades(upgrades) {
-  try {
-    return await startEachQualityUpgrade(upgrades);
-  } catch (error) {
-    removeUnstartedUpgrades(upgrades);
-    throw error;
-  }
-}
-
-// An upgrade added but never queued would block its track's next check.
-function removeUnstartedUpgrades(upgrades) {
-  for (const { upgradeJobId } of upgrades) {
-    if (downloadTracker.getJob(upgradeJobId)?.status === "pending" && !downloadTracker.isSlskdDispatched(upgradeJobId)) {
-      downloadTracker.removeJob(upgradeJobId);
-    }
-  }
-}
-
-async function startEachQualityUpgrade(upgrades) {
+// Adds an album's upgrades with no wait between them, so the worker cannot
+// start one before the rest are there to join its release attempt. Returns
+// how many it queued.
+async function addQualityUpgrades(prepared) {
   const { recordTrackJobQueued } = await import("./aurralHistoryService.js");
-  const statuses = [];
-  for (const { upgradeJobId, sourceJobId } of upgrades) {
+  let queued = 0;
+  for (const { sourceJobId, context } of prepared) {
+    const upgradeJobId = downloadTracker.addUpgradeJob(downloadTracker.getJob(sourceJobId));
+    if (!upgradeJobId) continue;
+    downloadTracker.updateMetadata(upgradeJobId, context);
     const upgrade = downloadTracker.getJob(upgradeJobId);
-    if (!upgrade || !["pending", "downloading"].includes(upgrade.status)) {
-      statuses.push("ineligible");
+    if (!isPipelinePayloadActive({ jobId: upgradeJobId, playlistId: upgrade.playlistId,
+      playlistGeneration: upgrade.playlistGeneration })) {
+      downloadTracker.removeJob(upgradeJobId);
       continue;
     }
-    if (upgrade.status === "pending") downloadTracker.setPending(upgradeJobId);
     downloadTracker.markQualityUpgradeChecked(sourceJobId);
     recordTrackJobQueued(upgrade);
-    statuses.push("queued");
+    queued += 1;
   }
-  if (statuses.includes("queued")) {
+  if (queued > 0) {
     const { wakeDownloadWorker } = await import("./downloadJobs/mutationGuards.js");
     await wakeDownloadWorker();
   }
-  return statuses;
+  return queued;
 }
 
 export async function queueQualityUpgrade(job) {
-  const added = await addQualityUpgrade(job);
-  if (added.status) return added.status;
-  const [status] = await startQualityUpgrades([added]);
-  return status;
+  const prepared = await prepareQualityUpgrade(job);
+  if (prepared.status) return prepared.status;
+  return await addQualityUpgrades([prepared]) > 0 ? "queued" : "ineligible";
 }
 
 function classifyLibraryFileQuality(file) {
@@ -303,7 +279,7 @@ async function listUpgradeCandidatesByAlbum({ force, owners, profile }) {
       const current = downloadTracker.getJob(job.id);
       if (getQualityState({ tier: current?.qualityTier }, profile) === "preferred") return {};
       if (!force && Number(current?.qualityUpgradeCheckedAt || 0) > dueBefore) return {};
-      return addQualityUpgrade(current);
+      return prepareQualityUpgrade(current);
     } });
   }
   if ((!owners || owners.has("library")) && hasUpgradeSource()) {
@@ -311,7 +287,7 @@ async function listUpgradeCandidatesByAlbum({ force, owners, profile }) {
     for (const candidate of listLibraryUpgradeCandidates(profile)) {
       collect(candidate.albumMbid || `track:${candidate.trackId}`, { owner: "library", add: async () => {
         const job = resolveAurralOwnedTrackJob({ trackId: candidate.trackId, albumId: candidate.albumId });
-        return job ? addQualityUpgrade(job) : {};
+        return job ? prepareQualityUpgrade(job) : {};
       } });
     }
   }
@@ -319,8 +295,7 @@ async function listUpgradeCandidatesByAlbum({ force, owners, profile }) {
 }
 
 // One check covers every owner it is given, `limit` upgrades each, or
-// `limit` in all when it is given none. The upgrades of each album are
-// queued as soon as they are added, so no later one could have joined them.
+// `limit` in all when it is given none.
 export async function runQualityUpgradeCheck({ force = false, playlistIds = null, limit = 25 } = {}) {
   const profile = getQualityProfile();
   if (!force && !profile.automaticUpgrades) return 0;
@@ -328,21 +303,16 @@ export async function runQualityUpgradeCheck({ force = false, playlistIds = null
   const addedByOwner = new Map();
   let queued = 0;
   for (const candidates of await listUpgradeCandidatesByAlbum({ force, owners, profile })) {
-    const added = [];
-    try {
-      for (const { owner, add } of candidates) {
-        const counted = owners ? owner : null;
-        if ((addedByOwner.get(counted) || 0) >= limit) continue;
-        const upgrade = await add();
-        if (!upgrade.upgradeJobId) continue;
-        added.push(upgrade);
-        addedByOwner.set(counted, (addedByOwner.get(counted) || 0) + 1);
-      }
-    } catch (error) {
-      removeUnstartedUpgrades(added);
-      throw error;
+    const prepared = [];
+    for (const { owner, add } of candidates) {
+      const counted = owners ? owner : null;
+      if ((addedByOwner.get(counted) || 0) >= limit) continue;
+      const upgrade = await add();
+      if (!upgrade.sourceJobId) continue;
+      prepared.push(upgrade);
+      addedByOwner.set(counted, (addedByOwner.get(counted) || 0) + 1);
     }
-    queued += (await startQualityUpgrades(added)).filter((status) => status === "queued").length;
+    queued += await addQualityUpgrades(prepared);
   }
   return queued;
 }

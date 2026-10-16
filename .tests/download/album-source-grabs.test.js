@@ -13,10 +13,10 @@ const execFileAsync = promisify(execFile);
 const [state, { dbOps, userOps }, { downloadTracker }, { getDownloadClient },
   { processUsenetPipelinePayload }, { processPipelinePayload }, { downloadWorker },
   { buildSlskdRankingHistoryOptions }, { prowlarrClient },
-  { beginDownloadAttempt, getActiveDownloadAttemptId, setActiveDownloadAttemptId },
+  { beginDownloadAttempt, cancelPlaylistDownloadGeneration, getActiveDownloadAttemptId, setActiveDownloadAttemptId },
   { queueQualityUpgrade, runQualityUpgradeCheck }, { resolveDownloadRoot }, { registerJobs },
   { flowPlaylistConfig }, { getHonkerDb, getPipelineQueue, listHonkerJobs },
-  { stopDownloadPipelineWorker }] = await setupIsolatedBackend(
+  { stopDownloadPipelineWorker }, { getAurralHistoryRequests }] = await setupIsolatedBackend(
   "album-source-grabs",
   "backend/db/helpers/index.js",
   "backend/services/downloadJobs/downloadTracker.js",
@@ -33,6 +33,7 @@ const [state, { dbOps, userOps }, { downloadTracker }, { getDownloadClient },
   "backend/services/playlists/flowPlaylistConfig.js",
   "backend/services/honkerDb.js",
   "backend/services/downloadPipelineWorker.js",
+  "backend/services/aurralHistoryService.js",
 );
 
 test.after(async () => {
@@ -183,8 +184,6 @@ async function makeUpgrades(group, titles, { files = titles } = {}) {
   return { folder, upgradeIds, start };
 }
 
-// Holds the download worker while a test queues upgrades, and returns a step
-// that runs it until it has started every upgrade it can.
 async function holdDownloadWorker(t) {
   await downloadWorker.waitForIdle();
   if (downloadWorker.running) await downloadWorker.stopAndDrain();
@@ -591,7 +590,6 @@ test("an upgrade whose user is disabled while the upgrade check runs is not held
     [upgrades.sourceIds[0]]);
 });
 
-// Selects Search all on Wanted > Cutoff unmet as an admin.
 async function searchAllUpgrades(t) {
   const app = express();
   app.use((req, _res, next) => {
@@ -735,12 +733,12 @@ test("the upgrade check queues each album's upgrades for the worker before it ad
     ["done", "01 - Only.mp3"]);
 });
 
-test("an upgrade removed while its release details are read is not queued", async (t) => {
+test("a track removed while its upgrade's release details are read gets no upgrade", async (t) => {
   for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
-  const removing = { upgrade: null };
+  const removing = { track: null };
   await serveGroups(t, [], { missing: () => {
-    const upgrade = downloadTracker.getAll().find((job) => job.upgradeForJobId);
-    if (upgrade) removing.upgrade = downloadTracker.removeJob(upgrade.id) && upgrade.id;
+    const track = downloadTracker.getAll().find((job) => job.status === "done");
+    if (track) removing.track = downloadTracker.removeJob(track.id) && track.id;
     return true;
   } });
   const settings = dbOps.getSettings();
@@ -758,9 +756,61 @@ test("an upgrade removed while its release details are read is not queued", asyn
   const queued = t.mock.method(downloadTracker, "enqueuePipeline", () => {});
 
   assert.equal(await queueQualityUpgrade(downloadTracker.getJob(id)), "ineligible");
-  assert.ok(removing.upgrade);
+  assert.equal(removing.track, id);
   assert.equal(queued.mock.callCount(), 0);
+  assert.deepEqual(downloadTracker.getAll(), []);
+});
+
+test("an upgrade still waiting for the worker when every download source is turned off ends as no upgrade and keeps its file", async (t) => {
+  for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
+  await serveGroups(t, []);
+  useSlskd();
+  const original = join(resolveDownloadRoot(), "The Band", "sources-off-upgrade", "01 - First.mp3");
+  await mkdir(dirname(original), { recursive: true });
+  await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc", "-t", "1",
+    "-c:a", "libmp3lame", "-b:a", "128k", original]);
+  const id = downloadTracker.addJob({ artistName: "The Band", albumName: "sources-off-upgrade",
+    albumMbid: "sources-off-upgrade", trackName: "First", trackNumber: 1, durationMs: 1000 }, "library");
+  downloadTracker.setDone(id, original, "sources-off-upgrade");
+  downloadTracker.updateQuality(id, { tier: "mp3-128" });
+  const runWorker = await holdDownloadWorker(t);
+  assert.equal(await queueQualityUpgrade(downloadTracker.getJob(id)), "queued");
+  const upgradeId = downloadTracker.findActiveUpgradeJob(downloadTracker.getJob(id)).id;
+  const queued = t.mock.method(downloadTracker, "enqueuePipeline", () => {});
+  const settings = dbOps.getSettings();
+  dbOps.updateSettings({ ...settings, integrations: { ...settings.integrations,
+    ...Object.fromEntries(["slskd", "ytdlp", "deemix", "nzbget", "sabnzbd", "prowlarr"]
+      .map((id) => [id, { ...settings.integrations?.[id], enabled: false }])) } });
+
+  await runWorker();
+
+  assert.equal(queued.mock.callCount(), 0);
+  assert.equal(downloadTracker.findActiveUpgradeJob(downloadTracker.getJob(id)), null);
   assert.equal(downloadTracker.getJob(id).finalPath, original);
+  const entry = (await getAurralHistoryRequests()).find((item) => item.jobId === upgradeId);
+  assert.deepEqual([entry?.status, entry?.title], ["failed", "No upgrade found for First"]);
+});
+
+test("a static playlist track whose downloads were cancelled gets no upgrade", async (t) => {
+  for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
+  await serveGroups(t, []);
+  useSlskd();
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Cancelled mix" });
+  const original = join(resolveDownloadRoot(), "The Band", "cancelled-upgrade", "01 - First.mp3");
+  await mkdir(dirname(original), { recursive: true });
+  await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc", "-t", "1",
+    "-c:a", "libmp3lame", "-b:a", "128k", original]);
+  const id = downloadTracker.addJob({ artistName: "The Band", albumName: "cancelled-upgrade",
+    albumMbid: "cancelled-upgrade", trackName: "First", trackNumber: 1, durationMs: 1000 }, playlist.id);
+  downloadTracker.setDone(id, original, "cancelled-upgrade");
+  downloadTracker.updateQuality(id, { tier: "mp3-128" });
+  cancelPlaylistDownloadGeneration(playlist.id);
+  const runWorker = await holdDownloadWorker(t);
+
+  assert.equal(await queueQualityUpgrade(downloadTracker.getJob(id)), "ineligible");
+  await runWorker();
+  assert.equal(downloadTracker.findActiveUpgradeJob(downloadTracker.getJob(id)), null);
+  assert.equal(downloadTracker.getJob(id).qualityUpgradeCheckedAt ?? null, null);
 });
 
 test("a Usenet download of a second-disc track takes the disc in its name", async (t) => {

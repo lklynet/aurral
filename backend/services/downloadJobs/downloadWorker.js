@@ -616,7 +616,7 @@ export class DownloadWorker {
 
     try {
       if (job.upgradeForJobId) {
-        await this._startUpgrade(job, runGeneration);
+        await this._enqueueUpgrade(job, runGeneration);
         return;
       }
       let phaseStart = process.hrtime.bigint();
@@ -709,15 +709,14 @@ export class DownloadWorker {
     }
   }
 
-  // The upgrade check read the upgrade's release details when it added it,
-  // and an upgrade replaces the file it has, so it never reuses one.
-  async _startUpgrade(job, runGeneration) {
+  async _enqueueUpgrade(job, runGeneration) {
     const { manifest: release } = await readReleaseManifest(job.albumMbid, job.releaseMbid);
     this._assertJobCanContinue(job, runGeneration);
     if (downloadTracker.enqueueDownloadPipeline(job.id, { release })) return;
-    if (downloadTracker.getJob(job.id)?.status === "pending" && !downloadTracker.isSlskdDispatched(job.id)) {
-      downloadTracker.removeJob(job.id);
-    }
+    if (downloadTracker.getJob(job.id)?.status !== "pending" || downloadTracker.isSlskdDispatched(job.id)) return;
+    const { finalizeQualityUpgradeFailure } = await import("../qualityProfileService.js");
+    await finalizeQualityUpgradeFailure(job, isAnyDownloadSourceConfigured()
+      ? "The upgrade could not be queued" : getDownloadSourceNotConfiguredMessage());
   }
 
   async checkPlaylistComplete(playlistType) {

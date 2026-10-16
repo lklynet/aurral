@@ -465,20 +465,16 @@ test("a web-side tracker preserves pending upgrades but excludes them from norma
   }
 });
 
-test("an upgrade released to the worker keeps its place after the tracker reloads committed jobs, and one still being added stays out", () => {
+test("an upgrade waits in the worker's queue, also after the tracker reloads committed jobs", () => {
   const tracker = new DownloadTracker();
-  const [releasedSource, addingSource] = ["First", "Second"].map((trackName) => {
-    const id = tracker.addJob({ artistName: "Artist", trackName }, "library");
-    tracker.setDone(id, `/library/${trackName}.mp3`, "Album");
-    return id;
-  });
-  const releasedId = tracker.addUpgradeJob(tracker.getJob(releasedSource));
-  tracker.setPending(releasedId);
-  tracker.addUpgradeJob(tracker.getJob(addingSource));
+  const sourceId = tracker.addJob({ artistName: "Artist", trackName: "Song" }, "library");
+  tracker.setDone(sourceId, "/library/Song.mp3", "Album");
+  const upgradeId = tracker.addUpgradeJob(tracker.getJob(sourceId));
+  assert.deepEqual(tracker.peekPending().map((job) => job.id), [upgradeId]);
 
   tracker.reconcileCommittedJobs();
 
-  assert.deepEqual(tracker.peekPending().map((job) => job.id), [releasedId]);
+  assert.deepEqual(tracker.peekPending().map((job) => job.id), [upgradeId]);
 });
 
 test("worker does not select a job that is already active", () => {
