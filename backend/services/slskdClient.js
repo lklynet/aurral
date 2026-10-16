@@ -373,9 +373,11 @@ class SearchMonitor {
     const cancelled = () => signal?.aborted || shouldCancel?.();
     try {
       if (cancelled()) { await this.stop(); return { done: true, data: null }; }
-      const cutoff = this.queued ? this.hardDeadline : this.cutoff();
-      if (this.queued && Date.now() >= cutoff) throw searchStillQueuedError();
-      if (this.latest && Date.now() >= cutoff) return this.finish(this.latest);
+      const cutoff = this.queued || !this.latest ? this.hardDeadline : this.cutoff();
+      if (Date.now() >= cutoff) {
+        if (this.queued) throw searchStillQueuedError();
+        return this.finish(this.latest);
+      }
       let data;
       try {
         data = await this.client.getSearch(this.searchId, {
