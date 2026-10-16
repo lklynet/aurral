@@ -586,7 +586,7 @@ async function handleDeemixFinalize(payload, helpers) {
       downloadTracker,
       job,
       committedFinalPath,
-      album: job.albumName || candidate?.resolvedAlbumName,
+      album: candidate?.resolvedAlbumName,
       quality: validation.quality,
     });
   });

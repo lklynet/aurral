@@ -107,7 +107,7 @@ export async function recordPipelineJobSuccess({
     await finalizeQualityUpgradeSuccess(job, committedFinalPath, quality);
     return false;
   }
-  if (downloadTracker.setDone(job.id, committedFinalPath, album) === false) return false;
+  if (downloadTracker.setDone(job.id, committedFinalPath, job.albumName || album) === false) return false;
   if (quality) downloadTracker.updateQuality(job.id, quality);
 
   if (job.managedBy !== "lidarr" && committedFinalPath) {

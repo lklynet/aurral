@@ -590,7 +590,7 @@ async function handleUsenetFinalize(payload, helpers) {
       historyItem, payload.downloadClient || payload.manualDownloadClient,
     );
     const next = await finishAlbumGrab(payload, {
-      filePaths, source: "usenet", album: candidate?.resolvedAlbumName || job.albumName,
+      filePaths, source: "usenet", album: candidate?.resolvedAlbumName,
       resetFields: RELEASE_RESET,
     });
     await removeUsenetItem(payload, job.id, { deleteFiles: true, historyItem });
@@ -664,7 +664,7 @@ async function handleUsenetFinalize(payload, helpers) {
       downloadTracker,
       job,
       committedFinalPath,
-      album: job.albumName || candidate?.resolvedAlbumName,
+      album: candidate?.resolvedAlbumName,
       quality: found.validation?.quality,
     });
   });

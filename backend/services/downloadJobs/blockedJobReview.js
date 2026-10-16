@@ -91,7 +91,6 @@ export async function approveBlockedJob(jobId) {
         downloadTracker,
         job,
         committedFinalPath: committedPath,
-        album: job.albumName,
       });
       return { committedPath, recorded };
     },

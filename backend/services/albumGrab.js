@@ -211,7 +211,7 @@ export async function finishAlbumGrab(payload, {
           jobId: job.id,
         });
         return finalizePipelineJobSuccess({
-          downloadTracker, job, committedFinalPath, album: album || job.albumName,
+          downloadTracker, job, committedFinalPath, album,
           quality: match.validation.quality,
         });
       });
