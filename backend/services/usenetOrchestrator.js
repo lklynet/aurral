@@ -47,6 +47,7 @@ import { attemptRelease } from "./releaseResolver.js";
 
 const MIN_USENET_CANDIDATES = 2;
 const MAX_DOWNLOAD_CANDIDATES = 5;
+const MAX_TRACK_NZB_GRABS = 2;
 const POLL_DELAY_SECONDS = 5;
 const MAX_MISSING_POLLS = 60;
 const UNREAD_POLL_DELAY_SECONDS = 30;
@@ -385,7 +386,7 @@ async function handleUsenetSearch(payload, helpers) {
     readName: (entry) => entry?.raw?.release?.title,
     },
   );
-  const candidates = selectRankedUsenetCandidates(qualityRanked, MAX_DOWNLOAD_CANDIDATES).map((entry) => ({
+  const candidates = selectRankedUsenetCandidates(qualityRanked, albumGrab ? MAX_DOWNLOAD_CANDIDATES : MAX_TRACK_NZB_GRABS).map((entry) => ({
     raw: entry.raw,
     score: entry.score,
     scores: entry.scores,
@@ -483,7 +484,7 @@ async function handleUsenetDownload(payload, helpers) {
   }
   let submission;
   try {
-    const nzb = await prowlarrClient.downloadNzb(release.downloadUrl);
+    const nzb = await prowlarrClient.downloadNzb(release.downloadUrl, release);
     if (!isPipelinePayloadActive(payload)) return null;
     submission = await withPipelineCommitLock(payload, async () => {
       const appended = await client.appendNzb({

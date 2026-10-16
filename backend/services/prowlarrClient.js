@@ -8,6 +8,19 @@ const DEFAULT_MAX_RESULTS = 60;
 let connectionCache = { checkedAt: 0, result: null };
 let indexerCache = { key: null, at: 0, indexers: [] };
 const INDEXER_CACHE_MS = 5 * 60 * 1000;
+const NZB_LIMIT_FALLBACK_MS = 60 * 60 * 1000;
+const NZB_LIMIT_MAX_MS = 24 * 60 * 60 * 1000;
+const nzbLimitedUntil = new Map();
+
+function readRetryAfterMs(value) {
+  const seconds = Number(value);
+  const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(String(value || "")) - Date.now();
+  return Number.isFinite(ms) && ms > 0 ? Math.min(ms, NZB_LIMIT_MAX_MS) : NZB_LIMIT_FALLBACK_MS;
+}
+
+function nzbLimitError(indexer, until) {
+  return new Error(`${indexer || "The indexer"} is limiting NZB downloads until ${new Date(until).toISOString()}`);
+}
 
 function normalizePositiveInteger(value, fallback) {
   const parsed = normalizeInteger(value, null);
@@ -373,14 +386,22 @@ export class ProwlarrClient {
 
   // Like Lidarr, Aurral fetches the NZB itself and hands the download client
   // the file, so the client never needs to reach Prowlarr at Aurral's address.
-  async downloadNzb(downloadUrl) {
+  async downloadNzb(downloadUrl, { indexerId = null, indexer = "" } = {}) {
     const url = String(downloadUrl || "").trim();
     if (!url) throw new Error("No Usenet release URL available");
+    const limitKey = String(indexerId ?? "").trim();
+    const limitedUntil = nzbLimitedUntil.get(limitKey) || 0;
+    if (limitKey && limitedUntil > Date.now()) throw nzbLimitError(indexer, limitedUntil);
     const response = await axios.get(url, {
       responseType: "arraybuffer",
       timeout: 60000,
       validateStatus: () => true,
     });
+    if (response.status === 429) {
+      const until = Date.now() + readRetryAfterMs(response.headers?.["retry-after"]);
+      if (limitKey) nzbLimitedUntil.set(limitKey, until);
+      throw nzbLimitError(indexer, until);
+    }
     if (response.status !== 200) {
       throw new Error(`The indexer did not return the NZB: HTTP ${response.status}`);
     }

@@ -711,7 +711,7 @@ test("an indexer that answers HTTP 429 gets no NZB request from any job until it
   const server = await createMockHttpServer((req, res) => {
     requests.push(req.url);
     if (req.url.startsWith("/1/")) {
-      res.writeHead(429, { "Retry-After": "600", "Content-Type": "text/xml" });
+      res.writeHead(429, { ...(req.url.includes("Three") ? {} : { "Retry-After": "600" }), "Content-Type": "text/xml" });
       res.end('<error code="429" description="User configurable Indexer Grab Limit of 5 in last 24 hour(s) reached."/>');
       return;
     }
@@ -737,4 +737,8 @@ test("an indexer that answers HTTP 429 gets no NZB request from any job until it
   t.mock.timers.tick(601 * 1000);
   await run("Limited Three");
   assert.deepEqual(requests.slice(3), ["/1/Limited-Three", "/2/Limited-Three"]);
+
+  t.mock.timers.tick(30 * 60 * 1000);
+  await run("Limited Four");
+  assert.deepEqual(requests.slice(5), ["/2/Limited-Four"]);
 });
