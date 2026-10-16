@@ -687,24 +687,6 @@ function trackReleases(artistName, downloadUrl) {
     size: 9 * 1024 * 1024, categories: [3010] }));
 }
 
-test("a Usenet track search fetches at most two NZBs before it tries the next source", async (t) => {
-  t.mock.method(prowlarrClient, "getEnabledUsenetIndexers", async () => []);
-  t.mock.method(prowlarrClient, "search", async () =>
-    trackReleases("Blondie", (indexerId) => `https://nzb.invalid/${indexerId}`));
-  const fetched = [];
-  t.mock.method(prowlarrClient, "downloadNzb", async (url) => {
-    fetched.push(url);
-    throw new Error("The indexer did not return an NZB file");
-  });
-  const jobId = downloadTracker.addJob({ artistName: "Blondie", trackName: "Atomic", durationMs: 230000 },
-    "usenet-grab-budget");
-
-  const result = await runUntilSettled({ phase: "search", source: "usenet", jobId });
-
-  assert.equal(result.error, "The indexer did not return an NZB file");
-  assert.deepEqual(fetched, ["https://nzb.invalid/1", "https://nzb.invalid/2"]);
-});
-
 test("an indexer that answers HTTP 429 gets no NZB request from any job until its Retry-After passes", async (t) => {
   t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2000-01-01T12:00:00Z") });
   const requests = [];

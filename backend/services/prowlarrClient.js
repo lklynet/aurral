@@ -13,9 +13,11 @@ const NZB_LIMIT_MAX_MS = 24 * 60 * 60 * 1000;
 const nzbLimitedUntil = new Map();
 
 function readRetryAfterMs(value) {
-  const seconds = Number(value);
-  const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(String(value || "")) - Date.now();
-  return Number.isFinite(ms) && ms > 0 ? Math.min(ms, NZB_LIMIT_MAX_MS) : NZB_LIMIT_FALLBACK_MS;
+  const text = String(value ?? "").trim();
+  const seconds = Number(text);
+  const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(text) - Date.now();
+  if (!text || !Number.isFinite(ms)) return NZB_LIMIT_FALLBACK_MS;
+  return Math.min(Math.max(ms, 0), NZB_LIMIT_MAX_MS);
 }
 
 function nzbLimitError(indexer, until) {
