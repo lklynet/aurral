@@ -4,7 +4,7 @@ import { normalizeMatchText } from "./trackMatching/nativeMatcher.js";
 import { extractVariants } from "./trackMatching/semanticPolicy.js";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 
-const VERSION_KEYS = ["live", "acoustic", "instrumental", "karaoke", "demo", "cover", "remix",
+const VERSION_KEYS = ["live", "concert", "acoustic", "instrumental", "karaoke", "demo", "cover", "remix",
   "sped_up", "slowed", "nightcore", "eight_d"];
 
 const id = (value) => String(value || "").trim().toLowerCase();
@@ -17,7 +17,7 @@ const unique = (values) => [...new Set(values.map(text).filter(Boolean))];
 export function sameVersion(left, right) {
   const a = extractVariants(left);
   const b = extractVariants(right);
-  return VERSION_KEYS.every((key) => Boolean(a[key]) === Boolean(b[key]));
+  return VERSION_KEYS.every((key) => Boolean(a[key]) === Boolean(b[key])) && a.mixVariant === b.mixVariant;
 }
 
 function sameTitle(left, right) {

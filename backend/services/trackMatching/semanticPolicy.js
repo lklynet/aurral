@@ -415,9 +415,12 @@ function requestedNames(request) {
     ...asList(request?.artists),
     ...asList(request?.artistAliases),
   ];
+  // A single named after its track, such as "Song (Live)", names nothing but
+  // the track, so it must not take the track's own version out of its title.
+  const trackTitles = new Set(asList(trackName).map((name) => normalizeVariantText(getCoreTitle(name))));
   const names = [
-    ...asList(albumName),
-    ...asList(albumName).map(coreAlbumTitle),
+    ...[...asList(albumName), ...asList(albumName).map(coreAlbumTitle)]
+      .filter((name) => !trackTitles.has(normalizeVariantText(getCoreTitle(name)))),
     ...asList(trackName).map(getCoreTitle),
     ...artists,
   ];
@@ -442,8 +445,13 @@ function allowedVariants(expected, requested) {
   for (const name of requested.albumName) {
     for (const variant of contextVariants(name, { release: true })) allowed.add(variant);
   }
+  // Only an artist named for a version no original is filed under, such as
+  // Karaoke Kings, or a tribute act makes every track that version. Acoustic
+  // Alchemy's songs are not acoustic versions.
   for (const name of requested.artists) {
-    for (const variant of contextVariants(name)) allowed.add(variant);
+    for (const variant of contextVariants(name)) {
+      if (NEVER_ORIGINAL_VARIANTS.has(variant) || variant === "cover") allowed.add(variant);
+    }
   }
   for (const type of requested.releaseTypes) {
     const variant = SECONDARY_TYPE_VARIANTS.get(type.toLowerCase());

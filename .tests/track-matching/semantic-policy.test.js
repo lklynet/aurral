@@ -165,6 +165,13 @@ test("a version the request names in its track, album, or artist is allowed in t
   assert.equal(check(alive, { title: "Deuce (Live)", path: "KISS/Alive! (Live 1975)/01 Deuce (Live).flac" }).compatible, true);
   assert.deepEqual(check(alive, { title: "Deuce (Acoustic)" }).contradictions, ["acoustic"]);
   assert.deepEqual(check({ ...alive, secondaryTypes: [] }, { title: "Deuce (Live)" }).contradictions, ["live"]);
+  const karaoke = { trackName: "Song", artistName: "Karaoke Kings", albumName: "Hits" };
+  assert.equal(check(karaoke, { title: "Song (Karaoke Version)" }).compatible, true);
+  const alchemy = { trackName: "Sounds Good", artistName: "Acoustic Alchemy", albumName: "Red Dust & Spanish Lace" };
+  assert.deepEqual(check(alchemy, { title: "Sounds Good (Acoustic)" }).contradictions, ["acoustic"]);
+  const liveSingle = { trackName: "Song (Live)", artistName: "Band", albumName: "Song (Live)" };
+  assert.equal(check(liveSingle, { title: "Song (Live)", path: "Band/Band - Song (Live)/01 Song (Live).flac" }).compatible, true);
+  assert.deepEqual(check(liveSingle, { title: "Song" }).contradictions, ["live"]);
   assert.equal(check(
     { trackName: "Kiss Me", artistName: "Band", albumName: "Live the Dream" },
     { title: "Kiss Me", album: "Live the Dream", path: "Band/Live the Dream/01 Kiss Me.flac" },
