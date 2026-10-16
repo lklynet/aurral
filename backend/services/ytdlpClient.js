@@ -245,9 +245,7 @@ function readSong(stdout, { id, title }) {
 // read in full for YouTube Music's own artists, album, and length, a few at a
 // time. `decided` is asked after each batch, so every read a batch starts
 // counts and one search gives the same songs each time; the search stops once
-// it agrees. A read skips the format manifest it does not need. One read now
-// and then still stalls for 5 to 10 seconds, so the whole search has one
-// deadline that fits a stalled read: the reads still running are killed and
+// it agrees. At the search deadline, the reads still running are killed and
 // the songs in hand are returned. A song that cannot be read (age-gated,
 // removed) is left out.
 async function searchSongs(query, { limit, wanted = () => true, decided = () => false }) {

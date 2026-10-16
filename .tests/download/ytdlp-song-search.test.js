@@ -216,7 +216,7 @@ test("yt-dlp gives up on a stalled song read at the search deadline and searches
     artistName: "宇多田ヒカル", artistAliases: ["Utada Hikaru", "Hikaru Utada"],
     trackName: "First Love", albumName: "First Love", durationMs: 257000,
   });
-  while (!(await calls()).includes("read BGMfbFzONp8")) await new Promise((resolve) => setImmediate(resolve));
+  await waitFor(async () => (await calls()).includes("read BGMfbFzONp8"));
   const stalled = await readPid("BGMfbFzONp8");
   t.mock.timers.tick(60000);
   const { next } = await searching;
