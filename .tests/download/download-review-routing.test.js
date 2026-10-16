@@ -901,7 +901,8 @@ btest("a download is tagged after it reaches the Library, so a slow download fol
   const usenetJobId = addJob("Correct Track", 1);
   await processUsenetPipelinePayload({ phase: "finalize", source: "usenet", jobId: usenetJobId, nzbId: 1,
     destination: "slow-mount/Artist Name/Album Name", history: { FinalDir: path.join(slowFolder, "usenet") },
-    candidate: { raw: { guid: "release-1", release: { guid: "release-1", title: "Artist Name - Album Name" } } },
+    candidate: { raw: { guid: "release-1", release: { guid: "release-1", title: "Artist Name - Album Name" } },
+      resolvedAlbumName: "Other Release" },
     candidateIndex: 0 }, { failOrTryNextSource: failIfPipelineFallsThrough });
   const slskdJobId = addJob("Other Track", 2);
   await processPipelinePayload({ phase: "finalize", source: "slskd", jobId: slskdJobId, candidateIndex: 0,
