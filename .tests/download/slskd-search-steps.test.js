@@ -88,8 +88,7 @@ test("a Soulseek search that slskd keeps queued past five minutes waits for it t
   t.mock.method(client, "getSearch", async () => running
     ? { state: "Completed, Succeeded", fileCount: 3, responses }
     : { state: "Queued", responses: [] });
-  const jobId = downloadTracker.addJob({ artistName: "Queued Band", albumName: "Queued Album",
-    trackName: "Song", durationMs: 200000 }, "library");
+  const jobId = downloadTracker.addJob({ artistName: "Queued Band", trackName: "Song", durationMs: 200000 }, "library");
 
   const started = await processPipelinePayload({ phase: "search", source: "slskd", jobId });
   const queuedAt = Date.now();
@@ -105,7 +104,7 @@ test("a Soulseek search that slskd keeps queued past five minutes waits for it t
 
   running = true;
   t.mock.timers.tick(next.delaySeconds * 1000);
-  const ran = await processPipelinePayload(next);
+  const ran = await processPipelinePayload(next); console.log("DBG", JSON.stringify({ phase: ran.phase, idx: ran.searchQueryIndex, q: ran.searchQueries, active: ran.activeSearch, created: created.mock.callCount(), d: ran.delaySeconds }));
   assert.equal(ran.phase, "download");
   assert.equal(created.mock.callCount(), 1);
   assert.match(ran.candidates[0].raw.file, /Queued Album\\01 - Song\.flac$/);
