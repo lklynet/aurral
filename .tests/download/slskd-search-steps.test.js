@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState, createMockHttpServer, resetDatabase } from "../helpers/backendTestHarness.js";
 
 const [state, { db }, { dbOps }, { downloadTracker, DownloadTracker }, { getDownloadClient }, { processPipelinePayload },
-  { processSystemTask }] =
+  { processSystemTask }, { downloadWorker }] =
   await setupIsolatedBackend(
     "slskd-search-steps",
     "backend/config/db-sqlite.js",
@@ -12,6 +12,7 @@ const [state, { db }, { dbOps }, { downloadTracker, DownloadTracker }, { getDown
     "backend/services/download/downloadClientSettings.js",
     "backend/services/downloadPipeline.js",
     "backend/services/systemTaskWorker.js",
+    "backend/services/downloadJobs/downloadWorker.js",
   );
 
 test.after(() => cleanupIsolatedState(state));
@@ -207,7 +208,11 @@ async function startSoulseek(t) {
       if (req.method === "GET" && req.url.startsWith("/api/v0/transfers/downloads/")) {
         return send(200, { id: req.url.split("/").pop(), state: soulseek.transferState });
       }
-      if (req.method === "DELETE" && soulseek.down) return send(503, "");
+      if (req.method === "DELETE" && soulseek.holdDelete) {
+        const hold = soulseek.holdDelete;
+        soulseek.holdDelete = null;
+        return hold((status) => send(status, ""));
+      }
       if (req.method === "DELETE") soulseek.deleted.push(req.url.split("?")[0]);
       if (req.method === "GET" && req.url.startsWith("/api/v0/events")) return send(200, []);
       return send(404, "");
@@ -348,7 +353,7 @@ test("a restart that drops an upgrade deletes the upgrade's running search from 
   assert.equal(trackedSearches(), 0);
 });
 
-test("after a restart Aurral deletes only its slskd searches whose jobs no longer exist", async (t) => {
+test("after a restart Aurral resumes downloads first, then deletes only its slskd searches whose jobs no longer exist", async (t) => {
   const soulseek = await startSoulseek(t);
   soulseek.loggedIn = true;
   const { searching: dropped } = await startUpgradeSearch("Orphan Band");
@@ -360,12 +365,17 @@ test("after a restart Aurral deletes only its slskd searches whose jobs no longe
 
   downloadTracker.resetDownloadingToPending();
   new DownloadTracker();
-  soulseek.down = true;
-  await assert.rejects(processSystemTask({ kind: "slskd-search-cleanup" }), { message: "Could not cancel slskd work" });
+  const workerStarts = t.mock.method(downloadWorker, "start", async () => {});
+  const heldDelete = new Promise((resolve) => { soulseek.holdDelete = resolve; });
+  const startup = processSystemTask({ kind: "weekly-flow-startup-check" });
+  const respond = await Promise.race([heldDelete, new Promise((resolve) => setTimeout(resolve, 2000, null))]);
+  assert.ok(respond, "slskd never received a delete for the dropped upgrade's search");
+  assert.equal(workerStarts.mock.callCount(), 1, "the download worker must start before Aurral waits on slskd");
+  respond(503);
+  await assert.rejects(startup, { message: "Could not cancel slskd work" });
   assert.deepEqual(trackedSlskdSearchIds(), [dropped.activeSearch.id, live.activeSearch.id].sort());
 
-  soulseek.down = false;
-  await processSystemTask({ kind: "slskd-search-cleanup" });
+  await processSystemTask({ kind: "weekly-flow-startup-check" });
   assert.deepEqual(soulseek.deleted, [`/api/v0/searches/${dropped.activeSearch.id}`]);
   assert.deepEqual(trackedSlskdSearchIds(), [live.activeSearch.id]);
 });
