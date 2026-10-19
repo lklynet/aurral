@@ -35,7 +35,7 @@ Settings save automatically after each change.
 
 Aurral creates the **Aurral** library at the Downloads Folder, as Plex sees it. Permanent tracks are in `Artist/Album/Track` folders. Temporary flow tracks are under `_flows/<flow-id>`. Aurral adds `_flows` as a second folder of the library.
 
-You do not need to create this library in Plex yourself. It stays empty until a flow downloads tracks. Plex can take several minutes to scan new files.
+You do not need to create this library in Plex yourself. It stays empty until a flow downloads tracks. When files in the Downloads Folder change, Aurral asks Plex to scan only the changed folders. Changes made close together share one request. When more than 20 folders change at once, as after a **Full scan**, Aurral refreshes the whole **Aurral** library instead. Plex can take several minutes to scan new files.
 
 ## Plex compared with Navidrome
 
@@ -77,7 +77,7 @@ Aurral only reads this library. It never writes to it, scans it, or changes it. 
 
 ## Sync behavior
 
-**Sync to Plex now** creates the **Aurral** library if it is missing, starts a Plex scan, and builds or updates the playlists.
+**Sync to Plex now** creates the **Aurral** library if it is missing, starts a scan of the whole **Aurral** library, and builds or updates the playlists.
 
 A Plex scan can take minutes. If a sync finds no indexed tracks, wait for the scan to finish. Aurral runs catch-up syncs while Plex scans. You can also select **Sync to Plex now** again.
 

@@ -874,6 +874,32 @@ export function requeueInterruptedHonkerJob(job, queue, { refundAttempt = true }
   }
 }
 
+export function mergeIntoPendingHonkerJob(queueName, { payloadKind, matches = () => true, merge }) {
+  const tx = getHonkerDb().transaction();
+  try {
+    const rows = tx.query(
+      `SELECT id, payload FROM _honker_live
+       WHERE queue = ? AND json_extract(payload, '$.kind') = ? AND state = 'pending' AND attempts = 0
+       ORDER BY id ASC`,
+      [queueName, payloadKind],
+    );
+    const target = rows
+      .map((row) => ({ id: row.id, payload: parseHonkerPayload(row.payload) }))
+      .find(({ payload }) => payload && matches(payload));
+    if (target) {
+      tx.execute("UPDATE _honker_live SET payload = ? WHERE id = ?", [
+        JSON.stringify(merge(target.payload)),
+        target.id,
+      ]);
+    }
+    tx.commit();
+    return target?.id ?? null;
+  } catch (error) {
+    tx.rollback();
+    throw error;
+  }
+}
+
 export function adjustHonkerClaimAttempts(job, queue, delta) {
   const tx = getHonkerDb().transaction();
   try {

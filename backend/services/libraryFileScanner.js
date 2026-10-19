@@ -348,6 +348,7 @@ export async function scanMusicRoot({
   metadataEnricher = null,
   syncSearch = true,
   isExcluded = () => false,
+  changedFiles = new Set(),
 } = {}) {
   const resolvedRoot = path.resolve(String(rootPath || ""));
   await fs.mkdir(resolvedRoot, { recursive: true });
@@ -490,6 +491,7 @@ export async function scanMusicRoot({
           }
           unseenPaths?.delete(filePath);
           seenPaths.add(filePath);
+          changedFiles.add(filePath);
           result.filesIndexed += 1;
         } catch (error) {
           result.filesFailed += 1;
@@ -512,8 +514,10 @@ export async function scanMusicRoot({
         const walked = (filePath) => isPathWithin(resolvedRoot, filePath) && !isExcluded(filePath)
           && !path.relative(resolvedRoot, path.dirname(filePath)).split(path.sep).some(isLibraryScanExcludedDirectory);
         const unseen = [...unseenPaths];
-        await forgetMissingFiles(source, resolvedRoot, unseen.filter(walked));
-        markLibraryMediaFilesUnavailable(source, unseen.filter((filePath) => !walked(filePath)));
+        for (const filePath of [
+          ...await forgetMissingFiles(source, resolvedRoot, unseen.filter(walked)),
+          ...markLibraryMediaFilesUnavailable(source, unseen.filter((filePath) => !walked(filePath))),
+        ]) changedFiles.add(filePath);
       }
       if (requestedFiles) {
         const scopes = reconcilePaths || requestedFiles;
@@ -528,7 +532,9 @@ export async function scanMusicRoot({
           ...missingIndexedPaths,
         ];
         if (unavailablePaths.length > 0) {
-          await forgetMissingFiles(source, resolvedRoot, unavailablePaths);
+          for (const filePath of await forgetMissingFiles(source, resolvedRoot, unavailablePaths)) {
+            changedFiles.add(filePath);
+          }
         }
       }
       return result;
@@ -543,7 +549,12 @@ export async function scanMusicRoot({
   return scanResult;
 }
 
-export async function scanMusicRoots({ rootPaths = [], changedPaths = null, ...options } = {}) {
+export async function scanMusicRoots({
+  rootPaths = [],
+  changedPaths = null,
+  changedFiles = new Set(),
+  ...options
+} = {}) {
   const roots = [...new Set(
     (Array.isArray(rootPaths) ? rootPaths : [])
       .map((rootPath) => String(rootPath ?? "").trim())
@@ -556,7 +567,7 @@ export async function scanMusicRoots({ rootPaths = [], changedPaths = null, ...o
       const paths = changedPaths.filter((changedPath) => isPathWithin(rootPath, changedPath));
       if (paths.length === 0) continue;
       try {
-        const scan = await scanMusicRoot({ ...options, rootPath, changedPaths: paths });
+        const scan = await scanMusicRoot({ ...options, changedFiles, rootPath, changedPaths: paths });
         result.filesSeen += scan.filesSeen;
         result.filesIndexed += scan.filesIndexed;
         result.filesFailed += scan.filesFailed;
@@ -591,7 +602,7 @@ export async function scanMusicRoots({ rootPaths = [], changedPaths = null, ...o
       for await (const filePath of walkAudioFiles(rootPath, options.isExcluded)) {
         filePaths.push(filePath);
       }
-      const scan = await scanMusicRoot({ ...options, rootPath, filePaths });
+      const scan = await scanMusicRoot({ ...options, changedFiles, rootPath, filePaths });
       result.filesSeen += scan.filesSeen;
       result.filesIndexed += scan.filesIndexed;
       result.filesFailed += scan.filesFailed;
@@ -603,15 +614,16 @@ export async function scanMusicRoots({ rootPaths = [], changedPaths = null, ...o
     }
   }
 
-  let forgotten = 0;
+  const forgotten = [];
   for (const rootPath of scannedRoots) {
     const missingPaths = [...unseenPaths].filter((filePath) => {
       const relative = path.relative(rootPath, filePath);
       return relative && !relative.startsWith("..") && !path.isAbsolute(relative);
     });
-    if (missingPaths.length > 0) forgotten += await forgetMissingFiles(source, rootPath, missingPaths);
+    if (missingPaths.length > 0) forgotten.push(...await forgetMissingFiles(source, rootPath, missingPaths));
   }
-  if (forgotten > 0) {
+  for (const filePath of forgotten) changedFiles.add(filePath);
+  if (forgotten.length > 0) {
     result.changed = true;
     reconcileLibraryAlbums();
   }

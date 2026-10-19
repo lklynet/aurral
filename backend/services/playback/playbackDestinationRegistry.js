@@ -28,9 +28,14 @@ export class PlaybackDestinationRegistry {
   }
 
   async run(operation, ...args) {
+    return this.runOn(null, operation, ...args);
+  }
+
+  async runOn(keys, operation, ...args) {
     return Promise.all(
       this.destinations.filter(
-        (destination) => operation === "deletePlaylist" || destination.isConfigured(),
+        (destination) => (!keys || keys.includes(destination.key))
+          && (operation === "deletePlaylist" || destination.isConfigured()),
       ).map(
         async (destination) => {
           let result;
@@ -49,7 +54,7 @@ export class PlaybackDestinationRegistry {
               result.error?.message,
             );
           }
-          return { destination: destination.name, operation, ...result };
+          return { destination: destination.name, key: destination.key, operation, ...result };
         },
       ),
     );

@@ -16,13 +16,17 @@ import {
   resolveDownloadRoot,
 } from "../downloadPaths.js";
 import { scheduleLibraryScan } from "../libraryScanWorker.js";
-import { enqueueSystemTaskJob, findActiveHonkerJob } from "../honkerDb.js";
+import { enqueueSystemTaskJob, mergeIntoPendingHonkerJob } from "../honkerDb.js";
+import { activeLidarrRoots } from "../libraryFolders.js";
+import { lidarrClient } from "../lidarrClient.js";
 import { getDownloadClient } from "../download/downloadClientSettings.js";
 import {
   assertPlaybackDestination,
   createPlaybackPlaylistIdentity,
   createPlaybackPlaylistSnapshot,
+  createPlaybackScanRequest,
 } from "../playback/playbackDestination.js";
+import { scanFoldersForPaths } from "../playback/playbackScanFolders.js";
 import { PlaybackDestinationRegistry } from "../playback/playbackDestinationRegistry.js";
 import { collectPlaybackPlaylistTracks } from "../playback/playbackPlaylistTracks.js";
 import { NavidromePlaybackDestination } from "../playback/navidromePlaybackDestination.js";
@@ -32,6 +36,7 @@ import { createPlaybackDeletionGuard, removeUnusedPlaybackFiles } from "../playb
 
 const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
+const PLAYBACK_SCAN_BATCH_SECONDS = 15;
 
 export class PlaylistManager {
   constructor(downloadRoot = resolveDownloadRoot()) {
@@ -306,17 +311,33 @@ export class PlaylistManager {
     );
   }
 
-  schedulePlaybackScan() {
+  schedulePlaybackScan(paths, { destinations = null } = {}) {
     this.updateConfig(false);
     if (!this.destinationRegistry.destinations.some((destination) => destination.isConfigured())) return null;
-    const pending = findActiveHonkerJob("system-task", (_payload, job) => job.state === "pending", {
+    const roots = this.libraryRoots();
+    const folders = scanFoldersForPaths(paths, roots);
+    if (!folders.length) return null;
+    const pendingId = mergeIntoPendingHonkerJob("system-task", {
       payloadKind: "playback-library-scan",
+      matches: (payload) => Array.isArray(payload.folders)
+        && JSON.stringify(payload.destinations ?? null) === JSON.stringify(destinations),
+      merge: (payload) => ({ ...payload, folders: scanFoldersForPaths([...payload.folders, ...folders], roots) }),
     });
-    return pending?.id ?? enqueueSystemTaskJob({ kind: "playback-library-scan" }, { delaySeconds: 5 });
+    return pendingId ?? enqueueSystemTaskJob(
+      { kind: "playback-library-scan", folders, ...(destinations ? { destinations } : {}) },
+      { delaySeconds: PLAYBACK_SCAN_BATCH_SECONDS },
+    );
   }
 
-  async scanLibrary() {
-    const results = await this.destinationRegistry.run("requestScan");
+  libraryRoots() {
+    return [this.downloadRoot, ...activeLidarrRoots(lidarrClient)];
+  }
+
+  async scanLibrary(folders, destinations = null) {
+    const request = createPlaybackScanRequest({ folders, roots: this.libraryRoots() });
+    const results = await this.destinationRegistry.runOn(destinations, "requestScan", request);
+    const deferred = results.filter((result) => result.deferred).map((result) => result.key).sort();
+    if (deferred.length) this.schedulePlaybackScan(request.folders, { destinations: deferred });
     return results.length ? results : null;
   }
 
@@ -333,7 +354,11 @@ export class PlaylistManager {
       await removeUnusedPlaybackFiles(fallbackDir, deletionGuard, { protectPlayback });
     } catch {}
 
+    const flowsRoot = path.join(this.downloadRoot, AURRAL_FLOWS_DIR);
+    let flowFolderTouched = false;
     for (const playlistType of targets) {
+      const flowDir = path.join(flowsRoot, playlistType);
+      flowFolderTouched ||= await fs.stat(flowDir).then(() => true, () => false);
       const jobs = downloadTracker.getByPlaylistId(playlistType);
       for (const job of jobs) {
         if (job.downloadClient === "ytdlp") {
@@ -351,9 +376,7 @@ export class PlaylistManager {
           protectPlayback,
         });
         await removeUnusedPlaybackFiles(playlistDir, deletionGuard, { protectPlayback });
-        await removeUnusedPlaybackFiles(
-          path.join(this.downloadRoot, AURRAL_FLOWS_DIR, playlistType), deletionGuard, { protectPlayback },
-        );
+        await removeUnusedPlaybackFiles(flowDir, deletionGuard, { protectPlayback });
         console.log(`[PlaylistManager] Cleaned unused files for ${playlistType}`);
       } catch (error) {
         console.warn(
@@ -370,6 +393,7 @@ export class PlaylistManager {
         downloadRoot: this.downloadRoot,
       });
     }
+    if (flowFolderTouched) this.schedulePlaybackScan([flowsRoot]);
   }
 
   getPlaylistName(playlistType) {

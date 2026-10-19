@@ -1830,17 +1830,16 @@ export function getLibraryMediaPaths(source) {
 export function markLibraryMediaFilesUnavailable(source, paths) {
   const mediaSource = normalizeText(source);
   const missingPaths = [...new Set(paths)].map(normalizeText).filter(Boolean);
-  if (!mediaSource || missingPaths.length === 0) return 0;
+  if (!mediaSource || missingPaths.length === 0) return [];
   const update = db.prepare(
     `UPDATE library_media_files
      SET available = 0, updated_at = ?
      WHERE source = ? AND path = ? AND available = 1`,
   );
-  const changed = db.transaction(() => missingPaths.reduce(
-    (count, filePath) => count + update.run(now(), mediaSource, filePath).changes,
-    0,
+  const changed = db.transaction(() => missingPaths.filter(
+    (filePath) => update.run(now(), mediaSource, filePath).changes > 0,
   ))();
-  if (changed > 0) invalidateLibraryCache();
+  if (changed.length > 0) invalidateLibraryCache();
   return changed;
 }
 
@@ -1848,15 +1847,15 @@ export function markLibraryMediaFilesUnavailable(source, paths) {
 export function removeMissingLibraryMediaFiles(source, paths) {
   const mediaSource = normalizeText(source);
   const missingPaths = [...new Set(paths)].map(normalizeText).filter(Boolean);
-  if (!mediaSource || missingPaths.length === 0) return 0;
+  if (!mediaSource || missingPaths.length === 0) return [];
   const remove = db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ? RETURNING track_id");
   const touchTrack = db.prepare("UPDATE library_tracks SET updated_at = ? WHERE id = ?");
-  const removed = db.transaction(() => missingPaths.reduce((count, filePath) => {
+  const removed = db.transaction(() => missingPaths.filter((filePath) => {
     const rows = remove.all(mediaSource, filePath);
     for (const row of rows) touchTrack.run(now(), row.track_id);
-    return count + rows.length;
-  }, 0))();
-  if (removed > 0) invalidateLibraryCache();
+    return rows.length > 0;
+  }))();
+  if (removed.length > 0) invalidateLibraryCache();
   return removed;
 }
 

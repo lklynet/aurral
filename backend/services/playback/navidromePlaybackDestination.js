@@ -6,6 +6,7 @@ import { NavidromeClient } from "../navidrome.js";
 import { logger } from "../logger.js";
 import { getPathMappings, resolveLocalPath, resolveRemotePath } from "../pathMappings.js";
 import { navidromePlaylistPointerStore } from "../navidrome/navidromePlaylistPointerStore.js";
+import { claimUnmatchedRootWarning, serverScanTargets } from "./playbackScanFolders.js";
 import {
   AURRAL_FLOWS_DIR,
   PLAYLIST_FILES_DIR,
@@ -17,12 +18,14 @@ import {
   createPlaybackPlaylistSnapshot,
   playbackOperationFailure,
   playbackOperationSuccess,
+  playbackScanDeferred,
 } from "./playbackDestination.js";
 
 const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
 const PLAYLIST_FILE_EXTENSIONS = [".m3u", ".nsp"];
 const SONG_LOOKUP_BATCH_SIZE = 5;
+const MAX_NAVIDROME_SCAN_TARGETS = 20;
 
 export const navidromeSettings = Object.freeze({
   key: "navidrome",
@@ -80,6 +83,7 @@ export class NavidromePlaybackDestination {
     this._catchupRunning = false;
     this._publishInFlight = new Map();
     this._syncHashes = new Map();
+    this._warnedUnmatchedRoots = new Set();
   }
 
   updateConfig(config = {}) {
@@ -95,6 +99,7 @@ export class NavidromePlaybackDestination {
 
     this._connectionKey = connectionKey;
     this._prefixOwnerUsername = prefixOwnerUsername;
+    this._warnedUnmatchedRoots.clear();
 
     if (connectionChanged) {
       this._playlists = null;
@@ -652,10 +657,37 @@ export class NavidromePlaybackDestination {
     }
   }
 
-  async requestScan() {
-    if (!this.isConfigured()) return playbackOperationSuccess();
+  async _scanTargets(folders, aurralRoots) {
+    let libraries;
     try {
-      await this.client.scanLibrary();
+      libraries = await this.client.getLibraries({ timeout: 30_000 });
+    } catch (error) {
+      logger.warn("navidrome", "Could not read Navidrome libraries for a targeted scan", {
+        message: error?.message || String(error),
+      });
+      return null;
+    }
+    if (!Array.isArray(libraries)) return null;
+    const roots = libraries.filter((library) => library?.id != null && library.path);
+    const mappings = getPathMappings("navidrome");
+    const { targets, unmatched } = serverScanTargets(folders, roots, mappings);
+    if (!targets) {
+      if (claimUnmatchedRootWarning(this._warnedUnmatchedRoots, unmatched.folder, aurralRoots, mappings)) {
+        logger.warn("navidrome", "Changed folder is outside every Navidrome library; scanning all libraries. Add a path mapping if Navidrome sees it at another path.", unmatched);
+      }
+      return null;
+    }
+    const scanTargets = targets.length > MAX_NAVIDROME_SCAN_TARGETS
+      ? targets.map(({ root }) => `${root.id}:`)
+      : targets.map(({ root, relative }) => `${root.id}:${relative}`);
+    return [...new Set(scanTargets)];
+  }
+
+  async requestScan({ folders, roots: aurralRoots = [] }) {
+    if (!this.isConfigured() || !folders.length) return playbackOperationSuccess();
+    try {
+      if (await this.client.isScanning()) return playbackScanDeferred();
+      await this.client.scanLibrary(await this._scanTargets(folders, aurralRoots));
       this._scheduleCatchup();
       return playbackOperationSuccess();
     } catch (error) {

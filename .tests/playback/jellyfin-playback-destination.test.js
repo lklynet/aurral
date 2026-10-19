@@ -8,13 +8,14 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps, userOps }, { jellyfinPlaylistPointerStore }, { JellyfinPlaybackDestination }] =
+const [isolatedState, { db }, { dbOps, userOps }, { jellyfinPlaylistPointerStore }, { JellyfinPlaybackDestination }, { logger }] =
   await setupIsolatedBackend(
     "jellyfin-playback-destination",
     "backend/config/db-sqlite.js",
     "backend/db/helpers/index.js",
     "backend/services/jellyfin/jellyfinPlaylistPointerStore.js",
     "backend/services/playback/jellyfinPlaybackDestination.js",
+    "backend/services/logger.js",
   );
 
 const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
@@ -31,7 +32,7 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-function makeClient(calls) {
+function makeClient(calls, { libraries } = {}) {
   return {
     url: "http://jellyfin.local",
     userId,
@@ -61,8 +62,14 @@ function makeClient(calls) {
     deletePlaylist: async (playlistId) => {
       calls.push({ operation: "delete", playlistId });
     },
-    scanLibrary: async () => {
-      calls.push({ operation: "scan" });
+    getMusicLibraryLocations: JellyfinClient.prototype.getMusicLibraryLocations,
+    reportUpdatedFolders: JellyfinClient.prototype.reportUpdatedFolders,
+    request: async (method, endpoint, { data } = {}) => {
+      if (endpoint === "/Library/VirtualFolders") {
+        if (libraries instanceof Error) throw libraries;
+        return libraries;
+      }
+      calls.push({ operation: "request", method, endpoint, data });
     },
   };
 }
@@ -88,7 +95,7 @@ function snapshot(overrides = {}) {
 test("publishes, updates, scans, and deletes a managed playlist", async () => {
   const calls = [];
   const destination = new JellyfinPlaybackDestination(downloadRoot, {
-    client: makeClient(calls),
+    client: makeClient(calls, { libraries: [{ CollectionType: "music", Locations: ["/downloads"] }] }),
   });
 
   const originalMappings = process.env.PATH_MAPPINGS;
@@ -125,11 +132,68 @@ test("publishes, updates, scans, and deletes a managed playlist", async () => {
       },
     });
 
-    assert.equal((await destination.requestScan()).ok, true);
-    assert.deepEqual(calls[2], { operation: "scan" });
+    assert.equal((await destination.requestScan({ folders: ["/media/Artist/Album"] })).ok, true);
+    assert.deepEqual(calls[2], {
+      operation: "request",
+      method: "POST",
+      endpoint: "/Library/Media/Updated",
+      data: { Updates: [{ Path: "/downloads/Artist/Album", UpdateType: "Modified" }] },
+    });
     assert.equal((await destination.deletePlaylist({ entityId: "flow-jellyfin" })).ok, true);
     assert.deepEqual(calls[3], { operation: "delete", playlistId: "playlist-1" });
     assert.equal(jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId), null);
+  } finally {
+    if (originalMappings == null) delete process.env.PATH_MAPPINGS;
+    else process.env.PATH_MAPPINGS = originalMappings;
+  }
+});
+
+test("tells Jellyfin about changed folders in its music libraries and reports every music library when one is outside them", async (t) => {
+  const calls = [];
+  const warn = t.mock.method(logger, "warn", () => {});
+  const musicLocations = ["D:\\Music\\FLAC", "\\\\nas\\music\\"];
+  const destination = new JellyfinPlaybackDestination(downloadRoot, {
+    client: makeClient(calls, { libraries: [
+      { Name: "FLAC", CollectionType: "music", Locations: [musicLocations[0]] },
+      { Name: "Share", Locations: [musicLocations[1]] },
+      { Name: "Films", CollectionType: "movies", Locations: ["/media"] },
+    ] }),
+  });
+  const originalMappings = process.env.PATH_MAPPINGS;
+  process.env.PATH_MAPPINGS = "jellyfin|D:\\Music|/srv/music;jellyfin|\\\\nas\\music|/srv/share;jellyfin|/media|/srv/media";
+  const updated = () => calls.map(({ data }) => data.Updates.map(({ Path }) => Path));
+  try {
+    for (const libraries of [new Error("Jellyfin is restarting"), { error: "Unauthorized" }]) {
+      const unreadable = new JellyfinPlaybackDestination(downloadRoot, { client: makeClient(calls, { libraries }) });
+      const result = await unreadable.requestScan({ folders: ["/srv/music/flac/Artist/Album"] });
+      assert.equal(result.ok, false);
+      assert.equal(result.error.retryable, true);
+    }
+    assert.deepEqual(calls, []);
+    assert.deepEqual(
+      await destination.requestScan({ folders: ["/srv/music/flac/Artist/Album", "/srv/share/Artist"] }),
+      { ok: true },
+    );
+    assert.deepEqual(await destination.requestScan({ folders: ["/srv/media/Artist"] }), { ok: true });
+    assert.deepEqual(await destination.requestScan({ folders: ["/srv/share/Artist", "/srv/elsewhere/Album"] }), { ok: true });
+    assert.deepEqual(await destination.requestScan({ folders: ["/srv/elsewhere/Album"] }), { ok: true });
+    process.env.PATH_MAPPINGS += ";jellyfin|/films|/srv/films";
+    assert.deepEqual(await destination.requestScan({ folders: ["/srv/elsewhere/Album"] }), { ok: true });
+    const albums = Array.from({ length: 21 }, (_, index) => `/srv/music/flac/Artist/Album ${index}`);
+    assert.deepEqual(await destination.requestScan({ folders: albums }), { ok: true });
+    assert.deepEqual(updated(), [
+      ["D:\\Music\\FLAC\\Artist\\Album", "\\\\nas\\music\\Artist"],
+      musicLocations,
+      musicLocations,
+      musicLocations,
+      musicLocations,
+      [musicLocations[0]],
+    ]);
+    assert.deepEqual(warn.mock.calls.map(({ arguments: [category, , data] }) => [category, data.folder]), [
+      ["jellyfin", "/srv/media/Artist"],
+      ["jellyfin", "/srv/elsewhere/Album"],
+      ["jellyfin", "/srv/elsewhere/Album"],
+    ]);
   } finally {
     if (originalMappings == null) delete process.env.PATH_MAPPINGS;
     else process.env.PATH_MAPPINGS = originalMappings;

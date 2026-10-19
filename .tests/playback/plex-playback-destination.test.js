@@ -285,29 +285,53 @@ test("forgets an unreachable pointer after Plex configuration is cleared", async
   assert.equal(plexPlaylistPointerStore.getPointer("flow-1", "global"), null);
 });
 
-test("ensures and scans the Plex library through the adapter", async () => {
+test("refreshes only changed folders inside the Aurral section", async () => {
   const destination = makeDestination({ downloadsPath: "/downloads" });
   const calls = [];
+  let reportedLocations = [];
   mock.method(PlexClient.prototype, "ensureAurralLibrary", async (libraryPath) => {
     calls.push(["ensure", libraryPath]);
-    return { key: "7" };
+    return { key: "7", Location: reportedLocations.map((location) => ({ path: location })) };
   });
-  mock.method(PlexClient.prototype, "getTracks", async (sectionId) => {
-    calls.push(["tracks", sectionId]);
-    return [];
+  mock.method(PlexClient.prototype, "getTracks", async () => []);
+  mock.method(PlexClient.prototype, "request", async (endpoint, { params } = {}) => {
+    calls.push([endpoint, params]);
   });
-  mock.method(PlexClient.prototype, "scanLibrary", async (sectionId) => {
-    calls.push(["scan", sectionId]);
-  });
+  const album = path.join(downloadRoot, "Artist", "Album (2001)");
 
-  assert.deepEqual(await destination.ensureLibrary(), { ok: true });
-  assert.deepEqual(await destination.requestScan(), { ok: true });
+  assert.deepEqual(await destination.requestScan({ folders: ["/lidarr/music/Artist"] }), { ok: true });
+  assert.deepEqual(calls, []);
+  assert.deepEqual(await destination.requestScan({ folders: [album, "/lidarr/music/Artist"] }), { ok: true });
   assert.deepEqual(calls, [
     ["ensure", "/downloads"],
-    ["tracks", "7"],
-    ["tracks", "7"],
-    ["scan", "7"],
+    ["/library/sections/7/refresh", { path: "/downloads/Artist/Album (2001)" }],
   ]);
+
+  calls.length = 0;
+  const folders = Array.from({ length: 21 }, (_, index) => path.join(downloadRoot, `Artist ${index}`));
+  const lidarrRootAboveDownloads = path.dirname(downloadRoot);
+  assert.deepEqual(await destination.requestScan({ folders }), { ok: true });
+  assert.deepEqual(await destination.requestScan({ folders: [downloadRoot] }), { ok: true });
+  assert.deepEqual(await destination.requestScan({ folders: [album, lidarrRootAboveDownloads] }), { ok: true });
+  assert.deepEqual(await destination.requestScan({ folders: [lidarrRootAboveDownloads] }), { ok: true });
+  assert.deepEqual(calls, [
+    ["/library/sections/7/refresh", undefined],
+    ["/library/sections/7/refresh", undefined],
+    ["/library/sections/7/refresh", { path: "/downloads/Artist/Album (2001)" }],
+  ]);
+
+  for (const [downloadsPath, reported, ensured, refreshed] of [
+    ["D:/Aurral", ["D:\\Aurral\\_flows", "D:\\Aurral"], "D:/Aurral", "D:\\Aurral\\Artist\\Album (2001)"],
+    ["\\\\nas\\aurral\\", ["\\\\nas\\aurral", "\\\\nas\\aurral\\_flows"], "//nas/aurral",
+      "\\\\nas\\aurral\\Artist\\Album (2001)"],
+    ["/downloads/", ["/downloads", "/downloads/_flows"], "/downloads", "/downloads/Artist/Album (2001)"],
+    ["D:\\Aurral", [], "D:/Aurral", "D:/Aurral/Artist/Album (2001)"],
+  ]) {
+    calls.length = 0;
+    reportedLocations = reported;
+    assert.deepEqual(await makeDestination({ downloadsPath }).requestScan({ folders: [album] }), { ok: true });
+    assert.deepEqual(calls, [["ensure", ensured], ["/library/sections/7/refresh", { path: refreshed }]]);
+  }
 });
 
 test("configures Plex with the download root and explicit flow location", async () => {

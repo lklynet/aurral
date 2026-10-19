@@ -1,3 +1,5 @@
+import path from "node:path";
+
 const REQUIRED_METHODS = [
   "testConnection",
   "ensureLibrary",
@@ -73,8 +75,30 @@ export function createPlaybackPlaylistSnapshot({
   });
 }
 
+function requireAbsolutePaths(values, label) {
+  if (!Array.isArray(values)) {
+    throw new TypeError(`${label} must be an array`);
+  }
+  return Object.freeze(values.map((value, index) => {
+    const text = requireText(value, `${label}[${index}]`);
+    if (!path.isAbsolute(text)) throw new TypeError(`${label}[${index}] must be an absolute path`);
+    return path.resolve(text);
+  }));
+}
+
+export function createPlaybackScanRequest({ folders, roots } = {}) {
+  return Object.freeze({
+    folders: requireAbsolutePaths(folders, "folders"),
+    roots: requireAbsolutePaths(roots, "roots"),
+  });
+}
+
 export function playbackOperationSuccess() {
   return Object.freeze({ ok: true });
+}
+
+export function playbackScanDeferred() {
+  return Object.freeze({ ok: true, deferred: true });
 }
 
 export function playbackOperationFailure({ code, message, retryable = false } = {}) {

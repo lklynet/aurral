@@ -86,7 +86,10 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
     case "playback-library-scan": {
       const { playlistManager } = await import("./playlists/playlistManager.js");
       playlistManager.updateConfig(false);
-      const results = await playlistManager.scanLibrary();
+      const results = await playlistManager.scanLibrary(
+        payload.folders ?? playlistManager.libraryRoots(),
+        payload.destinations ?? null,
+      );
       const failures = (results || []).filter((result) => !result.ok);
       if (failures.length) {
         throw new Error(failures.map((result) => `${result.destination}: ${result.error.message}`).join("; "));

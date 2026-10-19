@@ -6,7 +6,9 @@ import { PlexClient } from "../plex.js";
 import { plexConnectionStore } from "../plex/plexConnectionStore.js";
 import { plexPlaylistPointerStore } from "../plex/plexPlaylistPointerStore.js";
 import { isPlaybackRetainedFile } from "./playbackFileRetention.js";
-import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
+import { getPathMappings, normalizePathSeparators, resolveLocalPath } from "../pathMappings.js";
+import { isPathWithin } from "../libraryFolders.js";
+import { joinServerPath } from "./playbackScanFolders.js";
 import {
   AURRAL_FLOWS_DIR,
   isPathInsideRoot,
@@ -20,6 +22,7 @@ import {
 } from "./playbackDestination.js";
 
 const SYNC_SKIPPED = Symbol("plex-sync-skipped");
+const MAX_PLEX_FOLDER_REFRESHES = 20;
 
 export const plexSettings = Object.freeze({
   key: "plex",
@@ -47,6 +50,7 @@ export class PlexPlaybackDestination {
     this._mainLibrarySectionId = "";
     this._configuredByUserId = null;
     this._sectionId = null;
+    this._sectionPath = null;
     this._libraryTracks = null;
     this._mainLibraryTracks = null;
     this._syncHashes = new Map();
@@ -72,6 +76,7 @@ export class PlexPlaybackDestination {
       ? new PlexClient(config.url, config.token, config.clientId)
       : null;
     this._sectionId = null;
+    this._sectionPath = null;
     this._libraryTracks = null;
     this._mainLibraryTracks = null;
     this._syncHashes.clear();
@@ -130,7 +135,12 @@ export class PlexPlaybackDestination {
     if (!this.isConfigured()) return playbackOperationSuccess();
     try {
       if (this._sectionId == null) {
-        this._sectionId = (await this.client.ensureAurralLibrary(this._libraryPath()))?.key ?? null;
+        const libraryPath = this._libraryPath();
+        const section = await this.client.ensureAurralLibrary(libraryPath);
+        this._sectionId = section?.key ?? null;
+        this._sectionPath = (section?.Location || []).map((location) => location?.path)
+          .find((location) => location && normalizePathSeparators(location).toLowerCase() === libraryPath.toLowerCase())
+          ?? null;
       }
       if (this._sectionId == null) throw new Error("Could not create or find the Aurral Plex library");
       await this._loadTracks();
@@ -508,12 +518,32 @@ export class PlexPlaybackDestination {
     }
   }
 
-  async requestScan() {
+  _relativeScanFolders(folders) {
+    const relativeFolders = [];
+    for (const folder of folders) {
+      if (!isPathWithin(this.downloadRoot, folder)) continue;
+      const relative = path.relative(this.downloadRoot, folder);
+      if (!relative) return null;
+      relativeFolders.push(relative);
+    }
+    return relativeFolders.length > MAX_PLEX_FOLDER_REFRESHES ? null : relativeFolders;
+  }
+
+  async requestScan({ folders }) {
     if (!this.isConfigured()) return playbackOperationSuccess();
+    const relativeFolders = this._relativeScanFolders(folders);
+    if (relativeFolders?.length === 0) return playbackOperationSuccess();
     try {
       const ensured = await this.ensureLibrary();
       if (!ensured.ok) return ensured;
-      await this.client.scanLibrary(this._sectionId);
+      if (relativeFolders) {
+        const sectionPath = this._sectionPath ?? this._libraryPath();
+        for (const relative of relativeFolders) {
+          await this.client.scanLibrary(this._sectionId, joinServerPath(sectionPath, relative));
+        }
+      } else {
+        await this.client.scanLibrary(this._sectionId);
+      }
       return playbackOperationSuccess();
     } catch (error) {
       return playbackOperationFailure({

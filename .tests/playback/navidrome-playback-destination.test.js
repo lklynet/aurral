@@ -19,6 +19,7 @@ const [
   { navidromePlaylistPointerStore },
   { NavidromePlaybackDestination },
   { NavidromeClient },
+  { logger },
 ] = await setupIsolatedBackend(
   "navidrome-playback-destination",
   "backend/config/db-sqlite.js",
@@ -28,6 +29,7 @@ const [
   "backend/services/navidrome/navidromePlaylistPointerStore.js",
   "backend/services/playback/navidromePlaybackDestination.js",
   "backend/services/navidrome.js",
+  "backend/services/logger.js",
 );
 
 const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
@@ -1486,18 +1488,81 @@ test("publishing adopts one legacy playlist and removes the other legacy copies"
   assert.deepEqual(client.calls.deleted, ["prefixed"]);
 });
 
-test("requests configured scans and treats an unconfigured destination as a no-op", async () => {
-  const configuredClient = createClient();
-  const configured = new NavidromePlaybackDestination(downloadRoot, {
-    client: configuredClient,
-  });
-  const unconfiguredClient = createClient({ configured: false });
-  const unconfigured = new NavidromePlaybackDestination(downloadRoot, {
-    client: unconfiguredClient,
-  });
+test("scans only changed folders inside Navidrome libraries and every library when one is outside them", async (t) => {
+  const warn = t.mock.method(logger, "warn", () => {});
+  const originalMappings = process.env.PATH_MAPPINGS;
+  const musicRoot = path.dirname(downloadRoot);
+  const album = path.join(downloadRoot, "Artist", "Album");
+  const libraries = [{ id: 1, path: "/music" }, { id: 4, path: "/nd/aurral/" }];
+  try {
+    const unmapped = createFakeNavidrome({ libraries });
+    await withNavidrome(unmapped, async (destination) => {
+      assert.deepEqual(await destination.requestScan({ folders: [album] }), { ok: true });
+    });
+    assert.deepEqual(unmapped.scans, [[]]);
 
-  assert.deepEqual(await configured.requestScan(), { ok: true });
-  assert.deepEqual(await unconfigured.requestScan(), { ok: true });
-  assert.equal(configuredClient.calls.scans, 1);
+    process.env.PATH_MAPPINGS = `navidrome|/nd/aurral|${downloadRoot}`;
+    const navidrome = createFakeNavidrome({ libraries });
+    await withNavidrome(navidrome, async (destination) => {
+      assert.deepEqual(await destination.requestScan({ folders: [album] }), { ok: true });
+      assert.deepEqual(await destination.requestScan({ folders: [downloadRoot] }), { ok: true });
+      assert.deepEqual(await destination.requestScan({ folders: [album, "/elsewhere/Artist"] }), { ok: true });
+    });
+    assert.deepEqual(navidrome.scans, [["4:Artist/Album"], ["4:"], []]);
+
+    process.env.PATH_MAPPINGS = `navidrome|/media/${path.basename(downloadRoot)}|${downloadRoot}`;
+    const partial = createFakeNavidrome({ libraries: [{ id: 1, path: "/media" }] });
+    await withNavidrome(partial, async (destination) => {
+      assert.deepEqual(await destination.requestScan({ folders: [album] }), { ok: true });
+      assert.deepEqual(await destination.requestScan({ folders: [musicRoot, album] }), { ok: true });
+    });
+    assert.deepEqual(partial.scans, [[`1:${path.basename(downloadRoot)}/Artist/Album`], []]);
+    assert.deepEqual(warn.mock.calls.map(({ arguments: [category, , data] }) => [category, data.folder]), [
+      ["navidrome", album],
+      ["navidrome", "/elsewhere/Artist"],
+      ["navidrome", musicRoot],
+    ]);
+
+    process.env.PATH_MAPPINGS = `navidrome|/nd/aurral|${downloadRoot}`;
+    const albums = Array.from({ length: 21 }, (_, index) => path.join(downloadRoot, "Artist", `Album ${index}`));
+    const split = createFakeNavidrome({ libraries: [
+      { id: 1, path: "/music/flac" },
+      { id: 2, path: "/music/mp3" },
+      { id: 4, path: "/nd/aurral" },
+    ] });
+    await withNavidrome(split, async (destination) => {
+      assert.deepEqual(await destination.requestScan({ folders: albums }), { ok: true });
+      assert.deepEqual(await destination.requestScan({ folders: [...albums.slice(0, 19), "/music/mp3/Artist"] }), { ok: true });
+    });
+    assert.deepEqual(split.scans, [
+      ["4:"],
+      [...albums.slice(0, 19).map((album) => `4:${path.relative(downloadRoot, album)}`), "2:Artist"],
+    ]);
+
+    process.env.PATH_MAPPINGS = `navidrome|/music|${downloadRoot}`;
+    for (const caseLibraries of [
+      [{ id: 1, path: "/Music" }, { id: 2, path: "/music" }],
+      [{ id: 2, path: "/music" }, { id: 1, path: "/Music" }],
+    ]) {
+      const cased = createFakeNavidrome({ libraries: caseLibraries });
+      await withNavidrome(cased, async (destination) => {
+        assert.deepEqual(await destination.requestScan({ folders: [album] }), { ok: true });
+      });
+      assert.deepEqual(cased.scans, [["2:Artist/Album"]]);
+    }
+
+    const unreadable = createFakeNavidrome({ libraries, failLibraryRequest: true });
+    await withNavidrome(unreadable, async (destination) => {
+      assert.deepEqual(await destination.requestScan({ folders: [album] }), { ok: true });
+    });
+    assert.deepEqual(unreadable.scans, [[]]);
+  } finally {
+    if (originalMappings == null) delete process.env.PATH_MAPPINGS;
+    else process.env.PATH_MAPPINGS = originalMappings;
+  }
+
+  const unconfiguredClient = createClient({ configured: false });
+  const unconfigured = new NavidromePlaybackDestination(downloadRoot, { client: unconfiguredClient });
+  assert.deepEqual(await unconfigured.requestScan({ folders: [album] }), { ok: true });
   assert.equal(unconfiguredClient.calls.scans, 0);
 });

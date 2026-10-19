@@ -322,9 +322,9 @@ export class PlexClient {
     return created;
   }
 
-  async scanLibrary(sectionId) {
+  async scanLibrary(sectionId, folder = null) {
     if (!this.isConfigured() || sectionId == null) return null;
-    return this.request(`/library/sections/${sectionId}/refresh`);
+    return this.request(`/library/sections/${sectionId}/refresh`, folder ? { params: { path: folder } } : {});
   }
 
   /**

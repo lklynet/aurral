@@ -94,6 +94,8 @@ Aurral creates the **Aurral Playlists** library at the Downloads Folder, for exa
 
 You do not need to create this library in Navidrome yourself. It stays empty until the first track finishes downloading. Wait for the scan after that.
 
+When files change, Aurral asks Navidrome to scan only the changed folders. If a changed folder is outside every Navidrome library as Navidrome sees it, Aurral asks Navidrome to scan all libraries instead and logs a warning. A Navidrome path mapping fixes this. When more than 20 folders change at once, Aurral asks Navidrome to scan the libraries that hold them. Changes made close together share one request. If Navidrome is already scanning, Aurral asks again after that scan finishes. Navidrome 0.58 and earlier ignore the folders and scan every library.
+
 The Navidrome account must have permission to manage libraries through the API. If Aurral cannot create the library, open **Settings > Storage health** for the exact path and error. Then check the Navidrome account permissions and the mount.
 
 ### Existing Lidarr library

@@ -4,12 +4,16 @@ import { JellyfinClient } from "../jellyfin.js";
 import { jellyfinPlaylistPointerStore } from "../jellyfin/jellyfinPlaylistPointerStore.js";
 import { getPathMappings, resolveRemotePath, resolveLocalPath } from "../pathMappings.js";
 import { resolveDownloadRoot } from "../downloadPaths.js";
+import { logger } from "../logger.js";
+import { claimUnmatchedRootWarning, serverScanTargets } from "./playbackScanFolders.js";
 import {
   createPlaybackPlaylistIdentity,
   createPlaybackPlaylistSnapshot,
   playbackOperationFailure,
   playbackOperationSuccess,
 } from "./playbackDestination.js";
+
+const MAX_JELLYFIN_FOLDER_UPDATES = 20;
 
 export const jellyfinSettings = Object.freeze({
   key: "jellyfin",
@@ -57,6 +61,7 @@ export class JellyfinPlaybackDestination {
     this._pendingSnapshots = new Map();
     this._catchupRunning = false;
     this._publishInFlight = new Map();
+    this._warnedUnmatchedRoots = new Set();
   }
 
   updateConfig(config = {}) {
@@ -73,6 +78,7 @@ export class JellyfinPlaybackDestination {
     this._libraryTracks = new Map();
     this._syncHashes.clear();
     this._pendingSnapshots.clear();
+    this._warnedUnmatchedRoots.clear();
   }
 
   isConfigured() {
@@ -392,10 +398,29 @@ export class JellyfinPlaybackDestination {
     }
   }
 
-  async requestScan() {
-    if (!this.isConfigured()) return playbackOperationSuccess();
+  async _updatedFolders(folders, aurralRoots) {
+    const mappings = getPathMappings("jellyfin");
+    const locations = await this.client.getMusicLibraryLocations();
+    const { targets, unmatched } = serverScanTargets(
+      folders,
+      locations.map((location) => ({ path: location })),
+      mappings,
+    );
+    if (targets) {
+      return [...new Set(targets.map((target) =>
+        targets.length > MAX_JELLYFIN_FOLDER_UPDATES ? target.root.path : target.path))];
+    }
+    if (claimUnmatchedRootWarning(this._warnedUnmatchedRoots, unmatched.folder, aurralRoots, mappings)) {
+      logger.warn("jellyfin", "Changed folder is outside every Jellyfin music library; reporting all music libraries. Add a path mapping if Jellyfin sees it at another path.", unmatched);
+    }
+    return locations;
+  }
+
+  async requestScan({ folders, roots: aurralRoots = [] }) {
+    if (!this.isConfigured() || !folders.length) return playbackOperationSuccess();
     try {
-      await this.client.scanLibrary();
+      const updated = await this._updatedFolders(folders, aurralRoots);
+      if (updated.length) await this.client.reportUpdatedFolders(updated);
       this._libraryTracks.clear();
       this._scheduleCatchup();
       return playbackOperationSuccess();
