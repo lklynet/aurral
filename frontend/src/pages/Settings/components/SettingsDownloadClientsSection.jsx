@@ -289,7 +289,7 @@ export function SettingsDownloadClientsSection({
         <SettingsArrFormGroup
           label="Maximum wait (hours)"
           labelFor="download-clients-review-timeout"
-          help="Days before unreviewed songs are denied and searched again. Set 0 to wait indefinitely."
+          help="Hours before unreviewed songs are denied and searched again. Set 0 to wait indefinitely."
         >
           <SettingsInput
             id="download-clients-review-timeout"
