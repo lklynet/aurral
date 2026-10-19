@@ -506,6 +506,45 @@ test("cancelled album track downloads show as cancelled, never as failed", async
   assert.equal(downloadTracker.getJob(jobId)?.status, "cancelled");
 });
 
+const lidarrWithAlbum = (getAlbum) => ({
+  isConfigured: () => true,
+  getQueue: async () => [],
+  getHistory: async () => ({ records: [] }),
+  request: async () => [],
+  getAlbum,
+});
+
+test("a request for an album since deleted from Lidarr leaves the activity feed", async (t) => {
+  t.after(() => db.prepare("DELETE FROM aurral_history").run());
+  historyModule.recordAlbumRequested({
+    albumId: "5151",
+    albumName: "Deleted Album",
+    artistName: "Artist",
+    searching: true,
+  });
+
+  // lidarrClient.getAlbum resolves null when Lidarr answers 404.
+  const entries = await getAurralHistoryRequests(lidarrWithAlbum(async () => null));
+
+  assert.equal(entries.find((item) => item.albumName === "Deleted Album"), undefined);
+});
+
+test("a request survives Lidarr being unreachable", async (t) => {
+  t.after(() => db.prepare("DELETE FROM aurral_history").run());
+  historyModule.recordAlbumRequested({
+    albumId: "5252",
+    albumName: "Kept Album",
+    artistName: "Artist",
+    searching: true,
+  });
+
+  const entries = await getAurralHistoryRequests(lidarrWithAlbum(async () => {
+    throw new Error("connect ECONNREFUSED");
+  }));
+
+  assert.notEqual(entries.find((item) => item.albumName === "Kept Album"), undefined);
+});
+
 test("Aurral album requests are not checked against Lidarr by library album ID", async (t) => {
   const lidarrAlbumLookups = [];
   const lidarrStub = {
@@ -515,7 +554,7 @@ test("Aurral album requests are not checked against Lidarr by library album ID",
     request: async () => [],
     getAlbum: async (id) => {
       lidarrAlbumLookups.push(String(id));
-      return null;
+      return { id: Number(id), statistics: { trackFileCount: 0 } };
     },
   };
   historyModule.recordAlbumRequested({

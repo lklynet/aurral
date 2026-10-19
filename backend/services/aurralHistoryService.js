@@ -784,6 +784,11 @@ export const syncAlbumSearchHistory = async (lidarrClient, historyEntries = null
 
   for (const { entry, albumId } of resolvedEntries) {
     const album = albums.get(albumId);
+    if (album === null) {
+      // Lidarr answered 404: the album was deleted, so the request is moot.
+      dbOps.deleteAurralHistoryById(entry.id);
+      continue;
+    }
     const albumHasFiles = albumHasTrackFiles(album);
     const outcome = resolveAlbumSearchOutcome(albumId, context, {
       searchStartedAt: entry.createdAt,

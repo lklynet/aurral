@@ -17,6 +17,9 @@ const getAurralHistoryByIdStmt = db.prepare(`
   FROM aurral_history
   WHERE id = ?
 `);
+const deleteAurralHistoryByIdStmt = db.prepare(
+  "DELETE FROM aurral_history WHERE id = ?",
+);
 const deleteAurralHistoryOlderThanStmt = db.prepare(
   "DELETE FROM aurral_history WHERE created_at < ?",
 );
@@ -47,6 +50,11 @@ export default function register(dbOps) {
       Number(entry.createdAt) || Date.now(),
     );
     return entry;
+  };
+
+  dbOps.deleteAurralHistoryById = function (id) {
+    if (!id) return false;
+    return deleteAurralHistoryByIdStmt.run(String(id)).changes > 0;
   };
 
   dbOps.getAurralHistoryById = function (id) {

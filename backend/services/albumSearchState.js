@@ -22,8 +22,10 @@ export const getLidarrAlbumsById = async (lidarrClient, albumIds) => {
   }
   const ids = [...new Set(albumIds.map(String))];
   const missing = ids.filter((albumId) => !lookups.has(albumId));
+  // A failed lookup is undefined, so callers can tell it from a deleted
+  // album, which Lidarr answers with 404 and getAlbum resolves to null.
   const fetched = mapWithConcurrency(missing, ALBUM_LOOKUP_CONCURRENCY, (albumId) =>
-    lidarrClient.getAlbum(albumId).catch(() => null));
+    lidarrClient.getAlbum(albumId).catch(() => undefined));
   missing.forEach((albumId, index) => {
     lookups.set(albumId, { at: now, album: fetched.then((albums) => albums[index]) });
   });
