@@ -486,7 +486,7 @@ function DiscoverPage() {
         >
           <div className="discover-recommended-empty">
             <p className="discover-recommended-empty__message">
-              Not enough listening data yet. Add a few artists you like to get started.
+              Add artists you like to get recommendations.
             </p>
             <div className="discover-recommended-empty__actions">
               <RouteLink to="/search" className="btn btn-primary btn-sm">
@@ -522,8 +522,7 @@ function DiscoverPage() {
             <div className="artist-nearby-status">
               <h3 className="artist-nearby-status__title">Ticketmaster not configured</h3>
               <p className="artist-nearby-status__text">
-                Add a Ticketmaster consumer key in Settings to enable local show discovery on this
-                page.
+                Add a Ticketmaster key in Settings → Connect to find nearby shows.
               </p>
               <RouteLink
                 to="/settings"
@@ -549,8 +548,10 @@ function DiscoverPage() {
         return (
           <section key="recommendedShows" className="artist-discover-section">
             <div className="artist-nearby-status">
-              <h3 className="artist-nearby-status__title">Unable to load nearby shows</h3>
-              <p className="artist-nearby-status__text">{nearbyShowsError}</p>
+              <h3 className="artist-nearby-status__title">Could not load nearby shows.</h3>
+              {nearbyShowsError !== "This operation was aborted" ? (
+                <p className="artist-nearby-status__text">{nearbyShowsError}</p>
+              ) : null}
             </div>
           </section>
         );
@@ -567,7 +568,7 @@ function DiscoverPage() {
             <div className="artist-nearby-status">
               <h3 className="artist-nearby-status__title">Location not set</h3>
               <p className="artist-nearby-status__text">
-                Open the location menu and enter a ZIP or postal code, or choose Your location.
+                Enter a ZIP or postal code, or use your location.
               </p>
             </div>
           </DiscoverRail>
@@ -599,11 +600,7 @@ function DiscoverPage() {
       return (
         <section key="recommendedShows" className="artist-discover-section">
           <div className="artist-nearby-status">
-            <h3 className="artist-nearby-status__title">No upcoming nearby matches</h3>
-            <p className="artist-nearby-status__text">
-              We could not find local Ticketmaster shows tied to your library or current
-              recommendations around {nearbyLocationLabel}.
-            </p>
+            <h3 className="artist-nearby-status__title">No matching shows near {nearbyLocationLabel}.</h3>
           </div>
         </section>
       );

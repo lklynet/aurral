@@ -329,7 +329,7 @@ export function PlaylistTracksPanel({
   loading,
   error,
   activityHint = null,
-  emptyMessage = "No tracks generated for this flow yet.",
+  emptyMessage = "No tracks yet.",
   deletingTrackId = null,
   reSearchingTrackIds = {},
   playlists = [],

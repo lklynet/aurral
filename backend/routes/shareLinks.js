@@ -47,7 +47,7 @@ const toResponse = (link) => ({
 const notInLibrary = (res) =>
   res.status(404).json({
     error: "not_in_library",
-    message: "Nothing from this is in your Library yet, so there is nothing to play.",
+    message: "No Library tracks available to share.",
   });
 
 router.use(requireAuth, requireUserAccount);
@@ -84,7 +84,7 @@ router.post("/", async (req, res) => {
   if (!(await hasCloudflared())) {
     return res.status(503).json({
       error: "tunnel_unavailable",
-      message: "cloudflared is not installed, so friends could not reach this link.",
+      message: "Install cloudflared on your server to share playback.",
     });
   }
   const duration = EXPIRY_OPTIONS[expiresIn];

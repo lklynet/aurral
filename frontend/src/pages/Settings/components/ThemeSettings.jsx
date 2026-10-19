@@ -332,7 +332,7 @@ function ThemeEditor({ draft, title, onClose, onSaved, onRemoved, showError }) {
             </div>
           )}
           <p className="settings-page__hint">
-            Aurral adjusts text and accent colors that would be hard to read.
+            Text and accent colors adjust for readability.
           </p>
         </div>
         {error || validation.error ? (
@@ -518,7 +518,7 @@ export function ThemeSettings({ showSuccess, showError }) {
         <div className="theme-settings__switch-row">
           <div className="theme-settings__switch-copy">
             <label className="theme-settings__switch-label" htmlFor="theme-immersive-mode">Immersive mode</label>
-            <p className="settings-page__hint">Use artwork colors for the accent, background gradients, and player.</p>
+            <p className="settings-page__hint">Use artwork colors for accents, backgrounds, and the player.</p>
           </div>
           <PillToggle
             id="theme-immersive-mode"

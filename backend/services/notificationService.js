@@ -211,8 +211,8 @@ export async function sendGotifyTest(url, token) {
   const response = await axios.post(
     endpoint,
     {
-      title: "Aurral – Test",
-      message: "This is a test notification from Aurral.",
+      title: "Aurral test",
+      message: "Test notification received.",
       priority: 5,
     },
     { timeout: 10000, headers: { "Content-Type": "application/json" } },

@@ -38,12 +38,10 @@ const ACTIVITY_PAGE_SIZE = 25;
 
 const QUEUE_EMPTY_STATE = {
   title: "Nothing queued",
-  message: "Active requests, downloads, and tracks waiting for review will appear here.",
 };
 
 const HISTORY_EMPTY_STATE = {
   title: "No activity yet",
-  message: "A chronological log of album requests, track downloads, and other activity will appear here.",
 };
 
 function ActivityPage() {
@@ -383,8 +381,8 @@ function ActivityPage() {
       {error && (
         <div className="artist-error-panel activity-page__error" role="alert">
           <AlertCircle className="artist-error-icon" aria-hidden="true" />
-          <h2 className="artist-error-title">Unable to load activity</h2>
-          <p className="artist-error-copy">{error}</p>
+          <h2 className="artist-error-title">Could not load activity.</h2>
+          {error !== "Failed to load activity." ? <p className="artist-error-copy">{error}</p> : null}
           <button
             type="button"
             onClick={() => fetchRequests()}
@@ -404,11 +402,9 @@ function ActivityPage() {
             <h2 className="search-empty-panel__title">
               {hasActivityFilter ? "No matches" : emptyState.title}
             </h2>
-            <p className="search-empty-panel__message">
-              {hasActivityFilter
-                ? "No activity matches the current filter."
-                : emptyState.message}
-            </p>
+            {hasActivityFilter ? (
+              <p className="search-empty-panel__message">No activity matches the current filter.</p>
+            ) : null}
             {isQueueView && !hasActivityFilter && (
               <RouteLink to="/" className="btn btn-primary btn--bold btn-min-h">
                 Start discovering

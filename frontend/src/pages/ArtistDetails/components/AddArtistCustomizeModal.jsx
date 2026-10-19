@@ -50,11 +50,11 @@ export function AddArtistCustomizeModal({
       >
         <div className="artist-modal__header">
           <h3 id={titleId} className="artist-modal__title">
-            Customize Lidarr add
+            Customize Lidarr add{artistName ? `: ${artistName}` : ""}
           </h3>
         </div>
         <p className="artist-modal__subcopy">
-          Choose Lidarr options for <strong>{artistName}</strong> for this add only.
+          Applies to this add only.
         </p>
 
         {loading ? (
@@ -149,9 +149,7 @@ export function AddArtistCustomizeModal({
             </div>
 
             <p className="artist-subtext">
-              Leaving a field on automatic uses your saved Library Defaults, or the global Lidarr
-              fallback when you do not have a saved default. Leaving tag on automatic uses the
-              global Lidarr tag setting.
+              Automatic uses your Library defaults, then Lidarr defaults. Tags use the global Lidarr setting.
             </p>
           </div>
         )}

@@ -47,7 +47,7 @@ export function DeleteAlbumModal({
             <>
               Delete <strong>{title}</strong> from your library?
               {managedBy === "aurral"
-                ? " Artist monitoring won't download it again unless you request it."
+                ? "Artist monitoring skips it until you request it again."
                 : null}
             </>
           )}
@@ -64,7 +64,7 @@ export function DeleteAlbumModal({
             <div>
               <span className="artist-card-title">Delete album files</span>
               <p className="artist-modal__subcopy">
-                Permanently deletes the album&apos;s music files from disk. This cannot be undone.
+                Permanently deletes the album files from disk.
               </p>
             </div>
           </label>

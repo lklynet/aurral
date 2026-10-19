@@ -64,7 +64,7 @@ const getRecommendationReason = (artist) => {
   if (artist?.sourceArtist) {
     return `Similar to ${artist.sourceArtist}`;
   }
-  return artist?.discoveryTier === "deeper" ? "A deeper discovery pick" : "Picked for your profile";
+  return artist?.discoveryTier === "deeper" ? "A deeper pick" : "Picked for your profile";
 };
 
 function CardText({ link, label, children }) {

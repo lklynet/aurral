@@ -237,7 +237,7 @@ export function SettingsPlaybackSection({
       }
       if (popup && !popup.closed) popup.close();
       if (!token) {
-        showError("Plex authentication timed out. Please try again.");
+        showError("Plex sign-in timed out. Try again.");
         return;
       }
       const servers = await loadPlexServers(token);
@@ -254,7 +254,7 @@ export function SettingsPlaybackSection({
       updatePlex(patch);
       showSuccess(
         owned.length === 1 && patch.url
-          ? `Signed in and selected "${owned[0].name}". Changes save automatically.`
+          ? `Connected to Plex. Selected "${owned[0].name}".`
           : "Signed in to Plex. Select your server below.",
       );
     } catch (err) {
@@ -273,7 +273,7 @@ export function SettingsPlaybackSection({
       return;
     }
     updatePlex({ url, machineIdentifier: server.clientIdentifier });
-    showInfo(`Selected "${server.name}". Changes save automatically.`);
+    showInfo(`Selected "${server.name}".`);
   };
 
   const handleDisconnectPlex = () => {
@@ -283,7 +283,7 @@ export function SettingsPlaybackSection({
       machineIdentifier: "",
     });
     setPlexServers([]);
-    showInfo("Plex disconnected. Changes save automatically.");
+    showInfo("Plex disconnected.");
   };
 
   const handleTestPlex = async () => {
@@ -297,7 +297,7 @@ export function SettingsPlaybackSection({
     try {
       const result = await testPlaybackConnection("plex", plex);
       if (result.success) {
-        showSuccess(`Plex connection successful!${result.version ? ` (v${result.version})` : ""}`);
+        showSuccess(`Connected to Plex${result.version ? ` (v${result.version})` : ""}.`);
         if (result.machineIdentifier) {
           updatePlex({ machineIdentifier: result.machineIdentifier });
         }
@@ -463,7 +463,7 @@ export function SettingsPlaybackSection({
       const built = (result.playlists || []).length;
       if (result.scanInProgress) {
         showInfo(
-          "Library ready and a Plex scan is running. Playlists will fill in automatically over the next few minutes as Plex indexes the tracks — no need to click again.",
+          "Library ready. Plex is scanning. Playlists fill automatically as tracks are indexed.",
         );
       } else {
         showSuccess(
@@ -518,7 +518,7 @@ export function SettingsPlaybackSection({
 
       <SettingsArrFieldSet legend="Scrobbling">
         <div className="arr-info">
-          Send completed local plays to listening services. Navidrome is not required.
+          Send completed plays to listening services.
         </div>
         <SettingsModalToggleGroup>
           {["lastfm", "listenbrainz", "koito"].map((provider) => {
@@ -584,7 +584,7 @@ export function SettingsPlaybackSection({
       {activeModal === "listenbrainz" && (
         <SettingsIntegrationModal title="ListenBrainz scrobbling" onClose={closeModal}>
           <SettingsModalIntro>
-            Enter a user token. Navidrome is not required.
+            Enter your ListenBrainz user token.
           </SettingsModalIntro>
           <SettingsModalSection title="Connection">
             <SettingsModalField label="User token">
@@ -687,7 +687,7 @@ export function SettingsPlaybackSection({
           }
         >
           <SettingsModalIntro>
-            Connect Jellyfin to publish Aurral flows and playlists into its music library.
+            Publishes flows and playlists to Jellyfin.
           </SettingsModalIntro>
           <SettingsModalSection title="Connection">
             <SettingsAdapterFields
@@ -721,7 +721,7 @@ export function SettingsPlaybackSection({
           }
         >
           <SettingsModalIntro>
-            Connect Plex to create a library and playlists for Aurral flows.
+            Creates a Plex library and playlists for flows.
           </SettingsModalIntro>
 
           <SettingsModalSection title="Account">
@@ -759,7 +759,7 @@ export function SettingsPlaybackSection({
           <SettingsModalSection title="Login">
             <SettingsModalField
               label="Allow signing in to Aurral with Plex"
-              hint="Users who explicitly connect their own Plex account from their profile can then sign in with it. It never creates new Aurral accounts or changes anyone's role."
+              hint="Users can sign in after linking Plex in Profile. Plex cannot create accounts or change roles."
             >
               <PillToggle
                 className="settings-toggle"
@@ -807,8 +807,7 @@ export function SettingsPlaybackSection({
               label="Plex Aurral Library path (optional)"
               hint={
                 <>
-                  Only needed when Plex sees downloads at a different path. Enter the Plex-side
-                  path to the Aurral Downloads Folder.
+                  If Plex sees downloads at a different path, enter that path here.
                 </>
               }
             >
@@ -850,8 +849,7 @@ export function SettingsPlaybackSection({
               label="Include tracks from an existing library"
               hint={
                 <>
-                  Include an existing Plex library so playlists can reuse tracks already in your
-                  library.
+                  Reuse tracks from an existing Plex library.
                 </>
               }
             >
@@ -880,17 +878,15 @@ export function SettingsPlaybackSection({
             libraryAccessCheck?.checked &&
             !libraryAccessCheck.accessible ? (
               <p className="settings-modal__hint">
-                <AlertTriangle className="artist-icon-xs" aria-hidden /> Aurral can&apos;t read this
-                library directly yet. Plex reports its files at{" "}
-                <code>{libraryAccessCheck.reportedPath}</code> — set a path mapping below so
-                Aurral knows where to find that same file.
+                <AlertTriangle className="artist-icon-xs" aria-hidden /> Aurral cannot read{" "}
+                <code>{libraryAccessCheck.reportedPath}</code>. Map it to the local path below.
               </p>
             ) : null}
 
             {plex.mainLibrarySectionId && libraryAccessCheck?.checked === false ? (
               <p className="settings-modal__hint">
                 {libraryAccessCheck.reason ||
-                  "Couldn't check library access right now — you can still set a path mapping manually below if needed."}
+                  "Could not check access. You can set the path mapping manually."}
               </p>
             ) : null}
 
@@ -900,7 +896,7 @@ export function SettingsPlaybackSection({
                 label="Local path for this library (optional)"
                 hint={
                   <>
-                    Enter the same path as Aurral sees it; leave blank to remove the mapping.
+                    Path as Aurral sees it. Leave blank to remove the mapping.
                   </>
                 }
               >
@@ -951,7 +947,7 @@ export function SettingsPlaybackSection({
               </button>
             </SettingsModalActions>
             <p className="settings-modal__hint">
-              Creates the Aurral library and flow playlists, then scans Plex. Saves before syncing.
+              Saves settings, creates the Plex library and flow playlists, then scans.
             </p>
           </SettingsModalSection>
         </SettingsIntegrationModal>

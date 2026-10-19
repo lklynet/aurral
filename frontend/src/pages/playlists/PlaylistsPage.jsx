@@ -114,8 +114,7 @@ export default function PlaylistsPage() {
     if (error && !status) {
       return (
         <div className="native-library-state" role="alert">
-          <strong>Playlists unavailable</strong>
-          <span>Aurral could not load your playlists.</span>
+          <strong>Could not load playlists.</strong>
           <button type="button" className="native-library-state__action" onClick={fetchStatus}>
             Retry
           </button>
@@ -126,7 +125,7 @@ export default function PlaylistsPage() {
       return (
         <div className="native-library-state">
           <strong>No playlists yet</strong>
-          <span>Create one here, or import from Spotify, YouTube Music, ListenBrainz, or Last.fm.</span>
+          <span>Create or import a playlist.</span>
           <div className="playlists-page__empty-actions">
             <button type="button" className="native-library-state__action" onClick={openCreate}>
               <ListMusic aria-hidden="true" />

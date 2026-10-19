@@ -322,8 +322,7 @@ function FlowDetail({ flow }) {
             </p>
           ) : retired ? (
             <p className="native-library-detail__meta">
-              Editorial playlists now come from Deezer, so this flow no longer updates. Its tracks
-              stay as they are. <Link to="/discover/playlists">Browse playlists</Link>
+              Editorial playlists moved to Deezer. This flow no longer updates. Existing tracks stay. <Link to="/discover/playlists">Browse playlists</Link>
             </p>
           ) : null
         }
@@ -455,7 +454,7 @@ function FlowDetail({ flow }) {
               activityHint={activity}
               emptyMessage={
                 enabled
-                  ? "No tracks generated for this flow yet."
+                  ? "No tracks yet."
                   : "Turn this flow on to generate tracks."
               }
               recordHistory={flow.recordHistory !== false}
@@ -524,7 +523,7 @@ function FlowDetail({ flow }) {
       <ConfirmModal
         open={confirmDelete}
         title={`Delete ${flow.name}?`}
-        body="This removes the flow and its playlist setup. You can recreate it later."
+        body="Removes this flow and its playlist setup."
         confirmLabel="Delete flow"
         busyLabel="Deleting…"
         busy={deleting}

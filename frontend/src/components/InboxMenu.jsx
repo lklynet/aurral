@@ -350,7 +350,7 @@ function InboxMenu() {
               <DotLoader size="sm" label={null} /> Loading…
             </div>
           ) : items.length === 0 ? (
-            <div className="app-inbox-menu__empty">Nothing to see here yet</div>
+            <div className="app-inbox-menu__empty">No notifications.</div>
           ) : visibleItems.length === 0 ? (
             <div className="app-inbox-menu__empty">No {selectedFilter.label.toLowerCase()} yet</div>
           ) : (

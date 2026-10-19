@@ -120,9 +120,6 @@ export function SettingsAccountTab({
                   onChange={(event) => setSidebarArtEnabled(event.target.checked)}
                   aria-label="Show sidebar environment art"
                 />
-                <p className="settings-page__hint">
-                  Show the nightly or preview environment art in the sidebar.
-                </p>
               </div>
             </fieldset>
           ) : null}
@@ -163,7 +160,7 @@ export function SettingsAccountTab({
                 <option value="koito">Koito</option>
               </SettingsSelect>
               <p className="settings-page__hint">
-                Select the service that supplies your listening history for personalized discovery.
+                Choose the listening history used for recommendations.
               </p>
             </div>
             {listenHistoryProvider === "local" ? (
@@ -186,9 +183,6 @@ export function SettingsAccountTab({
                   value={listenHistoryUrl}
                   onChange={(e) => setListenHistoryUrl(e.target.value)}
                 />
-                <p className="settings-page__hint">
-                  Aurral reads top artists from Koito for personalized discovery.
-                </p>
               </div>
             ) : (
               <div className="profile-settings__field">
@@ -242,7 +236,7 @@ export function SettingsAccountTab({
             <div className="settings-page__section-intro">
               <h3 className="settings-page__section-title">Library defaults</h3>
               <p className="settings-page__section-note">
-                Defaults for one-click artist adds. Profile values override them.
+                Defaults for artist adds. Profile values take priority.
               </p>
             </div>
 
@@ -290,7 +284,7 @@ export function SettingsAccountTab({
           <div className="settings-page__section-intro">
             <h3 className="settings-page__section-title">Discovery tastes</h3>
             <p className="settings-page__section-note">
-              Reset your recommendation feedback. Manage blocked artists separately.
+              Resets More like this and Less like this. Blocked artists stay.
               {" "}<Link to="/blocklist" className="settings-page__link">Blocked artists</Link>
             </p>
           </div>

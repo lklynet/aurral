@@ -193,7 +193,7 @@ export function AudioQueueProvider({ children }) {
           resumeAtRef.current = null;
           dispatch({
             type: "SET_ERROR",
-            error: "This track is unavailable. Restore the file or refresh the library.",
+            error: "Track unavailable. Restore the file or refresh the Library.",
           });
           engine.pause();
           return;

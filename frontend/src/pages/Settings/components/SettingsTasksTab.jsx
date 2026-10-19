@@ -51,13 +51,13 @@ const STATUS_META = {
     label: "Idle",
     tone: "muted",
     icon: Check,
-    title: "Processor is loaded and waiting for work",
+    title: "Waiting for work.",
   },
   not_loaded: {
     label: "Standby",
     tone: "muted",
     icon: AlertCircle,
-    title: "Processor is stopped until new work arrives",
+    title: "Starts when work arrives.",
   },
 };
 
@@ -148,7 +148,7 @@ function TasksHealthSummary({ summary, loading, clearing = false, onClearStale }
   if (loading || !summary) {
     return (
       <div className="arr-info arr-info--tasks">
-        <DotLoader size="sm" label={null} /> Loading background task status...
+        <DotLoader size="sm" label={null} /> Loading tasks…
       </div>
     );
   }
@@ -184,8 +184,7 @@ function TasksHealthSummary({ summary, loading, clearing = false, onClearStale }
           </p>
           {staleCount > 0 ? (
             <p className="arr-info__help">
-              These are usually leftover job records from an earlier run, not active workers. Clear
-              them to reset the queue. Aurral will re-enqueue normal startup work if needed.
+              Clear stale job records to reset the queue. Startup tasks are queued again if needed.
             </p>
           ) : null}
         </>
@@ -444,7 +443,7 @@ export function SettingsTasksTab({ showError, showSuccess }) {
       if (cleared > 0) {
         showSuccess?.(`Cleared ${cleared} stuck job${cleared === 1 ? "" : "s"}.`);
       } else {
-        showSuccess?.("No stuck jobs needed clearing.");
+        showSuccess?.("No stuck jobs.");
       }
     } catch (error) {
       const message =

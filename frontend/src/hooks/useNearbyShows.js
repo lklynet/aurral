@@ -39,7 +39,7 @@ export function useNearbyShows({ enabled = true } = {}) {
   const error = !active
     ? null
     : data?.location?.resolved === false
-      ? "We could not find that ZIP or postal code."
+      ? "ZIP or postal code not found."
       : query.error?.response?.data?.message || query.error?.message || null;
 
   return {

@@ -141,7 +141,7 @@ export function SettingsStorageHealthSection({
           } else if (result.ok) {
             showSuccess("Storage checks finished with warnings");
           } else {
-            showError("Storage checks found problems. Review the results below.");
+            showError("Storage checks found problems.");
           }
         }
         return result;

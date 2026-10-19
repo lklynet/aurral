@@ -127,20 +127,20 @@ async function compareCopies(filePath, holderPath) {
   if (differentTracks(mine, theirs)) {
     return {
       same: false,
-      reason: `Another file of this recording already has this name, but this one is track ${mine.trackNumber} and that one is track ${theirs.trackNumber}, so they are different tracks. Check their tags.`,
+      reason: `Name conflict: these files have different track numbers, ${mine.trackNumber} and ${theirs.trackNumber}. Check their tags.`,
     };
   }
   if (mine.durationMs == null || theirs.durationMs == null) {
     return {
       same: false,
-      reason: "Another file of this track already has this name, but Aurral could not tell how long one of them is. Check the files.",
+      reason: "Name conflict. Could not compare track lengths. Check both files.",
     };
   }
   const gap = mine.durationMs - theirs.durationMs;
   if (Math.abs(gap) > SAME_LENGTH_MS) {
     return {
       same: false,
-      reason: `Another file of this track already has this name, but this one is ${formatGap(gap)} ${gap > 0 ? "longer" : "shorter"}, so they are different recordings. Check their tags.`,
+      reason: `Name conflict. Track lengths differ by ${formatGap(gap)}. Check their tags.`,
     };
   }
   const keepHolder = compareQuality(theirs, mine) >= 0;
@@ -194,7 +194,7 @@ async function planAlbum(albumId, context) {
         sourcePath: target,
         targetPath: file.path,
         status: "duplicate",
-        reason: "A better copy of this track is in another file. Removing this one gives that copy this name.",
+        reason: "A better copy exists. Removing this file gives that copy this name.",
         details: { removable: true, takesName: true },
       });
       settled.add(target);
@@ -320,7 +320,7 @@ async function removeDuplicate(item, context) {
   const onDisk = await fs.lstat(extra).catch(() => null);
   if (!(await fs.stat(kept).catch(() => null))) {
     if (!onDisk) return { status: "duplicate", reason: "This copy is already gone.", details: { ...details, sourceRemoved: true } };
-    return { status: "skipped", reason: "The copy Aurral kept is gone, so this one stays. Run Clean up Library again.", details };
+    return { status: "skipped", reason: "Kept this file because the preferred copy is missing. Run Clean up Library again.", details };
   }
   if (details.takesName && await passesThroughLinkedFolder(resolveDownloadRoot(), extra)) {
     return { status: "skipped", reason: LINKED_FOLDER_REASON, details };
@@ -332,7 +332,7 @@ async function removeDuplicate(item, context) {
     if (!(await context.deletionGuard().canDelete(extra, { retain: false }))) {
       return {
         status: "skipped",
-        reason: "A media server playlist still uses this copy, so it stays. Try again once the playlist has updated.",
+        reason: "Still used by a media server playlist. Retry after the playlist updates.",
         details,
       };
     }

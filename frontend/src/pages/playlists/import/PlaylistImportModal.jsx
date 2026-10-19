@@ -106,9 +106,6 @@ function PlaylistImportConfig({
         />
         <span className="playlist-import__retention-copy">
           <span className="playlist-import__retention-title">Keep removed tracks in library</span>
-          <span className="playlist-import__retention-help">
-            {externalSource} removals leave the downloaded file available in Aurral.
-          </span>
         </span>
       </label>
 
@@ -130,18 +127,18 @@ function PlaylistImportConfig({
             </div>
             {previewTrackCount === 0 ? (
               <p className="playlist-import__summary-copy">
-                No importable tracks were found. Check that the playlist contains available music.
+                No downloadable tracks. Check the source playlist.
               </p>
             ) : null}
             {previewSkipped > 0 ? (
               <p className="playlist-import__summary-copy">
                 {externalSource === "Spotify"
-                  ? "Spotify also lists unavailable entries, podcast episodes, and duplicates Aurral cannot download."
+                  ? "Skipped unavailable tracks, podcasts, and duplicates."
                   : externalSource === "Last.fm"
-                    ? "Some Last.fm entries are missing the artist or track data Aurral needs."
+                    ? "Skipped entries with missing artist or track details."
                     : externalSource === "YouTube Music"
-                      ? "Unavailable entries, podcasts, incomplete videos, and duplicates are skipped."
-                      : "Some ListenBrainz entries are missing the artist or track data Aurral needs."}
+                      ? "Skipped unavailable entries, podcasts, incomplete videos, and duplicates."
+                      : "Skipped entries with missing artist or track details."}
               </p>
             ) : null}
             {previewTracks.length > 0 ? (
@@ -181,7 +178,7 @@ function openSpotifyOAuthPopup(oauthUrl) {
   return new Promise((resolve, reject) => {
     const popup = window.open(oauthUrl, "spotify-oauth", "width=480,height=720");
     if (!popup || popup.closed || typeof popup.closed === "undefined") {
-      reject(new Error("Pop-ups are being blocked by your browser"));
+      reject(new Error("Allow popups to connect Spotify."));
       return;
     }
 
@@ -675,15 +672,11 @@ export function PlaylistImportModal({
       open={open}
       title="Import playlist"
       description={
-        source === "spotify"
-          ? "Pick a Spotify playlist to queue downloads and optionally sync it."
-          : source === "listenbrainz"
-            ? "Pick a playlist to queue downloads. Weekly playlists use the latest week."
-            : source === "lastfm"
-              ? "Pick a Last.fm station to queue downloads and optionally sync it."
-            : source === "youtube"
-              ? "Paste a public YouTube or YouTube Music playlist URL."
-            : "Import a JSON tracklist from Aurral or another tool."
+        source === "listenbrainz"
+          ? "Weekly playlists use the latest week."
+          : source === "youtube"
+            ? "Use a public YouTube or YouTube Music playlist URL."
+            : undefined
       }
       onClose={onClose}
       disableClose={importing}
@@ -820,9 +813,6 @@ export function PlaylistImportModal({
                   <Music2 />
                 </div>
                 <p className="playlist-import__empty-title">Connect your Spotify account</p>
-                <p className="playlist-import__empty-copy">
-                  Pick playlists from your library and optionally keep them in sync.
-                </p>
                 <button
                   type="button"
                   className="btn btn-primary btn-sm"
@@ -840,7 +830,7 @@ export function PlaylistImportModal({
                 </div>
                 <p className="playlist-import__empty-title">Connect ListenBrainz first</p>
                 <p className="playlist-import__empty-copy">
-                  Link your ListenBrainz user token in Settings to import your playlists.
+                  Connect ListenBrainz in Settings → Playback to import playlists.
                 </p>
                 <Link
                   to="/settings/playback"
@@ -855,7 +845,7 @@ export function PlaylistImportModal({
                 <div>
                   <p className="playlist-import__empty-title">Enter your Last.fm username</p>
                   <p className="playlist-import__empty-copy">
-                    Aurral will load your Library, Mix, and Recommended stations.
+                    Loads your Library, Mix, and Recommended stations.
                   </p>
                 </div>
                 <div className="playlist-modal__fields">
@@ -875,7 +865,7 @@ export function PlaylistImportModal({
                     disabled={lastfmProfileLoading || lastfmLoading || importing}
                   />
                   <p className="settings-page__hint">
-                    Saved with the imported playlist for future syncs.
+                    Saved for future syncs.
                   </p>
                 </div>
                 <button

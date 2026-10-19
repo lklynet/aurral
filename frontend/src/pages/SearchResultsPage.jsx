@@ -1214,14 +1214,14 @@ function SearchResultsPage() {
     ["recommended", "trending", "tag"].includes(normalizedType)
         ? "Nothing to show here yet."
         : isUnifiedSearch && !localSearchConfigured
-          ? "Configure the search server in Settings to search artists, releases, and tracks."
+          ? "Set up the metadata server in Settings → Metadata to search music."
           : isUnifiedSearch
-            ? `We couldn't find anything matching "${trimmedQuery}"`
+            ? `No results for "${trimmedQuery}".`
             : isAlbumSearch
-              ? `We couldn't find any albums matching "${trimmedQuery}"`
+              ? `No albums for "${trimmedQuery}".`
               : isTagSearch
-                ? `We couldn't find any results for tag "${trimmedQuery.replace(/^#/, "")}"`
-                : `We couldn't find any results matching "${trimmedQuery}"`;
+                ? `No results for #${trimmedQuery.replace(/^#/, "")}.`
+                : `No results for "${trimmedQuery}".`;
 
   const emptyTitle = "No results found";
 

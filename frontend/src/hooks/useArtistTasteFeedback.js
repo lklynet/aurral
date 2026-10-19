@@ -135,7 +135,7 @@ export function useArtistTasteFeedback() {
       if (isSelected) return true;
       const describeUndoable = UNDOABLE_MESSAGES[action];
       if (!describeUndoable) {
-        showSuccess("We’ll bias future picks toward this taste");
+        showSuccess(`Showing more like ${name}`);
         return true;
       }
       const change = diffDiscoveryFeedback(result.previous, result.feedbackList);

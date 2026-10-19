@@ -97,7 +97,7 @@ function DefaultRulesModal({ defaults, onClose, onSaved, showError }) {
       ) : (
         <>
           <SettingsModalIntro>
-            Artists that use the default follow these rules. A change applies to them from the moment you save it.
+            Changes apply to all artists using defaults when you save.
           </SettingsModalIntro>
           <SettingsModalSection>
             <MonitoringRulesFields rules={rules} onChange={setRules} disabled={busy} />
@@ -148,7 +148,7 @@ function ExclusionsTable({ showError }) {
             </tr>
           ) : exclusions.length === 0 ? (
             <tr className="arr-table__empty-row">
-              <td colSpan={5}>Nothing removed. Releases and tracks you delete appear here.</td>
+              <td colSpan={5}>No deleted releases or tracks.</td>
             </tr>
           ) : (
             exclusions.map((exclusion) => (
@@ -196,8 +196,7 @@ export function SettingsMonitoringTab({ settings, updateSettings, showSuccess, s
       <div className="arr-form">
         <SettingsArrFieldSet legend="Default rules">
           <div className="arr-info">
-            Choose what Aurral downloads for artists you monitor. Each artist uses these rules unless you give it
-            its own in its Monitoring rules. Lidarr&apos;s artists follow Lidarr&apos;s monitoring.
+            Default download rules for monitored artists. Artist-specific rules override them. Lidarr artists use Lidarr rules.
           </div>
           {defaults ? (
             <IntegrationCard
@@ -222,7 +221,7 @@ export function SettingsMonitoringTab({ settings, updateSettings, showSuccess, s
         <SettingsArrFieldSet legend="Missing tracks">
           <SettingsArrFormGroup
             label="Search again for missing tracks"
-            help="Searches again for tracks of monitored albums that are still missing."
+            help="Retries missing tracks from monitored albums."
           >
             <PillToggle
               className="settings-toggle"
@@ -234,7 +233,7 @@ export function SettingsMonitoringTab({ settings, updateSettings, showSuccess, s
           <SettingsArrFormGroup
             label="Search interval"
             labelFor="missing-track-search-interval"
-            help="Checked once a day. Days to wait after an album's last search or download. Albums with cancelled downloads wait for Retry."
+            help="Days after the last search or download, checked daily. Cancelled albums require Retry."
           >
             <SettingsInput
               id="missing-track-search-interval"
@@ -263,8 +262,7 @@ export function SettingsMonitoringTab({ settings, updateSettings, showSuccess, s
 
         <SettingsArrFieldSet legend="Removed from monitoring">
           <div className="arr-info">
-            Releases and tracks you delete stay out of artist monitoring. Requesting one yourself, or Allow again,
-            lets monitoring download it.
+            Deleted releases and tracks stay excluded until you request them or choose Allow again.
           </div>
           <ExclusionsTable showError={showError} />
         </SettingsArrFieldSet>

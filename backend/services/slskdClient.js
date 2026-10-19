@@ -39,7 +39,7 @@ export const slskdSettings = Object.freeze({
       type: "password",
       secret: true,
       section: "Connection",
-      hint: "Optional - leave empty when slskd authentication is disabled (for example behind an authenticating reverse proxy).",
+      hint: "Leave blank if slskd authentication is disabled.",
     }),
     Object.freeze({
       key: "priority",

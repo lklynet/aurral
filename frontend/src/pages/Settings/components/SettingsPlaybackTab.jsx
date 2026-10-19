@@ -37,7 +37,7 @@ export function SettingsPlaybackTab({
           <SettingsArrFormGroup
             label="Generated cover style"
             labelFor="playlist-artwork-style"
-            help="Photo texture uses a photo background. Aurral generated uses abstract palette covers."
+            help="Photo texture uses photos. Aurral generated uses abstract covers."
           >
             <SettingsSelect
               id="playlist-artwork-style"

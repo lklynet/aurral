@@ -446,8 +446,8 @@ export default function ActivityMissingPage() {
             {hasFilter
               ? `${showingCutoff ? "No cutoff-unmet" : "No missing"} tracks match your filter.`
               : showingCutoff
-                ? "Every Aurral-owned file currently meets the configured quality cutoff."
-                : "Every Aurral operation currently has a track available or in progress."}
+                ? "All Aurral tracks meet the quality cutoff."
+                : "Every requested track is available or in progress."}
           </p>
         </div>
       ) : null}

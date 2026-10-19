@@ -7,18 +7,18 @@ import { SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import Tooltip from "../../../components/Tooltip";
 
 const GROUPS = [
-  ["major", "Major music publications & magazines"],
-  ["indie", "Indie & alternative music blogs"],
-  ["discovery", "Music discovery & curation"],
+  ["major", "Music publications"],
+  ["indie", "Indie & alternative"],
+  ["discovery", "Discovery & curation"],
   ["hiphop", "Hip-hop & rap"],
   ["pop", "Pop & mainstream"],
   ["electronic", "Electronic & dance music"],
   ["metal", "Metal & hard rock"],
   ["country", "Country & Americana"],
   ["jazz", "Jazz"],
-  ["classical", "Classical & contemporary classical"],
+  ["classical", "Classical"],
   ["regional", "Regional music scenes"],
-  ["concerts", "Concerts, festivals & live music"],
+  ["concerts", "Live music"],
 ];
 
 export function SettingsRssNewsTab({ settings, updateSettings, handleSaveSettings }) {
