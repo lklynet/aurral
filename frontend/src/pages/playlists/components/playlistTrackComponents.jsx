@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import {
   Download,
   Info,
+  ImagePlus,
   ListMusic,
   Play,
   Pause,
@@ -111,6 +112,7 @@ function PlaylistTrackKebabMenu({
   isPlaying = false,
   onPlay,
   onViewInfo,
+  onEditArtwork,
   onAddToLibrary,
   isAddingToLibrary = false,
   canReSearch,
@@ -147,6 +149,14 @@ function PlaylistTrackKebabMenu({
           label: "View info",
           icon: Info,
           onSelect: () => onViewInfo(track),
+        }
+      : null,
+    onEditArtwork
+      ? {
+          id: "artwork",
+          label: "Change artwork",
+          icon: ImagePlus,
+          onSelect: () => onEditArtwork(track),
         }
       : null,
     canAddToLibrary
@@ -334,6 +344,7 @@ export function PlaylistTracksPanel({
   onMoveTrackToPlaylist,
   onAddTrackToLibrary,
   onViewTrackInfo,
+  onEditTrackArtwork,
   libraryTrackSavingKey = "",
   getTrackFavoriteId,
   favoriteTrackIds = new Set(),
@@ -548,6 +559,7 @@ export function PlaylistTracksPanel({
           isPlaying={isCurrent && isRunning}
           onPlay={showPlaybackControls ? handlePlayTrack : null}
           onViewInfo={onViewTrackInfo}
+          onEditArtwork={onEditTrackArtwork}
           onAddToLibrary={onAddTrackToLibrary}
           isAddingToLibrary={libraryTrackSavingKey === String(track.id)}
           canReSearch={canReSearch}

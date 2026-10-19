@@ -115,6 +115,28 @@ export const removeLibraryFileOperationSources = (id) =>
 export const getLibraryTrackFiles = (trackId, options = {}) =>
   getData(`/library/tracks/${encodeURIComponent(trackId)}/files`, options);
 
+export const getLibraryCustomArtworkUrl = (kind, id, version = "current") =>
+  buildAuthenticatedApiUrl(
+    `/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`,
+    { v: version },
+  );
+
+export const uploadLibraryCustomArtwork = (kind, id, file) =>
+  putData(
+    `/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`,
+    file,
+    { headers: { "Content-Type": file.type || "application/octet-stream" } },
+  );
+
+export const setLibraryCustomArtworkUrl = (kind, id, url) =>
+  putData(
+    `/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/url`,
+    { url },
+  );
+
+export const deleteLibraryCustomArtwork = (kind, id) =>
+  deleteData(`/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`);
+
 export const getActiveLibraryRefresh = () => getData("/library/refresh");
 
 export const getLibraryRefreshStatus = (jobId) =>

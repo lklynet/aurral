@@ -377,6 +377,15 @@ db.exec(`
     updated_at INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS custom_artwork (
+    entity_kind TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    source_url TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (entity_kind, entity_id)
+  );
+
   CREATE TABLE IF NOT EXISTS library_album_tracks (
     album_id INTEGER NOT NULL,
     track_id INTEGER NOT NULL,

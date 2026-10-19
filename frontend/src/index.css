@@ -11799,6 +11799,164 @@ button.native-library-genre-row:focus-visible {
   margin-top: 0.25rem;
 }
 
+.artwork-editor {
+  max-width: 34rem;
+  max-height: min(90dvh, 46rem);
+}
+
+.artwork-editor__subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--aurral-text-muted);
+  font-size: 0.8125rem;
+}
+
+.artwork-editor__section {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.artwork-editor__artwork-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 13rem));
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.artwork-editor__artwork-row + .artwork-editor__section {
+  margin-top: 1rem;
+}
+
+.settings-page__modal-body > .artwork-editor__section + .artwork-editor__section {
+  margin-top: 1rem;
+}
+
+.artwork-editor__label {
+  color: var(--aurral-text);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.artwork-editor__current,
+.artwork-editor__preview {
+  width: min(100%, 13rem);
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--aurral-border);
+  border-radius: var(--aurral-radius);
+  background: var(--aurral-surface);
+}
+
+.artwork-editor__current img,
+.artwork-editor__preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.artwork-editor__current > svg {
+  width: 2rem;
+  height: 2rem;
+  margin: calc(50% - 1rem);
+  color: var(--aurral-text-muted);
+}
+
+.artwork-editor__dropzone {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0.25rem;
+  width: min(100%, 13rem);
+  aspect-ratio: 1;
+  padding: 1rem;
+  border: 1px dashed var(--aurral-text-subtle);
+  border-radius: var(--aurral-radius);
+  background: var(--aurral-surface);
+  color: var(--aurral-text);
+  cursor: pointer;
+}
+
+.artwork-editor__dropzone.is-selected {
+  border-color: var(--aurral-accent);
+  background: var(--aurral-surface-hover);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .artwork-editor__dropzone:hover:not(:disabled) {
+    border-color: var(--aurral-accent);
+    background: var(--aurral-surface-hover);
+  }
+}
+
+.artwork-editor__dropzone svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--aurral-text-muted);
+}
+
+.artwork-editor__dropzone strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artwork-editor__dropzone span {
+  color: var(--aurral-text-muted);
+  font-size: 0.8125rem;
+}
+
+.artwork-editor__file-input {
+  display: none;
+}
+
+.artwork-editor__url-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.artwork-editor__url-row > svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--aurral-text-muted);
+}
+
+.artwork-editor__error {
+  margin: 1rem 0 0;
+  color: var(--aurral-danger);
+  font-size: 0.8125rem;
+}
+
+.artwork-editor__actions {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.artwork-editor__actions-main {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+@media (max-width: 36rem) {
+  .artwork-editor__artwork-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: normal;
+    gap: 0.625rem;
+  }
+
+  .artwork-editor__actions,
+  .artwork-editor__actions-main {
+    display: grid;
+    width: 100%;
+  }
+
+  .artwork-editor__actions-main {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .quality-profile-list {
   display: grid;
   gap: 0.375rem;

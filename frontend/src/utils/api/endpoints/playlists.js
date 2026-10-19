@@ -10,6 +10,20 @@ import { queryClient, queryKeys } from "../../../queryClient.js";
 export const getPlaylistTrackStreamUrl = (jobId) =>
   buildAuthenticatedApiUrl(`/playlists/stream/${encodeURIComponent(jobId)}`);
 
+const playlistTrackArtworkPath = (jobId, playlistId, suffix = "") =>
+  `/playlists/track-artwork/${encodeURIComponent(jobId)}${suffix}?playlistId=${encodeURIComponent(playlistId)}`;
+
+export const uploadPlaylistTrackArtwork = (playlistId, jobId, file) =>
+  putData(playlistTrackArtworkPath(jobId, playlistId), file, {
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+  });
+
+export const setPlaylistTrackArtworkUrl = (playlistId, jobId, url) =>
+  putData(playlistTrackArtworkPath(jobId, playlistId, "/url"), { url });
+
+export const deletePlaylistTrackArtwork = (playlistId, jobId) =>
+  deleteData(playlistTrackArtworkPath(jobId, playlistId));
+
 export const getStagingStreamUrl = (jobId) =>
   buildAuthenticatedApiUrl(`/playlists/staging-stream/${encodeURIComponent(jobId)}`);
 

@@ -7,6 +7,10 @@ import {
 } from "../../../middleware/requirePermission.js";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import {
+  buildCustomArtworkUrl,
+  getCustomArtworkMap,
+} from "../../../services/customArtworkService.js";
+import {
   getLibraryFavoriteTargetKeys,
   getLibraryPage,
   LIBRARY_VIEW,
@@ -58,21 +62,40 @@ export const publicLibraryJsonReplacer = (key, value) =>
 
 const publicEntity = (kind, entity, favoriteKeys) => favoriteKeys
   ? { ...entity, userFavorite: favoriteKeys.has(`${kind}:${entity.identityKey}`) }
-  : entity;
+  : { ...entity };
 
-const publicAlbum = (album, favoriteKeys) => ({
+const publicAlbum = (album, favoriteKeys, customArtwork) => ({
   ...album,
-  coverUrl: album.coverUrl || getAlbumCoverUrl(album),
+  coverUrl: customArtwork
+    ? buildCustomArtworkUrl("album", album.id, customArtwork)
+    : album.coverUrl || getAlbumCoverUrl(album),
+  ...(customArtwork ? { customArtworkUrl: buildCustomArtworkUrl("album", album.id, customArtwork) } : {}),
   ...(favoriteKeys
     ? { userFavorite: favoriteKeys.has(`album:${album.identityKey}`) }
     : {}),
 });
 
 export function buildPublicLibrary(library, favoriteKeys = null) {
+  const albumArtwork = getCustomArtworkMap("album", library.albums.map((album) => album.id));
+  const trackArtwork = getCustomArtworkMap("track", library.tracks.map((track) => track.id));
   return {
     artists: library.artists.map((artist) => publicEntity("artist", artist, favoriteKeys)),
-    albums: library.albums.map((album) => publicAlbum(album, favoriteKeys)),
-    tracks: library.tracks.map((track) => publicEntity("song", track, favoriteKeys)),
+    albums: library.albums.map((album) => publicAlbum(
+      album,
+      favoriteKeys,
+      albumArtwork.get(String(album.id)),
+    )),
+    tracks: library.tracks.map((track) => {
+      const item = publicEntity("song", track, favoriteKeys);
+      const customArtwork = trackArtwork.get(String(track.id));
+      return customArtwork
+        ? {
+            ...item,
+            artworkUrl: buildCustomArtworkUrl("track", track.id, customArtwork),
+            customArtworkUrl: buildCustomArtworkUrl("track", track.id, customArtwork),
+          }
+        : item;
+    }),
   };
 }
 

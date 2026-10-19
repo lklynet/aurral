@@ -50,6 +50,10 @@ import {
   getManualMissingSelection,
   getManualDownloadSources,
 } from "../../../services/manualMissingSearchService.js";
+import {
+  buildCustomArtworkUrl,
+  getCustomArtworkMap,
+} from "../../../services/customArtworkService.js";
 
 const getAccessiblePlaylistIds = (user) => [
   ...new Set([
@@ -67,7 +71,7 @@ function getManualSearchMode(value) {
   return String(value || "").trim() === "replacement" ? "replacement" : "missing";
 }
 
-function canAccessJobThroughPlaylist(user, job, playlistId) {
+export function canAccessJobThroughPlaylist(user, job, playlistId) {
   const safePlaylistId = String(playlistId || "").trim();
   if (!safePlaylistId) return filterJobsForUser(user, [job]).length > 0;
   if (!canAccessJobType(user, safePlaylistId)) return false;
@@ -149,10 +153,27 @@ export function registerJobs(router) {
       decorateJobQuality(job, profile),
     );
     const libraryOwnership = getLibraryTrackOwnershipBatch(accessibleJobs);
+    const customArtwork = getCustomArtworkMap("playlist-track", accessibleJobs.map((job) => job.id));
     res.json(
       accessibleJobs.map((job, index) => ({
         ...toPublicJob(job),
         libraryOwned: libraryOwnership[index] === true,
+        ...(customArtwork.has(String(job.id))
+          ? {
+              artworkUrl: buildCustomArtworkUrl(
+                "playlist-track",
+                job.id,
+                customArtwork.get(String(job.id)),
+                { playlistId },
+              ),
+              customArtworkUrl: buildCustomArtworkUrl(
+                "playlist-track",
+                job.id,
+                customArtwork.get(String(job.id)),
+                { playlistId },
+              ),
+            }
+          : {}),
       })),
     );
   });
@@ -165,9 +186,26 @@ export function registerJobs(router) {
     );
     const profile = getQualityProfile();
     const isUnmonitored = indexUnmonitoredJobs();
+    const customArtwork = getCustomArtworkMap("playlist-track", jobs.map((job) => job.id));
     res.json(jobs.map((job) => ({
       ...toPublicJob(decorateJobQuality(job, profile)),
       monitored: !isUnmonitored(job),
+      ...(customArtwork.has(String(job.id))
+        ? {
+            artworkUrl: buildCustomArtworkUrl(
+              "playlist-track",
+              job.id,
+              customArtwork.get(String(job.id)),
+              { playlistId: job.playlistType || job.playlistId },
+            ),
+            customArtworkUrl: buildCustomArtworkUrl(
+              "playlist-track",
+              job.id,
+              customArtwork.get(String(job.id)),
+              { playlistId: job.playlistType || job.playlistId },
+            ),
+          }
+        : {}),
     })));
   });
 

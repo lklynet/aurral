@@ -10,17 +10,23 @@ import { registerListenBrainzImport } from "./handlers/listenbrainzImport.js";
 import { registerLastfmImport } from "./handlers/lastfmImport.js";
 import { registerYoutubeMusicImport } from "./handlers/youtubeMusicImport.js";
 import { registerJobs, registerJobCancellation } from "./handlers/jobs.js";
+import {
+  registerTrackArtworkManagement,
+  registerTrackArtworkServe,
+} from "./handlers/trackArtwork.js";
 
 const router = express.Router();
 
 registerStream(router);
 registerArtworkServe(router);
+registerTrackArtworkServe(router);
 
 router.use(requireAuth);
 registerJobCancellation(router);
 router.use(requirePermission("accessFlow"));
 
 registerArtworkManagement(router);
+registerTrackArtworkManagement(router);
 registerFlows(router);
 registerStaticPlaylists(router);
 registerSpotifyImport(router);

@@ -8,6 +8,9 @@ import {
   reSearchFlowTrack,
   reSearchStaticPlaylistTrack,
   searchTrackUpgrade,
+  uploadPlaylistTrackArtwork,
+  setPlaylistTrackArtworkUrl,
+  deletePlaylistTrackArtwork,
 } from "../../utils/api/endpoints/playlists.js";
 import { getReleaseGroupCoversBatch } from "../../utils/api/endpoints/artists.js";
 import {
@@ -26,6 +29,8 @@ import { PlaylistTracksPanel } from "./components/playlistTrackComponents.jsx";
 import { trackCountLabel } from "./playlistTrackChanges.js";
 import ManualMissingSearchModal from "../activity/ManualMissingSearchModal.jsx";
 import LibraryInfoModal from "../LibraryInfoModal.jsx";
+import ArtworkEditorModal from "../../components/ArtworkEditorModal.jsx";
+import { useAuth } from "../../contexts/AuthContext.jsx";
 import { getTrackSearchAction } from "./trackAvailability.js";
 import {
   normalizeNameKey,
@@ -52,18 +57,21 @@ export function PlaylistTracks({
 }) {
   const isFlow = kind === "flow";
   const bulkActions = usePlaylistBulkActions();
+  const { hasPermission } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   const { showSuccess, showError } = toast;
   const [reSearchingTrackIds, setReSearchingTrackIds] = useState({});
   const [manualReplacement, setManualReplacement] = useState(null);
   const [trackInfo, setTrackInfo] = useState(null);
+  const [artworkEditor, setArtworkEditor] = useState(null);
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
   const [playlistMenuError, setPlaylistMenuError] = useState("");
   const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
   const [favoriteTrackSavingKey, setFavoriteTrackSavingKey] = useState("");
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [trackArtworkByAlbumMbid, setTrackArtworkByAlbumMbid] = useState({});
+  const canEditArtwork = hasPermission("addAlbum") || hasPermission("changeMonitoring");
 
   const favoriteQuery = useQuery({
     queryKey: queryKeys.libraryFavorites,
@@ -121,6 +129,24 @@ export function PlaylistTracks({
   const refreshAll = async () => {
     await fetchStatus();
     await refresh();
+  };
+
+  const openTrackArtworkEditor = (track) => {
+    setArtworkEditor({
+      id: track.id,
+      title: track.trackName || "Track",
+      currentArtwork:
+        track.artworkUrl ||
+        track.coverUrl ||
+        trackArtworkByAlbumMbid[String(track.albumMbid || "")] ||
+        "",
+      hasCustomArtwork: Boolean(track.customArtworkUrl),
+    });
+  };
+
+  const handleArtworkSaved = async () => {
+    await refreshAll();
+    showSuccess("Artwork updated");
   };
 
   const saveTrackToPlaylist = async (track, target) => {
@@ -397,6 +423,7 @@ export function PlaylistTracks({
             trackNumber: track.trackNumber,
           })
         }
+        onEditTrackArtwork={canEditArtwork ? openTrackArtworkEditor : undefined}
         libraryTrackSavingKey={libraryTrackSavingKey}
         getTrackFavoriteId={getTrackFavoriteId}
         favoriteTrackIds={favoriteTrackIds}
@@ -410,6 +437,17 @@ export function PlaylistTracks({
         showTrackAvailability={showTrackAvailability}
       />
       <LibraryInfoModal item={trackInfo} onClose={() => setTrackInfo(null)} />
+      <ArtworkEditorModal
+        open={Boolean(artworkEditor)}
+        title={artworkEditor?.title || "Track"}
+        currentArtwork={artworkEditor?.currentArtwork}
+        hasCustomArtwork={artworkEditor?.hasCustomArtwork}
+        onClose={() => setArtworkEditor(null)}
+        onUpload={(file) => uploadPlaylistTrackArtwork(entry.id, artworkEditor.id, file)}
+        onSaveUrl={(url) => setPlaylistTrackArtworkUrl(entry.id, artworkEditor.id, url)}
+        onRemove={() => deletePlaylistTrackArtwork(entry.id, artworkEditor.id)}
+        onSaved={handleArtworkSaved}
+      />
       <ManualMissingSearchModal
         job={manualReplacement}
         mode="replacement"

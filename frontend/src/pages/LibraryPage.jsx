@@ -12,6 +12,7 @@ import {
   EyeOff,
   Fingerprint,
   Grid3X3,
+  ImagePlus,
   Info,
   List,
   ListEnd,
@@ -69,6 +70,7 @@ import {
   deleteAurralAlbumFromLibrary,
   deleteLidarrAlbumFromLibrary,
   deleteTrackFromLibrary,
+  deleteLibraryCustomArtwork,
   getActiveLibraryRefresh,
   getLibraryPage,
   getDownloadStatus,
@@ -78,8 +80,10 @@ import {
   reSearchLibraryTrack,
   requestAlbumFromSearch,
   requestLibraryRefresh,
+  setLibraryCustomArtworkUrl,
   updateLibraryAlbum,
   updateLibraryFavorites,
+  uploadLibraryCustomArtwork,
 } from "../utils/api/endpoints/library.js";
 import {
   addStaticPlaylistTracks,
@@ -145,6 +149,7 @@ import { useResponsiveReleaseLimit } from "./ArtistDetails/hooks/useResponsiveRe
 import { queryClient, queryKeys } from "../queryClient.js";
 import Tooltip from "../components/Tooltip";
 import { showFavoriteRemoved } from "../utils/favoriteUndo.js";
+import ArtworkEditorModal from "../components/ArtworkEditorModal.jsx";
 
 const pageSize = LIBRARY_PAGE_SIZE;
 
@@ -379,6 +384,7 @@ function LibraryPage() {
   const [trackResearchStates, setTrackResearchStates] = useState({});
   const [libraryRemoval, setLibraryRemoval] = useState(null);
   const [libraryInfo, setLibraryInfo] = useState(null);
+  const [artworkEditor, setArtworkEditor] = useState(null);
   const [mbidArtist, setMbidArtist] = useState(null);
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [deletingLibraryEntity, setDeletingLibraryEntity] = useState(false);
@@ -863,9 +869,33 @@ function LibraryPage() {
   const canDeleteTrack = hasPermission("deleteTrack") || canDeleteAlbum;
   const canAddTracks = hasPermission("addAlbum");
   const canChangeMonitoring = hasPermission("changeMonitoring");
+  const canEditArtwork = !isPreviewLibrary && (canAddTracks || canChangeMonitoring);
   const libraryDestination = useLibraryDestination();
   const { isAlbumDownloading, isTrackDownloading } = useActiveDownloads();
   const canEditArtistMbid = hasPermission("addArtist");
+
+  const openArtworkEditor = useCallback((kind, entity, currentArtwork) => {
+    setArtworkEditor({
+      kind,
+      id: entity.id,
+      title: kind === "album" ? entity.title : entity.title || entity.trackName,
+      currentArtwork: currentArtwork || "",
+      hasCustomArtwork: Boolean(entity.customArtworkUrl),
+    });
+  }, []);
+
+  const handleArtworkSaved = useCallback(async () => {
+    clearLibraryPageCache();
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.libraryAlbumTracksPrefix,
+      refetchType: "none",
+    });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.libraryPagePrefix }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix }),
+    ]);
+    showSuccess("Artwork updated");
+  }, [showSuccess]);
 
   const openLibraryRemoval = useCallback((kind, entity, manager = null) => {
     setDeleteFiles(false);
@@ -2128,6 +2158,20 @@ function LibraryPage() {
             icon: Info,
             onSelect: () => openLibraryInfo("track", track, { artist, album, trackNumber }),
           },
+          ...(canEditArtwork
+            ? [
+                {
+                  id: "artwork",
+                  label: "Change artwork",
+                  icon: ImagePlus,
+                  onSelect: () => openArtworkEditor(
+                    "track",
+                    track,
+                    track.artworkUrl || (album ? getAlbumCover(album) : ""),
+                  ),
+                },
+              ]
+            : []),
           ...(!file
             ? [
                 {
@@ -2180,7 +2224,7 @@ function LibraryPage() {
           artist: { label: artistName, to: isAlbumArtistCredit(track, artist) ? libraryArtistPath(artist) : null },
           album: { label: albumName, to: libraryAlbumPath(album) },
           cover: {
-            src: album ? getAlbumCover(album) : "",
+            src: track.artworkUrl || (album ? getAlbumCover(album) : ""),
             label: albumName,
             to: libraryAlbumPath(album),
           },
@@ -2381,6 +2425,16 @@ function LibraryPage() {
                 icon: Info,
                 onSelect: () => openLibraryInfo("album", album, { artist }),
               },
+              ...(canEditArtwork
+                ? [
+                    {
+                      id: "artwork",
+                      label: "Change artwork",
+                      icon: ImagePlus,
+                      onSelect: () => openArtworkEditor("album", album, getAlbumCover(album)),
+                    },
+                  ]
+                : []),
               {
                 id: "discover",
                 label: "Open in Discover",
@@ -2684,6 +2738,20 @@ function LibraryPage() {
                     icon: Info,
                     onSelect: () => openLibraryInfo("album", libraryAlbum, { artist }),
                   },
+                  ...(canEditArtwork
+                    ? [
+                        {
+                          id: "artwork",
+                          label: "Change artwork",
+                          icon: ImagePlus,
+                          onSelect: () => openArtworkEditor(
+                            "album",
+                            libraryAlbum,
+                            getAlbumCover(libraryAlbum),
+                          ),
+                        },
+                      ]
+                    : []),
                   ...(albumMonitoringMenuItem ? [albumMonitoringMenuItem] : []),
                   ...(canDeleteAlbum && canRemoveLibraryAlbum(libraryAlbum, { lidarrConnected: activeManager === "lidarr" })
                     ? [
@@ -2882,6 +2950,17 @@ function LibraryPage() {
         artist={mbidArtist}
         onClose={() => setMbidArtist(null)}
         onSaved={handleArtistMbidSaved}
+      />
+      <ArtworkEditorModal
+        open={Boolean(artworkEditor)}
+        title={artworkEditor?.title || "Library item"}
+        currentArtwork={artworkEditor?.currentArtwork}
+        hasCustomArtwork={artworkEditor?.hasCustomArtwork}
+        onClose={() => setArtworkEditor(null)}
+        onUpload={(file) => uploadLibraryCustomArtwork(artworkEditor.kind, artworkEditor.id, file)}
+        onSaveUrl={(url) => setLibraryCustomArtworkUrl(artworkEditor.kind, artworkEditor.id, url)}
+        onRemove={() => deleteLibraryCustomArtwork(artworkEditor.kind, artworkEditor.id)}
+        onSaved={handleArtworkSaved}
       />
     </>
   );
