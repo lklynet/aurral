@@ -29,7 +29,7 @@
     "eslint-plugin-react": "^7.37.3",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.13.0",
-    "postcss": "^8.5.29",
+    "postcss": "^8.5.30",
     "vite": "^8.3.4",
     "vite-plugin-pwa": "^2.0.0"
   }
