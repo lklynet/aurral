@@ -40,7 +40,7 @@
     "node-taglib-sharp": "^6.0.3",
     "openid-client": "^6.8.8",
     "p-map": "^7.0.8",
-    "p-queue": "^9.3.3",
+    "p-queue": "^10.0.0",
     "sharp": "^0.35.5",
     "undici": "^8.11.2",
     "ws": "^8.22.0",
