@@ -155,7 +155,7 @@ export function registerPlex(router) {
       if (!sample?.files?.length) {
         return res.json({
           checked: false,
-          reason: "This library doesn't have any tracks yet to check against.",
+          reason: "No tracks in this library to check.",
         });
       }
       const reportedPath = sample.files[0];

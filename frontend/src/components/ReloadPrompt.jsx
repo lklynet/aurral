@@ -21,7 +21,7 @@ function ReloadPrompt() {
     <div className="reload-prompt">
       <div className="reload-prompt__content">
         <p className="reload-prompt__text">
-          New content available, click on reload button to update.
+          Update available.
         </p>
         <div className="reload-prompt__actions">
           <button

@@ -476,7 +476,7 @@ export function registerJobs(router) {
       res.json({
         success: true,
         message:
-          "Playlists ensured. Navidrome creates API playlists after it indexes completed tracks.",
+          "Playlists ready. Navidrome publishes them after indexing downloaded tracks.",
       });
     } catch (error) {
       res.status(500).json({

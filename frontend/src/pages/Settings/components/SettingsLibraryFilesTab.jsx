@@ -19,18 +19,18 @@ import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayo
 import { SettingsSelect } from "./SettingsField";
 
 const MODE_HELP = {
-  move: "Moves each file into the Downloads Folder. Empty source folders are removed.",
-  copy: "Copies each file. The source folder stays as it is, and the music takes twice the space.",
-  hardlink: "Links each file into the Downloads Folder without using more space. Filling in tags or upgrading a linked file gives the Library its own copy.",
+  move: "Moves files to the Downloads Folder and removes empty source folders.",
+  copy: "Keeps source files and uses space for a second copy.",
+  hardlink: "Uses no extra space until tags change or a file is upgraded. Source files stay.",
 };
 
 const MONITOR_HELP = {
-  none: "The music is added and left alone. You can monitor it later from Library.",
-  tracks: "Each ingested track is upgraded until it meets the quality profile's cutoff, when Automatic upgrades is on in Download clients.",
-  albums: "Each ingested track is upgraded, and Aurral downloads the tracks its album is missing.",
+  none: "No automatic upgrades. Enable monitoring later in Library.",
+  tracks: "Upgrades imported tracks to the quality cutoff when Automatic upgrades is enabled.",
+  albums: "Upgrades imported tracks and downloads missing album tracks.",
 };
 
-const FILL_TAGS_HELP = "Adds missing MusicBrainz metadata to the Library's copy. File's existing tags remain untouched.";
+const FILL_TAGS_HELP = "Fills missing MusicBrainz tags. Existing tags stay.";
 
 const errorMessage = (error, fallback) =>
   error?.response?.data?.message || error?.message || fallback;
@@ -71,7 +71,7 @@ function IngestSection({ busy, operation, onChanged, showError }) {
     : check.error
       || (result
         ? `${result.audioFiles} music file${result.audioFiles === 1 ? "" : "s"} found.`
-        : "A folder outside the Downloads Folder, such as an old library or a Lidarr root folder.");
+        : "Choose a folder outside the Downloads Folder.");
 
   const start = async () => {
     setStarting(true);
@@ -86,10 +86,9 @@ function IngestSection({ busy, operation, onChanged, showError }) {
   };
 
   return (
-    <SettingsArrFieldSet legend="Ingest a folder">
+    <SettingsArrFieldSet legend="Import a folder">
       <div className="arr-info">
-        Bring music from another folder into the Downloads Folder under Aurral&apos;s names. Aurral never
-        overwrites a file.
+        Imports music into the Downloads Folder using Aurral naming. Existing files are never overwritten.
       </div>
       <SettingsArrFormGroup label="Folder" labelFor="library-ingest-source" help={folderHelp} helpWarning={Boolean(check.error)}>
         <DownloadFolderField
@@ -128,10 +127,7 @@ function IngestSection({ busy, operation, onChanged, showError }) {
       </SettingsArrFormGroup>
       {result?.lidarrRoot ? (
         <p className="arr-form-help arr-form-help--warning">
-          This folder is in Lidarr&apos;s root folder {result.lidarrRoot}, and Lidarr still points at it.
-          {mode === "move"
-            ? " Move takes the files away from Lidarr and breaks its library."
-            : " Copy and Hardlink leave Lidarr's files where they are."}
+          Lidarr uses {result.lidarrRoot}. Moving files breaks its library. Copy and Hardlink keep its files.
         </p>
       ) : null}
       <div className="settings-library-files__actions">
@@ -142,7 +138,7 @@ function IngestSection({ busy, operation, onChanged, showError }) {
           onClick={start}
         >
           {starting ? <DotLoader size="sm" label={null} /> : <FolderInput className="artist-icon-xs" aria-hidden />}
-          Ingest
+          Import folder
         </button>
       </div>
       <LibraryFileOperation operation={operation} onChanged={onChanged} showError={showError} />
@@ -186,11 +182,9 @@ export function SettingsLibraryFilesTab({ showError }) {
 
         <SettingsArrFieldSet legend="Clean up Library">
           <div className="arr-info">
-            Renames Library files in the Downloads Folder to Aurral&apos;s names, <code>Artist/Album/07 - Title.flac</code>
-            or <code>2-07 - Title.flac</code> past the first disc,
-            and fills in the tags they are missing, for music you added by hand. Playlists, favorites, and media
-            servers follow the files. Lidarr&apos;s files stay with Lidarr. Downloads already get these names and tags.
-            When two copies of a track want the same name, Aurral keeps the better one and offers to remove the other.
+            Organizes files in the Downloads Folder and fills missing tags. Playlists, favorites,
+            and media servers follow the files. Lidarr files stay untouched. When names clash,
+            Aurral keeps the better copy and offers to delete the other.
           </div>
           <div className="settings-library-files__actions">
             <button

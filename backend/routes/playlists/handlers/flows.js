@@ -292,7 +292,7 @@ export function registerFlows(router) {
           flowId,
           enabled: true,
           tracksQueued: 0,
-          message: "Flow enabled. Tracks will start queueing shortly.",
+          message: "Flow enabled. Queuing tracks…",
         });
 
         queueFlowSideEffect("enable-flow-refresh", "enable", flowId);
@@ -363,7 +363,7 @@ export function registerFlows(router) {
       if (completedJobs.length === 0) {
         return res.status(400).json({
           error: "No completed tracks available",
-          message: "Generate at least one completed flow track before saving it",
+          message: "Download at least one flow track before saving a playlist.",
         });
       }
 

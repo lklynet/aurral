@@ -95,8 +95,7 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
       <div className="settings-page__section-intro">
         <h3 className="settings-page__section-title">Connected accounts</h3>
         <p className="settings-page__section-note">
-          Other ways you can sign in to Aurral. You can always sign in with your local password
-          {hasLocalPassword ? "" : " once you set one below"}.
+          Additional sign-in methods.
         </p>
       </div>
 
@@ -140,7 +139,7 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
             Connect single sign-on
           </button>
           <p className="settings-page__hint">
-            When you sign in with single sign-on, your identity provider sets your role.
+            Your identity provider sets your role when you sign in.
           </p>
         </>
       )}
@@ -155,8 +154,7 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
       )}
       {!loadError && !hasLocalPassword && (
         <p className="settings-page__hint">
-          This account has no local password set. Set one below so you always have a way to sign
-          in, even if a connected provider becomes unavailable.
+          Set a local password to sign in when a connected provider is unavailable.
         </p>
       )}
     </div>

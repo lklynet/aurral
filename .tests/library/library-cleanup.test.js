@@ -274,9 +274,9 @@ test("the better copy of a track keeps its name, and a copy of a different lengt
   assert.equal(itemFor(middle).status, "duplicate");
   assert.equal(itemFor(middle).target, path.relative(root, worse));
   assert.equal(itemFor(long).status, "conflict");
-  assert.match(itemFor(long).reason, /longer/);
+  assert.match(itemFor(long).reason, /Track lengths differ by 0:0[45]/);
   assert.equal(itemFor(secondSilence).status, "conflict");
-  assert.match(itemFor(secondSilence).reason, /different tracks/);
+  assert.match(itemFor(secondSilence).reason, /different track numbers, 2 and 1/);
 
   assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
   await operations.removeDuplicateFiles(id);

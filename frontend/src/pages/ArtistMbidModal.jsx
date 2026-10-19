@@ -47,7 +47,7 @@ export default function ArtistMbidModal({ artist, onClose, onSaved }) {
     <ModalShell
       open={Boolean(artist)}
       title="MusicBrainz ID"
-      description={`Choose which MusicBrainz artist ${artist?.name || "this artist"} is. Scans will keep your choice.`}
+      description={"Scans keep this choice."}
       onClose={onClose}
       disableClose={Boolean(saving)}
       footer={

@@ -81,7 +81,7 @@ export function useAurralAlbumMonitoring({ album, enabled, canChange, hasMissing
       <ConfirmModal
         open={confirmingId === albumId}
         title="Stop monitoring this album?"
-        body="Aurral will stop searching for and upgrading every track on this album, and skip it when it downloads releases for this artist. Unfinished downloads will be cancelled. Tracks already in your library are kept."
+        body="Stops searches and upgrades for this album, skips it in artist downloads, and cancels unfinished downloads. Library tracks stay."
         confirmLabel="Stop monitoring"
         busyLabel="Stopping"
         busy={pending}

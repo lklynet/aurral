@@ -388,7 +388,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
         refresh={refresh}
         staticPlaylists={staticPlaylists}
         fetchStatus={fetchStatus}
-        emptyMessage="No tracks in this playlist yet."
+        emptyMessage="No tracks yet."
         showTrackAvailability={showTrackAvailability}
         recordHistory={playlist.recordHistory !== false}
       />
@@ -408,7 +408,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
       <ConfirmModal
         open={confirmDelete}
         title={`Delete ${playlist.name}?`}
-        body="This removes the playlist and any downloaded files tied to it."
+        body="Deletes this playlist and its associated downloaded files."
         confirmLabel="Delete playlist"
         busyLabel="Deleting…"
         busy={deleting}

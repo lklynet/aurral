@@ -1652,7 +1652,7 @@ function LibraryPage() {
       const playable = tracks
         .map((track) => buildPlayableTrack(track, lookup))
         .filter((track) => track.src);
-      if (!playable.length) showError("No playable files are available in this selection.");
+      if (!playable.length) showError("No playable tracks in this selection.");
       return playable;
     },
     [buildPlayableTrack, showError],
@@ -2502,7 +2502,7 @@ function LibraryPage() {
       return (
         <EmptyState
           title="No favorites"
-          message="Artists, albums, and tracks you favorite will appear here."
+          message="Favorite music to find it here."
         />
       );
     }
@@ -2824,7 +2824,7 @@ function LibraryPage() {
           {artistAlbums.length ? (
             <div className="native-library-grid">{artistAlbums.map(renderAlbumCard)}</div>
           ) : (
-            <EmptyState title="No albums" message="No indexed albums belong to this artist." />
+            <EmptyState title="No albums" message="No albums for this artist." />
           )}
         </section>
         <section className="native-library-detail__section">
@@ -2835,7 +2835,7 @@ function LibraryPage() {
           {artistTopTracks.length ? (
             renderTrackList(artistTopTracks, libraryArtist.name + " top tracks")
           ) : (
-            <EmptyState title="No tracks" message="No indexed tracks belong to this artist." />
+            <EmptyState title="No tracks" message="No tracks for this artist." />
           )}
         </section>
       </section>
@@ -2952,7 +2952,7 @@ function LibraryPage() {
         {renderLibraryModals()}
         {renderStatus()}
         {!loading && !error && !libraryAlbum && !libraryArtist && (
-          <EmptyState title="Not found" message="This library item is no longer indexed." />
+          <EmptyState title="Not found" message="This item is no longer in the Library." />
         )}
         {!loading && !error && (libraryAlbum || libraryArtist) && (
           <div className="native-library-content">{renderLibraryDetail()}</div>
@@ -3208,7 +3208,7 @@ function LibraryPage() {
           message={
             query || selectedGenre
               ? "Try a different search or clear the filter."
-              : "Indexed music will appear here when the library is ready."
+              : "Music appears here after a Library scan."
           }
         />
       )}

@@ -61,7 +61,7 @@ export default function NewsPage() {
         <section className="discover-news-page__status">
           <Newspaper aria-hidden="true" />
           <h2>Enable News</h2>
-          <p>Enable the RSS news feed in Settings to see recent stories about artists in your library.</p>
+          <p>Enable RSS news in Settings → RSS news.</p>
           <RouteLink to="/settings/rss-news" className="btn btn-primary btn--bold">
             Open News settings
           </RouteLink>
@@ -104,8 +104,8 @@ export default function NewsPage() {
           <h2>{highlightedOnly ? "No highlighted stories" : "No recent stories"}</h2>
           <p>
             {refreshWarning || (highlightedOnly
-              ? "No recent RSS stories mention the artists in your library or recommendations."
-              : "Your RSS feeds have no recent stories.")}
+              ? "No recent news for your Library or recommended artists."
+              : "No recent stories.")}
           </p>
         </section>
       )}

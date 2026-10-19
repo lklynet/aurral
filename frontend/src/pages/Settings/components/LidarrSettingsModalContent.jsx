@@ -63,7 +63,7 @@ export function LidarrSettingsSection({
     const apiKey = settings.integrations?.lidarr?.apiKey;
     if (!url || !apiKey) {
       setLidarrTestStatus({ tone: "error", message: "Enter the URL and API key." });
-      showError("Please enter both URL and API key");
+      showError("Enter the Lidarr URL and API key.");
       return;
     }
     setTestingLidarr(true);
@@ -75,7 +75,7 @@ export function LidarrSettingsSection({
       setLidarrTestLatencyMs(Math.round(performance.now() - startTime));
       if (result.success) {
         setLidarrTestStatus({ tone: "success", message: "Connected." });
-        showSuccess(`Lidarr connection successful! (${result.instanceName || "Lidarr"})`);
+        showSuccess(`Connected to Lidarr${result.instanceName && result.instanceName !== "Lidarr" ? ` (${result.instanceName})` : ""}.`);
         try {
           const [rootFolders, profiles, metadataProfiles, tags] = await refreshLidarrResources({
             url,
@@ -128,7 +128,7 @@ export function LidarrSettingsSection({
     const url = settings.integrations?.lidarr?.url;
     const apiKey = settings.integrations?.lidarr?.apiKey;
     if (!url || !apiKey) {
-      showError("Please enter Lidarr URL and API key first");
+      showError("Enter the Lidarr URL and API key.");
       return;
     }
     try {
@@ -228,7 +228,7 @@ export function LidarrSettingsSection({
 
         <SettingsArrFormGroup
           label="Enabled"
-          help="Turning Lidarr off removes its music from Aurral's Library. Files on disk are not touched."
+          help="Turning off removes Lidarr music from Aurral's Library. Files stay on disk."
         >
           <PillToggle
             className="settings-toggle"
@@ -238,7 +238,7 @@ export function LidarrSettingsSection({
               if (
                 !enabled &&
                 !window.confirm(
-                  "Turn Lidarr off? After you save, Aurral removes Lidarr's music from the Library and downloads its own copy of playlist songs that used Lidarr files. Files on disk are not touched.",
+                  "Turn off Lidarr? Saving removes its music from Aurral's Library and downloads Aurral copies of affected playlist tracks. Existing files stay on disk.",
                 )
               ) {
                 return;
@@ -293,7 +293,7 @@ export function LidarrSettingsSection({
         <SettingsArrFormGroup
           label="External URL"
           labelFor="lidarr-external-url"
-          help='Optional. Used only for browser-facing "View on Lidarr" links.'
+          help="Used for View on Lidarr links."
         >
           <SettingsInput
             id="lidarr-external-url"
@@ -308,7 +308,7 @@ export function LidarrSettingsSection({
 
       <SettingsArrFieldSet legend="Defaults">
         <p className="arr-form-help">
-          Users can override the root folder and quality profile in Profile.
+          Override the root folder and quality profile in Profile.
         </p>
         <RootOverlapWarning rootWarnings={settings.rootWarnings} />
         <SettingsArrFormGroup label="Default root folder" labelFor="lidarr-root-folder">
@@ -454,7 +454,7 @@ export function LidarrSettingsSection({
           type="button"
           onClick={() => {
             if (!settings.integrations?.lidarr?.url || !settings.integrations?.lidarr?.apiKey) {
-              showError("Please configure Lidarr URL and API key first");
+              showError("Enter the Lidarr URL and API key.");
               return;
             }
             setShowCommunityGuideModal(true);
@@ -466,8 +466,7 @@ export function LidarrSettingsSection({
           {applyingCommunityGuide ? "Applying..." : "Apply recommended settings"}
         </button>
         <p className="arr-form-help arr-form-help--spaced">
-          Creates quality profile, updates quality definitions, adds custom formats, and updates
-          naming scheme.{" "}
+          Applies quality, format, and naming settings.{" "}
           <a
             href="https://wiki.servarr.com/lidarr/community-guide"
             target="_blank"

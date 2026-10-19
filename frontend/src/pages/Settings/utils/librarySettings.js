@@ -3,7 +3,7 @@ export function describeLidarrConnectionState({ lidarr, health }) {
     return {
       reason: "disabled",
       title: "Lidarr is off",
-      message: "The Library shows only the music in the Downloads Folder. Turn Lidarr on and save to add its music back.",
+      message: "Only music in the Downloads Folder is shown. Enable Lidarr and save to restore its music.",
     };
   }
   if (!String(lidarr?.url || "").trim() || !String(lidarr?.apiKey || "").trim()) {
@@ -13,7 +13,7 @@ export function describeLidarrConnectionState({ lidarr, health }) {
     return {
       reason: "unreachable",
       title: "Lidarr is unreachable",
-      message: "Lidarr's music stays in the Library. Aurral paused Lidarr requests after repeated failures. Check that Lidarr is running, then test the connection.",
+      message: "Requests paused after repeated failures. Check Lidarr and test the connection. Its music stays in the Library.",
     };
   }
   return null;
@@ -36,7 +36,7 @@ export function describeRootOverlapWarning(rootWarnings) {
   if (warnings.length === 0) return null;
   return {
     summary:
-      "Use separate folders. While they overlap, Lidarr can rename, import, or delete files in the shared folder, and Aurral leaves files in a Lidarr root folder to Lidarr.",
+      "Use separate folders. Lidarr can rename, import, or delete files in overlapping folders. Aurral leaves Lidarr files untouched.",
     details: warnings.map(describeRootOverlap).filter(Boolean),
   };
 }

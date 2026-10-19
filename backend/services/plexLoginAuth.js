@@ -134,7 +134,7 @@ export async function completePlexLogin(req, res) {
     res.status(403).json({
       error: "not_linked",
       message:
-        "This Plex account isn't linked to an Aurral account yet. Sign in another way and link it in Settings.",
+        "Plex account not linked. Sign in another way and link Plex in Profile.",
     });
     return;
   }

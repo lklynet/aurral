@@ -25,7 +25,7 @@ export function SettingsSystemTab({ health, settings, updateSettings, showSucces
   const handleCopy = async () => {
     if (!apiKey) return;
     if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
-      showError("Failed to copy API key. Select the key and copy it manually.");
+      showError("Could not copy the API key. Select it and copy manually.");
       return;
     }
     try {
@@ -33,7 +33,7 @@ export function SettingsSystemTab({ health, settings, updateSettings, showSucces
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      showError("Failed to copy API key. Select the key and copy it manually.");
+      showError("Could not copy the API key. Select it and copy manually.");
     }
   };
 
@@ -67,7 +67,7 @@ export function SettingsSystemTab({ health, settings, updateSettings, showSucces
                 Date and time format
               </label>
               <p className="settings-system__description">
-                Set the date and 24-hour time order for all users.
+                Applies to all users.
               </p>
             </div>
             <SettingsSelect
@@ -98,7 +98,7 @@ export function SettingsSystemTab({ health, settings, updateSettings, showSucces
                 Favorite flow tracks
               </label>
               <p className="settings-system__description">
-                Keep a flow track in the permanent Library when a Subsonic client favorites it.
+                Adds flow tracks to the Library when favorited in a Subsonic client.
               </p>
             </div>
             <div className="settings-system__value">

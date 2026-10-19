@@ -531,7 +531,7 @@ test("a source much longer or shorter than the Library's track is a different re
   const [item] = await apply(id);
 
   assert.equal(item.status, "skipped");
-  assert.match(item.reason, /Wasted & Ready.*0:0[45] longer/);
+  assert.match(item.reason, /Wasted & Ready.*differs by 0:0[45]/);
   assert.equal(describe(id).counts.duplicate, undefined);
   assert.deepEqual(describe(id).sources, { removable: 0, removed: 0 });
   await operations.removeDuplicateFiles(id);
@@ -599,7 +599,7 @@ test("removing kept sources checks each against the Library again, removes empti
   const items = operations.describeLibraryFileOperationItems(getLibraryFileOperation(id), {});
   const twoItem = items.find((item) => item.source.endsWith("two.mp3"));
   assert.equal(twoItem.status, "skipped");
-  assert.match(twoItem.reason, /gone/);
+  assert.match(twoItem.reason, /Library copy is missing/);
 
   await operations.removeDuplicateFiles(id);
   assert.deepEqual(describe(id), after);
@@ -763,7 +763,7 @@ test("files Aurral cannot place are skipped with a reason and left alone", async
   assert.equal(finished.status, "complete");
   const [item] = operations.describeLibraryFileOperationItems(finished, {});
   assert.equal(item.status, "skipped");
-  assert.match(item.reason, /artist and album/);
+  assert.match(item.reason, /artist and album/i);
   assert.equal(await exists(loose), true);
 });
 

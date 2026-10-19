@@ -288,7 +288,7 @@ export function useArtistDetailsLibrary({
           const refreshedArtist = await getLibraryArtist(mbid, { bypassCache: true });
           setLibraryArtist(refreshedArtist);
           await refetchLibraryAlbums();
-          showSuccess("Artist data refreshed successfully.");
+          showSuccess("Artist updated.");
         } catch (err) {
           console.error("Failed to refresh artist data:", err);
           showError("Failed to refresh artist data");
@@ -719,7 +719,7 @@ export function useArtistDetailsLibrary({
         await deleteAlbumMutation.mutateAsync({ id: libraryAlbum.id, deleteFiles: true });
         deletedAlbumAtRef.current[libraryAlbum.id] = Date.now();
         setLibraryAlbums((prev) => prev.filter((a) => a.id !== libraryAlbum.id));
-        showSuccess(`Successfully deleted ${title} and files`);
+        showSuccess(`Deleted ${title} and files.`);
       } else {
         const setMonitored = (monitored) => setLibraryAlbums((prev) =>
           prev.map((a) => (a.id === libraryAlbum.id ? { ...a, monitored } : a)));

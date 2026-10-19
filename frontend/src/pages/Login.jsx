@@ -62,7 +62,7 @@ const Login = () => {
     setError("");
     const popup = window.open("about:blank", "plex-login", "width=600,height=700");
     if (!popup) {
-      setError("Your browser blocked the Plex sign-in popup. Please allow popups for this site and try again.");
+      setError("Allow popups for this site to sign in with Plex.");
       return;
     }
     setPlexConnecting(true);
@@ -100,14 +100,14 @@ const Login = () => {
       }
       if (popup && !popup.closed) popup.close();
       if (!result?.token) {
-        setError("Plex sign-in timed out. Please try again.");
+        setError("Plex sign-in timed out. Try again.");
         return;
       }
       setStoredAuth({ token: result.token });
       const refreshed = await refreshAuth();
       if (!refreshed) {
         clearAuthStorage();
-        setError("Signed in with Plex, but couldn't load your account. Please try again.");
+        setError("Signed in with Plex, but could not load your account. Try again.");
       }
     } finally {
       setPlexConnecting(false);

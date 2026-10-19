@@ -45,9 +45,9 @@ export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) 
     if (!selectedPlexUserId) return;
     if (plexLink.connected && plexLink.linkType === "self") {
       const confirmed = window.confirm(
-        `${user.username} already has their own Plex account linked ("${
+        `Replace ${user.username}'s linked Plex account "${
           plexLink.plexUsername || "unknown"
-        }"). Linking a managed Plex user will replace that self-link. Continue?`,
+        }" with this managed user?`,
       );
       if (!confirmed) return;
     }
@@ -87,9 +87,7 @@ export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) 
         err.response?.data?.requiresForce
       ) {
         const confirmed = window.confirm(
-          `Warning: removing Plex will leave “${user.username}” with no usable sign-in method. ` +
-            "They will be unable to sign in until an administrator sets a local password or links another identity.\n\n" +
-            `Force unlink Plex for ${user.username}?`,
+          `Unlink Plex for ${user.username}? They will be unable to sign in until an admin sets a password or links another account.`,
         );
         if (!confirmed) return;
         const forceUnlink = () => adminUnlinkPlex(user.id, { force: true });

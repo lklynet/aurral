@@ -138,9 +138,9 @@ export default function ManualMissingSearchModal({
       </div>
 
       {loadingSources ? <div className="manual-search-modal__loading"><DotLoader size="lg" label="Loading clients" /></div> : null}
-      {!loadingSources && !error && sources.length === 0 ? <p className="manual-search-modal__empty">No download clients are currently configured and enabled.</p> : null}
+      {!loadingSources && !error && sources.length === 0 ? <p className="manual-search-modal__empty">Set up a download client in Settings → Download clients.</p> : null}
       {error ? <p className="artist-error-text" role="alert">{error}</p> : null}
-      {search && resultCount === 0 ? <p className="manual-search-modal__empty">No results were returned by this client.</p> : null}
+      {search && resultCount === 0 ? <p className="manual-search-modal__empty">No results from this client.</p> : null}
       {resultCount > 0 ? (
         <fieldset className="manual-search-results">
           <legend>{resultCount} result{resultCount === 1 ? "" : "s"}</legend>

@@ -9,8 +9,8 @@ import { DotLoader } from "../../../components/DotLoader";
 const KIND_LABELS = { artist: "Artist", album: "Album", track: "Track" };
 const TUNNEL_NOTES = {
   starting: "Connecting your links to aurral.org…",
-  unreachable: "aurral.org can't reach your server yet. Your links won't play until it can. Aurral keeps retrying.",
-  unavailable: "cloudflared isn't installed on your server, so these links can't play.",
+  unreachable: "Links cannot play yet. Retrying the connection to aurral.org.",
+  unavailable: "Install cloudflared on your server to enable playback links.",
 };
 
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
@@ -69,7 +69,7 @@ export function SharedLinksSection({ showSuccess, showError, className = "" }) {
       const outcome = await shareLink(link.url, link.title);
       if (outcome === "copied") showSuccess?.(`Copied the link for ${link.title}`);
     } catch {
-      showError?.("Could not share the link. Try again from a secure (https) address.");
+      showError?.("Could not share the link. Open Aurral over HTTPS and retry.");
     }
   };
 
@@ -81,7 +81,7 @@ export function SharedLinksSection({ showSuccess, showError, className = "" }) {
       <div className="settings-page__section-intro">
         <h3 className="settings-page__section-title">Shared links</h3>
         <p className="settings-page__section-note">
-          Links that let people play music from your Aurral. Stopping one ends it right away.
+          Stopping a link ends access immediately.
         </p>
       </div>
 
@@ -98,7 +98,7 @@ export function SharedLinksSection({ showSuccess, showError, className = "" }) {
         </p>
       ) : items.length === 0 ? (
         <p className="settings-page__muted-copy">
-          No shared links. Turn on Play from my Aurral when you share an artist, album, or track.
+          No shared links. Enable Play from my Aurral when sharing music.
         </p>
       ) : (
         <>

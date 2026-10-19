@@ -772,10 +772,7 @@ function EditArtistIdsModal({
             <X className="artist-icon-md" />
           </TooltipButton>
         </div>
-        <p className="artist-modal__subcopy">
-          {artistName ? `${artistName}: ` : ""}
-          Update the MusicBrainz or Deezer ID to fix metadata and cover art.
-        </p>
+        {artistName ? <p className="artist-modal__subcopy">{artistName}</p> : null}
         <div className="artist-modal__fields">
           <div>
             <label className="artist-field-label">MusicBrainz ID</label>

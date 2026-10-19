@@ -77,7 +77,7 @@ export function PathMappingModal({ title, initialValue, onClose, onSave }) {
           <div className="arr-modal__body">
             <SettingsArrFormGroup
               label="Applies to"
-              help="Limit this mapping to paths reported by a specific integration, or use all sources."
+              help="Applies to this integration, or all sources."
             >
               <SettingsSelect
                 value={draft.source}
@@ -97,7 +97,7 @@ export function PathMappingModal({ title, initialValue, onClose, onSave }) {
             </SettingsArrFormGroup>
             <SettingsArrFormGroup
               label="Remote path"
-              help="Path the other app reports, such as a host-only mount path from Lidarr or NZBGet."
+              help="Path reported by the other app."
             >
               <SettingsInput
                 value={draft.remote}
@@ -112,7 +112,7 @@ export function PathMappingModal({ title, initialValue, onClose, onSave }) {
             </SettingsArrFormGroup>
             <SettingsArrFormGroup
               label="Local path"
-              help="Path Aurral should use inside its container to read that remote path."
+              help="The same location as Aurral sees it."
             >
               <div className="arr-path-input">
                 <SettingsInput

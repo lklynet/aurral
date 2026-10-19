@@ -37,7 +37,7 @@ export const navidromeSettings = Object.freeze({
       label: "Prefix playlist names with the owner username",
       type: "toggle",
       section: "Behavior",
-      hint: "When enabled, flow playlists are published as \"username - playlist name\".",
+      hint: "Publishes flow playlists as \"username - playlist name\".",
     }),
   ]),
   defaults: Object.freeze({

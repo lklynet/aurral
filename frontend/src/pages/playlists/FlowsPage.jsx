@@ -116,8 +116,7 @@ export default function FlowsPage() {
     if (error && !status) {
       return (
         <div className="native-library-state" role="alert">
-          <strong>Flows unavailable</strong>
-          <span>Aurral could not load your flows.</span>
+          <strong>Could not load flows.</strong>
           <button type="button" className="native-library-state__action" onClick={fetchStatus}>
             Retry
           </button>
@@ -128,7 +127,7 @@ export default function FlowsPage() {
       return (
         <div className="native-library-state">
           <strong>No flows yet</strong>
-          <span>A flow builds a fresh playlist on a schedule from a recipe you choose.</span>
+          <span>Scheduled playlists from a recipe you choose.</span>
           {renderNewFlowMenu("native-library-state__action")}
         </div>
       );
