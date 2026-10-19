@@ -57,3 +57,13 @@ test("custom artwork URLs use the protected image fetcher and become persistent 
   assert.equal(saved.sourceUrl, sourceUrl);
   assert.equal(fs.existsSync(saved.filePath), true);
 });
+
+test("a removal requested during a save cannot delete the replacement file after its row is written", async () => {
+  const save = saveCustomArtworkUpload("track", "99", sourceImage, "image/png");
+  const remove = removeCustomArtwork("track", "99");
+
+  await Promise.all([save, remove]);
+
+  assert.equal(getCustomArtwork("track", "99"), null);
+  assert.equal(getCustomArtworkMap("track", ["99"]).has("99"), false);
+});

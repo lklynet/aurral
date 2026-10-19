@@ -4,6 +4,7 @@ import { useModalDialog } from "../hooks/useModalDialog.js";
 import ArtworkImage from "./ArtworkImage.jsx";
 import Tooltip from "./Tooltip.jsx";
 import TooltipButton from "./TooltipButton.jsx";
+import { cacheImageLocally } from "../utils/api/endpoints/images.js";
 
 const isWebUrl = (value) => {
   try {
@@ -29,6 +30,7 @@ export default function ArtworkEditorModal({
   const [file, setFile] = useState(null);
   const [filePreview, setFilePreview] = useState("");
   const [url, setUrl] = useState("");
+  const [urlPreview, setUrlPreview] = useState("");
   const [source, setSource] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -39,6 +41,7 @@ export default function ArtworkEditorModal({
     setFile(null);
     setFilePreview("");
     setUrl("");
+    setUrlPreview("");
     setSource(null);
     setError("");
   }, [open, title]);
@@ -46,6 +49,28 @@ export default function ArtworkEditorModal({
   useEffect(() => () => {
     if (filePreview) URL.revokeObjectURL(filePreview);
   }, [filePreview]);
+
+  useEffect(() => {
+    const candidate = url.trim();
+    if (!open || source !== "url" || !isWebUrl(candidate)) {
+      setUrlPreview("");
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      cacheImageLocally(candidate)
+        .then((previewUrl) => {
+          if (!cancelled) setUrlPreview(previewUrl || "");
+        })
+        .catch(() => {
+          if (!cancelled) setUrlPreview("");
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [open, source, url]);
 
   if (!open) return null;
 
@@ -65,6 +90,7 @@ export default function ArtworkEditorModal({
   const handleUrlChange = (event) => {
     const value = event.target.value;
     setUrl(value);
+    setUrlPreview("");
     setSource(value.trim() ? "url" : file ? "file" : null);
     setError("");
   };
@@ -110,7 +136,15 @@ export default function ArtworkEditorModal({
     }
   };
 
-  const preview = source === "file" ? filePreview : source === "url" && isWebUrl(url.trim()) ? url.trim() : "";
+  const preview = source === "file" ? filePreview : source === "url" ? urlPreview : "";
+  const encodedPreview = (() => {
+    if (!preview) return "";
+    try {
+      return encodeURI(preview);
+    } catch {
+      return "";
+    }
+  })();
 
   return (
     <div className="artist-modal-backdrop" onClick={handleBackdropClick}>
@@ -189,11 +223,11 @@ export default function ArtworkEditorModal({
             </div>
           </section>
 
-          {preview ? (
+          {encodedPreview ? (
             <section className="artwork-editor__section">
               <span className="artwork-editor__label">New artwork preview</span>
               <div className="artwork-editor__preview">
-                <ArtworkImage src={preview} alt="New artwork preview" thumbnail={false} onError={() => setError("That image could not be previewed.")} />
+                <ArtworkImage src={encodedPreview} alt="New artwork preview" thumbnail={false} onError={() => setError("That image could not be previewed.")} />
               </div>
             </section>
           ) : null}

@@ -11,6 +11,7 @@ import {
 
 const ARTWORK_DIR = path.join(resolveAurralDataDir(), "custom-artwork");
 const ENTITY_KINDS = new Set(["album", "track", "playlist-track"]);
+const targetOperations = new Map();
 
 const getArtworkStmt = db.prepare(
   "SELECT entity_kind, entity_id, content_type, source_url, updated_at FROM custom_artwork WHERE entity_kind = ? AND entity_id = ?",
@@ -41,8 +42,20 @@ function artworkPath(kind, id) {
   return path.join(ARTWORK_DIR, `${key}.image`);
 }
 
-async function writeArtwork(kind, id, buffer, contentType, sourceUrl = null) {
+async function withTargetOperation(kind, id, operation) {
   const target = normalizeTarget(kind, id);
+  const key = `${target.entityKind}:${target.entityId}`;
+  const previous = targetOperations.get(key) || Promise.resolve();
+  const current = previous.catch(() => {}).then(() => operation(target));
+  targetOperations.set(key, current);
+  try {
+    return await current;
+  } finally {
+    if (targetOperations.get(key) === current) targetOperations.delete(key);
+  }
+}
+
+async function writeArtwork(target, buffer, contentType, sourceUrl = null) {
   await fs.promises.mkdir(ARTWORK_DIR, { recursive: true });
   const destination = artworkPath(target.entityKind, target.entityId);
   const temporary = `${destination}.${crypto.randomUUID()}.tmp`;
@@ -68,21 +81,25 @@ async function writeArtwork(kind, id, buffer, contentType, sourceUrl = null) {
 }
 
 export async function saveCustomArtworkUpload(kind, id, buffer, contentType) {
-  const normalizedContentType = String(contentType || "")
-    .split(";")[0]
-    .trim()
-    .toLowerCase();
-  await inspectImageBuffer(buffer, normalizedContentType);
-  const optimized = await optimizeImageBuffer(buffer, normalizedContentType);
-  return writeArtwork(kind, id, optimized.buffer, optimized.contentType);
+  return withTargetOperation(kind, id, async (target) => {
+    const normalizedContentType = String(contentType || "")
+      .split(";")[0]
+      .trim()
+      .toLowerCase();
+    await inspectImageBuffer(buffer, normalizedContentType);
+    const optimized = await optimizeImageBuffer(buffer, normalizedContentType);
+    return writeArtwork(target, optimized.buffer, optimized.contentType);
+  });
 }
 
 export async function saveCustomArtworkUrl(kind, id, sourceUrl) {
-  const url = String(sourceUrl || "").trim();
-  if (!url) throw new Error("Image URL is required");
-  const cached = await warmImageProxy(url);
-  const buffer = await fs.promises.readFile(cached.imagePath);
-  return writeArtwork(kind, id, buffer, cached.meta.contentType, url);
+  return withTargetOperation(kind, id, async (target) => {
+    const url = String(sourceUrl || "").trim();
+    if (!url) throw new Error("Image URL is required");
+    const cached = await warmImageProxy(url);
+    const buffer = await fs.promises.readFile(cached.imagePath);
+    return writeArtwork(target, buffer, cached.meta.contentType, url);
+  });
 }
 
 export function getCustomArtwork(kind, id) {
@@ -113,10 +130,11 @@ export function getCustomArtworkMap(kind, ids) {
 }
 
 export async function removeCustomArtwork(kind, id) {
-  const target = normalizeTarget(kind, id);
-  deleteArtworkStmt.run(target.entityKind, target.entityId);
-  await fs.promises.unlink(artworkPath(target.entityKind, target.entityId)).catch((error) => {
-    if (error?.code !== "ENOENT") throw error;
+  return withTargetOperation(kind, id, async (target) => {
+    deleteArtworkStmt.run(target.entityKind, target.entityId);
+    await fs.promises.unlink(artworkPath(target.entityKind, target.entityId)).catch((error) => {
+      if (error?.code !== "ENOENT") throw error;
+    });
   });
 }
 
