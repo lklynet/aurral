@@ -73,6 +73,8 @@ To open the full news page, select the **Artist news** title or **Show all**, or
 
 Select an artist or album card to open its Discover page. To open an artist card's menu instead, right-click it or press and hold it on a touch screen. If the artist or album is in your Library, select **Open in library** to open its Library page. There you can play tracks and mark favorites.
 
+Artist pages show up to six **Popular** tracks, followed by up to three YouTube videos. Aurral checks those tracks in order and skips missing or duplicate video matches. It prefers uploads from the artist's own channel and uses the same artist, title, and version checks as yt-dlp downloads. Video lookup needs [yt-dlp](/integrations/ytdlp/) on the server but does not download audio. Videos use YouTube's native controls. If none of the six tracks has a match, the video section stays hidden. If video search fails, select **Retry**.
+
 ## Playlists
 
 **Discover > Playlists** shows playlists made by Deezer's editors, grouped by genre. They need no account or API key. When Aurral knows your top genres and tags, **For you** shows the editor playlists that match them. The Discover page shows a few of these playlists too. Open one to play the Deezer previews for its tracks.

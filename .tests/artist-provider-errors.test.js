@@ -140,6 +140,15 @@ test("a top-track error in HTTP 200 does not cache an empty track list", async t
   assert.equal(tracks[0]?.title, "Recovered Song");
 });
 
+test("an artist's Popular list keeps the first six playable tracks in provider order", async t => {
+  responses(t, () => ({ data: Array.from({ length: 8 }, (_, index) => ({
+    id: index + 1, title: `Track ${index + 1}`, album: { title: "Album" },
+    preview: index === 1 ? "" : `https://cdn.deezer.test/${index + 1}.mp3`, duration: 180,
+  })) }));
+  const tracks = await deezer.deezerGetArtistTopTracksById(101);
+  assert.deepEqual(tracks.map(track => track.title), ["Track 1", "Track 3", "Track 4", "Track 5", "Track 6", "Track 7"]);
+});
+
 const artistTopTracks = async () =>
   (await listenbrainzSource.getArtistTopTracks({ name: "Provider Artist" })).map(track => track.name);
 
