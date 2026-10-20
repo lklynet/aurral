@@ -246,7 +246,7 @@ export async function retryTrackDownload(jobId) {
       return { statusCode: 409, error: "Track download cannot be retried", status: current.status };
     }
 
-    if (current.status === "cancelled") {
+    if (current.status === "cancelled" || current.status === "failed") {
       try {
         await cancelDownloadWorkForJobs([current], { lock: false });
       } catch {
