@@ -9476,6 +9476,7 @@ button.native-library-genre-row:focus-visible {
 
 .native-library-detail {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2.5rem;
 }
 

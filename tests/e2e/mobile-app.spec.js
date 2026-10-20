@@ -56,6 +56,27 @@ test("the shell stays fixed, avoids input zoom, and reaches every section", asyn
   await expect(tabs.getByRole("button", { name: "More navigation options" })).toHaveClass(/is-active/);
 });
 
+test("a playlist's tracks scroll inside their list instead of widening the page", async ({ page }) => {
+  const tracks = [1, 2, 3].map((id) => ({
+    id: `mobile-width-${id}`,
+    artistName: "Disposable artist with a long enough name to fill the row",
+    trackName: `Disposable track ${id} with a title long enough to need the whole row`,
+    albumName: "Disposable album",
+    status: "pending",
+    playlistType: "mobile-width",
+  }));
+  const playlist = { id: "mobile-width", name: "Disposable wide playlist", tracks, trackCount: tracks.length };
+  await page.route("**/api/playlists/status", (route) =>
+    route.fulfill({ json: { flows: [], sharedPlaylists: [playlist], worker: {}, capabilities: { unavailableSources: {} } } }));
+  await page.route(`**/api/playlists/jobs/${playlist.id}`, (route) => route.fulfill({ json: tracks }));
+  await openApp(page, "Mobile navigation");
+  await page.goto(`/library/playlists/${playlist.id}`);
+  await expect(page.getByText(tracks[0].trackName).first()).toBeVisible();
+
+  const main = await page.getByRole("main").evaluate((node) => [node.scrollWidth, node.clientWidth]);
+  expect(main[0], "the playlist page is wider than the screen").toBeLessThanOrEqual(main[1]);
+});
+
 test("search results open an artist and the back control returns to them", async ({ page }) => {
   test.setTimeout(90_000);
   await openApp(page, "Mobile navigation");
