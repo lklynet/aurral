@@ -129,10 +129,12 @@ export const releaseTypeOf = (album) => {
   return RELEASE_TYPES[String(type || "").trim().toLowerCase()] || null;
 };
 
-export const albumCardMeta = (album, { available, total }) => [
-  releaseTypeOf(album),
-  yearOf(album?.releaseDate),
-  total && available < total
-    ? `${available}/${total} available`
-    : `${total || 0} ${total === 1 ? "track" : "tracks"}`,
-].filter(Boolean).join(" · ");
+export const albumCardMeta = (album, { available, total }) => {
+  const partial = Boolean(total && available < total);
+  const unit = total === 1 ? "track" : "tracks";
+  return {
+    details: [releaseTypeOf(album), yearOf(album?.releaseDate)].filter(Boolean).join(" · "),
+    count: partial ? `${available}/${total} ${unit}` : `${total || 0} ${unit}`,
+    partial,
+  };
+};

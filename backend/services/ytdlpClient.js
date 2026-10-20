@@ -289,7 +289,7 @@ async function searchSongs(query, { limit, wanted = () => true, decided = () => 
   }
 }
 
-async function searchFor(_config = null, query, { limit = SEARCH_LIMIT, songs = false, wanted, decided } = {}) {
+async function searchFor(_config = null, query, { limit = SEARCH_LIMIT, songs = false, wanted, decided, timeoutMs = 60000 } = {}) {
   const trimmed = String(query || "").trim();
   if (!trimmed) return [];
   const capped = Math.min(Math.max(Number(limit) || SEARCH_LIMIT, 1), 10);
@@ -302,7 +302,7 @@ async function searchFor(_config = null, query, { limit = SEARCH_LIMIT, songs = 
       "--no-warnings",
       `ytsearch${capped}:${trimmed}`,
     ],
-    { timeoutMs: 60000 },
+    { timeoutMs },
   );
   return readJsonLines(stdout).flatMap((entry) => {
     const id = String(entry.id || entry.url || "").trim();

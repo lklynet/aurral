@@ -49,10 +49,13 @@ import RouteLink from "../components/RouteLink";
 import { readRouteSeed } from "../navigation/routeSeed.js";
 import { useSharedArtworkStyle } from "../navigation/viewTransitions.js";
 import {
-  SkeletonCardGrid,
-  SkeletonCollectionHeader,
-  SkeletonRows,
+  SkeletonAlbumDetail,
+  SkeletonLibraryArtist,
+  SkeletonLibraryGrid,
+  SkeletonShape,
   SkeletonStatus,
+  SkeletonText,
+  SkeletonTrackList,
 } from "../components/Skeletons";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
@@ -2384,7 +2387,10 @@ function LibraryPage() {
     const aurralState = album.managedBy === "aurral"
       ? describeAurralAlbumStatus(aurralAlbumStatuses[aurralAlbumStatusKey(album.id)] || {})
       : null;
-    const cardStatus = aurralState?.status === "complete" ? null : aurralState;
+    // The yellow track count already shows a partial album, so the label would only crowd it out.
+    const cardStatus = aurralState?.status === "complete" || aurralState?.status === "partial"
+      ? null
+      : aurralState;
     const albumLinkState = {
       seed: {
         title: album.title || "",
@@ -2491,7 +2497,15 @@ function LibraryPage() {
                 {cardStatus.label + " · "}
               </span>
             )}
-            {meta}
+            {meta.details && meta.details + " · "}
+            {meta.partial ? (
+              <span className="native-library-card__status" data-tone="warning">
+                {meta.count}
+                <span className="sr-only"> available</span>
+              </span>
+            ) : (
+              meta.count
+            )}
           </span>
         </div>
       </article>
@@ -2976,31 +2990,97 @@ function LibraryPage() {
       {loading && (
         isDetail ? (
           <div className="native-library-content">
-            <section className="native-library-detail">
-              {routeAlbumId && albumSeed?.title ? (
+            {routeArtistId ? (
+              <SkeletonLibraryArtist label="Loading library" />
+            ) : albumSeed?.title ? (
+              <section className="native-library-detail">
                 <CollectionHeader
                   cover={<Cover src={albumSeed.coverUrl} label={albumSeed.title} thumbnail={false} />}
                   kicker="Album"
                   title={albumSeed.title}
-                  subtitle={albumSeed.artistName ? <p>{albumSeed.artistName}</p> : null}
+                  subtitle={
+                    albumSeed.artistName ? (
+                      <span className="native-library-detail__artist">{albumSeed.artistName}</span>
+                    ) : null
+                  }
+                  meta={<SkeletonText width="11em" />}
                   actions={
                     <CollectionPlayButtons label={albumSeed.title} disabled isPlaying={false} />
                   }
                 />
-              ) : null}
-              <SkeletonStatus label="Loading library">
-                {routeAlbumId && albumSeed?.title ? null : <SkeletonCollectionHeader />}
-                <SkeletonRows count={10} />
-              </SkeletonStatus>
-            </section>
+                <SkeletonStatus label="Loading library">
+                  <SkeletonTrackList count={12} variant="release" />
+                </SkeletonStatus>
+              </section>
+            ) : (
+              <SkeletonAlbumDetail label="Loading library" />
+            )}
           </div>
-        ) : viewMode === "list" || tab === "tracks" || tab === "genres" ? (
-          <SkeletonStatus label="Loading library">
-            <SkeletonRows count={12} />
-          </SkeletonStatus>
         ) : (
-          <SkeletonStatus label="Loading library">
-            <SkeletonCardGrid className="native-library-grid" square={tab !== "artists"} />
+          <SkeletonStatus label="Loading library" className="native-library-content">
+            {section === "home" ? (
+              <div className="native-library-home">
+                <section className="native-library-section">
+                  {renderSectionHeader("Genres")}
+                  <div className="native-library-genre-grid">
+                    {Array.from({ length: 12 }, (_, index) => (
+                      <SkeletonShape key={index} className="native-library-genre-card" />
+                    ))}
+                  </div>
+                </section>
+                <section className="native-library-section">
+                  {renderSectionHeader("Recently added")}
+                  <SkeletonLibraryGrid ref={homeAlbumsGridRef} count={Math.max(2, homeAlbumColumns) * 2} />
+                </section>
+                <section className="native-library-section">
+                  {renderSectionHeader("Tracks")}
+                  <SkeletonTrackList count={10} />
+                </section>
+              </div>
+            ) : section === "favorites" ? (
+              <div className="native-library-favorites">
+                <section className="native-library-section">
+                  {renderSectionHeader("Artists")}
+                  <SkeletonLibraryGrid kind="artist" className="native-library-grid native-library-grid--artists" />
+                </section>
+              </div>
+            ) : tab === "tracks" ? (
+              <SkeletonTrackList count={12} />
+            ) : tab === "genres" ? (
+              <div className="native-library-genre-list">
+                <div className="native-library-genre-row native-library-genre-row--heading">
+                  <span>Genre</span>
+                  <span>Artists</span>
+                  <span>Albums</span>
+                  <span>Tracks</span>
+                </div>
+                {Array.from({ length: 12 }, (_, index) => (
+                  <div key={index} className="native-library-genre-row">
+                    <strong>
+                      <SkeletonText width={index % 2 ? "6em" : "8em"} />
+                    </strong>
+                    <span>
+                      <SkeletonText width="2em" />
+                    </span>
+                    <span>
+                      <SkeletonText width="2em" />
+                    </span>
+                    <span>
+                      <SkeletonText width="2em" />
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <SkeletonLibraryGrid
+                kind={tab === "artists" ? "artist" : "album"}
+                className={
+                  "native-library-grid" +
+                  (tab === "artists" ? " native-library-grid--artists" : "") +
+                  (viewMode === "list" ? " is-list" : "")
+                }
+              />
+            )}
           </SkeletonStatus>
         )
       )}
@@ -3101,7 +3181,7 @@ function LibraryPage() {
             <h1 className="page-title">
               {pageTitle}
               {pageCount != null && (
-                <span className="native-library-count">{pageCount}</span>
+                <span className="native-library-count">{loading ? <SkeletonText width="2.5em" /> : pageCount}</span>
               )}
             </h1>
           </div>

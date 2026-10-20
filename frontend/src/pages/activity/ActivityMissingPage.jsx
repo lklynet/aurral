@@ -10,7 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
-import { SkeletonRows, SkeletonStatus } from "../../components/Skeletons";
+import { SkeletonActivityList, SkeletonStatus } from "../../components/Skeletons";
 import TooltipButton from "../../components/TooltipButton";
 import { useToast } from "../../contexts/ToastContext";
 import { formatDateTime } from "../../utils/dateTime.js";
@@ -404,7 +404,7 @@ export default function ActivityMissingPage() {
           placeholder={filterPlaceholder}
         />
         <SkeletonStatus label="Loading wanted tracks">
-          <SkeletonRows count={8} />
+          <SkeletonActivityList count={8} hint actions={3} />
         </SkeletonStatus>
       </section>
     );

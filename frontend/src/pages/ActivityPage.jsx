@@ -32,7 +32,7 @@ import ActivityInfoModal from "./activity/ActivityInfoModal";
 import { Navigate, useLocation, useParams } from "react-router";
 import RouteLink from "../components/RouteLink";
 import { AlertCircle, Music } from "lucide-react";
-import { SkeletonRows, SkeletonStatus } from "../components/Skeletons";
+import { SkeletonActivityList, SkeletonStatus } from "../components/Skeletons";
 import { queryClient, queryKeys } from "../queryClient.js";
 const ACTIVITY_PAGE_SIZE = 25;
 
@@ -362,7 +362,7 @@ function ActivityPage() {
           refreshing={refreshing}
         />
         <SkeletonStatus label="Loading activity">
-          <SkeletonRows count={8} />
+          <SkeletonActivityList count={8} dateGroup={isHistoryView} />
         </SkeletonStatus>
       </div>
     );

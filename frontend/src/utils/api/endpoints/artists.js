@@ -242,7 +242,7 @@ export const getArtistPreview = (mbid, artistName, options = {}) =>
     signal: options.signal,
   });
 
-export const getArtistTopSongVideo = (
+const getArtistTopSongVideo = (
   mbid,
   artistName,
   trackTitle,
@@ -252,6 +252,35 @@ export const getArtistTopSongVideo = (
     params: { artistName, trackTitle },
     signal: options.signal,
   });
+
+export async function getArtistVideos(mbid, artistName, tracks, { signal } = {}) {
+  const popularTracks = tracks.slice(0, 6);
+  const videos = [];
+  const seen = new Set();
+  let failed = false;
+  for (let index = 0; index < popularTracks.length && videos.length < 3;) {
+    signal?.throwIfAborted();
+    const batch = popularTracks.slice(index, index + 3 - videos.length);
+    index += batch.length;
+    const results = await Promise.all(batch.map(async track => {
+      try {
+        const data = await getArtistTopSongVideo(mbid, artistName, track.title, { signal });
+        return data?.video ? { ...data.video, trackTitle: track.title } : null;
+      } catch {
+        signal?.throwIfAborted();
+        failed = true;
+        return null;
+      }
+    }));
+    signal?.throwIfAborted();
+    for (const video of results) {
+      if (!video?.videoId || seen.has(video.videoId)) continue;
+      seen.add(video.videoId);
+      videos.push(video);
+    }
+  }
+  return { videos, failed };
+}
 
 export const fetchArtistOverrides = (mbid, { signal } = {}) =>
   getData(`/artists/${mbid}/overrides`, { signal });

@@ -11,9 +11,9 @@ export default function DiscoverPlaylistsPage() {
     if (isPending) {
       return (
         <SkeletonStatus label="Loading playlists">
-          <SkeletonRail square />
-          <SkeletonRail square />
-          <SkeletonRail square />
+          <SkeletonRail kind="playlist" />
+          <SkeletonRail kind="playlist" />
+          <SkeletonRail kind="playlist" />
         </SkeletonStatus>
       );
     }

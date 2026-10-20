@@ -12,7 +12,7 @@ import {
   deezerPreviewMatchCache,
   deezerTopTrackCache,
 } from "./deezer.js";
-import { youtubeVideoCache } from "./crossProvider.js";
+import { youtubeVideoCache } from "./youtube.js";
 import { clearMetadataProviderCaches } from "../providers/brainzmashProvider.js";
 import { clearReleaseManifests } from "../releaseResolver.js";
 
