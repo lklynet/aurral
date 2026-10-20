@@ -23,6 +23,7 @@ import {
   DEFAULT_SIZE,
 } from "./flowPlaylistConfig.js";
 import {
+  jobDownloadedItsFile,
   normalizeExistingFileMode,
   removePlaylistFileIfUnshared,
   reuseTrackForPlaylist,
@@ -913,7 +914,7 @@ async function deleteStaticPlaylist({ playlistId } = {}) {
       const playlistJobs = downloadTracker.getByPlaylistId(safePlaylistId);
       const removedJobIds = playlistJobs.map((job) => job.id);
       for (const job of playlistJobs) {
-        if (job.status !== "done" || job.managedBy !== "aurral" || job.externalPath || !job.finalPath || job.upgradeForJobId) {
+        if (!jobDownloadedItsFile(job) || job.upgradeForJobId) {
           continue;
         }
         await removePlaylistFileIfUnshared(job.finalPath, safePlaylistId, {

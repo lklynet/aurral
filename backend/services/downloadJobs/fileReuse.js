@@ -299,6 +299,23 @@ async function findAurralSource(track, options = {}) {
   };
 }
 
+export function jobDownloadedItsFile(job) {
+  return job?.status === "done" &&
+    Boolean(job.finalPath) &&
+    job.managedBy === "aurral" &&
+    !job.externalPath &&
+    !job.reusedLibraryFile;
+}
+
+function noPlaylistDownloadedFile(filePath, jobId, downloadRoot) {
+  const resolved = path.resolve(filePath);
+  return !downloadTracker.getAll().some((job) =>
+    job?.id !== jobId &&
+    job.playlistType !== "library" &&
+    jobDownloadedItsFile(job) &&
+    path.resolve(remapLegacyPath(job.finalPath, downloadRoot)) === resolved);
+}
+
 function retargetJobsToPath(oldPath, newPath, downloadRoot, albumName = null) {
   const resolvedOld = path.resolve(oldPath);
   const resolvedNew = path.resolve(newPath);
@@ -699,6 +716,7 @@ export async function restoreCompletedTrack(job, options = {}) {
         sourcePath,
         source.albumName || job.albumName || null,
         source.externalPath || null,
+        { reusedLibraryFile: noPlaylistDownloadedFile(sourcePath, job.id, downloadRoot) },
       );
       console.log(
         `[FileReuse] Repaired ${job.playlistType} path from ${source.sourceType}: ${job.artistName} - ${job.trackName}`,
@@ -1092,6 +1110,7 @@ export async function reuseTrackForPlaylist(track, playlistType, options = {}) {
     finalPath,
     source.albumName || track.albumName || null,
     source.externalPath || null,
+    { reusedLibraryFile: noPlaylistDownloadedFile(finalPath, jobId, downloadRoot) },
   );
   console.log(
     `[FileReuse] Reused ${source.sourceType} track for ${playlistType}: ${track.artistName} - ${track.trackName}`,
