@@ -376,6 +376,35 @@ test("cancelling an album leader keeps its held peer and shared transfer running
   assert.ok(honker.listHonkerJobs("slskd-pipeline").some((row) => row.payload.jobId === peer));
 });
 
+test("restarting a held album track detaches it from the previous shared attempt", async (t) => {
+  await downloadWorker.stopAndDrain();
+  t.mock.method(downloadWorker, "start", async () => {});
+  const fixture = createLibraryAlbum({ trackCount: 2 });
+  const leader = fixture.jobFor(0);
+  const peer = fixture.jobFor(1);
+  downloadTracker.setDownloading(leader);
+  downloadTracker.setDownloading(peer);
+  const attempt = cancellation.beginDownloadAttempt(leader);
+  cancellation.setActiveDownloadAttemptId(peer, attempt);
+  const honker = await import("../../backend/services/honkerDb.js");
+  const payload = {
+    jobId: leader,
+    playlistId: "library",
+    playlistGeneration: 0,
+    downloadAttemptId: attempt,
+    phase: "poll",
+    albumGrab: true,
+    albumGroupJobIds: [leader, peer],
+  };
+  honker.getPipelineQueue().enqueue(payload);
+
+  const retried = await apiRequest(`/api/playlists/jobs/${peer}/retry`, "POST");
+  assert.deepEqual(retried.body, { jobId: peer, status: "pending", retried: true });
+  assert.equal(cancellation.getActiveDownloadAttemptId(peer), null);
+  const { heldAlbumGrabJobs } = await import("../../backend/services/albumGrab.js");
+  assert.deepEqual(heldAlbumGrabJobs(payload).map((job) => job.id), [leader]);
+});
+
 test("a cancelled single song can be searched again and the worker takes it", async () => {
   setDownloadSourceConfigured(false);
   const id = downloadTracker.addJob({ artistName: "Single Artist", trackName: "Single song" }, "library");

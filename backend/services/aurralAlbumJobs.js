@@ -3,6 +3,7 @@ import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import {
   cancelDownloadJobs,
   restoreDownloadJobCancellations,
+  setActiveDownloadAttemptId,
 } from "./downloadJobs/downloadCancellation.js";
 import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.js";
 import { logger } from "./logger.js";
@@ -259,6 +260,7 @@ export async function retryTrackDownload(jobId) {
       }
     }
 
+    setActiveDownloadAttemptId(jobId, null);
     restoreDownloadJobCancellations([jobId]);
     if (!downloadTracker.setPending(jobId, "Retry requested", { asRetryCycle: true })) {
       cancelDownloadJobs([jobId]);
