@@ -552,6 +552,7 @@ test("a retained Library file deleted by a scan leaves the Library and reaches t
   requests.length = 0;
   const goneAlbum = path.join(downloadRoot, "Gone Artist", "Album");
   await retain(path.join(goneAlbum, "Gone.wav"), "Gone Song");
+  await scans.stopLibraryScanWorker();
   const events = honker.getHonkerDb().updateEvents();
   t.after(() => events.close());
   const jobId = scans.scheduleLibraryScan({ includeLidarr: false, changedPaths: [path.join(album, "Song.wav")] });
