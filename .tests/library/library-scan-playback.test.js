@@ -11,7 +11,7 @@ import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../he
 const previousGroup = process.env.AURRAL_BACKGROUND_WORKER_GROUP;
 process.env.AURRAL_BACKGROUND_WORKER_GROUP = "library";
 const [state, { db }, { dbOps }, honker, scans, { playlistManager }, { processSystemTask },
-  { NavidromeClient }, { PlexClient }, { JellyfinClient }, { getLibrary, getLibrarySearchPage }, { logger },
+  { NavidromeClient }, { PlexClient }, { JellyfinClient }, { getLibrary }, { logger },
   { createPlaybackDeletionGuard }, { downloadTracker },
   { flowPlaylistConfig }, { processPlaylistOperation }, { downloadWorker }, { lidarrClient },
   libraryFileOperations, { libraryManager }, { createLibraryFileWatcher }, { createIsolatedLibraryWatcher },
