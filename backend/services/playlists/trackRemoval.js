@@ -8,7 +8,7 @@ import { cancelDownloadWorkForJobs } from "../downloadJobs/downloadCancellationS
 import { isDownloadJobCancelled, restoreDownloadJobCancellations } from "../downloadJobs/downloadCancellation.js";
 import { transferDownloadOwnershipInTransaction, replaceAlbumDownloadLeaderInTransaction } from "../downloadJobs/downloadOwnership.js";
 import { prepareRetainedPlaylistFile, commitRetainedPlaylistRelocationInTransaction } from "./mediaRelocation.js";
-import { removePlaylistFileIfUnshared } from "../downloadJobs/fileReuse.js";
+import { jobDownloadedItsFile, removePlaylistFileIfUnshared } from "../downloadJobs/fileReuse.js";
 import { downloadWorker } from "../downloadJobs/downloadWorker.js";
 import { playlistManager } from "./playlistManager.js";
 
@@ -196,7 +196,7 @@ export async function removeStaticPlaylistSelectionsLocked({ playlistId, selecti
           redirects.push(replaceAlbumDownloadLeaderInTransaction(plan.job.id, plan.peer.id));
         } else {
           for (const job of [plan.job, ...plan.upgrades]) {
-            if (deleteFiles && job.status === "done" && job.finalPath && !job.externalPath && job.managedBy === "aurral") {
+            if (deleteFiles && jobDownloadedItsFile(job)) {
               dbOps.setJSONSetting(`playlistRemovedMedia:${job.id}`, { playlistId, finalPath: plan.relocation?.finalPath || job.finalPath });
             }
             db.prepare("DELETE FROM playlist_download_jobs WHERE id = ?").run(job.id);

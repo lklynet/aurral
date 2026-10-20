@@ -1136,11 +1136,19 @@ const FAILED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const buildActiveTrackHistory = (job) => {
   const playlistId = job?.playlistId || job?.playlistType;
   const status =
-    job?.status === "blocked" ? "blocked" : job?.status === "downloading" ? "processing" : "pending";
+    job?.status === "blocked"
+      ? "blocked"
+      : job?.status === "downloading" || job?.status === "cancel_requested"
+        ? "processing"
+        : "pending";
   const statusLabel =
-    status === "blocked" ? "Review" : status === "processing" ? "Downloading" : "Queued";
+    job?.status === "cancel_requested"
+      ? "Cancelling"
+      : status === "blocked" ? "Review" : status === "processing" ? "Downloading" : "Queued";
   const title =
-    status === "blocked"
+    job?.status === "cancel_requested"
+      ? `Cancelling ${job?.trackName || "track"}`
+      : status === "blocked"
       ? `Review needed for ${job?.trackName || "track"}`
       : status === "processing"
         ? `Downloading ${job?.trackName || "track"} via ${resolveDownloadClientLabel(job?.downloadSource, job?.downloadClient)}`
@@ -1174,7 +1182,12 @@ export const getAurralHistoryRequests = async (lidarrClient = null, user = null)
   const { downloadTracker } = await import("./downloadJobs/downloadTracker.js");
   const jobs = downloadTracker.getAll();
   for (const job of jobs) {
-    if (job.status !== "blocked" && job.status !== "pending" && job.status !== "downloading") {
+    if (
+      job.status !== "blocked" &&
+      job.status !== "pending" &&
+      job.status !== "downloading" &&
+      job.status !== "cancel_requested"
+    ) {
       continue;
     }
     const historyId = stableId("track_download", job.id);
@@ -1230,6 +1243,13 @@ export const getAurralHistoryRequests = async (lidarrClient = null, user = null)
         entry.metadata?.trackName ||
         (entry.status === "blocked" && job?.trackName ? job.trackName : null);
       if (
+        entry.kind === "track_download" &&
+        job?.status === "cancel_requested"
+      ) {
+        entry.status = "processing";
+        entry.statusLabel = "Cancelling";
+        entry.title = `Cancelling ${job?.trackName || entry.metadata?.trackName || "track"}`;
+      } else if (
         entry.kind === "track_download" &&
         job?.status === "done" &&
         (entry.status === "pending" || entry.status === "processing")

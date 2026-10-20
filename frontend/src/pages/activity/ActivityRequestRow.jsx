@@ -7,6 +7,7 @@ import {
   Pause,
   Play,
   RotateCcw,
+  Square,
   XCircle,
   ChevronDown,
   ChevronRight,
@@ -62,12 +63,15 @@ export default function ActivityRequestRow({
   request,
   reSearchingAlbumIds,
   reviewingJobs,
+  controllingJobs,
   jobErrors,
   currentTrack,
   isPlaying,
   onReSearch,
   onApprove,
   onDeny,
+  onCancel,
+  onRetry,
   onPreview,
   onInfo,
   onToggle,
@@ -116,6 +120,17 @@ export default function ActivityRequestRow({
   const isReSearching = Boolean(request.albumId && reSearchingAlbumIds[request.albumId]);
   const isApproving = reviewingJobs[request.jobId] === "approve";
   const isDenying = reviewingJobs[request.jobId] === "deny";
+  const activeControl = controllingJobs[request.jobId];
+  const canCancel =
+    request.kind === "track_download" &&
+    !!request.jobId &&
+    (request.status === "pending" || request.status === "processing") &&
+    !isBlockedTrack;
+  const canRetry =
+    request.kind === "track_download" &&
+    !!request.jobId &&
+    ["pending", "processing", "failed", "cancelled"].includes(request.status) &&
+    !isBlockedTrack;
   const isThisPlaying = currentTrack?.id === String(request.jobId) && isPlaying;
   const jobError = jobErrors[request.jobId];
   const reviewReasonSummary = isBlockedTrack
@@ -244,6 +259,34 @@ export default function ActivityRequestRow({
             ) : (
               <RotateCcw aria-hidden="true" />
             )}
+          </TooltipButton>
+        ) : null}
+        {canCancel ? (
+          <TooltipButton
+            className="native-library-icon-button activity-row__action--cancel"
+            onClick={() => onCancel(request.jobId)}
+            disabled={Boolean(activeControl)}
+            aria-busy={activeControl === "cancel"}
+            label={activeControl === "cancel" ? "Cancelling download" : "Cancel download"}
+          >
+            {activeControl === "cancel"
+              ? <DotLoader size="sm" label={null} />
+              : <Square aria-hidden="true" />}
+          </TooltipButton>
+        ) : null}
+        {canRetry ? (
+          <TooltipButton
+            className="native-library-icon-button"
+            onClick={() => onRetry(request.jobId)}
+            disabled={Boolean(activeControl)}
+            aria-busy={activeControl === "retry"}
+            label={activeControl === "retry"
+              ? "Restarting download"
+              : canCancel ? "Restart download" : "Retry download"}
+          >
+            {activeControl === "retry"
+              ? <DotLoader size="sm" label={null} />
+              : <RotateCcw aria-hidden="true" />}
           </TooltipButton>
         ) : null}
         <TooltipButton

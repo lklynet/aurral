@@ -231,6 +231,45 @@ test("a Library requester can cancel without flow permission and cannot cancel a
   assert.equal(downloadTracker.getJob(other).status, "pending");
 });
 
+test("a Library requester can retry failed and stalled downloads without duplicating active work", async (t) => {
+  await downloadWorker.stopAndDrain();
+  t.mock.method(downloadWorker, "start", async () => {});
+  const fixture = createLibraryAlbum();
+  const failed = fixture.jobFor(0);
+  const stalled = fixture.jobFor(1);
+  const other = fixture.jobFor(2);
+  history.recordTrackJobQueued(downloadTracker.getJob(failed), { id: 3, username: "owner" });
+  history.recordTrackJobQueued(downloadTracker.getJob(stalled), { id: 3, username: "owner" });
+  history.recordTrackJobQueued(downloadTracker.getJob(other), { id: 4, username: "other" });
+  downloadTracker.setDownloading(failed);
+  downloadTracker.setFailed(failed, "Provider lost the request");
+  history.recordTrackJobFailed(downloadTracker.getJob(failed), "Provider lost the request");
+  downloadTracker.setDownloading(stalled);
+  history.recordTrackJobDownloading(downloadTracker.getJob(stalled));
+
+  requestUser = { id: 3, role: "user", permissions: {} };
+  assert.equal((await apiRequest(`/api/playlists/jobs/${other}/retry`, "POST")).status, 403);
+
+  const failedRetry = await apiRequest(`/api/playlists/jobs/${failed}/retry`, "POST");
+  assert.deepEqual(failedRetry.body, { jobId: failed, status: "pending", retried: true });
+  assert.equal(downloadTracker.getJob(failed).status, "pending");
+  assert.equal(downloadTracker.getJob(failed).retryCycle, true);
+  assert.equal(cancellation.isDownloadJobCancelled(failed), false);
+
+  const stalledRetry = await apiRequest(`/api/playlists/jobs/${stalled}/retry`, "POST");
+  assert.deepEqual(stalledRetry.body, { jobId: stalled, status: "pending", retried: true });
+  assert.equal(downloadTracker.getJob(stalled).status, "pending");
+  assert.equal(downloadTracker.getJob(stalled).retryCycle, true);
+  assert.equal(cancellation.isDownloadJobCancelled(stalled), false);
+
+  const activity = await apiRequest("/api/requests?refresh=1");
+  for (const jobId of [failed, stalled]) {
+    const row = activity.body.find((item) => item.jobId === jobId);
+    assert.equal(row.status, "processing");
+    assert.equal(row.statusLabel, "Searching");
+  }
+});
+
 test("album-grab request rows include canonical ids and request groups", async () => {
   const fixture = createLibraryAlbum({ trackCount: 2 });
   const ids = [fixture.jobFor(0), fixture.jobFor(1)];
@@ -272,6 +311,66 @@ test("track cancellation keeps failed provider cleanup pending and succeeds afte
   assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(fixture.tracks[0].id).monitored, 1);
 });
 
+test("retry keeps a cancelled queued job blocked until provider cleanup succeeds", async (t) => {
+  const fixture = createLibraryAlbum();
+  const id = fixture.jobFor(0);
+  downloadTracker.updateDownloadMetadata(id, {
+    downloadSource: "usenet",
+    downloadClient: "sabnzbd",
+    downloadClientId: "disposable-queue",
+  });
+
+  const cancelled = await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST");
+  assert.equal(cancelled.body.status, "cancelled");
+  assert.equal(cancelled.body.cleanupFailed, true);
+
+  const blockedRetry = await apiRequest(`/api/playlists/jobs/${id}/retry`, "POST");
+  assert.equal(blockedRetry.status, 409);
+  assert.equal(blockedRetry.body.cleanupFailed, true);
+  assert.equal(downloadTracker.getJob(id).status, "cancelled");
+  assert.equal(cancellation.isDownloadJobCancelled(id), true);
+
+  const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
+  const client = getDownloadClient("sabnzbd");
+  t.mock.method(client, "isConfigured", () => true);
+  t.mock.method(client, "deleteQueueItem", async () => true);
+  t.mock.method(client, "deleteHistoryItem", async () => true);
+
+  const recoveredRetry = await apiRequest(`/api/playlists/jobs/${id}/retry`, "POST");
+  assert.deepEqual(recoveredRetry.body, { jobId: id, status: "pending", retried: true });
+  assert.equal(downloadTracker.getJob(id).status, "pending");
+  assert.equal(cancellation.isDownloadJobCancelled(id), false);
+});
+
+test("retry keeps a failed job blocked until its provider request is cleaned up", async (t) => {
+  const fixture = createLibraryAlbum();
+  const id = fixture.jobFor(0);
+  downloadTracker.setDownloading(id);
+  downloadTracker.updateDownloadMetadata(id, {
+    downloadSource: "usenet",
+    downloadClient: "sabnzbd",
+    downloadClientId: "still-running-nzb",
+  });
+  downloadTracker.setFailed(id, "Usenet client remained unreadable");
+
+  const blockedRetry = await apiRequest(`/api/playlists/jobs/${id}/retry`, "POST");
+  assert.equal(blockedRetry.status, 409);
+  assert.equal(blockedRetry.body.cleanupFailed, true);
+  assert.equal(downloadTracker.getJob(id).status, "failed");
+  assert.equal(cancellation.isDownloadJobCancelled(id), true);
+
+  const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
+  const client = getDownloadClient("sabnzbd");
+  t.mock.method(client, "isConfigured", () => true);
+  t.mock.method(client, "deleteQueueItem", async () => true);
+  t.mock.method(client, "deleteHistoryItem", async () => true);
+
+  const recoveredRetry = await apiRequest(`/api/playlists/jobs/${id}/retry`, "POST");
+  assert.deepEqual(recoveredRetry.body, { jobId: id, status: "pending", retried: true });
+  assert.equal(downloadTracker.getJob(id).status, "pending");
+  assert.equal(cancellation.isDownloadJobCancelled(id), false);
+});
+
 test("track cancellation respects private flow ownership", async () => {
   const { flowPlaylistConfig } = await import("../../backend/services/playlists/flowPlaylistConfig.js");
   const flow = flowPlaylistConfig.createFlow({ name: "Private cancellation fixture", ownerUserId: 4 });
@@ -304,6 +403,35 @@ test("cancelling an album leader keeps its held peer and shared transfer running
   assert.equal(continued.jobId, peer);
   assert.equal(cancellation.isPipelinePayloadActive(continued), true);
   assert.ok(honker.listHonkerJobs("slskd-pipeline").some((row) => row.payload.jobId === peer));
+});
+
+test("restarting a held album track detaches it from the previous shared attempt", async (t) => {
+  await downloadWorker.stopAndDrain();
+  t.mock.method(downloadWorker, "start", async () => {});
+  const fixture = createLibraryAlbum({ trackCount: 2 });
+  const leader = fixture.jobFor(0);
+  const peer = fixture.jobFor(1);
+  downloadTracker.setDownloading(leader);
+  downloadTracker.setDownloading(peer);
+  const attempt = cancellation.beginDownloadAttempt(leader);
+  cancellation.setActiveDownloadAttemptId(peer, attempt);
+  const honker = await import("../../backend/services/honkerDb.js");
+  const payload = {
+    jobId: leader,
+    playlistId: "library",
+    playlistGeneration: 0,
+    downloadAttemptId: attempt,
+    phase: "poll",
+    albumGrab: true,
+    albumGroupJobIds: [leader, peer],
+  };
+  honker.getPipelineQueue().enqueue(payload);
+
+  const retried = await apiRequest(`/api/playlists/jobs/${peer}/retry`, "POST");
+  assert.deepEqual(retried.body, { jobId: peer, status: "pending", retried: true });
+  assert.equal(cancellation.getActiveDownloadAttemptId(peer), null);
+  const { heldAlbumGrabJobs } = await import("../../backend/services/albumGrab.js");
+  assert.deepEqual(heldAlbumGrabJobs(payload).map((job) => job.id), [leader]);
 });
 
 test("a cancelled single song can be searched again and the worker takes it", async () => {

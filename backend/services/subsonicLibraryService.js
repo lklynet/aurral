@@ -37,7 +37,7 @@ import { subsonicId as idFor } from "./libraryMediaStore.js";
 import { logger } from "./logger.js";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 import { withHonkerLock } from "./honkerDb.js";
-import { removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.js";
+import { jobDownloadedItsFile, removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.js";
 import { withPlaylistMutationLock } from "./downloadJobs/mutationGuards.js";
 import { transferDownloadOwnershipInTransaction } from "./downloadJobs/downloadOwnership.js";
 import {
@@ -936,7 +936,7 @@ const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {
       for (const job of jobsToRemove) {
         const current = downloadTracker.getJob(job.id);
         if (!current) continue;
-        if (current.status === "done" && current.finalPath && current.managedBy === "aurral" && !current.externalPath) {
+        if (jobDownloadedItsFile(current)) {
           try {
             await removePlaylistFileIfUnshared(current.finalPath, playlist.id, {
               downloadRoot: playlistManager.downloadRoot,
