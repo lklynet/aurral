@@ -28,7 +28,7 @@ const tracks = Array.from({ length: 7 }, (_, index) => ({
 
 const cover = "/pick-header-cover.svg";
 
-async function fixture(page, { withCover = false, releaseGroups = [album] } = {}) {
+async function fixture(page, { withCover = false, releaseGroups = [album], previewTracks = [], findVideo = () => null } = {}) {
   await page.route(`**${cover}`, (route) =>
     route.fulfill({
       contentType: "image/svg+xml",
@@ -59,6 +59,14 @@ async function fixture(page, { withCover = false, releaseGroups = [album] } = {}
           .map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
           .join(""),
       });
+    }
+    if (path === `/artists/${artist.id}/preview`) return json({ tracks: previewTracks });
+    if (path === `/artists/${artist.id}/video`) {
+      try {
+        return json({ video: findVideo(new URL(request.url()).searchParams.get("trackTitle")) });
+      } catch {
+        return json({ error: "Video search unavailable" }, 503);
+      }
     }
     if (path === `/artists/release-group/${album.id}`) return json(albumDetails);
     if (path === `/artists/release-group/${album.id}/tracks`) return json(tracks);
@@ -262,3 +270,83 @@ for (const colorScheme of ["light", "dark"]) {
     expect(topLeft).toEqual(bottomRight);
   });
 }
+
+
+test("Popular stays three rows tall and native videos adapt to the available matches", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  let matches = [1, 3, 6];
+  const findVideo = title => {
+    const rank = Number(title.split(" ").at(-1));
+    return matches.includes(rank) ? {
+      videoId: `video00000${rank}`,
+      embedUrl: `https://www.youtube-nocookie.com/embed/video00000${rank}`,
+    } : null;
+  };
+  await fixture(page, { previewTracks: tracks, findVideo });
+  await page.route("https://www.youtube-nocookie.com/**", route => route.fulfill({
+    contentType: "text/html", body: "<title>YouTube player fixture</title>",
+  }));
+  await page.goto(`/artist/${artist.id}`);
+  const rows = page.locator(".artist-preview-list .artist-track-row");
+  await expect(rows).toHaveCount(6);
+  const boxes = await rows.evaluateAll(nodes => nodes.map(node => {
+    const { x, y } = node.getBoundingClientRect(); return { x, y };
+  }));
+  expect(boxes[0].x).toBe(boxes[2].x);
+  expect(boxes[3].x).toBeGreaterThan(boxes[0].x);
+  expect(boxes[0].y).toBe(boxes[3].y);
+  expect(boxes[2].y).toBe(boxes[5].y);
+  const videos = page.getByRole("region", { name: "Videos", exact: true });
+  await expect(videos.locator("iframe")).toHaveCount(3);
+  await expect(videos.locator(".artist-video-title")).toHaveText([tracks[0].title, tracks[2].title, tracks[5].title]);
+  await expect(videos.getByRole("button")).toHaveCount(0);
+  const rowBottom = (await rows.last().boundingBox()).y + (await rows.last().boundingBox()).height;
+  expect((await videos.boundingBox()).y).toBeGreaterThan(rowBottom);
+  const videoBoxes = await videos.locator("iframe").evaluateAll(nodes => nodes.map(node => {
+    const { x, y } = node.getBoundingClientRect(); return { x, y };
+  }));
+  expect(new Set(videoBoxes.map(box => box.y)).size).toBe(1);
+  expect(new Set(videoBoxes.map(box => box.x)).size).toBe(3);
+  await page.screenshot({ path: testInfo.outputPath("artist-videos-desktop.png") });
+  for (const remaining of [[1, 6], [3], []]) {
+    matches = remaining;
+    await page.reload();
+    if (matches.length) {
+      await expect(videos.locator("iframe")).toHaveCount(matches.length);
+      const frameBoxes = await videos.locator("iframe").evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().y));
+      expect(new Set(frameBoxes).size).toBe(1);
+    } else {
+      await expect(page.getByRole("status", { name: "Finding videos" })).toHaveCount(0);
+      await expect(videos).toHaveCount(0);
+    }
+  }
+  matches = [1, 3, 6];
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(rows).toHaveCount(6);
+  await expect(videos.locator("iframe")).toHaveCount(3);
+  const mobileRows = await rows.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().x));
+  expect(new Set(mobileRows).size).toBe(1);
+  const mobileVideos = await videos.locator("iframe").evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().y));
+  expect(new Set(mobileVideos).size).toBe(3);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await videos.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("artist-videos-mobile.png") });
+});
+
+test("video search can be retried while Popular remains usable", async ({ page }) => {
+  let failing = true;
+  await fixture(page, { previewTracks: tracks, findVideo: () => {
+    if (failing) throw new Error("Unavailable");
+    return { videoId: "video000001", embedUrl: "https://www.youtube-nocookie.com/embed/video000001" };
+  } });
+  await page.route("https://www.youtube-nocookie.com/**", route => route.fulfill({ contentType: "text/html", body: "" }));
+  await page.goto(`/artist/${artist.id}`);
+  const videos = page.getByRole("region", { name: "Videos", exact: true });
+  await expect(videos.getByText("Videos could not be loaded.")).toBeVisible();
+  await expect(page.locator(".artist-preview-list").getByRole("button", { name: "Play preview", exact: true })).toHaveCount(6);
+  failing = false;
+  await videos.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(videos.locator("iframe")).toHaveCount(1);
+  await expect(videos.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+});

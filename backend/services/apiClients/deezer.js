@@ -131,12 +131,12 @@ async function getDeezerArtistTopTracksById(artistId) {
     async () => {
       const topRes = await axios.get(
         `https://api.deezer.com/artist/${normalizedId}/top`,
-        { params: { limit: 5 }, timeout: 3000 },
+        { params: { limit: 6 }, timeout: 3000 },
       );
       if (topRes.data?.error) throw new Error("Deezer popular tracks unavailable");
       const tracks = (topRes.data?.data || [])
         .filter((track) => track.preview)
-        .slice(0, 5)
+        .slice(0, 6)
         .map((track) => ({
           id: String(track.id),
           title: track.title,

@@ -1,9 +1,9 @@
 import { youtubeFindTopSongVideo } from "../../../services/apiClients/index.js";
 import { UUID_REGEX } from "../../../../lib/uuid.js";
-import { cacheMiddleware } from "../../../middleware/cache.js";
+import { noCache } from "../../../middleware/cache.js";
 
 export function registerVideo(router) {
-  router.get("/:mbid/video", cacheMiddleware(3600), async (req, res) => {
+  router.get("/:mbid/video", noCache, async (req, res) => {
     const { mbid } = req.params;
 
     if (!UUID_REGEX.test(mbid)) {
@@ -20,7 +20,11 @@ export function registerVideo(router) {
       return res.json({ video: null });
     }
 
-    const video = await youtubeFindTopSongVideo(artistName, trackTitle);
-    return res.json({ video });
+    try {
+      const video = await youtubeFindTopSongVideo(artistName, trackTitle);
+      return res.json({ video });
+    } catch {
+      return res.status(503).json({ error: "Video search is unavailable. Try again." });
+    }
   });
 }
