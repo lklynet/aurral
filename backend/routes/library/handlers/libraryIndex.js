@@ -64,16 +64,20 @@ const publicEntity = (kind, entity, favoriteKeys) => favoriteKeys
   ? { ...entity, userFavorite: favoriteKeys.has(`${kind}:${entity.identityKey}`) }
   : { ...entity };
 
-const publicAlbum = (album, favoriteKeys, customArtwork) => ({
-  ...album,
-  coverUrl: customArtwork
-    ? buildCustomArtworkUrl("album", album.id, customArtwork)
-    : album.coverUrl || getAlbumCoverUrl(album),
-  ...(customArtwork ? { customArtworkUrl: buildCustomArtworkUrl("album", album.id, customArtwork) } : {}),
-  ...(favoriteKeys
-    ? { userFavorite: favoriteKeys.has(`album:${album.identityKey}`) }
-    : {}),
-});
+const publicAlbum = (album, favoriteKeys, customArtwork) => {
+  const defaultCoverUrl = album.coverUrl || getAlbumCoverUrl(album);
+  return {
+    ...album,
+    coverUrl: customArtwork
+      ? buildCustomArtworkUrl("album", album.id, customArtwork)
+      : defaultCoverUrl,
+    ...(customArtwork && defaultCoverUrl ? { defaultCoverUrl } : {}),
+    ...(customArtwork ? { customArtworkUrl: buildCustomArtworkUrl("album", album.id, customArtwork) } : {}),
+    ...(favoriteKeys
+      ? { userFavorite: favoriteKeys.has(`album:${album.identityKey}`) }
+      : {}),
+  };
+};
 
 export function buildPublicLibrary(library, favoriteKeys = null) {
   const albumArtwork = getCustomArtworkMap("album", library.albums.map((album) => album.id));

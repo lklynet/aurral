@@ -2459,6 +2459,7 @@ function LibraryPage() {
                         "album",
                         album,
                         getAlbumCover(album),
+                        album.defaultCoverUrl || "",
                       ),
                     },
                   ]
@@ -2784,6 +2785,7 @@ function LibraryPage() {
                             "album",
                             libraryAlbum,
                             getAlbumCover(libraryAlbum),
+                            libraryAlbum.defaultCoverUrl || "",
                           ),
                         },
                       ]

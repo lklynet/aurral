@@ -113,6 +113,29 @@ test("only available unidentified albums gain a local cover URL and remote artwo
   assert.equal(albums[5].coverUrl, "https://example.invalid/cover.jpg");
 });
 
+test("custom album artwork keeps the underlying embedded cover available as a fallback", () => {
+  const albumId = "custom-cover-fallback";
+  db.prepare(`
+    INSERT INTO custom_artwork (entity_kind, entity_id, content_type, source_url, updated_at)
+    VALUES ('album', ?, 'image/webp', NULL, 1234)
+  `).run(albumId);
+
+  try {
+    const [album] = buildPublicLibrary({
+      artists: [],
+      albums: [{ id: albumId, available: true }],
+      tracks: [],
+    }).albums;
+
+    assert.equal(album.coverUrl, `/api/library/artwork/album/${albumId}?v=1234`);
+    assert.equal(album.customArtworkUrl, album.coverUrl);
+    assert.equal(album.defaultCoverUrl, `/api/library/albums/${albumId}/cover`);
+  } finally {
+    db.prepare("DELETE FROM custom_artwork WHERE entity_kind = 'album' AND entity_id = ?")
+      .run(albumId);
+  }
+});
+
 test("installs without sign-in serve covers to requests without a token", async () => {
   const album = await albumFixture("no-sign-in", [image]);
   const result = await requestCover(album.id, { token: null });

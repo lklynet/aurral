@@ -51,6 +51,9 @@ const withAuthenticatedArtwork = (entity) => entity && typeof entity === "object
       ...(entity.coverUrl
         ? { coverUrl: resolveAuthenticatedApiAssetUrl(entity.coverUrl) }
         : {}),
+      ...(entity.defaultCoverUrl
+        ? { defaultCoverUrl: resolveAuthenticatedApiAssetUrl(entity.defaultCoverUrl) }
+        : {}),
       ...(entity.artworkUrl
         ? { artworkUrl: resolveAuthenticatedApiAssetUrl(entity.artworkUrl) }
         : {}),
