@@ -140,6 +140,7 @@ function rowToJob(row) {
     stagingPath: row.staging_path,
     finalPath: row.final_path,
     externalPath: row.external_path || null,
+    reusedLibraryFile: row.reused_library_file === 1,
     error: row.error,
     createdAt: row.created_at,
     downloadSource: row.download_source || null,
@@ -207,9 +208,10 @@ const insertStmt = db.prepare(`
     quality_upgrade_checked_at,
     upgrade_for_job_id,
     manual_replacement_search,
-    request_kind
+    request_kind,
+    reused_library_file
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const updateStmt = db.prepare(`
@@ -242,7 +244,8 @@ const updateStmt = db.prepare(`
       quality_checked_at = ?,
       quality_upgrade_checked_at = ?,
       upgrade_for_job_id = ?,
-      manual_replacement_search = ?
+      manual_replacement_search = ?,
+      reused_library_file = ?
   WHERE id = ?
 `);
 
@@ -965,6 +968,7 @@ export class DownloadTracker {
           job.qualityUpgradeCheckedAt ?? null,
           job.upgradeForJobId ?? null,
           job.manualReplacementSearch ? 1 : 0,
+          job.reusedLibraryFile ? 1 : 0,
           job.id,
         );
       }
@@ -1025,6 +1029,7 @@ export class DownloadTracker {
       job.upgradeForJobId ?? null,
       job.manualReplacementSearch ? 1 : 0,
       job.requestKind === "album" ? "album" : "track",
+      job.reusedLibraryFile ? 1 : 0,
     );
     this._touchRevision();
   }
@@ -1060,6 +1065,7 @@ export class DownloadTracker {
       job.qualityUpgradeCheckedAt ?? null,
       job.upgradeForJobId ?? null,
       job.manualReplacementSearch ? 1 : 0,
+      job.reusedLibraryFile ? 1 : 0,
       job.id,
     );
     if (ENDED_STATUSES.has(job.status)) this._dropHeldForReview(job);
@@ -1112,6 +1118,7 @@ export class DownloadTracker {
       stagingPath: null,
       finalPath: null,
       externalPath: null,
+      reusedLibraryFile: false,
       error: null,
       createdAt: Date.now(),
       retryCycle: false,
@@ -1474,6 +1481,7 @@ export class DownloadTracker {
     job.completedAt = null;
     job.stagingPath = null;
     job.finalPath = null;
+    job.reusedLibraryFile = false;
     job.retryCycle = asRetryCycle;
     job.error = typeof error === "string" ? error : (error && error.message) || null;
     this._update(job);
@@ -1547,7 +1555,7 @@ export class DownloadTracker {
     return true;
   }
 
-  setDone(id, finalPath, albumName = null, externalPath = null) {
+  setDone(id, finalPath, albumName = null, externalPath = null, { reusedLibraryFile } = {}) {
     const job = this.jobs.get(id);
     if (!job || this._isCancelledAlbumJob(job)) return false;
     const previousStatus = job.status;
@@ -1561,6 +1569,7 @@ export class DownloadTracker {
     this._setAlbumGrabFailures(job, 0);
     job.finalPath = finalPath;
     job.externalPath = externalPath ?? null;
+    if (reusedLibraryFile !== undefined) job.reusedLibraryFile = reusedLibraryFile === true;
     const safeAlbum = String(albumName || "").trim();
     if (safeAlbum) {
       job.albumName = safeAlbum;
