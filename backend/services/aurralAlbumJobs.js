@@ -245,6 +245,20 @@ export async function retryTrackDownload(jobId) {
       return { statusCode: 409, error: "Track download cannot be retried", status: current.status };
     }
 
+    if (current.status === "cancelled") {
+      try {
+        await cancelDownloadWorkForJobs([current], { lock: false });
+      } catch {
+        return {
+          statusCode: 409,
+          error: "The previous download attempt could not be stopped",
+          message: "Aurral kept the job cancelled until its existing provider work can be cleaned up.",
+          status: current.status,
+          cleanupFailed: true,
+        };
+      }
+    }
+
     restoreDownloadJobCancellations([jobId]);
     if (!downloadTracker.setPending(jobId, "Retry requested", { asRetryCycle: true })) {
       cancelDownloadJobs([jobId]);

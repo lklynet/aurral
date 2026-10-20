@@ -311,6 +311,37 @@ test("track cancellation keeps failed provider cleanup pending and succeeds afte
   assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(fixture.tracks[0].id).monitored, 1);
 });
 
+test("retry keeps a cancelled queued job blocked until provider cleanup succeeds", async (t) => {
+  const fixture = createLibraryAlbum();
+  const id = fixture.jobFor(0);
+  downloadTracker.updateDownloadMetadata(id, {
+    downloadSource: "usenet",
+    downloadClient: "sabnzbd",
+    downloadClientId: "disposable-queue",
+  });
+
+  const cancelled = await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST");
+  assert.equal(cancelled.body.status, "cancelled");
+  assert.equal(cancelled.body.cleanupFailed, true);
+
+  const blockedRetry = await apiRequest(`/api/playlists/jobs/${id}/retry`, "POST");
+  assert.equal(blockedRetry.status, 409);
+  assert.equal(blockedRetry.body.cleanupFailed, true);
+  assert.equal(downloadTracker.getJob(id).status, "cancelled");
+  assert.equal(cancellation.isDownloadJobCancelled(id), true);
+
+  const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
+  const client = getDownloadClient("sabnzbd");
+  t.mock.method(client, "isConfigured", () => true);
+  t.mock.method(client, "deleteQueueItem", async () => true);
+  t.mock.method(client, "deleteHistoryItem", async () => true);
+
+  const recoveredRetry = await apiRequest(`/api/playlists/jobs/${id}/retry`, "POST");
+  assert.deepEqual(recoveredRetry.body, { jobId: id, status: "pending", retried: true });
+  assert.equal(downloadTracker.getJob(id).status, "pending");
+  assert.equal(cancellation.isDownloadJobCancelled(id), false);
+});
+
 test("track cancellation respects private flow ownership", async () => {
   const { flowPlaylistConfig } = await import("../../backend/services/playlists/flowPlaylistConfig.js");
   const flow = flowPlaylistConfig.createFlow({ name: "Private cancellation fixture", ownerUserId: 4 });
