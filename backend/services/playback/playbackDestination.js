@@ -1,10 +1,17 @@
+import path from "node:path";
+
 const REQUIRED_METHODS = [
   "testConnection",
   "ensureLibrary",
   "publishPlaylist",
   "deletePlaylist",
+  "deleteEntityPlaylists",
+  "getPointerEntityIds",
   "requestScan",
 ];
+
+const REJECTED_HTTP_STATUSES = new Set([400, 401, 403]);
+const REJECTED_SUBSONIC_CODES = new Set([10, 40, 41, 50]);
 
 const requireText = (value, field) => {
   if (typeof value !== "string" || !value.trim()) {
@@ -73,8 +80,35 @@ export function createPlaybackPlaylistSnapshot({
   });
 }
 
-export function playbackOperationSuccess() {
-  return Object.freeze({ ok: true });
+function requireAbsolutePaths(values, label) {
+  if (!Array.isArray(values)) {
+    throw new TypeError(`${label} must be an array`);
+  }
+  return Object.freeze(values.map((value, index) => {
+    const text = requireText(value, `${label}[${index}]`);
+    if (!path.isAbsolute(text)) throw new TypeError(`${label}[${index}] must be an absolute path`);
+    return path.resolve(text);
+  }));
+}
+
+export function createPlaybackScanRequest({ folders, roots } = {}) {
+  return Object.freeze({
+    folders: requireAbsolutePaths(folders, "folders"),
+    roots: requireAbsolutePaths(roots, "roots"),
+  });
+}
+
+export function playbackOperationSuccess({ pending = false } = {}) {
+  return Object.freeze(pending ? { ok: true, pending: true } : { ok: true });
+}
+
+export function isRetryablePlaybackError(error) {
+  return !REJECTED_HTTP_STATUSES.has(Number(error?.response?.status))
+    && !REJECTED_SUBSONIC_CODES.has(Number(error?.code));
+}
+
+export function playbackScanDeferred() {
+  return Object.freeze({ ok: true, deferred: true });
 }
 
 export function playbackOperationFailure({ code, message, retryable = false } = {}) {

@@ -29,6 +29,8 @@ const [
   { processPipelineJob },
   { withPlaylistMutationLock },
   { scanMusicRoot },
+  { getPlaybackTaskQueue, listHonkerJobs },
+  { processSystemTask },
 ] = await setupIsolatedBackend(
   "approved-import-path",
   "backend/config/db-sqlite.js",
@@ -47,7 +49,15 @@ const [
   "backend/services/downloadPipelineWorker.js",
   "backend/services/downloadJobs/mutationGuards.js",
   "backend/services/libraryFileScanner.js",
+  "backend/services/honkerDb.js",
+  "backend/services/systemTaskWorker.js",
 );
+
+function takePlaylistSyncs() {
+  const jobs = listHonkerJobs("playback").filter((job) => job.payload.kind === "playback-playlist-sync");
+  for (const job of jobs) getPlaybackTaskQueue().cancel(job.id);
+  return jobs.map((job) => job.payload);
+}
 
 const {
   activatePlaylistDownloadGeneration,
@@ -258,7 +268,8 @@ test("approving a reviewed download commits it inside the managed playlist libra
   await assert.rejects(fs.access(path.join(playlistManager.libraryRoot, "Reviewed.m3u")));
 });
 
-test("approving a reviewed download responds before publishing, and the publish holds off playlist changes but not imports", async (t) => {
+test("approving a reviewed download queues its playlist sync instead of waiting on the media server", async (t) => {
+  takePlaylistSyncs();
   const playlistId = "reviewed-slow-publish";
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
@@ -273,52 +284,21 @@ test("approving a reviewed download responds before publishing, and the publish 
     playlistId,
   );
   downloadTracker.setBlocked(jobId, "blocked-duration-mismatch", sourcePath);
+  const serverCalls = t.mock.method(playlistManager.navidromeDestination.client, "getPlaylists", () => new Promise(() => {}));
 
-  let enterPublish;
-  let releasePublish;
-  const publishEntered = new Promise((resolve) => {
-    enterPublish = resolve;
-  });
-  const publishGate = new Promise((resolve) => {
-    releasePublish = resolve;
-  });
-  t.mock.method(playlistManager.navidromeDestination.client, "getPlaylists", async () => {
-    enterPublish();
-    await publishGate;
-    return [];
-  });
-
-  const approve = fetch(`${baseUrl}/jobs/${jobId}/approve`, { method: "POST" });
+  const response = await fetch(`${baseUrl}/jobs/${jobId}/approve`, { method: "POST" });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).success, true);
+  await waitForApprovalFollowUps();
   let changed = false;
-  let playlistChange;
-  try {
-    await publishEntered;
-    assert.equal(downloadTracker.getJob(jobId)?.status, "done");
-    const pipelineCommit = withPipelineCommitLock(
-      { jobId, playlistId, playlistGeneration: downloadTracker.getJob(jobId).playlistGeneration },
-      async () => "committed",
-    );
-    const state = await Promise.race([
-      pipelineCommit.then(({ result }) => result),
-      new Promise((resolve) => setTimeout(() => resolve("blocked"), 1000)),
-    ]);
-    assert.equal(state, "committed");
-    const response = await Promise.race([
-      approve,
-      new Promise((resolve) => setTimeout(() => resolve(null), 1000)),
-    ]);
-    assert.equal(response?.status, 200);
-    assert.equal((await response.json()).success, true);
-    playlistChange = withPlaylistMutationLock(playlistId, () => {
-      changed = true;
-    });
-    await new Promise(setImmediate);
-    assert.equal(changed, false);
-  } finally {
-    releasePublish();
-  }
-  await playlistChange;
+  await withPlaylistMutationLock(playlistId, () => {
+    changed = true;
+  });
+
   assert.equal(changed, true);
+  assert.equal(downloadTracker.getJob(jobId)?.status, "done");
+  assert.equal(serverCalls.mock.callCount(), 0);
+  assert.deepEqual(takePlaylistSyncs(), [{ kind: "playback-playlist-sync", entityIds: [playlistId], attempt: 0 }]);
 });
 
 test("approving a library track does not wait for another library track's download step", async () => {
@@ -364,7 +344,7 @@ test("approving a library track does not wait for another library track's downlo
   }
 });
 
-test("a track committed while an approved review is publishing still reaches the playlist", async (t) => {
+test("a track committed after an approved review joins the same pending playlist sync", async (t) => {
   const playlistId = "reviewed-concurrent-commit";
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
@@ -395,44 +375,26 @@ test("a track committed while an approved review is publishing still reaches the
   );
   downloadTracker.setBlocked(reviewedJobId, "blocked-duration-mismatch", sourcePath);
 
-  let enterPublish;
-  let releasePublish;
-  const publishEntered = new Promise((resolve) => {
-    enterPublish = resolve;
-  });
-  const publishGate = new Promise((resolve) => {
-    releasePublish = resolve;
-  });
+  takePlaylistSyncs();
   const published = [];
-  const registry = playlistManager.destinationRegistry;
-  const run = registry.run.bind(registry);
-  t.mock.method(registry, "run", async (operation, snapshot) => {
-    if (operation !== "publishPlaylist" || snapshot?.entityId !== playlistId) {
-      return run(operation, snapshot);
-    }
-    published.push(snapshot.tracks.map((track) => track.path));
-    if (published.length === 1) {
-      enterPublish();
-      await publishGate;
-    }
-    return [];
+  t.mock.method(playlistManager.navidromeDestination, "publishPlaylist", async (snapshot) => {
+    if (snapshot.entityId === playlistId) published.push(snapshot.tracks.map((track) => track.path));
+    return { ok: true };
   });
 
-  const approve = fetch(`${baseUrl}/jobs/${reviewedJobId}/approve`, { method: "POST" });
-  let pipelineRefresh;
-  try {
-    await publishEntered;
-    downloadTracker.setDownloading(pipelineJobId, pipelinePath);
-    downloadTracker.setDone(pipelineJobId, pipelinePath, "Album");
-    pipelineRefresh = playlistManager.refreshPlaylist(playlistId);
-  } finally {
-    releasePublish();
-  }
-  await pipelineRefresh;
-  const response = await approve;
-
+  const response = await fetch(`${baseUrl}/jobs/${reviewedJobId}/approve`, { method: "POST" });
   assert.equal(response.status, 200, JSON.stringify(await response.json()));
-  assert.ok(published.at(-1).includes(pipelinePath), JSON.stringify(published));
+  await waitForApprovalFollowUps();
+  downloadTracker.setDownloading(pipelineJobId, pipelinePath);
+  downloadTracker.setDone(pipelineJobId, pipelinePath, "Album");
+  playlistManager.requestPlaylistSync([playlistId]);
+  const syncs = takePlaylistSyncs();
+  assert.deepEqual(syncs, [{ kind: "playback-playlist-sync", entityIds: [playlistId], attempt: 0 }]);
+  await processSystemTask(syncs[0]);
+
+  assert.equal(published.length, 1);
+  assert.ok(published[0].includes(pipelinePath), JSON.stringify(published));
+  assert.ok(published[0].includes(downloadTracker.getJob(reviewedJobId).finalPath), JSON.stringify(published));
 });
 
 test("approval cannot commit an orphaned job into a recreated playlist", async () => {

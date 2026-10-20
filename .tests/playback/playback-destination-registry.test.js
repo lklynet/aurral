@@ -23,6 +23,8 @@ function destination(name, configured, result = { ok: true }) {
       calls.push(["deletePlaylist", identity]);
       return result;
     },
+    async deleteEntityPlaylists() {},
+    getPointerEntityIds: () => [],
     async requestScan() {},
   };
 }
@@ -36,11 +38,11 @@ test("runs zero, one, or multiple configured destinations from settings", async 
 
   assert.deepEqual(await new PlaybackDestinationRegistry([off]).run("publishPlaylist", {}), []);
   assert.deepEqual(await new PlaybackDestinationRegistry([first]).run("publishPlaylist", {}), [
-    { destination: "First", operation: "publishPlaylist", ok: true },
+    { destination: "First", key: "first", operation: "publishPlaylist", ok: true },
   ]);
   assert.deepEqual(await registry.run("publishPlaylist", { entityId: "playlist-1" }), [
-    { destination: "First", operation: "publishPlaylist", ok: true },
-    { destination: "Second", operation: "publishPlaylist", ok: true },
+    { destination: "First", key: "first", operation: "publishPlaylist", ok: true },
+    { destination: "Second", key: "second", operation: "publishPlaylist", ok: true },
   ]);
   assert.deepEqual(off.calls[0], ["updateConfig", {}]);
   assert.deepEqual(first.calls[0], ["updateConfig", { url: "first" }]);
@@ -48,9 +50,9 @@ test("runs zero, one, or multiple configured destinations from settings", async 
 
   first.isConfigured = () => false;
   assert.deepEqual(await registry.run("deletePlaylist", { entityId: "playlist-1" }), [
-    { destination: "Off", operation: "deletePlaylist", ok: true },
-    { destination: "First", operation: "deletePlaylist", ok: true },
-    { destination: "Second", operation: "deletePlaylist", ok: true },
+    { destination: "Off", key: "off", operation: "deletePlaylist", ok: true },
+    { destination: "First", key: "first", operation: "deletePlaylist", ok: true },
+    { destination: "Second", key: "second", operation: "deletePlaylist", ok: true },
   ]);
   assert.deepEqual(off.calls.at(-1), ["deletePlaylist", { entityId: "playlist-1" }]);
   assert.deepEqual(first.calls.at(-1), ["deletePlaylist", { entityId: "playlist-1" }]);
@@ -74,6 +76,7 @@ test("records destination failures without blocking other destinations", async (
     [
       {
         destination: "Rejected",
+        key: "rejected",
         operation: "publishPlaylist",
         ok: false,
         error: {
@@ -84,11 +87,12 @@ test("records destination failures without blocking other destinations", async (
       },
       {
         destination: "Failed",
+        key: "failed",
         operation: "publishPlaylist",
         ok: false,
         error: { code: "SCAN_FAILED", message: "busy", retryable: true },
       },
-      { destination: "Ready", operation: "publishPlaylist", ok: true },
+      { destination: "Ready", key: "ready", operation: "publishPlaylist", ok: true },
     ],
   );
 });

@@ -57,10 +57,8 @@ const playlistArtworkImage = await sharp({
 const user = { id: 74, role: "admin" };
 const playlistManagerMethods = [
   "updateConfig",
-  "ensureSmartPlaylists",
-  "refreshPlaylist",
+  "requestPlaylistSync",
   "scheduleScanLibrary",
-  "deletePlaybackPlaylist",
 ];
 let originalPlaylistManagerMethods;
 
@@ -72,9 +70,7 @@ test.beforeEach(() => {
     playlistManagerMethods.map((name) => [name, playlistManager[name]]),
   );
   for (const name of playlistManagerMethods) {
-    playlistManager[name] = name === "deletePlaybackPlaylist"
-      ? async () => true
-      : () => {};
+    playlistManager[name] = () => {};
   }
 });
 

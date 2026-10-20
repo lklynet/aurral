@@ -43,7 +43,8 @@ function destination(key, active, read) {
   return {
     key, name: key, updateConfig() {}, isConfigured: () => active,
     async testConnection() {}, async ensureLibrary() {}, async publishPlaylist() {},
-    async deletePlaylist() {}, async requestScan() {}, getReferencedPaths: read,
+    async deletePlaylist() {}, async deleteEntityPlaylists() {}, getPointerEntityIds: () => [], async requestScan() {},
+    getReferencedPaths: read,
   };
 }
 
@@ -213,15 +214,27 @@ test("Plex checks global and linked accounts and maps its downloads path", async
   assert.deepEqual(seen.sort(), ["admin-token", "listener-token"]);
 });
 
-test("Plex does not add retained files back to a refreshed flow", async () => {
+test("Plex does not add retained files back to a refreshed flow", async (t) => {
   const { PlexPlaybackDestination } = await import("../../backend/services/playback/plexPlaybackDestination.js");
+  const { PlexClient } = await import("../../backend/services/plex.js");
   const file = await makeFile("_flows/flow/saved.flac");
   const registry = new PlaybackDestinationRegistry([destination("plex", true, async () => ({ ok: true, paths: [file] }))]);
   await createPlaybackDeletionGuard({ registry }).canDelete(file);
   const playback = new PlexPlaybackDestination(root);
-  playback._libraryTracks = [{ ratingKey: "saved", files: [file] }];
-  assert.deepEqual(await playback._resolveRatingKeys({ entityId: "flow", tracks: [] }), []);
-  assert.deepEqual(await playback._resolveRatingKeys({ entityId: "flow", tracks: [{ path: file }] }), ["saved"]);
+  playback.updateConfig({ url: "http://plex", token: "admin-token" });
+  t.mock.method(PlexClient.prototype, "ensureAurralLibrary", async () => ({ key: "7" }));
+  t.mock.method(PlexClient.prototype, "getTracks", async () => [{ ratingKey: "saved", files: [file] }]);
+  const published = [];
+  t.mock.method(PlexClient.prototype, "syncPlaylist", async ({ ratingKeys }) => {
+    published.push(ratingKeys);
+    return { ratingKey: "playlist" };
+  });
+  const flow = (tracks) => ({ entityId: "flow", displayName: "Flow", tracks });
+
+  assert.deepEqual(await playback.publishPlaylist(flow([])), { ok: true });
+  assert.deepEqual(published, []);
+  assert.deepEqual(await playback.publishPlaylist(flow([{ path: file, title: "Saved", artist: "Artist" }])), { ok: true });
+  assert.deepEqual(published, [["saved"]]);
 });
 
 test("automatic cleanup keeps a shared file in place; explicit deletion preserves other Aurral jobs by moving it", async (t) => {
@@ -247,7 +260,7 @@ test("quality upgrades preserve the old file when another playback playlist uses
   const newFile = await makeFile("_flows/upgrade/new.flac");
   const originalId = downloadTracker.addJob({ artistName: "Artist", trackName: "Upgrade" }, "upgrade");
   downloadTracker.setDone(originalId, oldFile);
-  t.mock.method(playlistManager, "refreshPlaylist", async () => {});
+  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
   t.mock.method(playlistManager, "scheduleScanLibrary", () => {});
   t.mock.method(playlistManager.destinationRegistry, "run", async () => [{ destination: "Navidrome", ok: true, paths: [oldFile] }]);
   await finalizeQualityUpgradeSuccess({ id: "upgrade-job", upgradeForJobId: originalId }, newFile, { tier: "lossless" });

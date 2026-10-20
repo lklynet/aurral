@@ -8,10 +8,9 @@ import { cancelDownloadWorkForJobs } from "../downloadJobs/downloadCancellationS
 import { isDownloadJobCancelled, restoreDownloadJobCancellations } from "../downloadJobs/downloadCancellation.js";
 import { transferDownloadOwnershipInTransaction, replaceAlbumDownloadLeaderInTransaction } from "../downloadJobs/downloadOwnership.js";
 import { prepareRetainedPlaylistFile, commitRetainedPlaylistRelocationInTransaction } from "./mediaRelocation.js";
-import { removePlaylistFileIfUnshared } from "../downloadJobs/fileReuse.js";
+import { jobDownloadedItsFile, removePlaylistFileIfUnshared } from "../downloadJobs/fileReuse.js";
 import { downloadWorker } from "../downloadJobs/downloadWorker.js";
 import { playlistManager } from "./playlistManager.js";
-import { logger } from "../logger.js";
 
 export function getSharedDownloadReferences(jobId, excludedPlaylistId) {
   return flowPlaylistConfig.getStaticPlaylists().filter((playlist) => playlist.id !== excludedPlaylistId &&
@@ -38,15 +37,7 @@ export async function removePlaylistTracksWithoutDownloads() {
       .filter(({ playlist, tracks }) => playlistIds.includes(playlist.id) &&
         flowPlaylistConfig.updateStaticPlaylist(playlist.id, { tracks }))
       .map(({ playlist }) => playlist.id));
-  playlistManager.updateConfig(false);
-  for (const playlistId of repairedIds) {
-    await playlistManager.refreshPlaylist(playlistId).catch((error) => {
-      logger.warn("playlists", "Could not republish a playlist after removing missing tracks", {
-        playlistId,
-        message: error?.message || String(error),
-      });
-    });
-  }
+  playlistManager.requestPlaylistSync(repairedIds);
   return repairedIds;
 }
 
@@ -205,7 +196,7 @@ export async function removeStaticPlaylistSelectionsLocked({ playlistId, selecti
           redirects.push(replaceAlbumDownloadLeaderInTransaction(plan.job.id, plan.peer.id));
         } else {
           for (const job of [plan.job, ...plan.upgrades]) {
-            if (deleteFiles && job.status === "done" && job.finalPath && !job.externalPath && job.managedBy === "aurral") {
+            if (deleteFiles && jobDownloadedItsFile(job)) {
               dbOps.setJSONSetting(`playlistRemovedMedia:${job.id}`, { playlistId, finalPath: plan.relocation?.finalPath || job.finalPath });
             }
             db.prepare("DELETE FROM playlist_download_jobs WHERE id = ?").run(job.id);

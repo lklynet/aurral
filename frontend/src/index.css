@@ -10643,6 +10643,16 @@ button.native-library-genre-row:focus-visible {
   color: var(--aurral-danger);
 }
 
+.activity-row__action--cancel:focus-visible {
+  color: var(--aurral-danger);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .activity-row__action--cancel:hover:not(:disabled) {
+    color: var(--aurral-danger);
+  }
+}
+
 @media (hover: hover) and (pointer: fine) {
   .activity-row__action--deny:hover:not(:disabled) {
     border-color: color-mix(in srgb, var(--aurral-danger) 38%, var(--aurral-border));

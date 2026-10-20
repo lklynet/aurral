@@ -122,8 +122,7 @@ test("a failed flow-disable enqueue restores enabled state and active downloads"
   dbOps.setJSONSetting(tokenKey, "previous-disable-token");
   const generation = activatePlaylistDownloadGeneration(flow.id);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, flow.id);
-  let ensureCalls = 0;
-  t.mock.method(playlistManager, "ensureSmartPlaylists", async () => { ensureCalls += 1; });
+  const playlistSync = t.mock.method(playlistManager, "requestPlaylistSync", () => null);
   t.mock.method(playlistOperationQueue, "enqueuePayload", async () => {
     throw new Error("queue unavailable");
   });
@@ -140,7 +139,7 @@ test("a failed flow-disable enqueue restores enabled state and active downloads"
   assert.equal(isDownloadJobCancelled(jobId), false);
   assert.equal(isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }), true);
   assert.equal(dbOps.getJSONSetting(tokenKey), "previous-disable-token");
-  assert.equal(ensureCalls, 2);
+  assert.equal(playlistSync.mock.callCount(), 0);
 });
 
 test("a failed flow disable does not undo a later disable", async (t) => {
@@ -148,21 +147,20 @@ test("a failed flow disable does not undo a later disable", async (t) => {
   const flow = createFlow({ name: "Overlapping flow disables", enabled: true });
   const generation = activatePlaylistDownloadGeneration(flow.id);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, flow.id);
-  let signalFirstEnsure;
-  let failFirstEnsure;
-  const firstEnsureStarted = new Promise((resolve) => { signalFirstEnsure = resolve; });
-  const firstEnsure = new Promise((resolve, reject) => { failFirstEnsure = reject; });
-  let ensureCalls = 0;
-  t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {
-    ensureCalls += 1;
-    if (ensureCalls === 1) {
-      signalFirstEnsure();
-      return firstEnsure;
+  let signalFirstEnqueue;
+  let failFirstEnqueue;
+  const firstEnqueueStarted = new Promise((resolve) => { signalFirstEnqueue = resolve; });
+  const firstEnqueue = new Promise((resolve, reject) => { failFirstEnqueue = reject; });
+  let enqueueCalls = 0;
+  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
+  t.mock.method(playlistOperationQueue, "enqueuePayload", async () => {
+    enqueueCalls += 1;
+    if (enqueueCalls === 1) {
+      signalFirstEnqueue();
+      return firstEnqueue;
     }
+    return { operationId: "later-disable-operation" };
   });
-  t.mock.method(playlistOperationQueue, "enqueuePayload", async () => ({
-    operationId: "later-disable-operation",
-  }));
   const disable = (response) => flowHandlers.get("/flows/:flowId/enabled")({
     params: { flowId: flow.id },
     body: { enabled: false },
@@ -172,9 +170,9 @@ test("a failed flow disable does not undo a later disable", async (t) => {
   const secondResponse = createResponse();
 
   const first = disable(firstResponse);
-  await firstEnsureStarted;
+  await firstEnqueueStarted;
   await disable(secondResponse);
-  failFirstEnsure(new Error("smart playlists unavailable"));
+  failFirstEnqueue(new Error("queue unavailable"));
   await first;
 
   assert.equal(firstResponse.statusCode, 500);
@@ -189,7 +187,7 @@ test("a successful flow disable reports the accepted cleanup operation", async (
   const flow = createFlow({ name: "Queued flow disable", enabled: true });
   const generation = activatePlaylistDownloadGeneration(flow.id);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, flow.id);
-  t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
   let queuedPayload;
   t.mock.method(playlistOperationQueue, "enqueuePayload", async (payload) => {
     queuedPayload = payload;
@@ -233,7 +231,7 @@ test("flow settings updates wait for in-progress playlist mutations", async (t) 
 
   try {
     await mutationEntered;
-    t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+    t.mock.method(playlistManager, "requestPlaylistSync", () => null);
     update = flowUpdateHandlers.get("/flows/:flowId")({
       params: { flowId: flow.id },
       body: { name: "Updated while serialized" },

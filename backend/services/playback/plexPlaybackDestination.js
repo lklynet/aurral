@@ -6,7 +6,9 @@ import { PlexClient } from "../plex.js";
 import { plexConnectionStore } from "../plex/plexConnectionStore.js";
 import { plexPlaylistPointerStore } from "../plex/plexPlaylistPointerStore.js";
 import { isPlaybackRetainedFile } from "./playbackFileRetention.js";
-import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
+import { getPathMappings, normalizePathSeparators, resolveLocalPath } from "../pathMappings.js";
+import { isPathWithin } from "../libraryFolders.js";
+import { joinServerPath } from "./playbackScanFolders.js";
 import {
   AURRAL_FLOWS_DIR,
   isPathInsideRoot,
@@ -15,11 +17,23 @@ import {
 import {
   createPlaybackPlaylistIdentity,
   createPlaybackPlaylistSnapshot,
+  isRetryablePlaybackError,
   playbackOperationFailure,
   playbackOperationSuccess,
 } from "./playbackDestination.js";
 
 const SYNC_SKIPPED = Symbol("plex-sync-skipped");
+const MAX_PLEX_FOLDER_REFRESHES = 20;
+const ADDED_AT_OVERLAP_SECONDS = 300;
+const FULL_READ_INTERVAL_MS = 30_000;
+const SCAN_SETTLE_MS = 90_000;
+
+const isWithinAny = (folders, candidate) => folders.some((folder) => isPathWithin(folder, candidate));
+const modifiedAt = (stats) => Math.floor(stats.mtimeMs / 1000);
+const isStale = (entry, stats) => Boolean(stats) && modifiedAt(stats) > entry.addedAt
+  && entry.confirmedAt < modifiedAt(stats) + SCAN_SETTLE_MS / 1000;
+const changedRecently = (stats) => Boolean(stats) && Date.now() < modifiedAt(stats) * 1000 + SCAN_SETTLE_MS;
+const currentRatingKey = (entry, stats) => (isStale(entry, stats) ? null : entry.ratingKey);
 
 export const plexSettings = Object.freeze({
   key: "plex",
@@ -47,10 +61,13 @@ export class PlexPlaybackDestination {
     this._mainLibrarySectionId = "";
     this._configuredByUserId = null;
     this._sectionId = null;
-    this._libraryTracks = null;
-    this._mainLibraryTracks = null;
+    this._sectionPath = null;
+    this._indexes = new Map();
+    this._fullReadAt = new Map();
+    this._readErrors = new Map();
+    this._mainRoots = null;
+    this._recentScans = [];
     this._syncHashes = new Map();
-    this._catchupRunning = false;
   }
 
   updateConfig(config = {}) {
@@ -61,6 +78,7 @@ export class PlexPlaybackDestination {
       downloadsPath: config.downloadsPath || "",
       mainLibrarySectionId: config.mainLibrarySectionId || "",
       configuredByUserId: config.configuredByUserId ?? null,
+      pathMappings: getPathMappings("plex"),
     });
     if (key === this._configKey) return;
     this._configKey = key;
@@ -72,8 +90,12 @@ export class PlexPlaybackDestination {
       ? new PlexClient(config.url, config.token, config.clientId)
       : null;
     this._sectionId = null;
-    this._libraryTracks = null;
-    this._mainLibraryTracks = null;
+    this._sectionPath = null;
+    this._indexes = new Map();
+    this._fullReadAt = new Map();
+    this._readErrors = new Map();
+    this._mainRoots = null;
+    this._recentScans = [];
     this._syncHashes.clear();
   }
 
@@ -121,42 +143,197 @@ export class PlexPlaybackDestination {
       return playbackOperationFailure({
         code: "DESTINATION_UNAVAILABLE",
         message: error?.message || "Plex did not respond",
-        retryable: true,
+        retryable: isRetryablePlaybackError(error),
       });
     }
   }
 
-  async ensureLibrary() {
+  async _ensureSection() {
+    if (this._sectionId == null) {
+      const libraryPath = this._libraryPath();
+      const section = await this.client.ensureAurralLibrary(libraryPath);
+      this._sectionId = section?.key ?? null;
+      this._sectionPath = (section?.Location || []).map((location) => location?.path)
+        .find((location) => location && normalizePathSeparators(location).toLowerCase() === libraryPath.toLowerCase())
+        ?? null;
+    }
+    if (this._sectionId == null) throw new Error("Could not create or find the Aurral Plex library");
+  }
+
+  async ensureLibrary({ full = false } = {}) {
     if (!this.isConfigured()) return playbackOperationSuccess();
+    const read = full ? { full: true } : {};
     try {
-      if (this._sectionId == null) {
-        this._sectionId = (await this.client.ensureAurralLibrary(this._libraryPath()))?.key ?? null;
-      }
-      if (this._sectionId == null) throw new Error("Could not create or find the Aurral Plex library");
-      await this._loadTracks();
-      return playbackOperationSuccess();
+      await this._ensureSection();
+      await this._readSection("managed", read);
     } catch (error) {
       return playbackOperationFailure({
         code: "LIBRARY_SETUP_FAILED",
         message: error?.message || "Could not prepare the Plex library",
-        retryable: true,
+        retryable: isRetryablePlaybackError(error),
       });
+    }
+    if (this._mainLibrarySectionId) {
+      try {
+        await this._readSection("main", read);
+      } catch (error) {
+        console.warn(
+          "[PlexPlaybackDestination] Failed to read configured main Plex library section:",
+          error?.message,
+        );
+      }
+    }
+    return playbackOperationSuccess();
+  }
+
+  _indexPath(role, file) {
+    if (role === "main") return path.resolve(resolveLocalPath(file, getPathMappings("plex")));
+    const relative = this._relativeManagedPath(file);
+    return relative ? path.resolve(this.downloadRoot, relative) : null;
+  }
+
+  async _readSection(role, { full = !this._indexes.has(role) } = {}) {
+    const sectionId = role === "main" ? this._mainLibrarySectionId : this._sectionId;
+    const current = this._indexes.get(role);
+    const readAt = Date.now();
+    if (full) this._fullReadAt.set(role, readAt);
+    try {
+      const [tracks, mainRoots] = await Promise.all([
+        this.client.getTracks(sectionId, full
+          ? {}
+          : { addedSince: Math.max(0, current.watermark - ADDED_AT_OVERLAP_SECONDS) }),
+        full && role === "main" ? this._readMainRoots() : this._mainRoots,
+      ]);
+      const index = full ? { byPath: new Map(), watermark: 0, hasTracks: false } : current;
+      index.hasTracks ||= tracks.some((track) => track.ratingKey);
+      for (const track of tracks) {
+        if (!track.ratingKey) continue;
+        const ratingKey = String(track.ratingKey);
+        index.watermark = Math.max(index.watermark, track.addedAt);
+        for (const file of track.files || []) {
+          const localPath = this._indexPath(role, file);
+          if (!localPath) continue;
+          const known = index.byPath.get(localPath);
+          if (!known || track.addedAt >= known.addedAt) {
+            index.byPath.set(localPath, { ratingKey, addedAt: track.addedAt, confirmedAt: Math.floor(readAt / 1000) });
+          }
+        }
+      }
+      this._indexes.set(role, index);
+      if (role === "main") this._mainRoots = mainRoots;
+      if (full || !this._readErrors.get(role)?.full) this._readErrors.delete(role);
+    } catch (error) {
+      this._readErrors.set(role, { error, full });
+      throw error;
     }
   }
 
-  async _loadTracks() {
-    this._libraryTracks = await this.client.getTracks(this._sectionId);
-    this._mainLibraryTracks = null;
-    if (!this._mainLibrarySectionId) return;
+  async _readMainRoots() {
     try {
-      this._mainLibraryTracks = await this.client.getTracks(this._mainLibrarySectionId);
-    } catch (error) {
-      console.warn(
-        "[PlexPlaybackDestination] Failed to read configured main Plex library section:",
-        error?.message,
-      );
-      this._mainLibraryTracks = [];
+      const section = (await this.client.getLibraries())
+        .find((library) => String(library?.key) === this._mainLibrarySectionId);
+      const mappings = getPathMappings("plex");
+      return (section?.Location || []).map((location) => location?.path).filter(Boolean)
+        .map((location) => path.resolve(resolveLocalPath(location, mappings)));
+    } catch {
+      return null;
     }
+  }
+
+  _holder(trackPath) {
+    if (isPathInsideRoot(trackPath, this.downloadRoot)) return "managed";
+    if (!this._mainLibrarySectionId) return null;
+    return this._mainRoots == null || isWithinAny(this._mainRoots, trackPath) ? "main" : null;
+  }
+
+  _recentlyScannedFolders() {
+    const now = Date.now();
+    this._recentScans = this._recentScans.filter((scan) => scan.until > now);
+    return this._recentScans.map((scan) => scan.folder);
+  }
+
+  async _noteScannedFolders(folders) {
+    const until = Date.now() + SCAN_SETTLE_MS;
+    this._recentScans = [
+      ...this._recentScans.filter((scan) => scan.until > Date.now()),
+      ...folders.map((folder) => ({ folder, until })),
+    ];
+    for (const index of this._indexes.values()) {
+      for (const localPath of [...index.byPath.keys()]) {
+        if (!isWithinAny(folders, localPath)) continue;
+        if (!(await fs.stat(localPath).catch(() => null))) index.byPath.delete(localPath);
+      }
+    }
+  }
+
+  async _flowLinks(entityId) {
+    const entityRoot = path.join(this.downloadRoot, AURRAL_FLOWS_DIR, entityId);
+    const links = [];
+    for (const [localPath, entry] of this._indexes.get("managed")?.byPath ?? []) {
+      if (!isPathInsideRoot(localPath, entityRoot) || isPlaybackRetainedFile(localPath)) continue;
+      const stats = await fs.stat(localPath).catch(() => null);
+      if (!stats) continue;
+      const ratingKey = currentRatingKey(entry, stats);
+      links.push({ ratingKey, file: `${stats.dev}:${stats.ino}`, localPath, role: "managed", settling: !ratingKey && changedRecently(stats) });
+    }
+    return links;
+  }
+
+  async _resolveTrack(localPath, links) {
+    const stats = await fs.stat(localPath).catch(() => null);
+    const fromEntry = (entry, role) => {
+      const ratingKey = currentRatingKey(entry, stats);
+      return { ratingKey, role, settling: !ratingKey && changedRecently(stats) };
+    };
+    const managed = this._indexes.get("managed")?.byPath.get(localPath);
+    if (managed) return fromEntry(managed, "managed");
+    const link = stats && links.find((candidate) => candidate.file === `${stats.dev}:${stats.ino}`);
+    if (link) return { ratingKey: link.ratingKey, role: "managed", settling: link.settling };
+    const main = this._indexes.get("main")?.byPath.get(localPath);
+    if (main) return fromEntry(main, "main");
+    return { ratingKey: null, role: this._holder(localPath) };
+  }
+
+  async _resolveTracks(snapshot, pendingFolders) {
+    const links = await this._flowLinks(snapshot.entityId);
+    const settling = [...pendingFolders, ...this._recentlyScannedFolders()];
+    const tracks = [];
+    for (const track of snapshot.tracks) {
+      const localPath = path.resolve(track.path);
+      const resolved = await this._resolveTrack(localPath, links);
+      tracks.push({ ...resolved, settling: resolved.settling || (!resolved.ratingKey && isWithinAny(settling, localPath)) });
+    }
+    for (const link of links) {
+      if (!link.ratingKey) tracks.push({ ...link, settling: link.settling || isWithinAny(settling, link.localPath) });
+    }
+    const used = new Set(tracks.map((track) => track.ratingKey));
+    const ratingKeys = [
+      ...tracks.map((track) => track.ratingKey).filter(Boolean),
+      ...links.map((link) => link.ratingKey).filter((ratingKey) => ratingKey && !used.has(ratingKey)),
+    ];
+    return { tracks, ratingKeys: [...new Set(ratingKeys)], missing: tracks.filter((track) => !track.ratingKey) };
+  }
+
+  async _resolveWithRereads(snapshot, pendingFolders) {
+    const resolved = await this._resolveTracks(snapshot, pendingFolders);
+    const roles = new Set([
+      ...resolved.missing.filter((track) => !track.settling && track.role).map((track) => track.role),
+      ...[...this._readErrors].filter(([, readError]) => readError.full).map(([role]) => role),
+    ]);
+    let reread = false;
+    for (const role of roles) {
+      if (Date.now() - (this._fullReadAt.get(role) ?? 0) < FULL_READ_INTERVAL_MS) continue;
+      reread = true;
+      try {
+        await this._readSection(role, { full: true });
+      } catch (error) {
+        console.warn(`[PlexPlaybackDestination] Failed to re-read the ${role} Plex library section:`, error?.message);
+      }
+    }
+    const result = reread ? await this._resolveTracks(snapshot, pendingFolders) : resolved;
+    const blocked = result.tracks.map((track) => this._readErrors.get(track.role)).find(Boolean);
+    if (blocked) throw blocked.error;
+    return result;
   }
 
   _ownerClient(ownerUserId, cache) {
@@ -307,47 +484,6 @@ export class PlexPlaybackDestination {
     return normalizedRelative;
   }
 
-  async _resolveRatingKeys(snapshot) {
-    const managedByPath = new Map();
-    for (const track of this._libraryTracks || []) {
-      for (const file of track.files || []) {
-        const relative = this._relativeManagedPath(file);
-        if (!relative) continue;
-        const localPath = path.resolve(this.downloadRoot, relative);
-        if (!managedByPath.has(localPath)) managedByPath.set(localPath, []);
-        managedByPath.get(localPath).push(track);
-      }
-    }
-    const mainByPath = new Map();
-    const mappings = getPathMappings("plex");
-    for (const track of this._mainLibraryTracks || []) {
-      if (!track.ratingKey) continue;
-      for (const file of track.files || []) {
-        const localPath = path.resolve(resolveLocalPath(file, mappings));
-        if (!mainByPath.has(localPath)) mainByPath.set(localPath, track.ratingKey);
-      }
-    }
-    const keys = [];
-    for (const track of snapshot.tracks) {
-      const localPath = path.resolve(track.path);
-      const ratingKey = managedByPath.get(localPath)?.[0]?.ratingKey || mainByPath.get(localPath);
-      if (ratingKey) keys.push(ratingKey);
-    }
-    const entityRoot = path.join(this.downloadRoot, AURRAL_FLOWS_DIR, snapshot.entityId);
-    for (const [localPath, group] of managedByPath) {
-      if (!isPathInsideRoot(localPath, entityRoot)) continue;
-      if (isPlaybackRetainedFile(localPath)) continue;
-      try {
-        await fs.access(localPath);
-      } catch {
-        continue;
-      }
-      const ratingKey = group[0]?.ratingKey;
-      if (ratingKey) keys.push(ratingKey);
-    }
-    return [...new Set(keys.map(String))];
-  }
-
   _hash(snapshot, ratingKeys, title) {
     const keys = [...ratingKeys].sort().join(",");
     return crypto
@@ -380,11 +516,10 @@ export class PlexPlaybackDestination {
     try {
       await client?.deletePlaylist(pointer.ratingKey);
     } catch (error) {
-      if (error?.response?.status !== 404) {
-        console.warn("[PlexPlaybackDestination] Failed to delete playlist:", error?.message);
-      }
+      if (error?.response?.status !== 404) throw error;
     }
     plexPlaylistPointerStore.deletePointer(entityId, targetKey);
+    this._syncHashes.delete(`${entityId}:${targetKey}`);
   }
 
   async _deleteCurrent(identity, clientCache = new Map()) {
@@ -408,15 +543,17 @@ export class PlexPlaybackDestination {
     this._syncHashes.delete(`${identity.entityId}:${targetKey}`);
   }
 
-  async publishPlaylist(value) {
+  async publishPlaylist(value, { pendingScanFolders = new Map() } = {}) {
     try {
       const snapshot = createPlaybackPlaylistSnapshot(value);
       if (!this.isConfigured()) return playbackOperationSuccess();
-      if (this._libraryTracks == null) {
+      if (!this._indexes.has("managed")) {
         const ensured = await this.ensureLibrary();
         if (!ensured.ok) return ensured;
       }
-      if (!this._libraryTracks.length) return playbackOperationSuccess();
+      if (!this._indexes.get("managed").hasTracks) {
+        return playbackOperationSuccess({ pending: snapshot.tracks.length > 0 });
+      }
       const clientCache = new Map();
       const userCache = new Map();
       if (this._isOwnerBlocked(snapshot.ownerUserId, clientCache, userCache)) {
@@ -429,17 +566,21 @@ export class PlexPlaybackDestination {
         clientCache,
         userCache,
       );
-      const ratingKeys = await this._resolveRatingKeys(snapshot);
+      const { ratingKeys, missing } = await this._resolveWithRereads(
+        snapshot,
+        pendingScanFolders.get(this.key) ?? [],
+      );
+      const pending = missing.length > 0;
       if (!ratingKeys.length) {
-        await this._deleteCurrent(snapshot, clientCache);
-        return playbackOperationSuccess();
+        if (!missing.some((track) => track.settling)) await this._deleteCurrent(snapshot, clientCache);
+        return playbackOperationSuccess({ pending });
       }
       const targetKey = this._targetKey(snapshot.ownerUserId);
       const cacheKey = `${snapshot.entityId}:${targetKey}`;
       const hash = this._hash(snapshot, ratingKeys, title);
-      if (this._syncHashes.get(cacheKey) === hash) return playbackOperationSuccess();
-      const location = this._location(snapshot.ownerUserId);
       const pointer = plexPlaylistPointerStore.getPointer(snapshot.entityId, targetKey);
+      if (pointer && this._syncHashes.get(cacheKey) === hash) return playbackOperationSuccess({ pending });
+      const location = this._location(snapshot.ownerUserId);
       if (pointer && pointer.location !== location) await this._cleanupRelocatedPointer(pointer);
       const reusable = pointer?.location === location ? pointer : null;
       const result = await this._withOwnerClient(snapshot.ownerUserId, clientCache, (client) =>
@@ -452,7 +593,7 @@ export class PlexPlaybackDestination {
           ratingKeys,
         }),
       );
-      if (result === SYNC_SKIPPED) return playbackOperationSuccess();
+      if (result === SYNC_SKIPPED) return playbackOperationSuccess({ pending });
       if (result?.ratingKey) {
         plexPlaylistPointerStore.setPointer(snapshot.entityId, targetKey, {
           location,
@@ -464,12 +605,12 @@ export class PlexPlaybackDestination {
         plexPlaylistPointerStore.deletePointer(snapshot.entityId, targetKey);
       }
       this._syncHashes.set(cacheKey, hash);
-      return playbackOperationSuccess();
+      return playbackOperationSuccess({ pending });
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_PUBLISH_FAILED",
         message: error?.message || "Could not publish the Plex playlist",
-        retryable: true,
+        retryable: isRetryablePlaybackError(error),
       });
     }
   }
@@ -482,7 +623,7 @@ export class PlexPlaybackDestination {
       return playbackOperationFailure({
         code: "PLAYLIST_DELETE_FAILED",
         message: error?.message || "Could not delete the Plex playlist",
-        retryable: true,
+        retryable: isRetryablePlaybackError(error),
       });
     }
   }
@@ -496,48 +637,88 @@ export class PlexPlaybackDestination {
       clientCache.set(String(ownerUserId), client);
     }
     for (const pointer of plexPlaylistPointerStore.getPointersForTarget(targetKey)) {
-      await this._deletePointer(pointer.entityId, ownerUserId, pointer, clientCache);
+      try {
+        await this._deletePointer(pointer.entityId, ownerUserId, pointer, clientCache);
+      } catch (error) {
+        console.warn("[PlexPlaybackDestination] Failed to delete playlist:", error?.message);
+        plexPlaylistPointerStore.deletePointer(pointer.entityId, targetKey);
+      }
     }
+  }
+
+  getPointerEntityIds() {
+    return plexPlaylistPointerStore.getEntityIds();
   }
 
   async deleteEntityPlaylists(entityId) {
-    const clientCache = new Map();
-    for (const pointer of plexPlaylistPointerStore.getPointersForEntity(entityId)) {
-      const ownerUserId = pointer.targetKey === "global" ? null : Number(pointer.targetKey);
-      await this._deletePointer(entityId, ownerUserId, pointer, clientCache);
+    try {
+      const clientCache = new Map();
+      for (const pointer of plexPlaylistPointerStore.getPointersForEntity(entityId)) {
+        const ownerUserId = pointer.targetKey === "global" ? null : Number(pointer.targetKey);
+        await this._deletePointer(entityId, ownerUserId, pointer, clientCache);
+      }
+      return playbackOperationSuccess();
+    } catch (error) {
+      return playbackOperationFailure({
+        code: "PLAYLIST_DELETE_FAILED",
+        message: error?.message || "Could not delete the Plex playlist",
+        retryable: isRetryablePlaybackError(error),
+      });
     }
   }
 
-  async requestScan() {
+  _relativeScanFolders(folders) {
+    const relativeFolders = [];
+    for (const folder of folders) {
+      if (!isPathWithin(this.downloadRoot, folder)) continue;
+      const relative = path.relative(this.downloadRoot, folder);
+      if (!relative) return null;
+      relativeFolders.push(relative);
+    }
+    return relativeFolders.length > MAX_PLEX_FOLDER_REFRESHES ? null : relativeFolders;
+  }
+
+  async requestScan({ folders }) {
     if (!this.isConfigured()) return playbackOperationSuccess();
+    await this._noteScannedFolders(folders);
+    const relativeFolders = this._relativeScanFolders(folders);
+    if (relativeFolders?.length === 0) return playbackOperationSuccess();
     try {
-      const ensured = await this.ensureLibrary();
-      if (!ensured.ok) return ensured;
-      await this.client.scanLibrary(this._sectionId);
+      await this._ensureSection();
+      if (relativeFolders) {
+        const sectionPath = this._sectionPath ?? this._libraryPath();
+        for (const relative of relativeFolders) {
+          await this.client.scanLibrary(this._sectionId, joinServerPath(sectionPath, relative));
+        }
+      } else {
+        await this.client.scanLibrary(this._sectionId);
+      }
       return playbackOperationSuccess();
     } catch (error) {
       return playbackOperationFailure({
         code: "SCAN_FAILED",
         message: error?.message || "Could not scan the Plex library",
-        retryable: true,
+        retryable: isRetryablePlaybackError(error),
       });
     }
   }
 
-  async syncNow(snapshots, loadSnapshots) {
+  async syncNow(snapshots) {
     if (!this.isConfigured()) return { configured: false };
-    const ensured = await this.ensureLibrary();
+    const ensured = await this.ensureLibrary({ full: true });
     if (!ensured.ok) throw new Error(ensured.error.message);
     await this.client.scanLibrary(this._sectionId);
     this._syncHashes.clear();
-    await this._loadTracks();
+    const pendingEntityIds = [];
     for (const snapshot of snapshots) {
       const result = await this.publishPlaylist(snapshot);
       if (!result.ok) throw new Error(result.error.message);
+      if (result.pending) pendingEntityIds.push(snapshot.entityId);
     }
     const playlists = await this.client.getPlaylists();
     const clientCache = new Map();
     const userCache = new Map();
+    const indexedTracks = this._indexes.get("managed").byPath.size;
     const managedNames = new Set(
       snapshots
         .filter((snapshot) => !this._isOwnerBlocked(snapshot.ownerUserId, clientCache, userCache))
@@ -545,35 +726,15 @@ export class PlexPlaybackDestination {
           this._title(snapshot.ownerUserId, snapshot.displayName, clientCache, userCache),
         ),
     );
-    this._scheduleCatchup(loadSnapshots);
     return {
+      pendingEntityIds,
       configured: true,
       sectionId: this._sectionId,
-      indexedTracks: this._libraryTracks.length,
-      scanInProgress: this._libraryTracks.length === 0,
+      indexedTracks,
+      scanInProgress: indexedTracks === 0,
       playlists: playlists
         .filter((playlist) => managedNames.has(playlist.title))
         .map((playlist) => ({ title: playlist.title, count: playlist.leafCount ?? null })),
     };
-  }
-
-  _scheduleCatchup(loadSnapshots, delaysMs = [30000, 90000, 180000]) {
-    if (this._catchupRunning || typeof loadSnapshots !== "function") return;
-    this._catchupRunning = true;
-    const run = async () => {
-      try {
-        for (const delay of delaysMs) {
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          if (!this.isConfigured()) break;
-          await this._loadTracks();
-          for (const snapshot of await loadSnapshots()) await this.publishPlaylist(snapshot);
-        }
-      } catch (error) {
-        console.warn("[PlexPlaybackDestination] Plex catch-up failed:", error?.message);
-      } finally {
-        this._catchupRunning = false;
-      }
-    };
-    run();
   }
 }

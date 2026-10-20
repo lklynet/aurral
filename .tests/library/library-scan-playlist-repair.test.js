@@ -44,9 +44,7 @@ test("a library refresh removes playlist tracks whose downloads no longer exist"
     tracks: [{ artistName: "Artist", trackName: "Deleted", canonicalJobId: deletedJobId }],
   });
   downloadTracker.removeJob(deletedJobId);
-  const refreshPlaylist = t.mock.method(playlistManager, "refreshPlaylist", async (playlistId) => {
-    if (playlistId === repaired.id) throw new Error("artwork write failed");
-  });
+  const playlistSync = t.mock.method(playlistManager, "requestPlaylistSync", () => null);
 
   await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
 
@@ -54,7 +52,7 @@ test("a library refresh removes playlist tracks whose downloads no longer exist"
   assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(untouched.id).tracks, untouched.tracks);
   assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(alsoRepaired.id).tracks, []);
   assert.deepEqual(
-    refreshPlaylist.mock.calls.map((call) => call.arguments[0]),
-    [repaired.id, alsoRepaired.id],
+    playlistSync.mock.calls.map((call) => call.arguments[0]),
+    [[repaired.id, alsoRepaired.id]],
   );
 });

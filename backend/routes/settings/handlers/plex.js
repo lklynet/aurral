@@ -210,7 +210,7 @@ export function registerPlex(router) {
       const { playlistManager } = await import(
         "../../../services/playlists/playlistManager.js"
       );
-      playlistManager.updateConfig(false);
+      playlistManager.updateConfig();
       const result = await playlistManager.syncPlexNow();
       res.json({ success: true, ...result });
     } catch (error) {
