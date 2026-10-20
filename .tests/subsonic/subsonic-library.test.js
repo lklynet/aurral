@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import sharp from "sharp";
 
 import {
   cleanupIsolatedState,
@@ -12,12 +13,13 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, subsonic, libraryStore] =
+const [isolatedState, { db }, subsonic, libraryStore, artworkService] =
   await setupIsolatedBackend(
     "subsonic-library",
     "backend/config/db-sqlite.js",
     "backend/services/subsonicLibraryService.js",
     "backend/services/libraryMediaStore.js",
+    "backend/services/customArtworkService.js",
   );
 
 const {
@@ -31,8 +33,18 @@ const {
   parseId,
   resolveStreamPath,
   resolveLibraryTracks,
+  resolveCustomArtwork,
   starMany,
 } = subsonic;
+
+const {
+  removeCustomArtwork,
+  saveCustomArtworkUpload,
+} = artworkService;
+
+const customArtworkImage = await sharp({
+  create: { width: 32, height: 32, channels: 3, background: { r: 20, g: 180, b: 100 } },
+}).png().toBuffer();
 
 const {
   linkLibraryAlbumTrack,
@@ -78,6 +90,35 @@ test("keeps Subsonic IDs readable while safely encoding key content", () => {
     key: specialKey,
   });
   assert.deepEqual(parseId(encoded), { kind: "album", key });
+});
+
+test("reports and resolves versioned custom album and track artwork", async () => {
+  const album = db.prepare("SELECT id, identity_key FROM library_albums WHERE title = ?").get("Old Album");
+  const track = db.prepare("SELECT id, identity_key FROM library_tracks WHERE title = ?").get("Old Song");
+  const before = subsonic.getLibraryLastModified();
+  let changedAfterSave = before;
+
+  try {
+    const savedAlbum = await saveCustomArtworkUpload("album", album.id, customArtworkImage, "image/png");
+    const albumValue = getAlbum(idFor("album", album.identity_key));
+    assert.match(albumValue.coverArt, /^art-album:/);
+    assert.equal(albumValue.song[0].coverArt, albumValue.coverArt);
+    assert.equal(resolveCustomArtwork(albumValue.coverArt)?.filePath, savedAlbum.filePath);
+
+    const savedTrack = await saveCustomArtworkUpload("track", track.id, customArtworkImage, "image/png");
+    const song = getSong(idFor("song", track.identity_key));
+    assert.match(song.coverArt, /^art-track:/);
+    assert.notEqual(song.coverArt, albumValue.coverArt);
+    assert.equal(resolveCustomArtwork(song.coverArt)?.filePath, savedTrack.filePath);
+    changedAfterSave = subsonic.getLibraryLastModified();
+    assert.ok(changedAfterSave > before);
+  } finally {
+    await removeCustomArtwork("track", track.id);
+    await removeCustomArtwork("album", album.id);
+  }
+
+  assert.equal(getAlbum(idFor("album", album.identity_key)).coverArt, idFor("album", album.identity_key));
+  assert.ok(subsonic.getLibraryLastModified() > changedAfterSave);
 });
 
 test("starMany validates duplicate and equivalent encoded library targets", () => {

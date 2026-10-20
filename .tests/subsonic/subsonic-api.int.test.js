@@ -4,6 +4,7 @@ import test from "node:test";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parseBuffer } from "music-metadata";
+import sharp from "sharp";
 import { mkdir, mkdtemp, rm, stat, writeFile, readFile, symlink } from "node:fs/promises";
 import path from "node:path";
 
@@ -14,7 +15,7 @@ import {
   startServerProcess,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { scanMusicRoot }, { flowPlaylistConfig }, { downloadTracker }, { downloadWorker }, { updateStaticPlaylist }, { resolveArtworkUrl, createSubsonicPlaylist, star }, { warmImageProxy }, { playlistManager }, { getArtistImage, invalidateArtistImage }] =
+const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { scanMusicRoot }, { flowPlaylistConfig }, { downloadTracker }, { downloadWorker }, { updateStaticPlaylist }, { resolveArtworkUrl, createSubsonicPlaylist, star }, { warmImageProxy }, { playlistManager }, { getArtistImage, invalidateArtistImage }, { removeCustomArtwork, saveCustomArtworkUpload }] =
   await setupIsolatedBackend(
     "subsonic-canonical",
     "backend/config/db-sqlite.js",
@@ -29,6 +30,7 @@ const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { scanMusicR
   "backend/services/imageProxyService.js",
   "backend/services/playlists/playlistManager.js",
   "backend/services/imageService.js",
+  "backend/services/customArtworkService.js",
 );
 
 let aurral;
@@ -673,6 +675,39 @@ test("browses library artists, albums, and songs with stable protocol IDs", asyn
 
   const missingArtist = await request("getTopSongs", { artist: "   " });
   assert.equal(responseJson(missingArtist).error.code, 10);
+});
+
+test("serves custom library artwork through the advertised versioned cover ID", async () => {
+  const albumRow = db.prepare(
+    "SELECT id FROM library_albums WHERE title = ?",
+  ).get("Canonical Album");
+  const image = await sharp({
+    create: { width: 24, height: 24, channels: 3, background: { r: 10, g: 120, b: 240 } },
+  }).png().toBuffer();
+  const before = responseJson(await request("getIndexes")).indexes.lastModified;
+  let changedAfterSave = before;
+
+  try {
+    await saveCustomArtworkUpload("album", albumRow.id, image, "image/png");
+    const album = responseJson(await request("getAlbumList2", { type: "newest", size: 1 }))
+      .albumList2.album[0];
+    assert.match(album.coverArt, /^art-album:/);
+
+    const artwork = await fetch(subsonicUrl("getCoverArt", { id: album.coverArt }));
+    assert.equal(artwork.status, 200);
+    assert.equal(artwork.headers.get("content-type"), "image/webp");
+    assert.ok((await artwork.arrayBuffer()).byteLength > 0);
+
+    changedAfterSave = responseJson(await request("getIndexes")).indexes.lastModified;
+    assert.ok(changedAfterSave > before);
+  } finally {
+    await removeCustomArtwork("album", albumRow.id);
+  }
+
+  const resetAlbum = responseJson(await request("getAlbumList2", { type: "newest", size: 1 }))
+    .albumList2.album[0];
+  assert.doesNotMatch(resetAlbum.coverArt, /^art-album:/);
+  assert.ok(responseJson(await request("getIndexes")).indexes.lastModified > changedAfterSave);
 });
 
 test("getIndexes reports star changes through lastModified", async () => {

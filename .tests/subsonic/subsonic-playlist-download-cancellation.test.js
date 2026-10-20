@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import sharp from "sharp";
 
 import {
   cleanupIsolatedState,
@@ -20,6 +21,7 @@ const [
   playlistManagerModule,
   honkerModule,
   dbHelpersModule,
+  artworkService,
 ] = await setupIsolatedBackend(
   "subsonic-playlist-download-cancellation",
   "backend/config/db-sqlite.js",
@@ -30,6 +32,7 @@ const [
   "backend/services/playlists/playlistManager.js",
   "backend/services/honkerDb.js",
   "backend/db/helpers/index.js",
+  "backend/services/customArtworkService.js",
 );
 
 const { downloadTracker } = trackerModule;
@@ -48,6 +51,9 @@ const {
 const { playlistManager } = playlistManagerModule;
 const { withHonkerLock } = honkerModule;
 const { dbOps } = dbHelpersModule;
+const playlistArtworkImage = await sharp({
+  create: { width: 32, height: 32, channels: 3, background: { r: 180, g: 40, b: 100 } },
+}).png().toBuffer();
 const user = { id: 74, role: "admin" };
 const playlistManagerMethods = [
   "updateConfig",
@@ -92,6 +98,44 @@ test("new Subsonic playlists accept jobs added after creation", async () => {
   );
 
   assert.equal(downloadTracker.getNextPending()?.id, jobId);
+});
+
+test("playlist songs expose their custom artwork through an accessible versioned cover ID", async () => {
+  const playlistId = "subsonic-custom-track-artwork";
+  flowPlaylistConfig.createStaticPlaylist({
+    id: playlistId,
+    name: "Custom Artwork",
+    ownerUserId: user.id,
+    tracks: [],
+  });
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artwork Artist", albumName: "Artwork Album", trackName: "Artwork Song" },
+    playlistId,
+  );
+  downloadTracker.setDone(jobId, "/test/custom-artwork.flac", "Artwork Album");
+  const saved = await artworkService.saveCustomArtworkUpload(
+    "playlist-track",
+    jobId,
+    playlistArtworkImage,
+    "image/png",
+  );
+
+  const playlist = subsonic.getSubsonicPlaylist(`shared:${playlistId}`, user);
+  assert.match(playlist.entry[0].coverArt, /^art-playlist-track:/);
+  assert.equal(
+    subsonic.resolveCustomArtwork(playlist.entry[0].coverArt, user)?.filePath,
+    saved.filePath,
+  );
+  assert.equal(
+    subsonic.resolveCustomArtwork(playlist.entry[0].coverArt, { id: 75, role: "user" }),
+    null,
+  );
+  assert.ok(Date.parse(playlist.changed) >= saved.updatedAt);
+
+  await artworkService.removeCustomArtwork("playlist-track", jobId);
+  const resetPlaylist = subsonic.getSubsonicPlaylist(`shared:${playlistId}`, user);
+  assert.doesNotMatch(resetPlaylist.entry[0].coverArt || "", /^art-playlist-track:/);
+  assert.ok(Date.parse(resetPlaylist.changed) > Date.parse(playlist.changed));
 });
 
 test("playlist deletion keeps a job available until an in-flight commit releases its lock", async () => {
