@@ -311,7 +311,7 @@ export function SettingsConnectTab({
         >
           {!webhooks.length ? (
             <p className="arr-form-help">
-              No webhooks configured. Click &ldquo;Add webhook&rdquo; to create one.
+              No webhooks configured.
             </p>
           ) : null}
 
@@ -396,7 +396,7 @@ export function SettingsConnectTab({
                 size="large"
                 help={
                   wh.body === null
-                    ? "Optional JSON or text payload sent with each webhook."
+                    ? "JSON or text sent with each notification."
                     : undefined
                 }
               >
@@ -653,9 +653,7 @@ export function SettingsConnectTab({
       {activeModal === "lastfm" && (
         <SettingsIntegrationModal title="Last.fm" onClose={() => setActiveModal(null)}>
           <SettingsModalIntro>
-            Recommendations, flows, and tag search use ListenBrainz until you add an API key. Last.fm
-            finds closer matches. The API secret is also required to connect a Last.fm account for
-            scrobbling in Playback.
+            Uses ListenBrainz until you add a Last.fm API key. Last.fm gives closer matches. Scrobbling also needs the API secret.
           </SettingsModalIntro>
           <SettingsModalSection title="API">
             <SettingsModalField label="API key">
@@ -747,9 +745,7 @@ export function SettingsConnectTab({
       {activeModal === "google" && (
         <SettingsIntegrationModal title="Google" onClose={() => setActiveModal(null)}>
           <SettingsModalIntro>
-            Let users who already linked their Google account (from their profile) sign in with
-            it. Google can never create new Aurral accounts or change anyone&apos;s role — it&apos;s
-            only usable once an authenticated user has explicitly connected it.
+            Users can sign in after linking Google in Profile. Google cannot create accounts or change roles.
           </SettingsModalIntro>
           <SettingsModalCallout>
             Create an OAuth client at{" "}

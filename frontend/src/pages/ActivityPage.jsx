@@ -1,7 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { getRequests, triggerAlbumSearch } from "../utils/api/endpoints/library.js";
-import { approveBlockedJob, denyBlockedJob, getStagingStreamUrl } from "../utils/api/endpoints/playlists";
+import {
+  approveBlockedJob,
+  cancelDownloadJob,
+  denyBlockedJob,
+  getStagingStreamUrl,
+  retryDownloadJob,
+} from "../utils/api/endpoints/playlists";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useAuth } from "../contexts/AuthContext";
@@ -32,18 +38,16 @@ import ActivityInfoModal from "./activity/ActivityInfoModal";
 import { Navigate, useLocation, useParams } from "react-router";
 import RouteLink from "../components/RouteLink";
 import { AlertCircle, Music } from "lucide-react";
-import { SkeletonRows, SkeletonStatus } from "../components/Skeletons";
+import { SkeletonActivityList, SkeletonStatus } from "../components/Skeletons";
 import { queryClient, queryKeys } from "../queryClient.js";
 const ACTIVITY_PAGE_SIZE = 25;
 
 const QUEUE_EMPTY_STATE = {
   title: "Nothing queued",
-  message: "Active requests, downloads, and tracks waiting for review will appear here.",
 };
 
 const HISTORY_EMPTY_STATE = {
   title: "No activity yet",
-  message: "A chronological log of album requests, track downloads, and other activity will appear here.",
 };
 
 function ActivityPage() {
@@ -56,6 +60,7 @@ function ActivityPage() {
   const [visibleCount, setVisibleCount] = useState(ACTIVITY_PAGE_SIZE);
   const [reSearchingAlbumIds, setReSearchingAlbumIds] = useState({});
   const [reviewingJobs, setReviewingJobs] = useState({});
+  const [controllingJobs, setControllingJobs] = useState({});
   const [jobErrors, setJobErrors] = useState({});
   const [filterValue, setFilterValue] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -295,6 +300,42 @@ function ActivityPage() {
     }
   };
 
+  const controlDownloadJob = async (jobId, action) => {
+    if (!jobId || controllingJobs[jobId]) return;
+    setControllingJobs((prev) => ({ ...prev, [jobId]: action }));
+    try {
+      const result = action === "cancel"
+        ? await cancelDownloadJob(jobId)
+        : await retryDownloadJob(jobId);
+      const cancelling = action === "cancel" && result?.status === "cancel_requested";
+      updateRequests((prev) => prev.map((item) => item.jobId === jobId
+        ? {
+            ...item,
+            status: action === "retry" || cancelling ? "processing" : "cancelled",
+            statusLabel: action === "retry" ? "Searching" : cancelling ? "Cancelling" : "Cancelled",
+            title: action === "retry"
+              ? `Searching for ${item.trackName || "track"}`
+              : cancelling
+                ? `Cancelling ${item.trackName || "track"}`
+                : `Cancelled ${item.trackName || "track"}`,
+            inQueue: action === "retry" || cancelling,
+            requestedAt: action === "retry" ? new Date().toISOString() : item.requestedAt,
+          }
+        : item));
+      setJobErrors(({ [jobId]: _, ...rest }) => rest);
+      void queryClient.invalidateQueries({ queryKey: activityQueryKey });
+    } catch (jobError) {
+      setJobErrors((prev) => ({
+        ...prev,
+        [jobId]: jobError?.response?.data?.message ||
+          jobError?.response?.data?.error ||
+          (action === "cancel" ? "Failed to cancel" : "Failed to retry"),
+      }));
+    } finally {
+      setControllingJobs(({ [jobId]: _, ...rest }) => rest);
+    }
+  };
+
   const handleReviewPreview = useCallback(
     ({ jobId, trackName, artistName, albumName, albumMbid }) => {
       const trackId = String(jobId);
@@ -364,7 +405,7 @@ function ActivityPage() {
           refreshing={refreshing}
         />
         <SkeletonStatus label="Loading activity">
-          <SkeletonRows count={8} />
+          <SkeletonActivityList count={8} dateGroup={isHistoryView} />
         </SkeletonStatus>
       </div>
     );
@@ -383,8 +424,8 @@ function ActivityPage() {
       {error && (
         <div className="artist-error-panel activity-page__error" role="alert">
           <AlertCircle className="artist-error-icon" aria-hidden="true" />
-          <h2 className="artist-error-title">Unable to load activity</h2>
-          <p className="artist-error-copy">{error}</p>
+          <h2 className="artist-error-title">Could not load activity.</h2>
+          {error !== "Failed to load activity." ? <p className="artist-error-copy">{error}</p> : null}
           <button
             type="button"
             onClick={() => fetchRequests()}
@@ -404,11 +445,9 @@ function ActivityPage() {
             <h2 className="search-empty-panel__title">
               {hasActivityFilter ? "No matches" : emptyState.title}
             </h2>
-            <p className="search-empty-panel__message">
-              {hasActivityFilter
-                ? "No activity matches the current filter."
-                : emptyState.message}
-            </p>
+            {hasActivityFilter ? (
+              <p className="search-empty-panel__message">No activity matches the current filter.</p>
+            ) : null}
             {isQueueView && !hasActivityFilter && (
               <RouteLink to="/" className="btn btn-primary btn--bold btn-min-h">
                 Start discovering
@@ -434,12 +473,15 @@ function ActivityPage() {
                   request={entry.request}
                   reSearchingAlbumIds={reSearchingAlbumIds}
                   reviewingJobs={reviewingJobs}
+                  controllingJobs={controllingJobs}
                   jobErrors={jobErrors}
                   currentTrack={currentTrack}
                   isPlaying={isPlaying}
                   onReSearch={lidarrConnected ? handleReSearchAlbum : undefined}
                   onApprove={(jobId) => reviewBlockedJob(jobId, "approve")}
                   onDeny={(jobId) => reviewBlockedJob(jobId, "deny")}
+                  onCancel={(jobId) => controlDownloadJob(jobId, "cancel")}
+                  onRetry={(jobId) => controlDownloadJob(jobId, "retry")}
                   onPreview={handleReviewPreview}
                   onInfo={setInfoRequest}
                   filterValue={filterValue}

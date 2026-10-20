@@ -30,7 +30,6 @@ import {
   markPlaylistDownloadWorkCancelled,
   restoreMarkedPlaylistDownloadWork,
 } from "../../../services/downloadJobs/downloadCancellationService.js";
-import { logger } from "../../../services/logger.js";
 import {
   buildFlowFromTemplate,
   listFlowTemplates,
@@ -142,7 +141,8 @@ export function registerFlows(router) {
         discoverPresetId: body.templateId ? payload.discoverPresetId : null,
         description: body.templateId ? payload.description : null,
       });
-      await playlistManager.ensureSmartPlaylists();
+      await playlistManager.ensurePlaylistArtwork(flow.id);
+      playlistManager.requestPlaylistSync([flow.id]);
       res.json({ success: true, flow });
     } catch (error) {
       if (error?.code === "FLOW_NAME_CONFLICT") {
@@ -211,7 +211,7 @@ export function registerFlows(router) {
       if (typeof showInLibrary === "boolean") {
         playlistManager.scheduleScanLibrary();
       }
-      await playlistManager.ensureSmartPlaylists();
+      playlistManager.requestPlaylistSync([flowId]);
       res.json({ success: true, flow: updated });
     } catch (error) {
       if (error?.code === "FLOW_NAME_CONFLICT") {
@@ -284,15 +284,14 @@ export function registerFlows(router) {
         }
         flowPlaylistConfig.setEnabled(flowId, true);
         flowPlaylistConfig.scheduleNextRun(flowId);
-
-        await playlistManager.ensureSmartPlaylists();
+        playlistManager.requestPlaylistSync([flowId]);
 
         res.json({
           success: true,
           flowId,
           enabled: true,
           tracksQueued: 0,
-          message: "Flow enabled. Tracks will start queueing shortly.",
+          message: "Flow enabled. Queuing tracks…",
         });
 
         queueFlowSideEffect("enable-flow-refresh", "enable", flowId);
@@ -305,7 +304,6 @@ export function registerFlows(router) {
 
         let queued;
         try {
-          await playlistManager.ensureSmartPlaylists();
           queued = await playlistOperationQueue.enqueuePayload({
             kind: "disable-flow-cleanup",
             label: `disable:${flowId}`,
@@ -319,16 +317,9 @@ export function registerFlows(router) {
           if (wasEnabled) flowPlaylistConfig.scheduleNextRun(flowId);
           restoreMarkedPlaylistDownloadWork(flowId, cancellation);
           restoreFlowMutationToken(mutation);
-          try {
-            await playlistManager.ensureSmartPlaylists();
-          } catch (restoreError) {
-            logger.error("flows", "Failed to restore playlists after a rejected flow disable", {
-              flowId,
-              message: restoreError.message,
-            });
-          }
           throw error;
         }
+        playlistManager.requestPlaylistSync([flowId]);
 
         res.json({
           success: true,
@@ -363,7 +354,7 @@ export function registerFlows(router) {
       if (completedJobs.length === 0) {
         return res.status(400).json({
           error: "No completed tracks available",
-          message: "Generate at least one completed flow track before saving it",
+          message: "Download at least one flow track before saving a playlist.",
         });
       }
 
@@ -415,8 +406,8 @@ export function registerFlows(router) {
         }
       }
 
-      playlistManager.updateConfig(false);
-      await playlistManager.ensureSmartPlaylists();
+      await playlistManager.ensurePlaylistArtwork(playlist.id);
+      playlistManager.requestPlaylistSync([playlist.id]);
       await playlistManager.scheduleScanLibrary(true);
       schedulePlaylistMbidEnrichment(playlist.id, {
         reason: "flow-static-playlist",
@@ -433,7 +424,6 @@ export function registerFlows(router) {
         try {
           await playlistManager.weeklyReset([playlist.id]);
           flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
-          await playlistManager.ensureSmartPlaylists();
         } catch {}
       }
       if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {

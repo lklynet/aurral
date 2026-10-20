@@ -56,7 +56,6 @@ function getRows(item) {
   const details = item.error || item.subtitle;
   const id = item.jobId || item.id;
   return [
-    ["Status", item.statusLabel || item.status],
     ["Type", formatKind(item.kind)],
     ["Download method", item.downloadMethodLabel || (item.downloadMethod === "album" ? "Album download" : item.downloadMethod === "track" ? "Individual track download" : null)],
     ["Progress", item.progressLabel],

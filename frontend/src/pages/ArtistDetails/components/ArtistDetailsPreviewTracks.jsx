@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { getArtistTopSongVideo } from "../../../utils/api/endpoints/artists.js";
+import { useMemo } from "react";
+import { ArtistDetailsVideos } from "./ArtistDetailsVideos";
 import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
 import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
@@ -26,72 +26,24 @@ export function ArtistDetailsPreviewTracks({
   getDefaultPlaylistName,
   onLoadPlaylists,
 }) {
-  const topTrack = useMemo(
-    () => (Array.isArray(previewTracks) ? previewTracks[0] : null),
-    [previewTracks],
-  );
+  const popularTracks = useMemo(() => (previewTracks || []).slice(0, 6), [previewTracks]);
   const getQueueItems = useQueueTrackActions();
-  const [topSongVideo, setTopSongVideo] = useState(null);
-  const [loadingVideo, setLoadingVideo] = useState(false);
-
-  useEffect(() => {
-    const trackTitle = topTrack?.title;
-    if (!mbid || !artistName || !trackTitle) {
-      setTopSongVideo(null);
-      setLoadingVideo(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    setLoadingVideo(true);
-    setTopSongVideo(null);
-
-    getArtistTopSongVideo(mbid, artistName, trackTitle, {
-      signal: controller.signal,
-    })
-      .then((data) => {
-        if (!controller.signal.aborted) {
-          setTopSongVideo(data?.video || null);
-        }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setTopSongVideo(null);
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoadingVideo(false);
-        }
-      });
-
-    return () => controller.abort();
-  }, [artistName, mbid, topTrack?.title]);
 
   if (!loadingPreview && (!previewTracks || previewTracks.length === 0)) {
     return null;
   }
 
-  const showVideoPanel = loadingVideo || topSongVideo?.embedUrl;
-  const embedSrc = topSongVideo?.embedUrl ? `${topSongVideo.embedUrl}?rel=0&modestbranding=1` : "";
-
   return (
-    <section className="artist-section">
-      <h2 className="artist-section-title">Popular</h2>
-      {loadingPreview ? (
-        <div className="artist-loading">
-          <DotLoader size="xl" label={null} />
-        </div>
-      ) : (
-        <div
-          className={
-            showVideoPanel
-              ? "artist-preview-layout artist-preview-layout--with-video"
-              : "artist-preview-layout"
-          }
-        >
+    <>
+      <section className="artist-section">
+        <h2 className="artist-section-title">Popular</h2>
+        {loadingPreview ? (
+          <div className="artist-loading">
+            <DotLoader size="xl" label={null} />
+          </div>
+        ) : (
           <div className="artist-preview-list">
-            {previewTracks.map((track, index) => {
+            {popularTracks.map((track, index) => {
               const trackId = String(track.id || `${track.title}-${index}`);
               const isPlaying = isArtistPlaybackActive && String(playingPreviewId) === trackId;
               return (
@@ -153,27 +105,11 @@ export function ArtistDetailsPreviewTracks({
               );
             })}
           </div>
-          {showVideoPanel ? (
-            <div className="artist-video-wrap">
-              <div className="artist-video">
-                {embedSrc ? (
-                  <iframe
-                    src={embedSrc}
-                    title={`${artistName} ${topTrack?.title || ""}`}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    referrerPolicy="strict-origin-when-cross-origin"
-                    allowFullScreen
-                  />
-                ) : (
-                  <div className="artist-loading">
-                    <DotLoader size="xl" label={null} />
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      )}
-    </section>
+        )}
+      </section>
+      {!loadingPreview && popularTracks.length > 0 ? (
+        <ArtistDetailsVideos mbid={mbid} artistName={artistName} tracks={popularTracks} />
+      ) : null}
+    </>
   );
 }

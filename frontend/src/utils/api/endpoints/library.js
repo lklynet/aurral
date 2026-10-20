@@ -4,6 +4,7 @@ import {
   putData,
   deleteData,
   buildAuthenticatedApiUrl,
+  resolveAuthenticatedApiAssetUrl,
 } from "../core.js";
 import {
   bumpLibraryPageGeneration,
@@ -44,8 +45,40 @@ const libraryPageParams = (options = {}) => Object.fromEntries(
   }).filter(([, value]) => value !== undefined && value !== null && value !== ""),
 );
 
+const withAuthenticatedArtwork = (entity) => entity && typeof entity === "object"
+  ? {
+      ...entity,
+      ...(entity.coverUrl
+        ? { coverUrl: resolveAuthenticatedApiAssetUrl(entity.coverUrl) }
+        : {}),
+      ...(entity.artworkUrl
+        ? { artworkUrl: resolveAuthenticatedApiAssetUrl(entity.artworkUrl) }
+        : {}),
+      ...(entity.customArtworkUrl
+        ? { customArtworkUrl: resolveAuthenticatedApiAssetUrl(entity.customArtworkUrl) }
+        : {}),
+    }
+  : entity;
+
+const withAuthenticatedLibraryArtwork = (library) => {
+  if (!library || typeof library !== "object") return library;
+  return {
+    ...library,
+    ...(Array.isArray(library.albums)
+      ? { albums: library.albums.map(withAuthenticatedArtwork) }
+      : {}),
+    ...(Array.isArray(library.tracks)
+      ? { tracks: library.tracks.map(withAuthenticatedArtwork) }
+      : {}),
+    ...(Array.isArray(library.items)
+      ? { items: library.items.map(withAuthenticatedArtwork) }
+      : {}),
+  };
+};
+
 export const fetchLibraryPage = (options = {}, { signal } = {}) =>
-  getData("/library/canonical", { params: libraryPageParams(options), signal });
+  getData("/library/canonical", { params: libraryPageParams(options), signal })
+    .then(withAuthenticatedLibraryArtwork);
 
 export const getLibraryPage = (options = {}, { signal } = {}) => {
   const params = libraryPageParams(options);
@@ -114,6 +147,28 @@ export const removeLibraryFileOperationSources = (id) =>
 
 export const getLibraryTrackFiles = (trackId, options = {}) =>
   getData(`/library/tracks/${encodeURIComponent(trackId)}/files`, options);
+
+export const getLibraryCustomArtworkUrl = (kind, id, version = "current") =>
+  buildAuthenticatedApiUrl(
+    `/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`,
+    { v: version },
+  );
+
+export const uploadLibraryCustomArtwork = (kind, id, file) =>
+  putData(
+    `/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`,
+    file,
+    { headers: { "Content-Type": file.type || "application/octet-stream" } },
+  );
+
+export const setLibraryCustomArtworkUrl = (kind, id, url) =>
+  putData(
+    `/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/url`,
+    { url },
+  );
+
+export const deleteLibraryCustomArtwork = (kind, id) =>
+  deleteData(`/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`);
 
 export const getActiveLibraryRefresh = () => getData("/library/refresh");
 

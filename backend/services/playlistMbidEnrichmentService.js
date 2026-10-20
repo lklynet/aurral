@@ -323,7 +323,7 @@ export async function enrichStaticPlaylistMbids(
       }
 
       if (playlistTracksUpdated > 0 || jobsUpdated > 0) {
-        playlistManager.updateConfig(false);
+        playlistManager.updateConfig();
         playlistManager.scheduleScanLibrary();
       }
 

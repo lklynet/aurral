@@ -11,7 +11,12 @@ import { getPlaylistStatusSnapshot } from "../../../services/playlists/playlistS
 import { indexUnmonitoredJobs } from "../../../services/aurralUnmonitoredJobs.js";
 import { noCache } from "../../../middleware/cache.js";
 import { hasPermission } from "../../../middleware/auth.js";
-import { ACTIVE_JOB_STATUSES, cancelTrackDownload } from "../../../services/aurralAlbumJobs.js";
+import {
+  ACTIVE_JOB_STATUSES,
+  RETRYABLE_JOB_STATUSES,
+  cancelTrackDownload,
+  retryTrackDownload,
+} from "../../../services/aurralAlbumJobs.js";
 import { getTrackJobRequesterId } from "../../../services/aurralHistoryService.js";
 import { requireAdmin } from "../../../middleware/requirePermission.js";
 import {
@@ -50,6 +55,10 @@ import {
   getManualMissingSelection,
   getManualDownloadSources,
 } from "../../../services/manualMissingSearchService.js";
+import {
+  buildCustomArtworkUrl,
+  getCustomArtworkMap,
+} from "../../../services/customArtworkService.js";
 
 const getAccessiblePlaylistIds = (user) => [
   ...new Set([
@@ -67,7 +76,7 @@ function getManualSearchMode(value) {
   return String(value || "").trim() === "replacement" ? "replacement" : "missing";
 }
 
-function canAccessJobThroughPlaylist(user, job, playlistId) {
+export function canAccessJobThroughPlaylist(user, job, playlistId) {
   const safePlaylistId = String(playlistId || "").trim();
   if (!safePlaylistId) return filterJobsForUser(user, [job]).length > 0;
   if (!canAccessJobType(user, safePlaylistId)) return false;
@@ -149,10 +158,27 @@ export function registerJobs(router) {
       decorateJobQuality(job, profile),
     );
     const libraryOwnership = getLibraryTrackOwnershipBatch(accessibleJobs);
+    const customArtwork = getCustomArtworkMap("playlist-track", accessibleJobs.map((job) => job.id));
     res.json(
       accessibleJobs.map((job, index) => ({
         ...toPublicJob(job),
         libraryOwned: libraryOwnership[index] === true,
+        ...(customArtwork.has(String(job.id))
+          ? {
+              artworkUrl: buildCustomArtworkUrl(
+                "playlist-track",
+                job.id,
+                customArtwork.get(String(job.id)),
+                { playlistId },
+              ),
+              customArtworkUrl: buildCustomArtworkUrl(
+                "playlist-track",
+                job.id,
+                customArtwork.get(String(job.id)),
+                { playlistId },
+              ),
+            }
+          : {}),
       })),
     );
   });
@@ -165,9 +191,26 @@ export function registerJobs(router) {
     );
     const profile = getQualityProfile();
     const isUnmonitored = indexUnmonitoredJobs();
+    const customArtwork = getCustomArtworkMap("playlist-track", jobs.map((job) => job.id));
     res.json(jobs.map((job) => ({
       ...toPublicJob(decorateJobQuality(job, profile)),
       monitored: !isUnmonitored(job),
+      ...(customArtwork.has(String(job.id))
+        ? {
+            artworkUrl: buildCustomArtworkUrl(
+              "playlist-track",
+              job.id,
+              customArtwork.get(String(job.id)),
+              { playlistId: job.playlistType || job.playlistId },
+            ),
+            customArtworkUrl: buildCustomArtworkUrl(
+              "playlist-track",
+              job.id,
+              customArtwork.get(String(job.id)),
+              { playlistId: job.playlistType || job.playlistId },
+            ),
+          }
+        : {}),
     })));
   });
 
@@ -471,12 +514,11 @@ export function registerJobs(router) {
 
   router.post("/playlist/:playlistType/create", requireAdmin, async (req, res) => {
     try {
-      playlistManager.updateConfig(false);
-      await playlistManager.ensureSmartPlaylists();
+      playlistManager.requestPlaylistSync();
       res.json({
         success: true,
         message:
-          "Playlists ensured. Navidrome creates API playlists after it indexes completed tracks.",
+          "Playlist sync queued. Media servers publish playlists after indexing downloaded tracks.",
       });
     } catch (error) {
       res.status(500).json({
@@ -488,18 +530,31 @@ export function registerJobs(router) {
 }
 
 export function registerJobCancellation(router) {
-  router.post("/jobs/:jobId/cancel", async (req, res) => {
+  const getControllableJob = (req, res) => {
     const job = downloadTracker.getJob(req.params.jobId);
-    if (!job) return res.status(404).json({ error: "Track not found" });
+    if (!job) {
+      res.status(404).json({ error: "Track not found" });
+      return null;
+    }
     if (hasPermission(req.user, "accessFlow")) {
       if (!canAccessJobType(req.user, job.playlistId || job.playlistType)) {
-        return res.status(404).json({ error: "Track not found" });
+        res.status(404).json({ error: "Track not found" });
+        return null;
       }
     } else {
       const ownsLibraryJob = job.playlistType === LIBRARY_JOB_TYPE && req.user?.id != null &&
         String(getTrackJobRequesterId(job.id)) === String(req.user.id);
-      if (!ownsLibraryJob) return res.status(403).json({ error: "Forbidden" });
+      if (!ownsLibraryJob) {
+        res.status(403).json({ error: "Forbidden" });
+        return null;
+      }
     }
+    return job;
+  };
+
+  router.post("/jobs/:jobId/cancel", async (req, res) => {
+    const job = getControllableJob(req, res);
+    if (!job) return;
     if (!ACTIVE_JOB_STATUSES.has(job.status)) {
       return res.status(409).json({ error: "Track download is already finished", status: job.status });
     }
@@ -515,6 +570,27 @@ export function registerJobCancellation(router) {
       return res.json(result);
     } catch (error) {
       return res.status(500).json({ error: "Failed to cancel track download", message: error.message });
+    }
+  });
+
+  router.post("/jobs/:jobId/retry", async (req, res) => {
+    const job = getControllableJob(req, res);
+    if (!job) return;
+    if (!RETRYABLE_JOB_STATUSES.has(job.status)) {
+      return res.status(409).json({ error: "Track download cannot be retried", status: job.status });
+    }
+    try {
+      const result = isDownloadOwnerProcess()
+        ? await retryTrackDownload(job.id)
+        : await requestDownloadOwner("retryTrackDownload", [job.id]);
+      if (result.statusCode) {
+        const { statusCode, ...body } = result;
+        return res.status(statusCode).json(body);
+      }
+      invalidateRequestsCache();
+      return res.json(result);
+    } catch (error) {
+      return res.status(500).json({ error: "Failed to retry track download", message: error.message });
     }
   });
 }

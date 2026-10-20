@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import {
   Download,
   Info,
+  ImagePlus,
   ListMusic,
   Play,
   Pause,
@@ -12,7 +13,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { DotLoader, DownloadingIcon } from "../../../components/DotLoader";
-import { SkeletonRows, SkeletonStatus } from "../../../components/Skeletons";
+import { SkeletonStatus, SkeletonTrackList } from "../../../components/Skeletons";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import TooltipButton from "../../../components/TooltipButton";
 import { getPlaylistTrackDisplayNumber, sortPlaylistTracks } from "../../../utils/playlistTrackSort";
@@ -111,6 +112,7 @@ function PlaylistTrackKebabMenu({
   isPlaying = false,
   onPlay,
   onViewInfo,
+  onEditArtwork,
   onAddToLibrary,
   isAddingToLibrary = false,
   canReSearch,
@@ -147,6 +149,14 @@ function PlaylistTrackKebabMenu({
           label: "View info",
           icon: Info,
           onSelect: () => onViewInfo(track),
+        }
+      : null,
+    onEditArtwork
+      ? {
+          id: "artwork",
+          label: "Change artwork",
+          icon: ImagePlus,
+          onSelect: () => onEditArtwork(track),
         }
       : null,
     canAddToLibrary
@@ -319,7 +329,7 @@ export function PlaylistTracksPanel({
   loading,
   error,
   activityHint = null,
-  emptyMessage = "No tracks generated for this flow yet.",
+  emptyMessage = "No tracks yet.",
   deletingTrackId = null,
   reSearchingTrackIds = {},
   playlists = [],
@@ -334,6 +344,7 @@ export function PlaylistTracksPanel({
   onMoveTrackToPlaylist,
   onAddTrackToLibrary,
   onViewTrackInfo,
+  onEditTrackArtwork,
   libraryTrackSavingKey = "",
   getTrackFavoriteId,
   favoriteTrackIds = new Set(),
@@ -548,6 +559,7 @@ export function PlaylistTracksPanel({
           isPlaying={isCurrent && isRunning}
           onPlay={showPlaybackControls ? handlePlayTrack : null}
           onViewInfo={onViewTrackInfo}
+          onEditArtwork={onEditTrackArtwork}
           onAddToLibrary={onAddTrackToLibrary}
           isAddingToLibrary={libraryTrackSavingKey === String(track.id)}
           canReSearch={canReSearch}
@@ -645,7 +657,7 @@ export function PlaylistTracksPanel({
       ) : null}
       {loading ? (
         <SkeletonStatus label="Loading tracks">
-          <SkeletonRows count={8} />
+          <SkeletonTrackList count={8} />
         </SkeletonStatus>
       ) : error ? (
         <div className="native-library-state" role="alert">

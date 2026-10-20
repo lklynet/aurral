@@ -26,14 +26,14 @@ const duplicateCopies = (count) => `${count} duplicate ${count === 1 ? "copy" : 
 const REMOVAL = {
   ingest: {
     question: (count) => `Remove ${plural(count, "source file")} already in the Library?`,
-    notes: "Aurral checks each one against the Library's copy again, then deletes it from the source folder.",
+    notes: "Deletes source files after checking them against the Library copy.",
     action: "Remove source files",
     failed: "Aurral could not remove the source files. Nothing was removed.",
     removed: (count) => `Removed ${plural(count, "source file")} already in the Library.`,
   },
   cleanup: {
     question: (count) => `Remove ${duplicateCopies(count)}?`,
-    notes: "Aurral keeps the better copy of each track, checks the two again, then deletes the other. Playlists and favorites stay on the copy it keeps.",
+    notes: "Rechecks each pair and deletes the lower-quality copy. Playlists and favorites keep the better copy.",
     action: "Remove duplicates",
     failed: "Aurral could not remove the duplicates. Nothing was removed.",
     removed: (count) => `Removed ${duplicateCopies(count)}.`,
@@ -214,8 +214,8 @@ export default function LibraryFileOperation({ operation, onChanged, showError }
       {operation.summary?.monitor === "pending" || operation.summary?.doubles === "pending" ? (
         <p className="library-file-op__notes">
           {operation.summary?.monitor === "pending"
-            ? "Once the Library scan has found this music, Aurral checks it for tracks the Library already had and monitors the rest."
-            : "Once the Library scan has found this music, Aurral checks it for tracks the Library already had."}
+            ? "After scanning, Aurral checks for duplicates and monitors new tracks."
+            : "After scanning, Aurral checks for duplicates."}
         </p>
       ) : null}
       {groups.length ? (

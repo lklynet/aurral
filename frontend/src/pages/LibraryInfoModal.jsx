@@ -60,7 +60,6 @@ const getRows = ({ kind, source, entity, artist, album, trackNumber }) => {
   const title =
     entity?.title || entity?.trackName || entity?.albumName || entity?.name || entity?.artistName;
   const rows = [
-    ["Type", kind === "artist" ? "Artist" : kind === "album" ? "Album" : "Track"],
     [kind === "artist" ? "Name" : kind === "album" ? "Album" : "Track", title],
   ];
 

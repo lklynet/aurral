@@ -36,6 +36,7 @@ export function createFakeNavidrome({
   playlists = [],
   serverVersion = "0.64.2 (e7c6c4d9)",
   failSongRequest = () => false,
+  failLibraryRequest = false,
 } = {}) {
   const state = {
     libraries,
@@ -43,6 +44,7 @@ export function createFakeNavidrome({
     serverVersion,
     playlists: playlists.map((playlist) => ({ songIds: [], ...playlist })),
     songRequests: [],
+    scans: [],
     logins: 0,
   };
   let nextPlaylistId = 1;
@@ -61,7 +63,11 @@ export function createFakeNavidrome({
       state.logins += 1;
       return jsonResponse({ token: "native-token" });
     }
-    if (url.pathname === "/api/library" && method === "GET") return jsonResponse(state.libraries);
+    if (url.pathname === "/api/library" && method === "GET") {
+      return failLibraryRequest
+        ? jsonResponse({ error: "forbidden" }, 403)
+        : jsonResponse(state.libraries);
+    }
     if (url.pathname === "/api/song") {
       state.songRequests.push(url.searchParams);
       if (failSongRequest(url.searchParams)) return jsonResponse({ error: "unavailable" }, 500);
@@ -104,6 +110,12 @@ export function createFakeNavidrome({
         state.playlists.push(playlist);
         return subsonicResponse({ playlist: playlistDetail(playlist) });
       }
+      case "/rest/deletePlaylist":
+        state.playlists = state.playlists.filter((playlist) => playlist.id !== params.get("id"));
+        return subsonicResponse();
+      case "/rest/startScan":
+        state.scans.push(params.getAll("target"));
+        return subsonicResponse({ scanStatus: { scanning: true } });
       case "/rest/updatePlaylist": {
         const playlist = state.playlists.find(
           (candidate) => candidate.id === params.get("playlistId"),

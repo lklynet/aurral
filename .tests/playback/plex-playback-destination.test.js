@@ -57,6 +57,17 @@ function makeDestination(config = {}) {
   return destination;
 }
 
+function servePlex(sections) {
+  mock.method(PlexClient.prototype, "ensureAurralLibrary", async () => ({ key: "7" }));
+  mock.method(PlexClient.prototype, "getTracks", async (sectionId) => sections[sectionId] ?? []);
+  const published = [];
+  mock.method(PlexClient.prototype, "syncPlaylist", async (value) => {
+    published.push(value);
+    return { ratingKey: "88" };
+  });
+  return published;
+}
+
 function snapshot(overrides = {}) {
   return {
     entityId: "flow-1",
@@ -159,19 +170,16 @@ test("resolves managed and reused Lidarr paths to private Plex rating keys", asy
     pathMappings: [{ source: "plex", remote: "/music", local: reusedRoot }],
   });
   dbOps.getSettings();
-  destination._libraryTracks = [
-    {
-      ratingKey: "101",
-      files: ["/data/_flows/flow-1/Artist/Album/Managed.flac"],
-    },
-    { ratingKey: "102", files: ["/data/Artist/Album/Canonical.flac"] },
-  ];
-  destination._mainLibraryTracks = [
-    { ratingKey: "202", files: ["/music/Artist/Reused.flac"] },
-  ];
+  const published = servePlex({
+    7: [
+      { ratingKey: "101", files: ["/data/_flows/flow-1/Artist/Album/Managed.flac"] },
+      { ratingKey: "102", files: ["/data/Artist/Album/Canonical.flac"] },
+    ],
+    9: [{ ratingKey: "202", files: ["/music/Artist/Reused.flac"] }],
+  });
 
   assert.deepEqual(
-    await destination._resolveRatingKeys(
+    await destination.publishPlaylist(
       snapshot({
         tracks: [
           { path: managedPath, title: "Managed", artist: "Artist" },
@@ -180,8 +188,9 @@ test("resolves managed and reused Lidarr paths to private Plex rating keys", asy
         ],
       }),
     ),
-    ["101", "102", "202"],
+    { ok: true },
   );
+  assert.deepEqual(published.map(({ ratingKeys }) => ratingKeys), [["101", "102", "202"]]);
 });
 
 test("reuses a Lidarr file linked into the entity folder without a main Plex library", async () => {
@@ -199,17 +208,17 @@ test("reuses a Lidarr file linked into the entity folder without a main Plex lib
   await fs.mkdir(path.dirname(linkedPath), { recursive: true });
   await fs.writeFile(reusedPath, "track");
   await fs.symlink(reusedPath, linkedPath);
-  destination._libraryTracks = [
-    { ratingKey: "303", files: ["/data/_flows/flow-1/Artist/Album/Track.flac"] },
-  ];
-  destination._mainLibraryTracks = [];
+  const published = servePlex({
+    7: [{ ratingKey: "303", files: ["/data/_flows/flow-1/Artist/Album/Track.flac"] }],
+  });
 
   assert.deepEqual(
-    await destination._resolveRatingKeys(
+    await destination.publishPlaylist(
       snapshot({ tracks: [{ path: reusedPath, title: "Track", artist: "Artist" }] }),
     ),
-    ["303"],
+    { ok: true },
   );
+  assert.deepEqual(published.map(({ ratingKeys }) => ratingKeys), [["303"]]);
 });
 
 test("upserts from the entity-owner pointer and stores the returned pointer privately", async () => {
@@ -222,19 +231,13 @@ test("upserts from the entity-owner pointer and stores the returned pointer priv
     "Album",
     "Track.flac",
   );
-  destination._libraryTracks = [
-    { ratingKey: "101", files: ["/data/_flows/flow-1/Artist/Album/Track.flac"] },
-  ];
-  destination._mainLibraryTracks = [];
+  const published = servePlex({
+    7: [{ ratingKey: "101", files: ["/data/_flows/flow-1/Artist/Album/Track.flac"] }],
+  });
   plexPlaylistPointerStore.setPointer("flow-1", "global", {
     location: "global",
     ratingKey: "88",
     title: "Old title",
-  });
-  let received;
-  mock.method(PlexClient.prototype, "syncPlaylist", async (value) => {
-    received = value;
-    return { ratingKey: "88" };
   });
 
   assert.deepEqual(
@@ -243,11 +246,19 @@ test("upserts from the entity-owner pointer and stores the returned pointer priv
     ),
     { ok: true },
   );
-  assert.equal(received.ratingKey, "88");
-  assert.deepEqual(received.ratingKeys, ["101"]);
+  assert.equal(published[0].ratingKey, "88");
+  assert.deepEqual(published[0].ratingKeys, ["101"]);
   const stored = plexPlaylistPointerStore.getPointer("flow-1", "global");
   assert.equal(stored.ratingKey, "88");
   assert.equal(stored.title, "Discover Weekly");
+
+  plexPlaylistPointerStore.deletePointer("flow-1", "global");
+  await destination.publishPlaylist(
+    snapshot({ tracks: [{ path: trackPath, title: "Track", artist: "Artist" }] }),
+  );
+  assert.equal(published.length, 2, "an unchanged playlist is published again once its pointer is gone");
+  assert.equal(published[1].ratingKey, null);
+  assert.equal(plexPlaylistPointerStore.getPointer("flow-1", "global").ratingKey, "88");
 });
 
 test("deletes the pointed playlist and forgets only that entity-owner state", async () => {
@@ -273,6 +284,31 @@ test("deletes the pointed playlist and forgets only that entity-owner state", as
   assert.equal(plexPlaylistPointerStore.getPointer("flow-2", "global").ratingKey, "99");
 });
 
+test("an entity delete that Plex rejects keeps the pointer so the sync job can retry it", async () => {
+  const destination = makeDestination();
+  plexPlaylistPointerStore.setPointer("gone", "global", {
+    location: "global",
+    ratingKey: "77",
+    title: "Removed from Aurral",
+  });
+  let available = false;
+  const deleted = [];
+  mock.method(PlexClient.prototype, "deletePlaylist", async (ratingKey) => {
+    if (!available) throw Object.assign(new Error("Plex unavailable"), { response: { status: 503 } });
+    deleted.push(ratingKey);
+  });
+
+  const failed = await destination.deleteEntityPlaylists("gone");
+  assert.equal(failed.ok, false);
+  assert.equal(failed.error.retryable, true);
+  assert.equal(plexPlaylistPointerStore.getPointer("gone", "global").ratingKey, "77");
+
+  available = true;
+  assert.deepEqual(await destination.deleteEntityPlaylists("gone"), { ok: true });
+  assert.deepEqual(deleted, ["77"]);
+  assert.equal(plexPlaylistPointerStore.getPointer("gone", "global"), null);
+});
+
 test("forgets an unreachable pointer after Plex configuration is cleared", async () => {
   const destination = new PlexPlaybackDestination(downloadRoot);
   plexPlaylistPointerStore.setPointer("flow-1", "global", {
@@ -285,29 +321,53 @@ test("forgets an unreachable pointer after Plex configuration is cleared", async
   assert.equal(plexPlaylistPointerStore.getPointer("flow-1", "global"), null);
 });
 
-test("ensures and scans the Plex library through the adapter", async () => {
+test("refreshes only changed folders inside the Aurral section", async () => {
   const destination = makeDestination({ downloadsPath: "/downloads" });
   const calls = [];
+  let reportedLocations = [];
   mock.method(PlexClient.prototype, "ensureAurralLibrary", async (libraryPath) => {
     calls.push(["ensure", libraryPath]);
-    return { key: "7" };
+    return { key: "7", Location: reportedLocations.map((location) => ({ path: location })) };
   });
-  mock.method(PlexClient.prototype, "getTracks", async (sectionId) => {
-    calls.push(["tracks", sectionId]);
-    return [];
+  mock.method(PlexClient.prototype, "getTracks", async () => []);
+  mock.method(PlexClient.prototype, "request", async (endpoint, { params } = {}) => {
+    calls.push([endpoint, params]);
   });
-  mock.method(PlexClient.prototype, "scanLibrary", async (sectionId) => {
-    calls.push(["scan", sectionId]);
-  });
+  const album = path.join(downloadRoot, "Artist", "Album (2001)");
 
-  assert.deepEqual(await destination.ensureLibrary(), { ok: true });
-  assert.deepEqual(await destination.requestScan(), { ok: true });
+  assert.deepEqual(await destination.requestScan({ folders: ["/lidarr/music/Artist"] }), { ok: true });
+  assert.deepEqual(calls, []);
+  assert.deepEqual(await destination.requestScan({ folders: [album, "/lidarr/music/Artist"] }), { ok: true });
   assert.deepEqual(calls, [
     ["ensure", "/downloads"],
-    ["tracks", "7"],
-    ["tracks", "7"],
-    ["scan", "7"],
+    ["/library/sections/7/refresh", { path: "/downloads/Artist/Album (2001)" }],
   ]);
+
+  calls.length = 0;
+  const folders = Array.from({ length: 21 }, (_, index) => path.join(downloadRoot, `Artist ${index}`));
+  const lidarrRootAboveDownloads = path.dirname(downloadRoot);
+  assert.deepEqual(await destination.requestScan({ folders }), { ok: true });
+  assert.deepEqual(await destination.requestScan({ folders: [downloadRoot] }), { ok: true });
+  assert.deepEqual(await destination.requestScan({ folders: [album, lidarrRootAboveDownloads] }), { ok: true });
+  assert.deepEqual(await destination.requestScan({ folders: [lidarrRootAboveDownloads] }), { ok: true });
+  assert.deepEqual(calls, [
+    ["/library/sections/7/refresh", undefined],
+    ["/library/sections/7/refresh", undefined],
+    ["/library/sections/7/refresh", { path: "/downloads/Artist/Album (2001)" }],
+  ]);
+
+  for (const [downloadsPath, reported, ensured, refreshed] of [
+    ["D:/Aurral", ["D:\\Aurral\\_flows", "D:\\Aurral"], "D:/Aurral", "D:\\Aurral\\Artist\\Album (2001)"],
+    ["\\\\nas\\aurral\\", ["\\\\nas\\aurral", "\\\\nas\\aurral\\_flows"], "//nas/aurral",
+      "\\\\nas\\aurral\\Artist\\Album (2001)"],
+    ["/downloads/", ["/downloads", "/downloads/_flows"], "/downloads", "/downloads/Artist/Album (2001)"],
+    ["D:\\Aurral", [], "D:/Aurral", "D:/Aurral/Artist/Album (2001)"],
+  ]) {
+    calls.length = 0;
+    reportedLocations = reported;
+    assert.deepEqual(await makeDestination({ downloadsPath }).requestScan({ folders: [album] }), { ok: true });
+    assert.deepEqual(calls, [["ensure", ensured], ["/library/sections/7/refresh", { path: refreshed }]]);
+  }
 });
 
 test("configures Plex with the download root and explicit flow location", async () => {
@@ -359,7 +419,7 @@ test("keeps Navidrome and Plex failures isolated when both destinations are conf
     return { ok: true };
   };
 
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
   assert.deepEqual(calls, [playlist.id]);
 
   manager.navidromeDestination.publishPlaylist = async () => ({ ok: true });
@@ -367,10 +427,10 @@ test("keeps Navidrome and Plex failures isolated when both destinations are conf
     ok: false,
     error: { message: "Plex unavailable" },
   });
-  await assert.doesNotReject(manager.ensurePlaylists());
+  await assert.doesNotReject(manager.syncPlaylists());
 });
 
-test("does not publish playlists when a configured library cannot be verified", async (t) => {
+test("a destination whose library cannot be verified gets no publishes while the others still do", async (t) => {
   t.mock.method(console, "warn", () => {});
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Blocked setup" });
   const manager = new PlaylistManager(downloadRoot);
@@ -381,13 +441,16 @@ test("does not publish playlists when a configured library cannot be verified", 
     error: { message: "Navidrome library path verification failed" },
   });
   manager.navidromeDestination.publishPlaylist = async () => {
-    published.push(playlist.id);
+    published.push(["Navidrome", playlist.id]);
+    return { ok: true };
+  };
+  manager.plexDestination.isConfigured = () => true;
+  manager.plexDestination.ensureLibrary = async () => ({ ok: true });
+  manager.plexDestination.publishPlaylist = async (value) => {
+    published.push(["Plex", value.entityId]);
     return { ok: true };
   };
 
-  await assert.rejects(
-    manager.ensurePlaylists(),
-    /Navidrome: Navidrome library path verification failed/,
-  );
-  assert.deepEqual(published, []);
+  await manager.syncPlaylists({ entityIds: [playlist.id] });
+  assert.deepEqual(published, [["Plex", playlist.id]]);
 });

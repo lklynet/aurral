@@ -183,7 +183,7 @@ function Onboarding() {
         }),
       );
       await refreshAuth();
-      showSuccess("Setup complete. Sign in with your admin account.");
+      showSuccess("Setup complete. Sign in.");
     } catch (e) {
       setError(getApiErrorMessage(e, "Failed to save"));
     } finally {
@@ -324,8 +324,7 @@ function Onboarding() {
                       />
                     </div>
                     <OnboardingHint>
-                      Skip the login screen from devices on your LAN. You can change this later in
-                      Settings → Users.
+                      Skip sign-in on your local network. Change this in Settings → Users.
                     </OnboardingHint>
                   </div>
                 </OnboardingStep>
@@ -344,7 +343,7 @@ function Onboarding() {
                       />
                     </div>
                     <OnboardingHint>
-                      Aurral keeps the music it adds here. You can change it in Settings → Download clients, and connect Lidarr later in Settings → Lidarr.
+                      Stores downloaded music. Change the folder or connect Lidarr later in Settings.
                     </OnboardingHint>
                     <button
                       type="button"
@@ -402,11 +401,11 @@ function Onboarding() {
                       />
                     </div>
                     <OnboardingHint>
-                      Find your API key in Lidarr under Settings → General → Security.
+                      In Lidarr: Settings → General → Security.
                     </OnboardingHint>
                     {lidarrTestSuccess ? (
                       <p className="onboarding-status onboarding-status--success" role="status">
-                        Lidarr connection successful. You can finish setup.
+                        Connected to Lidarr.
                       </p>
                     ) : null}
                     <button

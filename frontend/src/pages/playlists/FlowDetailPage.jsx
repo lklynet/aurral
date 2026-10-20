@@ -2,7 +2,7 @@ import { lazy, Suspense, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { Check, ClipboardCopy, Download, FilePlus2, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
-import { SkeletonCollectionHeader, SkeletonRows, SkeletonStatus } from "../../components/Skeletons";
+import { SkeletonCollectionHeader, SkeletonCollectionTracks, SkeletonStatus } from "../../components/Skeletons";
 import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../../components/CollectionHeader";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import TooltipButton from "../../components/TooltipButton";
@@ -77,8 +77,16 @@ export default function FlowDetailPage() {
         <div className="native-library-content">
           {loading && !status ? (
             <SkeletonStatus label="Loading flow" className="native-library-detail">
-              <SkeletonCollectionHeader />
-              <SkeletonRows count={10} />
+              <SkeletonCollectionHeader icons={3} />
+              <div>
+                <div className="artist-segmented playlist-detail__tabs">
+                  <span className="artist-segmented-button is-active">Tracks</span>
+                  <span className="artist-segmented-button">Recipe</span>
+                </div>
+                <div className="playlist-detail__panel">
+                  <SkeletonCollectionTracks toolbar={false} />
+                </div>
+              </div>
             </SkeletonStatus>
           ) : error && !status ? (
             <div className="native-library-state" role="alert">
@@ -322,8 +330,7 @@ function FlowDetail({ flow }) {
             </p>
           ) : retired ? (
             <p className="native-library-detail__meta">
-              Editorial playlists now come from Deezer, so this flow no longer updates. Its tracks
-              stay as they are. <Link to="/discover/playlists">Browse playlists</Link>
+              Editorial playlists moved to Deezer. This flow no longer updates. Existing tracks stay. <Link to="/discover/playlists">Browse playlists</Link>
             </p>
           ) : null
         }
@@ -455,7 +462,7 @@ function FlowDetail({ flow }) {
               activityHint={activity}
               emptyMessage={
                 enabled
-                  ? "No tracks generated for this flow yet."
+                  ? "No tracks yet."
                   : "Turn this flow on to generate tracks."
               }
               recordHistory={flow.recordHistory !== false}
@@ -524,7 +531,7 @@ function FlowDetail({ flow }) {
       <ConfirmModal
         open={confirmDelete}
         title={`Delete ${flow.name}?`}
-        body="This removes the flow and its playlist setup. You can recreate it later."
+        body="Removes this flow and its playlist setup."
         confirmLabel="Delete flow"
         busyLabel="Deleting…"
         busy={deleting}

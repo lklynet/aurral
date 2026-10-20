@@ -12,6 +12,7 @@ import {
   EyeOff,
   Fingerprint,
   Grid3X3,
+  ImagePlus,
   Info,
   List,
   ListEnd,
@@ -48,10 +49,13 @@ import RouteLink from "../components/RouteLink";
 import { readRouteSeed } from "../navigation/routeSeed.js";
 import { useSharedArtworkStyle } from "../navigation/viewTransitions.js";
 import {
-  SkeletonCardGrid,
-  SkeletonCollectionHeader,
-  SkeletonRows,
+  SkeletonAlbumDetail,
+  SkeletonLibraryArtist,
+  SkeletonLibraryGrid,
+  SkeletonShape,
   SkeletonStatus,
+  SkeletonText,
+  SkeletonTrackList,
 } from "../components/Skeletons";
 import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext";
@@ -69,6 +73,7 @@ import {
   deleteAurralAlbumFromLibrary,
   deleteLidarrAlbumFromLibrary,
   deleteTrackFromLibrary,
+  deleteLibraryCustomArtwork,
   getActiveLibraryRefresh,
   getLibraryPage,
   getDownloadStatus,
@@ -78,8 +83,10 @@ import {
   reSearchLibraryTrack,
   requestAlbumFromSearch,
   requestLibraryRefresh,
+  setLibraryCustomArtworkUrl,
   updateLibraryAlbum,
   updateLibraryFavorites,
+  uploadLibraryCustomArtwork,
 } from "../utils/api/endpoints/library.js";
 import {
   addStaticPlaylistTracks,
@@ -145,6 +152,7 @@ import { useResponsiveReleaseLimit } from "./ArtistDetails/hooks/useResponsiveRe
 import { queryClient, queryKeys } from "../queryClient.js";
 import Tooltip from "../components/Tooltip";
 import { showFavoriteRemoved } from "../utils/favoriteUndo.js";
+import ArtworkEditorModal from "../components/ArtworkEditorModal.jsx";
 
 const pageSize = LIBRARY_PAGE_SIZE;
 
@@ -379,6 +387,7 @@ function LibraryPage() {
   const [trackResearchStates, setTrackResearchStates] = useState({});
   const [libraryRemoval, setLibraryRemoval] = useState(null);
   const [libraryInfo, setLibraryInfo] = useState(null);
+  const [artworkEditor, setArtworkEditor] = useState(null);
   const [mbidArtist, setMbidArtist] = useState(null);
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [deletingLibraryEntity, setDeletingLibraryEntity] = useState(false);
@@ -863,9 +872,33 @@ function LibraryPage() {
   const canDeleteTrack = hasPermission("deleteTrack") || canDeleteAlbum;
   const canAddTracks = hasPermission("addAlbum");
   const canChangeMonitoring = hasPermission("changeMonitoring");
+  const canEditArtwork = !isPreviewLibrary && (canAddTracks || canChangeMonitoring);
   const libraryDestination = useLibraryDestination();
   const { isAlbumDownloading, isTrackDownloading } = useActiveDownloads();
   const canEditArtistMbid = hasPermission("addArtist");
+
+  const openArtworkEditor = useCallback((kind, entity, currentArtwork) => {
+    setArtworkEditor({
+      kind,
+      id: entity.id,
+      title: kind === "album" ? entity.title : entity.title || entity.trackName,
+      currentArtwork: currentArtwork || "",
+      hasCustomArtwork: Boolean(entity.customArtworkUrl),
+    });
+  }, []);
+
+  const handleArtworkSaved = useCallback(async () => {
+    clearLibraryPageCache();
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.libraryAlbumTracksPrefix,
+      refetchType: "none",
+    });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.libraryPagePrefix }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix }),
+    ]);
+    showSuccess("Artwork updated");
+  }, [showSuccess]);
 
   const openLibraryRemoval = useCallback((kind, entity, manager = null) => {
     setDeleteFiles(false);
@@ -1652,7 +1685,7 @@ function LibraryPage() {
       const playable = tracks
         .map((track) => buildPlayableTrack(track, lookup))
         .filter((track) => track.src);
-      if (!playable.length) showError("No playable files are available in this selection.");
+      if (!playable.length) showError("No playable tracks in this selection.");
       return playable;
     },
     [buildPlayableTrack, showError],
@@ -2128,6 +2161,20 @@ function LibraryPage() {
             icon: Info,
             onSelect: () => openLibraryInfo("track", track, { artist, album, trackNumber }),
           },
+          ...(canEditArtwork
+            ? [
+                {
+                  id: "artwork",
+                  label: "Change artwork",
+                  icon: ImagePlus,
+                  onSelect: () => openArtworkEditor(
+                    "track",
+                    track,
+                    track.artworkUrl || (album ? getAlbumCover(album) : ""),
+                  ),
+                },
+              ]
+            : []),
           ...(!file
             ? [
                 {
@@ -2180,7 +2227,7 @@ function LibraryPage() {
           artist: { label: artistName, to: isAlbumArtistCredit(track, artist) ? libraryArtistPath(artist) : null },
           album: { label: albumName, to: libraryAlbumPath(album) },
           cover: {
-            src: album ? getAlbumCover(album) : "",
+            src: track.artworkUrl || (album ? getAlbumCover(album) : ""),
             label: albumName,
             to: libraryAlbumPath(album),
           },
@@ -2340,7 +2387,10 @@ function LibraryPage() {
     const aurralState = album.managedBy === "aurral"
       ? describeAurralAlbumStatus(aurralAlbumStatuses[aurralAlbumStatusKey(album.id)] || {})
       : null;
-    const cardStatus = aurralState?.status === "complete" ? null : aurralState;
+    // The yellow track count already shows a partial album, so the label would only crowd it out.
+    const cardStatus = aurralState?.status === "complete" || aurralState?.status === "partial"
+      ? null
+      : aurralState;
     const albumLinkState = {
       seed: {
         title: album.title || "",
@@ -2381,6 +2431,16 @@ function LibraryPage() {
                 icon: Info,
                 onSelect: () => openLibraryInfo("album", album, { artist }),
               },
+              ...(canEditArtwork
+                ? [
+                    {
+                      id: "artwork",
+                      label: "Change artwork",
+                      icon: ImagePlus,
+                      onSelect: () => openArtworkEditor("album", album, getAlbumCover(album)),
+                    },
+                  ]
+                : []),
               {
                 id: "discover",
                 label: "Open in Discover",
@@ -2437,7 +2497,15 @@ function LibraryPage() {
                 {cardStatus.label + " · "}
               </span>
             )}
-            {meta}
+            {meta.details && meta.details + " · "}
+            {meta.partial ? (
+              <span className="native-library-card__status" data-tone="warning">
+                {meta.count}
+                <span className="sr-only"> available</span>
+              </span>
+            ) : (
+              meta.count
+            )}
           </span>
         </div>
       </article>
@@ -2502,7 +2570,7 @@ function LibraryPage() {
       return (
         <EmptyState
           title="No favorites"
-          message="Artists, albums, and tracks you favorite will appear here."
+          message="Favorite music to find it here."
         />
       );
     }
@@ -2684,6 +2752,20 @@ function LibraryPage() {
                     icon: Info,
                     onSelect: () => openLibraryInfo("album", libraryAlbum, { artist }),
                   },
+                  ...(canEditArtwork
+                    ? [
+                        {
+                          id: "artwork",
+                          label: "Change artwork",
+                          icon: ImagePlus,
+                          onSelect: () => openArtworkEditor(
+                            "album",
+                            libraryAlbum,
+                            getAlbumCover(libraryAlbum),
+                          ),
+                        },
+                      ]
+                    : []),
                   ...(albumMonitoringMenuItem ? [albumMonitoringMenuItem] : []),
                   ...(canDeleteAlbum && canRemoveLibraryAlbum(libraryAlbum, { lidarrConnected: activeManager === "lidarr" })
                     ? [
@@ -2824,7 +2906,7 @@ function LibraryPage() {
           {artistAlbums.length ? (
             <div className="native-library-grid">{artistAlbums.map(renderAlbumCard)}</div>
           ) : (
-            <EmptyState title="No albums" message="No indexed albums belong to this artist." />
+            <EmptyState title="No albums" message="No albums for this artist." />
           )}
         </section>
         <section className="native-library-detail__section">
@@ -2835,7 +2917,7 @@ function LibraryPage() {
           {artistTopTracks.length ? (
             renderTrackList(artistTopTracks, libraryArtist.name + " top tracks")
           ) : (
-            <EmptyState title="No tracks" message="No indexed tracks belong to this artist." />
+            <EmptyState title="No tracks" message="No tracks for this artist." />
           )}
         </section>
       </section>
@@ -2883,6 +2965,17 @@ function LibraryPage() {
         onClose={() => setMbidArtist(null)}
         onSaved={handleArtistMbidSaved}
       />
+      <ArtworkEditorModal
+        open={Boolean(artworkEditor)}
+        title={artworkEditor?.title || "Library item"}
+        currentArtwork={artworkEditor?.currentArtwork}
+        hasCustomArtwork={artworkEditor?.hasCustomArtwork}
+        onClose={() => setArtworkEditor(null)}
+        onUpload={(file) => uploadLibraryCustomArtwork(artworkEditor.kind, artworkEditor.id, file)}
+        onSaveUrl={(url) => setLibraryCustomArtworkUrl(artworkEditor.kind, artworkEditor.id, url)}
+        onRemove={() => deleteLibraryCustomArtwork(artworkEditor.kind, artworkEditor.id)}
+        onSaved={handleArtworkSaved}
+      />
     </>
   );
 
@@ -2897,31 +2990,97 @@ function LibraryPage() {
       {loading && (
         isDetail ? (
           <div className="native-library-content">
-            <section className="native-library-detail">
-              {routeAlbumId && albumSeed?.title ? (
+            {routeArtistId ? (
+              <SkeletonLibraryArtist label="Loading library" />
+            ) : albumSeed?.title ? (
+              <section className="native-library-detail">
                 <CollectionHeader
                   cover={<Cover src={albumSeed.coverUrl} label={albumSeed.title} thumbnail={false} />}
                   kicker="Album"
                   title={albumSeed.title}
-                  subtitle={albumSeed.artistName ? <p>{albumSeed.artistName}</p> : null}
+                  subtitle={
+                    albumSeed.artistName ? (
+                      <span className="native-library-detail__artist">{albumSeed.artistName}</span>
+                    ) : null
+                  }
+                  meta={<SkeletonText width="11em" />}
                   actions={
                     <CollectionPlayButtons label={albumSeed.title} disabled isPlaying={false} />
                   }
                 />
-              ) : null}
-              <SkeletonStatus label="Loading library">
-                {routeAlbumId && albumSeed?.title ? null : <SkeletonCollectionHeader />}
-                <SkeletonRows count={10} />
-              </SkeletonStatus>
-            </section>
+                <SkeletonStatus label="Loading library">
+                  <SkeletonTrackList count={12} variant="release" />
+                </SkeletonStatus>
+              </section>
+            ) : (
+              <SkeletonAlbumDetail label="Loading library" />
+            )}
           </div>
-        ) : viewMode === "list" || tab === "tracks" || tab === "genres" ? (
-          <SkeletonStatus label="Loading library">
-            <SkeletonRows count={12} />
-          </SkeletonStatus>
         ) : (
-          <SkeletonStatus label="Loading library">
-            <SkeletonCardGrid className="native-library-grid" square={tab !== "artists"} />
+          <SkeletonStatus label="Loading library" className="native-library-content">
+            {section === "home" ? (
+              <div className="native-library-home">
+                <section className="native-library-section">
+                  {renderSectionHeader("Genres")}
+                  <div className="native-library-genre-grid">
+                    {Array.from({ length: 12 }, (_, index) => (
+                      <SkeletonShape key={index} className="native-library-genre-card" />
+                    ))}
+                  </div>
+                </section>
+                <section className="native-library-section">
+                  {renderSectionHeader("Recently added")}
+                  <SkeletonLibraryGrid ref={homeAlbumsGridRef} count={Math.max(2, homeAlbumColumns) * 2} />
+                </section>
+                <section className="native-library-section">
+                  {renderSectionHeader("Tracks")}
+                  <SkeletonTrackList count={10} />
+                </section>
+              </div>
+            ) : section === "favorites" ? (
+              <div className="native-library-favorites">
+                <section className="native-library-section">
+                  {renderSectionHeader("Artists")}
+                  <SkeletonLibraryGrid kind="artist" className="native-library-grid native-library-grid--artists" />
+                </section>
+              </div>
+            ) : tab === "tracks" ? (
+              <SkeletonTrackList count={12} />
+            ) : tab === "genres" ? (
+              <div className="native-library-genre-list">
+                <div className="native-library-genre-row native-library-genre-row--heading">
+                  <span>Genre</span>
+                  <span>Artists</span>
+                  <span>Albums</span>
+                  <span>Tracks</span>
+                </div>
+                {Array.from({ length: 12 }, (_, index) => (
+                  <div key={index} className="native-library-genre-row">
+                    <strong>
+                      <SkeletonText width={index % 2 ? "6em" : "8em"} />
+                    </strong>
+                    <span>
+                      <SkeletonText width="2em" />
+                    </span>
+                    <span>
+                      <SkeletonText width="2em" />
+                    </span>
+                    <span>
+                      <SkeletonText width="2em" />
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <SkeletonLibraryGrid
+                kind={tab === "artists" ? "artist" : "album"}
+                className={
+                  "native-library-grid" +
+                  (tab === "artists" ? " native-library-grid--artists" : "") +
+                  (viewMode === "list" ? " is-list" : "")
+                }
+              />
+            )}
           </SkeletonStatus>
         )
       )}
@@ -2952,7 +3111,7 @@ function LibraryPage() {
         {renderLibraryModals()}
         {renderStatus()}
         {!loading && !error && !libraryAlbum && !libraryArtist && (
-          <EmptyState title="Not found" message="This library item is no longer indexed." />
+          <EmptyState title="Not found" message="This item is no longer in the Library." />
         )}
         {!loading && !error && (libraryAlbum || libraryArtist) && (
           <div className="native-library-content">{renderLibraryDetail()}</div>
@@ -3022,7 +3181,7 @@ function LibraryPage() {
             <h1 className="page-title">
               {pageTitle}
               {pageCount != null && (
-                <span className="native-library-count">{pageCount}</span>
+                <span className="native-library-count">{loading ? <SkeletonText width="2.5em" /> : pageCount}</span>
               )}
             </h1>
           </div>
@@ -3208,7 +3367,7 @@ function LibraryPage() {
           message={
             query || selectedGenre
               ? "Try a different search or clear the filter."
-              : "Indexed music will appear here when the library is ready."
+              : "Music appears here after a Library scan."
           }
         />
       )}

@@ -25,7 +25,7 @@ export const deemixSettings = Object.freeze({
       required: true,
       section: "Connection",
       placeholder: "http://localhost:6595",
-      hint: "Sign in with your ARL in the deemix web UI first.",
+      hint: "Sign in to deemix with your ARL first.",
     }),
     Object.freeze({
       key: "bitrate",

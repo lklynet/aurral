@@ -2,7 +2,7 @@ import { Navigate, useParams } from "react-router";
 import RouteLink from "../components/RouteLink";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { Music, MapPin, AlertCircle } from "lucide-react";
-import { SkeletonCardGrid, SkeletonStatus } from "../components/Skeletons";
+import { SkeletonShowCard, SkeletonStatus } from "../components/Skeletons";
 import NearbyLocationControl from "../components/NearbyLocationControl";
 import ShowCard from "../components/ShowCard";
 import { PageSectionMobileNav } from "../components/PageSectionMobileNav";
@@ -53,10 +53,10 @@ function ShowsPage() {
   const hasAnyShows = allShows.length > 0;
   const emptyMessage =
     showFilter === "library"
-      ? `We could not find local Ticketmaster shows for artists from your library around ${locationLabel}.`
+      ? `No shows for Library artists near ${locationLabel}.`
       : showFilter === "discover"
-        ? `We could not find local Ticketmaster shows tied to your Discover recommendations around ${locationLabel}.`
-        : `We could not find local Ticketmaster shows for artists from your library or Discover around ${locationLabel}.`;
+        ? `No shows for recommended artists near ${locationLabel}.`
+        : `No shows for Library or recommended artists near ${locationLabel}.`;
 
   if (!filterParam) {
     return <Navigate to={`/shows/${DEFAULT_SHOWS_FILTER}`} replace />;
@@ -99,7 +99,7 @@ function ShowsPage() {
           </div>
           <h2 className="search-empty-panel__title">Ticketmaster not configured</h2>
           <p className="search-empty-panel__message">
-            Add a Ticketmaster consumer key in Settings to enable local show discovery.
+            Add a Ticketmaster key in Settings → Connect to find nearby shows.
           </p>
           <RouteLink
             to="/settings"
@@ -110,7 +110,13 @@ function ShowsPage() {
         </div>
       ) : showsLoading ? (
         <SkeletonStatus label="Loading shows">
-          <SkeletonCardGrid square />
+          <div className="shows-page__grid">
+            {Array.from({ length: 6 }, (_, index) => (
+              <div key={index} className="shows-page__grid-item">
+                <SkeletonShowCard index={index} />
+              </div>
+            ))}
+          </div>
         </SkeletonStatus>
       ) : showsError ? (
         <div className="artist-error-panel" role="alert">
@@ -125,7 +131,7 @@ function ShowsPage() {
           </div>
           <h2 className="search-empty-panel__title">Enter a ZIP or postal code</h2>
           <p className="search-empty-panel__message">
-            Open the location menu above and enter a ZIP or postal code.
+            Enter a ZIP or postal code.
           </p>
         </div>
       ) : hasAnyShows ? (

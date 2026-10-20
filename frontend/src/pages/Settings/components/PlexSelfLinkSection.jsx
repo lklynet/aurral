@@ -37,8 +37,7 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
   const handleConnect = async () => {
     if (status.connected && status.linkType === "managed") {
       const confirmed = window.confirm(
-        "This account is currently linked as a Plex Home managed user (set up by an admin). " +
-          "Connecting your own Plex account will replace that managed link. Continue?",
+        "Replace your managed Plex link with your own Plex account?",
       );
       if (!confirmed) return;
     }
@@ -71,7 +70,7 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
       }
       if (popup && !popup.closed) popup.close();
       if (!linked) {
-        showError?.("Plex authentication timed out. Please try again.");
+        showError?.("Plex sign-in timed out. Try again.");
         return;
       }
       updateStatus((prev) => ({
@@ -132,7 +131,7 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
       <div className="settings-page__section-intro">
         <h3 className="settings-page__section-title">Plex account</h3>
         <p className="settings-page__section-note">
-          Link your Plex account so flows and playlists use your login.
+          Use your Plex account for flows and playlists.
         </p>
       </div>
 
@@ -146,7 +145,7 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
             <p className="settings-page__hint settings-page__hint--warning">
               Reconnect needed: {status.lastError.message}
               {status.linkType === "managed"
-                ? " An admin can relink this from Settings → Users, or you can connect your own Plex account below instead."
+                ? "Ask an admin to relink this in Settings → Users, or connect your Plex account below."
                 : ""}
             </p>
           )}
@@ -194,10 +193,10 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
                   "Your flows and playlists sync through Aurral’s global Plex connection."
                 )
               ) : (
-                "Plex is not configured yet. Your flows and playlists won’t sync to Plex until it’s configured as a playback source."
+                "Set up Plex as a playback source to sync flows and playlists."
               )
             ) : (
-              "Not linked. Your flows and playlists won’t sync to Plex until you connect your own account below."
+              "Connect your Plex account to sync flows and playlists."
             )}
           </p>
           <button

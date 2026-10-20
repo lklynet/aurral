@@ -65,7 +65,7 @@ const SsoComplete = () => {
         if (refreshed) {
           navigate("/", { replace: true });
         } else {
-          setError("Signed in, but couldn't load your account. Please try again.");
+          setError("Signed in, but could not load your account. Try again.");
         }
       })
       .catch(() => {
@@ -103,7 +103,7 @@ const SsoComplete = () => {
           <img src="/arralogo.svg" alt="Aurral" className="login-logo" />
           <h1 className="login-title">Signing you in</h1>
           <p className="login-subtitle" role="status" aria-live="polite">
-            Completing your SSO session…
+            Signing in…
           </p>
         </div>
         <DotLoader size="sm" label="Completing sign-in" className="sso-complete-loader" />

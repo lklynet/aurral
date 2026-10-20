@@ -26,6 +26,7 @@ import {
   listArtists,
   createSubsonicPlaylist,
   deleteSubsonicPlaylist,
+  resolveCustomArtwork,
   resolvePlaylistArtwork,
   resolveArtworkUrl,
   resolveStreamPath,
@@ -625,6 +626,15 @@ async function handleSubsonicRequest(req, res) {
     return streamed || res.headersSent ? undefined : handleBinaryError(res, "Track file missing");
   }
   if (method === "getcoverart") {
+    const customArtwork = resolveCustomArtwork(getParameter(req, "id"), user);
+    if (customArtwork) {
+      res.type(customArtwork.contentType);
+      res.set("Cache-Control", "private, max-age=31536000, immutable");
+      return res.sendFile(path.basename(customArtwork.filePath), {
+        root: path.dirname(customArtwork.filePath),
+        dotfiles: "deny",
+      });
+    }
     const playlistArtwork = await resolvePlaylistArtwork(getParameter(req, "id"), user);
     if (playlistArtwork) {
       res.set("Cache-Control", "private, max-age=86400");

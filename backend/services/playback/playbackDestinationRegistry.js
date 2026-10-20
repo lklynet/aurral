@@ -1,7 +1,10 @@
 import {
   assertPlaybackDestination,
+  isRetryablePlaybackError,
   playbackOperationFailure,
 } from "./playbackDestination.js";
+
+const DELETE_OPERATIONS = new Set(["deletePlaylist", "deleteEntityPlaylists"]);
 
 export class PlaybackDestinationRegistry {
   constructor(destinations) {
@@ -28,9 +31,14 @@ export class PlaybackDestinationRegistry {
   }
 
   async run(operation, ...args) {
+    return this.runOn(null, operation, ...args);
+  }
+
+  async runOn(keys, operation, ...args) {
     return Promise.all(
       this.destinations.filter(
-        (destination) => operation === "deletePlaylist" || destination.isConfigured(),
+        (destination) => (!keys || keys.includes(destination.key))
+          && (DELETE_OPERATIONS.has(operation) || destination.isConfigured()),
       ).map(
         async (destination) => {
           let result;
@@ -40,7 +48,7 @@ export class PlaybackDestinationRegistry {
             result = playbackOperationFailure({
               code: "DESTINATION_OPERATION_FAILED",
               message: error?.message || `${destination.name} ${operation} failed`,
-              retryable: true,
+              retryable: isRetryablePlaybackError(error),
             });
           }
           if (!result.ok) {
@@ -49,7 +57,7 @@ export class PlaybackDestinationRegistry {
               result.error?.message,
             );
           }
-          return { destination: destination.name, operation, ...result };
+          return { destination: destination.name, key: destination.key, operation, ...result };
         },
       ),
     );

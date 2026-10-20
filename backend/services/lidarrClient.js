@@ -21,6 +21,10 @@ const LIDARR_STATUS_CACHE_MS = 10000;
 const LIDARR_ARTIST_INDEX_TTL_MS = 15 * 60 * 1000;
 const LIDARR_ARTIST_INDEX_CACHE_MAX = 5000;
 const LIDARR_STATUS_CACHE_MAX = 100;
+// Lidarr omits album/artist from queue records unless asked and pages the
+// queue at 10 items by default.
+const QUEUE_ENDPOINT = "/queue?includeArtist=true&includeAlbum=true&pageSize=200";
+const isQueueEndpoint = (endpoint) => endpoint === "/queue" || endpoint.startsWith("/queue?");
 const VALID_MONITOR_OPTIONS = new Set([
   "none",
   "existing",
@@ -337,7 +341,7 @@ export class LidarrClient {
       const cached = this._albumCache.get(endpoint);
       if (cached) return cached.data;
     }
-    if (endpoint === "/queue" || endpoint === "/command" || endpoint.startsWith("/history")) {
+    if (isQueueEndpoint(endpoint) || endpoint === "/command" || endpoint.startsWith("/history")) {
       const cached = this._statusCache.get(endpoint);
       if (cached) return cached.data;
     }
@@ -432,7 +436,7 @@ export class LidarrClient {
       endpoint === "/artist" ||
       endpoint === "/rootFolder" ||
       endpoint.startsWith("/album") ||
-      endpoint === "/queue" ||
+      isQueueEndpoint(endpoint) ||
       endpoint.startsWith("/history?") ||
       endpoint === "/command";
     const dedupeKey =
@@ -482,7 +486,7 @@ export class LidarrClient {
 
     const isStatusRequest =
       method === "GET" &&
-      (endpoint === "/queue" || endpoint === "/command" || endpoint.startsWith("/history"));
+      (isQueueEndpoint(endpoint) || endpoint === "/command" || endpoint.startsWith("/history"));
     if (isStatusRequest && !options.forceRefresh) {
       const cached = this._statusCache.get(endpoint);
       if (cached && now - cached.at < LIDARR_STATUS_CACHE_MS) {
@@ -1601,7 +1605,7 @@ export class LidarrClient {
   }
 
   async getQueue(options = {}) {
-    const response = await this.request("/queue", "GET", null, false, options);
+    const response = await this.request(QUEUE_ENDPOINT, "GET", null, false, options);
     if (response && Array.isArray(response)) {
       return response;
     }
@@ -1624,6 +1628,8 @@ export class LidarrClient {
       pageSize: pageSize.toString(),
       sortKey,
       sortDirection,
+      includeArtist: "true",
+      includeAlbum: "true",
     });
     return this.request(`/history?${params.toString()}`, "GET", null, false, options);
   }

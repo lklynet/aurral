@@ -165,7 +165,7 @@ export default function DownloadFolderPickerModal({
           className="file-browser-modal__path"
           autoComplete="off"
           spellCheck={false}
-          placeholder="Start typing or select a path below"
+          placeholder="Enter or choose a folder."
           value={pathInput}
           onChange={(e) => setPathInput(e.target.value)}
           onKeyDown={(e) => {

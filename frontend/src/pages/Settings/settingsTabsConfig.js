@@ -161,9 +161,9 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   "library-files": {
-    sections: ["Ingest a folder", "Clean up Library"],
+    sections: ["Import a folder", "Clean up Library"],
     services: {
-      Ingest: "import existing music library folder move copy hardlink Lidarr root monitor",
+      "Import folder": "ingest existing music library folder move copy hardlink Lidarr root monitor",
       "Clean up Library": "rename organize tags files naming folders media management",
     },
     fields: {

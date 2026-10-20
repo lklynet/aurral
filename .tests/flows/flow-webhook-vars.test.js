@@ -83,11 +83,11 @@ test("flow completion sends display name and track library path", async () => {
 
   const original = {
     updateConfig: playlistManager.updateConfig,
-    ensurePlaylists: playlistManager.ensurePlaylists,
+    requestPlaylistSync: playlistManager.requestPlaylistSync,
     scheduleScanLibrary: playlistManager.scheduleScanLibrary,
   };
   playlistManager.updateConfig = () => {};
-  playlistManager.ensurePlaylists = async () => {};
+  playlistManager.requestPlaylistSync = () => null;
   playlistManager.scheduleScanLibrary = async () => {};
 
   try {
@@ -105,7 +105,7 @@ test("flow completion sends display name and track library path", async () => {
     assert.doesNotMatch(requests[0].path, /_playlists/);
   } finally {
     playlistManager.updateConfig = original.updateConfig;
-    playlistManager.ensurePlaylists = original.ensurePlaylists;
+    playlistManager.requestPlaylistSync = original.requestPlaylistSync;
     playlistManager.scheduleScanLibrary = original.scheduleScanLibrary;
     await new Promise((resolve) => server.close(resolve));
   }

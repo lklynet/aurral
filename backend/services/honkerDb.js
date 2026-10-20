@@ -15,6 +15,7 @@ export const IDENTITY_MARKER_MIGRATION_SETTING = "identityMarkerMigration";
 
 export const HONKER_QUEUE_NAMES = [
   "system-task",
+  "playback",
   "release-metadata-refresh",
   "system-task-maintenance",
   "system-task-inbox",
@@ -358,8 +359,20 @@ const inboxTask = registerQueue({
 });
 export const getInboxTaskQueue = inboxTask.getQueue;
 
+const playbackTask = registerQueue({
+  name: "playback",
+  visibilityTimeoutS: 3600,
+  maxAttempts: 3,
+  workerModule: "./systemTaskWorker.js",
+  workerStartFn: "startPlaybackTaskWorker",
+});
+export const getPlaybackTaskQueue = playbackTask.getQueue;
+
+const PLAYBACK_TASK_KINDS = ["playback-library-scan", "playback-playlist-sync"];
+
 export function getSystemTaskQueueName(kind) {
   if (kind === "release-metadata-refresh") return "release-metadata-refresh";
+  if (PLAYBACK_TASK_KINDS.includes(kind)) return "playback";
   if (kind === "inbox-refresh") return "system-task-inbox";
   if (kind === "session-cleanup" || kind === "news-refresh" ||
       kind === "weekly-flow-refresh") return "system-task-maintenance";
@@ -371,6 +384,7 @@ export function enqueueSystemTaskJob(payload, options) {
     case "release-metadata-refresh": return releaseMetadata.enqueueJob(payload, options);
     case "system-task-inbox": return inboxTask.enqueueJob(payload, options);
     case "system-task-maintenance": return maintenanceTask.enqueueJob(payload, options);
+    case "playback": return playbackTask.enqueueJob(payload, options);
     default: return systemTask.enqueueJob(payload, options);
   }
 }
@@ -459,7 +473,7 @@ export function enqueuePlayEventDelivery(payload) {
   return jobId;
 }
 
-function migrateLegacyReleaseMetadataJobs() {
+function migrateMovedSystemTaskJobs() {
   const tx = getHonkerDb().transaction();
   try {
     tx.execute(`UPDATE _honker_live
@@ -467,6 +481,10 @@ function migrateLegacyReleaseMetadataJobs() {
       WHERE queue = ? AND json_extract(payload, '$.kind') = ?
         AND (state = 'pending' OR (state = 'processing' AND claim_expires_at <= unixepoch()))`,
     ["release-metadata-refresh", "system-task", "release-metadata-refresh"]);
+    tx.execute(`UPDATE _honker_live
+      SET queue = ?, state = 'pending', worker_id = NULL, claim_expires_at = NULL
+      WHERE queue = ? AND json_extract(payload, '$.kind') IN (?, ?) AND state IN ('pending', 'processing')`,
+    ["playback", "system-task", ...PLAYBACK_TASK_KINDS]);
     tx.commit();
   } catch (error) {
     tx.rollback();
@@ -475,7 +493,7 @@ function migrateLegacyReleaseMetadataJobs() {
 }
 
 export function bootstrapHonkerSchedules() {
-  migrateLegacyReleaseMetadataJobs();
+  migrateMovedSystemTaskJobs();
   const scheduler = getHonkerDb().scheduler();
   const canonicalByName = new Map(SCHEDULED_SYSTEM_TASKS.map((task) => [task.name, task]));
   const existingByName = new Map(scheduler.list().map((row) => [row.name, row]));
@@ -868,6 +886,32 @@ export function requeueInterruptedHonkerJob(job, queue, { refundAttempt = true }
       WHERE id = ? AND queue = ? AND worker_id = ? AND state = 'processing'`,
     [refundAttempt ? 1 : 0, job.id, queue.name, getWorkerId()]);
     tx.commit();
+  } catch (error) {
+    tx.rollback();
+    throw error;
+  }
+}
+
+export function mergeIntoPendingHonkerJob(queueName, { payloadKind, matches = () => true, merge }) {
+  const tx = getHonkerDb().transaction();
+  try {
+    const rows = tx.query(
+      `SELECT id, payload FROM _honker_live
+       WHERE queue = ? AND json_extract(payload, '$.kind') = ? AND state = 'pending' AND attempts = 0
+       ORDER BY id ASC`,
+      [queueName, payloadKind],
+    );
+    const target = rows
+      .map((row) => ({ id: row.id, payload: parseHonkerPayload(row.payload) }))
+      .find(({ payload }) => payload && matches(payload));
+    if (target) {
+      tx.execute("UPDATE _honker_live SET payload = ? WHERE id = ?", [
+        JSON.stringify(merge(target.payload)),
+        target.id,
+      ]);
+    }
+    tx.commit();
+    return target?.id ?? null;
   } catch (error) {
     tx.rollback();
     throw error;

@@ -26,10 +26,8 @@ export function DeleteTrackModal({ show, title, hasFile = true, onCancel, onConf
         </h3>
         <p className="artist-modal__copy">
           {hasFile
-            ? <>Delete <strong>{title || "this track"}</strong> from the library? This permanently
-              removes the audio file from disk.</>
-            : <>Remove <strong>{title || "this track"}</strong> from the library? This clears the
-              unavailable track record and stops it from being queued again.</>}
+            ? <>Permanently delete <strong>{title || "this track"}</strong> from disk?</>
+            : <>Remove <strong>{title || "this track"}</strong> from the Library and stop future downloads?</>}
         </p>
         <div className="artist-modal__actions">
           <button onClick={onCancel} disabled={deleting} className="btn btn-secondary">

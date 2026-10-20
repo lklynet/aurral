@@ -28,7 +28,6 @@ import {
 } from "../downloadPaths.js";
 import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
 import { normalizeExistingFileMode } from "./fileReuseMode.js";
-import { safeLogDiagnostic } from "../logger.js";
 import {
   createPlaybackDeletionGuard,
   forgetPlaybackRetainedFile,
@@ -297,6 +296,23 @@ async function findAurralSource(track, options = {}) {
     sourceJob,
     albumName: sourceJob.albumName || track.albumName || null,
   };
+}
+
+export function jobDownloadedItsFile(job) {
+  return job?.status === "done" &&
+    Boolean(job.finalPath) &&
+    job.managedBy === "aurral" &&
+    !job.externalPath &&
+    !job.reusedLibraryFile;
+}
+
+function noPlaylistDownloadedFile(filePath, jobId, downloadRoot) {
+  const resolved = path.resolve(filePath);
+  return !downloadTracker.getAll().some((job) =>
+    job?.id !== jobId &&
+    job.playlistType !== "library" &&
+    jobDownloadedItsFile(job) &&
+    path.resolve(remapLegacyPath(job.finalPath, downloadRoot)) === resolved);
 }
 
 function retargetJobsToPath(oldPath, newPath, downloadRoot, albumName = null) {
@@ -699,6 +715,7 @@ export async function restoreCompletedTrack(job, options = {}) {
         sourcePath,
         source.albumName || job.albumName || null,
         source.externalPath || null,
+        { reusedLibraryFile: noPlaylistDownloadedFile(sourcePath, job.id, downloadRoot) },
       );
       console.log(
         `[FileReuse] Repaired ${job.playlistType} path from ${source.sourceType}: ${job.artistName} - ${job.trackName}`,
@@ -792,12 +809,7 @@ export async function repairJobsUnderRemovedPlaylistDir(playlistType, options = 
 
   if (repaired > 0 || requeued > 0) {
     const { playlistManager } = await import("../playlists/playlistManager.js");
-    for (const changedPlaylistType of changedPlaylistTypes) {
-      await playlistManager.refreshPlaylist(changedPlaylistType).catch((error) => {
-        console.warn(`[FileReuse] Could not refresh playlist ${safeLogDiagnostic(changedPlaylistType)}:`,
-          safeLogDiagnostic(error));
-      });
-    }
+    playlistManager.requestPlaylistSync([...changedPlaylistTypes]);
     if (changedPlaylistTypes.has("library")) playlistManager.scheduleScanLibrary();
   }
 
@@ -927,12 +939,7 @@ export async function repairReusableTrackLinks(options = {}) {
       `[FileReuse] Track health sweep repaired ${repaired}, requeued ${requeued} of ${batch.length} checked tracks`,
     );
     const { playlistManager } = await import("../playlists/playlistManager.js");
-    for (const playlistType of changedPlaylistTypes) {
-      await playlistManager.refreshPlaylist(playlistType).catch((error) => {
-        console.warn(`[FileReuse] Could not refresh playlist ${safeLogDiagnostic(playlistType)}:`,
-          safeLogDiagnostic(error));
-      });
-    }
+    playlistManager.requestPlaylistSync([...changedPlaylistTypes]);
     if (changedPlaylistTypes.has("library")) playlistManager.scheduleScanLibrary();
     if (requeued > 0) {
       const [{ downloadWorker }, { restartWorkerIfPending }] = await Promise.all([
@@ -1003,12 +1010,7 @@ export async function moveHandedOverTracksToLidarr(options = {}) {
   if (movedPaths.length === 0) return { moved: 0, deleted: 0 };
 
   const { playlistManager } = await import("../playlists/playlistManager.js");
-  for (const playlistType of changedPlaylistTypes) {
-    await playlistManager.refreshPlaylist(playlistType).catch((error) => {
-      console.warn(`[FileReuse] Could not refresh playlist ${safeLogDiagnostic(playlistType)}:`,
-        safeLogDiagnostic(error));
-    });
-  }
+  playlistManager.requestPlaylistSync([...changedPlaylistTypes]);
   const deletionGuard = options.deletionGuard || createPlaybackDeletionGuard({ playlistRoot: downloadRoot });
   let deleted = 0;
   for (const oldPath of movedPaths) {
@@ -1028,7 +1030,7 @@ async function refreshPlaylistAfterReuse(
   changedPaths = null,
 ) {
   const { playlistManager } = await import("../playlists/playlistManager.js");
-  await playlistManager.refreshPlaylist(playlistType);
+  playlistManager.requestPlaylistSync([playlistType]);
   if (!shouldScheduleLibraryScan) return;
   if (Array.isArray(changedPaths)) {
     scheduleLibraryScanJob({ includeLidarr: false, changedPaths });
@@ -1092,6 +1094,7 @@ export async function reuseTrackForPlaylist(track, playlistType, options = {}) {
     finalPath,
     source.albumName || track.albumName || null,
     source.externalPath || null,
+    { reusedLibraryFile: noPlaylistDownloadedFile(finalPath, jobId, downloadRoot) },
   );
   console.log(
     `[FileReuse] Reused ${source.sourceType} track for ${playlistType}: ${track.artistName} - ${track.trackName}`,

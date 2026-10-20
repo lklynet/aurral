@@ -3,6 +3,7 @@ import createHonkerWorker from "./honkerWorkerFactory.js";
 import {
   getInboxTaskQueue,
   getMaintenanceTaskQueue,
+  getPlaybackTaskQueue,
   getSystemTaskQueue,
   PLAYLIST_STARTUP_MIGRATION_SETTING,
   PLAYLIST_STARTUP_MIGRATION_VERSION,
@@ -85,12 +86,21 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
     }
     case "playback-library-scan": {
       const { playlistManager } = await import("./playlists/playlistManager.js");
-      playlistManager.updateConfig(false);
-      const results = await playlistManager.scanLibrary();
+      playlistManager.updateConfig();
+      const results = await playlistManager.scanLibrary(
+        payload.folders ?? playlistManager.libraryRoots(),
+        payload.destinations ?? null,
+      );
       const failures = (results || []).filter((result) => !result.ok);
       if (failures.length) {
         throw new Error(failures.map((result) => `${result.destination}: ${result.error.message}`).join("; "));
       }
+      return;
+    }
+    case "playback-playlist-sync": {
+      const { playlistManager } = await import("./playlists/playlistManager.js");
+      playlistManager.updateConfig();
+      await playlistManager.syncPlaylists(payload);
       return;
     }
     case "library-index-refresh": {
@@ -125,8 +135,7 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
     }
     case "playlist-startup-publish": {
       const { playlistManager } = await import("./playlists/playlistManager.js");
-      playlistManager.updateConfig(false);
-      await playlistManager.ensurePlaylists();
+      playlistManager.requestPlaylistSync();
       return;
     }
     case "discovery-bootstrap": {
@@ -225,8 +234,7 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
         metadataRepair.repaired > 0
       ) {
         const { playlistManager } = await import("./playlists/playlistManager.js");
-        playlistManager.updateConfig(false);
-        await playlistManager.ensurePlaylists();
+        playlistManager.requestPlaylistSync();
       }
       if (metadataRepair.failed === 0) {
         dbOps.setJSONSetting(PLAYLIST_STARTUP_MIGRATION_SETTING, {
@@ -318,7 +326,15 @@ const { start: startInboxTaskWorker } = createHonkerWorker({
   retryDelayS: 120,
 });
 
-export { startMaintenanceTaskWorker, startInboxTaskWorker };
+const { start: startPlaybackTaskWorker } = createHonkerWorker({
+  name: "playback",
+  getQueue: getPlaybackTaskQueue,
+  processJob: processSystemTask,
+  idlePollS: 10,
+  retryDelayS: 120,
+});
+
+export { startMaintenanceTaskWorker, startInboxTaskWorker, startPlaybackTaskWorker };
 
 export async function prepareSystemTask(payload, job, { signal }) {
   if (payload?.kind !== "release-metadata-refresh") return null;

@@ -1,10 +1,16 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
-import { SkeletonPageHeader, SkeletonRows, SkeletonStatus } from "../components/Skeletons";
+import { SkeletonAlbumDetail, SkeletonLibraryArtist, SkeletonPageTitle } from "../components/Skeletons";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { RESOLVE_KINDS, resolveLinkQueryOptions } from "../navigation/resolveLinks.js";
+
+function OpeningSkeleton({ kind, label }) {
+  if (kind === "album" || kind === "library-album") return <SkeletonAlbumDetail label={label} />;
+  if (kind === "library-artist") return <SkeletonLibraryArtist label={label} />;
+  return <SkeletonPageTitle label={label} />;
+}
 
 export default function ResolveLinkPage() {
   const { kind } = useParams();
@@ -70,10 +76,7 @@ export default function ResolveLinkPage() {
   return (
     <div className="library-page native-library-page">
       <div className="native-library-content">
-        <SkeletonStatus label={name ? `Opening ${name}` : "Opening"}>
-          <SkeletonPageHeader />
-          <SkeletonRows count={8} />
-        </SkeletonStatus>
+        <OpeningSkeleton kind={kind} label={name ? `Opening ${name}` : "Opening"} />
       </div>
     </div>
   );

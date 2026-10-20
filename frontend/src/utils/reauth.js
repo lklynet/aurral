@@ -4,7 +4,7 @@ export const isReauthRequiredError = (err) =>
   err?.response?.status === 401 && err?.response?.data?.error === "reauth_required";
 
 export async function promptReauth() {
-  const password = window.prompt("Please re-enter your password to continue:");
+  const password = window.prompt("Enter your password to continue:");
   if (!password) return false;
   try {
     await reauthApi(password);

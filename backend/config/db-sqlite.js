@@ -377,6 +377,15 @@ db.exec(`
     updated_at INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS custom_artwork (
+    entity_kind TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    source_url TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (entity_kind, entity_id)
+  );
+
   CREATE TABLE IF NOT EXISTS library_album_tracks (
     album_id INTEGER NOT NULL,
     track_id INTEGER NOT NULL,
@@ -921,6 +930,21 @@ for (const [name, type] of [
   if (!tableColumns.includes(name)) {
     tryAddColumn(`ALTER TABLE playlist_download_jobs ADD COLUMN ${name} ${type}`);
   }
+}
+if (!tableColumns.includes("reused_library_file")) {
+  db.transaction(() => {
+    tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN reused_library_file INTEGER NOT NULL DEFAULT 0");
+    db.exec(`
+      UPDATE playlist_download_jobs SET reused_library_file = 1
+      WHERE status = 'done' AND final_path IS NOT NULL AND (
+        started_at IS NULL OR EXISTS (
+          SELECT 1 FROM library_media_files AS media
+          WHERE media.path = playlist_download_jobs.final_path
+            AND media.created_at <= COALESCE(playlist_download_jobs.completed_at, playlist_download_jobs.created_at)
+        )
+      )
+    `);
+  })();
 }
 
 const sessionColumns = db

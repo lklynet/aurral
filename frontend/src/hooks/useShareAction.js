@@ -15,10 +15,10 @@ export function useShareAction() {
       }
       try {
         const outcome = await shareLink(url, label);
-        if (outcome === "copied") showSuccess(`Copied a share link for ${label}`);
+        if (outcome === "copied") showSuccess("Link copied");
       } catch {
         showError({
-          message: "Could not copy the share link. Open it and copy the address instead.",
+          message: "Could not copy the link. Open it to copy the address.",
           action: { label: "Open link", onClick: () => window.open(url, "_blank", "noopener") },
           duration: 8000,
         });

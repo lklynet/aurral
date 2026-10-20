@@ -164,7 +164,7 @@ async function compareWithLibrary(source, candidates, title) {
   if (!measured.length) {
     return {
       targetPath: candidates[0],
-      reason: `Its tags match ${title}, which the Library already has, but Aurral could not tell how long one of them is. Check the file.`,
+      reason: `Matches ${title}, but track lengths could not be compared. Check both files.`,
     };
   }
   const same = measured.filter((copy) => Math.abs(copy.gap) <= SAME_LENGTH_MS);
@@ -172,13 +172,13 @@ async function compareWithLibrary(source, candidates, title) {
     const nearest = measured.reduce((best, copy) => (Math.abs(copy.gap) < Math.abs(best.gap) ? copy : best));
     return {
       targetPath: nearest.targetPath,
-      reason: `Its tags match ${title}, which the Library already has, but it is ${formatGap(nearest.gap)} ${nearest.gap > 0 ? "longer" : "shorter"}. Check its tags.`,
+      reason: `Matches ${title}, but differs by ${formatGap(nearest.gap)}. Check its tags.`,
     };
   }
   if (source.lossless && !same.some((copy) => copy.lossless)) {
     return {
       targetPath: same[0].targetPath,
-      reason: `It is a lossless copy of ${title}, which the Library has only in a lossy format. To use it instead, remove the Library's copy and ingest again.`,
+      reason: `A lossless copy of ${title} is available. To replace the Library's lossy copy, remove it and import again.`,
     };
   }
   return { targetPath: (same.find((copy) => copy.lossless === source.lossless) || same[0]).targetPath };
@@ -229,7 +229,7 @@ async function planItem(operation, item, plannedTargets, albums) {
   if (unknownIdentity(record)) {
     return {
       status: "skipped",
-      reason: "Aurral could not tell the artist and album. Tag the file, or put it in an Artist/Album folder.",
+      reason: "Artist and album unknown. Add tags or use an Artist/Album folder.",
     };
   }
   const recording = await readRecording(item.sourcePath, metadata);
@@ -335,7 +335,7 @@ async function removeDuplicateSource(item) {
     return { status: "duplicate", reason: "The Library already has this file." };
   }
   if (!(await filesIdentical(item.sourcePath, item.targetPath).catch(() => false))) {
-    return { status: "skipped", reason: "The Library's copy changed before Aurral could compare it. Ingest again to check it." };
+    return { status: "skipped", reason: "Library copy changed. Import again to compare it." };
   }
   await transferSidecars(item.sourcePath, item.targetPath, "move").catch(() => {});
   await fs.unlink(item.sourcePath);
@@ -350,7 +350,7 @@ async function removeKeptSource(item) {
     return { status: "duplicate", reason: "The Library already has this track, and the source file is gone.", details: { ...details, sourceRemoved: true } };
   }
   if (!(await fs.stat(item.targetPath).catch(() => null))) {
-    return { status: "skipped", reason: "The Library's copy is gone, so Aurral kept this file. Ingest it again to file it.", details };
+    return { status: "skipped", reason: "Kept this file because the Library copy is missing. Import again to file it.", details };
   }
   const verdict = await compareWithLibrary(await readRecording(item.sourcePath), [item.targetPath], item.details.title);
   if (verdict.reason) return { status: "skipped", reason: verdict.reason, details };
@@ -446,7 +446,7 @@ export async function applyIngestItem(operation, item) {
     return { status: "skipped", reason: LINKED_FOLDER_REASON };
   }
   if (await resolvesToSameFile(item.sourcePath, item.targetPath)) {
-    return { status: "failed", reason: "A link in the Downloads Folder leads back to this file, so Aurral left it alone." };
+    return { status: "failed", reason: "Skipped: a link in the Downloads Folder already points to this file." };
   }
   if (item.details.action === "remove-duplicate") return removeDuplicateSource(item);
   if (item.details.action === "remove-source") return removeKeptSource(item);

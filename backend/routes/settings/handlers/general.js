@@ -654,21 +654,21 @@ export function registerGeneral(router) {
         const { playlistManager } = await import(
           "../../../services/playlists/playlistManager.js"
         );
-        playlistManager.updateConfig(false);
-        // Library enumeration can take minutes. Saving settings must not wait
-        // for it, but the scan still needs to follow playlist initialization.
-        playlistManager.ensureSmartPlaylists()
-          .catch((error) => {
-            logger.warn("settings", "Failed to initialize playback playlists:", {
-              message: error.message,
-            });
-          })
-          .then(() => playlistManager.scheduleScanLibrary(true))
-          .catch((error) => {
-            logger.warn("settings", "Failed to schedule playback library scan:", {
-              message: error.message,
-            });
+        playlistManager.updateConfig();
+        try {
+          playlistManager.scheduleScanLibrary(true);
+        } catch (error) {
+          logger.warn("settings", "Failed to queue Library scan:", {
+            message: error.message,
           });
+        }
+        try {
+          playlistManager.requestPlaylistSync();
+        } catch (error) {
+          logger.warn("settings", "Failed to queue playback playlist sync:", {
+            message: error.message,
+          });
+        }
       }
       const reconciled = reconcileLocalNetworkBypassSetting().settings;
       if (

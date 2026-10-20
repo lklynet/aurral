@@ -11,15 +11,15 @@ import {
 import "./MonitoringRules.css";
 
 const CATALOG_HINTS = {
-  all: "Every matching release that is out now.",
+  all: "All matching releases available now.",
   since: "Matching releases from this year on.",
-  latest: "The most recent matching releases that are out now.",
-  none: "Nothing that is already out.",
+  latest: "Latest matching releases available now.",
+  none: "No existing releases.",
 };
 
 const EDITION_HINTS = {
   standard: "The tracklist most releases of an album share.",
-  expanded: "The longest edition that keeps every standard track, such as a deluxe edition.",
+  expanded: "The longest edition with every standard track.",
 };
 
 function NumberField({ id, label, value, min, max, disabled, onChange }) {
@@ -192,7 +192,7 @@ export function MonitoringRulesFields({ rules, onChange, disabled = false }) {
             disabled={disabled}
             onChange={(topTracks) => update({ topTracks })}
           />
-          <p className="monitoring-rules__hint">The artist&apos;s most popular songs that these releases don&apos;t have.</p>
+          <p className="monitoring-rules__hint">Popular songs missing from these releases.</p>
         </div>
       </div>
     </div>

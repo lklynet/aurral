@@ -53,7 +53,7 @@ export function SettingsUpgradeReadiness({ showSuccess, showError }) {
     setRechecking(true);
     try {
       await recheckUpgradeReadiness();
-      showSuccess("Aurral 3.0 check queued. The results update when the background tasks finish.");
+      showSuccess("Check queued. Results update when it finishes.");
       await queryClient.invalidateQueries({ queryKey: queryKeys.upgradeReadiness });
     } catch {
       showError("Could not queue the Aurral 3.0 check. Try again.");
@@ -109,8 +109,7 @@ export function SettingsUpgradeReadiness({ showSuccess, showError }) {
           Aurral 3.0
         </h2>
         <p className="settings-system__section-description">
-          Aurral 3.0 removes support for data and settings from older versions. Update to 3.0 only
-          after this check passes.
+          Update to Aurral 3.0 only after this check passes. Older data and settings are unsupported.
         </p>
       </div>
       <div className="settings-system__rows">

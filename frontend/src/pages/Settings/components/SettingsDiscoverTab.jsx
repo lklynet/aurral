@@ -153,8 +153,7 @@ export function SettingsDiscoverTab({
             labelFor="discover-mode"
             help={
               <>
-                Safer favors familiar recommendations. Balanced mixes familiarity and exploration.
-                Deeper goes further beyond similar artists.
+                Safer favors familiar artists. Balanced adds variety. Deeper explores further.
               </>
             }
           >
@@ -174,7 +173,7 @@ export function SettingsDiscoverTab({
           <SettingsArrFormGroup
             label="Recommended artists"
             labelFor="discover-recommendations"
-            help="Artists generated per refresh."
+            help="Artists per refresh."
           >
             <SettingsInput
               id="discover-recommendations"

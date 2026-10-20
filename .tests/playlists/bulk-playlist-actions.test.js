@@ -32,7 +32,7 @@ function fixture(t, count = 3) {
     jobPlaylistId: source.id, jobGeneration: job.playlistGeneration, jobCreatedAt: job.createdAt }));
   const refreshes = [];
   let scans = 0;
-  t.mock.method(playlistManager, "refreshPlaylist", async (id) => { refreshes.push(id); });
+  t.mock.method(playlistManager, "requestPlaylistSync", (ids) => { refreshes.push(...ids); });
   t.mock.method(playlistManager, "scheduleScanLibrary", async () => { scans++; });
   return { user, source, jobs, selections, refreshes, scans: () => scans };
 }
@@ -62,6 +62,7 @@ test("a move preserves active backing jobs and never duplicates its destination 
   const target = config.flowPlaylistConfig.getStaticPlaylist("preallocated-target");
   assert.equal(target.tracks.length, 3);
   assert.ok(f.jobs.every((job) => downloadTracker.getJob(job.id)?.playlistType === target.id));
+  assert.ok(await playlistManager.resolveArtworkFile(target.id));
   await operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId: result.operationId });
   assert.equal(config.flowPlaylistConfig.getStaticPlaylists().length, 2);
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(target.id).tracks.length, 3);
@@ -125,11 +126,11 @@ test("batch acceptance validates, deduplicates and scopes its durable result to 
 test("synchronization failure preserves applied outcomes and retries only unfinished synchronization", async (t) => {
   const f = fixture(t, 2);
   let attempts = 0;
-  t.mock.method(playlistManager, "refreshPlaylist", async () => {
-    if (++attempts === 1) throw new Error("fixture service unavailable");
+  t.mock.method(playlistManager, "requestPlaylistSync", () => {
+    if (++attempts === 1) throw new Error("fixture queue unavailable");
   });
   const { operationId } = store.enqueueBulkOperation({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "remove", selections: f.selections });
-  await assert.rejects(operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId }), /fixture service unavailable/);
+  await assert.rejects(operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId }), /fixture queue unavailable/);
   assert.equal(store.getBulkOperation(operationId).outcomes.length, 2);
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(f.source.id).tracks.length, 0);
   await operations.processPlaylistOperation({ kind: "shared-playlist-bulk", operationId });

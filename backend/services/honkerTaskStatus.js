@@ -28,8 +28,15 @@ export const QUEUE_DEFINITIONS = [
     queue: "system-task-inbox",
     label: "Inbox refreshes",
     workerLabel: "Inbox refresh worker",
-    description: "Refreshes inbox content outside the web process.",
+    description: "Refreshes the Inbox.",
     worker: "system-task-inbox",
+  },
+  {
+    queue: "playback",
+    label: "Media server updates",
+    workerLabel: "Media server worker",
+    description: "Scans connected media servers and publishes playlists to them, one job at a time.",
+    worker: "playback",
   },
   {
     queue: "weekly-flow-operation",
@@ -47,16 +54,16 @@ export const QUEUE_DEFINITIONS = [
   },
   {
     queue: "playlist-mbid-enrichment",
-    label: "Playlist MBID enrichment",
-    workerLabel: "Playlist MBID worker",
-    description: "Finds and fills missing MusicBrainz IDs on imported playlist tracks.",
+    label: "Playlist metadata",
+    workerLabel: "Playlist metadata worker",
+    description: "Fills missing MusicBrainz IDs on imported tracks.",
     worker: "playlist-mbid-enrichment",
   },
   {
     queue: "library-scan",
     label: "Library scans",
     workerLabel: "Library scan worker",
-    description: "Refreshes Aurral's view of files after playlist or library changes.",
+    description: "Scans files after Library or playlist changes.",
     worker: "library-scan",
   },
   {
@@ -89,10 +96,22 @@ export const QUEUE_DEFINITIONS = [
   },
 ];
 
+const SYSTEM_TASK_QUEUES = new Set([
+  "system-task",
+  "system-task-maintenance",
+  "system-task-inbox",
+  "release-metadata-refresh",
+  "playback",
+]);
+
 export const SYSTEM_TASK_LABELS = {
   "playback-library-scan": {
     label: "Media server scan",
     description: "Refreshes connected media servers after files change.",
+  },
+  "playback-playlist-sync": {
+    label: "Media server playlist sync",
+    description: "Publishes changed flows and playlists to connected media servers, then retries tracks a server has not indexed yet.",
   },
   "weekly-flow-refresh": {
     label: "Playlist schedule check",
@@ -100,7 +119,7 @@ export const SYSTEM_TASK_LABELS = {
   },
   "session-cleanup": {
     label: "Session cleanup",
-    description: "Removes expired login sessions from the app database.",
+    description: "Removes expired sign-in sessions.",
   },
   "weekly-flow-reuse-repair": {
     label: "Playlist file reuse repair",
@@ -108,7 +127,7 @@ export const SYSTEM_TASK_LABELS = {
   },
   "review-timeout": {
     label: "Review timeout",
-    description: "Denies songs held for review longer than the maximum review wait.",
+    description: "Denies tracks past the review deadline.",
   },
   "weekly-flow-startup-reuse-repair": {
     label: "Startup playlist reuse repair",
@@ -116,11 +135,11 @@ export const SYSTEM_TASK_LABELS = {
   },
   "weekly-flow-startup-check": {
     label: "Startup playlist schedule check",
-    description: "Resumes pending playlist work after Aurral starts, then stops slskd searches left by downloads that no longer exist.",
+    description: "Resumes playlist work and stops orphaned slskd searches at startup.",
   },
   "playlist-startup-publish": {
     label: "Startup playlist publish",
-    description: "Publishes flows and playlists to connected playback servers after Aurral starts.",
+    description: "Queues a playlist sync to connected media servers after Aurral starts.",
   },
   "discovery-refresh-check": {
     label: "Discovery auto refresh check",
@@ -136,15 +155,15 @@ export const SYSTEM_TASK_LABELS = {
   },
   "stored-data-migration": {
     label: "Stored settings update",
-    description: "Stores older settings, flows, and sign-in data in their current form.",
+    description: "Updates older settings, flows, and sign-in data.",
   },
   "identity-marker-migration": {
     label: "Track identity tag update",
-    description: "Moves Aurral's track identity marker from the comment or grouping tag to its own tag in downloaded files.",
+    description: "Moves track identifiers from comment or grouping tags to a dedicated tag.",
   },
   "upgrade-readiness-check": {
     label: "Aurral 3.0 readiness check",
-    description: "Checks whether this install has finished the updates Aurral 3.0 needs.",
+    description: "Checks readiness for Aurral 3.0.",
   },
   "playlist-startup-migration": {
     label: "Playlist startup migration",
@@ -152,7 +171,7 @@ export const SYSTEM_TASK_LABELS = {
   },
   "lidarr-files-release": {
     label: "Lidarr turned off",
-    description: "Downloads Aurral's own copy of playlist and flow songs that used a Lidarr file.",
+    description: "Downloads Aurral copies of playlist and flow tracks that used Lidarr files.",
   },
   "lidarr-retry": {
     label: "Lidarr retry",
@@ -444,8 +463,7 @@ export function describeHonkerTask(queue, payloadValue) {
   const payload = parsePayload(payloadValue) || {};
   const safeQueue = String(queue || "").trim();
 
-  if (safeQueue === "system-task" || safeQueue === "system-task-maintenance" ||
-      safeQueue === "system-task-inbox" || safeQueue === "release-metadata-refresh")
+  if (SYSTEM_TASK_QUEUES.has(safeQueue))
     return systemTaskInfo(String(payload?.kind || "").trim()).label;
   if (safeQueue === "discovery-refresh") return discoveryRefreshInfo(payload).label;
   if (safeQueue === "_outbox:notifications")
@@ -470,8 +488,7 @@ function describeHonkerTaskDetail(queue, payloadValue) {
   const payload = parsePayload(payloadValue) || {};
   const safeQueue = String(queue || "").trim();
 
-  if (safeQueue === "system-task" || safeQueue === "system-task-maintenance" ||
-      safeQueue === "system-task-inbox" || safeQueue === "release-metadata-refresh")
+  if (SYSTEM_TASK_QUEUES.has(safeQueue))
     return systemTaskInfo(String(payload?.kind || "").trim()).description;
   if (safeQueue === "discovery-refresh") return discoveryRefreshInfo(payload).description;
 
@@ -486,8 +503,7 @@ function summarizePayload(queue, payloadValue) {
     return "";
   }
 
-  if (queue === "system-task" || queue === "system-task-maintenance" ||
-      queue === "system-task-inbox" || queue === "release-metadata-refresh") {
+  if (SYSTEM_TASK_QUEUES.has(queue)) {
     return "";
   }
 

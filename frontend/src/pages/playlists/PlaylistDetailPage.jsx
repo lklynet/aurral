@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { Clock, Download, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
-import { SkeletonCollectionHeader, SkeletonRows, SkeletonStatus } from "../../components/Skeletons";
+import { SkeletonCollectionHeader, SkeletonCollectionTracks, SkeletonStatus } from "../../components/Skeletons";
 import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../../components/CollectionHeader";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import TooltipButton from "../../components/TooltipButton";
@@ -68,7 +68,7 @@ export default function PlaylistDetailPage() {
           {waiting ? (
             <SkeletonStatus label="Loading playlist" className="native-library-detail">
               <SkeletonCollectionHeader />
-              <SkeletonRows count={10} />
+              <SkeletonCollectionTracks />
             </SkeletonStatus>
           ) : error && !status ? (
             <div className="native-library-state" role="alert">
@@ -388,7 +388,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
         refresh={refresh}
         staticPlaylists={staticPlaylists}
         fetchStatus={fetchStatus}
-        emptyMessage="No tracks in this playlist yet."
+        emptyMessage="No tracks yet."
         showTrackAvailability={showTrackAvailability}
         recordHistory={playlist.recordHistory !== false}
       />
@@ -408,7 +408,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
       <ConfirmModal
         open={confirmDelete}
         title={`Delete ${playlist.name}?`}
-        body="This removes the playlist and any downloaded files tied to it."
+        body="Deletes this playlist and its associated downloaded files."
         confirmLabel="Delete playlist"
         busyLabel="Deleting…"
         busy={deleting}

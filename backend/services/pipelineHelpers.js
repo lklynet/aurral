@@ -136,7 +136,7 @@ export async function recordPipelineJobSuccess({
 export async function refreshCompletedPipelinePlaylist(job) {
   const playlistType = job.playlistId || job.playlistType;
   const { playlistManager } = await import("./playlists/playlistManager.js");
-  await playlistManager.refreshPlaylist(playlistType);
+  playlistManager.requestPlaylistSync([playlistType]);
   const { downloadWorker } = await import("./downloadJobs/downloadWorker.js");
   downloadWorker.wake(0);
   await downloadWorker.checkPlaylistComplete(playlistType);

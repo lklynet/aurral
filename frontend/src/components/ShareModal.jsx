@@ -6,6 +6,7 @@ import { useToast } from "../contexts/ToastContext";
 import { queryKeys } from "../queryClient";
 import { createShareLink, getShareAvailability } from "../utils/api/endpoints/shareLinks";
 import { buildSharePayload, buildShareUrl, shareLink } from "../utils/shareLink";
+import { formatDateTime } from "../utils/dateTime.js";
 import { DotLoader } from "./DotLoader";
 import PillToggle from "./PillToggle";
 import { ModalShell } from "./PlaylistModals";
@@ -51,7 +52,7 @@ function ListenHint({ kind, availability, onRetry }) {
   if (count && availability.data?.tunnelAvailable === false) {
     return (
       <p className="settings-page__hint">
-        Your server doesn&apos;t have cloudflared, so friends couldn&apos;t reach a listen link.
+        Install cloudflared on your server to share playback.
       </p>
     );
   }
@@ -64,8 +65,7 @@ function ListenHint({ kind, availability, onRetry }) {
   }
   return (
     <p className="settings-page__hint">
-      Anyone with the link can play {trackCountLabel(kind, count)} from your Aurral until it
-      expires. Your server&apos;s address stays hidden.
+      Anyone with the link can play {trackCountLabel(kind, count)}. Your server address stays hidden.
     </p>
   );
 }
@@ -126,7 +126,7 @@ export function ShareModal({ request, onClose }) {
       if (outcome !== "cancelled") onClose();
     } catch {
       showError({
-        message: "Could not copy the share link. Open it and copy the address instead.",
+        message: "Could not copy the link. Open it to copy the address.",
         action: { label: "Open link", onClick: () => window.open(url, "_blank", "noopener") },
         duration: 8000,
       });
@@ -144,7 +144,7 @@ export function ShareModal({ request, onClose }) {
       <button
         type="button"
         className="btn btn-primary btn-sm"
-        onClick={() => sendLink(created.url, `Copied a listen link for ${label}`)}
+        onClick={() => sendLink(created.url, "Listen link copied")}
       >
         Share link
       </button>
@@ -167,7 +167,7 @@ export function ShareModal({ request, onClose }) {
         <button
           type="button"
           className="btn btn-primary btn-sm"
-          onClick={() => sendLink(plainUrl, `Copied a share link for ${label}`)}
+          onClick={() => sendLink(plainUrl, "Link copied")}
           disabled={!plainUrl}
         >
           Share link
@@ -199,9 +199,9 @@ export function ShareModal({ request, onClose }) {
           />
           <p className="settings-page__hint">
             {created.expiresAt
-              ? "The link stops working when it expires."
-              : "The link works until you stop sharing it."}{" "}
-            Stop sharing any time from Profile → Shared links.
+              ? `Expires ${formatDateTime(new Date(created.expiresAt))}.`
+              : "No expiry."}{" "}
+            Stop sharing in Profile → Shared links.
           </p>
         </div>
       ) : (
@@ -239,8 +239,8 @@ export function ShareModal({ request, onClose }) {
                 />
                 <p className="settings-page__hint">
                   {kind === "track"
-                    ? "They can save the original file."
-                    : "They can save the original files, one at a time or with Download all."}
+                    ? "Anyone with the link can download the original file."
+                    : "Anyone with the link can download the original files."}
                 </p>
               </div>
               <div className="share-modal__option">
@@ -267,7 +267,7 @@ export function ShareModal({ request, onClose }) {
           ) : null}
           {create.isError ? (
             <p className="artist-error-text" role="alert">
-              {errorMessage(create.error, "Could not create the link. Nothing was shared. Try again.")}
+              {errorMessage(create.error, "Could not create the link. Try again.")}
             </p>
           ) : null}
         </div>
