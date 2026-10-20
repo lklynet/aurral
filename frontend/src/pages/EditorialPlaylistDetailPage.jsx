@@ -14,7 +14,7 @@ import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../comp
 import TooltipButton from "../components/TooltipButton";
 import Tooltip from "../components/Tooltip";
 import RouteLink from "../components/RouteLink";
-import { SkeletonCollectionHeader, SkeletonRows, SkeletonStatus } from "../components/Skeletons";
+import { SkeletonCollectionHeader, SkeletonCollectionTracks, SkeletonStatus } from "../components/Skeletons";
 import { DotLoader } from "../components/DotLoader";
 import { PlaylistTracksPanel, usePlaylistTrackPlayback } from "./playlists/components/playlistTrackComponents.jsx";
 import { formatTrackTotal } from "./playlists/playlistPageUtils";
@@ -119,8 +119,8 @@ export default function EditorialPlaylistDetailPage() {
     return (
       <CollectionPage>
         <SkeletonStatus label="Loading playlist" className="native-library-detail">
-          <SkeletonCollectionHeader />
-          <SkeletonRows count={10} />
+          <SkeletonCollectionHeader kicker={false} description icons={2} />
+          <SkeletonCollectionTracks />
         </SkeletonStatus>
       </CollectionPage>
     );
@@ -227,7 +227,7 @@ export default function EditorialPlaylistDetailPage() {
         />
       ) : (
         <SkeletonStatus label="Loading tracks">
-          <SkeletonRows count={Math.min(trackTotal || 10, 12)} />
+          <SkeletonCollectionTracks count={Math.min(trackTotal || 10, 12)} />
         </SkeletonStatus>
       )}
     </CollectionPage>

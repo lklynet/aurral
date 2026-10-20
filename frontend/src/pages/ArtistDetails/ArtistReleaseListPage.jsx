@@ -4,7 +4,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router";
 import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
 import { DotLoader } from "../../components/DotLoader";
-import { SkeletonCardGrid, SkeletonPageHeader, SkeletonStatus } from "../../components/Skeletons";
+import { SkeletonReleaseCard, SkeletonStatus, SkeletonText } from "../../components/Skeletons";
 import {
   ArrowDown,
   ArrowUp,
@@ -129,7 +129,6 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     setLibraryArtist,
     libraryAlbums,
     setLibraryAlbums,
-    loading,
     error,
     loadingReleases,
     loadingAppearsOn,
@@ -391,15 +390,6 @@ function ArtistReleaseListPage({ mode = "releases" }) {
       coverUrl,
     });
 
-  if (loading) {
-    return (
-      <SkeletonStatus label="Loading releases" className="artist-details-page">
-        <SkeletonPageHeader />
-        <SkeletonCardGrid square />
-      </SkeletonStatus>
-    );
-  }
-
   if (error || !artist) {
     return (
       <div className="artist-empty-panel">
@@ -527,6 +517,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   };
 
   const noun = isAppearsOn ? "appearance" : "release";
+  const awaitingReleases = loadingReleases && renderedReleaseGroups.length === 0;
   const selectedSort = sortOptions.find((option) => option.value === sortKey) || sortOptions[0];
   const SortDirectionIcon = sortDirection === "asc" ? ArrowUp : ArrowDown;
   const searchLabel = isAppearsOn ? "Search appearances" : "Search releases";
@@ -543,12 +534,6 @@ function ArtistReleaseListPage({ mode = "releases" }) {
             <span>{artist.name}</span>
             <CornerUpLeft className="artist-icon-lg" />
           </Link>
-          {loadingReleases && (
-            <p className="artist-meta-line">
-              <DotLoader size="sm" label={null} />
-              {isAppearsOn ? "Loading appearances" : "Loading releases"}
-            </p>
-          )}
         </div>
       </div>
 
@@ -665,13 +650,35 @@ function ArtistReleaseListPage({ mode = "releases" }) {
       </div>
 
       <div className="artist-count">
-        {filteredReleaseGroups.length.toLocaleString()} {noun}
-        {filteredReleaseGroups.length === 1 ? "" : "s"}
+        {awaitingReleases ? (
+          <SkeletonText width="5em" />
+        ) : (
+          <>
+            {filteredReleaseGroups.length.toLocaleString()} {noun}
+            {filteredReleaseGroups.length === 1 ? "" : "s"}
+            {loadingReleases ? (
+              <span className="artist-count__loading" role="status">
+                <DotLoader size="xs" label={null} />
+                {isAppearsOn ? "Loading appearances" : "Loading releases"}
+              </span>
+            ) : null}
+          </>
+        )}
       </div>
 
-      <div className={viewMode === "grid" ? "artist-albums-grid" : "artist-release-list"}>
-        {renderedReleaseGroups.map((releaseGroup) => renderReleaseCard(releaseGroup))}
-      </div>
+      {awaitingReleases && viewMode === "grid" ? (
+        <SkeletonStatus label={isAppearsOn ? "Loading appearances" : "Loading releases"}>
+          <div className="artist-albums-grid">
+            {Array.from({ length: 14 }, (_, index) => (
+              <SkeletonReleaseCard key={index} index={index} />
+            ))}
+          </div>
+        </SkeletonStatus>
+      ) : (
+        <div className={viewMode === "grid" ? "artist-albums-grid" : "artist-release-list"}>
+          {renderedReleaseGroups.map((releaseGroup) => renderReleaseCard(releaseGroup))}
+        </div>
+      )}
       {visibleReleaseCount < filteredReleaseGroups.length ||
       (isAppearsOn && hasMoreAppearances) ? (
         <div className="artist-loading" aria-live="polite">

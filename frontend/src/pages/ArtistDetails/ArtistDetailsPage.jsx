@@ -30,7 +30,6 @@ import { useParams, useLocation } from "react-router";
 import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
 import { Music, X } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
-import { SkeletonRail, SkeletonStatus } from "../../components/Skeletons";
 import { normalizeMediaUrl } from "../../utils/normalizeMediaUrl";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
@@ -144,7 +143,6 @@ function ArtistDetailsPage() {
     setLibraryAlbums,
     similarArtists,
     setSimilarArtists,
-    loading,
     error,
     setLoadingCover,
     loadingSimilar,
@@ -464,20 +462,6 @@ function ArtistDetailsPage() {
   };
 
   const heroWash = useArtworkWash(getArtistHeroImage(coverImages));
-
-  if (loading) {
-    return (
-      <SkeletonStatus label="Loading artist" className="artist-details-page">
-        <section className="artist-hero">
-          <div className="artist-hero__inner">
-            <div className="artist-hero__fallback skeleton-block" />
-          </div>
-        </section>
-        <SkeletonRail />
-        <SkeletonRail />
-      </SkeletonStatus>
-    );
-  }
 
   if (error) {
     return (

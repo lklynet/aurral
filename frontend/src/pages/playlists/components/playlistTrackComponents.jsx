@@ -13,7 +13,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { DotLoader, DownloadingIcon } from "../../../components/DotLoader";
-import { SkeletonRows, SkeletonStatus } from "../../../components/Skeletons";
+import { SkeletonStatus, SkeletonTrackList } from "../../../components/Skeletons";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import TooltipButton from "../../../components/TooltipButton";
 import { getPlaylistTrackDisplayNumber, sortPlaylistTracks } from "../../../utils/playlistTrackSort";
@@ -657,7 +657,7 @@ export function PlaylistTracksPanel({
       ) : null}
       {loading ? (
         <SkeletonStatus label="Loading tracks">
-          <SkeletonRows count={8} />
+          <SkeletonTrackList count={8} />
         </SkeletonStatus>
       ) : error ? (
         <div className="native-library-state" role="alert">
