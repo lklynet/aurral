@@ -11,6 +11,7 @@ import {
   uploadPlaylistTrackArtwork,
   setPlaylistTrackArtworkUrl,
   deletePlaylistTrackArtwork,
+  getPlaylistTrackArtworkUrl,
 } from "../../utils/api/endpoints/playlists.js";
 import { getReleaseGroupCoversBatch } from "../../utils/api/endpoints/artists.js";
 import {
@@ -31,6 +32,7 @@ import ManualMissingSearchModal from "../activity/ManualMissingSearchModal.jsx";
 import LibraryInfoModal from "../LibraryInfoModal.jsx";
 import ArtworkEditorModal from "../../components/ArtworkEditorModal.jsx";
 import { useAuth } from "../../contexts/AuthContext.jsx";
+import { useAudioQueue } from "../../contexts/audioQueueContext.js";
 import { getTrackSearchAction } from "./trackAvailability.js";
 import {
   normalizeNameKey,
@@ -58,6 +60,7 @@ export function PlaylistTracks({
   const isFlow = kind === "flow";
   const bulkActions = usePlaylistBulkActions();
   const { hasPermission } = useAuth();
+  const { updateQueueArtwork } = useAudioQueue();
   const navigate = useNavigate();
   const toast = useToast();
   const { showSuccess, showError } = toast;
@@ -141,10 +144,22 @@ export function PlaylistTracks({
         trackArtworkByAlbumMbid[String(track.albumMbid || "")] ||
         "",
       hasCustomArtwork: Boolean(track.customArtworkUrl),
+      fallbackArtwork:
+        track.coverUrl ||
+        trackArtworkByAlbumMbid[String(track.albumMbid || "")] ||
+        "",
     });
   };
 
-  const handleArtworkSaved = async () => {
+  const handleArtworkSaved = async (result) => {
+    if (artworkEditor) {
+      updateQueueArtwork(
+        { id: artworkEditor.id },
+        result?.updatedAt
+          ? getPlaylistTrackArtworkUrl(entry.id, artworkEditor.id, result.updatedAt)
+          : artworkEditor.fallbackArtwork || null,
+      );
+    }
     await refreshAll();
     showSuccess("Artwork updated");
   };

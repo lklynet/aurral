@@ -43,6 +43,41 @@ test("previews and playlist tracks keep their cover so the player and album-art 
   assert.equal(editorialTrack.artwork, "https://c/editorial.jpg");
 });
 
+test("artwork changes update matching queue entries without restarting playback", () => {
+  const playing = startQueue({
+    tracks: [
+      { ...queueTracks[0], libraryTrackId: 10, libraryAlbumId: 20, artwork: "old-track.jpg" },
+      { ...queueTracks[1], libraryTrackId: 11, libraryAlbumId: 20, artwork: "old-album.jpg" },
+      { ...queueTracks[2], artwork: "old-playlist.jpg" },
+    ],
+  });
+
+  const trackUpdated = queueReducer(playing, {
+    type: "UPDATE_ARTWORK",
+    target: { libraryTrackId: 10 },
+    artwork: "new-track.jpg",
+  });
+  assert.equal(trackUpdated.queue[0].artwork, "new-track.jpg");
+  assert.equal(trackUpdated.queue[1].artwork, "old-album.jpg");
+
+  const albumUpdated = queueReducer(trackUpdated, {
+    type: "UPDATE_ARTWORK",
+    target: { libraryAlbumId: 20 },
+    artwork: "new-album.jpg",
+  });
+  assert.equal(albumUpdated.queue[0].artwork, "new-album.jpg");
+  assert.equal(albumUpdated.queue[1].artwork, "new-album.jpg");
+
+  const playlistUpdated = queueReducer(albumUpdated, {
+    type: "UPDATE_ARTWORK",
+    target: { id: "t2" },
+    artwork: null,
+  });
+  assert.equal(playlistUpdated.queue[2].artwork, null);
+  assert.equal(playlistUpdated.currentIndex, playing.currentIndex);
+  assert.equal(playlistUpdated.queueRevision, playing.queueRevision);
+});
+
 const queueTracks = Array.from({ length: 8 }, (_, index) => ({
   id: `t${index}`,
   title: `Track ${index}`,

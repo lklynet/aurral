@@ -14,6 +14,12 @@ export const getPlaylistTrackStreamUrl = (jobId) =>
 const playlistTrackArtworkPath = (jobId, playlistId, suffix = "") =>
   `/playlists/track-artwork/${encodeURIComponent(jobId)}${suffix}?playlistId=${encodeURIComponent(playlistId)}`;
 
+export const getPlaylistTrackArtworkUrl = (playlistId, jobId, version = "current") =>
+  buildAuthenticatedApiUrl(
+    `/playlists/track-artwork/${encodeURIComponent(jobId)}`,
+    { playlistId, v: version },
+  );
+
 const withAuthenticatedTrackArtwork = (job) => job && typeof job === "object"
   ? {
       ...job,

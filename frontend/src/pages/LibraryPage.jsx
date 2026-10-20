@@ -74,6 +74,7 @@ import {
   deleteLidarrAlbumFromLibrary,
   deleteTrackFromLibrary,
   deleteLibraryCustomArtwork,
+  getLibraryCustomArtworkUrl,
   getActiveLibraryRefresh,
   getLibraryPage,
   getDownloadStatus,
@@ -368,6 +369,7 @@ function LibraryPage() {
     isStarting,
     togglePlayPause,
     matchesSource,
+    updateQueueArtwork,
   } = useAudioQueue();
   const isRunning = isPlaying || isStarting;
   const getQueueItems = useQueueTrackActions();
@@ -877,17 +879,30 @@ function LibraryPage() {
   const { isAlbumDownloading, isTrackDownloading } = useActiveDownloads();
   const canEditArtistMbid = hasPermission("addArtist");
 
-  const openArtworkEditor = useCallback((kind, entity, currentArtwork) => {
+  const openArtworkEditor = useCallback((kind, entity, currentArtwork, fallbackArtwork = "") => {
     setArtworkEditor({
       kind,
       id: entity.id,
       title: kind === "album" ? entity.title : entity.title || entity.trackName,
       currentArtwork: currentArtwork || "",
       hasCustomArtwork: Boolean(entity.customArtworkUrl),
+      fallbackArtwork,
     });
   }, []);
 
-  const handleArtworkSaved = useCallback(async () => {
+  const handleArtworkSaved = useCallback(async (result) => {
+    const editor = artworkEditor;
+    if (editor) {
+      const artwork = result?.updatedAt
+        ? getLibraryCustomArtworkUrl(editor.kind, editor.id, result.updatedAt)
+        : editor.fallbackArtwork || null;
+      updateQueueArtwork(
+        editor.kind === "album"
+          ? { libraryAlbumId: editor.id }
+          : { libraryTrackId: editor.id },
+        artwork,
+      );
+    }
     clearLibraryPageCache();
     queryClient.invalidateQueries({
       queryKey: queryKeys.libraryAlbumTracksPrefix,
@@ -898,7 +913,7 @@ function LibraryPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix }),
     ]);
     showSuccess("Artwork updated");
-  }, [showSuccess]);
+  }, [artworkEditor, showSuccess, updateQueueArtwork]);
 
   const openLibraryRemoval = useCallback((kind, entity, manager = null) => {
     setDeleteFiles(false);
@@ -1674,7 +1689,7 @@ function LibraryPage() {
         libraryAlbumId: file && album ? album.id : null,
         durationMs: Number(track.durationMs || file?.durationMs || 0) || null,
         recordHistory: true,
-        artwork: getAlbumCover(album),
+        artwork: track.artworkUrl || getAlbumCover(album),
       };
     },
     [getAlbumCover, getAlbumForTrack, getArtistForAlbum],
@@ -2171,6 +2186,7 @@ function LibraryPage() {
                     "track",
                     track,
                     track.artworkUrl || (album ? getAlbumCover(album) : ""),
+                    album ? getAlbumCover(album) : "",
                   ),
                 },
               ]
@@ -2437,7 +2453,11 @@ function LibraryPage() {
                       id: "artwork",
                       label: "Change artwork",
                       icon: ImagePlus,
-                      onSelect: () => openArtworkEditor("album", album, getAlbumCover(album)),
+                      onSelect: () => openArtworkEditor(
+                        "album",
+                        album,
+                        getAlbumCover(album),
+                      ),
                     },
                   ]
                 : []),

@@ -256,6 +256,26 @@ export function queueReducer(state, action) {
       });
       return changed ? { ...state, queue } : state;
     }
+    case "UPDATE_ARTWORK": {
+      const target = action.target || {};
+      const matches = (track) => {
+        if (target.libraryTrackId != null) {
+          return String(track.libraryTrackId ?? "") === String(target.libraryTrackId);
+        }
+        if (target.libraryAlbumId != null) {
+          return String(track.libraryAlbumId ?? "") === String(target.libraryAlbumId);
+        }
+        return target.id != null && String(track.id) === String(target.id);
+      };
+      let changed = false;
+      const artwork = action.artwork || null;
+      const queue = state.queue.map((track) => {
+        if (!matches(track) || track.artwork === artwork) return track;
+        changed = true;
+        return { ...track, artwork };
+      });
+      return changed ? { ...state, queue } : state;
+    }
     case "SKIP_TO":
       if (action.index < 0 || action.index >= state.playbackOrder.length) return state;
       return playAt(state, action.index, true);

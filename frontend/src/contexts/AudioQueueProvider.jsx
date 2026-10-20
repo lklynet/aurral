@@ -36,7 +36,12 @@ const DEFAULT_VOLUME = 0.7;
 const PRELOAD_LEAD_SECONDS = 20;
 const POSITION_SAVE_MS = 5000;
 const PLAYER_CHANNEL = "aurral.player";
-const PASSIVE_ACTIONS = new Set(["SET_ALBUM_ARTWORK", "SET_ERROR", "RESTORE_QUEUE"]);
+const PASSIVE_ACTIONS = new Set([
+  "SET_ALBUM_ARTWORK",
+  "UPDATE_ARTWORK",
+  "SET_ERROR",
+  "RESTORE_QUEUE",
+]);
 
 function normalizeVolume(value) {
   const parsed = Number.parseFloat(value);
@@ -342,6 +347,10 @@ export function AudioQueueProvider({ children }) {
     return () => dispatch({ type: "RESTORE_ORDER", queue, playbackOrder, isShuffleEnabled });
   }, [dispatch]);
 
+  const updateQueueArtwork = useCallback((target, artwork) => {
+    dispatch({ type: "UPDATE_ARTWORK", target, artwork });
+  }, [dispatch]);
+
   const togglePlayPause = useCallback(() => {
     if (stateRef.current.queue.length === 0) return;
     if (stateRef.current.error) {
@@ -641,11 +650,13 @@ export function AudioQueueProvider({ children }) {
       removeFromQueue,
       reorderUpcoming,
       clearUpcoming,
+      updateQueueArtwork,
     }),
     [
       addToQueue,
       clearQueue,
       clearUpcoming,
+      updateQueueArtwork,
       queueNext,
       removeFromQueue,
       reorderUpcoming,
