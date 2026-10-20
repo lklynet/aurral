@@ -283,3 +283,25 @@ test("syncPlaylist keeps removing remaining stale items even if one removal fail
   assert.deepEqual(result, { ratingKey: "111" }, "one bad removal shouldn't fail the whole sync");
   assert.deepEqual(deletedIds, ["pi-2"]);
 });
+
+test("getTracks rejects a timeout while reading a page body instead of returning a partial library", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let readingBody;
+  const bodyStarted = new Promise((resolve) => { readingBody = resolve; });
+  let pages = 0;
+  t.mock.method(globalThis, "fetch", async (_url, { signal }) => {
+    pages += 1;
+    if (pages === 1) return Response.json({ MediaContainer: { totalSize: 2, Metadata: [{ ratingKey: "1" }] } });
+    const response = Response.json({});
+    response.json = () => new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      readingBody();
+    });
+    return response;
+  });
+  const tracks = makeClient().getTracks("9");
+  const rejected = assert.rejects(tracks, { code: "ECONNABORTED" });
+  await bodyStarted;
+  t.mock.timers.tick(30_001);
+  await rejected;
+});

@@ -1,8 +1,11 @@
+import fs from "node:fs";
+import path from "node:path";
 import { userOps } from "../../db/helpers/index.js";
 import { JellyfinClient } from "../jellyfin.js";
 import { jellyfinPlaylistPointerStore } from "../jellyfin/jellyfinPlaylistPointerStore.js";
-import { getPathMappings, resolveRemotePath, resolveLocalPath } from "../pathMappings.js";
+import { getPathMappings, pathMatchesPrefix, resolveRemotePath, resolveLocalPath } from "../pathMappings.js";
 import { resolveDownloadRoot } from "../downloadPaths.js";
+import { isPathWithin } from "../libraryFolders.js";
 import { logger } from "../logger.js";
 import { claimUnmatchedRootWarning, serverScanTargets } from "./playbackScanFolders.js";
 import {
@@ -14,6 +17,8 @@ import {
 } from "./playbackDestination.js";
 
 const MAX_JELLYFIN_FOLDER_UPDATES = 20;
+const FULL_READ_INTERVAL_MS = 30_000;
+const SCAN_SETTLE_MS = 90_000;
 
 export const jellyfinSettings = Object.freeze({
   key: "jellyfin",
@@ -48,6 +53,9 @@ const providerMbid = (item) => {
 };
 
 const itemId = (item) => item?.Id ?? item?.id ?? null;
+const isWithinAny = (folders, candidate) => folders.some((folder) => isPathWithin(folder, candidate));
+const isServerPathWithinAny = (folders, candidate) =>
+  folders.some((folder) => candidate === folder || candidate.startsWith(`${folder}/`));
 const isNotFound = (error) => Number(error?.response?.status) === 404;
 
 export class JellyfinPlaybackDestination {
@@ -56,8 +64,10 @@ export class JellyfinPlaybackDestination {
     this.name = "Jellyfin";
     this.client = client;
     this._configKey = "";
-    this._libraryTracks = new Map();
-    this._staleLibraries = new Set();
+    this._indexes = new Map();
+    this._fullReadAt = new Map();
+    this._readErrors = new Map();
+    this._recentScans = [];
     this._syncHashes = new Map();
     this._publishInFlight = new Map();
     this._warnedUnmatchedRoots = new Set();
@@ -68,14 +78,17 @@ export class JellyfinPlaybackDestination {
       url: config.url || "",
       apiKey: config.apiKey || "",
       userId: config.userId || "",
+      pathMappings: getPathMappings("jellyfin"),
     });
     if (key === this._configKey) return;
     this._configKey = key;
     this.client = config.url && config.apiKey && config.userId
       ? new JellyfinClient(config.url, config.apiKey, config.userId)
       : null;
-    this._libraryTracks = new Map();
-    this._staleLibraries.clear();
+    this._indexes = new Map();
+    this._fullReadAt = new Map();
+    this._readErrors = new Map();
+    this._recentScans = [];
     this._syncHashes.clear();
     this._warnedUnmatchedRoots.clear();
   }
@@ -133,8 +146,6 @@ export class JellyfinPlaybackDestination {
 
   async ensureLibrary() {
     if (!this.isConfigured()) return playbackOperationSuccess();
-    for (const libraryKey of this._staleLibraries) this._libraryTracks.delete(libraryKey);
-    this._staleLibraries.clear();
     return this._loadLibrary(this.client.userId);
   }
 
@@ -147,13 +158,12 @@ export class JellyfinPlaybackDestination {
       });
     }
 
-    if (this._libraryTracks.has(libraryKey)) {
+    if (this._indexes.has(libraryKey)) {
       return playbackOperationSuccess();
     }
 
     try {
-      const tracks = await this.client.getAudioItems(libraryKey);
-      this._libraryTracks.set(libraryKey, tracks);
+      await this._readIndex(libraryKey);
       return playbackOperationSuccess();
     } catch (error) {
       return playbackOperationFailure({
@@ -164,35 +174,121 @@ export class JellyfinPlaybackDestination {
     }
   }
 
-  _resolveItemIds(snapshot, userId) {
-    const libraryKey = String(userId || "").trim();
-    const libraryTracks = this._libraryTracks.get(libraryKey) || [];
-    const byPath = new Map();
-    const byMbid = new Map();
+  async _readIndex(libraryKey) {
+    this._fullReadAt.set(libraryKey, Date.now());
+    try {
+      const [items, locations] = await Promise.all([
+        this.client.getAudioItems(libraryKey),
+        this.client.getMusicLibraryLocations().catch(() => null),
+      ]);
+      const now = Date.now();
+      const dropped = new Map([...(this._indexes.get(libraryKey)?.dropped ?? [])]
+        .filter(([, mark]) => mark.until > now));
+      const byPath = new Map();
+      const byMbid = new Map();
+      const paths = new Map();
+      for (const item of items) {
+        const id = itemId(item);
+        if (!id) continue;
+        const rawPath = String(item.Path || item.path || "");
+        const itemPath = normalizePath(rawPath);
+        if (dropped.get(itemPath)?.id === String(id)) continue;
+        paths.set(String(id), { key: itemPath, raw: rawPath });
+        if (itemPath && !byPath.has(itemPath)) byPath.set(itemPath, String(id));
+        const mbid = providerMbid(item);
+        if (mbid) {
+          const values = byMbid.get(mbid) || [];
+          values.push(String(id));
+          byMbid.set(mbid, values);
+        }
+      }
+      this._indexes.set(libraryKey, {
+        byPath,
+        byMbid,
+        paths,
+        dropped,
+        locations: locations?.map(normalizePath) ?? null,
+      });
+      this._readErrors.delete(libraryKey);
+    } catch (error) {
+      this._readErrors.set(libraryKey, error);
+      throw error;
+    }
+  }
 
-    for (const item of libraryTracks) {
-      const id = itemId(item);
-      if (!id) continue;
-      const path = normalizePath(item.Path || item.path);
-      if (path && !byPath.has(path)) byPath.set(path, String(id));
-      const mbid = providerMbid(item);
-      if (mbid) {
-        const values = byMbid.get(mbid) || [];
-        values.push(String(id));
-        byMbid.set(mbid, values);
+  _recentlyScannedFolders() {
+    const now = Date.now();
+    this._recentScans = this._recentScans.filter((scan) => scan.until > now);
+    return this._recentScans.map((scan) => scan.folder);
+  }
+
+  _forgetScannedFolders(folders) {
+    const until = Date.now() + SCAN_SETTLE_MS;
+    this._recentScans = [
+      ...this._recentScans.filter((scan) => scan.until > Date.now()),
+      ...folders.map((folder) => ({ folder, until })),
+    ];
+    const mappings = getPathMappings("jellyfin");
+    const serverFolders = folders.map((folder) => normalizePath(resolveRemotePath(folder, mappings)));
+    for (const index of this._indexes.values()) {
+      for (const [id, itemPath] of index.paths) {
+        if (!isServerPathWithinAny(serverFolders, itemPath.key)) continue;
+        if (fs.existsSync(resolveLocalPath(itemPath.raw, mappings))) continue;
+        index.paths.delete(id);
+        if (index.byPath.get(itemPath.key) === id) index.byPath.delete(itemPath.key);
+        index.dropped.set(itemPath.key, { id, until });
+      }
+      for (const [mbid, ids] of index.byMbid) {
+        const kept = ids.filter((id) => index.paths.has(id));
+        if (kept.length) index.byMbid.set(mbid, kept);
+        else index.byMbid.delete(mbid);
       }
     }
+  }
+
+  _resolveItemIds(snapshot, libraryKey, untrustedFolders) {
+    const { byPath, byMbid, paths } = this._indexes.get(libraryKey);
     const mappings = getPathMappings("jellyfin");
-    const ids = [];
+    const untrustedServerFolders = untrustedFolders.map((folder) => normalizePath(resolveRemotePath(folder, mappings)));
+    const settling = [...untrustedFolders, ...this._recentlyScannedFolders()];
+    const itemIds = [];
+    const missing = [];
     for (const track of snapshot.tracks) {
+      const localPath = path.resolve(track.path);
       const remotePath = normalizePath(resolveRemotePath(track.path, mappings));
-      const pathMatch = byPath.get(remotePath);
-      const mbid = String(track.mbid || "").trim().toLowerCase();
-      const mbidMatches = byMbid.get(mbid) || [];
-      const match = pathMatch || (mbidMatches.length === 1 ? mbidMatches[0] : null);
-      if (match) ids.push(match);
+      const mbidMatches = byMbid.get(String(track.mbid || "").trim().toLowerCase()) || [];
+      const mbidMatch = mbidMatches.length === 1
+        && !isWithinAny(untrustedFolders, localPath)
+        && !isServerPathWithinAny(untrustedServerFolders, paths.get(mbidMatches[0]).key)
+        ? mbidMatches[0]
+        : null;
+      const match = byPath.get(remotePath) || mbidMatch;
+      if (match) itemIds.push(match);
+      else missing.push({ remotePath, mbid: track.mbid, settling: isWithinAny(settling, localPath) });
     }
-    return ids;
+    return { itemIds, missing };
+  }
+
+  _canHold(libraryKey, { remotePath, mbid }) {
+    const { locations } = this._indexes.get(libraryKey);
+    return Boolean(mbid) || locations == null || locations.some((location) => pathMatchesPrefix(remotePath, location));
+  }
+
+  async _resolveWithReread(snapshot, libraryKey, untrustedFolders) {
+    const resolved = this._resolveItemIds(snapshot, libraryKey, untrustedFolders);
+    const needsRead = resolved.missing.some((track) => !track.settling && this._canHold(libraryKey, track));
+    let result = resolved;
+    if (needsRead && Date.now() - (this._fullReadAt.get(libraryKey) ?? 0) >= FULL_READ_INTERVAL_MS) {
+      try {
+        await this._readIndex(libraryKey);
+      } catch (error) {
+        logger.warn("jellyfin", "Could not re-read the Jellyfin music library", { error: error?.message });
+      }
+      result = this._resolveItemIds(snapshot, libraryKey, untrustedFolders);
+    }
+    const error = this._readErrors.get(libraryKey);
+    if (error && result.missing.some((track) => this._canHold(libraryKey, track))) throw error;
+    return result;
   }
 
   _hash(snapshot, itemIds) {
@@ -241,7 +337,7 @@ export class JellyfinPlaybackDestination {
     await this._deleteTarget(identity.entityId, targetKey);
   }
 
-  async _publishPlaylist(snapshot) {
+  async _publishPlaylist(snapshot, untrustedFolders) {
     if (!this.isConfigured()) return playbackOperationSuccess();
     const jellyfinUser = await this._resolveOwnerJellyfinUser(
       snapshot.ownerUserId,
@@ -257,6 +353,11 @@ export class JellyfinPlaybackDestination {
     }
     const ensured = await this._loadLibrary(jellyfinUserId);
     if (!ensured.ok) return ensured;
+    const { itemIds, missing } = await this._resolveWithReread(
+      snapshot,
+      String(jellyfinUserId).trim(),
+      untrustedFolders,
+    );
     const targetKey = this._targetKey(snapshot.ownerUserId);
     await this._deleteLegacyPointer(snapshot.entityId, targetKey);
     const cacheKey = this._cacheKey(snapshot);
@@ -276,10 +377,9 @@ export class JellyfinPlaybackDestination {
       jellyfinPlaylistPointerStore.deletePointer(snapshot.entityId, targetKey);
       reusable = null;
     }
-    const itemIds = this._resolveItemIds(snapshot, jellyfinUserId);
     if (!snapshot.tracks.length && !reusable) return playbackOperationSuccess();
 
-    const unresolved = itemIds.length < snapshot.tracks.length;
+    const unresolved = missing.length > 0;
 
     const hash = this._hash(snapshot, itemIds);
     if (!unresolved && this._syncHashes.get(cacheKey) === hash) return playbackOperationSuccess();
@@ -335,18 +435,18 @@ export class JellyfinPlaybackDestination {
       managedItemIds,
     });
     if (unresolved) {
-      this._staleLibraries.add(String(jellyfinUserId));
+      this._syncHashes.delete(cacheKey);
       return playbackOperationSuccess({ pending: true });
     }
     this._syncHashes.set(cacheKey, hash);
     return playbackOperationSuccess();
   }
 
-  async publishPlaylist(value) {
+  async publishPlaylist(value, { pendingScanFolders = new Map() } = {}) {
     try {
       const snapshot = createPlaybackPlaylistSnapshot(value);
       return await this._runPlaylistOperation(this._cacheKey(snapshot), () =>
-        this._publishPlaylist(snapshot));
+        this._publishPlaylist(snapshot, pendingScanFolders.get(this.key) ?? []));
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_PUBLISH_FAILED",
@@ -414,10 +514,10 @@ export class JellyfinPlaybackDestination {
 
   async requestScan({ folders, roots: aurralRoots = [] }) {
     if (!this.isConfigured() || !folders.length) return playbackOperationSuccess();
+    this._forgetScannedFolders(folders);
     try {
       const updated = await this._updatedFolders(folders, aurralRoots);
       if (updated.length) await this.client.reportUpdatedFolders(updated);
-      this._libraryTracks.clear();
       return playbackOperationSuccess();
     } catch (error) {
       return playbackOperationFailure({

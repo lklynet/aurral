@@ -27,6 +27,23 @@ const saveArtworkStmt = db.prepare(`
 const deleteArtworkStmt = db.prepare(
   "DELETE FROM custom_artwork WHERE entity_kind = ? AND entity_id = ?",
 );
+const getArtworkRevisionStmt = db.prepare(
+  "SELECT value FROM settings WHERE key = ?",
+);
+const saveArtworkRevisionStmt = db.prepare(`
+  INSERT INTO settings (key, value) VALUES (?, ?)
+  ON CONFLICT(key) DO UPDATE SET value = excluded.value
+`);
+
+const artworkRevisionKey = (kind) => `custom-artwork:revision:${kind}`;
+
+function advanceArtworkRevision(kind, candidate = Date.now()) {
+  const key = artworkRevisionKey(kind);
+  const current = Number(getArtworkRevisionStmt.get(key)?.value) || 0;
+  const revision = Math.max(Date.now(), Number(candidate) || 0, current + 1);
+  saveArtworkRevisionStmt.run(key, String(revision));
+  return revision;
+}
 
 function normalizeTarget(kind, id) {
   const entityKind = String(kind || "").trim().toLowerCase();
@@ -69,7 +86,10 @@ async function writeArtwork(target, buffer, contentType, sourceUrl = null) {
   } finally {
     await fs.promises.unlink(temporary).catch(() => {});
   }
-  const updatedAt = Date.now();
+  const previousUpdatedAt = Number(
+    getArtworkStmt.get(target.entityKind, target.entityId)?.updated_at,
+  ) || 0;
+  const updatedAt = Math.max(Date.now(), previousUpdatedAt + 1);
   saveArtworkStmt.run(
     target.entityKind,
     target.entityId,
@@ -77,6 +97,7 @@ async function writeArtwork(target, buffer, contentType, sourceUrl = null) {
     sourceUrl,
     updatedAt,
   );
+  advanceArtworkRevision(target.entityKind, updatedAt);
   return getCustomArtwork(target.entityKind, target.entityId);
 }
 
@@ -129,12 +150,18 @@ export function getCustomArtworkMap(kind, ids) {
   return new Map(rows.map((row) => [String(row.entity_id), Number(row.updated_at)]));
 }
 
+export function getCustomArtworkRevision(kind) {
+  const entityKind = normalizeTarget(kind, "placeholder").entityKind;
+  return Number(getArtworkRevisionStmt.get(artworkRevisionKey(entityKind))?.value) || 0;
+}
+
 export async function removeCustomArtwork(kind, id) {
   return withTargetOperation(kind, id, async (target) => {
-    deleteArtworkStmt.run(target.entityKind, target.entityId);
+    const removed = deleteArtworkStmt.run(target.entityKind, target.entityId).changes > 0;
     await fs.promises.unlink(artworkPath(target.entityKind, target.entityId)).catch((error) => {
       if (error?.code !== "ENOENT") throw error;
     });
+    if (removed) advanceArtworkRevision(target.entityKind);
   });
 }
 

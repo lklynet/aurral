@@ -12,6 +12,7 @@ export const MUSIC_SECTION_TYPE = "artist";
 const MUSIC_AGENT = "tv.plex.agents.music";
 const MUSIC_SCANNER = "Plex Music";
 const TRACK_TYPE = 10; // Plex metadata type for audio tracks
+const READ_TIMEOUT_MS = 30_000;
 
 const xmlParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "", htmlEntities: true });
 
@@ -245,7 +246,7 @@ export class PlexClient {
   }
 
   async getLibraries() {
-    const data = await this.request("/library/sections");
+    const data = await this.request("/library/sections", { timeout: READ_TIMEOUT_MS });
     return data?.MediaContainer?.Directory || [];
   }
 
@@ -342,14 +343,16 @@ export class PlexClient {
     });
   }
 
-  async getTracks(sectionId) {
+  async getTracks(sectionId, { addedSince = null } = {}) {
     const pageSize = 200;
     const out = [];
     let start = 0;
     for (;;) {
       const data = await this.request(`/library/sections/${sectionId}/all`, {
+        timeout: READ_TIMEOUT_MS,
         params: {
           type: TRACK_TYPE,
+          ...(addedSince == null ? {} : { "addedAt>": addedSince }),
           "X-Plex-Container-Start": start,
           "X-Plex-Container-Size": pageSize,
         },
@@ -364,6 +367,7 @@ export class PlexClient {
           ratingKey: t.ratingKey,
           title: t.title,
           artist: t.grandparentTitle || t.originalTitle,
+          addedAt: Number(t.addedAt) || 0,
           files,
         });
       }

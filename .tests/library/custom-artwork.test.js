@@ -18,6 +18,7 @@ const {
   buildCustomArtworkUrl,
   getCustomArtwork,
   getCustomArtworkMap,
+  getCustomArtworkRevision,
   removeCustomArtwork,
   saveCustomArtworkUpload,
   saveCustomArtworkUrl,
@@ -35,6 +36,8 @@ test("custom artwork uploads are validated, optimized, listed, and removed", asy
   assert.equal(saved.contentType, "image/webp");
   assert.equal(fs.existsSync(saved.filePath), true);
   assert.equal(getCustomArtworkMap("track", [42]).get("42"), saved.updatedAt);
+  const savedRevision = getCustomArtworkRevision("track");
+  assert.ok(savedRevision >= saved.updatedAt);
   assert.equal(
     buildCustomArtworkUrl("track", 42, saved.updatedAt),
     `/api/library/artwork/track/42?v=${saved.updatedAt}`,
@@ -43,6 +46,7 @@ test("custom artwork uploads are validated, optimized, listed, and removed", asy
   await removeCustomArtwork("track", "42");
   assert.equal(getCustomArtwork("track", "42"), null);
   assert.equal(fs.existsSync(saved.filePath), false);
+  assert.ok(getCustomArtworkRevision("track") > savedRevision);
 });
 
 test("custom artwork URLs use the protected image fetcher and become persistent files", async (t) => {
