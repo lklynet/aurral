@@ -201,7 +201,6 @@ blockquote {
     .artist-release-card__meta,
     .artist-track-number,
     .artist-rating-badge__value,
-    .artist-meta-line,
     .artist-discover-hero__updated,
     .artist-show-card__detail-text--discover,
     .artist-show-card__distance-badge--discover,
@@ -3500,16 +3499,6 @@ textarea {
   color: var(--aurral-overlay-foreground);
 }
 
-.artist-meta-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
-  margin-top: 1.25rem;
-  color: var(--aurral-text-muted);
-  font-size: 0.875rem;
-  font-weight: 600;
-}
 
 .artist-tag-list {
   display: flex;
@@ -4278,29 +4267,39 @@ textarea {
   gap: 0.125rem;
 }
 
-.artist-preview-layout {
-  display: grid;
-  width: 100%;
-  max-width: 92rem;
-  align-items: start;
-  gap: 1.5rem;
-}
-
 .artist-preview-list {
   display: grid;
   gap: 0.25rem;
 }
 
-.artist-video-wrap {
-  display: flex;
+.artist-videos-grid {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+}
+
+.artist-video-card {
   min-width: 0;
-  justify-content: center;
+}
+
+.artist-video-title {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.artist-video-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  color: var(--aurral-text-muted);
+  font-size: 0.875rem;
 }
 
 .artist-video {
   aspect-ratio: 16 / 9;
   width: 100%;
-  max-width: 560px;
   overflow: hidden;
   background: var(--aurral-surface-raised);
   border-radius: var(--aurral-radius);
@@ -5360,10 +5359,16 @@ textarea {
     width: 152px;
   }
 
-  .artist-video {
-    width: auto;
-    height: 260px;
-    max-width: 100%;
+  .artist-videos-grid--2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .artist-videos-grid--3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .artist-videos-grid--1 {
+    max-width: 560px;
   }
 }
 
@@ -5439,9 +5444,14 @@ textarea {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.25rem 1rem;
   }
+}
 
-  .artist-preview-layout--with-video {
-    grid-template-columns: minmax(520px, 0.9fr) minmax(420px, 1.1fr);
+@media (min-width: 1024px) {
+  .artist-preview-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(3, auto);
+    grid-auto-flow: column;
+    column-gap: 1.5rem;
   }
 }
 
@@ -5477,37 +5487,6 @@ textarea {
   white-space: nowrap;
 }
 
-.discover-skeleton-card {
-  padding: 0.25rem 0.25rem 0.5rem;
-}
-
-.discover-skeleton-card__cover,
-.discover-skeleton-card__line,
-.skeleton-block {
-  background: var(--aurral-surface-raised);
-  animation: discover-skeleton-pulse 1.6s var(--aurral-ease-in-out) infinite;
-}
-
-.discover-skeleton-card__cover {
-  width: 100%;
-  aspect-ratio: 1;
-  margin-bottom: 0.8125rem;
-  border-radius: var(--aurral-radius-round);
-}
-
-.discover-skeleton-card__line {
-  width: 70%;
-  height: 0.75rem;
-  border-radius: var(--aurral-radius-sm);
-}
-
-.discover-skeleton-card__line--short {
-  width: 45%;
-  height: 0.625rem;
-  margin-top: 0.625rem;
-  margin-bottom: 0.1875rem;
-}
-
 @keyframes discover-skeleton-pulse {
   0%,
   100% {
@@ -5519,20 +5498,60 @@ textarea {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .discover-skeleton-card__cover,
-  .discover-skeleton-card__line,
-  .skeleton-block {
-    animation: none;
-  }
-}
-
-.discover-skeleton-card--square .discover-skeleton-card__cover {
-  border-radius: var(--aurral-radius);
-}
-
 .skeleton-status__body {
   display: contents;
+}
+
+.skeleton-text {
+  position: relative;
+  display: inline-block;
+  width: var(--skeleton-width, 60%);
+  max-width: 100%;
+  color: transparent;
+  vertical-align: top;
+}
+
+.skeleton-text::before {
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  height: 0.75em;
+  border-radius: var(--aurral-radius-sm);
+  background: var(--aurral-surface-raised);
+  animation: discover-skeleton-pulse 1.6s var(--aurral-ease-in-out) infinite;
+  content: "";
+  translate: 0 -50%;
+}
+
+.skeleton-shape.skeleton-shape {
+  border-color: transparent;
+  background: var(--aurral-surface-raised);
+  box-shadow: none;
+  color: transparent;
+  opacity: 1;
+  pointer-events: none;
+  animation: discover-skeleton-pulse 1.6s var(--aurral-ease-in-out) infinite;
+}
+
+.skeleton-shape > * {
+  visibility: hidden;
+}
+
+.skeleton-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.skeleton-grow {
+  flex: 1 1 auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shape.skeleton-shape,
+  .skeleton-text::before {
+    animation: none;
+  }
 }
 
 .query-pending {
@@ -5544,82 +5563,6 @@ textarea {
   .query-pending {
     transition: none;
   }
-}
-
-.skeleton-line {
-  display: block;
-  height: 0.75rem;
-  border-radius: var(--aurral-radius-sm);
-}
-
-.skeleton-line--xs {
-  width: 3rem;
-}
-
-.skeleton-line--sm {
-  width: 6rem;
-  height: 0.625rem;
-}
-
-.skeleton-line--md {
-  width: min(14rem, 60%);
-}
-
-.skeleton-line--lg {
-  width: min(20rem, 80%);
-}
-
-.skeleton-line--title {
-  width: min(16rem, 70%);
-  height: 1.5rem;
-}
-
-.skeleton-page-header {
-  padding: 0.5rem 0 1.5rem;
-}
-
-.skeleton-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
-  gap: 1.25rem;
-}
-
-.skeleton-rows {
-  display: flex;
-  flex-direction: column;
-}
-
-.skeleton-row {
-  display: flex;
-  min-height: 3.5rem;
-  align-items: center;
-  gap: 0.875rem;
-  padding: 0.5rem 0.25rem;
-}
-
-.skeleton-row__art {
-  width: 2.5rem;
-  height: 2.5rem;
-  flex-shrink: 0;
-  border-radius: var(--aurral-radius-sm);
-}
-
-.skeleton-row__text {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.skeleton-row__meta {
-  flex-shrink: 0;
-}
-
-.skeleton-collection-header__body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
 }
 
 .discover-recommended-empty {
@@ -16153,6 +16096,14 @@ button.native-library-genre-row:focus-visible {
 .artist-details-page .artist-count {
   margin-bottom: 1rem;
   font-variant-numeric: tabular-nums;
+}
+
+.artist-count__loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-inline-start: 0.75rem;
+  vertical-align: top;
 }
 
 .artist-details-page .release-page__library-status {

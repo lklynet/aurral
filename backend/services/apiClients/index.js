@@ -45,7 +45,8 @@ export {
 export {
   resolveArtistAndAlbumMbids,
   resolveDeezerAlbumToMbid,
-  youtubeFindTopSongVideo,
 } from "./crossProvider.js";
+
+export { youtubeFindTopSongVideo } from "./youtube.js";
 
 export { clearApiCaches } from "./clearCache.js";

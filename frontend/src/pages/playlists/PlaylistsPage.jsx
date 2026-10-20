@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import RouteLink from "../../components/RouteLink";
 import { ListMusic, MoreVertical, Plus, Upload } from "lucide-react";
-import { SkeletonCardGrid, SkeletonStatus } from "../../components/Skeletons";
+import { SkeletonLibraryGrid, SkeletonStatus } from "../../components/Skeletons";
 import Tooltip from "../../components/Tooltip";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import { CreatePlaylistModal } from "../../components/PlaylistModals";
@@ -107,7 +107,7 @@ export default function PlaylistsPage() {
     if (loading && !status) {
       return (
         <SkeletonStatus label="Loading playlists">
-          <SkeletonCardGrid className="native-library-grid" count={8} square />
+          <SkeletonLibraryGrid kind="playlist" count={8} />
         </SkeletonStatus>
       );
     }

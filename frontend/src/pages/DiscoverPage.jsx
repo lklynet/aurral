@@ -7,7 +7,7 @@ import { getMyDiscoverLayout, updateMyDiscoverLayout } from "../utils/api/endpoi
 
 import { Sparkles, LayoutTemplate } from "lucide-react";
 import { DotLoader } from "../components/DotLoader";
-import { SkeletonRail, SkeletonStatus } from "../components/Skeletons";
+import { SkeletonDiscoverCard, SkeletonRail, SkeletonShape, SkeletonStatus } from "../components/Skeletons";
 import { resolveLibraryArtistPath } from "../navigation/resolveLinks.js";
 import DiscoveryStatusPill from "../components/DiscoveryStatusPill";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -40,7 +40,12 @@ import TooltipButton from "../components/TooltipButton";
 import RouteLink from "../components/RouteLink";
 const getArtistId = (artist) => getArtistRecordId(artist);
 
-const SQUARE_ART_SECTIONS = new Set(["playlists", "recentReleases", "recommendedShows", "news"]);
+const SECTION_CARD_KINDS = {
+  playlists: "playlist",
+  recentReleases: "album",
+  recommendedShows: "show",
+  news: "news",
+};
 
 function DiscoverPage() {
   useDocumentTitle("Discover");
@@ -320,7 +325,7 @@ function DiscoverPage() {
     if (sectionPending[id]) {
       return (
         <SkeletonStatus key={id} label="Loading section">
-          <SkeletonRail square={SQUARE_ART_SECTIONS.has(id)} />
+          <SkeletonRail kind={SECTION_CARD_KINDS[id]} />
         </SkeletonStatus>
       );
     }
@@ -468,11 +473,7 @@ function DiscoverPage() {
           >
             {Array.from({ length: DISCOVER_PREVIEW_ITEM_LIMIT }, (_, index) => (
               <div key={index} className="artist-discover-shelf-card" aria-hidden="true">
-                <div className="discover-skeleton-card">
-                  <div className="discover-skeleton-card__cover" />
-                  <div className="discover-skeleton-card__line" />
-                  <div className="discover-skeleton-card__line discover-skeleton-card__line--short" />
-                </div>
+                <SkeletonDiscoverCard index={index} />
               </div>
             ))}
           </DiscoverRail>
@@ -539,7 +540,7 @@ function DiscoverPage() {
       if (nearbyShowsLoading && !nearbyShowsData) {
         return (
           <SkeletonStatus key="recommendedShows" label="Loading shows near you">
-            <SkeletonRail />
+            <SkeletonRail kind="show" />
           </SkeletonStatus>
         );
       }
@@ -693,20 +694,19 @@ function DiscoverPage() {
               <div className="artist-discover-hero__title-wrap">
                 <div className="artist-discover-hero__title-row">
                   <h1 className="page-title">Discover</h1>
+                  <DiscoveryStatusPill isUpdating updateProgressMessage={loadingMessage} />
                 </div>
-                <p className="discover-recommended-status" role="status">
-                  <DotLoader size="xs" label={null} />
-                  {loadingMessage}
-                </p>
               </div>
+              <SkeletonShape className="btn btn-icon-square btn-surface discover-page__customize-btn" />
             </div>
+            <div className="artist-discover-hero__tags-section" />
           </div>
         </section>
         <div aria-hidden="true">
           {discoverSections
             .filter((section) => section.enabled && sectionMayRender(section.id))
             .map((section) => (
-              <SkeletonRail key={section.id} square={SQUARE_ART_SECTIONS.has(section.id)} />
+              <SkeletonRail key={section.id} kind={SECTION_CARD_KINDS[section.id]} />
             ))}
         </div>
       </div>

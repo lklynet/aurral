@@ -2,7 +2,7 @@ import { lazy, Suspense, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { Check, ClipboardCopy, Download, FilePlus2, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
-import { SkeletonCollectionHeader, SkeletonRows, SkeletonStatus } from "../../components/Skeletons";
+import { SkeletonCollectionHeader, SkeletonCollectionTracks, SkeletonStatus } from "../../components/Skeletons";
 import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../../components/CollectionHeader";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import TooltipButton from "../../components/TooltipButton";
@@ -77,8 +77,16 @@ export default function FlowDetailPage() {
         <div className="native-library-content">
           {loading && !status ? (
             <SkeletonStatus label="Loading flow" className="native-library-detail">
-              <SkeletonCollectionHeader />
-              <SkeletonRows count={10} />
+              <SkeletonCollectionHeader icons={3} />
+              <div>
+                <div className="artist-segmented playlist-detail__tabs">
+                  <span className="artist-segmented-button is-active">Tracks</span>
+                  <span className="artist-segmented-button">Recipe</span>
+                </div>
+                <div className="playlist-detail__panel">
+                  <SkeletonCollectionTracks toolbar={false} />
+                </div>
+              </div>
             </SkeletonStatus>
           ) : error && !status ? (
             <div className="native-library-state" role="alert">

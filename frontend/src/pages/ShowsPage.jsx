@@ -2,7 +2,7 @@ import { Navigate, useParams } from "react-router";
 import RouteLink from "../components/RouteLink";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { Music, MapPin, AlertCircle } from "lucide-react";
-import { SkeletonCardGrid, SkeletonStatus } from "../components/Skeletons";
+import { SkeletonShowCard, SkeletonStatus } from "../components/Skeletons";
 import NearbyLocationControl from "../components/NearbyLocationControl";
 import ShowCard from "../components/ShowCard";
 import { PageSectionMobileNav } from "../components/PageSectionMobileNav";
@@ -110,7 +110,13 @@ function ShowsPage() {
         </div>
       ) : showsLoading ? (
         <SkeletonStatus label="Loading shows">
-          <SkeletonCardGrid square />
+          <div className="shows-page__grid">
+            {Array.from({ length: 6 }, (_, index) => (
+              <div key={index} className="shows-page__grid-item">
+                <SkeletonShowCard index={index} />
+              </div>
+            ))}
+          </div>
         </SkeletonStatus>
       ) : showsError ? (
         <div className="artist-error-panel" role="alert">

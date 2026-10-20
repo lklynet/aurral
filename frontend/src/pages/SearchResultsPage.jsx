@@ -13,7 +13,7 @@ import {
 } from "../utils/api/endpoints/playlists.js";
 import { getDiscovery } from "../utils/api/endpoints/discovery.js";
 import { DotLoader } from "../components/DotLoader";
-import { SkeletonCardGrid, SkeletonStatus } from "../components/Skeletons";
+import { SkeletonSearchResults, SkeletonStatus } from "../components/Skeletons";
 import { getArtistCover, getReleaseGroupCover } from "../utils/api/endpoints/artists.js";
 import { searchCatalog, searchLibrary, searchUnified } from "../utils/api/endpoints/search.js";
 import SearchAlbumResults from "../components/SearchAlbumResults";
@@ -1506,7 +1506,24 @@ function SearchResultsPage() {
 
       {loading && (
         <SkeletonStatus label="Loading results">
-          <SkeletonCardGrid />
+          <SkeletonSearchResults
+            mode={
+              isUnifiedSearch
+                ? { all: "all", artists: "round-artists" }[activeFilter] || "albums"
+                : isAlbumSearch
+                  ? "albums"
+                  : ["recommended", "trending", "tag"].includes(normalizedType) &&
+                      recommendedViewMode === "list"
+                    ? "artist-list"
+                    : "artists"
+            }
+            gridColumns={
+              ["recommended", "trending", "tag"].includes(normalizedType) &&
+              recommendedViewMode === "grid"
+                ? recommendedGridColumns
+                : undefined
+            }
+          />
         </SkeletonStatus>
       )}
 
