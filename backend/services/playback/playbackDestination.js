@@ -5,8 +5,13 @@ const REQUIRED_METHODS = [
   "ensureLibrary",
   "publishPlaylist",
   "deletePlaylist",
+  "deleteEntityPlaylists",
+  "getPointerEntityIds",
   "requestScan",
 ];
+
+const REJECTED_HTTP_STATUSES = new Set([400, 401, 403]);
+const REJECTED_SUBSONIC_CODES = new Set([10, 40, 41, 50]);
 
 const requireText = (value, field) => {
   if (typeof value !== "string" || !value.trim()) {
@@ -93,8 +98,13 @@ export function createPlaybackScanRequest({ folders, roots } = {}) {
   });
 }
 
-export function playbackOperationSuccess() {
-  return Object.freeze({ ok: true });
+export function playbackOperationSuccess({ pending = false } = {}) {
+  return Object.freeze(pending ? { ok: true, pending: true } : { ok: true });
+}
+
+export function isRetryablePlaybackError(error) {
+  return !REJECTED_HTTP_STATUSES.has(Number(error?.response?.status))
+    && !REJECTED_SUBSONIC_CODES.has(Number(error?.code));
 }
 
 export function playbackScanDeferred() {

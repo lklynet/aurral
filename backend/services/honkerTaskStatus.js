@@ -32,6 +32,13 @@ export const QUEUE_DEFINITIONS = [
     worker: "system-task-inbox",
   },
   {
+    queue: "playback",
+    label: "Media server updates",
+    workerLabel: "Media server worker",
+    description: "Scans connected media servers and publishes playlists to them, one job at a time.",
+    worker: "playback",
+  },
+  {
     queue: "weekly-flow-operation",
     label: "Playlist operations",
     workerLabel: "Playlist operation worker",
@@ -89,10 +96,22 @@ export const QUEUE_DEFINITIONS = [
   },
 ];
 
+const SYSTEM_TASK_QUEUES = new Set([
+  "system-task",
+  "system-task-maintenance",
+  "system-task-inbox",
+  "release-metadata-refresh",
+  "playback",
+]);
+
 export const SYSTEM_TASK_LABELS = {
   "playback-library-scan": {
     label: "Media server scan",
     description: "Refreshes connected media servers after files change.",
+  },
+  "playback-playlist-sync": {
+    label: "Media server playlist sync",
+    description: "Publishes changed flows and playlists to connected media servers, then retries tracks a server has not indexed yet.",
   },
   "weekly-flow-refresh": {
     label: "Playlist schedule check",
@@ -120,7 +139,7 @@ export const SYSTEM_TASK_LABELS = {
   },
   "playlist-startup-publish": {
     label: "Startup playlist publish",
-    description: "Publishes flows and playlists to connected playback servers after Aurral starts.",
+    description: "Queues a playlist sync to connected media servers after Aurral starts.",
   },
   "discovery-refresh-check": {
     label: "Discovery auto refresh check",
@@ -444,8 +463,7 @@ export function describeHonkerTask(queue, payloadValue) {
   const payload = parsePayload(payloadValue) || {};
   const safeQueue = String(queue || "").trim();
 
-  if (safeQueue === "system-task" || safeQueue === "system-task-maintenance" ||
-      safeQueue === "system-task-inbox" || safeQueue === "release-metadata-refresh")
+  if (SYSTEM_TASK_QUEUES.has(safeQueue))
     return systemTaskInfo(String(payload?.kind || "").trim()).label;
   if (safeQueue === "discovery-refresh") return discoveryRefreshInfo(payload).label;
   if (safeQueue === "_outbox:notifications")
@@ -470,8 +488,7 @@ function describeHonkerTaskDetail(queue, payloadValue) {
   const payload = parsePayload(payloadValue) || {};
   const safeQueue = String(queue || "").trim();
 
-  if (safeQueue === "system-task" || safeQueue === "system-task-maintenance" ||
-      safeQueue === "system-task-inbox" || safeQueue === "release-metadata-refresh")
+  if (SYSTEM_TASK_QUEUES.has(safeQueue))
     return systemTaskInfo(String(payload?.kind || "").trim()).description;
   if (safeQueue === "discovery-refresh") return discoveryRefreshInfo(payload).description;
 
@@ -486,8 +503,7 @@ function summarizePayload(queue, payloadValue) {
     return "";
   }
 
-  if (queue === "system-task" || queue === "system-task-maintenance" ||
-      queue === "system-task-inbox" || queue === "release-metadata-refresh") {
+  if (SYSTEM_TASK_QUEUES.has(queue)) {
     return "";
   }
 

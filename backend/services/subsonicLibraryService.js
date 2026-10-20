@@ -863,16 +863,7 @@ const cancelLegacyPlaylistJobs = async (jobs) => {
 };
 
 const refreshSubsonicPlaylist = (playlistId) => {
-  playlistManager.updateConfig(false);
-  Promise.all([
-    playlistManager.ensureSmartPlaylists(),
-    playlistManager.refreshPlaylist(playlistId),
-  ]).catch((error) => {
-    logger.error("subsonic", "Could not refresh playlist", {
-      playlistId,
-      reason: error?.message || String(error),
-    });
-  });
+  playlistManager.requestPlaylistSync([playlistId]);
   playlistManager.scheduleScanLibrary();
 };
 

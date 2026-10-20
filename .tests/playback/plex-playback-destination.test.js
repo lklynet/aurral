@@ -248,6 +248,14 @@ test("upserts from the entity-owner pointer and stores the returned pointer priv
   const stored = plexPlaylistPointerStore.getPointer("flow-1", "global");
   assert.equal(stored.ratingKey, "88");
   assert.equal(stored.title, "Discover Weekly");
+
+  plexPlaylistPointerStore.deletePointer("flow-1", "global");
+  received = null;
+  await destination.publishPlaylist(
+    snapshot({ tracks: [{ path: trackPath, title: "Track", artist: "Artist" }] }),
+  );
+  assert.equal(received?.ratingKey, null, "an unchanged playlist is published again once its pointer is gone");
+  assert.equal(plexPlaylistPointerStore.getPointer("flow-1", "global").ratingKey, "88");
 });
 
 test("deletes the pointed playlist and forgets only that entity-owner state", async () => {
@@ -271,6 +279,31 @@ test("deletes the pointed playlist and forgets only that entity-owner state", as
   assert.deepEqual(deleted, ["88"]);
   assert.equal(plexPlaylistPointerStore.getPointer("flow-1", "global"), null);
   assert.equal(plexPlaylistPointerStore.getPointer("flow-2", "global").ratingKey, "99");
+});
+
+test("an entity delete that Plex rejects keeps the pointer so the sync job can retry it", async () => {
+  const destination = makeDestination();
+  plexPlaylistPointerStore.setPointer("gone", "global", {
+    location: "global",
+    ratingKey: "77",
+    title: "Removed from Aurral",
+  });
+  let available = false;
+  const deleted = [];
+  mock.method(PlexClient.prototype, "deletePlaylist", async (ratingKey) => {
+    if (!available) throw Object.assign(new Error("Plex unavailable"), { response: { status: 503 } });
+    deleted.push(ratingKey);
+  });
+
+  const failed = await destination.deleteEntityPlaylists("gone");
+  assert.equal(failed.ok, false);
+  assert.equal(failed.error.retryable, true);
+  assert.equal(plexPlaylistPointerStore.getPointer("gone", "global").ratingKey, "77");
+
+  available = true;
+  assert.deepEqual(await destination.deleteEntityPlaylists("gone"), { ok: true });
+  assert.deepEqual(deleted, ["77"]);
+  assert.equal(plexPlaylistPointerStore.getPointer("gone", "global"), null);
 });
 
 test("forgets an unreachable pointer after Plex configuration is cleared", async () => {
@@ -383,7 +416,7 @@ test("keeps Navidrome and Plex failures isolated when both destinations are conf
     return { ok: true };
   };
 
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
   assert.deepEqual(calls, [playlist.id]);
 
   manager.navidromeDestination.publishPlaylist = async () => ({ ok: true });
@@ -391,10 +424,10 @@ test("keeps Navidrome and Plex failures isolated when both destinations are conf
     ok: false,
     error: { message: "Plex unavailable" },
   });
-  await assert.doesNotReject(manager.ensurePlaylists());
+  await assert.doesNotReject(manager.syncPlaylists());
 });
 
-test("does not publish playlists when a configured library cannot be verified", async (t) => {
+test("a destination whose library cannot be verified gets no publishes while the others still do", async (t) => {
   t.mock.method(console, "warn", () => {});
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Blocked setup" });
   const manager = new PlaylistManager(downloadRoot);
@@ -405,13 +438,16 @@ test("does not publish playlists when a configured library cannot be verified", 
     error: { message: "Navidrome library path verification failed" },
   });
   manager.navidromeDestination.publishPlaylist = async () => {
-    published.push(playlist.id);
+    published.push(["Navidrome", playlist.id]);
+    return { ok: true };
+  };
+  manager.plexDestination.isConfigured = () => true;
+  manager.plexDestination.ensureLibrary = async () => ({ ok: true });
+  manager.plexDestination.publishPlaylist = async (value) => {
+    published.push(["Plex", value.entityId]);
     return { ok: true };
   };
 
-  await assert.rejects(
-    manager.ensurePlaylists(),
-    /Navidrome: Navidrome library path verification failed/,
-  );
-  assert.deepEqual(published, []);
+  await manager.syncPlaylists({ entityIds: [playlist.id] });
+  assert.deepEqual(published, [["Plex", playlist.id]]);
 });

@@ -17,6 +17,7 @@ import {
 import {
   createPlaybackPlaylistIdentity,
   createPlaybackPlaylistSnapshot,
+  isRetryablePlaybackError,
   playbackOperationFailure,
   playbackOperationSuccess,
 } from "./playbackDestination.js";
@@ -54,7 +55,6 @@ export class PlexPlaybackDestination {
     this._libraryTracks = null;
     this._mainLibraryTracks = null;
     this._syncHashes = new Map();
-    this._catchupRunning = false;
   }
 
   updateConfig(config = {}) {
@@ -126,7 +126,7 @@ export class PlexPlaybackDestination {
       return playbackOperationFailure({
         code: "DESTINATION_UNAVAILABLE",
         message: error?.message || "Plex did not respond",
-        retryable: true,
+        retryable: isRetryablePlaybackError(error),
       });
     }
   }
@@ -149,7 +149,7 @@ export class PlexPlaybackDestination {
       return playbackOperationFailure({
         code: "LIBRARY_SETUP_FAILED",
         message: error?.message || "Could not prepare the Plex library",
-        retryable: true,
+        retryable: isRetryablePlaybackError(error),
       });
     }
   }
@@ -390,11 +390,10 @@ export class PlexPlaybackDestination {
     try {
       await client?.deletePlaylist(pointer.ratingKey);
     } catch (error) {
-      if (error?.response?.status !== 404) {
-        console.warn("[PlexPlaybackDestination] Failed to delete playlist:", error?.message);
-      }
+      if (error?.response?.status !== 404) throw error;
     }
     plexPlaylistPointerStore.deletePointer(entityId, targetKey);
+    this._syncHashes.delete(`${entityId}:${targetKey}`);
   }
 
   async _deleteCurrent(identity, clientCache = new Map()) {
@@ -426,7 +425,9 @@ export class PlexPlaybackDestination {
         const ensured = await this.ensureLibrary();
         if (!ensured.ok) return ensured;
       }
-      if (!this._libraryTracks.length) return playbackOperationSuccess();
+      if (!this._libraryTracks.length) {
+        return playbackOperationSuccess({ pending: snapshot.tracks.length > 0 });
+      }
       const clientCache = new Map();
       const userCache = new Map();
       if (this._isOwnerBlocked(snapshot.ownerUserId, clientCache, userCache)) {
@@ -440,16 +441,17 @@ export class PlexPlaybackDestination {
         userCache,
       );
       const ratingKeys = await this._resolveRatingKeys(snapshot);
+      const pending = ratingKeys.length < snapshot.tracks.length;
       if (!ratingKeys.length) {
         await this._deleteCurrent(snapshot, clientCache);
-        return playbackOperationSuccess();
+        return playbackOperationSuccess({ pending });
       }
       const targetKey = this._targetKey(snapshot.ownerUserId);
       const cacheKey = `${snapshot.entityId}:${targetKey}`;
       const hash = this._hash(snapshot, ratingKeys, title);
-      if (this._syncHashes.get(cacheKey) === hash) return playbackOperationSuccess();
-      const location = this._location(snapshot.ownerUserId);
       const pointer = plexPlaylistPointerStore.getPointer(snapshot.entityId, targetKey);
+      if (pointer && this._syncHashes.get(cacheKey) === hash) return playbackOperationSuccess({ pending });
+      const location = this._location(snapshot.ownerUserId);
       if (pointer && pointer.location !== location) await this._cleanupRelocatedPointer(pointer);
       const reusable = pointer?.location === location ? pointer : null;
       const result = await this._withOwnerClient(snapshot.ownerUserId, clientCache, (client) =>
@@ -462,7 +464,7 @@ export class PlexPlaybackDestination {
           ratingKeys,
         }),
       );
-      if (result === SYNC_SKIPPED) return playbackOperationSuccess();
+      if (result === SYNC_SKIPPED) return playbackOperationSuccess({ pending });
       if (result?.ratingKey) {
         plexPlaylistPointerStore.setPointer(snapshot.entityId, targetKey, {
           location,
@@ -474,12 +476,12 @@ export class PlexPlaybackDestination {
         plexPlaylistPointerStore.deletePointer(snapshot.entityId, targetKey);
       }
       this._syncHashes.set(cacheKey, hash);
-      return playbackOperationSuccess();
+      return playbackOperationSuccess({ pending });
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_PUBLISH_FAILED",
         message: error?.message || "Could not publish the Plex playlist",
-        retryable: true,
+        retryable: isRetryablePlaybackError(error),
       });
     }
   }
@@ -492,7 +494,7 @@ export class PlexPlaybackDestination {
       return playbackOperationFailure({
         code: "PLAYLIST_DELETE_FAILED",
         message: error?.message || "Could not delete the Plex playlist",
-        retryable: true,
+        retryable: isRetryablePlaybackError(error),
       });
     }
   }
@@ -506,15 +508,33 @@ export class PlexPlaybackDestination {
       clientCache.set(String(ownerUserId), client);
     }
     for (const pointer of plexPlaylistPointerStore.getPointersForTarget(targetKey)) {
-      await this._deletePointer(pointer.entityId, ownerUserId, pointer, clientCache);
+      try {
+        await this._deletePointer(pointer.entityId, ownerUserId, pointer, clientCache);
+      } catch (error) {
+        console.warn("[PlexPlaybackDestination] Failed to delete playlist:", error?.message);
+        plexPlaylistPointerStore.deletePointer(pointer.entityId, targetKey);
+      }
     }
   }
 
+  getPointerEntityIds() {
+    return plexPlaylistPointerStore.getEntityIds();
+  }
+
   async deleteEntityPlaylists(entityId) {
-    const clientCache = new Map();
-    for (const pointer of plexPlaylistPointerStore.getPointersForEntity(entityId)) {
-      const ownerUserId = pointer.targetKey === "global" ? null : Number(pointer.targetKey);
-      await this._deletePointer(entityId, ownerUserId, pointer, clientCache);
+    try {
+      const clientCache = new Map();
+      for (const pointer of plexPlaylistPointerStore.getPointersForEntity(entityId)) {
+        const ownerUserId = pointer.targetKey === "global" ? null : Number(pointer.targetKey);
+        await this._deletePointer(entityId, ownerUserId, pointer, clientCache);
+      }
+      return playbackOperationSuccess();
+    } catch (error) {
+      return playbackOperationFailure({
+        code: "PLAYLIST_DELETE_FAILED",
+        message: error?.message || "Could not delete the Plex playlist",
+        retryable: isRetryablePlaybackError(error),
+      });
     }
   }
 
@@ -549,21 +569,23 @@ export class PlexPlaybackDestination {
       return playbackOperationFailure({
         code: "SCAN_FAILED",
         message: error?.message || "Could not scan the Plex library",
-        retryable: true,
+        retryable: isRetryablePlaybackError(error),
       });
     }
   }
 
-  async syncNow(snapshots, loadSnapshots) {
+  async syncNow(snapshots) {
     if (!this.isConfigured()) return { configured: false };
     const ensured = await this.ensureLibrary();
     if (!ensured.ok) throw new Error(ensured.error.message);
     await this.client.scanLibrary(this._sectionId);
     this._syncHashes.clear();
     await this._loadTracks();
+    const pendingEntityIds = [];
     for (const snapshot of snapshots) {
       const result = await this.publishPlaylist(snapshot);
       if (!result.ok) throw new Error(result.error.message);
+      if (result.pending) pendingEntityIds.push(snapshot.entityId);
     }
     const playlists = await this.client.getPlaylists();
     const clientCache = new Map();
@@ -575,8 +597,8 @@ export class PlexPlaybackDestination {
           this._title(snapshot.ownerUserId, snapshot.displayName, clientCache, userCache),
         ),
     );
-    this._scheduleCatchup(loadSnapshots);
     return {
+      pendingEntityIds,
       configured: true,
       sectionId: this._sectionId,
       indexedTracks: this._libraryTracks.length,
@@ -585,25 +607,5 @@ export class PlexPlaybackDestination {
         .filter((playlist) => managedNames.has(playlist.title))
         .map((playlist) => ({ title: playlist.title, count: playlist.leafCount ?? null })),
     };
-  }
-
-  _scheduleCatchup(loadSnapshots, delaysMs = [30000, 90000, 180000]) {
-    if (this._catchupRunning || typeof loadSnapshots !== "function") return;
-    this._catchupRunning = true;
-    const run = async () => {
-      try {
-        for (const delay of delaysMs) {
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          if (!this.isConfigured()) break;
-          await this._loadTracks();
-          for (const snapshot of await loadSnapshots()) await this.publishPlaylist(snapshot);
-        }
-      } catch (error) {
-        console.warn("[PlexPlaybackDestination] Plex catch-up failed:", error?.message);
-      } finally {
-        this._catchupRunning = false;
-      }
-    };
-    run();
   }
 }

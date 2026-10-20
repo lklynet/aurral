@@ -2,11 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { access, copyFile, mkdir, rm, writeFile } from "node:fs/promises";
-import { fork, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { setTimeout as delay } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
 import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../helpers/backendTestHarness.js";
+import { callFromProcessesWhileHonkerLocked } from "../helpers/playlistManagerCallers.js";
 
 const previousGroup = process.env.AURRAL_BACKGROUND_WORKER_GROUP;
 process.env.AURRAL_BACKGROUND_WORKER_GROUP = "library";
@@ -104,7 +103,7 @@ const navidromeScanAll = { service: "Navidrome", endpoint: "startScan", params: 
 const byService = (requests) => [...requests].sort((left, right) => left.service.localeCompare(right.service));
 
 function pendingScans() {
-  return honker.listHonkerJobs("system-task").map(({ id, run_at: runAt, payload }) => ({
+  return honker.listHonkerJobs("playback").map(({ id, run_at: runAt, payload }) => ({
     id,
     runAt,
     folders: payload.folders,
@@ -165,12 +164,12 @@ const availablePaths = () => db.prepare("SELECT path FROM library_media_files WH
   .all().map((row) => row.path);
 
 const cancelPendingScans = () => {
-  for (const { id } of pendingScans()) honker.getSystemTaskQueue().cancel(id);
+  for (const { id } of pendingScans()) honker.getPlaybackTaskQueue().cancel(id);
 };
 
 async function runPendingScan() {
-  const [job] = honker.listHonkerJobs("system-task");
-  honker.getSystemTaskQueue().cancel(job.id);
+  const [job] = honker.listHonkerJobs("playback");
+  honker.getPlaybackTaskQueue().cancel(job.id);
   await processSystemTask(job.payload);
 }
 
@@ -198,7 +197,7 @@ test("media scan requests batch changed folders into one durable job that keeps 
 
   const [batched] = pendingScans();
   setRunAt(batched.id, 0);
-  const active = honker.getSystemTaskQueue().claimOne(honker.getWorkerId());
+  const active = honker.getPlaybackTaskQueue().claimOne(honker.getWorkerId());
   assert.equal(active.id, batched.id);
   playlistManager.schedulePlaybackScan([path.join(album, "03.flac")]);
   playlistManager.schedulePlaybackScan([path.join(single, "02.flac")]);
@@ -213,7 +212,7 @@ test("media scan requests batch changed folders into one durable job that keeps 
   assert.deepEqual(pendingScans().map(({ folders }) => folders), [[missingMount, album, single]]);
   const [retried] = pendingScans();
   setRunAt(retried.id, 0);
-  honker.getSystemTaskQueue().claimOne(honker.getWorkerId()).retry(60, "Plex unavailable");
+  honker.getPlaybackTaskQueue().claimOne(honker.getWorkerId()).retry(60, "Plex unavailable");
   playlistManager.schedulePlaybackScan([path.join(album, "04.flac")]);
   assert.deepEqual(pendingScans().map(({ folders }) => folders), [[missingMount, album, single], [album]]);
   dbOps.updateSettings({ integrations: {} });
@@ -224,31 +223,12 @@ test("media scan requests from two processes at once both land in the pending jo
   const [first, second, third] = ["First", "Second", "Third"].map((name) => path.join(downloadRoot, name, "Album"));
   await Promise.all([first, second, third].map((album) => mkdir(album, { recursive: true })));
   const pendingId = playlistManager.schedulePlaybackScan([first]);
-  const fixture = fileURLToPath(new URL("../fixtures/playback-scan-caller.mjs", import.meta.url));
-  const callers = [second, third].map(() => fork(fixture, { stdio: ["ignore", "ignore", "inherit", "ipc"] }));
-  t.after(() => callers.forEach((caller) => caller.kill()));
-  const nextMessage = (caller, type) => new Promise((resolve) => {
-    const listener = (message) => {
-      if (message?.type !== type) return;
-      caller.off("message", listener);
-      resolve(message);
-    };
-    caller.on("message", listener);
-  });
-  await Promise.all(callers.map((caller) => nextMessage(caller, "ready")));
+  const jobIds = await callFromProcessesWhileHonkerLocked(t, honker, "schedulePlaybackScan", [
+    [[path.join(second, "01.flac")]],
+    [[path.join(third, "01.flac")]],
+  ]);
 
-  const writeLock = honker.getHonkerDb().transaction();
-  const scheduled = callers.map((caller) => nextMessage(caller, "scheduled"));
-  await Promise.all(callers.map((caller, index) => {
-    const calling = nextMessage(caller, "calling");
-    caller.send({ paths: [path.join([second, third][index], "01.flac")] });
-    return calling;
-  }));
-  await delay(500);
-  writeLock.commit();
-  const results = await Promise.all(scheduled);
-
-  assert.deepEqual(results.map(({ jobId }) => jobId), [pendingId, pendingId]);
+  assert.deepEqual(jobIds, [pendingId, pendingId]);
   assert.deepEqual(pendingScans().map(({ id, folders }) => ({ id, folders })), [
     { id: pendingId, folders: [first, second, third] },
   ]);
@@ -373,7 +353,7 @@ test("folders that arrive while Navidrome is scanning reach Navidrome once it is
   const requests = stubMediaServers(t, { navidromeScanning: () => navidromeBusy });
   const [first, second, third] = ["First", "Second", "Third"].map((name) => path.join(downloadRoot, name, "Album"));
   await Promise.all([first, second, third].map((album) => mkdir(album, { recursive: true })));
-  const pendingPayloads = () => honker.listHonkerJobs("system-task").map(({ payload }) => payload);
+  const pendingPayloads = () => honker.listHonkerJobs("playback").map(({ payload }) => payload);
   const navidromeOnly = (...folders) => ({ kind: "playback-library-scan", folders, destinations: ["navidrome"] });
 
   playlistManager.schedulePlaybackScan([first]);
@@ -431,7 +411,7 @@ test("an untargeted library scan tells servers only the folders whose files it c
   const runScan = await libraryScanRunner(t);
   const settled = async (folders) => {
     assert.deepEqual(pendingScans().map((scan) => scan.folders), folders);
-    for (const { id } of pendingScans()) honker.getSystemTaskQueue().cancel(id);
+    for (const { id } of pendingScans()) honker.getPlaybackTaskQueue().cancel(id);
   };
   await makeTrack(path.join(downloadRoot, "Other Artist", "Album", "Other.wav"), "Other");
   await runScan({});
@@ -526,7 +506,7 @@ test("a retained Library file deleted by a scan leaves the Library and reaches t
   const retain = async (filePath, title) => {
     await makeTrack(filePath, title);
     await runScan({ changedPaths: [filePath] });
-    for (const { id } of pendingScans()) honker.getSystemTaskQueue().cancel(id);
+    for (const { id } of pendingScans()) honker.getPlaybackTaskQueue().cancel(id);
     referenced.push(filePath);
     assert.equal(await createPlaybackDeletionGuard().canDelete(filePath), false);
     referenced.length = 0;
@@ -579,9 +559,7 @@ test("deleting a flow indexes a shared file moved into the Downloads Folder and 
   for (const method of ["blockPlaylist", "waitForPlaylistIdle", "unblockPlaylist", "setRetryCyclePaused"]) {
     t.mock.method(downloadWorker, method, async () => {});
   }
-  for (const method of ["deletePlaybackPlaylist", "cleanupEntityPlexPlaylists", "ensureSmartPlaylists"]) {
-    t.mock.method(playlistManager, method, async () => {});
-  }
+  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
   const flow = flowPlaylistConfig.createFlow({ name: "Hidden Flow", size: 10 });
   const original = path.join(downloadRoot, "_flows", flow.id, "Scan Artist", "Album", "Song.wav");
   await makeTrack(original);

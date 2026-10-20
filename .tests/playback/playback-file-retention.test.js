@@ -43,7 +43,8 @@ function destination(key, active, read) {
   return {
     key, name: key, updateConfig() {}, isConfigured: () => active,
     async testConnection() {}, async ensureLibrary() {}, async publishPlaylist() {},
-    async deletePlaylist() {}, async requestScan() {}, getReferencedPaths: read,
+    async deletePlaylist() {}, async deleteEntityPlaylists() {}, getPointerEntityIds: () => [], async requestScan() {},
+    getReferencedPaths: read,
   };
 }
 
@@ -247,7 +248,7 @@ test("quality upgrades preserve the old file when another playback playlist uses
   const newFile = await makeFile("_flows/upgrade/new.flac");
   const originalId = downloadTracker.addJob({ artistName: "Artist", trackName: "Upgrade" }, "upgrade");
   downloadTracker.setDone(originalId, oldFile);
-  t.mock.method(playlistManager, "refreshPlaylist", async () => {});
+  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
   t.mock.method(playlistManager, "scheduleScanLibrary", () => {});
   t.mock.method(playlistManager.destinationRegistry, "run", async () => [{ destination: "Navidrome", ok: true, paths: [oldFile] }]);
   await finalizeQualityUpgradeSuccess({ id: "upgrade-job", upgradeForJobId: originalId }, newFile, { tier: "lossless" });

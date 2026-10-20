@@ -151,7 +151,7 @@ test("switching off the prefix deletes a leftover prefixed playlist with no poin
     deleted.push(id);
   };
 
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
 
   assert.deepEqual(manager.navidromeDestination.client.created, ["Weekend Vibes"]);
   assert.deepEqual(deleted, ["existing-1"]);
@@ -170,7 +170,7 @@ test("two different owners can use the same native playlist name", async () => {
   flowPlaylistConfig.setEnabled(jodyFlow.id, true);
 
   const manager = makeManager({ prefixOwnerUsername: false });
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
 
   assert.deepEqual(
     manager.navidromeDestination.client.created.sort(),

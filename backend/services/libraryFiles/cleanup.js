@@ -484,9 +484,7 @@ export async function finishCleanup(operation) {
     .map((job) => job.playlistId || job.playlistType)
     .filter(Boolean));
   const { playlistManager } = await import("../playlists/playlistManager.js");
-  for (const playlistId of playlistIds) {
-    await playlistManager.refreshPlaylist(playlistId).catch(() => {});
-  }
+  playlistManager.requestPlaylistSync([...playlistIds]);
   if (removing) updateLibraryFileOperation(operation.id, { summary: { removingSources: null } });
   return {
     includeLidarr: false,

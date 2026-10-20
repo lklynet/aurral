@@ -46,7 +46,7 @@ export function createPlaybackDeletionGuard({
     let currentRegistry = registry;
     if (!currentRegistry) {
       const { playlistManager } = await import("../playlists/playlistManager.js");
-      playlistManager.updateConfig(false);
+      playlistManager.updateConfig();
       currentRegistry = playlistManager.destinationRegistry;
     }
     const results = await currentRegistry.run("getReferencedPaths", { excludeEntityIds });

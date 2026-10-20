@@ -110,6 +110,9 @@ export function createFakeNavidrome({
         state.playlists.push(playlist);
         return subsonicResponse({ playlist: playlistDetail(playlist) });
       }
+      case "/rest/deletePlaylist":
+        state.playlists = state.playlists.filter((playlist) => playlist.id !== params.get("id"));
+        return subsonicResponse();
       case "/rest/startScan":
         state.scans.push(params.getAll("target"));
         return subsonicResponse({ scanStatus: { scanning: true } });

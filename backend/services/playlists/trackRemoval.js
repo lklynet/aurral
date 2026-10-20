@@ -11,7 +11,6 @@ import { prepareRetainedPlaylistFile, commitRetainedPlaylistRelocationInTransact
 import { removePlaylistFileIfUnshared } from "../downloadJobs/fileReuse.js";
 import { downloadWorker } from "../downloadJobs/downloadWorker.js";
 import { playlistManager } from "./playlistManager.js";
-import { logger } from "../logger.js";
 
 export function getSharedDownloadReferences(jobId, excludedPlaylistId) {
   return flowPlaylistConfig.getStaticPlaylists().filter((playlist) => playlist.id !== excludedPlaylistId &&
@@ -38,15 +37,7 @@ export async function removePlaylistTracksWithoutDownloads() {
       .filter(({ playlist, tracks }) => playlistIds.includes(playlist.id) &&
         flowPlaylistConfig.updateStaticPlaylist(playlist.id, { tracks }))
       .map(({ playlist }) => playlist.id));
-  playlistManager.updateConfig(false);
-  for (const playlistId of repairedIds) {
-    await playlistManager.refreshPlaylist(playlistId).catch((error) => {
-      logger.warn("playlists", "Could not republish a playlist after removing missing tracks", {
-        playlistId,
-        message: error?.message || String(error),
-      });
-    });
-  }
+  playlistManager.requestPlaylistSync(repairedIds);
   return repairedIds;
 }
 

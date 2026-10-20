@@ -23,6 +23,8 @@ function destination(name, configured, result = { ok: true }) {
       calls.push(["deletePlaylist", identity]);
       return result;
     },
+    async deleteEntityPlaylists() {},
+    getPointerEntityIds: () => [],
     async requestScan() {},
   };
 }

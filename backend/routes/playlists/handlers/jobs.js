@@ -509,12 +509,11 @@ export function registerJobs(router) {
 
   router.post("/playlist/:playlistType/create", requireAdmin, async (req, res) => {
     try {
-      playlistManager.updateConfig(false);
-      await playlistManager.ensureSmartPlaylists();
+      playlistManager.requestPlaylistSync();
       res.json({
         success: true,
         message:
-          "Playlists ready. Navidrome publishes them after indexing downloaded tracks.",
+          "Playlist sync queued. Media servers publish playlists after indexing downloaded tracks.",
       });
     } catch (error) {
       res.status(500).json({

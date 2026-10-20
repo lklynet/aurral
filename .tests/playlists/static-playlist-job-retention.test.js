@@ -21,7 +21,7 @@ test.beforeEach(() => {
 test.after(() => cleanupIsolatedState(state));
 
 function fixture(t) {
-  t.mock.method(playlistManager, "refreshPlaylist", async () => {});
+  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
   t.mock.method(playlistManager, "scheduleScanLibrary", async () => {});
   const track = { artistName: "Artist", trackName: "Track", albumName: "Album" };
   const source = config.flowPlaylistConfig.createStaticPlaylist({ name: "Source", tracks: [track] });
@@ -47,19 +47,24 @@ test("deleting the original playlist preserves a survivor's completed media", as
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "disposable audio");
   downloadTracker.setDone(jobId, file);
+  const synced = [];
+  t.mock.method(playlistManager, "requestPlaylistSync", (ids) => { synced.push(...ids); });
   await operations.processPlaylistOperation({ kind: "shared-playlist-delete", playlistId: source.id });
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id), null);
   const retained = downloadTracker.getJob(jobId);
   assert.equal(retained?.playlistType, survivor.id);
   assert.equal(await fs.readFile(retained.finalPath, "utf8"), "disposable audio");
+  assert.deepEqual([...new Set(synced)].sort(), [source.id, survivor.id].sort());
 });
 
-test("replacing imported tracks preserves a removed job referenced by another playlist", async (t) => {
+test("replacing imported tracks preserves a removed job referenced by another playlist and syncs both", async (t) => {
   const { source, survivor, jobId } = fixture(t);
-  t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+  const synced = [];
+  t.mock.method(playlistManager, "requestPlaylistSync", (ids) => { synced.push(...ids); });
   await operations.updateStaticPlaylist({ playlistId: source.id, tracks: [], hasTracksUpdate: true });
   assert.equal(downloadTracker.getJob(jobId)?.playlistType, survivor.id);
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id).tracks.length, 0);
+  assert.deepEqual([...new Set(synced)].sort(), [source.id, survivor.id].sort());
 });
 
 test("an import persistence failure preserves an unshared completed job and its file", async (t) => {
@@ -78,16 +83,16 @@ test("an import persistence failure preserves an unshared completed job and its 
   db.exec("DROP TRIGGER reject_import");
 });
 
-test("a single-removal retry refreshes the surviving playlist after a service failure", async (t) => {
+test("a single-removal retry syncs the surviving playlist after the sync could not be queued", async (t) => {
   const { source, survivor, jobId } = fixture(t);
   let fail = true;
   const refreshed = [];
-  t.mock.method(playlistManager, "refreshPlaylist", async (id) => {
-    refreshed.push(id);
-    if (id === survivor.id && fail) throw new Error("survivor unavailable");
+  t.mock.method(playlistManager, "requestPlaylistSync", (ids) => {
+    refreshed.push(...ids);
+    if (ids.includes(survivor.id) && fail) throw new Error("sync queue unavailable");
   });
   const operation = { kind: "shared-playlist-delete-track", playlistId: source.id, jobId };
-  await assert.rejects(operations.processPlaylistOperation(operation), /survivor unavailable/);
+  await assert.rejects(operations.processPlaylistOperation(operation), /sync queue unavailable/);
   assert.equal(downloadTracker.getJob(jobId)?.playlistType, survivor.id);
   fail = false;
   refreshed.length = 0;
@@ -142,17 +147,23 @@ test("whole-playlist deletion resumes external cleanup after membership commits"
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "completed retained audio");
   downloadTracker.setDone(jobId, file);
-  t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+  const synced = [];
+  t.mock.method(playlistManager, "requestPlaylistSync", (ids) => { synced.push(...ids); });
+  const weeklyReset = playlistManager.weeklyReset.bind(playlistManager);
   let fail = true;
-  t.mock.method(playlistManager, "deletePlaybackPlaylist", async () => {
-    if (fail) throw new Error("playback unavailable");
+  t.mock.method(playlistManager, "weeklyReset", async (...args) => {
+    if (fail) throw new Error("cleanup unavailable");
+    return weeklyReset(...args);
   });
   const operation = { kind: "shared-playlist-delete", playlistId: source.id };
-  await assert.rejects(operations.processPlaylistOperation(operation), /playback unavailable/);
+  await assert.rejects(operations.processPlaylistOperation(operation), /cleanup unavailable/);
   assert.equal(downloadTracker.getJob(jobId).playlistType, survivor.id);
   assert.ok(config.flowPlaylistConfig.getStaticPlaylist(source.id));
+  assert.ok(synced.includes(survivor.id), "the survivor is synced even though the delete must be retried");
   fail = false;
+  synced.length = 0;
   await operations.processPlaylistOperation(operation);
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id), null);
   assert.equal(downloadTracker.getJob(jobId).playlistType, survivor.id);
+  assert.ok(synced.includes(source.id), "the deleted playlist is removed from servers by the sync job");
 });

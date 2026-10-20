@@ -28,7 +28,6 @@ import {
 } from "../downloadPaths.js";
 import { getPathMappings, resolveLocalPath } from "../pathMappings.js";
 import { normalizeExistingFileMode } from "./fileReuseMode.js";
-import { safeLogDiagnostic } from "../logger.js";
 import {
   createPlaybackDeletionGuard,
   forgetPlaybackRetainedFile,
@@ -792,12 +791,7 @@ export async function repairJobsUnderRemovedPlaylistDir(playlistType, options = 
 
   if (repaired > 0 || requeued > 0) {
     const { playlistManager } = await import("../playlists/playlistManager.js");
-    for (const changedPlaylistType of changedPlaylistTypes) {
-      await playlistManager.refreshPlaylist(changedPlaylistType).catch((error) => {
-        console.warn(`[FileReuse] Could not refresh playlist ${safeLogDiagnostic(changedPlaylistType)}:`,
-          safeLogDiagnostic(error));
-      });
-    }
+    playlistManager.requestPlaylistSync([...changedPlaylistTypes]);
     if (changedPlaylistTypes.has("library")) playlistManager.scheduleScanLibrary();
   }
 
@@ -927,12 +921,7 @@ export async function repairReusableTrackLinks(options = {}) {
       `[FileReuse] Track health sweep repaired ${repaired}, requeued ${requeued} of ${batch.length} checked tracks`,
     );
     const { playlistManager } = await import("../playlists/playlistManager.js");
-    for (const playlistType of changedPlaylistTypes) {
-      await playlistManager.refreshPlaylist(playlistType).catch((error) => {
-        console.warn(`[FileReuse] Could not refresh playlist ${safeLogDiagnostic(playlistType)}:`,
-          safeLogDiagnostic(error));
-      });
-    }
+    playlistManager.requestPlaylistSync([...changedPlaylistTypes]);
     if (changedPlaylistTypes.has("library")) playlistManager.scheduleScanLibrary();
     if (requeued > 0) {
       const [{ downloadWorker }, { restartWorkerIfPending }] = await Promise.all([
@@ -1003,12 +992,7 @@ export async function moveHandedOverTracksToLidarr(options = {}) {
   if (movedPaths.length === 0) return { moved: 0, deleted: 0 };
 
   const { playlistManager } = await import("../playlists/playlistManager.js");
-  for (const playlistType of changedPlaylistTypes) {
-    await playlistManager.refreshPlaylist(playlistType).catch((error) => {
-      console.warn(`[FileReuse] Could not refresh playlist ${safeLogDiagnostic(playlistType)}:`,
-        safeLogDiagnostic(error));
-    });
-  }
+  playlistManager.requestPlaylistSync([...changedPlaylistTypes]);
   const deletionGuard = options.deletionGuard || createPlaybackDeletionGuard({ playlistRoot: downloadRoot });
   let deleted = 0;
   for (const oldPath of movedPaths) {
@@ -1028,7 +1012,7 @@ async function refreshPlaylistAfterReuse(
   changedPaths = null,
 ) {
   const { playlistManager } = await import("../playlists/playlistManager.js");
-  await playlistManager.refreshPlaylist(playlistType);
+  playlistManager.requestPlaylistSync([playlistType]);
   if (!shouldScheduleLibraryScan) return;
   if (Array.isArray(changedPaths)) {
     scheduleLibraryScanJob({ includeLidarr: false, changedPaths });

@@ -163,7 +163,7 @@ test("deleting a library track removes it from playlists that referenced its dow
   const keptTracks = playlist.tracks.slice(1);
 
   t.mock.method(lidarrClient, "isConfigured", () => false);
-  const refreshPlaylist = t.mock.method(playlistManager, "refreshPlaylist", async () => {});
+  const playlistSync = t.mock.method(playlistManager, "requestPlaylistSync", () => null);
 
   try {
     assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
@@ -174,7 +174,7 @@ test("deleting a library track removes it from playlists that referenced its dow
       status.trackIdentities.some((entry) => entry.startsWith("artist\u0001track\u0001")),
       false,
     );
-    assert.deepEqual(refreshPlaylist.mock.calls.map((call) => call.arguments[0]), [playlist.id]);
+    assert.deepEqual(playlistSync.mock.calls.map((call) => call.arguments[0]), [[playlist.id]]);
   } finally {
     flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
     db.prepare(

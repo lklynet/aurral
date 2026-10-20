@@ -270,10 +270,8 @@ test("static playlist deletion cancels its pipeline before clearing the tracker"
   t.mock.method(downloadWorker, "pruneOrphanedJobState", async () => {});
   t.mock.method(downloadWorker, "setRetryCyclePaused", () => {});
   t.mock.method(playlistManager, "updateConfig", () => {});
-  t.mock.method(playlistManager, "deletePlaybackPlaylist", async () => {});
   t.mock.method(playlistManager, "weeklyReset", async () => {});
-  t.mock.method(playlistManager, "cleanupEntityPlexPlaylists", async () => {});
-  t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
 
   await processPlaylistOperation({
     kind: "shared-playlist-delete",
@@ -320,7 +318,7 @@ test("static playlist track replacement cancels dependent quality upgrades", asy
   t.mock.method(downloadWorker, "pruneOrphanedJobState", async () => {});
   t.mock.method(downloadWorker, "setRetryCyclePaused", () => {});
   t.mock.method(playlistManager, "updateConfig", () => {});
-  t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
   t.mock.method(playlistManager, "scheduleScanLibrary", async () => {});
 
   await operationsModule.updateStaticPlaylist({
@@ -773,10 +771,8 @@ test("clearing a shown flow or deleting any flow rescans the library", async (t)
   t.mock.method(downloadWorker, "unblockPlaylist", async () => {});
   t.mock.method(downloadWorker, "setRetryCyclePaused", () => {});
   t.mock.method(playlistManager, "updateConfig", () => {});
-  t.mock.method(playlistManager, "deletePlaybackPlaylist", async () => {});
   t.mock.method(playlistManager, "weeklyReset", async () => {});
-  t.mock.method(playlistManager, "cleanupEntityPlexPlaylists", async () => {});
-  t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
   const scans = t.mock.method(playlistManager, "scheduleScanLibrary", () => {});
 
   await processPlaylistOperation({ kind: "disable-flow-cleanup", flowId: hidden.id });
@@ -811,7 +807,7 @@ test("rotating a flow shown in the library rescans the library", async (t) => {
   t.mock.method(downloadWorker, "seedFlowRun", async () => ({ jobIds: [], tracksQueued: 0 }));
   t.mock.method(playlistManager, "updateConfig", () => {});
   t.mock.method(playlistManager, "weeklyReset", async () => {});
-  t.mock.method(playlistManager, "refreshPlaylist", async () => {});
+  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
   const scans = t.mock.method(playlistManager, "scheduleScanLibrary", () => {});
 
   const result = await processPlaylistOperation({ kind: "manual-start-flow", flowId: flow.id });

@@ -93,11 +93,13 @@ export async function processStaticPlaylistBulkOperation(operationId) {
       },
     });
   });
-  playlistManager.updateConfig(false);
-  for (const [id, synchronized] of Object.entries(record.synchronization)) {
-    if (synchronized) continue;
-    await playlistManager.refreshPlaylist(id);
-    record.synchronization[id] = true;
+  if (record.target?.create) await playlistManager.ensurePlaylistArtwork(record.target.playlistId);
+  const unsynchronized = Object.entries(record.synchronization)
+    .filter(([, synchronized]) => !synchronized)
+    .map(([id]) => id);
+  if (unsynchronized.length) {
+    playlistManager.requestPlaylistSync(unsynchronized);
+    for (const id of unsynchronized) record.synchronization[id] = true;
     persist(record);
   }
   if (Object.keys(record.synchronization).length && !record.scanScheduled) {

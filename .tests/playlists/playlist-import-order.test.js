@@ -580,7 +580,7 @@ test("mixed reuse seeding keeps import job order", async () => {
 
 test("flow refresh clears playback before downloads finish", async () => {
   const originalBuildPlan = flowTrackSource.buildFlowRunPlan;
-  const originalRefresh = playlistManager.refreshPlaylist;
+  const originalSync = playlistManager.requestPlaylistSync;
   const originalScheduleNextRun = flowPlaylistConfig.scheduleNextRun;
   const events = [];
   try {
@@ -603,9 +603,9 @@ test("flow refresh clears playback before downloads finish", async () => {
       reserveTracks: [],
       diagnostics: { targets: { primary: 0 }, achieved: { primary: 0, reserve: 0 } },
     });
-    playlistManager.refreshPlaylist = async (playlistId) => {
-      await new Promise((resolve) => setImmediate(resolve));
-      if (playlistId === flow.id) events.push(["refresh", playlistId]);
+    playlistManager.requestPlaylistSync = (playlistIds) => {
+      if (playlistIds.includes(flow.id)) events.push(["sync", flow.id]);
+      return null;
     };
     flowPlaylistConfig.scheduleNextRun = (playlistId) => {
       if (playlistId === flow.id) events.push(["schedule", playlistId]);
@@ -617,12 +617,12 @@ test("flow refresh clears playback before downloads finish", async () => {
     });
 
     assert.deepEqual(events, [
-      ["refresh", flow.id],
+      ["sync", flow.id],
       ["schedule", flow.id],
     ]);
   } finally {
     flowTrackSource.buildFlowRunPlan = originalBuildPlan;
-    playlistManager.refreshPlaylist = originalRefresh;
+    playlistManager.requestPlaylistSync = originalSync;
     flowPlaylistConfig.scheduleNextRun = originalScheduleNextRun;
     downloadWorker.stop();
   }

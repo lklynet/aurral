@@ -119,7 +119,7 @@ See [Navidrome: Filesystem paths](/integrations/navidrome/#filesystem-paths).
 - Make sure that Plex can read the Downloads Folder, including `<downloads>/Artist/Album/Track` and `<downloads>/_flows/<flow-id>/...`.
 - If Plex and Aurral use different paths, set **Settings > Playback > Plex > Plex Aurral Library path** to the folder that Plex sees. If they use the same path, leave it blank.
 - Wait for the Plex settings to save, then select **Sync to Plex now** again.
-- Wait for the first scan. It can take several minutes. Aurral runs catch-up syncs while Plex indexes files.
+- Wait for the first scan. It can take several minutes. Aurral syncs a playlist again for about 15 minutes while Plex indexes its tracks.
 - Make sure that the flow finished its downloads.
 - For another user's playlists, make sure that the user linked a Plex account.
 
@@ -155,6 +155,8 @@ This section applies only when `AUTH_PROXY_ENABLED` or `AUTH_PROXY_HEADER` is se
 ## Media server scans wait after downloads
 
 Aurral batches scan requests for Navidrome, Plex, and Jellyfin after files change. **Settings > Tasks** shows the queued **Media server scan**. If a server is unavailable, the task retries and records the failure. A full Library scan requests another media server scan.
+
+Playlist changes and deletions reach the servers through the **Media server playlist sync** task, a few seconds after the change. Changes made close together share one sync. Syncs and media server scans run one at a time in the **Media server updates** queue. If a server has not indexed some tracks yet, Aurral syncs that playlist to that server again after 30 seconds, 90 seconds, 3 minutes, and 10 minutes. If a server does not respond, the other servers still get the change. Aurral tries the unavailable server again on the same schedule, then every 10 minutes until it responds. If it then has not indexed some tracks, those retries start again from 30 seconds. Each retry goes only to the server that missed the change. If a server rejects Aurral's credentials or request, Aurral logs the error and waits for the next change to try that server again. Aurral syncs every playlist at startup and when you change media server settings. That sync also removes playlists you deleted in Aurral from servers that missed the deletion.
 
 ## Docker memory rises while tasks run
 

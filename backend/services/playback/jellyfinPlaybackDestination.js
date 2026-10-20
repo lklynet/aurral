@@ -1,4 +1,3 @@
-import { setTimeout as wait } from "node:timers/promises";
 import { userOps } from "../../db/helpers/index.js";
 import { JellyfinClient } from "../jellyfin.js";
 import { jellyfinPlaylistPointerStore } from "../jellyfin/jellyfinPlaylistPointerStore.js";
@@ -9,6 +8,7 @@ import { claimUnmatchedRootWarning, serverScanTargets } from "./playbackScanFold
 import {
   createPlaybackPlaylistIdentity,
   createPlaybackPlaylistSnapshot,
+  isRetryablePlaybackError,
   playbackOperationFailure,
   playbackOperationSuccess,
 } from "./playbackDestination.js";
@@ -57,9 +57,8 @@ export class JellyfinPlaybackDestination {
     this.client = client;
     this._configKey = "";
     this._libraryTracks = new Map();
+    this._staleLibraries = new Set();
     this._syncHashes = new Map();
-    this._pendingSnapshots = new Map();
-    this._catchupRunning = false;
     this._publishInFlight = new Map();
     this._warnedUnmatchedRoots = new Set();
   }
@@ -76,8 +75,8 @@ export class JellyfinPlaybackDestination {
       ? new JellyfinClient(config.url, config.apiKey, config.userId)
       : null;
     this._libraryTracks = new Map();
+    this._staleLibraries.clear();
     this._syncHashes.clear();
-    this._pendingSnapshots.clear();
     this._warnedUnmatchedRoots.clear();
   }
 
@@ -127,14 +126,19 @@ export class JellyfinPlaybackDestination {
       return playbackOperationFailure({
         code: "DESTINATION_UNAVAILABLE",
         message: error?.message || "Jellyfin did not respond",
-        retryable: true,
+        retryable: isRetryablePlaybackError(error),
       });
     }
   }
 
-  async ensureLibrary(userId = this.client?.userId) {
+  async ensureLibrary() {
     if (!this.isConfigured()) return playbackOperationSuccess();
+    for (const libraryKey of this._staleLibraries) this._libraryTracks.delete(libraryKey);
+    this._staleLibraries.clear();
+    return this._loadLibrary(this.client.userId);
+  }
 
+  async _loadLibrary(userId) {
     const libraryKey = String(userId || "").trim();
     if (!libraryKey) {
       return playbackOperationFailure({
@@ -155,7 +159,7 @@ export class JellyfinPlaybackDestination {
       return playbackOperationFailure({
         code: "LIBRARY_SETUP_FAILED",
         message: error?.message || "Could not read the Jellyfin music library",
-        retryable: true,
+        retryable: isRetryablePlaybackError(error),
       });
     }
   }
@@ -209,37 +213,9 @@ export class JellyfinPlaybackDestination {
     }
   }
 
-  async _deleteCurrent(identity) {
-    const targetKey = this._targetKey(identity.ownerUserId);
-    await this._deleteLegacyPointer(identity.entityId, targetKey);
-    const pointer = jellyfinPlaylistPointerStore.getPointer(identity.entityId, targetKey);
+  async _deleteTarget(entityId, targetKey) {
+    const pointer = jellyfinPlaylistPointerStore.getPointer(entityId, targetKey);
     if (!pointer) return;
-    if (pointer.serverUrl && pointer.serverUrl !== this.client?.url) {
-      jellyfinPlaylistPointerStore.deletePointer(identity.entityId, targetKey);
-      return;
-    }
-    try {
-      await this.client.deletePlaylist(
-        pointer.playlistId,
-        pointer.jellyfinUserId || this.client.userId,
-      );
-    } catch (error) {
-      if (!isNotFound(error)) throw error;
-    }
-    jellyfinPlaylistPointerStore.deletePointer(identity.entityId, targetKey);
-    this._syncHashes.delete(this._cacheKey(identity));
-  }
-
-  async _deleteLegacyPointer(entityId, currentTargetKey) {
-    const legacyTargetKey = String(this.client?.userId || "global");
-    if (legacyTargetKey === currentTargetKey) return;
-
-    const pointer = jellyfinPlaylistPointerStore.getPointer(
-      entityId,
-      legacyTargetKey,
-    );
-    if (!pointer) return;
-
     if (!pointer.serverUrl || pointer.serverUrl === this.client?.url) {
       try {
         await this.client.deletePlaylist(
@@ -250,8 +226,19 @@ export class JellyfinPlaybackDestination {
         if (!isNotFound(error)) throw error;
       }
     }
+    jellyfinPlaylistPointerStore.deletePointer(entityId, targetKey);
+    this._syncHashes.delete(`${entityId}:${targetKey}`);
+  }
 
-    jellyfinPlaylistPointerStore.deletePointer(entityId, legacyTargetKey);
+  async _deleteLegacyPointer(entityId, currentTargetKey) {
+    const legacyTargetKey = String(this.client?.userId || "global");
+    if (legacyTargetKey !== currentTargetKey) await this._deleteTarget(entityId, legacyTargetKey);
+  }
+
+  async _deleteCurrent(identity) {
+    const targetKey = this._targetKey(identity.ownerUserId);
+    await this._deleteLegacyPointer(identity.entityId, targetKey);
+    await this._deleteTarget(identity.entityId, targetKey);
   }
 
   async _publishPlaylist(snapshot) {
@@ -268,7 +255,7 @@ export class JellyfinPlaybackDestination {
         message: `No Jellyfin user matches Aurral username "${owner?.username || "unknown"}"`,
       });
     }
-    const ensured = await this.ensureLibrary(jellyfinUserId);
+    const ensured = await this._loadLibrary(jellyfinUserId);
     if (!ensured.ok) return ensured;
     const targetKey = this._targetKey(snapshot.ownerUserId);
     await this._deleteLegacyPointer(snapshot.entityId, targetKey);
@@ -290,10 +277,7 @@ export class JellyfinPlaybackDestination {
       reusable = null;
     }
     const itemIds = this._resolveItemIds(snapshot, jellyfinUserId);
-    if (!snapshot.tracks.length && !reusable) {
-      this._pendingSnapshots.delete(cacheKey);
-      return playbackOperationSuccess();
-    }
+    if (!snapshot.tracks.length && !reusable) return playbackOperationSuccess();
 
     const unresolved = itemIds.length < snapshot.tracks.length;
 
@@ -331,7 +315,6 @@ export class JellyfinPlaybackDestination {
     }
     if (!playlistId) {
       if (!snapshot.tracks.length) {
-        this._pendingSnapshots.delete(cacheKey);
         this._syncHashes.delete(cacheKey);
         return playbackOperationSuccess();
       }
@@ -352,30 +335,23 @@ export class JellyfinPlaybackDestination {
       managedItemIds,
     });
     if (unresolved) {
-      this._pendingSnapshots.set(cacheKey, snapshot);
-      this._scheduleCatchup();
-    } else {
-      this._pendingSnapshots.delete(cacheKey);
-      this._syncHashes.set(cacheKey, hash);
+      this._staleLibraries.add(String(jellyfinUserId));
+      return playbackOperationSuccess({ pending: true });
     }
+    this._syncHashes.set(cacheKey, hash);
     return playbackOperationSuccess();
   }
 
   async publishPlaylist(value) {
-    let snapshot;
     try {
-      snapshot = createPlaybackPlaylistSnapshot(value);
+      const snapshot = createPlaybackPlaylistSnapshot(value);
       return await this._runPlaylistOperation(this._cacheKey(snapshot), () =>
         this._publishPlaylist(snapshot));
     } catch (error) {
-      if (snapshot && this.isConfigured()) {
-        this._pendingSnapshots.set(this._cacheKey(snapshot), snapshot);
-        this._scheduleCatchup();
-      }
       return playbackOperationFailure({
         code: "PLAYLIST_PUBLISH_FAILED",
         message: error?.message || "Could not publish the Jellyfin playlist",
-        retryable: true,
+        retryable: isRetryablePlaybackError(error),
       });
     }
   }
@@ -386,14 +362,34 @@ export class JellyfinPlaybackDestination {
       const key = this._cacheKey(identity);
       if (!this.isConfigured()) return playbackOperationSuccess();
       await this._runPlaylistOperation(key, () => this._deleteCurrent(identity));
-      this._pendingSnapshots.delete(key);
       this._syncHashes.delete(key);
       return playbackOperationSuccess();
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_DELETE_FAILED",
         message: error?.message || "Could not delete the Jellyfin playlist",
-        retryable: true,
+        retryable: isRetryablePlaybackError(error),
+      });
+    }
+  }
+
+  getPointerEntityIds() {
+    return jellyfinPlaylistPointerStore.getEntityIds();
+  }
+
+  async deleteEntityPlaylists(entityId) {
+    try {
+      if (!this.isConfigured()) return playbackOperationSuccess();
+      for (const { targetKey } of jellyfinPlaylistPointerStore.getPointersForEntity(entityId)) {
+        await this._runPlaylistOperation(`${entityId}:${targetKey}`, () =>
+          this._deleteTarget(entityId, targetKey));
+      }
+      return playbackOperationSuccess();
+    } catch (error) {
+      return playbackOperationFailure({
+        code: "PLAYLIST_DELETE_FAILED",
+        message: error?.message || "Could not delete the Jellyfin playlist",
+        retryable: isRetryablePlaybackError(error),
       });
     }
   }
@@ -422,40 +418,13 @@ export class JellyfinPlaybackDestination {
       const updated = await this._updatedFolders(folders, aurralRoots);
       if (updated.length) await this.client.reportUpdatedFolders(updated);
       this._libraryTracks.clear();
-      this._scheduleCatchup();
       return playbackOperationSuccess();
     } catch (error) {
       return playbackOperationFailure({
         code: "SCAN_FAILED",
         message: error?.message || "Could not scan the Jellyfin library",
-        retryable: true,
+        retryable: isRetryablePlaybackError(error),
       });
     }
-  }
-
-  _scheduleCatchup(delaysMs = [30_000, 90_000, 180_000]) {
-    if (this._catchupRunning || !this._pendingSnapshots.size) return;
-    this._catchupRunning = true;
-    const run = async () => {
-      try {
-        for (const delayMs of delaysMs) {
-          await wait(delayMs, undefined, { ref: false });
-          if (!this.isConfigured() || !this._pendingSnapshots.size) break;
-
-          this._libraryTracks.clear();
-
-          for (const snapshot of [...this._pendingSnapshots.values()]) {
-            const key = this._cacheKey(snapshot);
-            if (this._pendingSnapshots.get(key) !== snapshot) continue;
-            await this.publishPlaylist(snapshot);
-          }
-        }
-      } catch (error) {
-        console.warn("[JellyfinPlaybackDestination] Jellyfin catch-up failed:", error?.message);
-      } finally {
-        this._catchupRunning = false;
-      }
-    };
-    run();
   }
 }

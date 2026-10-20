@@ -77,7 +77,7 @@ test("writes WebP artwork for flows and playlists without M3U files", async () =
   });
 
   const manager = makeManager();
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
 
   const flowName = manager.getPlaylistName(flow.id);
   const flowBase = manager._sanitize(flowName);
@@ -126,12 +126,12 @@ test("serves temporary artwork and replaces it when the photo source recovers", 
   });
   const manager = makeManager();
 
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
 
   assert.equal((await manager.resolveArtworkFile(playlist.id))?.extension, ".webp");
 
   sourceAvailable = true;
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
 
   assert.equal((await manager.resolveArtworkFile(playlist.id))?.extension, ".jpg");
 });
@@ -166,7 +166,7 @@ test("replaces the old generated JPEG fallback with photo artwork", async (t) =>
     await sharp(fallback).jpeg({ quality: 90, mozjpeg: true }).toBuffer(),
   );
 
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
 
   const metadata = await sharp(artworkPath).metadata();
   assert.equal(metadata.width, 1200);
@@ -199,7 +199,7 @@ test("does not replace uploaded artwork in photo mode", async (t) => {
     throw new Error("Unexpected photo request");
   });
 
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
 
   assert.equal(photoRequests, 0);
   assert.deepEqual(await fs.readFile(artworkPath), before);
@@ -213,7 +213,7 @@ test("removes old sidecar artwork when a flow is renamed", async () => {
   flowPlaylistConfig.setEnabled(flow.id, true);
 
   const manager = makeManager();
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
 
   const oldName = manager.getPlaylistName(flow.id);
   const oldBase = manager._sanitize(oldName);
@@ -221,7 +221,7 @@ test("removes old sidecar artwork when a flow is renamed", async () => {
   await assert.doesNotReject(() => fs.access(oldWebp));
 
   flowPlaylistConfig.updateFlow(flow.id, { name: "New Name" });
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
 
   const newName = manager.getPlaylistName(flow.id);
   const newBase = manager._sanitize(newName);
@@ -238,7 +238,7 @@ test("writes sidecar artwork for draft flows without playlists", async () => {
   });
 
   const manager = makeManager();
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
 
   const playlistName = manager.getPlaylistName(flow.id);
   const base = manager._sanitize(playlistName);
@@ -257,7 +257,7 @@ test("keeps artwork when an enabled flow is disabled", async () => {
   flowPlaylistConfig.setEnabled(flow.id, true);
 
   const manager = makeManager();
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
 
   const base = manager._sanitize(manager.getPlaylistName(flow.id));
   const m3u = path.join(manager.libraryRoot, `${base}.m3u`);
@@ -266,7 +266,7 @@ test("keeps artwork when an enabled flow is disabled", async () => {
   await assert.doesNotReject(() => fs.access(webp));
 
   flowPlaylistConfig.setEnabled(flow.id, false);
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
   await assert.rejects(() => fs.access(m3u));
   await assert.doesNotReject(() => fs.access(webp));
 });
@@ -279,7 +279,7 @@ test("does not regenerate artwork after explicit remove until generate", async (
   flowPlaylistConfig.setEnabled(flow.id, true);
 
   const manager = makeManager();
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
 
   const flowWebp = path.join(
     manager.libraryRoot,
@@ -290,7 +290,7 @@ test("does not regenerate artwork after explicit remove until generate", async (
   await manager.removeArtwork(flow.id);
   await assert.rejects(() => fs.access(flowWebp));
 
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
   await assert.rejects(() => fs.access(flowWebp));
 
   await manager.generateArtwork(flow.id);
@@ -314,7 +314,7 @@ test("generates fallback artwork when the photo source is down", async (t) => {
 test("syncs artwork changes to the existing Navidrome playlist", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Artwork API" });
   const manager = makeManager();
-  await manager.ensurePlaylists();
+  await manager.syncPlaylists();
   manager.__artworkUploads.length = 0;
 
   await manager.generateArtwork(playlist.id);

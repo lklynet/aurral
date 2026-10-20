@@ -67,6 +67,10 @@ export const plexPlaylistPointerStore = {
     return results;
   },
 
+  getEntityIds() {
+    return Object.keys(readStore());
+  },
+
   getPointersForEntity(entityId) {
     const store = readStore();
     return Object.entries(store[entityId] || {}).map(([targetKey, raw]) => {

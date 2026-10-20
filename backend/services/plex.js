@@ -306,11 +306,11 @@ export class PlexClient {
     } catch (err) {
       const detail = err?.response?.data || err.message;
       const status = err?.response?.status;
-      throw new Error(
+      throw Object.assign(new Error(
         `Plex rejected library creation (${status || "no status"}) for path "${libraryPath}": ${
           typeof detail === "string" ? detail : JSON.stringify(detail)
         }`,
-      );
+      ), { response: err?.response });
     }
 
     const created = findExisting(await this.getLibraries());

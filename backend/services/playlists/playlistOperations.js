@@ -166,7 +166,7 @@ const syncStaticPlaylistConfigFromJobs = async (playlistId) => {
   const updatedPlaylist = flowPlaylistConfig.updateStaticPlaylist(safePlaylistId, {
     tracks: rebuildStaticPlaylistTracksFromJobs(playlist.tracks, jobs),
   });
-  playlistManager.updateConfig(false);
+  playlistManager.updateConfig();
   return updatedPlaylist;
 };
 
@@ -246,8 +246,7 @@ async function seedStaticPlaylistTracks(playlistId, tracks) {
     missingTracks,
     playlistId,
   );
-  playlistManager.updateConfig(false);
-  await playlistManager.ensureSmartPlaylists();
+  playlistManager.requestPlaylistSync([playlistId]);
   if (reusedJobIds.length > 0) {
     playlistManager.scheduleScanLibrary();
   }
@@ -315,7 +314,7 @@ async function runFlowSeed({
 
     activatePlaylistDownloadGeneration(safeFlowId);
     recordFlowGenerationStarted({ flowId: safeFlowId });
-    playlistManager.updateConfig(false);
+    playlistManager.updateConfig();
     await playlistManager.weeklyReset([safeFlowId]);
     downloadTracker.clearByPlaylistId(safeFlowId);
 
@@ -326,7 +325,7 @@ async function runFlowSeed({
       size: effectiveSize,
       plan: preparedPlan,
     });
-    await playlistManager.refreshPlaylist(safeFlowId);
+    playlistManager.requestPlaylistSync([safeFlowId]);
     if (scheduleNext) {
       flowPlaylistConfig.scheduleNextRun(safeFlowId);
     }
@@ -393,7 +392,7 @@ async function runFlowCleanup({ flowId, tokenScope = null, token = null } = {}) 
     if (!isLatestPlaylistOperationToken(tokenScope, token)) {
       return;
     }
-    playlistManager.updateConfig(false);
+    playlistManager.updateConfig();
     await playlistManager.weeklyReset([safeFlowId]);
     downloadTracker.clearByPlaylistId(safeFlowId);
   });
@@ -417,15 +416,15 @@ async function deleteFlow({ flowId, tokenScope = null, token = null } = {}) {
       return;
     }
     downloadWorker.setRetryCyclePaused(safeFlowId, false);
-    playlistManager.updateConfig(false);
-    await playlistManager.deletePlaybackPlaylist(flow);
+    playlistManager.updateConfig();
     await playlistManager.weeklyReset([safeFlowId], { protectPlayback: false });
     downloadTracker.clearByPlaylistId(safeFlowId);
-    await playlistManager.cleanupEntityPlexPlaylists(safeFlowId);
     didDelete = flowPlaylistConfig.deleteFlow(safeFlowId);
-    await playlistManager.ensureSmartPlaylists();
   });
-  if (didDelete) playlistManager.scheduleScanLibrary();
+  if (didDelete) {
+    playlistManager.requestPlaylistSync([safeFlowId]);
+    playlistManager.scheduleScanLibrary();
+  }
   await restartWorkerIfPending();
   return didDelete;
 }
@@ -440,7 +439,7 @@ async function resetPlaylists({ playlistTypes = [] } = {}) {
     ),
   );
   await withPlaylistMutation(types, async () => {
-    playlistManager.updateConfig(false);
+    playlistManager.updateConfig();
     await playlistManager.weeklyReset(types, { protectPlayback: false });
   });
   rescanLibraryForFlows(types);
@@ -544,8 +543,8 @@ async function createStaticPlaylistLocked({
   const queued = normalizedTracks.length
     ? await seedStaticPlaylistTracks(safePlaylistId, normalizedTracks)
     : { jobIds: [], reusedJobIds: [], createdJobIds: [], tracksQueued: 0, tracksReused: 0 };
-  playlistManager.updateConfig(false);
-  await playlistManager.ensureSmartPlaylists();
+  await playlistManager.ensurePlaylistArtwork(safePlaylistId);
+  playlistManager.requestPlaylistSync([safePlaylistId]);
   if (normalizedTracks.length > 0) {
     schedulePlaylistMbidEnrichment(safePlaylistId, {
       reason: "shared-playlist-create",
@@ -613,6 +612,7 @@ async function updateStaticPlaylistLocked({
   let playlist = null;
   let tracksQueued = 0;
   let tracksReused = 0;
+  let affectedPlaylistIds = [];
   if (!hasTracksUpdate) {
     await withPlaylistMutationLock(safePlaylistId, async () => {
       const lockedPlaylist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
@@ -673,7 +673,7 @@ async function updateStaticPlaylistLocked({
         mergeImportSource && hasImportSourceUpdate
           ? { ...(latestImportSource || lockedImportSource), ...(importSource || {}) }
           : importSource;
-      await removeStaticPlaylistSelectionsLocked({
+      const removal = await removeStaticPlaylistSelectionsLocked({
         playlistId: safePlaylistId,
         selections: removedJobs.map((job) => captureStaticPlaylistSelection(lockedPlaylist, job.id)).filter(Boolean),
         deleteFiles: shouldDeleteUnsharedFiles,
@@ -686,6 +686,7 @@ async function updateStaticPlaylistLocked({
           });
         },
       });
+      affectedPlaylistIds = removal.affectedPlaylistIds;
       const queued = await queueTracksForPlaylist(tracksNeedingWork, safePlaylistId);
       tracksQueued = queued.jobIds.length;
       tracksReused = matchedJobIds.size + queued.reusedJobIds.length;
@@ -693,8 +694,7 @@ async function updateStaticPlaylistLocked({
     downloadWorker.pruneOrphanedJobState();
   }
 
-  playlistManager.updateConfig(false);
-  await playlistManager.ensureSmartPlaylists();
+  playlistManager.requestPlaylistSync([safePlaylistId, ...affectedPlaylistIds]);
   await playlistManager.scheduleScanLibrary(true);
   await finalizeRetainedPlaylistRelocations(safePlaylistId, { downloadRoot: downloadWorker.downloadRoot });
   if (tracksQueued > 0) {
@@ -718,10 +718,8 @@ async function deleteStaticPlaylistTrack({ playlistId, jobId } = {}) {
   const job = downloadTracker.getJob(safeJobId);
   const selection = job && captureStaticPlaylistSelection(playlist, safeJobId);
   if (!selection) {
-    playlistManager.updateConfig(false);
     const pending = db.prepare("SELECT value FROM settings WHERE key = ?").get(synchronizationKey);
-    const pendingIds = pending ? JSON.parse(pending.value) : [safePlaylistId];
-    for (const id of pendingIds) await playlistManager.refreshPlaylist(id);
+    playlistManager.requestPlaylistSync(pending ? JSON.parse(pending.value) : [safePlaylistId]);
     await playlistManager.scheduleScanLibrary(true);
     await finalizeRetainedPlaylistRelocations(safePlaylistId, { downloadRoot: downloadWorker.downloadRoot });
     db.prepare("DELETE FROM settings WHERE key = ?").run(synchronizationKey);
@@ -742,8 +740,7 @@ async function deleteStaticPlaylistTrack({ playlistId, jobId } = {}) {
   );
   downloadWorker.pruneOrphanedJobState();
   const updatedPlaylist = (await syncStaticPlaylistConfigFromJobs(safePlaylistId)) || playlist;
-  playlistManager.updateConfig(false);
-  for (const id of affectedPlaylistIds) await playlistManager.refreshPlaylist(id);
+  playlistManager.requestPlaylistSync(affectedPlaylistIds);
   await playlistManager.scheduleScanLibrary(true);
   await finalizeRetainedPlaylistRelocations(safePlaylistId, { downloadRoot: downloadWorker.downloadRoot });
   db.prepare("DELETE FROM settings WHERE key = ?").run(synchronizationKey);
@@ -839,8 +836,7 @@ async function researchPlaylistTrack({ playlistId, jobId } = {}) {
     },
     { clearPending: false },
   );
-  playlistManager.updateConfig(false);
-  await playlistManager.refreshPlaylist(safePlaylistId);
+  playlistManager.requestPlaylistSync([safePlaylistId]);
   playlistManager.scheduleScanLibrary();
   if (!reused) {
     await restartWorkerIfPending();
@@ -889,8 +885,6 @@ async function deleteStaticPlaylist({ playlistId } = {}) {
   const safePlaylistId = String(playlistId || "").trim();
   const exists = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
   if (!exists) {
-    playlistManager.updateConfig(false);
-    await playlistManager.ensureSmartPlaylists();
     await finalizeRetainedPlaylistRelocations(safePlaylistId, { downloadRoot: downloadWorker.downloadRoot });
     return false;
   }
@@ -899,17 +893,18 @@ async function deleteStaticPlaylist({ playlistId } = {}) {
     ...exists.tracks.map((track) => track.canonicalJobId).filter(Boolean)])];
   const selections = selectionIds.map((id) => captureStaticPlaylistSelection(exists, id)).filter(Boolean);
   let deleted = false;
+  let affectedPlaylistIds = [];
   try {
     await withStaticPlaylistRemovalMutation({ playlistId: safePlaylistId, jobIds: jobs.map((job) => job.id) }, async () => {
       const result = await removeStaticPlaylistSelectionsLocked({
         playlistId: safePlaylistId, selections, deleteFiles: true, requireAll: true,
       });
+      affectedPlaylistIds = result.affectedPlaylistIds;
       const failed = result.outcomes.find((outcome) => outcome.status === "failed");
       if (failed) throw new Error(failed.message);
       await cancelPlaylistDownloadWork(safePlaylistId, downloadTracker.getByPlaylistId(safePlaylistId), { lock: false });
       downloadWorker.setRetryCyclePaused(safePlaylistId, false);
-      playlistManager.updateConfig(false);
-      await playlistManager.deletePlaybackPlaylist(exists);
+      playlistManager.updateConfig();
       const playlistJobs = downloadTracker.getByPlaylistId(safePlaylistId);
       const removedJobIds = playlistJobs.map((job) => job.id);
       for (const job of playlistJobs) {
@@ -924,13 +919,13 @@ async function deleteStaticPlaylist({ playlistId } = {}) {
       }
       await playlistManager.weeklyReset([safePlaylistId], { protectPlayback: true });
       downloadTracker.clearByPlaylistId(safePlaylistId);
-      await playlistManager.cleanupEntityPlexPlaylists(safePlaylistId);
       deleted = flowPlaylistConfig.deleteStaticPlaylist(safePlaylistId);
-      await playlistManager.ensureSmartPlaylists();
     });
   } catch (error) {
     restorePlaylistDownloadWork(safePlaylistId, downloadTracker.getByPlaylistId(safePlaylistId).map((job) => job.id));
     throw error;
+  } finally {
+    playlistManager.requestPlaylistSync([safePlaylistId, ...affectedPlaylistIds]);
   }
   await restartWorkerIfPending();
   await finalizeRetainedPlaylistRelocations(safePlaylistId, { downloadRoot: downloadWorker.downloadRoot });

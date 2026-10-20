@@ -353,7 +353,6 @@ test("finds newly scanned tracks without rereading the library or the whole play
       ],
     });
     return withNavidrome(navidrome, async (destination) => {
-      destination._scheduleCatchup = () => {};
       assert.deepEqual(await destination.ensureLibrary(), { ok: true });
       const snapshot = createPlaybackPlaylistSnapshot({
         entityId: playlist.id,
@@ -364,17 +363,17 @@ test("finds newly scanned tracks without rereading the library or the whole play
           artist: "Artist",
         })),
       });
-      const publish = async () => {
+      const publish = async (expected) => {
         const before = navidrome.songRequests.length;
-        assert.deepEqual(await destination.publishPlaylist(snapshot), { ok: true });
+        assert.deepEqual(await destination.publishPlaylist(snapshot), expected);
         return {
           songRequests: navidrome.songRequests.length - before,
           songIds: navidrome.playlists.map(({ songIds }) => [...songIds]),
         };
       };
-      const first = await publish();
+      const first = await publish({ ok: true, pending: true });
       navidrome.songs.push(indexed("Scanned Later"));
-      const second = await publish();
+      const second = await publish({ ok: true });
       assert.deepEqual([first.songIds, second.songIds], [[ready], [[...ready, "Scanned Later"]]]);
       return { first: first.songRequests, second: second.songRequests };
     });
@@ -414,7 +413,6 @@ test("publishes to Navidrome versions that cannot look up songs by path", async 
   });
 
   const result = await withNavidrome(navidrome, async (destination) => {
-    destination._scheduleCatchup = () => {};
     assert.deepEqual(await destination.ensureLibrary(), { ok: true });
     return destination.publishPlaylist(createPlaybackPlaylistSnapshot({
       entityId: playlist.id,
@@ -453,14 +451,9 @@ test("keeps the Navidrome playlist unchanged when a song lookup fails", async ()
     playlistId: "saved-id",
     title: playlist.name,
   });
-  let catchups = 0;
-
-  await withNavidrome(navidrome, async (destination) => {
-    destination._scheduleCatchup = () => {
-      catchups += 1;
-    };
+  const result = await withNavidrome(navidrome, async (destination) => {
     assert.deepEqual(await destination.ensureLibrary(), { ok: true });
-    await destination.publishPlaylist(createPlaybackPlaylistSnapshot({
+    return destination.publishPlaylist(createPlaybackPlaylistSnapshot({
       entityId: playlist.id,
       displayName: playlist.name,
       tracks: names.map((title) => ({
@@ -474,7 +467,8 @@ test("keeps the Navidrome playlist unchanged when a song lookup fails", async ()
   assert.deepEqual(navidrome.playlists, [
     { id: "saved-id", name: playlist.name, songIds: ["First", "Second"] },
   ]);
-  assert.equal(catchups, 1);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.retryable, true);
   assert.equal(
     navidromePlaylistPointerStore.getPointer(playlist.id, "global").playlistId,
     "saved-id",
@@ -1147,7 +1141,7 @@ test("does not adopt a same-name playlist claimed by another Aurral entity", asy
   assert.deepEqual(client.calls.created, [{ name: "Same Name", songIds: ["song-1"] }]);
 });
 
-test("publishes resolved songs and catches up when Navidrome indexes the rest", async () => {
+test("publishes resolved songs and reports the playlist pending until Navidrome indexes the rest", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Catch-up" });
   const songs = { Ready: { id: "ready-song" } };
   const client = createClient({ songs });
@@ -1161,27 +1155,19 @@ test("publishes resolved songs and catches up when Navidrome indexes the rest", 
       { path: "/music/missing.flac", title: "Missing", artist: "Artist" },
     ],
   });
-  const scheduleCatchup = destination._scheduleCatchup.bind(destination);
-  let scheduleCalls = 0;
-  destination._scheduleCatchup = () => {
-    scheduleCalls += 1;
-  };
 
-  await destination.publishPlaylist(snapshot);
+  assert.deepEqual(await destination.publishPlaylist(snapshot), { ok: true, pending: true });
   await assert.rejects(fs.access(path.join(destination.libraryRoot, "Catch-up.m3u")));
-  assert.equal(scheduleCalls, 1);
   assert.deepEqual(client.calls.created, [
     { name: "Catch-up", songIds: ["ready-song"] },
   ]);
   songs.Later = { id: "later-song" };
-  await destination.publishPlaylist(snapshot);
-  assert.equal(scheduleCalls, 2);
+  assert.deepEqual(await destination.publishPlaylist(snapshot), { ok: true, pending: true });
   assert.deepEqual(client.calls.updated, [
     { id: "created", name: "Catch-up", songIds: ["ready-song", "later-song"] },
   ]);
   songs.Missing = { id: "missing-song" };
-  scheduleCatchup([0]);
-  while (destination._catchupRunning) await new Promise((resolve) => setTimeout(resolve, 1));
+  assert.deepEqual(await destination.publishPlaylist(snapshot), { ok: true });
 
   assert.deepEqual(client.calls.updated, [
     { id: "created", name: "Catch-up", songIds: ["ready-song", "later-song"] },
@@ -1194,7 +1180,7 @@ test("publishes resolved songs and catches up when Navidrome indexes the rest", 
   await assert.rejects(fs.access(path.join(destination.libraryRoot, "Catch-up.m3u")));
 });
 
-test("serializes playlist deletion behind an in-flight catch-up", async () => {
+test("serializes playlist deletion behind an in-flight publish", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Delete during catch-up" });
   const songs = { Ready: { id: "ready-song" } };
   const client = createClient({ songs });
@@ -1231,8 +1217,6 @@ test("serializes playlist deletion behind an in-flight catch-up", async () => {
     return songs[title] || null;
   };
   const destination = new NavidromePlaybackDestination(downloadRoot, { client });
-  const scheduleCatchup = destination._scheduleCatchup.bind(destination);
-  destination._scheduleCatchup = () => {};
   const snapshot = createPlaybackPlaylistSnapshot({
     entityId: playlist.id,
     displayName: playlist.name,
@@ -1243,10 +1227,9 @@ test("serializes playlist deletion behind an in-flight catch-up", async () => {
   });
 
   await destination.publishPlaylist(snapshot);
-  destination._scheduleCatchup = scheduleCatchup;
   songs.Missing = { id: "missing-song" };
   blockMissing = true;
-  scheduleCatchup([0]);
+  const publishPromise = destination.publishPlaylist(snapshot);
   while (!lookupStartedDone) await new Promise((resolve) => setTimeout(resolve, 1));
 
   const deletePromise = destination.deletePlaylist(snapshot);
@@ -1255,7 +1238,7 @@ test("serializes playlist deletion behind an in-flight catch-up", async () => {
   releaseLookup();
 
   assert.deepEqual(await deletePromise, { ok: true });
-  while (destination._catchupRunning) await new Promise((resolve) => setTimeout(resolve, 1));
+  assert.deepEqual(await publishPromise, { ok: true });
   assert.deepEqual(events, ["update", "delete"]);
   assert.equal(navidromePlaylistPointerStore.getPointer(playlist.id, "global"), null);
 });
@@ -1354,10 +1337,6 @@ test("keeps the stored playlist ID when Navidrome is unavailable", async () => {
     throw new Error("offline");
   };
   const destination = new NavidromePlaybackDestination(downloadRoot, { client });
-  let catchupScheduled = false;
-  destination._scheduleCatchup = () => {
-    catchupScheduled = true;
-  };
   navidromePlaylistPointerStore.setPointer(playlist.id, "global", {
     playlistId: "saved-id",
     title: playlist.name,
@@ -1372,8 +1351,7 @@ test("keeps the stored playlist ID when Navidrome is unavailable", async () => {
   );
 
   assert.equal(result.ok, false);
-  assert.equal(catchupScheduled, true);
-  assert.equal(destination._pendingSnapshots.has(`${playlist.id}:global`), true);
+  assert.equal(result.error.retryable, true);
   assert.equal(
     navidromePlaylistPointerStore.getPointer(playlist.id, "global").playlistId,
     "saved-id",

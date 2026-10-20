@@ -380,7 +380,7 @@ export async function finalizeQualityUpgradeSuccess(upgradeJob, finalPath, quali
   downloadTracker.removeJob(upgradeJob.id);
   const playlistIds = [...new Set(changed.map((job) => job.playlistType).filter(Boolean))];
   const { playlistManager } = await import("./playlists/playlistManager.js");
-  for (const playlistId of playlistIds) await playlistManager.refreshPlaylist(playlistId);
+  playlistManager.requestPlaylistSync(playlistIds);
   playlistManager.scheduleScanLibrary();
   const { recordTrackJobActivity } = await import("./aurralHistoryService.js");
   recordTrackJobActivity({

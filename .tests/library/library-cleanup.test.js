@@ -167,7 +167,7 @@ test("a rename a restart interrupted still refreshes the playlists that use the 
   const jobId = downloadTracker.addJob({ artistName: "Resume Artist", trackName: "Song" }, "static-mix");
   downloadTracker.setDone(jobId, oldPath, "Resume Album");
   const refreshed = [];
-  t.mock.method(playlistManager, "refreshPlaylist", async (playlistId) => { refreshed.push(playlistId); });
+  t.mock.method(playlistManager, "requestPlaylistSync", (playlistIds) => { refreshed.push(...playlistIds); });
 
   const operation = await operations.startCleanup();
   await runUntilChecked(operation.id);
@@ -222,7 +222,7 @@ test("a second copy of a track is a duplicate, removed only when asked, and play
   const jobId = downloadTracker.addJob({ artistName: "Twice", trackName: "Song" }, "static-mix");
   downloadTracker.setDone(jobId, second, "Album");
   const refreshed = [];
-  t.mock.method(playlistManager, "refreshPlaylist", async (playlistId) => { refreshed.push(playlistId); });
+  t.mock.method(playlistManager, "requestPlaylistSync", (playlistIds) => { refreshed.push(...playlistIds); });
 
   const { id, items } = await cleanUp();
 
@@ -310,7 +310,7 @@ test("removing duplicates finishes a removal a restart interrupted, and a failed
   const stuckJob = downloadTracker.addJob({ artistName: "Stuck", trackName: "Song" }, "stuck-mix");
   downloadTracker.setDone(stuckJob, stuck.better, "Album");
   const refreshed = [];
-  t.mock.method(playlistManager, "refreshPlaylist", async (playlistId) => { refreshed.push(playlistId); });
+  t.mock.method(playlistManager, "requestPlaylistSync", (playlistIds) => { refreshed.push(...playlistIds); });
 
   const { id } = await cleanUp();
   assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });

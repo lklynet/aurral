@@ -131,7 +131,7 @@ test("reusing an existing track for a flow does not schedule a full library scan
   await fs.mkdir(path.dirname(sourcePath), { recursive: true });
   await fs.writeFile(sourcePath, "audio");
   const scheduleScanLibrary = t.mock.method(playlistManager, "scheduleScanLibrary", () => 1);
-  t.mock.method(playlistManager, "refreshPlaylist", async () => null);
+  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
 
   const result = await reuseTrackForPlaylist(track, flow.id, {
     existingFileMode: "reuse",
@@ -656,7 +656,7 @@ async function seedHandoverAlbum({ handedOver = true } = {}) {
 const fileExists = (filePath) => fs.access(filePath).then(() => true, () => false);
 
 test("a playlist track of an album handed to Lidarr moves onto Lidarr's file and the Aurral copy goes", async (t) => {
-  t.mock.method(playlistManager, "refreshPlaylist", async () => null);
+  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
   const { jobId, aurralPath, lidarrPath } = await seedHandoverAlbum();
 
   const result = await moveHandedOverTracksToLidarr({
@@ -672,7 +672,7 @@ test("a playlist track of an album handed to Lidarr moves onto Lidarr's file and
 });
 
 test("Aurral copies stay when the album was not handed over or playback still uses them", async (t) => {
-  t.mock.method(playlistManager, "refreshPlaylist", async () => null);
+  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
   const notHandedOver = await seedHandoverAlbum({ handedOver: false });
 
   await moveHandedOverTracksToLidarr({ downloadRoot, existingFileMode: "reuse" });

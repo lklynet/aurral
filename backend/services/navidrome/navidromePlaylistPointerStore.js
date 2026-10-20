@@ -18,17 +18,25 @@ const writeStore = (store) => {
 const normalizePointer = (raw) => {
   if (!raw || typeof raw !== "object") return null;
   const playlistId = raw.playlistId != null ? String(raw.playlistId) : null;
-  if (!playlistId) return null;
+  const title = String(raw.title || "");
+  if (!playlistId && !title) return null;
   return {
     playlistId,
-    title: String(raw.title || ""),
+    title,
     updatedAt: Number(raw.updatedAt) || Date.now(),
   };
 };
 
 export const navidromePlaylistPointerStore = {
+  getEntityIds() {
+    return Object.keys(readStore());
+  },
+
   getPointersForEntity(entityId) {
-    return Object.values(readStore()[entityId] || {}).map(normalizePointer).filter(Boolean);
+    return Object.entries(readStore()[entityId] || {}).map(([targetKey, raw]) => {
+      const pointer = normalizePointer(raw);
+      return pointer ? { targetKey, ...pointer } : null;
+    }).filter(Boolean);
   },
 
   getPointer(entityId, targetKey) {
@@ -39,7 +47,7 @@ export const navidromePlaylistPointerStore = {
     const store = readStore();
     if (!store[entityId]) store[entityId] = {};
     store[entityId][targetKey] = {
-      playlistId: String(playlistId),
+      playlistId: playlistId != null ? String(playlistId) : null,
       title: String(title || ""),
       updatedAt: Date.now(),
     };

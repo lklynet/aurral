@@ -274,8 +274,6 @@ test("confirmed additions remain owned after a failed deletion and destination r
     return request(method, ...args);
   };
   let destination = new JellyfinPlaybackDestination(downloadRoot, { client });
-  // Keep this test deterministic; exercise retry explicitly after recreation.
-  destination._scheduleCatchup = () => {};
   const source = snapshot({ tracks: [snapshot().tracks[1]] });
   assert.equal((await destination.publishPlaylist(source)).ok, false);
   assert.deepEqual(state.ids, ["old-owned", "custom", "jellyfin-track-2"]);
