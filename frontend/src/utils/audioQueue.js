@@ -54,15 +54,26 @@ export function getHowlerFormat(formatKey) {
   return FORMAT_BY_EXTENSION[formatKey] || [formatKey];
 }
 
+function usesTrackArtwork(track) {
+  if (track?.artworkSource) return track.artworkSource === "track";
+  return String(track?.artwork || "").includes("/library/artwork/track/");
+}
+
 export function normalizeQueueTrack(track, overrides = {}) {
   const id = String(track?.id ?? track?.trackId ?? track?.mbid ?? overrides.id ?? "");
   const src = track?.src ?? track?.streamUrl ?? track?.preview_url ?? "";
+  const artwork = track?.artwork ?? track?.artworkUrl ?? overrides.artwork ?? null;
+  const artworkSource =
+    track?.artworkSource ??
+    overrides.artworkSource ??
+    (String(artwork || "").includes("/library/artwork/track/") ? "track" : null);
   const merged = {
     id: id || `track-${crypto.randomUUID()}`,
     title: track?.title ?? track?.trackName ?? track?.name ?? "Unknown Track",
     artist: track?.artist ?? track?.artistName ?? overrides.artist ?? "",
     album: track?.album ?? track?.albumName ?? overrides.album ?? "",
-    artwork: track?.artwork ?? track?.artworkUrl ?? overrides.artwork ?? null,
+    artwork,
+    artworkSource,
     src,
     streamFormat: resolveTrackStreamFormat(track),
     quality: track?.quality ?? overrides.quality ?? null,
@@ -94,6 +105,7 @@ export function normalizePlaylistQueueTrack(track, overrides = {}) {
     artist: track.artistName,
     album: track.albumName,
     artwork: track.artworkUrl || track.coverUrl || null,
+    artworkSource: track.customArtworkUrl ? "track" : "album",
     src: track.streamUrl,
     finalPath: track.finalPath,
     streamFormat: track.streamFormat,
@@ -263,7 +275,10 @@ export function queueReducer(state, action) {
           return String(track.libraryTrackId ?? "") === String(target.libraryTrackId);
         }
         if (target.libraryAlbumId != null) {
-          return String(track.libraryAlbumId ?? "") === String(target.libraryAlbumId);
+          return (
+            !usesTrackArtwork(track) &&
+            String(track.libraryAlbumId ?? "") === String(target.libraryAlbumId)
+          );
         }
         return target.id != null && String(track.id) === String(target.id);
       };
@@ -272,7 +287,11 @@ export function queueReducer(state, action) {
       const queue = state.queue.map((track) => {
         if (!matches(track) || track.artwork === artwork) return track;
         changed = true;
-        return { ...track, artwork };
+        return {
+          ...track,
+          artwork,
+          artworkSource: action.artworkSource ?? track.artworkSource ?? null,
+        };
       });
       return changed ? { ...state, queue } : state;
     }

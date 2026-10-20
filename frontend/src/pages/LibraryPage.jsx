@@ -901,6 +901,7 @@ function LibraryPage() {
           ? { libraryAlbumId: editor.id }
           : { libraryTrackId: editor.id },
         artwork,
+        editor.kind === "track" && result?.updatedAt ? "track" : "album",
       );
     }
     clearLibraryPageCache();
@@ -1690,6 +1691,7 @@ function LibraryPage() {
         durationMs: Number(track.durationMs || file?.durationMs || 0) || null,
         recordHistory: true,
         artwork: track.artworkUrl || getAlbumCover(album),
+        artworkSource: track.artworkUrl ? "track" : "album",
       };
     },
     [getAlbumCover, getAlbumForTrack, getArtistForAlbum],

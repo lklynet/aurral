@@ -347,8 +347,8 @@ export function AudioQueueProvider({ children }) {
     return () => dispatch({ type: "RESTORE_ORDER", queue, playbackOrder, isShuffleEnabled });
   }, [dispatch]);
 
-  const updateQueueArtwork = useCallback((target, artwork) => {
-    dispatch({ type: "UPDATE_ARTWORK", target, artwork });
+  const updateQueueArtwork = useCallback((target, artwork, artworkSource = null) => {
+    dispatch({ type: "UPDATE_ARTWORK", target, artwork, artworkSource });
   }, [dispatch]);
 
   const togglePlayPause = useCallback(() => {

@@ -158,6 +158,7 @@ export function PlaylistTracks({
         result?.updatedAt
           ? getPlaylistTrackArtworkUrl(entry.id, artworkEditor.id, result.updatedAt)
           : artworkEditor.fallbackArtwork || null,
+        result?.updatedAt ? "track" : "album",
       );
     }
     await refreshAll();
