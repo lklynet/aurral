@@ -272,8 +272,9 @@ export class PlexPlaybackDestination {
     for (const [localPath, entry] of this._indexes.get("managed")?.byPath ?? []) {
       if (!isPathInsideRoot(localPath, entityRoot) || isPlaybackRetainedFile(localPath)) continue;
       const stats = await fs.stat(localPath).catch(() => null);
-      const ratingKey = stats && currentRatingKey(entry, stats);
-      if (ratingKey) links.push({ ratingKey, file: `${stats.dev}:${stats.ino}` });
+      if (!stats) continue;
+      const ratingKey = currentRatingKey(entry, stats);
+      links.push({ ratingKey, file: `${stats.dev}:${stats.ino}`, localPath, role: "managed", settling: !ratingKey && changedRecently(stats) });
     }
     return links;
   }
@@ -287,7 +288,7 @@ export class PlexPlaybackDestination {
     const managed = this._indexes.get("managed")?.byPath.get(localPath);
     if (managed) return fromEntry(managed, "managed");
     const link = stats && links.find((candidate) => candidate.file === `${stats.dev}:${stats.ino}`);
-    if (link) return { ratingKey: link.ratingKey, role: "managed" };
+    if (link) return { ratingKey: link.ratingKey, role: "managed", settling: link.settling };
     const main = this._indexes.get("main")?.byPath.get(localPath);
     if (main) return fromEntry(main, "main");
     return { ratingKey: null, role: this._holder(localPath) };
@@ -302,10 +303,13 @@ export class PlexPlaybackDestination {
       const resolved = await this._resolveTrack(localPath, links);
       tracks.push({ ...resolved, settling: resolved.settling || (!resolved.ratingKey && isWithinAny(settling, localPath)) });
     }
+    for (const link of links) {
+      if (!link.ratingKey) tracks.push({ ...link, settling: link.settling || isWithinAny(settling, link.localPath) });
+    }
     const used = new Set(tracks.map((track) => track.ratingKey));
     const ratingKeys = [
       ...tracks.map((track) => track.ratingKey).filter(Boolean),
-      ...links.map((link) => link.ratingKey).filter((ratingKey) => !used.has(ratingKey)),
+      ...links.map((link) => link.ratingKey).filter((ratingKey) => ratingKey && !used.has(ratingKey)),
     ];
     return { tracks, ratingKeys: [...new Set(ratingKeys)], missing: tracks.filter((track) => !track.ratingKey) };
   }

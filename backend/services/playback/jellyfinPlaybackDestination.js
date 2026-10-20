@@ -264,19 +264,19 @@ export class JellyfinPlaybackDestination {
         : null;
       const match = byPath.get(remotePath) || mbidMatch;
       if (match) itemIds.push(match);
-      else missing.push({ remotePath, settling: isWithinAny(settling, localPath) });
+      else missing.push({ remotePath, mbid: track.mbid, settling: isWithinAny(settling, localPath) });
     }
     return { itemIds, missing };
   }
 
-  _canHold(libraryKey, remotePath) {
+  _canHold(libraryKey, { remotePath, mbid }) {
     const { locations } = this._indexes.get(libraryKey);
-    return locations == null || locations.some((location) => pathMatchesPrefix(remotePath, location));
+    return Boolean(mbid) || locations == null || locations.some((location) => pathMatchesPrefix(remotePath, location));
   }
 
   async _resolveWithReread(snapshot, libraryKey, untrustedFolders) {
     const resolved = this._resolveItemIds(snapshot, libraryKey, untrustedFolders);
-    const needsRead = resolved.missing.some((track) => !track.settling && this._canHold(libraryKey, track.remotePath));
+    const needsRead = resolved.missing.some((track) => !track.settling && this._canHold(libraryKey, track));
     let result = resolved;
     if (needsRead && Date.now() - (this._fullReadAt.get(libraryKey) ?? 0) >= FULL_READ_INTERVAL_MS) {
       try {
@@ -287,7 +287,7 @@ export class JellyfinPlaybackDestination {
       result = this._resolveItemIds(snapshot, libraryKey, untrustedFolders);
     }
     const error = this._readErrors.get(libraryKey);
-    if (error && result.missing.some((track) => this._canHold(libraryKey, track.remotePath))) throw error;
+    if (error && result.missing.some((track) => this._canHold(libraryKey, track))) throw error;
     return result;
   }
 

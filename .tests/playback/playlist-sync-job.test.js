@@ -1219,3 +1219,57 @@ test("a Plex main library that cannot be read still publishes a track linked int
   assert.deepEqual(plexRatingKeys(plex), { Linked: ["linked"] });
   assert.deepEqual(pendingSyncs(), []);
 });
+
+test("a retagged Plex flow file outside the download jobs is retried and restored", async (t) => {
+  const clock = useClock(t);
+  const plex = usePlex(t);
+  useOnly("plex");
+  const flow = flowPlaylistConfig.createFlow({ name: "Extra flow track", size: 10 });
+  flowPlaylistConfig.setEnabled(flow.id, true);
+  const root = path.join(downloadRoot, "_flows", flow.id);
+  const steady = await addDownloadedTrack(flow.id, "Steady", root);
+  const extra = path.join(root, "Extra.flac");
+  await fs.writeFile(extra, "extra");
+  for (const file of [steady, extra]) await fs.utimes(file, new Date(), new Date((plexEpoch - 2_000) * 1000));
+  plex.sections[9] = [
+    { ratingKey: "steady", addedAt: 0, file: steady },
+    { ratingKey: "extra", addedAt: -1_000, file: extra },
+  ];
+  playlistManager.requestPlaylistSync([flow.id]);
+  await runNextSync();
+  assert.deepEqual(plexRatingKeys(plex), { "Extra flow track": ["extra", "steady"] });
+
+  await fs.writeFile(extra, "retagged");
+  await fs.utimes(extra, new Date(), new Date(Date.now()));
+  playlistManager.schedulePlaybackScan([extra]);
+  playlistManager.requestPlaylistSync([flow.id]);
+  await runNextSync();
+  assert.deepEqual(pendingSyncs().map(({ payload }) => payload), [followUp([flow.id], "plex", "indexing", 1)]);
+  await runPendingScans();
+  clock.advance(91_000);
+  await runNextSync();
+  assert.deepEqual(plexRatingKeys(plex), { "Extra flow track": ["extra", "steady"] });
+  assert.deepEqual(pendingSyncs(), []);
+});
+
+test("Jellyfin retries a recording match outside its library paths when that recording arrives later", async (t) => {
+  const clock = useClock(t);
+  const jellyfin = useJellyfin(t, "http://jellyfin-recording-later.test");
+  useOnly("jellyfin");
+  jellyfin.locations = [downloadRoot];
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Recording match" });
+  const ready = await addDownloadedTrack(playlist.id, "Ready");
+  const outside = await addDownloadedTrack("library", "Recording", lidarrRoot);
+  const job = downloadTracker.addJob({ artistName: "Artist", trackName: "Recording", trackMbid: "recording-later" }, playlist.id);
+  downloadTracker.setDone(job, outside, "Album");
+  jellyfin.items = [{ Id: "ready", Path: ready }];
+  playlistManager.requestPlaylistSync([playlist.id]);
+  await runNextSync();
+  assert.deepEqual(jellyfinItemsByName(jellyfin), { "Recording match": ["ready"] });
+
+  jellyfin.items.push({ Id: "recording", Path: path.join(downloadRoot, "Other copy.flac"), ProviderIds: { MusicBrainzTrack: "recording-later" } });
+  clock.advance(31_000);
+  await runNextSync();
+  assert.deepEqual(jellyfinItemsByName(jellyfin), { "Recording match": ["ready", "recording"] });
+  assert.deepEqual(pendingSyncs(), []);
+});
