@@ -231,6 +231,45 @@ test("a Library requester can cancel without flow permission and cannot cancel a
   assert.equal(downloadTracker.getJob(other).status, "pending");
 });
 
+test("a Library requester can retry failed and stalled downloads without duplicating active work", async (t) => {
+  await downloadWorker.stopAndDrain();
+  t.mock.method(downloadWorker, "start", async () => {});
+  const fixture = createLibraryAlbum();
+  const failed = fixture.jobFor(0);
+  const stalled = fixture.jobFor(1);
+  const other = fixture.jobFor(2);
+  history.recordTrackJobQueued(downloadTracker.getJob(failed), { id: 3, username: "owner" });
+  history.recordTrackJobQueued(downloadTracker.getJob(stalled), { id: 3, username: "owner" });
+  history.recordTrackJobQueued(downloadTracker.getJob(other), { id: 4, username: "other" });
+  downloadTracker.setDownloading(failed);
+  downloadTracker.setFailed(failed, "Provider lost the request");
+  history.recordTrackJobFailed(downloadTracker.getJob(failed), "Provider lost the request");
+  downloadTracker.setDownloading(stalled);
+  history.recordTrackJobDownloading(downloadTracker.getJob(stalled));
+
+  requestUser = { id: 3, role: "user", permissions: {} };
+  assert.equal((await apiRequest(`/api/playlists/jobs/${other}/retry`, "POST")).status, 403);
+
+  const failedRetry = await apiRequest(`/api/playlists/jobs/${failed}/retry`, "POST");
+  assert.deepEqual(failedRetry.body, { jobId: failed, status: "pending", retried: true });
+  assert.equal(downloadTracker.getJob(failed).status, "pending");
+  assert.equal(downloadTracker.getJob(failed).retryCycle, true);
+  assert.equal(cancellation.isDownloadJobCancelled(failed), false);
+
+  const stalledRetry = await apiRequest(`/api/playlists/jobs/${stalled}/retry`, "POST");
+  assert.deepEqual(stalledRetry.body, { jobId: stalled, status: "pending", retried: true });
+  assert.equal(downloadTracker.getJob(stalled).status, "pending");
+  assert.equal(downloadTracker.getJob(stalled).retryCycle, true);
+  assert.equal(cancellation.isDownloadJobCancelled(stalled), false);
+
+  const activity = await apiRequest("/api/requests?refresh=1");
+  for (const jobId of [failed, stalled]) {
+    const row = activity.body.find((item) => item.jobId === jobId);
+    assert.equal(row.status, "processing");
+    assert.equal(row.statusLabel, "Searching");
+  }
+});
+
 test("album-grab request rows include canonical ids and request groups", async () => {
   const fixture = createLibraryAlbum({ trackCount: 2 });
   const ids = [fixture.jobFor(0), fixture.jobFor(1)];

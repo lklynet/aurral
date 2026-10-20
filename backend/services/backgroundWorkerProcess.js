@@ -34,7 +34,7 @@ const DOWNLOAD_OWNER_COMMANDS = new Set([
   "wakeOrStart", "syncStaticPlaylistImport",
   "enqueueManualMissingSelection", "enqueueManualReplacementSelection",
   "approveBlockedJob", "denyBlockedJob",
-  "cancelTrackDownload",
+  "cancelTrackDownload", "retryTrackDownload",
 ]);
 
 async function handleDownloadOwnerCommand(message) {
@@ -50,9 +50,9 @@ async function handleDownloadOwnerCommand(message) {
     dbOps.invalidateSettingsCache();
     invalidateFlowPlaylistConfigCache();
     let result;
-    if (method === "cancelTrackDownload") {
-      const { cancelTrackDownload } = await import("./aurralAlbumJobs.js");
-      result = await cancelTrackDownload(args[0]);
+    if (method === "cancelTrackDownload" || method === "retryTrackDownload") {
+      const albumJobs = await import("./aurralAlbumJobs.js");
+      result = await albumJobs[method](args[0]);
     } else if (method === "enqueueManualMissingSelection") {
       const { downloadTracker } = await import("./downloadJobs/downloadTracker.js");
       result = downloadTracker.enqueueManualSelection(args[0], args[1]);

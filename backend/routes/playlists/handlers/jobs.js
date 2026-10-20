@@ -11,7 +11,12 @@ import { getPlaylistStatusSnapshot } from "../../../services/playlists/playlistS
 import { indexUnmonitoredJobs } from "../../../services/aurralUnmonitoredJobs.js";
 import { noCache } from "../../../middleware/cache.js";
 import { hasPermission } from "../../../middleware/auth.js";
-import { ACTIVE_JOB_STATUSES, cancelTrackDownload } from "../../../services/aurralAlbumJobs.js";
+import {
+  ACTIVE_JOB_STATUSES,
+  RETRYABLE_JOB_STATUSES,
+  cancelTrackDownload,
+  retryTrackDownload,
+} from "../../../services/aurralAlbumJobs.js";
 import { getTrackJobRequesterId } from "../../../services/aurralHistoryService.js";
 import { requireAdmin } from "../../../middleware/requirePermission.js";
 import {
@@ -526,18 +531,31 @@ export function registerJobs(router) {
 }
 
 export function registerJobCancellation(router) {
-  router.post("/jobs/:jobId/cancel", async (req, res) => {
+  const getControllableJob = (req, res) => {
     const job = downloadTracker.getJob(req.params.jobId);
-    if (!job) return res.status(404).json({ error: "Track not found" });
+    if (!job) {
+      res.status(404).json({ error: "Track not found" });
+      return null;
+    }
     if (hasPermission(req.user, "accessFlow")) {
       if (!canAccessJobType(req.user, job.playlistId || job.playlistType)) {
-        return res.status(404).json({ error: "Track not found" });
+        res.status(404).json({ error: "Track not found" });
+        return null;
       }
     } else {
       const ownsLibraryJob = job.playlistType === LIBRARY_JOB_TYPE && req.user?.id != null &&
         String(getTrackJobRequesterId(job.id)) === String(req.user.id);
-      if (!ownsLibraryJob) return res.status(403).json({ error: "Forbidden" });
+      if (!ownsLibraryJob) {
+        res.status(403).json({ error: "Forbidden" });
+        return null;
+      }
     }
+    return job;
+  };
+
+  router.post("/jobs/:jobId/cancel", async (req, res) => {
+    const job = getControllableJob(req, res);
+    if (!job) return;
     if (!ACTIVE_JOB_STATUSES.has(job.status)) {
       return res.status(409).json({ error: "Track download is already finished", status: job.status });
     }
@@ -553,6 +571,27 @@ export function registerJobCancellation(router) {
       return res.json(result);
     } catch (error) {
       return res.status(500).json({ error: "Failed to cancel track download", message: error.message });
+    }
+  });
+
+  router.post("/jobs/:jobId/retry", async (req, res) => {
+    const job = getControllableJob(req, res);
+    if (!job) return;
+    if (!RETRYABLE_JOB_STATUSES.has(job.status)) {
+      return res.status(409).json({ error: "Track download cannot be retried", status: job.status });
+    }
+    try {
+      const result = isDownloadOwnerProcess()
+        ? await retryTrackDownload(job.id)
+        : await requestDownloadOwner("retryTrackDownload", [job.id]);
+      if (result.statusCode) {
+        const { statusCode, ...body } = result;
+        return res.status(statusCode).json(body);
+      }
+      invalidateRequestsCache();
+      return res.json(result);
+    } catch (error) {
+      return res.status(500).json({ error: "Failed to retry track download", message: error.message });
     }
   });
 }

@@ -204,6 +204,12 @@ export const approveBlockedJob = (jobId) =>
 export const denyBlockedJob = (jobId) =>
   postData(`/playlists/jobs/${jobId}/deny`);
 
+export const cancelDownloadJob = (jobId) =>
+  postData(`/playlists/jobs/${encodeURIComponent(jobId)}/cancel`);
+
+export const retryDownloadJob = (jobId) =>
+  postData(`/playlists/jobs/${encodeURIComponent(jobId)}/retry`);
+
 export const startFlow = (flowId, limit = 30) =>
   postData(`/playlists/start/${flowId}`, {
     limit,
