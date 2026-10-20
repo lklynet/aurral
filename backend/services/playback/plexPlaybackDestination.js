@@ -312,9 +312,10 @@ export class PlexPlaybackDestination {
 
   async _resolveWithRereads(snapshot, pendingFolders) {
     const resolved = await this._resolveTracks(snapshot, pendingFolders);
-    const roles = new Set(resolved.missing
-      .filter((track) => !track.settling && track.role)
-      .map((track) => track.role));
+    const roles = new Set([
+      ...resolved.missing.filter((track) => !track.settling && track.role).map((track) => track.role),
+      ...[...this._readErrors].filter(([, readError]) => readError.full).map(([role]) => role),
+    ]);
     let reread = false;
     for (const role of roles) {
       if (Date.now() - (this._fullReadAt.get(role) ?? 0) < FULL_READ_INTERVAL_MS) continue;

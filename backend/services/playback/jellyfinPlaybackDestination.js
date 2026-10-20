@@ -434,7 +434,10 @@ export class JellyfinPlaybackDestination {
       jellyfinUserId,
       managedItemIds,
     });
-    if (unresolved) return playbackOperationSuccess({ pending: true });
+    if (unresolved) {
+      this._syncHashes.delete(cacheKey);
+      return playbackOperationSuccess({ pending: true });
+    }
     this._syncHashes.set(cacheKey, hash);
     return playbackOperationSuccess();
   }

@@ -937,44 +937,47 @@ test("a file downloaded again before Plex scans it stays off the playlist until 
   assert.deepEqual(pendingSyncs(), []);
 });
 
-test("a track moved to another folder is not published as its old Jellyfin item and gets the new one once Jellyfin has it", async (t) => {
-  const clock = useClock(t);
-  const jellyfin = useJellyfin(t, "http://jellyfin-moved.test");
-  useOnly("jellyfin");
-  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Moved" });
-  const before = path.join(downloadRoot, "Artist", "Album", "Song.flac");
-  const after = path.join(downloadRoot, "Artist", "Album (Deluxe)", "Song.flac");
-  await fs.mkdir(path.dirname(before), { recursive: true });
-  await fs.writeFile(before, "song");
-  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song", albumName: "Album", trackMbid: "recording-1" }, playlist.id);
-  downloadTracker.setDone(jobId, before, "Album");
-  const recording = { MusicBrainzTrack: "recording-1" };
-  jellyfin.items = [{ Id: "before", Path: before, ProviderIds: recording }];
-  playlistManager.requestPlaylistSync([playlist.id]);
-  await runNextSync();
-  assert.deepEqual(jellyfinItemsByName(jellyfin), { Moved: ["before"] });
+for (const recoveredId of ["before", "after"]) {
+  test(`a moved Jellyfin track returns after scanning with item ID ${recoveredId}`, async (t) => {
+    const clock = useClock(t);
+    const jellyfin = useJellyfin(t, `http://jellyfin-moved-${recoveredId}.test`);
+    useOnly("jellyfin");
+    const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Moved" });
+    const before = path.join(downloadRoot, "Artist", "Album", "Song.flac");
+    const after = path.join(downloadRoot, "Artist", "Album (Deluxe)", "Song.flac");
+    t.after(() => fs.rm(after, { force: true }));
+    await fs.mkdir(path.dirname(before), { recursive: true });
+    await fs.writeFile(before, "song");
+    const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song", albumName: "Album", trackMbid: "recording-1" }, playlist.id);
+    downloadTracker.setDone(jobId, before, "Album");
+    const recording = { MusicBrainzTrack: "recording-1" };
+    jellyfin.items = [{ Id: "before", Path: before, ProviderIds: recording }];
+    playlistManager.requestPlaylistSync([playlist.id]);
+    await runNextSync();
+    assert.deepEqual(jellyfinItemsByName(jellyfin), { Moved: ["before"] });
 
-  await fs.mkdir(path.dirname(after), { recursive: true });
-  await fs.rename(before, after);
-  downloadTracker.setDone(jobId, after, "Album (Deluxe)");
-  playlistManager.schedulePlaybackScan([before, after]);
-  playlistManager.requestPlaylistSync([playlist.id]);
-  await runNextSync();
-  assert.deepEqual(jellyfinItemsByName(jellyfin), { Moved: [] });
+    await fs.mkdir(path.dirname(after), { recursive: true });
+    await fs.rename(before, after);
+    downloadTracker.setDone(jobId, after, "Album (Deluxe)");
+    playlistManager.schedulePlaybackScan([before, after]);
+    playlistManager.requestPlaylistSync([playlist.id]);
+    await runNextSync();
+    assert.deepEqual(jellyfinItemsByName(jellyfin), { Moved: [] });
 
-  await runPendingScans();
-  clock.advance(30_000);
-  await runNextSync();
-  assert.equal(jellyfin.reads, 1);
-  assert.deepEqual(jellyfinItemsByName(jellyfin), { Moved: [] });
+    await runPendingScans();
+    clock.advance(30_000);
+    await runNextSync();
+    assert.equal(jellyfin.reads, 1);
+    assert.deepEqual(jellyfinItemsByName(jellyfin), { Moved: [] });
 
-  jellyfin.items = [{ Id: "after", Path: after, ProviderIds: recording }];
-  clock.advance(90_000);
-  await runNextSync();
-  assert.equal(jellyfin.reads, 2);
-  assert.deepEqual(jellyfinItemsByName(jellyfin), { Moved: ["after"] });
-  assert.deepEqual(pendingSyncs(), []);
-});
+    jellyfin.items = [{ Id: recoveredId, Path: after, ProviderIds: recording }];
+    clock.advance(90_000);
+    await runNextSync();
+    assert.equal(jellyfin.reads, 2);
+    assert.deepEqual(jellyfinItemsByName(jellyfin), { Moved: [recoveredId] });
+    assert.deepEqual(pendingSyncs(), []);
+  });
+}
 
 test("new flow tracks waiting on a pending scan do not make Plex read the whole section", async (t) => {
   const clock = useClock(t);
@@ -1133,11 +1136,12 @@ for (const server of ["plex", "jellyfin"]) {
     const jellyfin = server === "jellyfin" ? useJellyfin(t, "http://jellyfin-failing-read.test") : null;
     useOnly(server);
     const ids = [];
+    const missingPaths = [];
     for (let index = 0; index < 5; index += 1) {
       const playlist = flowPlaylistConfig.createStaticPlaylist({ name: `Failing ${index}` });
       ids.push(playlist.id);
       const ready = await addDownloadedTrack(playlist.id, `Ready ${index}`);
-      await addDownloadedTrack(playlist.id, `Missing ${index}`);
+      missingPaths.push(await addDownloadedTrack(playlist.id, `Missing ${index}`));
       plex?.sections[9].push({ ratingKey: `ready-${index}`, addedAt: 1_000_000, file: ready });
       jellyfin?.items.push({ Id: `ready-${index}`, Path: ready });
     }
@@ -1157,6 +1161,14 @@ for (const server of ["plex", "jellyfin"]) {
     if (plex) assert.deepEqual(plex.reads, ["9 added since 999700", "all of 9"]);
     else assert.equal(jellyfin.reads, 2);
     assert.deepEqual(pendingSyncs().map(({ payload }) => payload), [followUp(ids, server, "outage", 1)]);
+    if (plex) {
+      plex.failReads = null;
+      plex.sections[9].push(...missingPaths.map((file, index) => ({ ratingKey: `missing-${index}`, addedAt: 1_000_001, file })));
+      clock.advance(31_000);
+      await runNextSync();
+      assert.deepEqual(pendingSyncs(), []);
+      assert.deepEqual(Object.values(plexRatingKeys(plex)), ids.map((_, index) => [`missing-${index}`, `ready-${index}`]));
+    }
   });
 }
 
