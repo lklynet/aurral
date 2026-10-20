@@ -7,10 +7,12 @@ import { registerMisc } from "./handlers/misc.js";
 import { registerLibraryIndex } from "./handlers/libraryIndex.js";
 import { registerFiles } from "./handlers/files.js";
 import { registerMonitoring } from "./handlers/monitoring.js";
+import { registerArtwork } from "./handlers/artwork.js";
 import mountRoutes from "../shared/mountRoutes.js";
 
 export default mountRoutes([
   registerLibraryIndex,
+  registerArtwork,
   registerStream,
   registerArtists,
   registerMonitoring,

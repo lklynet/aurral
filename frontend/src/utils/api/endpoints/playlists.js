@@ -4,11 +4,38 @@ import {
   putData,
   deleteData,
   buildAuthenticatedApiUrl,
+  resolveAuthenticatedApiAssetUrl,
 } from "../core.js";
 import { queryClient, queryKeys } from "../../../queryClient.js";
 
 export const getPlaylistTrackStreamUrl = (jobId) =>
   buildAuthenticatedApiUrl(`/playlists/stream/${encodeURIComponent(jobId)}`);
+
+const playlistTrackArtworkPath = (jobId, playlistId, suffix = "") =>
+  `/playlists/track-artwork/${encodeURIComponent(jobId)}${suffix}?playlistId=${encodeURIComponent(playlistId)}`;
+
+const withAuthenticatedTrackArtwork = (job) => job && typeof job === "object"
+  ? {
+      ...job,
+      ...(job.artworkUrl
+        ? { artworkUrl: resolveAuthenticatedApiAssetUrl(job.artworkUrl) }
+        : {}),
+      ...(job.customArtworkUrl
+        ? { customArtworkUrl: resolveAuthenticatedApiAssetUrl(job.customArtworkUrl) }
+        : {}),
+    }
+  : job;
+
+export const uploadPlaylistTrackArtwork = (playlistId, jobId, file) =>
+  putData(playlistTrackArtworkPath(jobId, playlistId), file, {
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+  });
+
+export const setPlaylistTrackArtworkUrl = (playlistId, jobId, url) =>
+  putData(playlistTrackArtworkPath(jobId, playlistId, "/url"), { url });
+
+export const deletePlaylistTrackArtwork = (playlistId, jobId) =>
+  deleteData(playlistTrackArtworkPath(jobId, playlistId));
 
 export const getStagingStreamUrl = (jobId) =>
   buildAuthenticatedApiUrl(`/playlists/staging-stream/${encodeURIComponent(jobId)}`);
@@ -58,11 +85,12 @@ export const getPlaylistJobs = (playlistId, limit = null, options = {}) => {
   return getData(`/playlists/jobs/${playlistId}`, {
     ...options,
     params,
-  });
+  }).then((jobs) => Array.isArray(jobs) ? jobs.map(withAuthenticatedTrackArtwork) : jobs);
 };
 
 export const getDownloadJobs = (options = {}) =>
-  getData("/playlists/jobs", options);
+  getData("/playlists/jobs", options)
+    .then((jobs) => Array.isArray(jobs) ? jobs.map(withAuthenticatedTrackArtwork) : jobs);
 
 export const getJobFiles = (jobId, options = {}) =>
   getData(`/playlists/jobs/${encodeURIComponent(jobId)}/files`, options);
@@ -175,6 +203,12 @@ export const approveBlockedJob = (jobId) =>
 
 export const denyBlockedJob = (jobId) =>
   postData(`/playlists/jobs/${jobId}/deny`);
+
+export const cancelDownloadJob = (jobId) =>
+  postData(`/playlists/jobs/${encodeURIComponent(jobId)}/cancel`);
+
+export const retryDownloadJob = (jobId) =>
+  postData(`/playlists/jobs/${encodeURIComponent(jobId)}/retry`);
 
 export const startFlow = (flowId, limit = 30) =>
   postData(`/playlists/start/${flowId}`, {

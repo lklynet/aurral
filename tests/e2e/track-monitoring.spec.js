@@ -187,7 +187,8 @@ test("a track with an unfinished download asks before cancelling it", async ({ p
   const trigger = trackOptions(page, "Missing Track");
   await chooseFromTrackMenu(page, "Missing Track", "Stop monitoring track");
   const dialog = page.getByRole("alertdialog", { name: "Stop monitoring this track?" });
-  await expect(dialog).toContainText("unfinished download will be cancelled");
+  await expect(dialog).toContainText("cancels its unfinished download");
+  await expect(dialog).toContainText("The Library file stays.");
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();

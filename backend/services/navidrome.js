@@ -524,9 +524,13 @@ export class NavidromeClient {
     return this._nativeRequest("PUT", `/api/library/${id}`, payload);
   }
 
-  async scanLibrary() {
+  async isScanning() {
+    return (await this.request("getScanStatus"))?.scanStatus?.scanning === true;
+  }
+
+  async scanLibrary(targets = null) {
     if (!this.isConfigured()) return null;
-    return this.request("startScan");
+    return this.request("startScan", targets ? { target: targets } : {});
   }
 
   async ensureAurralLibrary(libraryPath) {

@@ -37,7 +37,7 @@ import { subsonicId as idFor } from "./libraryMediaStore.js";
 import { logger } from "./logger.js";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.js";
 import { withHonkerLock } from "./honkerDb.js";
-import { removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.js";
+import { jobDownloadedItsFile, removePlaylistFileIfUnshared } from "./downloadJobs/fileReuse.js";
 import { withPlaylistMutationLock } from "./downloadJobs/mutationGuards.js";
 import { transferDownloadOwnershipInTransaction } from "./downloadJobs/downloadOwnership.js";
 import {
@@ -46,11 +46,16 @@ import {
 } from "./downloadJobs/downloadCancellation.js";
 import { processPlaylistOperation } from "./playlists/playlistOperations.js";
 import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.js";
+import {
+  getCustomArtwork,
+  getCustomArtworkMap,
+  getCustomArtworkRevision,
+} from "./customArtworkService.js";
 
 const LIBRARY_IMAGE_PROFILE = "library";
 
 const parseId = (value) => {
-  const match = /^(artist|album|song|flow|flow-song|shared|shared-song):(.+)$/.exec(String(value || ""));
+  const match = /^(artist|album|song|flow|flow-song|shared|shared-song|art-album|art-track|art-playlist-track):(.+)$/.exec(String(value || ""));
   if (!match) return null;
   try {
     return { kind: match[1], key: decodeURIComponent(match[2]) };
@@ -141,7 +146,24 @@ const artistAlbums = (library, artist) =>
     .map((albumId) => library.albumsById.get(albumId))
     .filter(Boolean);
 
-const coverArtForAlbum = (album) => idFor("album", album.identityKey);
+const customArtworkId = (kind, id, updatedAt, context = {}) => idFor(
+  `art-${kind}`,
+  JSON.stringify({ id: String(id), updatedAt: Number(updatedAt), ...context }),
+);
+
+const coverArtForAlbum = (library, album) => {
+  const updatedAt = library.customAlbumArtwork?.get(String(album.id));
+  return updatedAt
+    ? customArtworkId("album", album.id, updatedAt)
+    : idFor("album", album.identityKey);
+};
+
+const coverArtForTrack = (library, track, album) => {
+  const updatedAt = library.customTrackArtwork?.get(String(track.id));
+  return updatedAt
+    ? customArtworkId("track", track.id, updatedAt)
+    : album ? coverArtForAlbum(library, album) : undefined;
+};
 
 const toSong = (library, track, album = findAlbumForTrack(library, track)) => {
   const artist = findArtistForAlbum(library, album);
@@ -170,7 +192,7 @@ const toSong = (library, track, album = findAlbumForTrack(library, track)) => {
     created: isoDate(track.createdAt ?? file?.createdAt ?? file?.mtimeMs),
     track: Number(relation?.trackNumber) || 0,
     discNumber: Number(relation?.discNumber) || 1,
-    coverArt: album ? coverArtForAlbum(album) : undefined,
+    coverArt: coverArtForTrack(library, track, album),
     duration: seconds(file?.durationMs),
     size: Number(file?.size || 0),
     suffix: format,
@@ -212,7 +234,7 @@ const albumData = (library, album) => {
     isDir: true,
     isVideo: false,
     created: isoDate(album.createdAt),
-    coverArt: coverArtForAlbum(album),
+    coverArt: coverArtForAlbum(library, album),
     songCount: tracks.length,
     duration: tracks.reduce(
       (total, track) => total + seconds(firstFile(track, album.id, album.managedBy)?.durationMs),
@@ -283,6 +305,8 @@ const toArtistSummary = (artist, library = {}) => {
 const indexFocusedLibrary = (library, starredAt = library.starredAt) => ({
   ...library,
   starredAt,
+  customAlbumArtwork: getCustomArtworkMap("album", library.albums.map((album) => album.id)),
+  customTrackArtwork: getCustomArtworkMap("track", library.tracks.map((track) => track.id)),
   artistsById: new Map(library.artists.map((artist) => [artist.id, artist])),
   albumsById: new Map(library.albums.map((album) => [album.id, album])),
   tracksById: new Map(library.tracks.map((track) => [track.id, track])),
@@ -318,11 +342,19 @@ function toPlaylistSong(
   job,
   starredAt = null,
   owned = findAvailableLibraryTrack(trackFromJob(job)),
+  customArtworkUpdatedAt = null,
 ) {
+  const customCoverArt = customArtworkUpdatedAt
+    ? customArtworkId("playlist-track", job.id, customArtworkUpdatedAt, {
+        playlistKind: kind,
+        playlistId: playlist.id,
+      })
+    : null;
   if (owned) {
     return {
       ...toSong(indexFocusedLibrary(owned.library, starredAt), owned.track),
       parent: idFor(kind, playlist.id),
+      ...(customCoverArt ? { coverArt: customCoverArt } : {}),
     };
   }
   const artist = protocolArtist(null, job.artistName || "Unknown Artist");
@@ -341,7 +373,7 @@ function toPlaylistSong(
     artistId: artist.id,
     albumArtists: [artist],
     artists: [artist],
-    coverArt: albumMbid ? idFor("album", `release-group:${albumMbid}`) : undefined,
+    coverArt: customCoverArt || (albumMbid ? idFor("album", `release-group:${albumMbid}`) : undefined),
     contentType: audioContentType(format),
     created: isoDate(job.createdAt),
     // Stars on unmatched playlist songs stay keyed by the playlist song, not a library track.
@@ -402,12 +434,27 @@ const visiblePlaylistJobs = (flow, { includePending = false } = {}) =>
   playlistJobs(flow).filter((job) => includePending || isPlayableJob(job));
 
 const playlistCoverArt = (kind, playlistId) => idFor(kind, playlistId);
+const getArtworkChangedStmt = db.prepare(
+  "SELECT MAX(updated_at) AS changed_at FROM custom_artwork WHERE entity_kind IN ('album', 'track')",
+);
+const latestArtworkChange = (artwork) => Math.max(0, ...artwork.values());
+const epochMs = (value) => {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : Date.now();
+};
 
 // Stars are per-user library state, so a star change has to move the timestamp too or clients
 // keep the starred values they cached before it.
 export function getLibraryLastModified(user) {
   const stars = user?.id ? Number(getStarsChangedStmt.get(user.id)?.changed_at) || 0 : 0;
-  return Math.max(getLibraryIndexLastModified() ?? 0, stars);
+  const artwork = Number(getArtworkChangedStmt.get()?.changed_at) || 0;
+  const artworkRevision = Math.max(
+    getCustomArtworkRevision("album"),
+    getCustomArtworkRevision("track"),
+  );
+  return Math.max(getLibraryIndexLastModified() ?? 0, stars, artwork, artworkRevision);
 }
 
 export function listArtists(user) {
@@ -444,11 +491,14 @@ export function getAlbum(value, user) {
 export function getSong(value, user) {
   const playlistEntry = playlistJobFromId(user, value);
   if (playlistEntry) {
+    const customArtwork = getCustomArtworkMap("playlist-track", [playlistEntry.job.id]);
     return toPlaylistSong(
       playlistEntry.playlist,
       playlistEntry.kind,
       playlistEntry.job,
       starredAtFor(user),
+      undefined,
+      customArtwork.get(String(playlistEntry.job.id)) || null,
     );
   }
 
@@ -863,16 +913,7 @@ const cancelLegacyPlaylistJobs = async (jobs) => {
 };
 
 const refreshSubsonicPlaylist = (playlistId) => {
-  playlistManager.updateConfig(false);
-  Promise.all([
-    playlistManager.ensureSmartPlaylists(),
-    playlistManager.refreshPlaylist(playlistId),
-  ]).catch((error) => {
-    logger.error("subsonic", "Could not refresh playlist", {
-      playlistId,
-      reason: error?.message || String(error),
-    });
-  });
+  playlistManager.requestPlaylistSync([playlistId]);
   playlistManager.scheduleScanLibrary();
 };
 
@@ -945,7 +986,7 @@ const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {
       for (const job of jobsToRemove) {
         const current = downloadTracker.getJob(job.id);
         if (!current) continue;
-        if (current.status === "done" && current.finalPath && current.managedBy === "aurral" && !current.externalPath) {
+        if (jobDownloadedItsFile(current)) {
           try {
             await removePlaylistFileIfUnshared(current.finalPath, playlist.id, {
               downloadRoot: playlistManager.downloadRoot,
@@ -1209,7 +1250,15 @@ const buildStarred = (library, rows, user) => {
       const job = separator > 0 ? downloadTracker.getJob(parsed.key.slice(separator + 1)) : null;
       if (playlist && playlistOwnsJob(playlist, job)) {
         // Rows still flagged as playlist songs did not resolve to a library track above.
-        starred.song.push(toPlaylistSong(playlist, kind, job, library.starredAt, null));
+        const updatedAt = getCustomArtworkMap("playlist-track", [job.id]).get(String(job.id));
+        starred.song.push(toPlaylistSong(
+          playlist,
+          kind,
+          job,
+          library.starredAt,
+          null,
+          updatedAt || null,
+        ));
       }
       continue;
     }
@@ -1258,8 +1307,12 @@ export function getTopSongs(artist, options = {}, user = null) {
 }
 
 export function getSubsonicPlaylists(user) {
+  const artworkRevision = getCustomArtworkRevision("playlist-track");
   const flows = visibleFlows(user).map((flow) => {
     const jobs = visiblePlaylistJobs(flow);
+    const artworkChangedAt = latestArtworkChange(
+      getCustomArtworkMap("playlist-track", jobs.map((job) => job.id)),
+    );
     const playlist = {
       id: idFor("flow", flow.id),
       name: flow.name,
@@ -1269,13 +1322,20 @@ export function getSubsonicPlaylists(user) {
       duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
       public: false,
       created: new Date(flow.createdAt || Date.now()).toISOString(),
-      changed: new Date(flow.lastRunAt || flow.createdAt || Date.now()).toISOString(),
+      changed: new Date(Math.max(
+        epochMs(flow.lastRunAt || flow.createdAt),
+        artworkChangedAt,
+        artworkRevision,
+      )).toISOString(),
     };
     if (flow.description) playlist.comment = flow.description;
     return playlist;
   });
   const staticPlaylists = flowPlaylistConfig.getStaticPlaylistsForUser(user).map((playlist) => {
     const jobs = visiblePlaylistJobs(playlist, { includePending: true });
+    const artworkChangedAt = latestArtworkChange(
+      getCustomArtworkMap("playlist-track", jobs.map((job) => job.id)),
+    );
     const value = {
       id: idFor("shared", playlist.id),
       name: playlist.name,
@@ -1285,7 +1345,11 @@ export function getSubsonicPlaylists(user) {
       duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
       public: false,
       created: new Date(playlist.createdAt || Date.now()).toISOString(),
-      changed: new Date(playlist.importedAt || playlist.createdAt || Date.now()).toISOString(),
+      changed: new Date(Math.max(
+        epochMs(playlist.importedAt || playlist.createdAt),
+        artworkChangedAt,
+        artworkRevision,
+      )).toISOString(),
     };
     if (playlist.description) value.comment = playlist.description;
     return value;
@@ -1301,6 +1365,8 @@ export function getSubsonicPlaylist(value, user) {
   const jobs = visiblePlaylistJobs(playlist);
   const starredAt = starredAtFor(user);
   const owned = resolveLibraryTracks(jobs.map((job) => trackFromJob(job)));
+  const customArtwork = getCustomArtworkMap("playlist-track", jobs.map((job) => job.id));
+  const artworkChangedAt = latestArtworkChange(customArtwork);
   return {
     id: idFor(kind, playlist.id),
     name: playlist.name,
@@ -1311,10 +1377,19 @@ export function getSubsonicPlaylist(value, user) {
     duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
     public: false,
     created: new Date(playlist.createdAt || Date.now()).toISOString(),
-    changed: new Date(
-      (kind === "flow" ? playlist.lastRunAt : playlist.importedAt) || playlist.createdAt || Date.now(),
-    ).toISOString(),
-    entry: jobs.map((job, index) => toPlaylistSong(playlist, kind, job, starredAt, owned[index])),
+    changed: new Date(Math.max(
+      epochMs((kind === "flow" ? playlist.lastRunAt : playlist.importedAt) || playlist.createdAt),
+      artworkChangedAt,
+      getCustomArtworkRevision("playlist-track"),
+    )).toISOString(),
+    entry: jobs.map((job, index) => toPlaylistSong(
+      playlist,
+      kind,
+      job,
+      starredAt,
+      owned[index],
+      customArtwork.get(String(job.id)) || null,
+    )),
   };
 }
 
@@ -1352,6 +1427,39 @@ const cachedArtworkUrl = async (key) => {
   if (artwork && artwork !== stored) replaceStoredImage(key, stored, artwork);
   return artwork || buildImageProxyUrl(stored);
 };
+
+const customArtworkTarget = (parsed) => {
+  if (!parsed?.kind?.startsWith("art-")) return null;
+  try {
+    const value = JSON.parse(parsed.key);
+    const id = String(value?.id || "").trim();
+    const updatedAt = Number(value?.updatedAt);
+    return id && Number.isFinite(updatedAt) ? { ...value, id, updatedAt } : null;
+  } catch {
+    return null;
+  }
+};
+
+export function resolveCustomArtwork(value, user) {
+  const parsed = parseId(value);
+  const target = customArtworkTarget(parsed);
+  if (!target) return null;
+
+  let kind;
+  if (parsed.kind === "art-album") kind = "album";
+  if (parsed.kind === "art-track") kind = "track";
+  if (parsed.kind === "art-playlist-track") {
+    if (!["flow", "shared"].includes(target.playlistKind)) return null;
+    const playlist = playlistFromId(user, idFor(target.playlistKind, target.playlistId));
+    const job = downloadTracker.getJob(target.id);
+    if (!playlist || !playlistOwnsJob(playlist, job)) return null;
+    kind = "playlist-track";
+  }
+  if (!kind) return null;
+
+  const artwork = getCustomArtwork(kind, target.id);
+  return artwork && Number(artwork.updatedAt) === target.updatedAt ? artwork : null;
+}
 
 export async function resolveArtworkUrl(value) {
   const parsed = parseId(value);

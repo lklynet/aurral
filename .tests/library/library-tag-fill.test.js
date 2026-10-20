@@ -472,9 +472,9 @@ test("clean up says the metadata provider was unreachable instead of calling an 
   const itemFor = (filePath) => items.find((item) => path.resolve(root, item.source) === filePath);
   for (const filePath of [tagged, untagged]) {
     assert.equal(itemFor(filePath).status, "skipped");
-    assert.match(itemFor(filePath).reason, /could not reach the metadata provider/);
+    assert.match(itemFor(filePath).reason, /Metadata provider unavailable/);
   }
-  assert.match(itemFor(missing).reason, /No confident MusicBrainz match for this album/);
+  assert.match(itemFor(missing).reason, /No confident album match in MusicBrainz/);
   assert.deepEqual(await readFile(tagged), taggedBytes);
 
   providerDown = false;

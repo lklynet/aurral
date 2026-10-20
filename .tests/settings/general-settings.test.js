@@ -37,62 +37,40 @@ test.after(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-for (const fails of [false, true]) {
-  test(`saves settings before slow playback initialization ${fails ? "fails" : "finishes"}`, async (t) => {
-    const events = [];
-    const { logger } = await import("../../backend/services/logger.js");
-    const warnings = t.mock.method(logger, "warn", () => {});
-    let releaseInitialization;
-    const initialization = new Promise((resolve) => {
-      releaseInitialization = resolve;
-    });
-    let markStarted;
-    const started = new Promise((resolve) => { markStarted = resolve; });
-    t.mock.method(playlistManager, "updateConfig", () => {});
-    t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {
-      events.push("ensure-start");
-      markStarted();
-      await initialization;
-      events.push("ensure-end");
-      if (fails) throw new Error("Jellyfin library unavailable");
-    });
-    t.mock.method(playlistManager, "scheduleScanLibrary", (force) => {
-      assert.equal(force, true);
-      events.push("scan");
-    });
-    const { postSettings } = captureSettingsRoutes();
-    let response;
-    const handlerPromise = postSettings({
-      integrations: { jellyfin: { url: "http://jellyfin.local", apiKey: "key", userId: "user" } },
-    }).then((saved) => { response = saved; });
-
-    try {
-      await started;
-      await new Promise((resolve) => setImmediate(resolve));
-      assert.deepEqual(events, ["ensure-start"]);
-      assert.ok(response, "settings response must not wait for the Jellyfin library");
-      assert.equal(response.statusCode, 200);
-      assert.equal(response.body.integrations.jellyfin.url, "http://jellyfin.local");
-      assert.equal(dbOps.getSettings().integrations.jellyfin.url, "http://jellyfin.local");
-    } finally {
-      releaseInitialization();
-      await handlerPromise;
-      await new Promise((resolve) => setImmediate(resolve));
-    }
-    assert.deepEqual(events, ["ensure-start", "ensure-end", "scan"]);
-    assert.equal(warnings.mock.callCount(), fails ? 1 : 0);
-    if (fails) {
-      assert.deepEqual(warnings.mock.calls[0].arguments, [
-        "settings", "Failed to initialize playback playlists:",
-        { message: "Jellyfin library unavailable" },
-      ]);
-    }
-  });
+function pendingPlaylistSyncs() {
+  return honker.listHonkerJobs("playback")
+    .filter(({ payload }) => payload?.kind === "playback-playlist-sync")
+    .map(({ payload }) => payload);
 }
 
+function clearPendingPlaylistSyncs() {
+  for (const { id, payload } of honker.listHonkerJobs("playback")) {
+    if (payload?.kind === "playback-playlist-sync") honker.getPlaybackTaskQueue().cancel(id);
+  }
+}
+
+test("saving playback settings queues a playlist sync without waiting for the media server", async (t) => {
+  clearPendingPlaylistSyncs();
+  t.after(clearPendingPlaylistSyncs);
+  const { JellyfinClient } = await import("../../backend/services/jellyfin.js");
+  const jellyfinRequests = t.mock.method(JellyfinClient.prototype, "request", () => new Promise(() => {}));
+  const scan = t.mock.method(playlistManager, "scheduleScanLibrary", () => {});
+  const { postSettings } = captureSettingsRoutes();
+
+  const response = await postSettings({
+    integrations: { jellyfin: { url: "http://jellyfin.local", apiKey: "key", userId: "user" } },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.integrations.jellyfin.url, "http://jellyfin.local");
+  assert.equal(dbOps.getSettings().integrations.jellyfin.url, "http://jellyfin.local");
+  assert.equal(jellyfinRequests.mock.callCount(), 0);
+  assert.deepEqual(pendingPlaylistSyncs(), [{ kind: "playback-playlist-sync", entityIds: null, attempt: 0 }]);
+  assert.deepEqual(scan.mock.calls.map((call) => call.arguments), [[true]]);
+});
+
 test("saving unrelated settings with unchanged playback configuration skips initialization and scans", async (t) => {
-  const update = t.mock.method(playlistManager, "updateConfig", () => {});
-  const ensure = t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+  clearPendingPlaylistSyncs();
   const scan = t.mock.method(playlistManager, "scheduleScanLibrary", () => {});
   dbOps.updateSettings({ integrations: {
     jellyfin: { url: "http://jellyfin.local", apiKey: "key", userId: "user" },
@@ -114,9 +92,7 @@ test("saving unrelated settings with unchanged playback configuration skips init
   assert.equal(partial.statusCode, 200);
   const unrelated = await postSettings({ dateTimeFormat: "year-first" });
   assert.equal(unrelated.statusCode, 200);
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(update.mock.callCount(), 0);
-  assert.equal(ensure.mock.callCount(), 0);
+  assert.deepEqual(pendingPlaylistSyncs(), []);
   assert.equal(scan.mock.callCount(), 0);
 });
 
@@ -144,38 +120,47 @@ test("the maximum review wait is validated and kept across partial saves", async
 
 for (const key of ["jellyfin", "navidrome"]) {
   test(`refreshes playback when ${key} settings change or are cleared`, async (t) => {
-    const update = t.mock.method(playlistManager, "updateConfig", () => {});
-    const ensure = t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+    clearPendingPlaylistSyncs();
+    t.after(clearPendingPlaylistSyncs);
     const scan = t.mock.method(playlistManager, "scheduleScanLibrary", () => {});
     const { postSettings } = captureSettingsRoutes();
     for (const url of [`http://${key}.local`, ""]) {
       const response = await postSettings({ integrations: { [key]: { url } } });
       assert.equal(response.statusCode, 200);
       assert.equal(dbOps.getSettings().integrations[key].url, url);
-      await new Promise((resolve) => setImmediate(resolve));
     }
-    assert.equal(update.mock.callCount(), 2);
-    assert.equal(ensure.mock.callCount(), 2);
+    assert.deepEqual(pendingPlaylistSyncs(), [{ kind: "playback-playlist-sync", entityIds: null, attempt: 0 }]);
     assert.equal(scan.mock.callCount(), 2);
   });
 }
 
-test("logs background scan scheduling failures without failing the settings save", async (t) => {
+test("a failure to queue the Library scan or the playlist sync does not block the other or the save", async (t) => {
+  clearPendingPlaylistSyncs();
+  t.after(clearPendingPlaylistSyncs);
   const { logger } = await import("../../backend/services/logger.js");
   const warnings = t.mock.method(logger, "warn", () => {});
-  t.mock.method(playlistManager, "updateConfig", () => {});
-  t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
-  t.mock.method(playlistManager, "scheduleScanLibrary", () => {
+  const scan = t.mock.method(playlistManager, "scheduleScanLibrary", () => {
     throw new Error("Scan queue unavailable");
   });
   const { postSettings } = captureSettingsRoutes();
-  const response = await postSettings({ integrations: { jellyfin: { url: "http://jellyfin.local" } } });
-  assert.equal(response.statusCode, 200);
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(warnings.mock.calls[0].arguments, [
-    "settings", "Failed to schedule playback library scan:",
-    { message: "Scan queue unavailable" },
+  const scanFailure = await postSettings({ integrations: { jellyfin: { url: "http://jellyfin.local" } } });
+  assert.equal(scanFailure.statusCode, 200);
+  assert.deepEqual(warnings.mock.calls.map((call) => call.arguments), [
+    ["settings", "Failed to queue Library scan:", { message: "Scan queue unavailable" }],
   ]);
+  assert.deepEqual(pendingPlaylistSyncs(), [{ kind: "playback-playlist-sync", entityIds: null, attempt: 0 }]);
+
+  scan.mock.mockImplementation(() => {});
+  t.mock.method(playlistManager, "requestPlaylistSync", () => {
+    throw new Error("Sync queue unavailable");
+  });
+  warnings.mock.resetCalls();
+  const syncFailure = await postSettings({ integrations: { jellyfin: { url: "http://jellyfin.other" } } });
+  assert.equal(syncFailure.statusCode, 200);
+  assert.deepEqual(warnings.mock.calls.map((call) => call.arguments), [
+    ["settings", "Failed to queue playback playlist sync:", { message: "Sync queue unavailable" }],
+  ]);
+  assert.deepEqual(scan.mock.calls.map((call) => call.arguments), [[true], [true]]);
 });
 
 function captureSettingsRoutes() {

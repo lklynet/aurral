@@ -18,7 +18,7 @@ export function syncPathMappings(value) {
   storedPathMappings = normalizePathMappings(value);
 }
 
-function normalizePathSeparators(value) {
+export function normalizePathSeparators(value) {
   return String(value || "")
     .trim()
     .replace(/\\/g, "/")
@@ -119,7 +119,7 @@ function pathExists(targetPath) {
   }
 }
 
-function pathMatchesPrefix(candidate, prefix) {
+export function pathMatchesPrefix(candidate, prefix) {
   const normalizedCandidate = normalizePathSeparators(candidate);
   const normalizedPrefix = normalizePathSeparators(prefix);
   if (!normalizedCandidate || !normalizedPrefix) return false;

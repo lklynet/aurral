@@ -4,6 +4,16 @@ import { readPlaylistPages, requirePlaylistPath } from "./playback/playlistUsage
 const CLIENT_NAME = "Aurral";
 const CLIENT_VERSION = "1.0.0";
 const JELLYFIN_TIMEOUT_MS = 30_000;
+const NON_MUSIC_COLLECTION_TYPES = new Set([
+  "movies",
+  "tvshows",
+  "books",
+  "photos",
+  "homevideos",
+  "musicvideos",
+  "boxsets",
+  "playlists",
+]);
 
 export class JellyfinClient {
   constructor(url, apiKey, userId) {
@@ -373,7 +383,17 @@ export class JellyfinClient {
     });
   }
 
-  async scanLibrary() {
-    return this.request("POST", "/Library/Refresh");
+  async getMusicLibraryLocations() {
+    const folders = await this.request("GET", "/Library/VirtualFolders");
+    if (!Array.isArray(folders)) throw new Error("Jellyfin did not return its libraries");
+    return folders
+      .filter((folder) => !NON_MUSIC_COLLECTION_TYPES.has(String(folder?.CollectionType || "").toLowerCase()))
+      .flatMap((folder) => folder?.Locations || []);
+  }
+
+  async reportUpdatedFolders(folders) {
+    return this.request("POST", "/Library/Media/Updated", {
+      data: { Updates: folders.map((folder) => ({ Path: folder, UpdateType: "Modified" })) },
+    });
   }
 }

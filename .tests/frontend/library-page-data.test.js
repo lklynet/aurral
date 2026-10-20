@@ -102,8 +102,24 @@ test("album cards tell an artist's same-titled releases apart", () => {
   const single = { title: "Island in the Sun", releaseDate: "2001", metadata: { tags: { releasetype: ["single"] } } };
   const ep = { title: "Weezer", metadata: { albumType: "EP" } };
 
-  assert.equal(albumCardMeta(blue, { available: 10, total: 10 }), "1994 · 10 tracks");
-  assert.equal(albumCardMeta(green, { available: 9, total: 10 }), "2001 · 9/10 available");
-  assert.equal(albumCardMeta(single, { available: 1, total: 1 }), "Single · 2001 · 1 track");
-  assert.equal(albumCardMeta(ep, { available: 0, total: 0 }), "EP · 0 tracks");
+  assert.deepEqual(albumCardMeta(blue, { available: 10, total: 10 }), {
+    details: "1994",
+    count: "10 tracks",
+    partial: false,
+  });
+  assert.deepEqual(albumCardMeta(green, { available: 9, total: 10 }), {
+    details: "2001",
+    count: "9/10 tracks",
+    partial: true,
+  });
+  assert.deepEqual(albumCardMeta(single, { available: 1, total: 1 }), {
+    details: "Single · 2001",
+    count: "1 track",
+    partial: false,
+  });
+  assert.deepEqual(albumCardMeta(ep, { available: 0, total: 0 }), {
+    details: "EP",
+    count: "0 tracks",
+    partial: false,
+  });
 });

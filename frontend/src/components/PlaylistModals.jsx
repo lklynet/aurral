@@ -98,7 +98,6 @@ export function CreatePlaylistModal({
       open={open}
       className="playlist-modal--create"
       title="New playlist"
-      description="Create a playlist you can build up track by track."
       onClose={onClose}
       disableClose={saving}
       footer={

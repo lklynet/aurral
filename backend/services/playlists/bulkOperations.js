@@ -59,7 +59,7 @@ export async function processStaticPlaylistBulkOperation(operationId) {
       if (target && (!job || !isStaticPlaylistSelectionCurrent(selection, lockedSource, job))) {
         rejected.push({ jobId: selection.jobId, status: job ? "failed" : "alreadyAbsent", message: "The selected membership changed. Select the track again." });
       } else if (target && job && target.tracks.some((track) => tracksShareMembership(track, job) && track.canonicalJobId !== job.id)) {
-        rejected.push({ jobId: selection.jobId, status: "failed", message: "The destination already contains a separate membership for this track. The source was kept." });
+        rejected.push({ jobId: selection.jobId, status: "failed", message: "Track already in the destination. Source kept." });
       } else if (target && job && isArtistBlockedForUser(target.ownerUserId, job)) {
         rejected.push({ jobId: selection.jobId, status: "failed", message: "The destination owner has blocked this artist." });
       } else eligible.push(selection);
@@ -93,11 +93,13 @@ export async function processStaticPlaylistBulkOperation(operationId) {
       },
     });
   });
-  playlistManager.updateConfig(false);
-  for (const [id, synchronized] of Object.entries(record.synchronization)) {
-    if (synchronized) continue;
-    await playlistManager.refreshPlaylist(id);
-    record.synchronization[id] = true;
+  if (record.target?.create) await playlistManager.ensurePlaylistArtwork(record.target.playlistId);
+  const unsynchronized = Object.entries(record.synchronization)
+    .filter(([, synchronized]) => !synchronized)
+    .map(([id]) => id);
+  if (unsynchronized.length) {
+    playlistManager.requestPlaylistSync(unsynchronized);
+    for (const id of unsynchronized) record.synchronization[id] = true;
     persist(record);
   }
   if (Object.keys(record.synchronization).length && !record.scanScheduled) {

@@ -46,7 +46,7 @@ export function createPlaybackDeletionGuard({
     let currentRegistry = registry;
     if (!currentRegistry) {
       const { playlistManager } = await import("../playlists/playlistManager.js");
-      playlistManager.updateConfig(false);
+      playlistManager.updateConfig();
       currentRegistry = playlistManager.destinationRegistry;
     }
     const results = await currentRegistry.run("getReferencedPaths", { excludeEntityIds });
@@ -76,7 +76,8 @@ export function createPlaybackDeletionGuard({
 
 export async function retryPlaybackRetainedFiles() {
   const files = Object.entries(readRetainedFiles());
-  if (!files.length) return;
+  const removed = [];
+  if (!files.length) return removed;
   const { downloadTracker } = await import("../downloadJobs/downloadTracker.js");
   const stillOwned = (file) => downloadTracker.getAll().some((job) =>
     job.finalPath && localFileKey(job.finalPath) === file);
@@ -101,11 +102,13 @@ export async function retryPlaybackRetainedFiles() {
       if (current.ino !== original.ino || current.size !== original.size || current.mtimeMs !== original.mtimeMs) continue;
       await fs.rm(file, { force: true });
       forgetPlaybackRetainedFile(file);
+      removed.push(file);
     } catch (error) {
       if (error.code === "ENOENT") forgetPlaybackRetainedFile(file);
       else console.warn("[PlaybackFileRetention] Could not retry retained file cleanup:", error.message);
     }
   }
+  return removed;
 }
 
 // Never recursively remove a directory containing a protected track. Keep its

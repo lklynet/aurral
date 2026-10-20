@@ -23,7 +23,7 @@ export function CommunityGuideModal({ show, onClose, onApply }) {
           Apply recommended settings
         </h3>
         <p className="settings-page__modal-copy">
-          Apply Davo&apos;s Community Lidarr Guide settings to your Lidarr instance:
+          Apply these guide settings to Lidarr:
         </p>
         <ul className="settings-page__modal-list">
           <li>Update quality definitions for FLAC and FLAC 24bit</li>

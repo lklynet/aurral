@@ -112,7 +112,16 @@ export function clearScheduledLibraryScan(jobId = null) {
   }
 }
 
-export function scheduleLibraryScan({
+export function scheduleLibraryScan(options = {}) {
+  if (Array.isArray(options.changedPaths) && options.changedPaths.length > 0) {
+    import("./playlists/playlistManager.js")
+      .then(({ playlistManager }) => playlistManager.schedulePlaybackScan(options.changedPaths))
+      .catch((error) => console.error("[libraryScanWorker] Could not queue media server scan:", error));
+  }
+  return registerLibraryScan(options);
+}
+
+function registerLibraryScan({
   force = false,
   includeLidarr = true,
   changedPaths = null,
@@ -153,7 +162,7 @@ export function scheduleLibraryScan({
       return true;
     }).immediate();
     if (updated) return existingJobId;
-    return scheduleLibraryScan({ force, includeLidarr, changedPaths });
+    return registerLibraryScan({ force, includeLidarr, changedPaths });
   }
   const recoveredPaths = registry.inFlightActive === true && Array.isArray(registry.inFlightPaths)
     ? registry.inFlightPaths
@@ -184,10 +193,10 @@ export function scheduleLibraryScan({
   if (!fullScan) nextRegistry.changedPaths = effectivePaths;
   if (!setScanRegistryIfUnchanged(snapshot, nextRegistry)) {
     if (getScheduledLibraryScanJobId() === jobId && hasLiveScanJob(jobId)) {
-      return scheduleLibraryScan({ force, includeLidarr, changedPaths });
+      return registerLibraryScan({ force, includeLidarr, changedPaths });
     }
     getLibraryScanQueue().cancel(jobId);
-    return scheduleLibraryScan({ force, includeLidarr, changedPaths });
+    return registerLibraryScan({ force, includeLidarr, changedPaths });
   }
   return jobId;
 }
@@ -256,7 +265,7 @@ export function onLibraryScanSuccess(_payload, job) {
     return result;
   }).immediate();
   if (pending && (pending.fullScan || pending.paths.length > 0)) {
-    scheduleLibraryScan({
+    registerLibraryScan({
       force: pending.force,
       includeLidarr: pending.includeLidarr,
       changedPaths: pending.fullScan ? null : pending.paths,
@@ -367,23 +376,33 @@ const {
     const { lidarrClient } = await import("./lidarrClient.js");
     const { scanConfiguredLibrary } = await import("./libraryIndexService.js");
     const { retryPlaybackRetainedFiles } = await import("./playback/playbackFileRetention.js");
-    await retryPlaybackRetainedFiles();
+    const { playlistManager } = await import("./playlists/playlistManager.js");
+    const removedRetainedFiles = await retryPlaybackRetainedFiles();
+    if (removedRetainedFiles.length > 0) {
+      scheduleLibraryScan({ includeLidarr: false, changedPaths: removedRetainedFiles });
+    }
     const { includeLidarr, force, changedPaths } = beginLibraryScanJob(job.id, payload);
-    const scanResult = await scanConfiguredLibrary({
-      lidarrClient,
-      includeLidarr,
-      changedPaths,
-      force,
-    });
+    const changedFiles = new Set();
+    let scanResult;
+    try {
+      scanResult = await scanConfiguredLibrary({
+        lidarrClient,
+        includeLidarr,
+        changedPaths,
+        force,
+        changedFiles,
+      });
+    } finally {
+      try {
+        playlistManager.schedulePlaybackScan([...new Set([...changedFiles].map((filePath) => path.dirname(filePath)))]);
+      } catch (error) {
+        console.error("[libraryScanWorker] Could not queue media server scan:", error);
+      }
+    }
     const { settleIngestedMusic } = await import("./libraryFiles/ingest.js");
     await settleIngestedMusic();
     if (scanResult?.lidarr?.error) {
       throw new Error(`Lidarr library indexing failed: ${scanResult.lidarr.error}`);
-    }
-    const { playlistManager } = await import("./playlists/playlistManager.js");
-    if (force || changedPaths?.length > 0 || scanResult?.local?.changed || scanResult?.lidarr?.changed ||
-      scanResult?.flow?.changed || scanResult?.lidarrRemoved) {
-      playlistManager.schedulePlaybackScan();
     }
     websocketService.broadcast("library", { type: "library_scan_completed" });
   },

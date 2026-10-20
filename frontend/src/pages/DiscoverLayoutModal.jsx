@@ -139,7 +139,7 @@ export function DiscoverLayoutModal({
               Customize Discover
             </h3>
             <p className="artist-customize-modal__subtitle">
-              Drag to reorder. Use Active/Hidden to choose what appears.
+              Drag to reorder.
             </p>
           </div>
           <TooltipButton

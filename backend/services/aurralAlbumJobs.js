@@ -1,10 +1,19 @@
 import path from "node:path";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
-import { cancelDownloadJobs } from "./downloadJobs/downloadCancellation.js";
+import {
+  cancelDownloadJobs,
+  restoreDownloadJobCancellations,
+  setActiveDownloadAttemptId,
+} from "./downloadJobs/downloadCancellation.js";
 import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.js";
 import { logger } from "./logger.js";
 
 export const ACTIVE_JOB_STATUSES = new Set(["pending", "downloading", "cancel_requested"]);
+export const RETRYABLE_JOB_STATUSES = new Set([
+  ...ACTIVE_JOB_STATUSES,
+  "failed",
+  "cancelled",
+]);
 
 const normalizeKey = (value) => String(value || "").trim().toLowerCase();
 
@@ -204,6 +213,67 @@ export async function cancelTrackDownload(jobId) {
     const { cleanupFailed } = await cancelActiveAurralJobs([current], null, { lock: false });
     return { jobId, status: downloadTracker.getJob(jobId).status, cleanupFailed };
   });
+}
+
+export async function retryTrackDownload(jobId) {
+  let job = downloadTracker.getJob(jobId);
+  if (!job) return { statusCode: 404, error: "Track not found" };
+  if (!RETRYABLE_JOB_STATUSES.has(job.status)) {
+    return { statusCode: 409, error: "Track download cannot be retried", status: job.status };
+  }
+
+  if (ACTIVE_JOB_STATUSES.has(job.status)) {
+    const cancellation = await cancelTrackDownload(jobId);
+    if (cancellation.statusCode) return cancellation;
+    if (cancellation.cleanupFailed) {
+      return {
+        statusCode: 409,
+        error: "The current download attempt could not be stopped",
+        message: "Aurral kept the job in cancellation until its existing provider work can be cleaned up.",
+        status: cancellation.status,
+        cleanupFailed: true,
+      };
+    }
+  }
+
+  const { withPlaylistMutationLock, wakeDownloadWorker } =
+    await import("./downloadJobs/mutationGuards.js");
+  job = downloadTracker.getJob(jobId);
+  const result = await withPlaylistMutationLock(job?.playlistId || job?.playlistType, async () => {
+    const current = downloadTracker.getJob(jobId);
+    if (!current) return { statusCode: 404, error: "Track not found" };
+    if (current.status !== "failed" && current.status !== "cancelled") {
+      return { statusCode: 409, error: "Track download cannot be retried", status: current.status };
+    }
+
+    if (current.status === "cancelled" || current.status === "failed") {
+      try {
+        await cancelDownloadWorkForJobs([current], { lock: false });
+      } catch {
+        return {
+          statusCode: 409,
+          error: "The previous download attempt could not be stopped",
+          message: "Aurral kept the job cancelled until its existing provider work can be cleaned up.",
+          status: current.status,
+          cleanupFailed: true,
+        };
+      }
+    }
+
+    setActiveDownloadAttemptId(jobId, null);
+    restoreDownloadJobCancellations([jobId]);
+    if (!downloadTracker.setPending(jobId, "Retry requested", { asRetryCycle: true })) {
+      cancelDownloadJobs([jobId]);
+      return { statusCode: 500, error: "Failed to queue track download" };
+    }
+    return { jobId, status: "pending", retried: true };
+  });
+
+  if (result.statusCode) return result;
+  const { recordTrackJobSearching } = await import("./aurralHistoryService.js");
+  recordTrackJobSearching(downloadTracker.getJob(jobId));
+  await wakeDownloadWorker();
+  return result;
 }
 
 export async function cancelLibraryTrackJobs(track, ownerNames = []) {

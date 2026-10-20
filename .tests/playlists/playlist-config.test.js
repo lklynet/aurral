@@ -287,7 +287,7 @@ test("keeps flow tracks out of the library until a flow opts in", async () => {
 });
 
 test("saving a flow as a playlist keeps each track's release and disc", async (t) => {
-  t.mock.method(playlistManager, "ensureSmartPlaylists", async () => {});
+  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
   t.mock.method(playlistManager, "scheduleScanLibrary", async () => {});
   const flow = flowPlaylistConfig.createFlow({ name: "Weekly Keep", size: 20, mix: { discover: 100 }, scheduleDays: [1] });
   const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "aurral-weekly-flow", flow.id, "Keep.flac");

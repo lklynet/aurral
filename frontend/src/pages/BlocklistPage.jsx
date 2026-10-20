@@ -101,7 +101,7 @@ export default function BlocklistPage() {
         <div>
           <h1 className="page-title">Blocked artists</h1>
           <p className="page-subtitle">
-            These artists will not be recommended or downloaded into your playlists and flows.
+            Blocked artists stay out of recommendations, playlists, and flows.
           </p>
         </div>
       </header>
@@ -187,7 +187,7 @@ export default function BlocklistPage() {
             })}
           </div>
         ) : (
-          <p className="blocklist-page__empty">You have not blocked any artists.</p>
+          <p className="blocklist-page__empty">No blocked artists.</p>
         )}
       </section>
     </div>

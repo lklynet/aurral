@@ -10,6 +10,7 @@ export const ISOLATED_QUEUE_GROUPS = Object.freeze({
   "_outbox:notifications": "notifications",
   "_outbox:play-events": "play-events",
   "system-task": "downloads",
+  "playback": "downloads",
   "weekly-flow-operation": "downloads",
   "slskd-pipeline": "downloads",
   "playlist-mbid-enrichment": "downloads",

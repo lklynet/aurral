@@ -17,7 +17,7 @@ function getLocalBypassStatus(status) {
   if (!status) {
     return {
       title: "Unavailable: status unknown",
-      detail: "Aurral could not load the current local-network auto-login status.",
+      detail: "Could not check local auto-login status.",
       canToggle: false,
     };
   }
@@ -25,7 +25,7 @@ function getLocalBypassStatus(status) {
     return {
       title: "Active for this device",
       detail:
-        "This device is currently being auto-signed in as the sole admin from the trusted local subnet.",
+        "This device signs in automatically as the only admin on the trusted local network.",
       canToggle: true,
     };
   }
@@ -33,7 +33,7 @@ function getLocalBypassStatus(status) {
     return {
       title: "Enabled",
       detail:
-        "Auto-login is enabled for the sole admin user. It will only activate from the server's trusted local subnet.",
+        "The only admin signs in automatically on the trusted local network.",
       canToggle: true,
     };
   }
@@ -42,27 +42,27 @@ function getLocalBypassStatus(status) {
       return {
         title: "Disabled",
         detail:
-          "Automatically sign in as the sole admin user when accessing Aurral from this server's local subnet. If additional users are added, this setting turns off automatically.",
+          "Signs in the only admin on the trusted local network. Adding another user disables auto-login.",
         canToggle: true,
       };
     case "not_single_user":
       return {
         title: "Unavailable: more than one user exists",
-        detail: "Local-network auto-login is only available while exactly one stored user exists.",
+        detail: "Requires exactly one user.",
         canToggle: false,
       };
     case "sole_user_not_admin":
       return {
         title: "Unavailable: sole user is not admin",
         detail:
-          "The only stored user must have the admin role before local-network auto-login can be enabled.",
+          "The only user must be an admin.",
         canToggle: false,
       };
     case "not_trusted_network":
       return {
         title: "Unavailable: local subnet could not be determined",
         detail:
-          "Aurral could not infer a single trusted IPv4 local subnet for this server, so local-network auto-login stays disabled.",
+          "Cannot determine a trusted IPv4 local network. Auto-login stays off.",
         canToggle: false,
       };
     case "not_onboarded":
@@ -74,7 +74,7 @@ function getLocalBypassStatus(status) {
     default:
       return {
         title: "Unavailable",
-        detail: "Local-network auto-login is not currently available for this installation.",
+        detail: "Local auto-login is unavailable.",
         canToggle: false,
       };
   }
@@ -342,7 +342,7 @@ export function SettingsUsersTab({
           <SettingsArrFieldSet legend="Sign-in Mode">
             <SettingsArrFormGroup
               label="SSO-only"
-              help="Hide the local username/password form on the sign-in page by default when at least one SSO option is configured. A 'Sign in with a local account instead' link stays available, so local accounts — including the recovery admin — are never locked out."
+              help="Show SSO first. Local sign-in remains available through Sign in with a local account instead."
             >
               <div className="settings-toggle-row">
                 <span>{settings?.security?.ssoOnly === true ? "Enabled" : "Disabled"}</span>
@@ -419,8 +419,8 @@ export function SettingsUsersTab({
                                 }`}
                                 aria-label={
                                   user.allowIdentityAdoption
-                                    ? "Approved for adoption. The next matching SSO sign-in will claim this account."
-                                    : "This account predates SSO identity linking and has no linked identity. If it belongs to an SSO user, approve it for adoption from Manage."
+                                    ? "The next matching SSO sign-in will claim this account."
+                                    : "No linked SSO identity. If this is an existing SSO account, approve claiming in Manage."
                                 }
                               >
                                 {user.allowIdentityAdoption ? "awaiting SSO claim" : "no SSO identity"}
@@ -524,8 +524,7 @@ export function SettingsUsersTab({
                       </div>
                       <div className="arr-modal__body">
                         <p className="arr-modal__copy">
-                          Are you sure you want to delete{" "}
-                          <strong>{deleteUserTarget.username}</strong>? This cannot be undone.
+                          Permanently delete <strong>{deleteUserTarget.username}</strong>?
                         </p>
                       </div>
                       <div className="arr-modal__footer">
@@ -847,7 +846,7 @@ export function SettingsUsersTab({
                                 labelFor="edit-user-status"
                                 help={
                                   editStatus !== "active"
-                                    ? "This user cannot sign in and their scheduled flows won't run while suspended or disabled."
+                                    ? "Suspended or disabled users cannot sign in or run scheduled flows."
                                     : undefined
                                 }
                               >
@@ -864,7 +863,7 @@ export function SettingsUsersTab({
                               {ssoEnabled && editUser.needsIdentityMigration && !editUser.isProtected ? (
                                 <SettingsArrFormGroup
                                   label="Claim by SSO sign-in"
-                                  help="This account predates SSO identity linking, so it has no linked sign-in identity. If it belonged to an SSO user, turn this on and have them sign in with SSO once - that sign-in takes over this account and keeps its flows, history, and settings. Leave it off and their SSO sign-in creates a separate new account instead. Only enable this if you know who owns this account."
+                                  help="The next matching SSO sign-in takes over this account and keeps its flows, history, and settings. Leave off to create a separate account. Enable only if you know who owns it."
                                 >
                                   <div className="settings-toggle-row">
                                     <span>{editAllowAdoption ? "Allowed" : "Not allowed"}</span>
@@ -881,7 +880,7 @@ export function SettingsUsersTab({
                               ) : null}
                               <SettingsArrFormGroup
                                 label="Plex account"
-                                help="Link this user to a Plex Home managed user so their flow and playlists are created under that Plex account."
+                                help="Use a Plex Home managed user for this account's flows and playlists."
                               >
                                 <AdminPlexLinkField
                                   user={editUser}

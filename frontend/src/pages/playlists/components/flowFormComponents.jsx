@@ -157,7 +157,7 @@ export function ReleaseRadarRecipeFields(props) {
     <PresetRecipeFields
       {...props}
       title="New releases"
-      description="Finds recent albums from artists in your library that you do not have yet, then picks a standout track from each release. The track limit is a maximum; if fewer albums qualify, the playlist will be shorter. It refreshes on your schedule below."
+      description="Picks a track from each recent album missing from your Library. Includes only Library artists and may return fewer than Max tracks."
       sizeLabel="Max tracks"
     />
   );
@@ -226,7 +226,7 @@ export function FlowFormFields({
             mix={draft.mix}
             trackCounts={mixScaled}
             trailingControl={
-              <Tooltip content="Deep Dive skips the most obvious tracks and pulls tracks ranked 10-25.">
+              <Tooltip content="Uses tracks ranked 10 to 25 instead of the top 10.">
                 <button
                   type="button"
                   onClick={() =>
@@ -237,7 +237,7 @@ export function FlowFormFields({
                   }
                   className={`flow-page__mix-toggle flow-page__mix-toggle--feature${draft.deepDive === true ? " is-active" : ""}`}
                   aria-pressed={draft.deepDive === true}
-                  aria-label={`Deep Dive ${draft.deepDive === true ? "on" : "off"}. Deep Dive pulls tracks ranked 10 through 25 instead of the top 10.`}
+                  aria-label={"Deep dive. Uses tracks ranked 10 to 25 instead of the top 10."}
                 >
                   <span>Deep Dive</span>
                   <span className="flow-page__mix-toggle-state">

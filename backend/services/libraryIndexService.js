@@ -4,6 +4,7 @@ import { resolveDownloadRoot } from "./downloadPaths.js";
 import { createPathScopeMatcher, scanMusicRoot, scanMusicRoots } from "./libraryFileScanner.js";
 import {
   assignLibraryArtistMbid,
+  getAvailableLibraryMediaPaths,
   getLibraryMediaPaths,
   assignLidarrAlbumOwners,
   chooseLibraryAlbumRelease,
@@ -82,7 +83,7 @@ function getLibraryFlowPaths() {
   return [...new Set(rows.map((row) => path.resolve(String(row.final_path))))];
 }
 
-async function syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force, changedPaths = null) {
+async function syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force, changedPaths, changedFiles) {
   const targeted = Array.isArray(changedPaths);
   const matchesScope = targeted ? createPathScopeMatcher(changedPaths) : () => true;
   const flowPaths = pathsWithin(musicRoot, getLibraryFlowPaths()).filter(matchesScope);
@@ -93,11 +94,14 @@ async function syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force, changed
     force: force || targeted,
     metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
     syncSearch: targeted,
+    changedFiles,
   });
   const included = new Set(flowPaths);
   const removedPaths = [...getLibraryMediaPaths("flow")].filter(
     (filePath) => matchesScope(filePath) && !included.has(filePath),
   );
+  const available = getAvailableLibraryMediaPaths("flow");
+  for (const filePath of removedPaths) if (available.has(filePath)) changedFiles.add(filePath);
   const removed = removeLibraryMediaFiles("flow", removedPaths);
   return { ...scan, removed, changed: scan.changed || removed > 0 };
 }
@@ -205,6 +209,7 @@ export async function scanConfiguredLibrary({
   lidarrRoots = null,
   changedPaths = null,
   force = false,
+  changedFiles = new Set(),
 } = {}) {
   const jobMetadataByPath = getAurralJobMetadataByPath();
   const targeted = Array.isArray(changedPaths);
@@ -229,9 +234,16 @@ export async function scanConfiguredLibrary({
           metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
           syncSearch: targeted,
           isExcluded: createLibraryScanExclusion("aurral", { downloadRoot: musicRoot, lidarrRoots: lidarrFolders }),
+          changedFiles,
         });
     if (!targeted || localPaths.length > 0) {
-      flow = await syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force, targeted ? localPaths : null);
+      flow = await syncLibraryFlowFiles(
+        musicRoot,
+        jobMetadataByPath,
+        force,
+        targeted ? localPaths : null,
+        changedFiles,
+      );
     }
     if (!targeted || localPaths.length > 0) {
       await canonicalizeAurralArtistNames(jobMetadataByPath, targeted ? localPaths : null);
@@ -245,11 +257,14 @@ export async function scanConfiguredLibrary({
           source: "lidarr",
           syncSearch: targeted,
           isExcluded: createLibraryScanExclusion("lidarr", { downloadRoot: musicRoot, lidarrRoots: lidarrFolders }),
+          changedFiles,
         });
         if (!targeted) {
           const removedRootPaths = [...getLibraryMediaPaths("lidarr")]
             .filter((filePath) => !lidarrFolders.some((root) => isPathWithin(root, filePath)));
-          if (removeMissingLibraryMediaFiles("lidarr", removedRootPaths) > 0) lidarr.changed = true;
+          const removedRootFiles = removeMissingLibraryMediaFiles("lidarr", removedRootPaths);
+          for (const filePath of removedRootFiles) changedFiles.add(filePath);
+          if (removedRootFiles.length > 0) lidarr.changed = true;
         }
       } catch (error) {
         scanFailed = true;

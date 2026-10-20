@@ -160,7 +160,7 @@ function MonitoringExclusions({ mbid, onError }) {
   return (
     <section className="monitoring-preview">
       <h4 className="monitoring-preview__title">Removed from monitoring</h4>
-      <p className="monitoring-preview__summary">You deleted these, so monitoring leaves them out.</p>
+      <p className="monitoring-preview__summary">Deleted items stay out of monitoring.</p>
       <ul className="monitoring-preview__list">
         {exclusions.map((exclusion) => (
           <li key={exclusion.id} className="monitoring-preview__item monitoring-exclusions__item">
@@ -221,7 +221,7 @@ function RulesDialog({ mbid, artistName, state, saving, onClose, onSave, onError
             <div>
               <span className="artist-field-label">Use the default rules</span>
               <p className="monitoring-rules__hint">
-                Follows the defaults in Settings, including later changes to them.
+                Uses Settings defaults, including future changes.
               </p>
             </div>
             <PillToggle

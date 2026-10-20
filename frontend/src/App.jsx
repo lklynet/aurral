@@ -27,7 +27,7 @@ import ThemeSync from "./components/ThemeSync";
 import UpdateIndicator from "./components/UpdateIndicator";
 import SpotifyReconnectNotice from "./components/SpotifyReconnectNotice";
 import { DotLoader } from "./components/DotLoader";
-import { SkeletonCardGrid, SkeletonPageHeader, SkeletonStatus } from "./components/Skeletons";
+import { SkeletonPageTitle } from "./components/Skeletons";
 import { useDiscoveryStatus } from "./hooks/useDiscoveryStatus";
 import { buildActivityPath, DEFAULT_ACTIVITY_VIEW } from "./navigation/activityNavConfig";
 import { routeModules } from "./navigation/routeModules.js";
@@ -70,12 +70,7 @@ const EditorialPlaylistDetailPage = lazy(routeModules.editorialPlaylist);
 const NewsPage = lazy(routeModules.news);
 const ResolveLinkPage = lazy(routeModules.resolveLink);
 
-const PageLoader = () => (
-  <SkeletonStatus label="Loading page">
-    <SkeletonPageHeader />
-    <SkeletonCardGrid square />
-  </SkeletonStatus>
-);
+const PageLoader = () => <SkeletonPageTitle label="Loading page" />;
 
 const ScreenLoader = () => (
   <div className="app-loading app-loading--screen">
@@ -137,7 +132,7 @@ function AppContent() {
     if (discoveryStatus.error) {
       showError(`Discovery refresh failed: ${discoveryStatus.error}`);
     } else {
-      showSuccess("Discovery refresh completed. Recommendations are now updated.");
+      showSuccess("Recommendations updated.");
     }
   }, [discoveryStatus, showError, showSuccess]);
 
@@ -227,7 +222,7 @@ function ProtectedLayout() {
               <div className="app-status-banner app-status-banner--warning">
                 <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
                 <p className="app-status-banner__text app-status-banner__text--warning">
-                  Lidarr is busy. Library data may be stale until it catches up.
+                  Lidarr is busy. Library updates may be delayed.
                 </p>
               </div>
             )}
@@ -246,7 +241,7 @@ function ProtectedLayout() {
               <div className="app-status-banner app-status-banner--error">
                 <XCircle className="app-status-banner__icon app-status-banner__icon--error" />
                 <p className="app-status-banner__text app-status-banner__text--error">
-                  Unable to connect to the Aurral backend. Please check your configuration.
+                  Cannot reach Aurral. Check the server connection.
                 </p>
               </div>
             )}
@@ -255,7 +250,7 @@ function ProtectedLayout() {
               <div className="app-status-banner app-status-banner--warning">
                 <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
                 <p className="app-status-banner__text app-status-banner__text--warning">
-                  The Downloads Folder is not set. Choose one in Settings → Download clients.
+                  Choose a Downloads Folder in Settings → Download clients.
                 </p>
               </div>
             )}

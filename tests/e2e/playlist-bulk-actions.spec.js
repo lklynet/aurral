@@ -35,7 +35,7 @@ test("one bulk request reports partial completion against its original playlist"
   await page.getByLabel("Select all tracks").check();
   await page.getByRole("button", { name: "Move", exact: true }).click();
   await page.getByRole("button", { name: `Add to ${target.name}`, exact: true }).click();
-  await expect(page.getByText("No tracks in this playlist yet.", { exact: true })).toBeVisible();
+  await expect(page.getByText("No tracks yet.", { exact: true })).toBeVisible();
   await page.goBack();
   await page.locator(".playlists-page__title").filter({ hasText: target.name }).click();
   await expect(page.getByText(`Moved 1 track to ${target.name}`, { exact: true })).toBeVisible();

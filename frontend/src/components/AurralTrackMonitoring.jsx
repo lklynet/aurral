@@ -104,7 +104,7 @@ export function useAurralTrackMonitoring({ canChange, onChanged, onKeepFileChang
       <ConfirmModal
         open={confirming !== null}
         title="Stop monitoring this track?"
-        body="Aurral will stop searching for and upgrading this track, and its unfinished download will be cancelled. A file already in your library is kept."
+        body="Stops searches and upgrades for this track and cancels its unfinished download. The Library file stays."
         confirmLabel="Stop monitoring"
         busyLabel="Stopping"
         busy={pending !== null}

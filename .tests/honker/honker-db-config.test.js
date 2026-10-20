@@ -186,6 +186,12 @@ test("playlists publish from the startup task, not when a process loads the play
   assert.deepEqual(calls, []);
 
   await processSystemTask({ kind: "playlist-startup-publish" });
+  assert.deepEqual(calls, []);
+  const [sync] = honkerDb.listHonkerJobs("playback")
+    .filter((job) => job.payload.kind === "playback-playlist-sync");
+  assert.deepEqual(sync.payload, { kind: "playback-playlist-sync", entityIds: null, attempt: 0 });
+  honkerDb.getPlaybackTaskQueue().cancel(sync.id);
+  await processSystemTask(sync.payload);
   assert.equal(calls[0], "ensure library");
   assert.deepEqual(calls.slice(1).sort(), [flow.id, playlist.id].sort());
 });

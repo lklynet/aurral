@@ -21,7 +21,7 @@ export default function ThemeSync() {
       userId,
       loadAccountTheme: getMyTheme,
       saveAccountTheme: saveMyTheme,
-      onSaveError: () => showError("Your theme couldn't be saved to your account. It still applies on this device."),
+      onSaveError: () => showError("Theme applies on this device but could not sync to your account."),
     });
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") void sync.refresh();

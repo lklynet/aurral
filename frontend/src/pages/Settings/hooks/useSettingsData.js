@@ -539,7 +539,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   const clearCacheMutation = useMutation({
     mutationFn: () => api.post("/discover/clear"),
     onSuccess: async () => {
-      showSuccess("Artwork cache cleared successfully.");
+      showSuccess("Artwork cache cleared.");
       await refreshHealth();
     },
     onError: (err) => {
@@ -555,7 +555,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   const handleClearCache = useCallback(() => {
     if (
       !window.confirm(
-        "Clear stored artwork links and native-library image files? Discovery recommendations will stay intact. Artwork will be fetched again as needed.",
+        "Clear cached artwork? It will reload as needed. Recommendations stay.",
       )
     )
       return;
@@ -580,7 +580,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
     } catch {
       return;
     }
-    showSuccess("Community guide settings applied successfully!");
+    showSuccess("Guide settings applied.");
 
     let nextSettings = settingsRef.current;
     const qualityProfile = result.results?.qualityProfile;

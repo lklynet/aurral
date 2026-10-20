@@ -25,7 +25,7 @@ test("turning off a flow warns that its songs are removed", async ({ page }, tes
   const dialog = page.getByRole("alertdialog", { name: "Turn off Nightly mix?" });
   await expect(dialog).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("flow-disable-confirmation.png") });
-  await expect(dialog).toContainText("It stops updating and its current songs are removed. Turning it back on picks a fresh set.");
+  await expect(dialog).toContainText("Removes its current songs and stops updates. Turning it on generates a new set.");
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(toggle).toBeFocused();

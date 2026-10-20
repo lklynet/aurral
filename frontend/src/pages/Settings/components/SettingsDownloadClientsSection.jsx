@@ -255,9 +255,6 @@ export function SettingsDownloadClientsSection({
       </div>
 
       <SettingsArrFieldSet legend="Quality profile">
-        <div className="arr-info">
-          Choose formats, their order, and upgrades.
-        </div>
         <IntegrationCard
           title="Default"
           subtitle={`${qualityEnabled.size} qualities allowed`}
@@ -272,7 +269,7 @@ export function SettingsDownloadClientsSection({
         <SettingsArrFormGroup
           label="Path"
           labelFor="download-clients-download-folder"
-          help="Where Aurral keeps the music it adds, including flow tracks. Example: /data/downloads/aurral"
+          help="Stores downloaded music, including flow tracks."
         >
           <DownloadFolderField
             id="download-clients-download-folder"
@@ -292,7 +289,7 @@ export function SettingsDownloadClientsSection({
         <SettingsArrFormGroup
           label="Maximum wait (hours)"
           labelFor="download-clients-review-timeout"
-          help="Songs held for review longer than this are denied, and Aurral searches for them again. 0 keeps them until you decide."
+          help="Hours before unreviewed songs are denied and searched again. Set 0 to wait indefinitely."
         >
           <SettingsInput
             id="download-clients-review-timeout"
@@ -316,7 +313,7 @@ export function SettingsDownloadClientsSection({
 
       <SettingsArrFieldSet legend="Remote path mappings">
         <div className="arr-info">
-          Only needed when client and Aurral paths differ. Shared mounts need no mapping.
+          Map paths only when the download client and Aurral see different locations.
         </div>
 
         <div className="arr-table-wrap">
@@ -407,9 +404,6 @@ export function SettingsDownloadClientsSection({
           onClose={() => setActiveModal(null)}
         >
           <div className="download-client-picker">
-            <p className="download-client-picker__intro">
-              Choose a client to add and configure.
-            </p>
             <div className="download-client-picker__list">
               {availableClientDefinitions.map((definition) => (
                 <button

@@ -4,7 +4,7 @@ import RouteLink from "../../components/RouteLink";
 import { useQuery } from "@tanstack/react-query";
 import { AudioWaveform, ChevronDown, Sparkles } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
-import { SkeletonRows, SkeletonStatus } from "../../components/Skeletons";
+import { SkeletonShape, SkeletonStatus, SkeletonText } from "../../components/Skeletons";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
@@ -109,15 +109,30 @@ export default function FlowsPage() {
     if (loading && !status) {
       return (
         <SkeletonStatus label="Loading flows">
-          <SkeletonRows count={6} />
+          <ul className="flows-list">
+            {["9em", "7em", "11em"].map((width) => (
+              <li key={width} className="flows-list__row">
+                <div className="flows-list__link">
+                  <SkeletonShape className="flow-page__artwork flows-list__art" />
+                  <span className="flows-list__copy">
+                    <span className="flows-list__name">
+                      <SkeletonText width={width} />
+                    </span>
+                    <span className="flows-list__meta">
+                      <SkeletonText width="14em" />
+                    </span>
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
         </SkeletonStatus>
       );
     }
     if (error && !status) {
       return (
         <div className="native-library-state" role="alert">
-          <strong>Flows unavailable</strong>
-          <span>Aurral could not load your flows.</span>
+          <strong>Could not load flows.</strong>
           <button type="button" className="native-library-state__action" onClick={fetchStatus}>
             Retry
           </button>
@@ -128,7 +143,7 @@ export default function FlowsPage() {
       return (
         <div className="native-library-state">
           <strong>No flows yet</strong>
-          <span>A flow builds a fresh playlist on a schedule from a recipe you choose.</span>
+          <span>Scheduled playlists from a recipe you choose.</span>
           {renderNewFlowMenu("native-library-state__action")}
         </div>
       );

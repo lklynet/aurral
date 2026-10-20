@@ -50,7 +50,7 @@ export function DeleteArtistModal({
             <div>
               <span className="artist-card-title">Delete artist files</span>
               <p className="artist-modal__subcopy">
-                Permanently deletes the artist&apos;s music files from disk. This cannot be undone.
+                Permanently deletes the artist files from disk.
               </p>
             </div>
           </label>

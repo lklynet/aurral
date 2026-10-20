@@ -18,7 +18,7 @@ const monitorButton = (page) =>
 async function openCustomize(page) {
   await monitorButton(page).click();
   await page.getByRole("menuitem", { name: "Customize add…", exact: true }).click();
-  return page.getByRole("dialog", { name: "Customize Lidarr add", exact: true });
+  return page.getByRole("dialog", { name: `Customize Lidarr add: ${artist.name}`, exact: true });
 }
 
 async function fixture(page, { configured = true, add, update, albumAdd, health, monitoring, existingAfterAdd, albumOwner, releases = [] } = {}) {

@@ -649,7 +649,7 @@ function GlobalSearch({ settingsMode = false }) {
           <div className="global-search__suggestions global-search__suggestions--grouped">
             <div className="global-search__suggestion-group">Search not configured</div>
             <div className="global-search__suggestion global-search__suggestion--message">
-              Configure the search server in Settings to search artists, releases, and tracks.
+              Set up the metadata server in Settings → Metadata to search music.
             </div>
           </div>
         )}

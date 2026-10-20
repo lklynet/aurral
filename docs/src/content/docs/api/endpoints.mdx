@@ -392,7 +392,7 @@ The routes call a static playlist a shared playlist.
 | `POST` | `/api/playlists/worker/start` | Start the worker |
 | `POST` | `/api/playlists/worker/stop` | Stop the worker |
 | `POST` | `/api/playlists/reset` | Reset selected flow playlists |
-| `POST` | `/api/playlists/playlist/:playlistType/create` | Ensure configured smart-playlist files exist |
+| `POST` | `/api/playlists/playlist/:playlistType/create` | Queue a sync of every flow and static playlist to connected media servers |
 
 The repeated `playlists` segment in
 `/api/playlists/playlists/:playlistId/retry-cycle` is the current route.

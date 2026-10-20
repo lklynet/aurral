@@ -46,6 +46,7 @@ const WORKER_STARTS = {
   "system-task": ["./systemTaskWorker.js", "startSystemTaskWorker"],
   "system-task-maintenance": ["./systemTaskWorker.js", "startMaintenanceTaskWorker"],
   "system-task-inbox": ["./systemTaskWorker.js", "startInboxTaskWorker"],
+  "playback": ["./systemTaskWorker.js", "startPlaybackTaskWorker"],
   "library-scan": ["./libraryScanWorker.js", "startLibraryScanWorker"],
   "library-files": ["./libraryFiles/libraryFileWorker.js", "startLibraryFileWorker"],
   "_outbox:notifications": ["./notificationOutboxWorker.js", "startNotificationOutboxWorker"],

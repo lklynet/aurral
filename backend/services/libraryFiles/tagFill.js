@@ -137,11 +137,11 @@ export async function planTagFill({ filePath, album, artist, file }, albums = ne
     mbAlbum = await albums.get(key);
   } catch {
     albums.delete(key);
-    return { reason: "Aurral could not reach the metadata provider, so its tags stay as they are." };
+    return { reason: "Metadata provider unavailable. Tags unchanged." };
   }
-  if (!mbAlbum) return { reason: "No confident MusicBrainz match for this album, so its tags stay as they are." };
+  if (!mbAlbum) return { reason: "No confident album match in MusicBrainz. Tags unchanged." };
   const match = matchMusicBrainzTrack(mbAlbum, file, current);
-  if (!match) return { reason: "No confident MusicBrainz match for this track, so its tags stay as they are." };
+  if (!match) return { reason: "No confident track match in MusicBrainz. Tags unchanged." };
   const tags = Object.fromEntries(Object.entries(musicBrainzTags(mbAlbum, match))
     .filter(([field, value]) => !isEmpty(value) && isEmpty(current[field])));
   return Object.keys(tags).length ? { tags, fields: describeTagFields(tags) } : {};

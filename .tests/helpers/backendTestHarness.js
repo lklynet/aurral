@@ -40,6 +40,7 @@ const RESET_TABLES = [
   "library_tracks",
   "library_albums",
   "library_artists",
+  "custom_artwork",
   "library_scan_runs",
   "library_search_documents",
   "settings",

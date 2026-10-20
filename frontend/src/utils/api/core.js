@@ -253,4 +253,11 @@ export const buildAuthenticatedApiUrl = (path, params = {}) => {
   }`;
 };
 
+export const resolveAuthenticatedApiAssetUrl = (value) => {
+  const url = String(value || "");
+  return url.startsWith("/api/")
+    ? buildAuthenticatedApiUrl(url.replace(/^\/api/, ""))
+    : url;
+};
+
 export default api;

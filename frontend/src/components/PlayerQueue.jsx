@@ -131,7 +131,7 @@ export function UpNextQueue({ className = "" }) {
       </div>
       {upcoming.length === 0 ? (
         <p className="player-queue__empty">
-          Nothing is up next. Use Play next or Add to queue in a track menu.
+          Use Play next or Add to queue in a track menu.
         </p>
       ) : (
         <DndContext

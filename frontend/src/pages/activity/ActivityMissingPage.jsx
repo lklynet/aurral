@@ -10,7 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
-import { SkeletonRows, SkeletonStatus } from "../../components/Skeletons";
+import { SkeletonActivityList, SkeletonStatus } from "../../components/Skeletons";
 import TooltipButton from "../../components/TooltipButton";
 import { useToast } from "../../contexts/ToastContext";
 import { formatDateTime } from "../../utils/dateTime.js";
@@ -404,7 +404,7 @@ export default function ActivityMissingPage() {
           placeholder={filterPlaceholder}
         />
         <SkeletonStatus label="Loading wanted tracks">
-          <SkeletonRows count={8} />
+          <SkeletonActivityList count={8} hint actions={3} />
         </SkeletonStatus>
       </section>
     );
@@ -446,8 +446,8 @@ export default function ActivityMissingPage() {
             {hasFilter
               ? `${showingCutoff ? "No cutoff-unmet" : "No missing"} tracks match your filter.`
               : showingCutoff
-                ? "Every Aurral-owned file currently meets the configured quality cutoff."
-                : "Every Aurral operation currently has a track available or in progress."}
+                ? "All Aurral tracks meet the quality cutoff."
+                : "Every requested track is available or in progress."}
           </p>
         </div>
       ) : null}
