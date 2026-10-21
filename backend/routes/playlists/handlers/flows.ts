@@ -75,6 +75,16 @@ export type SetFlowEnabledResponse =
 
 export type GetFlowLidarrImportListUrlResponse = { token: string; itemCount: number };
 
+export type StartFlowResponse = {
+  success: true;
+  flowId: string;
+  queued: true;
+  operationId: string;
+  tracksQueued: number;
+  jobIds: string[];
+  reserveTracks: number;
+};
+
 export function registerFlows(router) {
   router.post("/start/:flowId", async (req, res) => {
     try {

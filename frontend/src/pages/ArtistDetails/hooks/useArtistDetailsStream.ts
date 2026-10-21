@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import type { ArtistDetailsResponse } from "../../../../../backend/routes/artists/handlers/details.ts";
 import {
   getArtistDetails,
   getArtistCover,
@@ -35,7 +36,10 @@ const buildReleaseGroupCoverRequest = (rgId, artist, libraryAlbums, pageArtistNa
   };
 };
 
-const buildInitialArtist = (mbid, artistNameFromNav) =>
+const buildInitialArtist = (
+  mbid: string | undefined,
+  artistNameFromNav: string | undefined,
+): Partial<ArtistDetailsResponse> | null =>
   mbid
     ? {
         id: mbid,

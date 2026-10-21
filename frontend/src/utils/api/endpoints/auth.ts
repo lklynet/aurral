@@ -35,6 +35,7 @@ import type {
   DiscoverLayoutItem,
   DiscoverLayoutResponse,
   LidarrPreferencesResponse,
+  UnconfiguredLidarrPreferencesResponse,
   SavedDiscoverLayoutResponse,
   SavedUserThemeResponse,
   UpdateUserResponse,
@@ -253,7 +254,9 @@ export const updateMyListeningHistory = (
   payload: ListeningHistoryUpdate,
 ): Promise<UpdateUserResponse> => patchData(`/users/${userId}`, payload);
 
-export const updateMyLidarrPreferences = (payload: LidarrPreferencesUpdate) =>
+export const updateMyLidarrPreferences = (
+  payload: LidarrPreferencesUpdate,
+): Promise<LidarrPreferencesResponse | UnconfiguredLidarrPreferencesResponse> =>
   patchData("/users/me/lidarr-preferences", payload);
 
 export const updateMyDiscoverLayout = (

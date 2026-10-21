@@ -6,16 +6,11 @@ import {
   getPlaylistJobs,
   getPlaylistStatus,
   getPlaylistTrackStreamUrl,
+  type PlaylistJob,
 } from "./utils/api/endpoints/playlists.ts";
 
 type MaybeId = string | number | null | undefined;
 type MaybeText = string | null | undefined;
-type PlaylistJob = {
-  id?: string | number;
-  status?: string;
-  albumName?: string | null;
-  reason?: string | null;
-};
 
 export const editorialShelfQueryOptions = (userId: MaybeId) =>
   queryOptions({
@@ -24,7 +19,7 @@ export const editorialShelfQueryOptions = (userId: MaybeId) =>
     staleTime: 60 * 60 * 1000,
   });
 
-export const editorialPlaylistQueryOptions = (userId: MaybeId, playlistId: MaybeId) =>
+export const editorialPlaylistQueryOptions = (userId: MaybeId, playlistId: string) =>
   queryOptions({
     queryKey: queryKeys.editorialPlaylist(userId, playlistId),
     queryFn: ({ signal }) => getEditorialPlaylist(playlistId, { signal }),
@@ -54,7 +49,7 @@ const normalizePlaylistJobs = (jobs: PlaylistJob[]) =>
     streamUrl: job?.status === "done" && job?.id ? getPlaylistTrackStreamUrl(job.id) : null,
   }));
 
-export const playlistJobsQueryOptions = (playlistId: MaybeId) =>
+export const playlistJobsQueryOptions = (playlistId: MaybeText) =>
   queryOptions({
     queryKey: queryKeys.playlistJobs(playlistId),
     queryFn: ({ signal }) =>

@@ -76,7 +76,7 @@ export function selectNightlyUpdate(
   return { current: currentSha, latest: latest.slice(0, 7) };
 }
 
-export function extractReleaseNoteItems(body: string | undefined, maxItems = 8) {
+export function extractReleaseNoteItems(body: string | null | undefined, maxItems = 8) {
   return String(body || "")
     .split(/\r?\n/)
     .map((line) => line.trim())

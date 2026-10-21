@@ -233,32 +233,33 @@ const getLidarrResourceConfig = (settings) => {
   };
 };
 
-const buildLidarrQueries = ({ url, apiKey, credentialsRevision }, enabled) => [
-  {
-    queryKey: queryKeys.lidarrRootFolders(url, credentialsRevision),
-    queryFn: ({ signal }) => getLidarrRootFolders(url, apiKey, { signal }),
-    enabled: enabled && Boolean(url && apiKey),
-    staleTime: 60_000,
-  },
-  {
-    queryKey: queryKeys.lidarrProfiles(url, credentialsRevision),
-    queryFn: ({ signal }) => getLidarrProfiles(url, apiKey, { signal }),
-    enabled: enabled && Boolean(url && apiKey),
-    staleTime: 60_000,
-  },
-  {
-    queryKey: queryKeys.lidarrMetadataProfiles(url, credentialsRevision),
-    queryFn: ({ signal }) => getLidarrMetadataProfiles(url, apiKey, { signal }),
-    enabled: enabled && Boolean(url && apiKey),
-    staleTime: 60_000,
-  },
-  {
-    queryKey: queryKeys.lidarrTags(url, credentialsRevision),
-    queryFn: ({ signal }) => getLidarrTags(url, apiKey, { signal }),
-    enabled: enabled && Boolean(url && apiKey),
-    staleTime: 60_000,
-  },
-];
+const buildLidarrQueries = ({ url, apiKey, credentialsRevision }, enabled) =>
+  [
+    {
+      queryKey: queryKeys.lidarrRootFolders(url, credentialsRevision),
+      queryFn: ({ signal }) => getLidarrRootFolders(url, apiKey, { signal }),
+      enabled: enabled && Boolean(url && apiKey),
+      staleTime: 60_000,
+    },
+    {
+      queryKey: queryKeys.lidarrProfiles(url, credentialsRevision),
+      queryFn: ({ signal }) => getLidarrProfiles(url, apiKey, { signal }),
+      enabled: enabled && Boolean(url && apiKey),
+      staleTime: 60_000,
+    },
+    {
+      queryKey: queryKeys.lidarrMetadataProfiles(url, credentialsRevision),
+      queryFn: ({ signal }) => getLidarrMetadataProfiles(url, apiKey, { signal }),
+      enabled: enabled && Boolean(url && apiKey),
+      staleTime: 60_000,
+    },
+    {
+      queryKey: queryKeys.lidarrTags(url, credentialsRevision),
+      queryFn: ({ signal }) => getLidarrTags(url, apiKey, { signal }),
+      enabled: enabled && Boolean(url && apiKey),
+      staleTime: 60_000,
+    },
+  ] as const;
 
 export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   const [settings, setSettingsState] = useState<SettingsState>(defaultSettings);

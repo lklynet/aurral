@@ -298,11 +298,11 @@ export function getPlaylistStatusSnapshot({ user = null } = {}) {
   if (phase === "completed" && nextRunMessage) {
     message = nextRunMessage;
   }
-  const flowStats = {};
+  const flowStats: Record<string, ReturnType<typeof aggregateStats>> = {};
   for (const flowId of flowIds) {
     flowStats[flowId] = scopedStats[flowId] || aggregateStats({}, []);
   }
-  const staticPlaylistStats = {};
+  const staticPlaylistStats: Record<string, ReturnType<typeof aggregateStats>> = {};
   for (const playlistId of staticPlaylistIds) {
     staticPlaylistStats[playlistId] = scopedStats[playlistId] || aggregateStats({}, []);
   }

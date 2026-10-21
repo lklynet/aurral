@@ -2,6 +2,7 @@ import { queryClient, queryKeys } from "../../queryClient.ts";
 import {
   getStaticPlaylistOperation,
   moveStaticPlaylistTracks,
+  type StaticPlaylistOperationStatus,
   removeStaticPlaylistTracks,
 } from "../../utils/api/endpoints/playlists.ts";
 import type { BulkPlaylistOperationResponse } from "../../../../backend/routes/playlists/handlers/staticPlaylists.ts";
@@ -19,13 +20,6 @@ interface TrackChange {
   label: string;
   phase: "undo" | "saving";
   toastId?: string;
-}
-
-interface StaticPlaylistOperationResult {
-  state?: string;
-  message?: string | null;
-  targetPlaylistId?: string | null;
-  outcomes?: { status?: string; message?: string | null }[];
 }
 
 type SubmitResponse = BulkPlaylistOperationResponse;
@@ -95,7 +89,7 @@ export function createPlaylistTrackChanges(toast) {
     if (error) toast.showError(error, 8000);
   };
 
-  const report = (change: TrackChange, result: StaticPlaylistOperationResult | undefined) => {
+  const report = (change: TrackChange, result: StaticPlaylistOperationStatus | undefined) => {
     const outcomes = Array.isArray(result?.outcomes) ? result.outcomes : [];
     const failed = outcomes.filter((outcome) => outcome.status === "failed");
     const moved = outcomes.filter((outcome) => outcome.status === "moved").length;

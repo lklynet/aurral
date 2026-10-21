@@ -38,6 +38,7 @@ import type {
   GetFlowLidarrImportListUrlResponse,
   GetFlowTemplatesResponse,
   SetFlowEnabledResponse,
+  StartFlowResponse,
   UpdateFlowResponse,
 } from "../../../../../backend/routes/playlists/handlers/flows.ts";
 import type {
@@ -61,6 +62,7 @@ import type {
 } from "../../../../../backend/routes/playlists/handlers/utils.ts";
 import type { DeletePlaylistTrackArtworkResponse } from "../../../../../backend/routes/playlists/handlers/trackArtwork.ts";
 import type { PlaylistArtworkOkResponse } from "../../../../../backend/routes/playlists/handlers/artworkManagement.ts";
+import type { getPlaylistStatusSnapshot } from "../../../../../backend/services/playlists/playlistStatusSnapshot.ts";
 
 type SignalOptions = { signal?: AbortSignal };
 
@@ -168,7 +170,9 @@ export const generatePlaylistArtwork = (playlistId: string): Promise<PlaylistArt
 export const getPlaylistStatus = ({
   signal,
   bypassCache = false,
-}: SignalOptions & { bypassCache?: boolean } = {}) => {
+}: SignalOptions & { bypassCache?: boolean } = {}): Promise<
+  ReturnType<typeof getPlaylistStatusSnapshot>
+> => {
   if (bypassCache) return getData("/playlists/status", { signal });
   return queryClient.fetchQuery({
     queryKey: queryKeys.playlistStatus,
@@ -177,17 +181,26 @@ export const getPlaylistStatus = ({
   });
 };
 
+export interface PlaylistJob {
+  id?: string | number;
+  status?: string;
+  albumName?: string | null;
+  reason?: string | null;
+  artworkUrl?: string | null;
+  customArtworkUrl?: string | null;
+}
+
 export const getPlaylistJobs = (
   playlistId: string | null | undefined,
   limit: number | null = null,
   options: SignalOptions & { params?: Record<string, string | number> } = {},
-) => {
+): Promise<PlaylistJob[]> => {
   const params = { ...(options.params || {}) };
   const parsedLimit = Number(limit);
   if (Number.isFinite(parsedLimit) && parsedLimit > 0) {
     params.limit = Math.floor(parsedLimit);
   }
-  return getData(`/playlists/jobs/${playlistId}`, {
+  return getData<PlaylistJob[]>(`/playlists/jobs/${playlistId}`, {
     ...options,
     params,
   }).then((jobs) => (Array.isArray(jobs) ? jobs.map(withAuthenticatedTrackArtwork) : jobs));
@@ -355,7 +368,7 @@ export const cancelDownloadJob = (jobId: string): Promise<CancelDownloadJobRespo
 export const retryDownloadJob = (jobId: string): Promise<RetryDownloadJobResponse> =>
   postData(`/playlists/jobs/${encodeURIComponent(jobId)}/retry`);
 
-export const startFlow = (flowId: string, limit = 30) =>
+export const startFlow = (flowId: string, limit = 30): Promise<StartFlowResponse> =>
   postData(`/playlists/start/${flowId}`, {
     limit,
   });
@@ -469,11 +482,18 @@ export const moveStaticPlaylistTracks = (
     target,
   });
 
+export interface StaticPlaylistOperationStatus {
+  state: string;
+  message?: string | null;
+  targetPlaylistId?: string | null;
+  outcomes?: { status?: string; message?: string | null }[];
+}
+
 export const getStaticPlaylistOperation = (
   playlistId: string,
   operationId: string,
   options?: { bypassCache?: boolean },
-) =>
+): Promise<StaticPlaylistOperationStatus> =>
   getData(
     `/playlists/shared-playlists/${encodeURIComponent(playlistId)}/operations/${encodeURIComponent(operationId)}`,
     options,

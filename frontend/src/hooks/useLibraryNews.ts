@@ -8,6 +8,11 @@ export function useLibraryNews({
   limit = 60,
   mode = "matched",
   userId = null,
+}: {
+  enabled?: boolean;
+  limit?: number;
+  mode?: "matched" | "top";
+  userId?: string | number | null;
 } = {}) {
   const queryKey = queryKeys.news(userId, mode, limit);
   const query = useInfiniteQuery({

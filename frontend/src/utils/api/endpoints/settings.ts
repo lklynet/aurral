@@ -46,8 +46,10 @@ export const startPlexAuth = (
 export const checkPlexAuth = (
   pinId: PlexPin["id"],
   code: PlexPin["code"],
-): Promise<{ pending: true } | { token: string; plexUsername: string | null }> =>
-  postData("/settings/plex/auth/check", { pinId, code });
+): Promise<
+  | { pending: true; token?: undefined; plexUsername?: undefined }
+  | { token: string; plexUsername: string | null; pending?: undefined }
+> => postData("/settings/plex/auth/check", { pinId, code });
 
 export const getPlexResources = (
   token: string,
@@ -81,8 +83,10 @@ export const testNavidromeConnection = (
 
 export const syncPlexNow = (): Promise<{
   success: true;
-  playlists: unknown[];
-  scanInProgress?: boolean;
+  configured: true;
+  indexedTracks: number;
+  scanInProgress: boolean;
+  playlists: { title: string; count: number | null }[];
 }> => postData("/settings/plex/sync");
 
 export const getPlexLibraries = (): Promise<{
@@ -182,12 +186,18 @@ export const getLidarrTags = (
 export const testSlskdConnection = (): Promise<ConnectionTestResponse> =>
   postData("/settings/slskd/test");
 
-export const testProwlarrConnection = (): Promise<ConnectionTestResponse> =>
-  postData("/settings/prowlarr/test");
+export const testProwlarrConnection = (): Promise<
+  ConnectionTestResponse & ProwlarrIndexersResponse
+> => postData("/settings/prowlarr/test");
 
-export const getProwlarrIndexers = ({ signal }: { signal?: AbortSignal } = {}): Promise<{
+type ProwlarrIndexersResponse = {
   indexers: Awaited<ReturnType<typeof prowlarrClient.listUsenetIndexers>>;
-}> => getData("/settings/prowlarr/indexers", { signal });
+};
+
+export const getProwlarrIndexers = ({
+  signal,
+}: { signal?: AbortSignal } = {}): Promise<ProwlarrIndexersResponse> =>
+  getData("/settings/prowlarr/indexers", { signal });
 
 export const testNzbgetConnection = (): Promise<ConnectionTestResponse> =>
   postData("/settings/nzbget/test");

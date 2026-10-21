@@ -34,6 +34,7 @@ import type {
   AddArtistToLibraryResponse,
   DeleteArtistFromLibraryResponse,
   FetchLibraryArtistResponse,
+  GetArtistMonitoringResponse,
   RefreshLibraryArtistResponse,
   UpdateLibraryArtistMbidResponse,
   UpdateLibraryArtistResponse,
@@ -62,7 +63,9 @@ import type {
 } from "../../../../../backend/routes/library/handlers/downloads.ts";
 import type {
   GetMonitoringDefaultsResponse,
+  GetMonitoringExclusionsResponse,
   PreviewArtistMonitoringResponse,
+  PreviewMonitoringDefaultsResponse,
   RemoveMonitoringExclusionResponse,
   SaveMonitoringDefaultsResponse,
 } from "../../../../../backend/routes/library/handlers/monitoring.ts";
@@ -78,6 +81,7 @@ import type {
 } from "../../../../../backend/routes/library/handlers/misc.ts";
 import type { libraryManager } from "../../../../../backend/services/libraryManager.ts";
 import type { requestLibraryTrack } from "../../../../../backend/services/libraryTrackRequests.ts";
+import type { ActivityRequest } from "../../../pages/activity/activityListUtils.ts";
 
 type SignalOptions = { signal?: AbortSignal };
 
@@ -596,7 +600,10 @@ export const deleteArtistFromLibrary = (
     params: { deleteFiles, ...(manager ? { manager } : {}) },
   });
 
-export const getArtistMonitoring = (mbid: string, { signal }: SignalOptions = {}) =>
+export const getArtistMonitoring = (
+  mbid: string,
+  { signal }: SignalOptions = {},
+): Promise<GetArtistMonitoringResponse> =>
   getData(`/library/artists/${encodeURIComponent(mbid)}/monitoring`, { signal });
 
 export const previewArtistMonitoring = (
@@ -618,7 +625,7 @@ export const getMonitoringDefaults = ({
 export const previewMonitoringDefaults = (
   rules: MonitoringRulesInput,
   { signal }: SignalOptions = {},
-) =>
+): Promise<Extract<PreviewMonitoringDefaultsResponse, { artistCount: number }>> =>
   postData(
     "/library/monitoring/defaults/preview",
     { rules },
@@ -635,7 +642,10 @@ export const saveMonitoringDefaults = (
 export const getMonitoringExclusions = ({
   artistMbid = null,
   signal,
-}: { artistMbid?: string | null; signal?: AbortSignal } = {}) =>
+}: {
+  artistMbid?: string | null;
+  signal?: AbortSignal;
+} = {}): Promise<GetMonitoringExclusionsResponse> =>
   getData("/library/monitoring/exclusions", {
     params: artistMbid ? { artistMbid } : {},
     signal,
@@ -909,7 +919,7 @@ export const refreshLibraryArtist = (mbid: string): Promise<RefreshLibraryArtist
 export const getRequests = ({
   refresh = false,
   signal,
-}: { refresh?: boolean; signal?: AbortSignal } = {}) =>
+}: { refresh?: boolean; signal?: AbortSignal } = {}): Promise<ActivityRequest[]> =>
   getData("/requests", { params: refresh ? { refresh: 1 } : {}, signal });
 
 export const getRecentlyAdded = ({

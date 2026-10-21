@@ -55,7 +55,7 @@ export default function EditorialPlaylistDetailPage() {
   const { showSuccess, showError } = useToast();
   const [adding, setAdding] = useState(false);
   const [failedArtwork, setFailedArtwork] = useState(false);
-  const playlistQueryOptions = editorialPlaylistQueryOptions(user?.id, playlistId);
+  const playlistQueryOptions = editorialPlaylistQueryOptions(user?.id, playlistId!);
   const { queryKey } = playlistQueryOptions;
 
   const { data: playlist, error, isPending, refetch } = useQuery(playlistQueryOptions);
@@ -98,7 +98,7 @@ export default function EditorialPlaylistDetailPage() {
   const handleAdd = async () => {
     setAdding(true);
     try {
-      const result = await addEditorialPlaylistToLibrary(playlistId);
+      const result = await addEditorialPlaylistToLibrary(playlistId!);
       queryClient.setQueryData(queryKey, (current) =>
         current ? { ...current, libraryPlaylistId: result.playlistId } : current,
       );

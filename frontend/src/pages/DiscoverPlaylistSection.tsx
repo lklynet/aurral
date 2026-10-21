@@ -4,6 +4,9 @@ import { ListMusic } from "lucide-react";
 import { DiscoverRail } from "../components/DiscoverRail";
 import RouteLink from "../components/RouteLink";
 import Tooltip from "../components/Tooltip";
+import type { getEditorialShelf } from "../utils/api/endpoints/discovery.ts";
+
+type EditorialShelfPlaylists = Awaited<ReturnType<typeof getEditorialShelf>>["forYou"];
 
 export const editorialPlaylistPath = (playlistId) =>
   `/discover/playlists/deezer/${encodeURIComponent(playlistId)}`;
@@ -54,7 +57,15 @@ function EditorialPlaylistCard({ playlist }) {
   );
 }
 
-export function DiscoverPlaylistSection({ title, playlists = [], showViewAll = false }) {
+export function DiscoverPlaylistSection({
+  title,
+  playlists = [],
+  showViewAll = false,
+}: {
+  title: string;
+  playlists?: EditorialShelfPlaylists;
+  showViewAll?: boolean;
+}) {
   if (playlists.length === 0) return null;
   return (
     <DiscoverRail title={title} viewAllTo={showViewAll ? "/discover/playlists" : undefined}>

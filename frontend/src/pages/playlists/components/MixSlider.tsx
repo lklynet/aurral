@@ -461,8 +461,8 @@ export async function fetchFlowArtistSuggestions(query: string, existingEntries:
   ].filter(Boolean);
   return dedupeFocusSuggestions(
     artistCandidates.map((artist) => ({
-      label: artist.name,
-      meta: artist.source === "brainzmash" ? "Metadata" : "Artist",
+      label: artist!.name,
+      meta: artist!.source === "brainzmash" ? "Metadata" : "Artist",
     })),
     existingEntries,
   );

@@ -56,8 +56,16 @@ export function SettingsPlaybackSection({
   const [testStatus, setTestStatus] = useState(null);
   const [syncingPlex, setSyncingPlex] = useState(false);
   const [plexServers, setPlexServers] = useState([]);
-  const [plexLibraries, setPlexLibraries] = useState([]);
-  const [libraryAccessCheck, setLibraryAccessCheck] = useState(null);
+  const [plexLibraries, setPlexLibraries] = useState<
+    Awaited<ReturnType<typeof getPlexLibraries>>["libraries"]
+  >([]);
+  const [libraryAccessCheck, setLibraryAccessCheck] = useState<{
+    checking: boolean;
+    checked?: boolean;
+    accessible?: boolean;
+    reportedPath?: string;
+    reason?: string;
+  } | null>(null);
   const [plexPathPickerOpen, setPlexPathPickerOpen] = useState(false);
   const [plexLibraryPathPickerOpen, setPlexLibraryPathPickerOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -231,7 +239,13 @@ export function SettingsPlaybackSection({
       }
       const servers = await loadPlexServers(token);
       const owned = (servers || []).filter((s) => s.owned);
-      const patch = { token, plexUsername, ...(clientId ? { clientId } : {}) };
+      const patch: {
+        token: string;
+        plexUsername: string | null;
+        clientId?: string;
+        url?: string;
+        machineIdentifier?: string;
+      } = { token, plexUsername, ...(clientId ? { clientId } : {}) };
       if (owned.length === 1) {
         const best = pickBestPlexConnection(owned[0]);
         const url = resolvePlexConnectionUrl(best);

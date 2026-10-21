@@ -67,7 +67,7 @@ export const resolveEditorialTrackLinks = (
     artistName,
     albumName,
     deezerAlbumId,
-  }: { artistName?: string; albumName?: string; deezerAlbumId?: string },
+  }: { artistName?: string | null; albumName?: string | null; deezerAlbumId?: string | null },
   options: { signal?: AbortSignal } = {},
 ): Promise<Awaited<ReturnType<typeof resolveEditorialTrackLinksRecord>>> =>
   getData("/discover/editorial/links", {
