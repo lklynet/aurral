@@ -3,6 +3,7 @@ import path from "node:path";
 import { parseFile, selectCover } from "music-metadata";
 import { db } from "../config/db-sqlite.ts";
 import createCache from "./apiClients/simpleCache.ts";
+import type { LibraryMediaFilesRow } from "../db/rows.ts";
 import {
   MAX_SOURCE_IMAGE_BYTES,
   inspectImageBuffer,
@@ -88,7 +89,7 @@ async function findAlbumArtwork(albumId: string) {
   const scannedAt = latestScanCompletion();
   if (missingArtwork.get(albumId) === scannedAt) return null;
   const files = db
-    .prepare<[number], { path: string }>(`SELECT path FROM library_media_files
+    .prepare<[number], Pick<LibraryMediaFilesRow, "path">>(`SELECT path FROM library_media_files
     WHERE album_id = ? AND available = 1 ORDER BY path COLLATE NOCASE LIMIT 100`)
     .all(Number(albumId));
   const checkedFolders = new Set();

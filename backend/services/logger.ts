@@ -134,7 +134,7 @@ function patchDefaultConsole() {
 
 patchDefaultConsole();
 
-function log(level: LogLevel, category: string, message: string, data: object = {}) {
+function log(level: LogLevel, category: string, message: string, data: NonNullable<unknown> = {}) {
   if (!verboseEnabled && level === "debug") return;
   if (
     !verboseEnabled &&
@@ -158,10 +158,12 @@ function log(level: LogLevel, category: string, message: string, data: object = 
 }
 
 export const logger = {
-  debug: (category: string, message: string, data?: unknown) =>
+  debug: (category: string, message: string, data?: NonNullable<unknown>) =>
     log("debug", category, message, data),
-  info: (category: string, message: string, data?: unknown) => log("info", category, message, data),
-  warn: (category: string, message: string, data?: unknown) => log("warn", category, message, data),
-  error: (category: string, message: string, data?: unknown) =>
+  info: (category: string, message: string, data?: NonNullable<unknown>) =>
+    log("info", category, message, data),
+  warn: (category: string, message: string, data?: NonNullable<unknown>) =>
+    log("warn", category, message, data),
+  error: (category: string, message: string, data?: NonNullable<unknown>) =>
     log("error", category, message, data),
 };

@@ -409,7 +409,7 @@ export async function applyLidarrCommunityGuide(lidarrClient: LidarrCommunityGui
 
   const allCustomFormats = await lidarrClient.getCustomFormats();
   const formatItems = allCustomFormats.map((cf) => {
-    const scores: Record<string, number> = {
+    const scores = {
       "Preferred Groups": 10,
       CD: 2,
       WEB: 1,
