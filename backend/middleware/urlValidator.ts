@@ -1,6 +1,6 @@
 const ALWAYS_BLOCKED_HOSTS = new Set(["169.254.169.254"]);
 
-export const validateExternalUrl = (value) => {
+export const validateExternalUrl = (value: unknown) => {
   const raw = String(value || "").trim();
   if (!raw) {
     return { valid: false, error: "URL is required" };

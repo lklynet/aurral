@@ -9,11 +9,11 @@ import {
   suggestNextVersion,
 } from "../lib/release-version.ts";
 
-function git(...args) {
+function git(...args: string[]) {
   return execFileSync("git", args, { encoding: "utf8" }).trim();
 }
 
-function toLines(value) {
+function toLines(value: string) {
   return value
     .split(/\r?\n/)
     .map((line) => line.trim())

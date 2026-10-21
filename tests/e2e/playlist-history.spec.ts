@@ -36,8 +36,9 @@ test("static playlist opens from Playlists and its scrobble setting persists", a
     const statusResponse = await apiRequest(page, "/api/playlists/status");
     expect(statusResponse.ok).toBe(true);
     expect(
-      statusResponse.body.sharedPlaylists.find((playlist) => playlist.id === playlistId)
-        .recordHistory,
+      statusResponse.body.sharedPlaylists.find(
+        (playlist: { id: string; recordHistory: boolean }) => playlist.id === playlistId,
+      ).recordHistory,
     ).toBe(false);
 
     await page.reload();
@@ -59,7 +60,9 @@ test("static playlist opens from Playlists and its scrobble setting persists", a
         async () => {
           const response = await apiRequest(page, "/api/playlists/status");
           return (
-            response.body?.sharedPlaylists?.some((playlist) => playlist.id === playlistId) || false
+            response.body?.sharedPlaylists?.some(
+              (playlist: { id: string }) => playlist.id === playlistId,
+            ) || false
           );
         },
         { timeout: 15_000 },

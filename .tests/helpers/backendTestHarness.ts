@@ -2,9 +2,10 @@ import { mkdir, mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
-import { spawn } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
 import http from "http";
 import net from "net";
+import type Database from "better-sqlite3";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..", "..");
@@ -59,7 +60,9 @@ export async function createIsolatedStateDir(name = "test", { dataDirRelativePat
   };
 }
 
-export function applyIsolatedBackendEnv(paths) {
+type IsolatedStatePaths = Awaited<ReturnType<typeof createIsolatedStateDir>>;
+
+export function applyIsolatedBackendEnv(paths: IsolatedStatePaths) {
   process.env.AURRAL_DATA_DIR = paths.dataDir;
   process.env.AURRAL_DB_PATH = paths.dbPath;
   process.env.WEEKLY_FLOW_FOLDER = join(paths.baseDir, "weekly-flow");
@@ -68,7 +71,7 @@ export function applyIsolatedBackendEnv(paths) {
   process.env.JSON_BODY_LIMIT = "2mb";
 }
 
-export async function cleanupIsolatedState(paths) {
+export async function cleanupIsolatedState(paths: IsolatedStatePaths) {
   if (!paths?.baseDir) return;
   try {
     const honkerRuntime = await importFromRepo("backend/services/honkerWorkerRuntime.ts");
@@ -85,29 +88,29 @@ export async function cleanupIsolatedState(paths) {
   await rm(paths.baseDir, { recursive: true, force: true });
 }
 
-export async function importFromRepo(relativePath) {
+export async function importFromRepo(relativePath: string) {
   const moduleUrl = pathToFileURL(join(repoRoot, relativePath)).href;
   return import(moduleUrl);
 }
 
-export async function setupIsolatedBackend(name, ...modulePaths) {
+export async function setupIsolatedBackend(name: string, ...modulePaths: string[]) {
   const paths = await createIsolatedStateDir(name);
   applyIsolatedBackendEnv(paths);
   const modules = await Promise.all(modulePaths.map(importFromRepo));
   return [paths, ...modules];
 }
 
-export function resetDatabase(db) {
+export function resetDatabase(db: Database.Database) {
   for (const table of RESET_TABLES) {
     db.prepare(`DELETE FROM ${table}`).run();
   }
 }
 
-export function createMockHttpServer(handler) {
+export function createMockHttpServer(handler: http.RequestListener) {
   const server = http.createServer(handler);
   return new Promise((resolve) => {
     server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
+      const address = server.address() as net.AddressInfo;
       resolve({
         url: `http://127.0.0.1:${address.port}`,
         close: () => new Promise((done) => server.close(done)),
@@ -116,8 +119,8 @@ export function createMockHttpServer(handler) {
   });
 }
 
-async function probeServerHealth(port) {
-  const status = await new Promise((resolve, reject) => {
+async function probeServerHealth(port: number) {
+  const status = await new Promise<number>((resolve, reject) => {
     const request = http.get(
       {
         host: "127.0.0.1",
@@ -138,7 +141,7 @@ async function probeServerHealth(port) {
   return status >= 200 && status < 300;
 }
 
-async function waitForServer(port, child) {
+async function waitForServer(port: number, child: ChildProcess) {
   const deadline = Date.now() + 30000;
   let lastError = "";
   while (Date.now() < deadline) {
@@ -159,18 +162,21 @@ async function waitForServer(port, child) {
 }
 
 function findFreePort() {
-  return new Promise((resolve, reject) => {
+  return new Promise<number>((resolve, reject) => {
     const probe = net.createServer();
     probe.once("error", reject);
     probe.listen(0, () => {
-      const { port } = probe.address();
+      const { port } = probe.address() as net.AddressInfo;
       probe.close(() => resolve(port));
     });
   });
 }
 
-export async function startServerProcess({ port, extraEnv = {} } = {}) {
-  const chosenPort = Number.isInteger(port) && port > 0 ? port : await findFreePort();
+export async function startServerProcess({
+  port,
+  extraEnv = {},
+}: { port?: number; extraEnv?: NodeJS.ProcessEnv } = {}) {
+  const chosenPort = Number.isInteger(port) && port! > 0 ? port! : await findFreePort();
   const child = spawn("node", ["backend/server.ts"], {
     cwd: repoRoot,
     env: {
@@ -201,7 +207,7 @@ export async function startServerProcess({ port, extraEnv = {} } = {}) {
     async stop() {
       if (child.exitCode != null) return;
       child.kill("SIGTERM");
-      await new Promise((resolve) => {
+      await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
           child.kill("SIGKILL");
         }, 5000);

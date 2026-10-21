@@ -3,13 +3,13 @@ import bcrypt from "bcrypt";
 
 const SCRYPT_KEYLEN = 64;
 
-export function hashPassword(password) {
+export function hashPassword(password: string) {
   const salt = randomBytes(16);
   const hash = scryptSync(password, salt, SCRYPT_KEYLEN);
   return `scrypt$${salt.toString("hex")}$${hash.toString("hex")}`;
 }
 
-export function verifyPassword(password, stored) {
+export function verifyPassword(password: string, stored: string) {
   const value = String(stored || "");
   if (value.startsWith("scrypt$")) {
     const parts = value.split("$");
@@ -26,6 +26,6 @@ export function verifyPassword(password, stored) {
   return false;
 }
 
-export function needsRehash(stored) {
+export function needsRehash(stored: string) {
   return String(stored || "").startsWith("$2");
 }

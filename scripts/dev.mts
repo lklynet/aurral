@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { parseEnv } from "node:util";
 
@@ -6,11 +6,11 @@ const backendEnv = existsSync("backend/.env") ? parseEnv(readFileSync("backend/.
 const apiPort = process.env.AURRAL_DEV_API_PORT || backendEnv.AURRAL_DEV_API_PORT || "3001";
 const webPort = process.env.AURRAL_DEV_WEB_PORT || backendEnv.AURRAL_DEV_WEB_PORT || "3009";
 
-const children = [];
+const children: ChildProcess[] = [];
 let stopping = false;
 let exitCode = 0;
 
-function start(command, args, env = process.env) {
+function start(command: string, args: string[], env: NodeJS.ProcessEnv = process.env) {
   const child = spawn(command, args, {
     stdio: "inherit",
     env,
@@ -80,7 +80,7 @@ while (!stopping) {
 await Promise.all(
   children.map(
     (child) =>
-      new Promise((resolve) => {
+      new Promise<void>((resolve) => {
         if (child.exitCode !== null || child.signalCode) {
           resolve();
         } else {
