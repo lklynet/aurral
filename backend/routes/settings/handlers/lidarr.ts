@@ -9,6 +9,14 @@ import {
   applyCommunityGuide,
 } from "../../../services/lidarrSettingsService.ts";
 
+export type LidarrConnectionTestResponse = {
+  success: true;
+  message: string;
+  version: string;
+  instanceName: string;
+  apiPath: string;
+};
+
 export function registerLidarr(router) {
   router.get("/lidarr/profiles", async (req, res) => {
     try {

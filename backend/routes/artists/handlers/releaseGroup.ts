@@ -18,6 +18,52 @@ import {
 import { logger } from "../../../services/logger.ts";
 import { chooseLibraryRelease } from "../../../services/releaseResolver.ts";
 
+type ReleaseGroupAlbum = Awaited<ReturnType<typeof getAlbumByMbid>>;
+
+export type ReleaseGroupRatingsResponse = {
+  ratings: Record<
+    string,
+    { rating: ReleaseGroupAlbum["rating"]; firstReleaseDate: ReleaseGroupAlbum["releaseDate"] }
+  >;
+};
+
+export type ReleaseGroupDetailsResponse = ReturnType<typeof toLegacyReleaseGroupSummary> & {
+  genres: string[];
+  overview: string;
+  coverUrl: string | null;
+};
+
+export type ReleaseGroupCoverEntry = {
+  image: string | null;
+  notFound: boolean;
+  transientError?: boolean;
+};
+
+export type ReleaseGroupCoversResponse = { covers: Record<string, ReleaseGroupCoverEntry> };
+
+export type ReleaseGroupCoverImage = { image: string; front: boolean; types: string[] };
+
+export type ReleaseGroupCoverResponse = {
+  images: ReleaseGroupCoverImage[];
+  notFound: boolean;
+  transientError: boolean;
+};
+
+export type ReleaseGroupTrack = {
+  id: string;
+  mbid: string;
+  title: string;
+  trackName: string;
+  trackNumber: number;
+  discNumber: number;
+  position: number;
+  releaseMbid: string | null;
+  length: number | null;
+  preview_url: string | null;
+  previewProvider: string | null;
+  previewTrackId: string | null;
+};
+
 export function registerReleaseGroup(router) {
   router.post("/release-groups/ratings", async (req, res) => {
     const ids = [...new Set(Array.isArray(req.body?.ids) ? req.body.ids : [])]

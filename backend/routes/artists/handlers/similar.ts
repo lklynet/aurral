@@ -4,6 +4,10 @@ import { getSimilarArtistCards } from "../shared/transform.ts";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { cacheMiddleware } from "../../../middleware/cache.ts";
 
+export type SimilarArtistsResponse = {
+  artists: Awaited<ReturnType<typeof getSimilarArtistCards>>;
+};
+
 export function registerSimilar(router) {
   router.get("/:mbid/similar", cacheMiddleware(300), async (req, res) => {
     const { mbid } = req.params;

@@ -5,6 +5,10 @@ import { getArtistImage } from "../../../services/imageService.ts";
 
 const NEGATIVE_COVER_CACHE_MS = 7 * 24 * 60 * 60 * 1000;
 
+export type ArtistCoverImage = { image: string; front: boolean; types: string[] };
+
+export type ArtistCoverResponse = { images: ArtistCoverImage[]; error?: string };
+
 export const getCachedCoverCacheControl = (images) =>
   images.length > 0 ? "public, max-age=31536000, immutable" : "no-store";
 

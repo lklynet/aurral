@@ -2,6 +2,10 @@ import { youtubeFindTopSongVideo } from "../../../services/apiClients/index.ts";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { noCache } from "../../../middleware/cache.ts";
 
+export type ArtistVideoResponse = {
+  video: { videoId: string; embedUrl: string } | null;
+};
+
 export function registerVideo(router) {
   router.get("/:mbid/video", noCache, async (req, res) => {
     const { mbid } = req.params;

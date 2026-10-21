@@ -4,6 +4,8 @@ import { clearApiCaches } from "../../../services/apiClients/index.ts";
 import { getDiscoveryCache } from "../../../services/discovery/index.ts";
 import { enqueueDiscoveryRefresh } from "../../../services/discovery/refreshScheduler.ts";
 
+export type DiscoveryRefreshResponse = { message: string; isUpdating: boolean };
+
 export function registerAdmin(router) {
   router.post("/refresh", requireAuth, requireAdmin, (req, res) => {
     const result = enqueueDiscoveryRefresh({

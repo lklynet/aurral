@@ -7,6 +7,16 @@ import {
   resetDiscoveryFeedback,
 } from "../../../services/discovery/index.ts";
 
+type DiscoveryFeedbackList = ReturnType<typeof getDiscoveryFeedback>;
+
+export type DiscoveryFeedbackResponse = { feedback: DiscoveryFeedbackList };
+
+export type DiscoveryFeedbackListResponse = { success: true; feedbackList: DiscoveryFeedbackList };
+
+export type DiscoveryFeedbackAddResponse = DiscoveryFeedbackListResponse & {
+  feedback: ReturnType<typeof addDiscoveryFeedback>;
+};
+
 export function registerFeedback(router) {
   router.get("/feedback", requireAuth, (req, res) => {
     res.json({

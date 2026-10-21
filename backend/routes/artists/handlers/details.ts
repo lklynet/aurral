@@ -29,6 +29,45 @@ export function getLibraryLidarrArtist(reference) {
   };
 }
 
+type ArtistDetailsCore = ReturnType<typeof buildArtistBase> &
+  Awaited<ReturnType<typeof getArtistTagPayload>> & {
+    "release-groups": Awaited<ReturnType<typeof withListenBrainzStats>>;
+    "appears-on-release-groups": Awaited<
+      ReturnType<typeof musicbrainzGetArtistAppearsOnReleaseGroups>
+    >;
+    "release-group-count": number;
+    "release-count": number;
+  };
+
+type ArtistDetailsFallback = {
+  id: string;
+  name: string;
+  "sort-name": string;
+  disambiguation: string;
+  "type-id": null;
+  type: null;
+  country: null;
+  "life-span": { begin: null; end: null; ended: boolean };
+  tags: never[];
+  genres: never[];
+  links: never[];
+  "release-groups": never[];
+  "appears-on-release-groups": never[];
+  relations: never[];
+  "release-group-count": number;
+  "release-count": number;
+};
+
+export type ArtistDetailsResponse =
+  | (ArtistDetailsCore & {
+      _lidarrData: Pick<
+        NonNullable<ReturnType<typeof getLibraryLidarrArtist>>,
+        "id" | "monitored" | "statistics"
+      >;
+    })
+  | ArtistDetailsCore
+  | ArtistDetailsFallback;
+
 export function registerDetails(router) {
   const parseSelectedReleaseTypes = (value) =>
     typeof value === "string" && value.trim()

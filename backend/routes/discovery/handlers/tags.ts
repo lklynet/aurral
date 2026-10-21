@@ -21,6 +21,8 @@ const rankTagSuggestions = (names, prefix) => {
   return groups.flat();
 };
 
+export type TagSuggestionsResponse = { tags: string[] };
+
 export function registerTags(router) {
   router.get("/tags", async (req, res) => {
     try {

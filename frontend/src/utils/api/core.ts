@@ -24,13 +24,24 @@ export interface ApiErrorResponse {
 
 export type ApiError = Error & { response?: ApiErrorResponse };
 
-function joinUrl(baseURL, url) {
+interface RequestConfig {
+  method?: string;
+  url?: string;
+  params?: Record<string, unknown>;
+  data?: unknown;
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+  timeout?: number;
+  keepalive?: boolean;
+}
+
+function joinUrl(baseURL: string, url: string) {
   if (!url) return baseURL;
   if (String(url).startsWith("http://") || String(url).startsWith("https://")) return url;
   return `${String(baseURL).replace(/\/+$/, "")}/${String(url).replace(/^\/+/, "")}`;
 }
 
-function appendParams(url, params) {
+function appendParams(url: string, params: Record<string, unknown> | undefined) {
   if (!params || typeof params !== "object") return url;
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -62,7 +73,7 @@ const reauthenticateThroughProxy = () => {
   void dropServiceWorker().then(() => window.location.reload());
 };
 
-async function request(config) {
+async function request(config: RequestConfig) {
   const method = String(config.method || "GET").toUpperCase();
   let url = appendParams(joinUrl(API_BASE_URL, config.url || ""), config.params);
   const controller = new AbortController();
@@ -76,7 +87,7 @@ async function request(config) {
   const timeoutMs = Number(config.timeout ?? 30000);
   const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
   const isBinaryData = config.data instanceof Blob || config.data instanceof FormData;
-  const headers = {
+  const headers: Record<string, string> = {
     ...(isBinaryData ? {} : { "Content-Type": "application/json" }),
     ...config.headers,
   };
@@ -86,10 +97,10 @@ async function request(config) {
   const isAuthEndpoint = urlPath.includes("/auth/login") || urlPath.includes("/auth/logout");
 
   try {
-    const init = { method, headers, signal: controller.signal, redirect: "manual" };
+    const init: RequestInit = { method, headers, signal: controller.signal, redirect: "manual" };
     if (config.data != null && method !== "GET" && method !== "HEAD") {
       if (typeof config.data === "string" || isBinaryData) {
-        init.body = config.data;
+        init.body = config.data as BodyInit;
       } else {
         init.body = JSON.stringify(config.data);
       }
@@ -105,7 +116,7 @@ async function request(config) {
     }
 
     const contentType = res.headers.get("content-type") || "";
-    let data;
+    let data: unknown;
     if (contentType.includes("json")) {
       try {
         data = await res.json();
@@ -142,16 +153,20 @@ async function request(config) {
 }
 
 const api = {
-  get: (url, config = {}) => request({ ...config, method: "GET", url }),
-  post: (url, data, config = {}) => request({ ...config, method: "POST", url, data }),
-  put: (url, data, config = {}) => request({ ...config, method: "PUT", url, data }),
-  patch: (url, data, config = {}) => request({ ...config, method: "PATCH", url, data }),
-  delete: (url, config = {}) => request({ ...config, method: "DELETE", url }),
+  get: (url: string, config: RequestConfig = {}) => request({ ...config, method: "GET", url }),
+  post: (url: string, data?: unknown, config: RequestConfig = {}) =>
+    request({ ...config, method: "POST", url, data }),
+  put: (url: string, data?: unknown, config: RequestConfig = {}) =>
+    request({ ...config, method: "PUT", url, data }),
+  patch: (url: string, data?: unknown, config: RequestConfig = {}) =>
+    request({ ...config, method: "PATCH", url, data }),
+  delete: (url: string, config: RequestConfig = {}) =>
+    request({ ...config, method: "DELETE", url }),
 };
 
 const AUTH_TOKEN_KEY = "auth_token";
 
-function readAuthFromStorage(storage) {
+function readAuthFromStorage(storage: Storage | null | undefined) {
   if (!storage) return { token: "" };
   return { token: storage.getItem(AUTH_TOKEN_KEY) || "" };
 }
@@ -169,7 +184,7 @@ export const getStoredAuth = () => {
 
 export const getRequestToken = () => getStoredAuth().token;
 
-export const setStoredAuth = ({ token = "" } = {}) => {
+export const setStoredAuth = ({ token = "" }: { token?: string } = {}) => {
   if (!token) {
     globalThis?.sessionStorage?.removeItem(AUTH_TOKEN_KEY);
     globalThis?.localStorage?.removeItem(AUTH_TOKEN_KEY);
@@ -184,12 +199,19 @@ export const clearAuthStorage = () => {
   globalThis?.localStorage?.removeItem(AUTH_TOKEN_KEY);
 };
 
-export const coverResponseCache = new Map();
-export const coverInflightRequests = new Map();
+export interface CoverCacheValue {
+  images?: unknown[];
+  image?: unknown;
+  imageUrl?: unknown;
+  coverUrl?: unknown;
+}
+
+export const coverResponseCache = new Map<string, { value: CoverCacheValue; expiresAt: number }>();
+export const coverInflightRequests = new Map<string, Promise<unknown>>();
 const MAX_COVER_CACHE_SIZE = 1000;
 const COVER_CACHE_TTL_MS = 30 * 60 * 1000;
 const EMPTY_COVER_CACHE_TTL_MS = 60 * 1000;
-export const setCoverCacheEntry = (key, value) => {
+export const setCoverCacheEntry = (key: string, value: CoverCacheValue) => {
   if (!key) return;
   const images = Array.isArray(value?.images) ? value.images : [];
   const hasArtwork =
@@ -203,29 +225,37 @@ export const setCoverCacheEntry = (key, value) => {
   }
 };
 
-export const getCoverCacheEntry = (key) => {
+export const getCoverCacheEntry = <T extends CoverCacheValue>(key: string): T | null => {
   const entry = coverResponseCache.get(key);
   if (!entry) return null;
   if (Date.now() >= Number(entry.expiresAt || 0)) {
     coverResponseCache.delete(key);
     return null;
   }
-  return entry.value;
+  return entry.value as T;
 };
 
-export const fetchInflightOnce = async (store, key, requestFactory) => {
-  if (store.has(key)) return store.get(key);
+export const fetchInflightOnce = async <T>(
+  store: Map<string, Promise<unknown>>,
+  key: string,
+  requestFactory: () => Promise<T>,
+): Promise<T> => {
+  if (store.has(key)) return store.get(key) as Promise<T>;
   const request = requestFactory().finally(() => store.delete(key));
   store.set(key, request);
   return request;
 };
 
-export const fetchCoverWithMemo = async (key, requestFactory, { bypassCache = false } = {}) => {
+export const fetchCoverWithMemo = async <T extends CoverCacheValue>(
+  key: string,
+  requestFactory: () => Promise<T>,
+  { bypassCache = false }: { bypassCache?: boolean } = {},
+): Promise<T> => {
   const refreshKey = `${key}:refresh`;
   if (!bypassCache) {
     const refresh = coverInflightRequests.get(refreshKey);
-    if (refresh) return refresh;
-    const cached = getCoverCacheEntry(key);
+    if (refresh) return refresh as Promise<T>;
+    const cached = getCoverCacheEntry<T>(key);
     if (cached) return cached;
   } else {
     const normal = coverInflightRequests.get(key);
@@ -240,24 +270,34 @@ export const fetchCoverWithMemo = async (key, requestFactory, { bypassCache = fa
   );
 };
 
-const responseData = (req) => req.then((response) => response.data);
-export const getData = (url, config) => responseData(api.get(url, config));
-export const postData = (url, data, config) => responseData(api.post(url, data, config));
-export const putData = (url, data, config) => responseData(api.put(url, data, config));
-export const patchData = (url, data, config) => responseData(api.patch(url, data, config));
-export const deleteData = (url, config) => responseData(api.delete(url, config));
+const responseData = <T>(req: Promise<{ data: unknown }>): Promise<T> =>
+  req.then((response) => response.data as T);
+export const getData = <T>(url: string, config?: RequestConfig): Promise<T> =>
+  responseData<T>(api.get(url, config));
+export const postData = <T>(url: string, data?: unknown, config?: RequestConfig): Promise<T> =>
+  responseData<T>(api.post(url, data, config));
+export const putData = <T>(url: string, data?: unknown, config?: RequestConfig): Promise<T> =>
+  responseData<T>(api.put(url, data, config));
+export const patchData = <T>(url: string, data?: unknown, config?: RequestConfig): Promise<T> =>
+  responseData<T>(api.patch(url, data, config));
+export const deleteData = <T>(url: string, config?: RequestConfig): Promise<T> =>
+  responseData<T>(api.delete(url, config));
 
-export const lidarrCredentialParams = (url, apiKey, { trimUrl = false } = {}) => ({
+export const lidarrCredentialParams = (
+  url: string | undefined,
+  apiKey: string | undefined,
+  { trimUrl = false }: { trimUrl?: boolean } = {},
+) => ({
   ...(url ? { url: trimUrl ? url.replace(/\/+$/, "") : url } : {}),
   ...(apiKey ? { apiKey } : {}),
 });
 
 const getApiBaseUrl = () => import.meta.env.VITE_API_URL || getDefaultApiBaseUrl();
 
-export const resolveApiPath = (path) =>
+export const resolveApiPath = (path: string) =>
   joinUrl(getApiBaseUrl(), String(path || "").replace(/^\/api(?=\/)/, ""));
 
-export const buildAuthenticatedApiUrl = (path, params = {}) => {
+export const buildAuthenticatedApiUrl = (path: string, params: Record<string, unknown> = {}) => {
   const normalizedPath = String(path || "").startsWith("/")
     ? String(path || "")
     : `/${String(path || "")}`;
@@ -273,7 +313,7 @@ export const buildAuthenticatedApiUrl = (path, params = {}) => {
   }`;
 };
 
-export const resolveAuthenticatedApiAssetUrl = (value) => {
+export const resolveAuthenticatedApiAssetUrl = (value: string | null | undefined) => {
   const url = String(value || "");
   return url.startsWith("/api/") ? buildAuthenticatedApiUrl(url.replace(/^\/api/, "")) : url;
 };

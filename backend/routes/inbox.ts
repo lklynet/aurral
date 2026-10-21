@@ -160,4 +160,10 @@ router.patch("/:id", requireAuth, async (req, res) => {
   }
 });
 
+export type InboxResponse = ReturnType<typeof getInboxForUser>;
+
+export type InboxItemResponse = { item: ReturnType<typeof updateInboxItem> };
+
+export type InboxReadAllResponse = { unreadCount: number };
+
 export default router;

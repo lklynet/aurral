@@ -23,6 +23,16 @@ const toDiscoveryArtist = (artist) => ({
   playcount: artist.playcount || 0,
 });
 
+export type DiscoverArtist = ReturnType<typeof toDiscoveryArtist>;
+
+export type DiscoverResponse = Omit<
+  Awaited<ReturnType<typeof getUserDiscovery>>["body"],
+  "recommendations" | "globalTop"
+> & {
+  recommendations: DiscoverArtist[];
+  globalTop: DiscoverArtist[];
+};
+
 export function registerMain(router) {
   router.get("/status", requireAuth, (req, res) => {
     res.set("Cache-Control", "no-store");

@@ -31,6 +31,16 @@ export const buildShowsResponseCacheKey = ({
     fingerprintArtists(trendingArtists),
   ]);
 
+type NearbyShowsResult = Awaited<ReturnType<typeof getNearbyShows>>;
+
+export type NearbyShowsResponse =
+  | { configured: false; location: null; shows: never[] }
+  | {
+      configured: true;
+      location: NearbyShowsResult["location"];
+      shows: NearbyShowsResult["shows"];
+    };
+
 export function registerShows(router) {
   router.get("/nearby-shows", requireAuth, async (req, res) => {
     try {

@@ -68,7 +68,20 @@ export const filterBlockedArtistsForUser = (
   return list.filter((artist) => !matchesArtistKeys(artist, blockedKeys));
 };
 
-export const addDiscoveryFeedback = (userId = "global", entry = {}) => {
+export type DiscoveryFeedbackInput = {
+  id?: string;
+  action: string;
+  artistId?: string | null;
+  artistName?: string | null;
+  sourceContext?: string | null;
+  tagContext?: string[];
+  seedContext?: string[];
+};
+
+export const addDiscoveryFeedback = (
+  userId = "global",
+  entry: Partial<DiscoveryFeedbackInput> = {},
+) => {
   const action = normalizeFeedbackAction(entry.action);
   if (!action) throw new Error("Invalid discovery feedback action");
   const artistId = String(entry.artistId || "").trim() || null;

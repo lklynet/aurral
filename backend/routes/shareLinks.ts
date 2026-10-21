@@ -44,6 +44,8 @@ const toResponse = (link) => ({
   url: shareLinkUrl(link),
 });
 
+export type ShareLinkResponse = ReturnType<typeof toResponse>;
+
 const notInLibrary = (res) =>
   res.status(404).json({
     error: "not_in_library",
@@ -118,5 +120,30 @@ router.delete("/:id", async (req, res) => {
   await syncShareListener();
   res.status(204).end();
 });
+
+export type ShareLinksResponse = {
+  links: ShareLinkResponse[];
+  tunnel: ReturnType<typeof getShareTunnelState>;
+};
+
+export type ShareAvailabilityResponse = { trackCount: number; tunnelAvailable: boolean };
+
+export type ShareLinkCreatedResponse = { link: ShareLinkResponse };
+
+export type ShareTargetInput = {
+  kind?: string;
+  libraryTrackId?: string;
+  trackMbid?: string;
+  libraryAlbumId?: string;
+  albumMbid?: string;
+  libraryArtistId?: string;
+  artistMbid?: string;
+};
+
+export type ShareLinkRequest = ShareTargetInput & {
+  payload: string;
+  expiresIn: string;
+  allowDownload?: boolean;
+};
 
 export default router;

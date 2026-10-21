@@ -4,6 +4,12 @@ import {
   musicbrainzGetArtistAppearsOnReleaseGroups,
 } from "../../../services/apiClients/index.ts";
 
+export type ArtistAppearsOnResponse = {
+  items: Awaited<ReturnType<typeof musicbrainzGetArtistAppearsOnReleaseGroups>>;
+  offset: number;
+  hasMore: boolean;
+};
+
 export function registerAppearsOn(router) {
   router.post("/:mbid/appears-on", async (req, res) => {
     const { mbid } = req.params;

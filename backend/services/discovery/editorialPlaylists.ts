@@ -109,6 +109,10 @@ export async function getEditorialPlaylist(user, value) {
   };
 }
 
+export type EditorialLibraryAddResponse =
+  | { playlistId: string; name: string; alreadyAdded: true }
+  | { playlistId: string; name: string; alreadyAdded: false; tracksQueued: number };
+
 export async function addEditorialPlaylistToLibrary(user, value) {
   const id = validateDeezerPlaylistId(value);
   const key = `${user.id}:${id}`;

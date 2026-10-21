@@ -769,6 +769,8 @@ export const handleImageProxyRequest = async (req: Request, res: ExpressResponse
   });
 };
 
+export type ImageCacheResponse = { url: string };
+
 export const handleImageCacheRequest = async (req: Request, res: ExpressResponse) => {
   const sourceUrl = typeof req.body?.src === "string" ? req.body.src.trim() : "";
   if (!/^https?:\/\//i.test(sourceUrl)) {

@@ -5,6 +5,15 @@ import {
   testDownloadClient,
 } from "../../../services/download/downloadClientSettings.ts";
 
+export type ConnectionTestResponse = {
+  success: true;
+  ok: true;
+  configured: true;
+  warning?: boolean;
+  message?: string;
+  soulseekConnected?: boolean;
+};
+
 function validateDownloadClientTestConfig(key, config) {
   const definition = getDownloadClientSettings()[key];
   const nextConfig =
