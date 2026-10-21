@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 import { SettingsStorageHealthSection } from "./SettingsStorageSection";
 
 export function SettingsStorageHealthTab({
@@ -6,7 +7,7 @@ export function SettingsStorageHealthTab({
   health,
   showSuccess,
   showError,
-}) {
+}: ComponentProps<typeof SettingsStorageHealthSection>) {
   return (
     <div className="arr-page">
       <form onSubmit={handleSaveSettings} className="arr-form" autoComplete="off">

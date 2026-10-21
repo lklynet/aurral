@@ -7,14 +7,44 @@ import {
   SettingsModalToggle,
 } from "./SettingsModalLayout";
 
-function fieldId(definition, field) {
+type AdapterValue = string | number | boolean;
+
+type AdapterField = {
+  key: string;
+  label: string;
+  type?: string;
+  section?: string;
+  advanced?: boolean;
+  hidden?: boolean;
+  hint?: string;
+  required?: boolean;
+  secret?: boolean;
+  placeholder?: string;
+  min?: number;
+  max?: number;
+  options?: readonly (string | { value: string; label: string })[];
+};
+
+type AdapterDefinition = {
+  key: string;
+  defaults?: Record<string, AdapterValue>;
+  fields?: readonly AdapterField[];
+};
+
+type FieldGroup = { title: string; fields: AdapterField[] };
+
+function fieldId(definition: AdapterDefinition | undefined, field: AdapterField) {
   return `settings-adapter-${definition?.key || "client"}-${field.key}`.replace(
     /[^a-zA-Z0-9_-]/g,
     "-",
   );
 }
 
-function fieldValue(definition, settings, field) {
+function fieldValue(
+  definition: AdapterDefinition | undefined,
+  settings: Record<string, AdapterValue | undefined> | undefined,
+  field: AdapterField,
+): AdapterValue {
   return (
     settings?.[field.key] ??
     definition?.defaults?.[field.key] ??
@@ -22,8 +52,8 @@ function fieldValue(definition, settings, field) {
   );
 }
 
-function groupFields(fields, advanced) {
-  const groups = [];
+function groupFields(fields: readonly AdapterField[], advanced: boolean) {
+  const groups: FieldGroup[] = [];
   for (const field of fields) {
     if (Boolean(field.advanced) !== advanced) continue;
     const title = field.section || "";
@@ -37,14 +67,22 @@ function groupFields(fields, advanced) {
   return groups;
 }
 
-export function SettingsAdapterFields({ definition, settings, onChange }) {
+export function SettingsAdapterFields({
+  definition,
+  settings,
+  onChange,
+}: {
+  definition?: AdapterDefinition;
+  settings?: Record<string, AdapterValue | undefined>;
+  onChange: (patch: Record<string, AdapterValue>) => void;
+}) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const fields = (definition?.fields || []).filter((field) => !field.hidden);
   const advancedGroups = groupFields(fields, true);
 
-  const renderField = (field) => {
+  const renderField = (field: AdapterField) => {
     const value = fieldValue(definition, settings, field);
-    const updateValue = (nextValue) => onChange({ [field.key]: nextValue });
+    const updateValue = (nextValue: AdapterValue) => onChange({ [field.key]: nextValue });
 
     if (field.type === "toggle") {
       return (
@@ -115,7 +153,7 @@ export function SettingsAdapterFields({ definition, settings, onChange }) {
     );
   };
 
-  const renderGroups = (advanced) =>
+  const renderGroups = (advanced: boolean) =>
     groupFields(fields, advanced).map((group, index) =>
       group.title ? (
         <SettingsModalSection key={`${group.title}-${index}`} title={group.title}>

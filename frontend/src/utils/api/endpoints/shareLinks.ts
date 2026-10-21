@@ -20,5 +20,5 @@ export const getShareAvailability = (
 export const createShareLink = (data: ShareLinkRequest): Promise<ShareLinkCreatedResponse> =>
   postData("/share-links", data);
 
-export const deleteShareLink = (id: string): Promise<void> =>
+export const deleteShareLink = (id: number): Promise<void> =>
   deleteData(`/share-links/${encodeURIComponent(id)}`);

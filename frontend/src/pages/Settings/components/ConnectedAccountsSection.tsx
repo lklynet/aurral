@@ -8,6 +8,11 @@ import {
 } from "../../../utils/api/endpoints/auth.ts";
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { useAuth } from "../../../contexts/AuthContext";
+import type { useToast } from "../../../contexts/ToastContext";
+
+type Toast = ReturnType<typeof useToast>["showSuccess"];
+type Identity = UserIdentitiesResponse["identities"][number];
+type StartLink = typeof startGoogleLink;
 
 const PROVIDER_LABELS = {
   oidc: "Single sign-on",
@@ -15,13 +20,21 @@ const PROVIDER_LABELS = {
   plex: "Plex",
 };
 
-export function ConnectedAccountsSection({ showSuccess, showError, className = "" }) {
+export function ConnectedAccountsSection({
+  showSuccess,
+  showError,
+  className = "",
+}: {
+  showSuccess: Toast;
+  showError: Toast;
+  className?: string;
+}) {
   const { bootstrap } = useAuth();
   const [identities, setIdentities] = useState<UserIdentitiesResponse["identities"]>([]);
   const [hasLocalPassword, setHasLocalPassword] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [unlinkingId, setUnlinkingId] = useState(null);
+  const [unlinkingId, setUnlinkingId] = useState<number | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -39,7 +52,7 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
     load();
   }, []);
 
-  const handleUnlink = async (identity) => {
+  const handleUnlink = async (identity: Identity) => {
     setUnlinkingId(identity.id);
     try {
       await unlinkMyIdentity(identity.id);
@@ -71,7 +84,7 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
     }
   };
 
-  const connectProvider = async (startLink, label) => {
+  const connectProvider = async (startLink: StartLink, label: string) => {
     const shouldProceed = await promptReauth();
     if (!shouldProceed) return;
     try {

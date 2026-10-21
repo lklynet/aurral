@@ -5,6 +5,7 @@ import DownloadFolderPickerModal from "../../../components/DownloadFolderPickerM
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
+import type { PathMapping } from "../../../../../backend/services/pathMappings.ts";
 
 const PATH_MAPPING_SOURCE_OPTIONS = [
   { value: "all", label: "All sources" },
@@ -20,8 +21,18 @@ const PATH_MAPPING_SOURCE_OPTIONS = [
 
 const EMPTY_MAPPING = { source: "all", remote: "", local: "" };
 
-export function PathMappingModal({ title, initialValue, onClose, onSave }) {
-  const [draft, setDraft] = useState(() => ({
+export function PathMappingModal({
+  title,
+  initialValue,
+  onClose,
+  onSave,
+}: {
+  title: string;
+  initialValue?: Partial<PathMapping>;
+  onClose: () => void;
+  onSave: (mapping: PathMapping) => void;
+}) {
+  const [draft, setDraft] = useState<PathMapping>(() => ({
     ...EMPTY_MAPPING,
     ...initialValue,
   }));

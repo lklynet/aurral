@@ -1,12 +1,20 @@
 import { useCallback, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import { StorageHealthDashboard, StorageHealthSummary } from "./StorageHealthDashboard";
 import { refreshStorageHealth, useStorageHealth } from "../../../hooks/useStorageHealth";
 import { SettingsArrFieldSet } from "./arr/SettingsArrLayout";
 import { runStorageHealthAction } from "../utils/runStorageHealthAction";
+import type { HealthResponse } from "../../../../../backend/routes/health.ts";
+import type { SettingsState } from "../utils";
+import type { useToast } from "../../../contexts/ToastContext";
 
-function formatBytes(bytes) {
+type Toast = ReturnType<typeof useToast>["showSuccess"];
+type HealthSystem = NonNullable<HealthResponse["system"]>;
+type DiskSpaceEntry = NonNullable<HealthSystem["diskSpace"][number]>;
+
+function formatBytes(bytes: number | undefined) {
   const value = Number(bytes);
   if (!Number.isFinite(value) || value < 0) return "—";
   const units = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -20,7 +28,7 @@ function formatBytes(bytes) {
   return `${size.toFixed(decimals)} ${units[unitIndex]}`;
 }
 
-function formatUptime(seconds) {
+function formatUptime(seconds: number | undefined) {
   if (!Number.isFinite(Number(seconds))) return null;
   const total = Math.max(0, Math.floor(Number(seconds || 0)));
   const days = Math.floor(total / 86400);
@@ -33,7 +41,7 @@ function formatUptime(seconds) {
   return parts.join(" ");
 }
 
-function DiskSpaceTable({ entries = [] }) {
+function DiskSpaceTable({ entries = [] }: { entries?: DiskSpaceEntry[] }) {
   if (!entries.length) {
     return <p className="arr-form-help">Disk space data is not available.</p>;
   }
@@ -88,7 +96,7 @@ function DiskSpaceTable({ entries = [] }) {
   );
 }
 
-function SystemSection({ title, children }) {
+function SystemSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="settings-system__section">
       <div className="settings-system__section-header">
@@ -99,7 +107,7 @@ function SystemSection({ title, children }) {
   );
 }
 
-function SystemRow({ label, children }) {
+function SystemRow({ label, children }: { label: string; children?: ReactNode }) {
   return (
     <div className="settings-system__row">
       <div className="settings-system__copy">
@@ -116,6 +124,15 @@ export function SettingsStorageHealthSection({
   health,
   showSuccess,
   showError,
+}: {
+  hasUnsavedChanges: boolean;
+  handleSaveSettings: (
+    event?: FormEvent<HTMLFormElement>,
+    settingsOverride?: SettingsState,
+  ) => Promise<boolean>;
+  health: HealthResponse | null;
+  showSuccess: Toast;
+  showError: Toast;
 }) {
   const storageHealth = useStorageHealth({ enabled: true, pollMs: 120000 });
   const healthResult = storageHealth.result;
@@ -159,7 +176,7 @@ export function SettingsStorageHealthSection({
     [hasUnsavedChanges, handleSaveSettings, showError, showSuccess],
   );
 
-  const system = health?.system || {};
+  const system: Partial<HealthSystem> = health?.system || {};
 
   return (
     <>
@@ -198,8 +215,8 @@ export function SettingsStorageHealthSection({
   );
 }
 
-export function SettingsSystemSection({ health }) {
-  const system = health?.system || {};
+export function SettingsSystemSection({ health }: { health: HealthResponse | null }) {
+  const system: Partial<HealthSystem> = health?.system || {};
   const runtimeReady = !!health?.system;
 
   return (

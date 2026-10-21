@@ -5,6 +5,13 @@ import { deleteShareLink, getShareLinks } from "../../../utils/api/endpoints/sha
 import { formatDate, formatRelativeTime } from "../../../utils/dateTime";
 import { shareLink } from "../../../utils/shareLink";
 import { DotLoader } from "../../../components/DotLoader";
+import type {
+  ShareLinkResponse,
+  ShareLinksResponse,
+} from "../../../../../backend/routes/shareLinks.ts";
+import type { useToast } from "../../../contexts/ToastContext";
+
+type Toast = ReturnType<typeof useToast>["showSuccess"];
 
 const KIND_LABELS = { artist: "Artist", album: "Album", track: "Track" };
 const TUNNEL_NOTES = {
@@ -15,7 +22,7 @@ const TUNNEL_NOTES = {
 
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
 
-function describeExpiry(expiresAt) {
+function describeExpiry(expiresAt: number | null) {
   if (!expiresAt) return "Never expires";
   const date = new Date(expiresAt);
   return expiresAt - Date.now() < TWO_DAYS_MS
@@ -23,7 +30,7 @@ function describeExpiry(expiresAt) {
     : `Expires ${formatDate(date)}`;
 }
 
-function describeLink(link) {
+function describeLink(link: ShareLinkResponse) {
   return [
     KIND_LABELS[link.kind] || "Link",
     link.artistName && link.kind !== "artist" ? link.artistName : null,
@@ -34,7 +41,15 @@ function describeLink(link) {
     .join(" · ");
 }
 
-export function SharedLinksSection({ showSuccess, showError, className = "" }) {
+export function SharedLinksSection({
+  showSuccess,
+  showError,
+  className = "",
+}: {
+  showSuccess: Toast;
+  showError: Toast;
+  className?: string;
+}) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const queryKey = queryKeys.shareLinks(user?.id);
@@ -48,9 +63,9 @@ export function SharedLinksSection({ showSuccess, showError, className = "" }) {
     },
   });
   const stop = useMutation({
-    mutationFn: (link) => deleteShareLink(link.id),
+    mutationFn: (link: ShareLinkResponse) => deleteShareLink(link.id),
     onSuccess: (_, link) => {
-      queryClient.setQueryData(queryKey, (current) => ({
+      queryClient.setQueryData<ShareLinksResponse>(queryKey, (current) => ({
         ...current,
         links: (current?.links || []).filter((entry) => entry.id !== link.id),
       }));
@@ -64,7 +79,7 @@ export function SharedLinksSection({ showSuccess, showError, className = "" }) {
     },
   });
 
-  const share = async (link) => {
+  const share = async (link: ShareLinkResponse) => {
     try {
       const outcome = await shareLink(link.url, link.title);
       if (outcome === "copied") showSuccess?.(`Copied the link for ${link.title}`);

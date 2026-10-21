@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { FormEvent } from "react";
 import { Link } from "react-router";
 import { RefreshCw, Trash2, X } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
@@ -6,6 +7,8 @@ import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { formatDateTime } from "../../../utils/dateTime.ts";
 import { useDiscoveryStatus } from "../../../hooks/useDiscoveryStatus";
+import type { HealthResponse } from "../../../../../backend/routes/health.ts";
+import type { SettingsState } from "../utils";
 
 const AUTO_REFRESH_OPTIONS = [
   { value: 24, label: "Daily" },
@@ -29,7 +32,7 @@ const readLastfmDiscoverBannerDismissed = () => {
   }
 };
 
-const formatBytes = (value) => {
+const formatBytes = (value: number | undefined) => {
   const bytes = Number(value);
   if (!Number.isFinite(bytes) || bytes < 0) return "—";
   if (bytes < 1024) return `${bytes} B`;
@@ -52,6 +55,17 @@ export function SettingsDiscoverTab({
   clearingCache,
   handleRefreshDiscovery,
   handleClearCache,
+}: {
+  settings: SettingsState;
+  updateSettings: (settings: SettingsState) => void;
+  health: HealthResponse | null;
+  hasUnsavedChanges: boolean;
+  saving: boolean;
+  handleSaveSettings: (event: FormEvent<HTMLFormElement>) => unknown;
+  requestingDiscoveryRefresh: boolean;
+  clearingCache: boolean;
+  handleRefreshDiscovery: () => void;
+  handleClearCache: () => void;
 }) {
   const [lastfmBannerDismissed, setLastfmBannerDismissed] = useState(
     readLastfmDiscoverBannerDismissed,
@@ -74,7 +88,7 @@ export function SettingsDiscoverTab({
   const activeProgress = discoveryStatus?.updateProgress;
   const progressMessage = discoveryStatus?.updateProgressMessage || "Refreshing discovery";
 
-  const updateLastfmDiscovery = (patch) =>
+  const updateLastfmDiscovery = (patch: Partial<SettingsState["integrations"]["lastfm"]>) =>
     updateSettings({
       ...settings,
       integrations: {

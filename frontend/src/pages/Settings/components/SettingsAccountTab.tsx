@@ -10,6 +10,11 @@ import { ThemeSettings } from "./ThemeSettings";
 import { Link } from "react-router";
 import { RotateCcw } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
+import type { useAccountSettings } from "../hooks/useAccountSettings";
+import type { useToast } from "../../../contexts/ToastContext";
+
+type Toast = ReturnType<typeof useToast>["showSuccess"];
+
 export function SettingsAccountTab({
   listenHistoryProvider,
   setListenHistoryProvider,
@@ -33,6 +38,14 @@ export function SettingsAccountTab({
   showSidebarArt = false,
   sidebarArtEnabled = true,
   setSidebarArtEnabled,
+}: Omit<ReturnType<typeof useAccountSettings>, "saving"> & {
+  hidePanelHeader?: boolean;
+  showSuccess: Toast;
+  showError: Toast;
+  profileVariant?: boolean;
+  showSidebarArt?: boolean;
+  sidebarArtEnabled?: boolean;
+  setSidebarArtEnabled: (enabled: boolean) => void;
 }) {
   const [resettingTastes, setResettingTastes] = useState(false);
 

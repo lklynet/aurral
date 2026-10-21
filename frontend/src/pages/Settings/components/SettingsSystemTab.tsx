@@ -10,8 +10,25 @@ import PillToggle from "../../../components/PillToggle";
 import { setDateTimeFormat } from "../../../utils/dateTime.ts";
 import Tooltip from "../../../components/Tooltip";
 import { queryKeys } from "../../../queryClient.ts";
+import type { HealthResponse } from "../../../../../backend/routes/health.ts";
+import type { SettingsState } from "../utils";
+import type { useToast } from "../../../contexts/ToastContext";
 
-export function SettingsSystemTab({ health, settings, updateSettings, showSuccess, showError }) {
+type Toast = ReturnType<typeof useToast>["showSuccess"];
+
+export function SettingsSystemTab({
+  health,
+  settings,
+  updateSettings,
+  showSuccess,
+  showError,
+}: {
+  health: HealthResponse | null;
+  settings: SettingsState;
+  updateSettings: (settings: SettingsState) => void;
+  showSuccess: Toast;
+  showError: Toast;
+}) {
   const queryClient = useQueryClient();
   const apiKeyQuery = useQuery({
     queryKey: queryKeys.apiKey,

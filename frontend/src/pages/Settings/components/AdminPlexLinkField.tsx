@@ -10,8 +10,25 @@ import {
 } from "../../../utils/api/endpoints/auth.ts";
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { queryKeys } from "../../../queryClient.ts";
+import type { userOps } from "../../../../../backend/db/helpers/users.ts";
+import type { UserListResponse } from "../../../../../backend/routes/users.ts";
+import type { useToast } from "../../../contexts/ToastContext";
 
-export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) {
+type Toast = ReturnType<typeof useToast>["showSuccess"];
+type SettingsUser = ReturnType<typeof userOps.getAllUsers>[number] &
+  Partial<Pick<UserListResponse[number], "plexLink" | "plexGlobalAccount">>;
+
+export function AdminPlexLinkField({
+  user,
+  onChanged,
+  showSuccess,
+  showError,
+}: {
+  user: SettingsUser;
+  onChanged?: () => unknown;
+  showSuccess: Toast;
+  showError: Toast;
+}) {
   const queryClient = useQueryClient();
   const [showHomeUsers, setShowHomeUsers] = useState(false);
   const homeUsersQuery = useQuery({

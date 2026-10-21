@@ -19,8 +19,19 @@ import {
   startLibraryCleanup,
   startLibraryIngest,
 } from "../../../utils/api/endpoints/library.ts";
+import type { ComponentProps } from "react";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { SettingsSelect } from "./SettingsField";
+import type { useToast } from "../../../contexts/ToastContext";
+
+type Toast = ReturnType<typeof useToast>["showSuccess"];
+type FileOperation = ComponentProps<typeof LibraryFileOperation>["operation"];
+type ReadOnlyFolder = {
+  path: string;
+  readable: boolean;
+  tracks: number;
+  lidarrRoot: string | null;
+};
 
 const MODE_HELP = {
   move: "Moves files to the Downloads Folder and removes empty source folders.",
@@ -36,27 +47,33 @@ const MONITOR_HELP = {
 
 const FILL_TAGS_HELP = "Fills missing MusicBrainz tags. Existing tags stay.";
 
-const errorMessage = (error, fallback) =>
+const errorMessage = (error: unknown, fallback: string) =>
   error?.response?.data?.message || error?.message || fallback;
 
-const trackCount = (count) => `${count.toLocaleString()} track${count === 1 ? "" : "s"}`;
+const trackCount = (count: number) => `${count.toLocaleString()} track${count === 1 ? "" : "s"}`;
 
-function folderStatus(folder, scanning) {
+function folderStatus(folder: ReadOnlyFolder, scanning: boolean) {
   if (!folder.readable) return { text: "Aurral cannot read this folder.", warning: true };
   if (folder.lidarrRoot) return { text: "Lidarr manages this folder while Lidarr is on." };
   if (scanning && folder.tracks === 0) return { text: "Scanning…" };
   return { text: trackCount(folder.tracks) };
 }
 
-function ReadOnlyFoldersSection({ onChanged, showError }) {
+function ReadOnlyFoldersSection({
+  onChanged,
+  showError,
+}: {
+  onChanged: () => Promise<void>;
+  showError: Toast;
+}) {
   const query = useReadOnlyFolders();
   const [draft, setDraft] = useState("");
   const [fieldKey, setFieldKey] = useState(0);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState("");
-  const [removing, setRemoving] = useState(null);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [removeBusy, setRemoveBusy] = useState(false);
-  const folders = query.data?.folders || [];
+  const folders: ReadOnlyFolder[] = query.data?.folders || [];
   const scanning = query.data?.scanning === true;
 
   const add = async () => {
@@ -162,7 +179,7 @@ function ReadOnlyFoldersSection({ onChanged, showError }) {
           value={draft}
           suggestFolder={false}
           createOnConfirm={false}
-          onChange={(value) => {
+          onChange={(value: string) => {
             setDraft(value);
             setAddError("");
           }}
@@ -197,10 +214,21 @@ function ReadOnlyFoldersSection({ onChanged, showError }) {
   );
 }
 
-function IngestSection({ busy, operation, onChanged, showError }) {
+function IngestSection({
+  busy,
+  operation,
+  onChanged,
+  showError,
+}: {
+  busy: boolean;
+  operation: FileOperation | null;
+  onChanged: () => Promise<void>;
+  showError: Toast;
+}) {
   const [sourcePath, setSourcePath] = useState("");
   const [mode, setMode] = useState<Parameters<typeof startLibraryIngest>[1]>("copy");
-  const [monitor, setMonitor] = useState("tracks");
+  const [monitor, setMonitor] =
+    useState<Parameters<typeof startLibraryIngest>[2]["monitor"]>("tracks");
   const [fillTags, setFillTags] = useState(true);
   const [check, setCheck] = useState<{
     loading: boolean;
@@ -247,7 +275,7 @@ function IngestSection({ busy, operation, onChanged, showError }) {
   const start = async () => {
     setStarting(true);
     try {
-      await startLibraryIngest(result.sourcePath, mode, { monitor, fillTags });
+      await startLibraryIngest(result!.sourcePath, mode, { monitor, fillTags });
       await onChanged();
     } catch (error) {
       showError(errorMessage(error, "The ingest could not start. Nothing was changed."));
@@ -353,7 +381,7 @@ function IngestSection({ busy, operation, onChanged, showError }) {
   );
 }
 
-export function SettingsLibraryFilesTab({ showError }) {
+export function SettingsLibraryFilesTab({ showError }: { showError: Toast }) {
   const files = useLibraryFiles();
   const operationId = files.data?.operation?.id ?? null;
   const operationQuery = useLibraryFileOperation(operationId);
