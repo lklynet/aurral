@@ -1,4 +1,6 @@
 import { useCallback, useId, useMemo, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
+import type { ReleaseGroupTrack } from "../../../../backend/routes/artists/handlers/releaseGroup.ts";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   getArtistCover,
@@ -56,6 +58,9 @@ import { queryKeys } from "../../queryClient.ts";
 import TooltipButton from "../../components/TooltipButton";
 import CrossViewLink from "../../components/CrossViewLink";
 import RouteLink from "../../components/RouteLink";
+import type { PlaylistSelection, PlaylistTrackIdentity } from "./components/TrackPlaylistMenu";
+import type { ArtistPreviewTrack } from "./hooks/usePreviewPlayer";
+import type { ReleaseGroup } from "./utils";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ArtistDetailsPage() {
@@ -90,10 +95,10 @@ function ArtistDetailsPage() {
     loadStaticPlaylists,
   } = useStaticPlaylists();
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
-  const [libraryTrackSavingKeys, setLibraryTrackSavingKeys] = useState(() => new Set());
-  const [visibleReleaseGroupCoverIds, setVisibleReleaseGroupCoverIds] = useState([]);
-  const [visibleAppearsOnCoverIds, setVisibleAppearsOnCoverIds] = useState([]);
-  const [visibleLibraryCoverIds, setVisibleLibraryCoverIds] = useState([]);
+  const [libraryTrackSavingKeys, setLibraryTrackSavingKeys] = useState(() => new Set<string>());
+  const [visibleReleaseGroupCoverIds, setVisibleReleaseGroupCoverIds] = useState<string[]>([]);
+  const [visibleAppearsOnCoverIds, setVisibleAppearsOnCoverIds] = useState<string[]>([]);
+  const [visibleLibraryCoverIds, setVisibleLibraryCoverIds] = useState<string[]>([]);
 
   const artistOverridesQuery = useQuery({
     queryKey: queryKeys.artistOverrides(mbid),
@@ -102,7 +107,13 @@ function ArtistDetailsPage() {
     staleTime: 30_000,
   });
   const saveArtistOverridesMutation = useMutation({
-    mutationFn: ({ artistMbid, values }) => updateArtistOverrides(artistMbid, values),
+    mutationFn: ({
+      artistMbid,
+      values,
+    }: {
+      artistMbid: string;
+      values: Parameters<typeof updateArtistOverrides>[1];
+    }) => updateArtistOverrides(artistMbid, values),
   });
   const downloadTrackMutation = useMutation({ mutationFn: downloadTrackToLibrary });
   const { mutateAsync: saveArtistOverrides } = saveArtistOverridesMutation;
@@ -129,7 +140,8 @@ function ArtistDetailsPage() {
     getFeedbackFlags,
     submitFeedback,
   } = useArtistTasteFeedback();
-  const [tasteActionPending, setTasteActionPending] = useState(null);
+  type TasteAction = keyof ReturnType<typeof getFeedbackFlags>;
+  const [tasteActionPending, setTasteActionPending] = useState<TasteAction | null>(null);
   const canAddAlbum = hasPermission("addAlbum");
   const canChangeMonitoring = hasPermission("changeMonitoring");
   const canDeleteAlbum = hasPermission("deleteAlbum");
@@ -178,7 +190,7 @@ function ArtistDetailsPage() {
   );
 
   const handleArtistTasteFeedback = useCallback(
-    async (targetArtist, action, { isSelected = false } = {}) => {
+    async (targetArtist: typeof tasteArtist, action: TasteAction, { isSelected = false } = {}) => {
       setTasteActionPending(action);
       try {
         return await submitFeedback(targetArtist, action, {
@@ -194,7 +206,7 @@ function ArtistDetailsPage() {
   );
 
   const handleCurrentArtistTasteFeedback = useCallback(
-    async (action) => {
+    async (action: TasteAction) => {
       await handleArtistTasteFeedback(tasteArtist, action, {
         isSelected: !!currentArtistFeedback[action],
       });
@@ -333,13 +345,16 @@ function ArtistDetailsPage() {
     }
   };
 
-  const getDefaultTrackPlaylistName = (track) =>
+  const getDefaultTrackPlaylistName = (track: PlaylistTrackIdentity | null | undefined) =>
     reserveUniquePlaylistName(
       staticPlaylists,
       `${artist?.name || artistNameFromNav || track?.artistName || "Artist"} Picks`,
     );
 
-  const buildReleaseTrackPayload = (track, releaseGroup) => {
+  const buildReleaseTrackPayload = (
+    track: ReleaseGroupTrack,
+    releaseGroup: ReleaseGroup | undefined,
+  ) => {
     const year = String(releaseGroup?.["first-release-date"] || "").slice(0, 4);
     return buildStaticPlaylistTrackPayload({
       artistName: artist?.name || artistNameFromNav || "",
@@ -357,7 +372,7 @@ function ArtistDetailsPage() {
     });
   };
 
-  const buildPreviewTrackPayload = (track) =>
+  const buildPreviewTrackPayload = (track: ArtistPreviewTrack) =>
     buildStaticPlaylistTrackPayload({
       artistName: artist?.name || artistNameFromNav || "",
       trackName: track?.title || track?.trackName || "",
@@ -370,7 +385,11 @@ function ArtistDetailsPage() {
       reason: "Artist preview",
     });
 
-  const saveTrackToPlaylist = async (trackPayload, target, savingKey) => {
+  const saveTrackToPlaylist = async (
+    trackPayload: StaticPlaylistTrackPayload,
+    target: PlaylistSelection,
+    savingKey: string,
+  ) => {
     if (!trackPayload?.artistName || !trackPayload?.trackName) {
       showError("Track details are incomplete");
       return;
@@ -413,19 +432,27 @@ function ArtistDetailsPage() {
     }
   };
 
-  const handleReleaseTrackAdd = (track, releaseGroup, target) => {
+  const handleReleaseTrackAdd = (
+    track: ReleaseGroupTrack,
+    releaseGroup: ReleaseGroup | undefined,
+    target: PlaylistSelection,
+  ) => {
     const payload = buildReleaseTrackPayload(track, releaseGroup);
     const savingKey = String(track?.id ?? track?.mbid ?? "");
     return saveTrackToPlaylist(payload, target, savingKey);
   };
 
-  const handlePreviewTrackAdd = (track, target) => {
+  const handlePreviewTrackAdd = (track: ArtistPreviewTrack, target: PlaylistSelection) => {
     const payload = buildPreviewTrackPayload(track);
     const savingKey = String(track?.id ?? track?.title ?? "");
     return saveTrackToPlaylist(payload, target, savingKey);
   };
 
-  const handleTrackAddToLibrary = async (track, releaseGroup = null, trackKey = null) => {
+  const handleTrackAddToLibrary = async (
+    track: ArtistPreviewTrack,
+    releaseGroup: ReleaseGroup | null = null,
+    trackKey: string | null = null,
+  ) => {
     const payload = releaseGroup
       ? buildReleaseTrackPayload(track, releaseGroup)
       : buildPreviewTrackPayload(track);
@@ -487,7 +514,7 @@ function ArtistDetailsPage() {
     type: "artist",
     id: mbid,
     label: artistDisplayName,
-  };
+  } as const;
 
   return (
     <div
@@ -713,6 +740,20 @@ function ArtistDetailsPage() {
 
 export default ArtistDetailsPage;
 
+type StaticPlaylistTrackPayload = ReturnType<typeof buildStaticPlaylistTrackPayload>;
+
+type EditArtistIdsModalProps = {
+  show: boolean;
+  loading: boolean;
+  saving: boolean;
+  values: { musicbrainzId: string; deezerArtistId: string };
+  error: string;
+  artistName: string | undefined;
+  onChange: Dispatch<SetStateAction<{ musicbrainzId: string; deezerArtistId: string }>>;
+  onClose: () => void;
+  onSave: () => void;
+};
+
 function EditArtistIdsModal({
   show,
   loading,
@@ -723,7 +764,7 @@ function EditArtistIdsModal({
   onChange,
   onClose,
   onSave,
-}) {
+}: EditArtistIdsModalProps) {
   const titleId = useId();
   const { dialogRef, handleBackdropClick } = useModalDialog({
     open: show,

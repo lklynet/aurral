@@ -1,14 +1,79 @@
+import type { ReactNode } from "react";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRight, Plus, Trash2 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import AddActionButton from "../../../components/AddActionButton";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import TooltipButton from "../../../components/TooltipButton";
 import Tooltip from "../../../components/Tooltip";
+import type { StaticPlaylist } from "../../playlists/playlistStats.ts";
 
-function normalizeTrackForSharedIdentity(track) {
+type PlaylistTrackEntry = { id: string; identity: string };
+export type SharedPlaylist = StaticPlaylist & {
+  trackIdentities?: string[];
+  trackEntries?: PlaylistTrackEntry[];
+};
+
+export type PlaylistTrackIdentity = {
+  artistName?: string | null;
+  artist?: string | null;
+  artist_name?: string | null;
+  "Artist Name(s)"?: string | null;
+  trackName?: string | null;
+  title?: string | null;
+  name?: string | null;
+  track?: string | null;
+  "Track Name"?: string | null;
+  albumName?: string | null;
+  album?: string | null;
+  "Album Name"?: string | null;
+  artistMbid?: string | null;
+  artistId?: string | number | null;
+  albumMbid?: string | null;
+  releaseGroupMbid?: string | null;
+  albumId?: string | number | null;
+  trackMbid?: string | null;
+  recordingMbid?: string | null;
+  recordingId?: string | null;
+  mbid?: string | null;
+  releaseYear?: string | number | null;
+  year?: string | number | null;
+};
+
+export type PlaylistSelection =
+  | { mode: "new"; name: string }
+  | { mode: "existing"; playlistId: string };
+
+export type PlaylistRemoval = { playlistId: string; jobId: PlaylistTrackEntry["id"] };
+
+export type QueueMenuItem = {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  disabled: boolean;
+  onSelect: () => void;
+};
+
+export type TrackPlaylistMenuHandle = {
+  open: (anchorEl: HTMLElement | null) => Promise<void>;
+  close: () => void;
+};
+
+type TrackPlaylistPickerProps = {
+  track?: PlaylistTrackIdentity | null;
+  playlists?: SharedPlaylist[];
+  loading?: boolean;
+  saving?: boolean;
+  error?: string;
+  defaultNewPlaylistName?: string;
+  excludedPlaylistIds?: string[];
+  onSelect?: (target: PlaylistSelection) => void | Promise<void>;
+};
+
+function normalizeTrackForSharedIdentity(track: PlaylistTrackIdentity | null | undefined) {
   if (!track || typeof track !== "object" || Array.isArray(track)) {
     return null;
   }
@@ -37,7 +102,7 @@ function normalizeTrackForSharedIdentity(track) {
   };
 }
 
-function buildPlaylistTrackIdentity(track) {
+function buildPlaylistTrackIdentity(track: PlaylistTrackIdentity | null | undefined) {
   const normalized = normalizeTrackForSharedIdentity(track);
   if (!normalized) return "";
   return [
@@ -51,19 +116,22 @@ function buildPlaylistTrackIdentity(track) {
   ].join("\u0001");
 }
 
-function buildCoreTrackIdentity(track) {
+function buildCoreTrackIdentity(track: PlaylistTrackIdentity | null | undefined) {
   const normalized = normalizeTrackForSharedIdentity(track);
   if (!normalized) return "";
   return `${normalized.artistName.toLowerCase()}\u0001${normalized.trackName.toLowerCase()}`;
 }
 
-function coreIdentityFromStoredIdentity(identity) {
+function coreIdentityFromStoredIdentity(identity: string) {
   const parts = String(identity || "").split("\u0001");
   if (parts.length < 2) return "";
   return `${parts[0]}\u0001${parts[1]}`;
 }
 
-function trackMatchesStoredIdentity(storedIdentity, track) {
+function trackMatchesStoredIdentity(
+  storedIdentity: string,
+  track: PlaylistTrackIdentity | null | undefined,
+) {
   const normalized = normalizeTrackForSharedIdentity(track);
   if (!normalized) return false;
   const targetFull = buildPlaylistTrackIdentity(track);
@@ -73,14 +141,19 @@ function trackMatchesStoredIdentity(storedIdentity, track) {
   return coreIdentityFromStoredIdentity(storedIdentity) === targetCore;
 }
 
-function playlistContainsTrack(playlist, track) {
+function playlistContainsTrack(
+  playlist: SharedPlaylist | null | undefined,
+  track: PlaylistTrackIdentity | null | undefined,
+) {
   if (!track) return false;
-  const identities = Array.isArray(playlist?.trackIdentities) ? playlist.trackIdentities : [];
+  const identities: string[] = Array.isArray(playlist?.trackIdentities)
+    ? playlist.trackIdentities
+    : [];
   if (identities.length === 0) return false;
   return identities.some((identity) => trackMatchesStoredIdentity(identity, track));
 }
 
-function useAvailablePlaylists(playlists, excludedPlaylistIds) {
+function useAvailablePlaylists(playlists: SharedPlaylist[], excludedPlaylistIds: string[]) {
   return useMemo(() => {
     const excluded = new Set(
       (Array.isArray(excludedPlaylistIds) ? excludedPlaylistIds : [])
@@ -102,7 +175,7 @@ export function TrackPlaylistPickerContent({
   defaultNewPlaylistName = "Playlist",
   excludedPlaylistIds = [],
   onSelect,
-}) {
+}: TrackPlaylistPickerProps) {
   const availablePlaylists = useAvailablePlaylists(playlists, excludedPlaylistIds);
 
   if (loading) {
@@ -168,6 +241,15 @@ export function TrackPlaylistPickerContent({
   );
 }
 
+type TrackPlaylistSubmenuProps = TrackPlaylistPickerProps & {
+  label: ReactNode;
+  icon?: LucideIcon;
+  onClose?: () => void;
+  toggleOnClick?: boolean;
+  isOpen?: boolean;
+  onToggle?: () => void;
+};
+
 export function TrackPlaylistSubmenu({
   label,
   icon: Icon = Plus,
@@ -183,16 +265,16 @@ export function TrackPlaylistSubmenu({
   toggleOnClick = false,
   isOpen = false,
   onToggle,
-}) {
+}: TrackPlaylistSubmenuProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const submenuOpen = typeof onToggle === "function" ? isOpen : internalOpen;
 
-  const handleSelect = async (target) => {
+  const handleSelect = async (target: PlaylistSelection) => {
     await onSelect?.(target);
     onClose?.();
   };
 
-  const handleTriggerClick = (event) => {
+  const handleTriggerClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     if (onToggle) onToggle();
     else setInternalOpen((value) => !value);
@@ -243,13 +325,23 @@ export function TrackPlaylistRemoveSubmenu({
   toggleOnClick = false,
   isOpen = false,
   onToggle,
+}: {
+  track?: PlaylistTrackIdentity | null;
+  playlists?: SharedPlaylist[];
+  saving?: boolean;
+  error?: string;
+  onSelect?: (removal: PlaylistRemoval) => void | Promise<void>;
+  onClose?: () => void;
+  toggleOnClick?: boolean;
+  isOpen?: boolean;
+  onToggle?: () => void;
 }) {
   const [internalOpen, setInternalOpen] = useState(false);
   const submenuOpen = typeof onToggle === "function" ? isOpen : internalOpen;
   const removablePlaylists = playlists
     .map((playlist) => {
       const entry = (Array.isArray(playlist?.trackEntries) ? playlist.trackEntries : []).find(
-        (candidate) => trackMatchesStoredIdentity(candidate?.identity, track),
+        (candidate: PlaylistTrackEntry) => trackMatchesStoredIdentity(candidate?.identity, track),
       );
       return entry ? { playlist, jobId: entry.id } : null;
     })
@@ -257,7 +349,7 @@ export function TrackPlaylistRemoveSubmenu({
 
   if (!removablePlaylists.length) return null;
 
-  const handleSelect = async (playlistId, jobId) => {
+  const handleSelect = async (playlistId: string, jobId: PlaylistTrackEntry["id"]) => {
     await onSelect?.({ playlistId, jobId });
     onClose?.();
   };
@@ -304,265 +396,281 @@ export function TrackPlaylistRemoveSubmenu({
   );
 }
 
-export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
-  {
-    track = null,
-    playlists = [],
-    loading = false,
-    saving = false,
-    disabled = false,
-    error = "",
-    defaultNewPlaylistName = "Playlist",
-    excludedPlaylistIds = [],
-    triggerLabel = "Add to playlist",
-    triggerVariant = "expand",
-    icon: TriggerIcon = Plus,
-    onAddToLibrary,
-    librarySaving = false,
-    queueItems = [],
-    onLoadPlaylists,
-    onSelect,
-    onOpenChange,
-    menuVariant,
-  },
-  ref,
-) {
-  const [open, setOpen] = useState(false);
-  const [openSubmenu, setOpenSubmenu] = useState(false);
-  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
-  const menuRef = useRef(null);
-  const panelRef = useRef(null);
-  const buttonRef = useRef(null);
-  const { isAlbumDownloading, isTrackDownloading } = useActiveDownloads();
-  const downloading =
-    Boolean(onAddToLibrary) && (isTrackDownloading(track) || isAlbumDownloading(track?.albumMbid));
+type TrackPlaylistMenuProps = TrackPlaylistPickerProps & {
+  disabled?: boolean;
+  triggerLabel?: string;
+  triggerVariant?: "expand" | "kebab" | "compact" | "hidden";
+  icon?: LucideIcon;
+  onAddToLibrary?: ((track: PlaylistTrackIdentity | null) => void | Promise<void>) | null;
+  librarySaving?: boolean;
+  queueItems?: QueueMenuItem[];
+  onLoadPlaylists?: () => Promise<unknown>;
+  onOpenChange?: (open: boolean) => void;
+  menuVariant?: "preview-tracks" | "search-suggestion";
+};
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const handlePointerDown = (event) => {
-      if (menuRef.current?.contains(event.target) || panelRef.current?.contains(event.target)) {
+export const TrackPlaylistMenu = forwardRef<TrackPlaylistMenuHandle, TrackPlaylistMenuProps>(
+  function TrackPlaylistMenu(
+    {
+      track = null,
+      playlists = [],
+      loading = false,
+      saving = false,
+      disabled = false,
+      error = "",
+      defaultNewPlaylistName = "Playlist",
+      excludedPlaylistIds = [],
+      triggerLabel = "Add to playlist",
+      triggerVariant = "expand",
+      icon: TriggerIcon = Plus,
+      onAddToLibrary,
+      librarySaving = false,
+      queueItems = [],
+      onLoadPlaylists,
+      onSelect,
+      onOpenChange,
+      menuVariant,
+    },
+    ref,
+  ) {
+    const [open, setOpen] = useState(false);
+    const [openSubmenu, setOpenSubmenu] = useState(false);
+    const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+    const menuRef = useRef<HTMLDivElement>(null);
+    const panelRef = useRef<HTMLDivElement>(null);
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    const { isAlbumDownloading, isTrackDownloading } = useActiveDownloads();
+    const downloading =
+      Boolean(onAddToLibrary) &&
+      (isTrackDownloading(track) || isAlbumDownloading(track?.albumMbid));
+
+    useEffect(() => {
+      if (!open) return undefined;
+      const handlePointerDown = (event: PointerEvent) => {
+        if (menuRef.current?.contains(event.target) || panelRef.current?.contains(event.target)) {
+          return;
+        }
+        setOpen(false);
+        setOpenSubmenu(false);
+        onOpenChange?.(false);
+      };
+      const handleViewportChange = (event: Event) => {
+        if (event?.type === "scroll" && panelRef.current?.contains(event.target)) return;
+        setOpen(false);
+        setOpenSubmenu(false);
+        onOpenChange?.(false);
+      };
+      document.addEventListener("pointerdown", handlePointerDown);
+      window.addEventListener("resize", handleViewportChange);
+      window.addEventListener("scroll", handleViewportChange, true);
+      return () => {
+        document.removeEventListener("pointerdown", handlePointerDown);
+        window.removeEventListener("resize", handleViewportChange);
+        window.removeEventListener("scroll", handleViewportChange, true);
+      };
+    }, [onOpenChange, open]);
+
+    const positionMenuFromAnchor = (anchorEl: HTMLElement | null) => {
+      const rect = anchorEl?.getBoundingClientRect?.();
+      if (!rect) return;
+      const menuWidth = 256;
+      setMenuPosition({
+        top: rect.bottom + 8,
+        left: Math.max(12, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 12)),
+      });
+    };
+
+    const openMenu = async (anchorEl: HTMLElement | null) => {
+      positionMenuFromAnchor(anchorEl || buttonRef.current);
+      setOpen(true);
+      onOpenChange?.(true);
+      await onLoadPlaylists?.();
+    };
+
+    const closeMenu = () => {
+      setOpen(false);
+      setOpenSubmenu(false);
+      onOpenChange?.(false);
+    };
+
+    useImperativeHandle(ref, () => ({
+      open: openMenu,
+      close: closeMenu,
+    }));
+
+    const handleOpen = async (event: React.MouseEvent<HTMLElement>) => {
+      event.stopPropagation();
+      if (open) {
+        closeMenu();
         return;
       }
-      setOpen(false);
-      setOpenSubmenu(false);
-      onOpenChange?.(false);
+      await openMenu(buttonRef.current);
     };
-    const handleViewportChange = (event) => {
-      if (event?.type === "scroll" && panelRef.current?.contains(event.target)) return;
-      setOpen(false);
-      setOpenSubmenu(false);
-      onOpenChange?.(false);
-    };
-    document.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("resize", handleViewportChange);
-    window.addEventListener("scroll", handleViewportChange, true);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("resize", handleViewportChange);
-      window.removeEventListener("scroll", handleViewportChange, true);
-    };
-  }, [onOpenChange, open]);
 
-  const positionMenuFromAnchor = (anchorEl) => {
-    const rect = anchorEl?.getBoundingClientRect?.();
-    if (!rect) return;
-    const menuWidth = 256;
-    setMenuPosition({
-      top: rect.bottom + 8,
-      left: Math.max(12, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 12)),
-    });
-  };
-
-  const openMenu = async (anchorEl) => {
-    positionMenuFromAnchor(anchorEl || buttonRef.current);
-    setOpen(true);
-    onOpenChange?.(true);
-    await onLoadPlaylists?.();
-  };
-
-  const closeMenu = () => {
-    setOpen(false);
-    setOpenSubmenu(false);
-    onOpenChange?.(false);
-  };
-
-  useImperativeHandle(ref, () => ({
-    open: openMenu,
-    close: closeMenu,
-  }));
-
-  const handleOpen = async (event) => {
-    event.stopPropagation();
-    if (open) {
+    const handleSelect = async (target: PlaylistSelection) => {
+      await onSelect?.(target);
       closeMenu();
-      return;
-    }
-    await openMenu(buttonRef.current);
-  };
+    };
 
-  const handleSelect = async (target) => {
-    await onSelect?.(target);
-    closeMenu();
-  };
+    const showTrigger = triggerVariant !== "hidden";
+    const isKebab = triggerVariant === "kebab";
+    const triggerClassName = `btn btn-secondary btn-icon btn-xs${open ? " btn-neutral-active" : ""}`;
+    const menuClassName = [
+      "artist-playlist-menu",
+      menuVariant === "preview-tracks" ? "artist-playlist-menu--preview-tracks" : "",
+      menuVariant === "search-suggestion" ? "artist-playlist-menu--search-suggestion" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
 
-  const showTrigger = triggerVariant !== "hidden";
-  const isKebab = triggerVariant === "kebab";
-  const triggerClassName = `btn btn-secondary btn-icon btn-xs${open ? " btn-neutral-active" : ""}`;
-  const menuClassName = [
-    "artist-playlist-menu",
-    menuVariant === "preview-tracks" ? "artist-playlist-menu--preview-tracks" : "",
-    menuVariant === "search-suggestion" ? "artist-playlist-menu--search-suggestion" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return (
-    <div className="artist-relative" ref={menuRef}>
-      {showTrigger ? (
-        isKebab ? (
-          <AddActionButton
-            ref={buttonRef}
-            label={
-              queueItems.length
-                ? onAddToLibrary
-                  ? "Add to queue, library, or playlist"
-                  : "Add to queue or playlist"
-                : onAddToLibrary
-                  ? "Add to library or playlist"
-                  : triggerLabel
-            }
-            icon={Plus}
-            isLoading={saving || librarySaving}
-            busy={downloading}
-            loadingLabel={downloading ? "Downloading" : null}
-            disabled={disabled}
-            onClick={handleOpen}
-            aria-haspopup="menu"
-            aria-expanded={open}
-          />
-        ) : triggerVariant === "compact" ? (
-          <TooltipButton
-            ref={buttonRef}
-            type="button"
-            className={triggerClassName}
-            onClick={handleOpen}
-            label={triggerLabel}
-            aria-label={triggerLabel}
-            aria-haspopup="menu"
-            aria-expanded={open}
-            disabled={saving || disabled}
-          >
-            {saving ? (
-              <DotLoader size="xs" label={null} />
-            ) : (
-              <TriggerIcon className="artist-icon-xs" />
-            )}
-          </TooltipButton>
-        ) : (
-          <AddActionButton
-            ref={buttonRef}
-            label={triggerLabel}
-            icon={TriggerIcon}
-            isLoading={saving}
-            disabled={disabled}
-            onClick={handleOpen}
-            aria-haspopup="menu"
-            aria-expanded={open}
-          />
-        )
-      ) : null}
-
-      {open
-        ? createPortal(
-            <div
-              ref={panelRef}
-              className={menuClassName}
-              style={{
-                top: menuPosition.top,
-                left: menuPosition.left,
-              }}
-              onClick={(event) => event.stopPropagation()}
+    return (
+      <div className="artist-relative" ref={menuRef}>
+        {showTrigger ? (
+          isKebab ? (
+            <AddActionButton
+              ref={buttonRef}
+              label={
+                queueItems.length
+                  ? onAddToLibrary
+                    ? "Add to queue, library, or playlist"
+                    : "Add to queue or playlist"
+                  : onAddToLibrary
+                    ? "Add to library or playlist"
+                    : triggerLabel
+              }
+              icon={Plus}
+              isLoading={saving || librarySaving}
+              busy={downloading}
+              loadingLabel={downloading ? "Downloading" : null}
+              disabled={disabled}
+              onClick={handleOpen}
+              aria-haspopup="menu"
+              aria-expanded={open}
+            />
+          ) : triggerVariant === "compact" ? (
+            <TooltipButton
+              ref={buttonRef}
+              type="button"
+              className={triggerClassName}
+              onClick={handleOpen}
+              label={triggerLabel}
+              aria-label={triggerLabel}
+              aria-haspopup="menu"
+              aria-expanded={open}
+              disabled={saving || disabled}
             >
-              {isKebab ? (
-                <>
-                  {queueItems.map((item) => {
-                    const ItemIcon = item.icon;
-                    return (
+              {saving ? (
+                <DotLoader size="xs" label={null} />
+              ) : (
+                <TriggerIcon className="artist-icon-xs" />
+              )}
+            </TooltipButton>
+          ) : (
+            <AddActionButton
+              ref={buttonRef}
+              label={triggerLabel}
+              icon={TriggerIcon}
+              isLoading={saving}
+              disabled={disabled}
+              onClick={handleOpen}
+              aria-haspopup="menu"
+              aria-expanded={open}
+            />
+          )
+        ) : null}
+
+        {open
+          ? createPortal(
+              <div
+                ref={panelRef}
+                className={menuClassName}
+                style={{
+                  top: menuPosition.top,
+                  left: menuPosition.left,
+                }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                {isKebab ? (
+                  <>
+                    {queueItems.map((item) => {
+                      const ItemIcon = item.icon;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="artist-menu-item"
+                          disabled={item.disabled}
+                          onClick={() => {
+                            item.onSelect();
+                            closeMenu();
+                          }}
+                        >
+                          <span className="artist-menu-item__main">
+                            <ItemIcon className="artist-icon-sm" />
+                            {item.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {queueItems.length && (onAddToLibrary || onSelect) ? (
+                      <div className="native-library-item-menu__separator" />
+                    ) : null}
+                    {onAddToLibrary ? (
                       <button
-                        key={item.id}
                         type="button"
                         className="artist-menu-item"
-                        disabled={item.disabled}
-                        onClick={() => {
-                          item.onSelect();
+                        onClick={async () => {
+                          await onAddToLibrary?.(track);
                           closeMenu();
                         }}
+                        disabled={saving || librarySaving || downloading || disabled}
                       >
                         <span className="artist-menu-item__main">
-                          <ItemIcon className="artist-icon-sm" />
-                          {item.label}
+                          {downloading ? (
+                            <DotLoader size="xs" label={null} />
+                          ) : (
+                            <Plus className="artist-icon-sm" />
+                          )}
+                          {downloading ? "Downloading…" : "Add to library"}
                         </span>
                       </button>
-                    );
-                  })}
-                  {queueItems.length && (onAddToLibrary || onSelect) ? (
-                    <div className="native-library-item-menu__separator" />
-                  ) : null}
-                  {onAddToLibrary ? (
-                    <button
-                      type="button"
-                      className="artist-menu-item"
-                      onClick={async () => {
-                        await onAddToLibrary?.(track);
-                        closeMenu();
-                      }}
-                      disabled={saving || librarySaving || downloading || disabled}
-                    >
-                      <span className="artist-menu-item__main">
-                        {downloading ? (
-                          <DotLoader size="xs" label={null} />
-                        ) : (
-                          <Plus className="artist-icon-sm" />
-                        )}
-                        {downloading ? "Downloading…" : "Add to library"}
-                      </span>
-                    </button>
-                  ) : null}
-                  {onSelect ? (
-                    <TrackPlaylistSubmenu
-                      label="Add to playlist"
-                      icon={Plus}
-                      track={track}
-                      playlists={playlists}
-                      loading={loading}
-                      saving={saving}
-                      error={error}
-                      defaultNewPlaylistName={defaultNewPlaylistName}
-                      excludedPlaylistIds={excludedPlaylistIds}
-                      onSelect={onSelect}
-                      onClose={closeMenu}
-                      toggleOnClick
-                      isOpen={openSubmenu}
-                      onToggle={() => setOpenSubmenu((current) => !current)}
-                    />
-                  ) : null}
-                </>
-              ) : (
-                <TrackPlaylistPickerContent
-                  track={track}
-                  playlists={playlists}
-                  loading={loading}
-                  saving={saving}
-                  error={error}
-                  defaultNewPlaylistName={defaultNewPlaylistName}
-                  excludedPlaylistIds={excludedPlaylistIds}
-                  onSelect={handleSelect}
-                />
-              )}
-            </div>,
-            document.body,
-          )
-        : null}
-    </div>
-  );
-});
+                    ) : null}
+                    {onSelect ? (
+                      <TrackPlaylistSubmenu
+                        label="Add to playlist"
+                        icon={Plus}
+                        track={track}
+                        playlists={playlists}
+                        loading={loading}
+                        saving={saving}
+                        error={error}
+                        defaultNewPlaylistName={defaultNewPlaylistName}
+                        excludedPlaylistIds={excludedPlaylistIds}
+                        onSelect={onSelect}
+                        onClose={closeMenu}
+                        toggleOnClick
+                        isOpen={openSubmenu}
+                        onToggle={() => setOpenSubmenu((current) => !current)}
+                      />
+                    ) : null}
+                  </>
+                ) : (
+                  <TrackPlaylistPickerContent
+                    track={track}
+                    playlists={playlists}
+                    loading={loading}
+                    saving={saving}
+                    error={error}
+                    defaultNewPlaylistName={defaultNewPlaylistName}
+                    excludedPlaylistIds={excludedPlaylistIds}
+                    onSelect={handleSelect}
+                  />
+                )}
+              </div>,
+              document.body,
+            )
+          : null}
+      </div>
+    );
+  },
+);

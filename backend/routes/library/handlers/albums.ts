@@ -1,4 +1,5 @@
 import { libraryManager } from "../../../services/libraryManager.ts";
+import type { MappedLibraryAlbum } from "../../../services/libraryManager.ts";
 import { playlistManager } from "../../../services/playlists/playlistManager.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { hasPermission } from "../../../middleware/auth.ts";
@@ -380,11 +381,12 @@ export function registerAlbums(router) {
 
 type LibraryAlbumRecord = Awaited<ReturnType<typeof libraryManager.getAlbums>>[number];
 
-export type GetLibraryAlbumsResponse = (LibraryAlbumRecord & {
-  foreignAlbumId: string;
-  title: string;
-  statistics: NonNullable<LibraryAlbumRecord["statistics"]>;
-})[];
+export type GetLibraryAlbumsResponse = (LibraryAlbumRecord &
+  Partial<MappedLibraryAlbum> & {
+    foreignAlbumId: string;
+    title: string;
+    statistics: NonNullable<LibraryAlbumRecord["statistics"]>;
+  })[];
 
 type AurralAlbumRecord = Exclude<
   Awaited<ReturnType<typeof libraryManager._finishAurralAlbum>>,

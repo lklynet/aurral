@@ -28,10 +28,52 @@ import { getMyLidarrPreferences } from "../../../utils/api/endpoints/auth.ts";
 import { deduplicateAlbums } from "../utils";
 import { useWebSocketChannel } from "../../../hooks/useWebSocket";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
+import type { DownloadStatusEntry } from "../../../../../backend/services/websocketService.ts";
+import type { useArtistDetailsStream } from "./useArtistDetailsStream.ts";
+import type { useToast } from "../../../contexts/ToastContext.tsx";
+import type { useLibraryDestination } from "../../../hooks/useLibraryDestination.ts";
+import type { FetchLibraryArtistResponse } from "../../../../../backend/routes/library/handlers/artists.ts";
+import type { AddArtistToLibraryResponse } from "../../../../../backend/routes/library/handlers/artists.ts";
+import type { GetArtistMonitoringResponse } from "../../../../../backend/routes/library/handlers/artists.ts";
 
 const DELETE_FILES_PREFERENCE_KEY = "aurral:library-delete-files";
 
-const invalidateLibraryQueries = (mbid = null, artistId = null) => {
+type ArtistDetailsStream = ReturnType<typeof useArtistDetailsStream>;
+export type ArtistDetailsLibrary = ReturnType<typeof useArtistDetailsLibrary>;
+type ToastFn = ReturnType<typeof useToast>["showSuccess"];
+type OwnerConflict = NonNullable<ReturnType<typeof settleLibraryOwnerConflict>>;
+export type DownloadStatus = Partial<DownloadStatusEntry> & Pick<DownloadStatusEntry, "status">;
+export type DownloadStatuses = Record<string, DownloadStatus>;
+type DeleteAlbumTarget = { id: string; title: string; managedBy: string | null };
+export type LibraryAlbumId = string | number;
+type LibraryAlbums = ArtistDetailsStream["libraryAlbums"];
+export type LibraryAlbum = LibraryAlbums[number];
+type LidarrPreferences = Awaited<ReturnType<typeof getMyLidarrPreferences>>;
+type ArtistAddLidarrOptions = NonNullable<
+  Parameters<typeof buildArtistAddPayload>[0]["lidarrOptions"]
+>;
+
+type ArtistDetailsLibraryOptions = Pick<
+  ArtistDetailsStream,
+  | "artist"
+  | "libraryArtist"
+  | "setLibraryArtist"
+  | "libraryAlbums"
+  | "setLibraryAlbums"
+  | "existsInLibrary"
+  | "setExistsInLibrary"
+  | "appSettings"
+> & {
+  showSuccess: ToastFn;
+  showError: ToastFn;
+  showInfo: ToastFn;
+  libraryDestination: ReturnType<typeof useLibraryDestination>;
+};
+
+const invalidateLibraryQueries = (
+  mbid: string | null = null,
+  artistId: string | number | null = null,
+) => {
   const queryKeysToInvalidate = [
     queryKeys.libraryPagePrefix,
     queryKeys.libraryViewPrefix,
@@ -59,7 +101,7 @@ const readDeleteFilesPreference = () => {
   }
 };
 
-const writeDeleteFilesPreference = (value) => {
+const writeDeleteFilesPreference = (value: boolean) => {
   try {
     localStorage.setItem(DELETE_FILES_PREFERENCE_KEY, value ? "1" : "0");
   } catch {}
@@ -78,35 +120,35 @@ export function useArtistDetailsLibrary({
   showError,
   showInfo,
   libraryDestination,
-}) {
-  const [ownerConflicts, setOwnerConflicts] = useState({});
-  const [requestingAlbum, setRequestingAlbum] = useState(null);
-  const [removingAlbum, setRemovingAlbum] = useState(null);
-  const [albumDropdownOpen, setAlbumDropdownOpen] = useState(null);
-  const [showDeleteAlbumModal, setShowDeleteAlbumModal] = useState(null);
+}: ArtistDetailsLibraryOptions) {
+  const [ownerConflicts, setOwnerConflicts] = useState<Record<string, OwnerConflict>>({});
+  const [requestingAlbum, setRequestingAlbum] = useState<string | null>(null);
+  const [removingAlbum, setRemovingAlbum] = useState<string | null>(null);
+  const [albumDropdownOpen, setAlbumDropdownOpen] = useState<string | null>(null);
+  const [showDeleteAlbumModal, setShowDeleteAlbumModal] = useState<DeleteAlbumTarget | null>(null);
   const [deleteAlbumFiles, setDeleteAlbumFilesState] = useState(() => readDeleteFilesPreference());
   const [refreshingArtist, setRefreshingArtist] = useState(false);
-  const [reSearchingAlbum, setReSearchingAlbum] = useState(null);
+  const [reSearchingAlbum, setReSearchingAlbum] = useState<LibraryAlbumId | null>(null);
   const [reSearchingMissingAlbums, setReSearchingMissingAlbums] = useState(false);
-  const [reSearchOverrides, setReSearchOverrides] = useState({});
+  const [reSearchOverrides, setReSearchOverrides] = useState<Record<string, number>>({});
   const [showAddCustomizeModal, setShowAddCustomizeModal] = useState(false);
-  const [customizeAddError, setCustomizeAddError] = useState(null);
+  const [customizeAddError, setCustomizeAddError] = useState<string | null>(null);
   const [customizeRootFolderPath, setCustomizeRootFolderPath] = useState("");
   const [customizeQualityProfileId, setCustomizeQualityProfileId] = useState("");
   const [customizeTagId, setCustomizeTagId] = useState("");
   const [customizeMonitorOption, setCustomizeMonitorOption] = useState("");
-  const reSearchOverridesRef = useRef({});
-  const previousDownloadStatusesRef = useRef({});
-  const unmonitoredAtRef = useRef({});
-  const deletedAlbumAtRef = useRef({});
-  const libraryAlbumIdsRef = useRef([]);
+  const reSearchOverridesRef = useRef<Record<string, number>>({});
+  const previousDownloadStatusesRef = useRef<DownloadStatuses>({});
+  const unmonitoredAtRef = useRef<Record<string, number>>({});
+  const deletedAlbumAtRef = useRef<Record<string, number>>({});
+  const libraryAlbumIdsRef = useRef<string[]>([]);
   const libraryAlbumsRef = useRef(libraryAlbums);
   const { isConnected: downloadStatusWsConnected } = useWebSocketChannel("downloads", (msg) => {
     if (msg?.type !== "download_statuses") return;
     const albumIds = libraryAlbumIdsRef.current;
     if (!albumIds.length) return;
     const incoming = msg.statuses || {};
-    const next = {};
+    const next: DownloadStatuses = {};
     for (const id of albumIds) {
       if (incoming[id]) next[id] = incoming[id];
     }
@@ -118,10 +160,13 @@ export function useArtistDetailsLibrary({
         setRequestingAlbum(null);
       }
     }
-    queryClient.setQueryData(queryKeys.downloadStatus(albumIds), (previous = {}) => ({
-      ...previous,
-      ...next,
-    }));
+    queryClient.setQueryData(
+      queryKeys.downloadStatus(albumIds),
+      (previous: DownloadStatuses = {}) => ({
+        ...previous,
+        ...next,
+      }),
+    );
   });
   const lidarrPreferencesQuery = useQuery({
     queryKey: queryKeys.lidarrPreferences("current"),
@@ -133,7 +178,7 @@ export function useArtistDetailsLibrary({
     () => libraryAlbums.map((album) => String(album.id)).filter(Boolean),
     [libraryAlbums],
   );
-  const downloadStatusesQuery = useQuery({
+  const downloadStatusesQuery = useQuery<DownloadStatuses>({
     queryKey: queryKeys.downloadStatus(downloadStatusIds),
     queryFn: ({ signal }) => getDownloadStatus(downloadStatusIds, { signal, bypassCache: true }),
     enabled: Boolean(libraryArtist && downloadStatusIds.length),
@@ -142,16 +187,19 @@ export function useArtistDetailsLibrary({
       if (downloadStatusWsConnected || (typeof document !== "undefined" && document.hidden)) {
         return false;
       }
-      const statuses = currentQuery.state.data || {};
+      const statuses: DownloadStatuses = currentQuery.state.data || {};
       const hasActiveDownloads = Object.values(statuses).some(
         (status) => status && ["downloading", "processing", "adding"].includes(status.status),
       );
       return hasActiveDownloads ? 15_000 : false;
     },
   });
-  const downloadStatusSnapshotRef = useRef({ key: "", statuses: {} });
+  const downloadStatusSnapshotRef = useRef<{ key: string; statuses: DownloadStatuses }>({
+    key: "",
+    statuses: {},
+  });
   const downloadStatusSnapshot = useMemo(() => {
-    const statuses = downloadStatusesQuery.data || {};
+    const statuses: DownloadStatuses = downloadStatusesQuery.data || {};
     const key = JSON.stringify(
       Object.entries(statuses)
         .map(([albumId, status]) => [albumId, status?.status || ""])
@@ -166,14 +214,17 @@ export function useArtistDetailsLibrary({
   const libraryAlbumsQuery = useQuery({
     queryKey: libraryAlbumsQueryKey,
     queryFn: ({ signal }) =>
-      getLibraryAlbums(libraryArtist.id, { signal, managedBy: libraryArtist.managedBy || null }),
+      getLibraryAlbums(libraryArtist!.id!, {
+        signal,
+        managedBy: libraryArtist!.managedBy || null,
+      }),
     enabled: Boolean(libraryArtist?.id),
     initialData: libraryAlbums,
     initialDataUpdatedAt: 0,
     staleTime: 0,
     refetchInterval: () => {
       if (typeof document !== "undefined" && document.hidden) return false;
-      const statuses = downloadStatusesQuery.data || {};
+      const statuses: DownloadStatuses = downloadStatusesQuery.data || {};
       const hasActiveDownloads = Object.values(statuses).some(
         (status) => status && ["downloading", "processing", "adding"].includes(status.status),
       );
@@ -189,14 +240,16 @@ export function useArtistDetailsLibrary({
       const queryKey = queryKeys.artistMonitoring(payload.foreignArtistId);
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData(queryKey);
-      const optimistic = queryClient.setQueryData(queryKey, (current) =>
-        current
-          ? {
-              ...current,
-              added: true,
-              monitorOption: payload.monitorOption || current.monitorOption || "none",
-            }
-          : current,
+      const optimistic = queryClient.setQueryData<GetArtistMonitoringResponse>(
+        queryKey,
+        (current) =>
+          current
+            ? {
+                ...current,
+                added: true,
+                monitorOption: payload.monitorOption || current.monitorOption || "none",
+              }
+            : current,
       );
       return { queryKey, previous, optimistic };
     },
@@ -217,22 +270,25 @@ export function useArtistDetailsLibrary({
       queryClient.invalidateQueries({ queryKey: queryKeys.libraryAlbumLookupPrefix }),
   });
   const updateAlbumMutation = useMutation({
-    mutationFn: ({ id, data }) => updateLibraryAlbum(id, data),
+    mutationFn: ({ id, data }: { id: string | number; data: { monitored?: boolean } }) =>
+      updateLibraryAlbum(id, data),
     onSuccess: () => invalidateLibraryQueries(),
   });
   const deleteAlbumMutation = useMutation({
-    mutationFn: ({ id, deleteFiles }) => deleteAlbumFromLibrary(id, deleteFiles),
+    mutationFn: ({ id, deleteFiles }: { id: string | number; deleteFiles: boolean }) =>
+      deleteAlbumFromLibrary(id, deleteFiles),
     onSuccess: () => invalidateLibraryQueries(),
   });
   const deleteAurralAlbumMutation = useMutation({
-    mutationFn: ({ id, deleteFiles }) => deleteAurralAlbumFromLibrary(id, deleteFiles),
+    mutationFn: ({ id, deleteFiles }: { id: string | number; deleteFiles: boolean }) =>
+      deleteAurralAlbumFromLibrary(id, deleteFiles),
     onSuccess: () => invalidateLibraryQueries(),
   });
   const searchAlbumMutation = useMutation({
     mutationFn: triggerAlbumSearch,
   });
   const downloadStatuses = useMemo(() => {
-    const statuses = downloadStatusesQuery.data || {};
+    const statuses: DownloadStatuses = downloadStatusesQuery.data || {};
     const now = Date.now();
     return Object.fromEntries(
       Object.entries(statuses).map(([albumId, status]) => {
@@ -268,7 +324,7 @@ export function useArtistDetailsLibrary({
     setLibraryAlbums(deduplicateAlbums(merged));
   }, [libraryAlbumsQuery.data, libraryArtist?.id, setLibraryAlbums]);
 
-  const updateDeleteFilesPreference = (value) => {
+  const updateDeleteFilesPreference = (value: boolean) => {
     writeDeleteFilesPreference(value);
     setDeleteAlbumFilesState(value);
   };
@@ -313,8 +369,8 @@ export function useArtistDetailsLibrary({
   };
 
   const resolveLookupArtist = async (
-    lookupArtist,
-    { refresh = true, hydrateAlbums = true } = {},
+    lookupArtist: FetchLibraryArtistResponse | null,
+    { refresh = true, hydrateAlbums = true }: { refresh?: boolean; hydrateAlbums?: boolean } = {},
   ) => {
     if (!lookupArtist) return null;
     const lookupMbid = lookupArtist.mbid || lookupArtist.foreignArtistId;
@@ -343,7 +399,7 @@ export function useArtistDetailsLibrary({
     return fullArtist;
   };
 
-  const hydrateLibraryArtist = async (lookupArtist) => {
+  const hydrateLibraryArtist = async (lookupArtist: FetchLibraryArtistResponse) => {
     return await resolveLookupArtist(lookupArtist, {
       refresh: true,
       hydrateAlbums: true,
@@ -351,8 +407,8 @@ export function useArtistDetailsLibrary({
   };
 
   const resolveArtistFromAddResponse = async (
-    result,
-    { refresh = true, hydrateAlbums = true } = {},
+    result: AddArtistToLibraryResponse | null,
+    { refresh = true, hydrateAlbums = true }: { refresh?: boolean; hydrateAlbums?: boolean } = {},
   ) => {
     if (!result?.artist) return null;
     return await resolveLookupArtist(result.artist, {
@@ -361,7 +417,7 @@ export function useArtistDetailsLibrary({
     });
   };
 
-  const applyCustomizeDefaults = (preferences) => {
+  const applyCustomizeDefaults = (preferences: LidarrPreferences | undefined) => {
     const nextRootFolderPath =
       preferences?.savedDefaults?.rootFolderPath || preferences?.fallbacks?.rootFolderPath || "";
     const nextQualityProfileId =
@@ -405,7 +461,11 @@ export function useArtistDetailsLibrary({
     }
   };
 
-  const addArtistWithOptions = async (managedBy, lidarrOptions = {}, monitorOption = null) => {
+  const addArtistWithOptions = async (
+    managedBy: string,
+    lidarrOptions: ArtistAddLidarrOptions = {},
+    monitorOption: string | null = null,
+  ) => {
     if (!artist) {
       showError("Artist information not available");
       return;
@@ -484,7 +544,11 @@ export function useArtistDetailsLibrary({
     return success;
   };
 
-  const handleRequestAlbum = async (albumId, title, managedBy = libraryDestination.primary) => {
+  const handleRequestAlbum = async (
+    albumId: string,
+    title: string,
+    managedBy: string = libraryDestination.primary,
+  ) => {
     if (requestingAlbum) return;
     setRequestingAlbum(albumId);
     try {
@@ -535,12 +599,15 @@ export function useArtistDetailsLibrary({
       const nextDownloadStatusIds = [
         ...new Set([...downloadStatusIds, String(addedAlbum.id)].filter(Boolean)),
       ];
-      queryClient.setQueryData(queryKeys.downloadStatus(nextDownloadStatusIds), (previous = {}) => {
-        const next = { ...previous };
-        delete next[`pending-${albumId}`];
-        next[addedAlbum.id] = { status: result.status || "searching" };
-        return next;
-      });
+      queryClient.setQueryData(
+        queryKeys.downloadStatus(nextDownloadStatusIds),
+        (previous: DownloadStatuses = {}) => {
+          const next = { ...previous };
+          delete next[`pending-${albumId}`];
+          next[addedAlbum.id] = { status: result.status || "searching" };
+          return next;
+        },
+      );
       const outcome = describeAlbumRequestResult(result, title, managedBy);
       (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
     } catch (err) {
@@ -562,7 +629,7 @@ export function useArtistDetailsLibrary({
 
   const lidarrConnected = libraryDestination?.primary === "lidarr";
 
-  const searchLibraryAlbum = async (album) => {
+  const searchLibraryAlbum = async (album: LibraryAlbum) => {
     if (resolveAlbumManager(album) === "aurral") {
       if (!album.monitored) return setAurralAlbumMonitoring(album.id, true);
       return requestAlbumFromSearch(
@@ -582,10 +649,10 @@ export function useArtistDetailsLibrary({
     return null;
   };
 
-  const isBlockedSearch = (result) =>
+  const isBlockedSearch = (result: Awaited<ReturnType<typeof searchLibraryAlbum>>) =>
     result?.status === "blocked" || result?.albumStatus?.status === "blocked";
 
-  const undoReSearchOverrides = (albumIds) => {
+  const undoReSearchOverrides = (albumIds: LibraryAlbumId[]) => {
     const nextOverrides = { ...reSearchOverridesRef.current };
     for (const albumId of albumIds) delete nextOverrides[String(albumId)];
     reSearchOverridesRef.current = nextOverrides;
@@ -593,7 +660,7 @@ export function useArtistDetailsLibrary({
     queryClient.invalidateQueries({ queryKey: queryKeys.downloadStatus(downloadStatusIds) });
   };
 
-  const handleReSearchAlbum = async (libraryAlbumId, title) => {
+  const handleReSearchAlbum = async (libraryAlbumId: LibraryAlbumId, title: string) => {
     if (!libraryAlbumId) return;
     setReSearchingAlbum(libraryAlbumId);
     try {
@@ -606,10 +673,13 @@ export function useArtistDetailsLibrary({
       setReSearchOverrides(overrideNext);
       const album = libraryAlbums.find((a) => a.id === libraryAlbumId);
       if (!album) throw new Error("Album not found in library");
-      queryClient.setQueryData(queryKeys.downloadStatus(downloadStatusIds), (previous = {}) => ({
-        ...previous,
-        [overrideKey]: { status: "searching" },
-      }));
+      queryClient.setQueryData(
+        queryKeys.downloadStatus(downloadStatusIds),
+        (previous: DownloadStatuses = {}) => ({
+          ...previous,
+          [overrideKey]: { status: "searching" },
+        }),
+      );
       const result = await searchLibraryAlbum(album);
       setLibraryAlbums((prev) =>
         prev.map((a) => (a.id === libraryAlbumId ? { ...a, monitored: true } : a)),
@@ -696,7 +766,7 @@ export function useArtistDetailsLibrary({
     }
   };
 
-  const handleDeleteAlbumClick = (albumId, title) => {
+  const handleDeleteAlbumClick = (albumId: string, title: string) => {
     const managedBy = libraryAlbums.find((a) => a.foreignAlbumId === albumId)?.managedBy || null;
     setShowDeleteAlbumModal({ id: albumId, title, managedBy });
     setAlbumDropdownOpen(null);
@@ -729,7 +799,7 @@ export function useArtistDetailsLibrary({
         setLibraryAlbums((prev) => prev.filter((a) => a.id !== libraryAlbum.id));
         showSuccess(`Deleted ${title} and files.`);
       } else {
-        const setMonitored = (monitored) =>
+        const setMonitored = (monitored: boolean) =>
           setLibraryAlbums((prev) =>
             prev.map((a) => (a.id === libraryAlbum.id ? { ...a, monitored } : a)),
           );
@@ -766,7 +836,7 @@ export function useArtistDetailsLibrary({
     }
   };
 
-  const getAlbumStatus = (releaseGroupId) => {
+  const getAlbumStatus = (releaseGroupId: string) => {
     const ownerConflict = ownerConflicts[releaseGroupId];
     if (ownerConflict) {
       return { status: "managed", label: ownerConflict.label, ownerConflict };

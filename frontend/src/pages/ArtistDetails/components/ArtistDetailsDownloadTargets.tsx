@@ -30,8 +30,54 @@ import { normalizePreviewTrack } from "../../../utils/audioQueue";
 import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 import { queryKeys } from "../../../queryClient.ts";
 import { releaseGroupDetailsQueryOptions } from "../../../queryOptions.ts";
+import type { ReleaseGroupTrack } from "../../../../../backend/routes/artists/handlers/releaseGroup.ts";
+import type { ArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary.ts";
+import type { ArtistDetails } from "../hooks/useArtistDetailsStream.ts";
+import type { useLibraryDestination } from "../../../hooks/useLibraryDestination.ts";
+import type { PlaybackSource } from "../../../hooks/useAlbumTrackListToolbar.ts";
+import type { PlaylistSelection, PlaylistTrackIdentity, SharedPlaylist } from "./TrackPlaylistMenu";
+import type { ReleaseGroup } from "../utils";
 
-const formatDuration = (track) => {
+type ArtistDetailsDownloadTargetsProps = {
+  releaseGroups?: ReleaseGroup[];
+  getAlbumStatus: ArtistDetailsLibrary["getAlbumStatus"];
+  artist: ArtistDetails | null;
+  albumCovers: Record<string, string>;
+  fulfilledCoverIds: Set<string>;
+  artistCoverImage: string | null | undefined;
+  canAddAlbum: boolean;
+  requestingAlbum: string | null;
+  handleRequestAlbum: ArtistDetailsLibrary["handleRequestAlbum"];
+  libraryDestination: ReturnType<typeof useLibraryDestination>;
+  artistName?: string;
+  playbackSource?: PlaybackSource | null;
+  onAddTrackToPlaylist?: (
+    track: ReleaseGroupTrack,
+    releaseGroup: ReleaseGroup | undefined,
+    target: PlaylistSelection,
+  ) => void | Promise<void>;
+  onAddTrackToLibrary?: (
+    track: ReleaseGroupTrack,
+    releaseGroup: ReleaseGroup | undefined,
+    key: string,
+  ) => unknown;
+  libraryTrackSavingKeys?: Set<string>;
+  resolveMembershipTrack?: (
+    track: ReleaseGroupTrack,
+    releaseGroup: ReleaseGroup | undefined,
+  ) => PlaylistTrackIdentity;
+  playlists?: SharedPlaylist[];
+  playlistsLoading?: boolean;
+  playlistSavingKey?: string;
+  playlistError?: string;
+  getDefaultPlaylistName?: (
+    track: ReleaseGroupTrack,
+    releaseGroup: ReleaseGroup | undefined,
+  ) => string;
+  onLoadPlaylists?: () => Promise<unknown>;
+};
+
+const formatDuration = (track: Pick<ReleaseGroupTrack, "length"> & { duration_ms?: number }) => {
   const duration = Number(track?.length || track?.duration_ms || 0);
   if (!Number.isFinite(duration) || duration <= 0) return "";
   const seconds = Math.floor(duration / 1000);
@@ -63,8 +109,11 @@ export function ArtistDetailsDownloadTargets({
   playlistError,
   getDefaultPlaylistName,
   onLoadPlaylists,
-}) {
-  const [requestedPick, setRequestedPick] = useState(null);
+}: ArtistDetailsDownloadTargetsProps) {
+  const [requestedPick, setRequestedPick] = useState<{
+    artistId: string | undefined;
+    releaseGroupId: string;
+  } | null>(null);
   const requestedReleaseGroupId =
     requestedPick?.artistId === artist?.id ? requestedPick.releaseGroupId : null;
   const missingReleasePick = useMemo(
@@ -96,7 +145,7 @@ export function ArtistDetailsDownloadTargets({
   const tracksQuery = useQuery({
     queryKey: queryKeys.releaseGroupTracks(missingReleasePick?.releaseGroupId, trackContext),
     queryFn: ({ signal }) =>
-      getReleaseGroupTracks(missingReleasePick.releaseGroupId, { ...trackContext, signal }),
+      getReleaseGroupTracks(missingReleasePick!.releaseGroupId, { ...trackContext, signal }),
     enabled: Boolean(missingReleasePick?.releaseGroupId),
     staleTime: 5 * 60 * 1000,
   });
@@ -123,7 +172,7 @@ export function ArtistDetailsDownloadTargets({
   const tint = useCollectionTint(coverUrl);
 
   const normalizeTrack = useCallback(
-    (track, index) =>
+    (track: ReleaseGroupTrack, index: number) =>
       normalizePreviewTrack(
         {
           id: track?.id ?? track?.mbid ?? `pick-${index}`,
@@ -153,7 +202,11 @@ export function ArtistDetailsDownloadTargets({
   const getQueueItems = useQueueTrackActions();
 
   const handlePlay = useCallback(
-    (track, options = {}, ...normalizeArgs) => {
+    (
+      track: ReleaseGroupTrack,
+      options: Parameters<typeof playTrack>[1] = {},
+      ...normalizeArgs: [index: number]
+    ) => {
       const normalized = normalizeTrack(track, ...normalizeArgs);
       if (!normalized?.src) return;
       if (currentTrack?.id === normalized.id) {
@@ -169,12 +222,13 @@ export function ArtistDetailsDownloadTargets({
   );
 
   const isTrackPlaying = useCallback(
-    (trackId) => !!trackId && currentTrack?.id === String(trackId) && (isPlaying || isLoading),
+    (trackId: string) =>
+      !!trackId && currentTrack?.id === String(trackId) && (isPlaying || isLoading),
     [currentTrack?.id, isLoading, isPlaying],
   );
 
   const isTrackLoading = useCallback(
-    (trackId) => !!trackId && currentTrack?.id === String(trackId) && isLoading,
+    (trackId: string) => !!trackId && currentTrack?.id === String(trackId) && isLoading,
     [currentTrack?.id, isLoading],
   );
 
@@ -197,7 +251,11 @@ export function ArtistDetailsDownloadTargets({
     playbackSource,
   });
 
-  const handleTrackPreviewPlay = (track, index, event) => {
+  const handleTrackPreviewPlay = (
+    track: ReleaseGroupTrack,
+    index: number,
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => {
     event.stopPropagation();
     if (!track?.preview_url) return;
     const queue = tracks

@@ -299,6 +299,8 @@ function scheduleLibraryReconciliation() {
   return scheduleLibraryScan({ includeLidarr: true });
 }
 
+export type MappedLibraryAlbum = ReturnType<typeof mapLibraryAlbum>;
+
 function mapLibraryAlbum(album, artist, tracks = []) {
   const albumTrackIds = Array.isArray(album.trackIds) ? album.trackIds : [];
   const albumTracks = tracks.filter((track) => albumTrackIds.includes(track.id));
