@@ -20,6 +20,8 @@ interface FetchInit {
   body?: string | URLSearchParams | Uint8Array;
 }
 
+type NodeFetch = (url: string, init: FetchInit & { redirect: "manual" }) => Promise<FetchResponse>;
+
 interface AxiosBasicAuth {
   username?: string;
   password?: string;
@@ -34,7 +36,7 @@ interface AxiosRequestConfig {
   auth?: AxiosBasicAuth;
   data?: unknown;
   timeout?: number;
-  maxRedirects?: number;
+  maxRedirects?: 5;
   signal?: AbortSignal;
   responseType?: "arraybuffer" | "stream";
   validateStatus?: (status: number) => boolean;
@@ -87,7 +89,7 @@ function headersToObject(
     });
     return output;
   }
-  return { ...headers };
+  return { ...(headers as Record<string, string>) };
 }
 
 const defaultDispatcher = new Agent({
@@ -222,7 +224,7 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
     let response!: FetchResponse;
     let requestMethod = method;
     for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
-      const requestFetch = usesNativeFetch() ? undiciFetch : globalThis.fetch;
+      const requestFetch = (usesNativeFetch() ? undiciFetch : globalThis.fetch) as NodeFetch;
       response = await requestFetch(url, { ...init, redirect: "manual" });
       const location = response.headers.get("location");
       if (![301, 302, 303, 307, 308].includes(response.status) || !location) break;
