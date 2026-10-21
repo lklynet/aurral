@@ -209,9 +209,9 @@ export function ArtistDetailsDownloadTargets({
   if (!missingReleasePick) return null;
 
   const releaseGroupId = missingReleasePick.releaseGroupId;
-  const title = release.title || missingReleasePick.title;
+  const title = release!.title || missingReleasePick.title;
   const displayArtistName = artistName || artist?.name || "";
-  const { typeLabel, meta } = buildReleaseHeaderMeta(release, tracks);
+  const { typeLabel, meta } = buildReleaseHeaderMeta(release!, tracks);
   const titleLink = getReleaseGroupLink(releaseGroup, {
     artistMbid: artist?.id,
     artistName: displayArtistName,

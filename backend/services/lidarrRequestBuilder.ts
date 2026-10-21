@@ -2,13 +2,36 @@ import { albumHasTrackFiles, getLidarrAlbumsById } from "./albumSearchState.ts";
 
 const STALE_GRABBED_MS = 15 * 60 * 1000;
 
+export interface LidarrRequestItem {
+  id: string;
+  source: string;
+  type: string;
+  albumId: string;
+  albumMbid: string | null;
+  albumName: string;
+  artistId: string | null;
+  artistMbid: string | null;
+  artistName: string;
+  status: string;
+  statusLabel: string;
+  requestedAt: string | null;
+  mbid: string | null;
+  name: string;
+  image: null;
+  inQueue: boolean;
+  canReSearch: boolean;
+}
+
 const toIso = (value) => {
   if (value == null) return null;
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 };
 
-export const buildLidarrRequests = async (lidarrClient, snapshot = null) => {
+export const buildLidarrRequests = async (
+  lidarrClient,
+  snapshot = null,
+): Promise<LidarrRequestItem[]> => {
   const [queue, history] = snapshot
     ? [snapshot.queue, snapshot.history]
     : await Promise.all([
@@ -16,7 +39,7 @@ export const buildLidarrRequests = async (lidarrClient, snapshot = null) => {
         lidarrClient.getHistory(1, 200).catch(() => ({ records: [] })),
       ]);
 
-  const requestsByAlbumId = new Map();
+  const requestsByAlbumId = new Map<string, LidarrRequestItem>();
   const queueItems = Array.isArray(queue) ? queue : queue?.records || [];
   const queueByAlbumId = new Map();
   for (const item of queueItems) {

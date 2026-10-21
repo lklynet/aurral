@@ -17,6 +17,14 @@ export const shouldTriggerAlbumSearch = ({
   percentOfTracks = 0,
   sizeOnDisk = 0,
   trackFileCount = 0,
+}: {
+  inLibrary?: boolean;
+  monitored?: boolean;
+  status?: string | null;
+  hasFiles?: boolean;
+  percentOfTracks?: number;
+  sizeOnDisk?: number;
+  trackFileCount?: number;
 } = {}) => {
   const normalizedStatus = String(status || "").trim();
   if (

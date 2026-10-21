@@ -3,30 +3,25 @@ import { TAG_COLORS } from "../discoverUtils.ts";
 import { shouldTriggerAlbumSearch } from "../../utils/albumAddAction.ts";
 import { formatDate } from "../../utils/dateTime.ts";
 import { formatCompactNumber } from "../../utils/numberFormat.ts";
+import type {
+  LegacyReleaseGroupSummary,
+  toNormalizedAlbum,
+} from "../../../../backend/services/providers/brainzmashMappers.ts";
 
 export type ReleaseListViewMode = "grid" | "list";
 
-export interface ReleaseRating {
-  count: number;
-  value: number | null;
-}
+export type ReleaseRating = NonNullable<ReturnType<typeof toNormalizedAlbum>["rating"]>;
 
-export interface ReleaseGroup {
-  id?: string | null;
+export type ReleaseGroup = Partial<LegacyReleaseGroupSummary> & {
   mbid?: string | null;
   foreignAlbumId?: string | null;
-  title?: string;
   releaseDate?: string | null;
   firstReleaseDate?: string | null;
-  "first-release-date"?: string | null;
-  "primary-type"?: string | null;
-  "secondary-types"?: string[] | null;
-  rating?: ReleaseRating | null;
   listenerCount?: number | null;
   coverUrl?: string | null;
   _coverUrl?: string | null;
   _deezerAlbumId?: string | null;
-}
+};
 
 export interface ReleaseTrack {
   length?: number | null;
@@ -213,7 +208,7 @@ export const formatLifeSpan = (
   return `${beginYear} - Present`;
 };
 
-export const getArtistType = (type: string) => {
+export const getArtistType = (type: string | null) => {
   const types = {
     Person: "Solo artist",
     Group: "Band",
@@ -335,10 +330,10 @@ const getReleaseTypeLabel = (release: ReleaseGroup | null | undefined) => {
   return types.length ? types.join(" · ") : null;
 };
 
-export const mergeReleaseDetails = (
-  baseRelease: ReleaseGroup,
+export const mergeReleaseDetails = <T extends ReleaseGroup | undefined>(
+  baseRelease: T,
   details: ReleaseGroup | null | undefined,
-) => {
+): T | ReleaseGroup => {
   if (!details) return baseRelease;
   return {
     ...baseRelease,
@@ -462,8 +457,8 @@ export const resolveReleaseLibraryDisplay = (
 };
 
 const getReleaseListeners = (releaseGroup: ReleaseGroup | null | undefined) =>
-  Number.isFinite(releaseGroup?.listenerCount) && releaseGroup.listenerCount > 0
-    ? releaseGroup.listenerCount
+  Number.isFinite(releaseGroup?.listenerCount) && releaseGroup!.listenerCount! > 0
+    ? releaseGroup!.listenerCount!
     : 0;
 
 export const getReleaseMetric = (

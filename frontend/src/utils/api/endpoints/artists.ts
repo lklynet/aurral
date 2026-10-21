@@ -8,6 +8,7 @@ import {
   coverInflightRequests,
 } from "../core.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
+import type { deezerGetArtistTopTracksById } from "../../../../../backend/services/apiClients/index.ts";
 
 const fetchArtistDetails = async (
   mbid,
@@ -233,7 +234,11 @@ export const getSimilarArtistsForArtist = (mbid, artistName = "", limit = 20) =>
     staleTime: 5 * 60 * 1000,
   });
 
-export const getArtistPreview = (mbid, artistName, options = {}) =>
+export const getArtistPreview = (
+  mbid,
+  artistName,
+  options = {},
+): Promise<{ tracks: Awaited<ReturnType<typeof deezerGetArtistTopTracksById>> }> =>
   getData(`/artists/${mbid}/preview`, {
     params: artistName ? { artistName } : {},
     signal: options.signal,

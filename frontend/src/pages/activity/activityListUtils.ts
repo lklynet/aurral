@@ -1,62 +1,28 @@
+import type { LidarrRequestItem } from "../../../../backend/services/lidarrRequestBuilder.ts";
+import type { AurralRequestItem } from "../../../../backend/services/aurralHistoryService.ts";
 import { formatDate, formatTime } from "../../utils/dateTime.ts";
 
 const SOURCE_NAMES = { slskd: "Soulseek", usenet: "Usenet", deemix: "deemix", ytdlp: "yt-dlp" };
 
-export interface ActivityAlbumGrab {
-  id: string;
-  memberJobIds: string[];
-  phase: "search" | "download" | "poll" | "finalize" | "tracks";
-  source?: string | null;
-  fallbackReason?: string | null;
-  requestedAt: string;
-  completedAt?: string | null;
-}
+type Missing<Present, Other> = { [K in Exclude<keyof Other, keyof Present>]?: undefined };
 
-export interface ActivityRequest {
-  id?: string | null;
-  mbid?: string | null;
-  jobId?: string | null;
-  kind: string | null;
-  type?: string | null;
-  source?: string | null;
-  title?: string | null;
-  name?: string | null;
-  subtitle?: string | null;
-  status?: string;
-  statusLabel?: string | null;
-  href?: string | null;
-  trackName?: string | null;
-  albumName?: string | null;
-  albumId?: string | null;
-  artistName?: string | null;
-  releaseTitle?: string | null;
-  sourceFilename?: string | null;
-  requestedAt: string;
-  completedAt?: string | null;
-  createdAt?: number | null;
-  inQueue?: boolean;
-  canReSearch?: boolean;
+export type ActivityRequest = (
+  | (LidarrRequestItem & Missing<LidarrRequestItem, AurralRequestItem>)
+  | (AurralRequestItem & Missing<AurralRequestItem, LidarrRequestItem>)
+) & {
   children?: ActivityRequest[];
-  albumGrab?: ActivityAlbumGrab | null;
-  discNumber?: number | null;
-  trackNumber?: number | null;
-  downloadMethod?: string | null;
-  downloadMethodLabel?: string | null;
-  actualDownloadSource?: string | null;
+  createdAt?: number | null;
+  error?: string | null;
+  qualityLabel?: string | null;
+  qualityState?: string | null;
+  playlistType?: string | null;
   downloadSource?: string | null;
   downloadClient?: string | null;
   progressLabel?: string | null;
   sourceSummary?: string | null;
   activeStatusLabel?: string | null;
-  previousErrors?: string[];
-  playlistId?: string | null;
-  playlistName?: string | null;
-  playlistType?: string | null;
-  requestedBy?: { id?: string | number | null; username?: string | null } | null;
-  error?: string | null;
-  qualityLabel?: string | null;
-  qualityState?: string | null;
-}
+  downloadMethodLabel?: string | null;
+};
 
 export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
   const rows: ActivityRequest[] = [];

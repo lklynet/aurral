@@ -374,6 +374,8 @@ export function toLegacyReleaseGroupSummary(
   };
 }
 
+export type LegacyReleaseGroupSummary = ReturnType<typeof toLegacyReleaseGroupSummary>;
+
 export function toLegacyRelease(release: NormalizedRelease) {
   return {
     id: release.id,

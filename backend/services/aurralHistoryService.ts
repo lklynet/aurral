@@ -1080,7 +1080,52 @@ export const recordTrackJobBlocked = (job, message = "Blocked for review") =>
     releaseTitle: resolveBlockedJobReleaseTitle(job),
   });
 
-export const toHistoryRequestItem = (entry, options = {}) => {
+export interface AurralAlbumGrab {
+  id: string;
+  memberJobIds: string[];
+  phase: string;
+  source: string | null;
+  fallbackReason: string | null;
+  requestedAt: string;
+  completedAt?: string | null;
+}
+
+export interface AurralRequestItem {
+  id: string;
+  source: string;
+  type: "activity";
+  title: string;
+  subtitle: string | null;
+  status: string;
+  statusLabel: string | null;
+  requestedAt: string;
+  albumGrab?: AurralAlbumGrab | null;
+  completedAt?: string | null;
+  actualDownloadSource?: string | null;
+  downloadMethod?: string | null;
+  previousErrors?: string[];
+  trackNumber?: number | null;
+  discNumber?: number | null;
+  href: string | null;
+  kind: string | null;
+  playlistId: string | null;
+  playlistName: string | null;
+  jobId: string | null;
+  trackName: string | null;
+  artistName: string | null;
+  albumName: string | null;
+  albumMbid: string | null;
+  albumId: string | null;
+  canonicalAlbumId: string | null;
+  requestGroupId: string | null;
+  requestedBy: { id: string | number; username: string | null } | null;
+  sourceFilename: string | null;
+  releaseTitle: string | null;
+  inQueue: boolean;
+  canReSearch: boolean;
+}
+
+export const toHistoryRequestItem = (entry, options = {}): AurralRequestItem => {
   const kind = entry.kind || null;
   const source = resolveHistorySource(kind, entry.metadata);
   const sourceFilename =
