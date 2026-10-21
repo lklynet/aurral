@@ -967,7 +967,7 @@ async function checkPlexSection() {
     return buildSection("plex", "Plex playback", steps);
   }
 
-  let libraries: NavidromeLibrary[] | undefined;
+  let libraries;
   try {
     libraries = await client.getLibraries();
   } catch (error) {
