@@ -4,6 +4,8 @@ export type HexColor = `#${string}`;
 
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 
+export function normalizeHexColor(value: HexColor): HexColor;
+export function normalizeHexColor(value: unknown): HexColor | null;
 export function normalizeHexColor(value: unknown): HexColor | null {
   if (typeof value !== "string") return null;
   const hex = value.trim().replace(/^#/, "").toLowerCase();
@@ -12,6 +14,8 @@ export function normalizeHexColor(value: unknown): HexColor | null {
   return null;
 }
 
+function hexToRgb(hex: HexColor): number[];
+function hexToRgb(hex: unknown): number[] | null;
 function hexToRgb(hex: unknown) {
   const value = normalizeHexColor(hex);
   if (!value) return null;
@@ -61,6 +65,8 @@ function rgbToOklch(rgb: number[]) {
   return { l, c, h: c < 1e-4 ? 0 : ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360 };
 }
 
+export function hexToOklch(hex: HexColor): Oklch;
+export function hexToOklch(hex: unknown): Oklch | null;
 export function hexToOklch(hex: unknown) {
   const rgb = hexToRgb(hex);
   return rgb ? rgbToOklch(rgb) : null;
@@ -125,7 +131,7 @@ export function oklchToHex({ l, c, h }: Oklch) {
 }
 
 export function relativeLuminance(hex: HexColor) {
-  const [r, g, b] = hexToRgb(hex)!.map(toLinear);
+  const [r, g, b] = hexToRgb(hex).map(toLinear);
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
@@ -136,12 +142,12 @@ export function contrastRatio(first: HexColor, second: HexColor) {
 }
 
 export function isDarkColor(hex: HexColor) {
-  return hexToOklch(hex)!.l < 0.6;
+  return hexToOklch(hex).l < 0.6;
 }
 
 export function mixColors(first: HexColor, second: HexColor, amount: number) {
-  const a = linearToOklab(hexToRgb(first)!.map(toLinear));
-  const b = linearToOklab(hexToRgb(second)!.map(toLinear));
+  const a = linearToOklab(hexToRgb(first).map(toLinear));
+  const b = linearToOklab(hexToRgb(second).map(toLinear));
   const mixed = a.map((value, index) => value + (b[index] - value) * amount);
   return rgbToHex(oklabToLinear(mixed).map((channel) => fromLinear(clamp(channel))));
 }
@@ -158,7 +164,7 @@ function contrastAtLightness(color: Omit<Oklch, "l">, lightness: number, backgro
 
 export function adjustLightnessForContrast(hex: HexColor, background: HexColor, target: number) {
   if (contrastRatio(hex, background) >= target) return hex;
-  const color = hexToOklch(hex)!;
+  const color = hexToOklch(hex);
   const towardLight = contrastRatio("#ffffff", background) >= contrastRatio("#000000", background);
   const limit = towardLight ? 1 : 0;
   if (contrastAtLightness(color, limit, background) < target)
@@ -181,7 +187,7 @@ export function colorAtContrast(
   towardLight: boolean,
 ) {
   const color = { c: chroma, h: hue };
-  let near = hexToOklch(background)!.l;
+  let near = hexToOklch(background).l;
   let far = towardLight ? 1 : 0;
   if (contrastAtLightness(color, far, background) <= target)
     return oklchToHex({ ...color, l: far });

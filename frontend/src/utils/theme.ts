@@ -142,8 +142,8 @@ function readableOn(background: HexColor, candidates: HexColor[]) {
 
 export function createThemePalette(seed: ThemeSeed) {
   const dark = isDarkColor(seed.background);
-  const surface = normalizeHexColor(seed.background)!;
-  const base = hexToOklch(surface)!;
+  const surface = normalizeHexColor(seed.background);
+  const base = hexToOklch(surface);
   const shade = (delta: number) => oklchToHex({ ...base, l: base.l + delta });
   const toward = dark ? 1 : -1;
   const surfaceRaised = shade(toward * (dark ? 0.05 : 0.035));
@@ -154,7 +154,7 @@ export function createThemePalette(seed: ThemeSeed) {
   const textSeed =
     seed.text || oklchToHex({ l: dark ? 0.96 : 0.2, c: Math.min(base.c, 0.02), h: base.h });
   const text = adjustLightnessForContrast(textSeed, surfacePopover, 7);
-  const textColor = hexToOklch(text)!;
+  const textColor = hexToOklch(text);
   const textContrast = contrastRatio(text, surfacePopover);
   const mutedTarget = clamp(textContrast * 0.48, 4.6, textContrast);
   const subtleTarget = clamp(textContrast * 0.25, 3.2, mutedTarget);
@@ -196,7 +196,7 @@ type ThemePalette = ReturnType<typeof createThemePalette>;
 
 function mirrorSeed(seed: ThemeSeed, mode: ThemeMode): ThemeSeed {
   const dark = mode === "dark";
-  const background = hexToOklch(seed.background)!;
+  const background = hexToOklch(seed.background);
   const mirrored: ThemeSeed = {
     background: oklchToHex(
       dark
@@ -206,7 +206,7 @@ function mirrorSeed(seed: ThemeSeed, mode: ThemeMode): ThemeSeed {
     accent: seed.accent,
   };
   if (seed.text) {
-    const text = hexToOklch(seed.text)!;
+    const text = hexToOklch(seed.text);
     mirrored.text = oklchToHex({ l: dark ? 0.93 : 0.24, c: Math.min(text.c, 0.03), h: text.h });
   }
   for (const role of ["danger", "warning", "success", "info"] as const) {
@@ -232,8 +232,8 @@ export function getThemePalette(theme: Theme, mode: ThemeMode) {
 }
 
 export function tintSeedWithArtwork(seed: ThemeSeed, artwork: HexColor): ThemeSeed {
-  const art = hexToOklch(artwork)!;
-  const background = hexToOklch(seed.background)!;
+  const art = hexToOklch(artwork);
+  const background = hexToOklch(seed.background);
   const dark = isDarkColor(seed.background);
   return {
     ...seed,
