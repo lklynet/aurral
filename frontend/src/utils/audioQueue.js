@@ -37,7 +37,7 @@ export function resolveTrackStreamFormat(track) {
     extensionFromPath(track?.src) ||
     extensionFromPath(track?.streamUrl) ||
     extensionFromPath(track?.preview_url);
-  if (direct && FORMAT_BY_EXTENSION[direct]) return direct;
+  if (direct && Object.hasOwn(FORMAT_BY_EXTENSION, direct)) return direct;
   return qualityToFormat(track?.quality);
 }
 
@@ -51,7 +51,9 @@ export function getFormatLoadAttempts(track) {
 }
 
 export function getHowlerFormat(formatKey) {
-  return FORMAT_BY_EXTENSION[formatKey] || [formatKey];
+  return Object.hasOwn(FORMAT_BY_EXTENSION, formatKey)
+    ? FORMAT_BY_EXTENSION[formatKey]
+    : [formatKey];
 }
 
 function usesTrackArtwork(track) {
