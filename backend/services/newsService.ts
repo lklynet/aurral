@@ -186,7 +186,10 @@ export async function getNewsForUser({ userId, mode = "matched", limit = 60, off
   const ids = selectActiveArticleIds.all(JSON.stringify(feedUrls)).map((row) => row.id);
   const candidates = mode === "top" ? ids : ids.filter((id) => matches.has(id));
   const pageIds = candidates.slice(safeOffset, safeOffset + safeLimit);
-  const state = dbOps.getJSONSetting(REFRESH_STATE_KEY) || {};
+  const state =
+    dbOps.getJSONSetting<Partial<{ checkedAt: number; failedFeeds: string[]; allFailed: boolean }>>(
+      REFRESH_STATE_KEY,
+    ) || {};
   return {
     articles: selectArticlesByIds
       .all(JSON.stringify(pageIds))

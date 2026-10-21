@@ -300,7 +300,7 @@ function waitSearchDelay(ms, signal) {
 }
 
 async function waitForSearchStartSlot(signal) {
-  const lastStartedAt = Number(dbOps.getJSONSetting(SEARCH_STARTED_AT_SETTING));
+  const lastStartedAt = Number(dbOps.getJSONSetting<number>(SEARCH_STARTED_AT_SETTING));
   const waitMs =
     lastStartedAt > 0
       ? Math.min(SEARCH_START_GAP_MS, lastStartedAt + SEARCH_START_GAP_MS - Date.now())

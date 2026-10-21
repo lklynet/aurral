@@ -9,6 +9,14 @@ export interface DiscoveryMetadata {
   enrichmentStartedAt?: string | null;
   enrichmentCompletedAt?: string | null;
   enrichmentProgressMessage?: string | null;
+  lastRunStartedAt?: number;
+  refreshRequestedAt?: number;
+  refreshStartedAt?: number;
+  refreshFinishedAt?: number;
+  refreshPhase?: string | null;
+  refreshProgress?: number | null;
+  refreshMessage?: string | null;
+  refreshError?: string | null;
   [field: string]: unknown;
 }
 

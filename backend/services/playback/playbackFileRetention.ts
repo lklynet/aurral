@@ -7,7 +7,7 @@ import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.ts";
 const SETTINGS_KEY = "playbackRetainedFiles";
 
 function readRetainedFiles() {
-  const value = dbOps.getJSONSetting(SETTINGS_KEY);
+  const value = dbOps.getJSONSetting<Record<string, unknown>>(SETTINGS_KEY);
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 

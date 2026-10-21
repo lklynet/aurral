@@ -44,7 +44,7 @@ interface MigrationItem {
   [field: string]: unknown;
 }
 
-interface MigrationState {
+export interface MigrationState {
   version: number;
   rootPath: string;
   status: string;

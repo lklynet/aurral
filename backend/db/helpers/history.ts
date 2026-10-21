@@ -2,7 +2,7 @@ import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import type { AurralHistoryRow } from "../rows.ts";
 
 export interface AurralHistoryEntry {
-  id: string;
+  id: string | null;
   kind: string;
   title: string;
   subtitle: string | null;
@@ -27,8 +27,8 @@ export interface AurralHistoryInput {
 
 export interface AurralHistoryOps {
   insertAurralHistory: (entry: AurralHistoryInput) => AurralHistoryInput | null;
-  deleteAurralHistoryById: (id: string) => boolean;
-  getAurralHistoryById: (id: string) => AurralHistoryEntry | null;
+  deleteAurralHistoryById: (id: string | null) => boolean;
+  getAurralHistoryById: (id: string) => (AurralHistoryEntry & { id: string }) | null;
   getAurralHistory: (options?: { since?: number; limit?: number }) => AurralHistoryEntry[];
   pruneAurralHistory: (options?: { maxAgeMs?: number; maxEntries?: number }) => void;
 }
@@ -57,7 +57,10 @@ const getAurralHistoryStmt = db.prepare<[number, number], AurralHistoryRow>(`
   ORDER BY created_at DESC
   LIMIT ?
 `);
-const getAurralHistoryByIdStmt = db.prepare<[string], AurralHistoryRow>(`
+const getAurralHistoryByIdStmt = db.prepare<
+  [string],
+  Omit<AurralHistoryRow, "id"> & { id: string }
+>(`
   SELECT id, kind, title, subtitle, status, status_label, href, metadata, created_at
   FROM aurral_history
   WHERE id = ?

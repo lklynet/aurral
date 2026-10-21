@@ -52,9 +52,10 @@ export interface CacheOps {
   cleanMetadataResponses: (maxEntries: number) => number;
 }
 
-type ImageSummaryRow = Pick<ImagesCacheRow, "mbid" | "image_url" | "images_json" | "cache_age">;
+type CachedImageRow = Omit<ImagesCacheRow, "mbid"> & { mbid: string };
+type ImageSummaryRow = Pick<CachedImageRow, "mbid" | "image_url" | "images_json" | "cache_age">;
 
-const getImageStmt = db.prepare<[string], ImagesCacheRow>(
+const getImageStmt = db.prepare<[string], CachedImageRow>(
   "SELECT * FROM images_cache WHERE mbid = ?",
 );
 const getImageJsonStmt = db.prepare<[string], Pick<ImagesCacheRow, "images_json">>(

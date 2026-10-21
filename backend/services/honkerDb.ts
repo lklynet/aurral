@@ -591,18 +591,22 @@ export function enqueueHonkerStartupTasks() {
       );
     return existing?.id || enqueueSystemTaskJob(payload, options);
   };
-  const migration = dbOps.getJSONSetting(PLAYLIST_STARTUP_MIGRATION_SETTING);
+  const migration = dbOps.getJSONSetting<{ version: number; rootPath: string }>(
+    PLAYLIST_STARTUP_MIGRATION_SETTING,
+  );
   if (
     migration?.version !== PLAYLIST_STARTUP_MIGRATION_VERSION ||
     path.resolve(String(migration?.rootPath || "")) !== resolveDownloadRoot()
   ) {
     enqueueIfAbsent({ kind: "playlist-startup-migration" }, { delaySeconds: 3, priority: 10 });
   }
-  const storedData = dbOps.getJSONSetting(STORED_DATA_MIGRATION_SETTING);
+  const storedData = dbOps.getJSONSetting<{ version: number }>(STORED_DATA_MIGRATION_SETTING);
   if (storedData?.version !== STORED_DATA_MIGRATION_VERSION) {
     enqueueIfAbsent({ kind: "stored-data-migration" }, { delaySeconds: 3, priority: 10 });
   }
-  const identityMarkers = dbOps.getJSONSetting(IDENTITY_MARKER_MIGRATION_SETTING);
+  const identityMarkers = dbOps.getJSONSetting<{ version: number }>(
+    IDENTITY_MARKER_MIGRATION_SETTING,
+  );
   if (identityMarkers?.version !== IDENTITY_MARKER_MIGRATION_VERSION) {
     enqueueIfAbsent({ kind: "identity-marker-migration" }, { delaySeconds: 30, priority: -5 });
   }

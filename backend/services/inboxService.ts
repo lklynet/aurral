@@ -59,8 +59,18 @@ const normalizeUserId = (userId) => {
 const getInboxRefreshStatusKey = (userId) =>
   `${INBOX_REFRESH_STATUS_PREFIX}${normalizeUserId(userId)}`;
 
+interface InboxRefreshStatus {
+  status: string;
+  stale: boolean;
+  error: string | null;
+  updatedAt: number | null;
+  lastSuccessAt?: number | null;
+  jobId?: number | null;
+  reason?: string;
+}
+
 const getStoredRefreshStatus = (userId) =>
-  dbOps.getJSONSetting(getInboxRefreshStatusKey(userId)) || {
+  dbOps.getJSONSetting<InboxRefreshStatus>(getInboxRefreshStatusKey(userId)) || {
     status: "idle",
     stale: false,
     error: null,

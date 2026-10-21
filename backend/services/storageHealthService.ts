@@ -1048,5 +1048,7 @@ export async function runStorageHealthCheck({ force = false } = {}) {
 }
 
 export function getStorageHealthSnapshot() {
-  return dbOps.getJSONSetting(STORAGE_HEALTH_SNAPSHOT_KEY);
+  return dbOps.getJSONSetting<Awaited<ReturnType<typeof buildStorageHealthCheck>>>(
+    STORAGE_HEALTH_SNAPSHOT_KEY,
+  );
 }

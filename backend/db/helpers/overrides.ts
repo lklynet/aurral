@@ -23,9 +23,10 @@ export interface ArtistOverrideOps {
   deleteArtistOverride: (mbid: string) => Database.RunResult | null;
 }
 
-const getArtistOverrideStmt = db.prepare<[string], ArtistOverridesRow>(
-  "SELECT * FROM artist_overrides WHERE mbid = ?",
-);
+const getArtistOverrideStmt = db.prepare<
+  [string],
+  Omit<ArtistOverridesRow, "mbid"> & { mbid: string }
+>("SELECT * FROM artist_overrides WHERE mbid = ?");
 const upsertArtistOverrideStmt = db.prepare<[string, string | null, string | null, number]>(
   "INSERT OR REPLACE INTO artist_overrides (mbid, musicbrainz_id, deezer_artist_id, updated_at) VALUES (?, ?, ?, ?)",
 );

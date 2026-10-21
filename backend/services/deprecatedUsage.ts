@@ -43,7 +43,8 @@ export function noteDeprecatedUsage(kind) {
   notedThisProcess.add(kind);
   logger.warn("system", DEPRECATIONS[kind]);
   try {
-    const recorded = dbOps.getJSONSetting(DEPRECATED_USAGE_SETTING) || {};
+    const recorded =
+      dbOps.getJSONSetting<Record<string, { lastSeenAt: number }>>(DEPRECATED_USAGE_SETTING) || {};
     dbOps.setJSONSetting(DEPRECATED_USAGE_SETTING, {
       ...recorded,
       [kind]: { lastSeenAt: Date.now() },
@@ -54,7 +55,8 @@ export function noteDeprecatedUsage(kind) {
 }
 
 export function getDeprecatedUsage() {
-  const recorded = dbOps.getJSONSetting(DEPRECATED_USAGE_SETTING) || {};
+  const recorded =
+    dbOps.getJSONSetting<Record<string, { lastSeenAt: number }>>(DEPRECATED_USAGE_SETTING) || {};
   return [
     ...listConfigDeprecations().map((kind) => ({
       kind,

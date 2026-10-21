@@ -3,7 +3,7 @@ import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import type { InboxItemsRow } from "../rows.ts";
 
 export interface InboxItem {
-  id: string;
+  id: string | null;
   userId: number;
   kind: string;
   sourceKey: string;
@@ -50,13 +50,15 @@ export interface InboxOps {
     options?: { limit?: number; unreadOnly?: boolean; kinds?: string[] },
   ) => (InboxItem | null)[];
   getInboxUnreadCount: (userId: number, kinds?: string[]) => number;
-  getInboxItem: (userId: number, itemId: string) => InboxItem | null;
+  getInboxItem: (userId: number, itemId: string) => (InboxItem & { id: string }) | null;
   upsertInboxItem: (item: InboxItemInput) => InboxItem | null;
   updateInboxItem: (userId: number, itemId: string, updates?: InboxItemUpdates) => InboxItem | null;
   markAllInboxItemsRead: (userId: number) => Database.RunResult;
 }
 
-const mapInboxRow = (row: InboxItemsRow | undefined): InboxItem | null => {
+const mapInboxRow = <Id extends string | null>(
+  row: (Omit<InboxItemsRow, "id"> & { id: Id }) | undefined,
+) => {
   if (!row) return null;
   return {
     id: row.id,
@@ -109,7 +111,7 @@ const getUnreadCountStmt = db.prepare<[number, number], { count: number }>(`
     AND (expires_at IS NULL OR expires_at > ?)
 `);
 
-const getItemStmt = db.prepare<[number, string], InboxItemsRow>(
+const getItemStmt = db.prepare<[number, string], Omit<InboxItemsRow, "id"> & { id: string }>(
   "SELECT * FROM inbox_items WHERE user_id = ? AND id = ?",
 );
 

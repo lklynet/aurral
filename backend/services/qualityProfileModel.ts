@@ -34,7 +34,7 @@ export function createDefaultQualityProfile(slskd = {}) {
   };
 }
 
-export function normalizeIntervalDays(value, fallback) {
+export function normalizeIntervalDays(value: unknown, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.min(365, Math.max(1, Math.round(parsed))) : fallback;
 }

@@ -2,7 +2,10 @@ import path from "path";
 import { db } from "../config/db-sqlite.ts";
 import { getSchemaVersion } from "../config/schema-migration-v2.ts";
 import { dbOps, userOps } from "../db/helpers/index.ts";
-import { AURRAL_DOWNLOAD_FOLDER_MIGRATION_SETTING } from "./aurralDownloadFolderMigration.ts";
+import {
+  AURRAL_DOWNLOAD_FOLDER_MIGRATION_SETTING,
+  type MigrationState,
+} from "./aurralDownloadFolderMigration.ts";
 import { getDeprecatedUsage } from "./deprecatedUsage.ts";
 import { isPathInsideRoot, resolveDownloadRoot } from "./downloadPaths.ts";
 import {
@@ -34,13 +37,16 @@ const BLOCKER_MESSAGES = {
     "Sign-in still uses the old single password. Sign in once to create the admin account.",
 };
 
-const isCurrent = (setting, version) => dbOps.getJSONSetting(setting)?.version === version;
+const isCurrent = (setting, version) =>
+  dbOps.getJSONSetting<{ version: number }>(setting)?.version === version;
 
 function downloadFolderBlockers() {
   const root = path.resolve(resolveDownloadRoot());
   const sameRoot = (value) => path.resolve(String(value || "")) === root;
-  const startup = dbOps.getJSONSetting(PLAYLIST_STARTUP_MIGRATION_SETTING);
-  const folder = dbOps.getJSONSetting(AURRAL_DOWNLOAD_FOLDER_MIGRATION_SETTING);
+  const startup = dbOps.getJSONSetting<{ version: number; rootPath: string }>(
+    PLAYLIST_STARTUP_MIGRATION_SETTING,
+  );
+  const folder = dbOps.getJSONSetting<MigrationState>(AURRAL_DOWNLOAD_FOLDER_MIGRATION_SETTING);
   const review =
     folder && sameRoot(folder.rootPath)
       ? Object.entries(folder.items || {}).filter(([, item]) => item?.status === "retained")

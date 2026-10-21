@@ -62,7 +62,7 @@ export const userIdentityOps = {
     return toIdentity(getByIdStmt.get(parseInt(String(id), 10)));
   },
   countForUser(userId: number) {
-    return countForUserStmt.get(parseInt(String(userId), 10)).count;
+    return countForUserStmt.get(parseInt(String(userId), 10))!.count;
   },
   unlink(id: number) {
     const result = deleteByIdStmt.run(parseInt(String(id), 10));
@@ -84,7 +84,7 @@ export const userIdentityOps = {
         linkedAt,
       );
       return toIdentity({
-        id: result.lastInsertRowid,
+        id: result.lastInsertRowid as number,
         user_id: userId,
         provider_type: providerType,
         provider_key: providerKey,
@@ -104,7 +104,7 @@ export const userIdentityOps = {
       Date.now(),
     );
     return toIdentity({
-      id: result.lastInsertRowid,
+      id: result.lastInsertRowid as number,
       user_id: userId,
       provider_type: providerType,
       provider_key: providerKey,

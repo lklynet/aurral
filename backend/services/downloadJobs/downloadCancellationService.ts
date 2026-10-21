@@ -21,8 +21,10 @@ import {
 
 const PIPELINE_QUEUE = "slskd-pipeline";
 
+type CancellationWork = { jobs: unknown[]; payloads: unknown[] };
+
 function captureCancellationWork(key, jobs, payloads) {
-  const previous = dbOps.getJSONSetting<{ jobs: unknown[]; payloads: unknown[] }>(key) || {
+  const previous = dbOps.getJSONSetting<CancellationWork>(key) || {
     jobs: [],
     payloads: [],
   };
@@ -38,7 +40,7 @@ function captureCancellationWork(key, jobs, payloads) {
 function readCancellationWork(jobs, playlistId = null) {
   const keys = jobs.map((job) => `downloadCancellationWork:${job.id}`);
   if (playlistId) keys.push(`playlistCancellationWork:${playlistId}`);
-  return keys.map((key) => dbOps.getJSONSetting(key)).filter(Boolean);
+  return keys.map((key) => dbOps.getJSONSetting<CancellationWork>(key)).filter(Boolean);
 }
 
 function clearCancellationWork(jobs, playlistId = null) {

@@ -8,6 +8,8 @@ import {
 } from "../../services/downloadFolderConfig.ts";
 import { normalizeExistingFileMode } from "../../services/downloadJobs/fileReuseMode.ts";
 import { normalizeDateTimeFormat } from "../../config/constants.ts";
+import type { defaultData } from "../../config/constants.ts";
+import type { normalizeNewsFeeds } from "../../services/apiClients/config.ts";
 import {
   normalizeIntervalDays,
   normalizeQualityProfile,
@@ -20,150 +22,68 @@ import type { LidarrArtistIdMapOps } from "./lidarr.ts";
 import type { AurralHistoryOps } from "./history.ts";
 import type { InboxOps } from "./inbox.ts";
 
-interface LidarrIntegration {
-  url: string;
-  externalUrl: string;
-  apiKey: string;
+type IntegrationDefaults = typeof defaultData.settings.integrations;
+
+type LidarrIntegration = Omit<
+  IntegrationDefaults["lidarr"],
+  "rootFolderPath" | "rootFolderPaths" | "qualityProfileId" | "metadataProfileId" | "tagId"
+> & {
   rootFolderPath: string | null;
   rootFolderPaths: string[];
   qualityProfileId: number | null;
   metadataProfileId: number | null;
   tagId: number | null;
-  defaultMonitorOption: string;
-  searchOnAdd: boolean;
   enabled?: boolean;
   insecure?: boolean;
-}
+};
 
-interface NavidromeIntegration {
-  url: string;
-  username: string;
-  password: string;
-  prefixOwnerUsername: boolean;
+type NavidromeIntegration = IntegrationDefaults["navidrome"] & {
   m3uPathMode?: unknown;
   pathMappings?: unknown;
-}
+};
 
-interface PlexIntegration {
-  url: string;
-  token: string;
-  clientId: string;
-  machineIdentifier: string;
-  downloadsPath: string;
-  plexUsername: string;
-  mainLibrarySectionId: string;
+type PlexIntegration = IntegrationDefaults["plex"] & {
   loginEnabled?: boolean;
   configuredByUserId?: number;
-}
+};
 
-interface LastfmIntegration {
-  apiKey: string;
-  apiSecret: string;
-  discoveryPeriod: string;
-  discoveryAutoRefreshHours: number;
-  discoveryRecommendationsPerRefresh: number;
-  discoveryMode: string;
-}
+type LastfmIntegration = IntegrationDefaults["lastfm"];
 
-interface SlskdIntegration {
-  enabled: boolean;
-  url: string;
-  apiKey: string;
-  priority: number;
-  preferredFormat: string;
-  preferredFormatStrict: boolean;
-  cleanupAfterRuns?: boolean;
-}
+type SlskdIntegration = IntegrationDefaults["slskd"] & { cleanupAfterRuns?: boolean };
 
-interface ProwlarrIntegration {
-  enabled: boolean;
-  url: string;
-  apiKey: string;
-  indexers: Record<string, unknown>;
-  categories: number[];
-  maxResults: number;
-}
-
-interface NzbgetIntegration {
-  enabled: boolean;
-  url: string;
-  username: string;
-  password: string;
-  category: string;
-  priority: number;
-  nzbPriority: number;
-  addPaused: boolean;
-  completedPath: string;
-  deleteLeftovers?: boolean;
-}
-
-interface SabnzbdIntegration {
-  enabled: boolean;
-  url: string;
-  apiKey: string;
-  category: string;
-  priority: number;
-  addPaused: boolean;
-}
-
-interface YtdlpIntegration {
+interface ProwlarrIndexerOverride {
   enabled: boolean;
   priority: number;
-  stagingPath: string;
 }
 
-interface DeemixIntegration {
-  enabled: boolean;
-  url: string;
-  bitrate: number;
-  priority: number;
-}
+type ProwlarrIntegration = Omit<IntegrationDefaults["prowlarr"], "indexers"> & {
+  indexers: Record<string, ProwlarrIndexerOverride>;
+};
 
-interface TicketmasterIntegration {
-  apiKey: string;
-  searchRadiusMiles: number;
-  localDiscoveryIncludeRecommendations: boolean;
-  localDiscoveryIncludeTrending: boolean;
-}
+type NzbgetIntegration = IntegrationDefaults["nzbget"] & { deleteLeftovers?: boolean };
 
-interface NewsFeed {
-  url: string;
-  [field: string]: unknown;
-}
+type SabnzbdIntegration = IntegrationDefaults["sabnzbd"];
 
-interface NewsIntegration {
-  enabled: boolean;
+type YtdlpIntegration = IntegrationDefaults["ytdlp"];
+
+type DeemixIntegration = IntegrationDefaults["deemix"];
+
+type TicketmasterIntegration = IntegrationDefaults["ticketmaster"];
+
+type NewsFeed = ReturnType<typeof normalizeNewsFeeds>[number];
+
+type NewsIntegration = Omit<IntegrationDefaults["news"], "feeds"> & {
   feeds: NewsFeed[];
   groups?: Record<string, boolean>;
-}
+};
 
-interface MetadataIntegration {
-  provider: string;
-  baseUrl: string;
-  userAgentSuffix: string;
-  enableNarrowFallbacks: boolean;
-}
+type MetadataIntegration = IntegrationDefaults["metadata"];
 
-interface GeneralIntegration {
-  authUser: string;
-  authPassword: string;
-  apiKey?: string;
-}
+type GeneralIntegration = IntegrationDefaults["general"] & { apiKey?: string };
 
-interface GotifyIntegration {
-  url: string;
-  token: string;
-  notifyDiscoveryUpdated: boolean;
-  notifyWeeklyFlowDone: boolean;
-  notifyRequestMade: boolean;
-  notifyRequestAvailable: boolean;
-}
+type GotifyIntegration = IntegrationDefaults["gotify"];
 
-interface JellyfinIntegration {
-  url: string;
-  apiKey: string;
-  userId: string;
-}
+type JellyfinIntegration = IntegrationDefaults["jellyfin"];
 
 interface GoogleIntegration {
   enabled?: boolean;
@@ -172,18 +92,18 @@ interface GoogleIntegration {
   redirectUri?: string;
 }
 
-interface WebhookTarget {
-  url: string;
-  headers?: Record<string, string>;
-  body?: string;
+interface WebhookHeader {
+  key: string;
+  value: string;
 }
 
-interface WebhookEvents {
-  notifyDiscoveryUpdated: boolean;
-  notifyWeeklyFlowDone: boolean;
-  notifyRequestMade: boolean;
-  notifyRequestAvailable: boolean;
+interface WebhookTarget {
+  url: string;
+  headers?: WebhookHeader[];
+  body?: string | null;
 }
+
+type WebhookEvents = IntegrationDefaults["webhookEvents"];
 
 export interface StoredIntegrations {
   [service: string]: unknown;
@@ -211,30 +131,15 @@ export interface StoredIntegrations {
   coverArtArchive?: unknown;
 }
 
-export interface SettingsPlaylistWorker {
-  concurrency: number;
-  retryCycleMinutes: number;
-  retryPausedPlaylistIds: string[];
-  existingFileMode: string;
-}
+export type SettingsPlaylistWorker = ReturnType<typeof normalizePlaylistWorkerSettings>;
 
 interface SettingsPlaylistArtwork {
   style: "aurral" | "photo";
 }
 
-interface SettingsMissingTrackSearch {
-  enabled: boolean;
-  intervalDays: number;
-}
+type SettingsMissingTrackSearch = ReturnType<typeof normalizeMissingTrackSearchSettings>;
 
-interface SettingsInbox {
-  enabled: boolean;
-  releases: boolean;
-  shows: boolean;
-  news: boolean;
-  recommendedNews: boolean;
-  discoveries: boolean;
-}
+type SettingsInbox = typeof defaultData.settings.inbox;
 
 interface StoredSecurity {
   localNetworkBypass?: { enabled?: boolean };
@@ -270,13 +175,7 @@ interface StoredBlocklist {
   tags?: string[];
 }
 
-export interface QualityProfile {
-  order: string[];
-  enabled: string[];
-  cutoff?: string;
-  automaticUpgrades: boolean;
-  intervalDays: number;
-}
+export type QualityProfile = ReturnType<typeof normalizeQualityProfile>;
 
 export interface AppSettings {
   integrations: StoredIntegrations;
@@ -287,11 +186,11 @@ export interface AppSettings {
   security: StoredSecurity;
   rootFolderPath: string | null;
   downloadFolderPath: string | null;
-  pathMappings: unknown;
+  pathMappings: ReturnType<typeof normalizePathMappings>;
   releaseTypes: string[];
   flows: unknown;
   sharedPlaylists: unknown;
-  subsonic: { favoriteAutoKeep: boolean };
+  subsonic: typeof defaultData.settings.subsonic;
   playlistWorker: SettingsPlaylistWorker;
   playlistArtwork: SettingsPlaylistArtwork;
   missingTrackSearch: SettingsMissingTrackSearch;
@@ -326,7 +225,7 @@ export interface SettingsUpdate {
 
 export interface SettingsOps {
   invalidateSettingsCache: () => void;
-  getJSONSetting: <T = Partial<Record<string, unknown>>>(key: string) => T | null;
+  getJSONSetting: <T = unknown>(key: string) => T | null;
   setJSONSetting: (key: string, value: unknown) => void;
   getUserDiscoverLayout: (userId: number) => unknown;
   setUserDiscoverLayout: (userId: number, layout: unknown) => void;
@@ -381,9 +280,7 @@ function normalizePlaylistArtworkSettings(
   };
 }
 
-function normalizeMissingTrackSearchSettings(
-  raw: StoredMissingTrackSearch | null | undefined,
-): SettingsMissingTrackSearch {
+function normalizeMissingTrackSearchSettings(raw: StoredMissingTrackSearch | null | undefined) {
   const search: StoredMissingTrackSearch = raw && typeof raw === "object" ? raw : {};
   return {
     enabled: search.enabled === true,
@@ -399,9 +296,7 @@ export function normalizeReviewTimeoutHours(value: unknown): number {
   return Number.isInteger(hours) && hours >= 0 && hours <= MAX_REVIEW_TIMEOUT_HOURS ? hours : 0;
 }
 
-function normalizePlaylistWorkerSettings(
-  raw: StoredPlaylistWorker | null | undefined,
-): SettingsPlaylistWorker {
+function normalizePlaylistWorkerSettings(raw: StoredPlaylistWorker | null | undefined) {
   const worker: StoredPlaylistWorker = raw && typeof raw === "object" ? raw : {};
   const parsedConcurrency = Number(worker.concurrency);
   const concurrency =

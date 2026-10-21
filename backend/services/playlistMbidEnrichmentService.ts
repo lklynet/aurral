@@ -197,7 +197,7 @@ export function schedulePlaylistMbidEnrichmentForMissingPlaylists({
 } = {}) {
   const shouldReconcileArtistMbids =
     reconcileArtistMbids === true &&
-    Number(dbOps.getJSONSetting(ARTIST_MBID_RECONCILIATION_KEY) || 0) <
+    Number(dbOps.getJSONSetting<number>(ARTIST_MBID_RECONCILIATION_KEY) || 0) <
       ARTIST_MBID_RECONCILIATION_VERSION;
   const jobIds = [];
   for (const playlist of flowPlaylistConfig.getStaticPlaylists()) {
