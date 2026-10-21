@@ -1,5 +1,5 @@
 import { ChevronRight, ListMusic, Music } from "lucide-react";
-import type { SearchItem } from "./SearchMixedResultList";
+import type { SearchImageMap, SearchItem } from "./SearchMixedResultList";
 import ArtistImage from "./ArtistImage";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import { getSearchResultLink } from "../utils/searchNavigation";
@@ -10,7 +10,6 @@ import ArtworkImage from "./ArtworkImage";
 import { useThemeDocument } from "../hooks/useThemeDocument.ts";
 
 type PreviewTrack = { title?: string | null };
-type SearchImageMap = Record<string, string | undefined>;
 
 function getPrimaryLabel(item: SearchItem | null | undefined) {
   if (item?.type === "artist") return item.name || "";

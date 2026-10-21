@@ -1,9 +1,8 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { ShareModal } from "../components/ShareModal";
-import type { buildShareUrl } from "../utils/shareLink";
+import type { ShareItem } from "../utils/shareLink";
 
-type ShareItem = Parameters<typeof buildShareUrl>[0];
 type ShareRequest = { item: ShareItem; label: string | null };
 type ShareContextValue = { openShare: (item: ShareItem, label: string | null) => void };
 

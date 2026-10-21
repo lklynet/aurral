@@ -17,7 +17,7 @@ interface ArtistMonitoringState {
 
 type ArtistMonitoringRequest =
   | {
-      monitoring: { monitored: boolean; useDefault?: boolean; rules?: MonitoringRules };
+      monitoring: { monitored: boolean; useDefault?: boolean; rules?: MonitoringRules | null };
       monitorOption?: undefined;
     }
   | { monitoring?: undefined; monitorOption: string };

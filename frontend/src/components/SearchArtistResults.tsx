@@ -7,8 +7,8 @@ import { getArtistRecordId } from "../utils/artistTaste";
 import Tooltip from "./Tooltip";
 import RecommendationMeta from "./RecommendationMeta";
 import RouteLink from "./RouteLink";
+import type { SearchImageMap } from "./SearchMixedResultList";
 
-type LifeSpan = { begin?: string | null; end?: string | null; ended?: boolean | null };
 type SearchArtist = {
   id?: string | number | null;
   mbid?: string | null;
@@ -25,11 +25,7 @@ type SearchArtist = {
   matchPercent?: number | null;
   begin?: string | null;
   end?: string | null;
-  ended?: boolean | null;
-  lifeSpan?: LifeSpan;
-  "life-span"?: LifeSpan;
 };
-type SearchImageMap = Record<string, string | undefined>;
 
 interface SearchArtistResultsProps {
   artists: SearchArtist[];

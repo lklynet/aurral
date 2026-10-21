@@ -9,11 +9,9 @@ import RouteLink from "./RouteLink";
 import Tooltip from "./Tooltip";
 
 export type SearchItem = NonNullable<Parameters<typeof getSearchResultKey>[0]> & {
-  disambiguation?: string | null;
-  trackCount?: number | null;
   status?: string;
 };
-type SearchImageMap = Record<string, string | undefined>;
+export type SearchImageMap = Record<string, string | undefined>;
 
 interface SearchMixedResultListProps {
   items: SearchItem[];

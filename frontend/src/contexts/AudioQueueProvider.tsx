@@ -654,7 +654,7 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
       seekbackward: (details: MediaSessionActionDetails) =>
         seekBy(-(details?.seekOffset || MEDIA_SESSION_SEEK_SECONDS)),
       stop: clearQueue,
-    };
+    } satisfies Partial<Record<MediaSessionAction, MediaSessionActionHandler>>;
     for (const [action, handler] of Object.entries(handlers) as [
       MediaSessionAction,
       MediaSessionActionHandler,

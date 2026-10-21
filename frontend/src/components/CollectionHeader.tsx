@@ -1,5 +1,5 @@
 import { Pause, Play, Shuffle } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useArtworkWash } from "../utils/imageColors";
 import TooltipButton from "./TooltipButton";
 import { useSharedArtworkStyle } from "../navigation/viewTransitions.ts";
@@ -22,7 +22,7 @@ export function CollectionPage({
   return (
     <div
       className={`library-page native-library-page collection-page${className ? ` ${className}` : ""}`}
-      style={tint ? ({ "--collection-tint": tint } as CSSProperties) : undefined}
+      style={tint ? { "--collection-tint": tint } : undefined}
     >
       <div className="native-library-content">
         <div className="native-library-detail">{children}</div>

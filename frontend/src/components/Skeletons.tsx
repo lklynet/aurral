@@ -1,5 +1,5 @@
 import { Play } from "lucide-react";
-import type { CSSProperties, ElementType, ReactNode, Ref } from "react";
+import type { ElementType, ReactNode, Ref } from "react";
 import { CollectionHeader } from "./CollectionHeader";
 
 type LibraryCardKind = "album" | "artist" | "playlist";
@@ -43,7 +43,7 @@ export function SkeletonStatus({
 
 export function SkeletonText({ width = "60%" }: { width?: string }) {
   return (
-    <span className="skeleton-text" style={{ "--skeleton-width": width } as CSSProperties}>
+    <span className="skeleton-text" style={{ "--skeleton-width": width }}>
       {"\u200b"}
     </span>
   );

@@ -110,7 +110,7 @@ type MonitoringRulesInput = Parameters<typeof libraryManager.previewMonitoringDe
 
 type ArtistMonitoringInput = {
   monitored: boolean;
-  useDefault: boolean;
+  useDefault?: boolean;
   rules?: MonitoringRulesInput;
 };
 

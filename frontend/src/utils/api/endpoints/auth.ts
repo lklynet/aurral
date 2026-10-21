@@ -63,11 +63,11 @@ type PlayEventPayload = {
   trackId: string;
   title: string;
   artist: string;
-  album?: string;
+  album?: string | null;
   artistMbid?: string | null;
   albumMbid?: string | null;
   trackMbid?: string | null;
-  durationMs?: number;
+  durationMs?: number | null;
   playedAt?: number;
   source?: string;
 };
