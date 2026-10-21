@@ -9,19 +9,33 @@ const STATUS_DISPLAY = {
   missing: { label: "Missing", tone: "neutral" },
 };
 
-const ACTIVE_STATUSES = new Set(["queued", "downloading"]);
-const RETRY_STATUSES = new Set(["failed", "cancelled"]);
+export type AlbumStatus = keyof typeof STATUS_DISPLAY;
+
+const ACTIVE_STATUSES = new Set<AlbumStatus | null | undefined>(["queued", "downloading"]);
+const RETRY_STATUSES = new Set<AlbumStatus | undefined>(["failed", "cancelled"]);
 
 const RECOVERY_LINKS = {
   download_source_missing: { to: "/settings/download-clients", label: "Set up a download client" },
   review_required: { to: "/activity/queue", label: "Review in Activity" },
 };
 
+type RecoveryCode = keyof typeof RECOVERY_LINKS | "source_failed";
+
+interface AlbumRecovery {
+  code: RecoveryCode;
+  message?: string;
+}
+
+interface AlbumStatusEntry {
+  status?: AlbumStatus;
+  recovery?: AlbumRecovery | null;
+}
+
 const CANCEL_ACTION = { id: "cancel", label: "Cancel downloads" };
 const RETRY_ACTION = { id: "retry", label: "Retry" };
 const DOWNLOAD_MISSING_ACTION = { id: "retry", label: "Download missing tracks" };
 
-const albumActions = (status, recoveryCode) => {
+const albumActions = (status: AlbumStatus | undefined, recoveryCode: RecoveryCode | null) => {
   if (ACTIVE_STATUSES.has(status)) return [CANCEL_ACTION];
   if (status === "missing") return [DOWNLOAD_MISSING_ACTION];
   if (RETRY_STATUSES.has(status)) return [RETRY_ACTION];
@@ -30,14 +44,16 @@ const albumActions = (status, recoveryCode) => {
   return [];
 };
 
-export const aurralAlbumStatusKey = (canonicalId) => `aurral:${canonicalId}`;
+export const aurralAlbumStatusKey = (canonicalId: string) => `aurral:${canonicalId}`;
 
-export const shouldPollAlbumStatus = (status) => ACTIVE_STATUSES.has(status);
+export const shouldPollAlbumStatus = (status: AlbumStatus | null | undefined) =>
+  ACTIVE_STATUSES.has(status);
 
-export const shouldPollAlbumStatuses = (statuses) =>
-  Object.values(statuses || {}).some((entry) => shouldPollAlbumStatus(entry?.status));
+export const shouldPollAlbumStatuses = (
+  statuses: Record<string, AlbumStatusEntry | undefined> | null | undefined,
+) => Object.values(statuses || {}).some((entry) => shouldPollAlbumStatus(entry?.status));
 
-export const describeAurralAlbumStatus = ({ status, recovery } = {}) => {
+export const describeAurralAlbumStatus = ({ status, recovery }: AlbumStatusEntry = {}) => {
   const display = STATUS_DISPLAY[status];
   if (!display) return null;
   const code = recovery?.code || null;
@@ -53,7 +69,13 @@ export const describeAurralAlbumStatus = ({ status, recovery } = {}) => {
   };
 };
 
-export const buildAurralAlbumRetryPayload = ({ album, artist } = {}) => ({
+export const buildAurralAlbumRetryPayload = ({
+  album,
+  artist,
+}: {
+  album?: { releaseGroupMbid?: string | null; mbid?: string | null; title?: string | null };
+  artist?: { mbid?: string | null; name?: string | null } | null;
+} = {}) => ({
   albumMbid: album?.releaseGroupMbid || album?.mbid || "",
   albumName: album?.title || "",
   artistMbid: artist?.mbid || "",

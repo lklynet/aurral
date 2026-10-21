@@ -4,14 +4,16 @@ import { cacheImageLocally } from "./api/endpoints/images.ts";
 import { normalizeMediaUrl } from "./normalizeMediaUrl.ts";
 import { hexToOklch, oklchToHex, pickVividColor } from "./themeColor.ts";
 
+type ArtworkWash = NonNullable<ReturnType<typeof pickArtworkWash>>;
+
 const N = 64;
-const washCache = new Map();
-const accentCache = new Map();
-const localCopyCache = new Map();
-const WASH_LIGHTNESS = { dark: [0.3, 0.52], light: [0.78, 0.9] };
+const washCache = new Map<string, Promise<ArtworkWash | null>>();
+const accentCache = new Map<string, Promise<string | null>>();
+const localCopyCache = new Map<string, Promise<string>>();
+const WASH_LIGHTNESS = { dark: [0.3, 0.52], light: [0.78, 0.9] } as const;
 const NEUTRAL_CHROMA = 0.012;
 
-function averageHex(data) {
+function averageHex(data: Uint8ClampedArray) {
   let r = 0,
     g = 0,
     b = 0,
@@ -24,24 +26,24 @@ function averageHex(data) {
     n++;
   }
   if (!n) return null;
-  const h = (v) =>
+  const h = (v: number) =>
     Math.round(v / n)
       .toString(16)
       .padStart(2, "0");
   return `#${h(r)}${h(g)}${h(b)}`;
 }
 
-function pickArtworkWash(data) {
+function pickArtworkWash(data: Uint8ClampedArray) {
   const vivid = pickVividColor(data);
   const base = hexToOklch(vivid || averageHex(data));
   if (!base) return null;
   const chroma = vivid ? base.c : Math.min(base.c, NEUTRAL_CHROMA);
-  const tone = ([min, max]) =>
+  const tone = ([min, max]: readonly number[]) =>
     oklchToHex({ l: Math.min(max, Math.max(min, base.l)), c: chroma, h: base.h });
   return { dark: tone(WASH_LIGHTNESS.dark), light: tone(WASH_LIGHTNESS.light) };
 }
 
-function isCrossOrigin(src) {
+function isCrossOrigin(src: string) {
   try {
     const url = new URL(src, window.location.href);
     return /^https?:$/.test(url.protocol) && url.origin !== window.location.origin;
@@ -50,9 +52,9 @@ function isCrossOrigin(src) {
   }
 }
 
-function sameOriginCopy(src) {
+function sameOriginCopy(src: string) {
   if (!localCopyCache.has(src)) {
-    if (localCopyCache.size >= 200) localCopyCache.delete(localCopyCache.keys().next().value);
+    if (localCopyCache.size >= 200) localCopyCache.delete(localCopyCache.keys().next().value!);
     localCopyCache.set(
       src,
       cacheImageLocally(src)
@@ -63,13 +65,13 @@ function sameOriginCopy(src) {
         }),
     );
   }
-  return localCopyCache.get(src);
+  return localCopyCache.get(src)!;
 }
 
-async function readImagePixels(src) {
+async function readImagePixels(src: string) {
   const normalized = normalizeMediaUrl(src);
   const readable = isCrossOrigin(normalized) ? await sameOriginCopy(normalized) : normalized;
-  return new Promise((ok, err) => {
+  return new Promise<HTMLImageElement>((ok, err) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => ok(img);
@@ -84,10 +86,10 @@ async function readImagePixels(src) {
   });
 }
 
-export function extractArtworkAccent(src) {
+export function extractArtworkAccent(src: string | null | undefined) {
   if (!src) return Promise.resolve(null);
   if (!accentCache.has(src)) {
-    if (accentCache.size >= 200) accentCache.delete(accentCache.keys().next().value);
+    if (accentCache.size >= 200) accentCache.delete(accentCache.keys().next().value!);
     accentCache.set(
       src,
       readImagePixels(src)
@@ -95,13 +97,13 @@ export function extractArtworkAccent(src) {
         .catch(() => null),
     );
   }
-  return accentCache.get(src);
+  return accentCache.get(src)!;
 }
 
-export async function extractArtworkWash(src) {
+export async function extractArtworkWash(src: string | null | undefined) {
   if (!src) return null;
-  if (washCache.has(src)) return washCache.get(src);
-  if (washCache.size >= 200) washCache.delete(washCache.keys().next().value);
+  if (washCache.has(src)) return washCache.get(src)!;
+  if (washCache.size >= 200) washCache.delete(washCache.keys().next().value!);
   const request = readImagePixels(src)
     .then((data) => (data ? pickArtworkWash(data) : null))
     .catch(() => null);
@@ -111,10 +113,10 @@ export async function extractArtworkWash(src) {
   return result;
 }
 
-export function useArtworkWash(src) {
+export function useArtworkWash(src: string | null | undefined) {
   const { matchArtwork: immersiveMode } = useThemeDocument();
   const artwork = immersiveMode ? src : null;
-  const [wash, setWash] = useState(null);
+  const [wash, setWash] = useState<{ src: string; value: ArtworkWash | null } | null>(null);
   useEffect(() => {
     if (!artwork) return undefined;
     let dead = false;

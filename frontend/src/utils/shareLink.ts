@@ -14,7 +14,7 @@ const MBID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const MAX_NAME_BYTES = 160;
 const encoder = new TextEncoder();
 
-const mbidBytes = (value) => {
+const mbidBytes = (value: unknown) => {
   const text = String(value || "").trim();
   if (!MBID_PATTERN.test(text)) return null;
   const hex = text.replace(/-/g, "");
@@ -23,7 +23,7 @@ const mbidBytes = (value) => {
   );
 };
 
-const nameBytes = (value) => {
+const nameBytes = (value: unknown) => {
   const text = String(value ?? "")
     .replace(/\p{Cc}/gu, " ")
     .trim();
@@ -34,22 +34,30 @@ const nameBytes = (value) => {
   return bytes.slice(0, end);
 };
 
-const toBase64Url = (bytes) => {
+const toBase64Url = (bytes: Uint8Array) => {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 };
 
-export function buildSharePayload(item) {
+type ShareItem = { kind: string } & Record<string, unknown>;
+
+export function buildSharePayload(item: ShareItem) {
   const kind = KINDS[item?.kind];
   if (!kind) return null;
-  const names = kind.names.map((field) => nameBytes(item[field]));
+  const names = kind.names.map((field: string) => nameBytes(item[field]));
   const requiredNames = [names[0], names[kind.names.indexOf("artistName")]];
   if (requiredNames.some((bytes) => !bytes.length)) return null;
-  const ids = kind.ids.map((field) => mbidBytes(item[field]));
-  const idMask = ids.reduce((mask, bytes, index) => (bytes ? mask | (1 << index) : mask), 0);
-  const parts = [Uint8Array.of(PAYLOAD_VERSION, kind.code, idMask), ...ids.filter(Boolean)];
-  names.forEach((bytes, index) => {
+  const ids = kind.ids.map((field: string) => mbidBytes(item[field]));
+  const idMask = ids.reduce(
+    (mask: number, bytes: Uint8Array | null, index: number) => (bytes ? mask | (1 << index) : mask),
+    0,
+  );
+  const parts = [
+    Uint8Array.of(PAYLOAD_VERSION, kind.code, idMask),
+    ...(ids.filter(Boolean) as Uint8Array[]),
+  ];
+  names.forEach((bytes: Uint8Array, index: number) => {
     if (index) parts.push(Uint8Array.of(0));
     parts.push(bytes);
   });
@@ -62,12 +70,12 @@ export function buildSharePayload(item) {
   return toBase64Url(payload);
 }
 
-export function buildShareUrl(item) {
+export function buildShareUrl(item: ShareItem) {
   const payload = buildSharePayload(item);
   return payload ? `${SHARE_ORIGIN}/s/${payload}` : null;
 }
 
-const copyWithSelection = (text) => {
+const copyWithSelection = (text: string) => {
   if (typeof document === "undefined" || typeof document.execCommand !== "function") return false;
   const field = document.createElement("textarea");
   field.value = text;
@@ -85,7 +93,7 @@ const copyWithSelection = (text) => {
   }
 };
 
-export async function shareLink(url, title) {
+export async function shareLink(url: string, title: string) {
   const nav = typeof navigator === "undefined" ? null : navigator;
   if (typeof nav?.share === "function") {
     try {

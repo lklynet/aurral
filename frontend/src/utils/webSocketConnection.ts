@@ -1,3 +1,4 @@
+import type { getPlaylistStatusSnapshot } from "../../../backend/services/playlists/playlistStatusSnapshot.ts";
 import { getRequestToken } from "./api/core.ts";
 
 function getWsUrl() {
@@ -20,6 +21,24 @@ function getWsUrl() {
   return url.toString();
 }
 
+export type DownloadStatusEntry = { status: string; updatedAt: string; progress?: number };
+
+export type ChannelMessage = { channel: string; timestamp: number } & (
+  | {
+      type: "download_statuses";
+      statuses: Partial<Record<string, DownloadStatusEntry>>;
+      stale: boolean;
+      error: string | null;
+      updatedAt: string | null;
+    }
+  | { type: "library_scan_completed" }
+  | { type: "release_metadata_refreshed" }
+  | { type: "playlist_status"; status: ReturnType<typeof getPlaylistStatusSnapshot> }
+  | { type: "discovery_update" }
+);
+type ChannelListener = (message: ChannelMessage) => void;
+type StatusListener = (isConnected: boolean) => void;
+
 const OPEN = WebSocket.OPEN;
 const CONNECTING = WebSocket.CONNECTING;
 const CLOSING = WebSocket.CLOSING;
@@ -27,19 +46,19 @@ const CLOSE_DELAY_MS = 1000;
 const HEARTBEAT_INTERVAL_MS = 30000;
 const HEARTBEAT_TIMEOUT_MS = 10000;
 
-let socket = null;
-let reconnectTimer = null;
-let closeTimer = null;
-let heartbeatInterval = null;
-let heartbeatTimeout = null;
+let socket: WebSocket | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let closeTimer: ReturnType<typeof setTimeout> | null = null;
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
 let shouldReconnect = false;
 let closeWhenPossible = false;
 
-const channelListeners = new Map();
-const statusListeners = new Set();
+const channelListeners = new Map<string, Set<ChannelListener>>();
+const statusListeners = new Set<StatusListener>();
 
-const notifyConnectionState = (isConnected) => {
+const notifyConnectionState = (isConnected: boolean) => {
   for (const listener of statusListeners) {
     listener(isConnected);
   }
@@ -83,7 +102,7 @@ const clearHeartbeat = () => {
   }
 };
 
-const sendSubscriptionUpdate = (type, channels) => {
+const sendSubscriptionUpdate = (type: "subscribe" | "unsubscribe", channels: string[]) => {
   if (!channels.length || socket?.readyState !== OPEN) return;
   try {
     socket.send(JSON.stringify({ type, channels }));
@@ -104,7 +123,7 @@ const scheduleReconnect = () => {
   }, delay);
 };
 
-const retireSocket = (currentSocket) => {
+const retireSocket = (currentSocket: WebSocket) => {
   if (socket !== currentSocket) return;
   socket = null;
   clearHeartbeat();
@@ -117,7 +136,7 @@ const retireSocket = (currentSocket) => {
   }
 };
 
-const sendHeartbeat = (currentSocket) => {
+const sendHeartbeat = (currentSocket: WebSocket) => {
   if (socket !== currentSocket || currentSocket.readyState !== OPEN) return false;
   clearHeartbeatTimeout();
   try {
@@ -133,7 +152,7 @@ const sendHeartbeat = (currentSocket) => {
   return true;
 };
 
-const startHeartbeat = (currentSocket) => {
+const startHeartbeat = (currentSocket: WebSocket) => {
   clearHeartbeat();
   if (!sendHeartbeat(currentSocket)) return;
   heartbeatInterval = setInterval(() => {
@@ -157,7 +176,7 @@ function connectSocket() {
   }
 
   closeWhenPossible = false;
-  let currentSocket;
+  let currentSocket: WebSocket;
   try {
     currentSocket = new WebSocket(getWsUrl());
   } catch {
@@ -244,7 +263,7 @@ const scheduleCloseIfIdle = () => {
   }, CLOSE_DELAY_MS);
 };
 
-export const subscribeToChannel = (channel, listener) => {
+export const subscribeToChannel = (channel: string, listener: ChannelListener) => {
   clearCloseTimer();
 
   let listeners = channelListeners.get(channel);
@@ -275,7 +294,7 @@ export const subscribeToChannel = (channel, listener) => {
   };
 };
 
-export const subscribeToStatus = (listener) => {
+export const subscribeToStatus = (listener: StatusListener) => {
   clearCloseTimer();
   statusListeners.add(listener);
   listener(socket?.readyState === OPEN);

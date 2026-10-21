@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import { clearLibraryPageCache, getActiveDownloads } from "../utils/api/endpoints/library.ts";
+import type { ActiveDownloadTrack } from "../utils/activeDownloads.ts";
 import {
   finishedActiveDownloads,
   hasActiveDownloads,
@@ -42,7 +43,8 @@ export function useActiveDownloads() {
         isAlbumDownloading(index, albumMbid),
       isArtistDownloading: (artistMbid: string | null | undefined) =>
         isArtistDownloading(index, artistMbid),
-      isTrackDownloading: (track: unknown) => isTrackDownloading(index, track),
+      isTrackDownloading: (track: ActiveDownloadTrack | null | undefined) =>
+        isTrackDownloading(index, track),
     };
   }, [data]);
 }

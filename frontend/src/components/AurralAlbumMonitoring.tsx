@@ -13,12 +13,13 @@ import {
   getAlbumMonitoredState,
   getMonitoringMenuAction,
   shouldConfirmUnmonitor,
+  type AurralAlbumMonitoredRef,
 } from "../utils/aurralMonitoring.ts";
 import { ConfirmModal } from "./ConfirmModal.tsx";
 
 type AurralAlbumId = string | number;
 
-export interface AurralAlbumRef {
+export interface AurralAlbumRef extends AurralAlbumMonitoredRef {
   id: AurralAlbumId;
   title?: string;
 }

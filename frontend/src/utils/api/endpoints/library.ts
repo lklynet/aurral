@@ -10,7 +10,11 @@ import { bumpLibraryPageGeneration, queryClient, queryKeys } from "../../../quer
 import { getLibraryOwnerConflict } from "../../libraryDestination.ts";
 import type { buildAlbumRequestPayload, buildArtistAddPayload } from "../../libraryDestination.ts";
 import type { buildAurralAlbumRetryPayload } from "../../aurralAlbumStatus.ts";
-import { addActiveDownload, normalizeActiveDownloads } from "../../activeDownloads.ts";
+import {
+  addActiveDownload,
+  normalizeActiveDownloads,
+  type ActiveDownloads,
+} from "../../activeDownloads.ts";
 import type { GetLibraryArtistLookupResponse } from "../../../../../backend/routes/library/handlers/misc.ts";
 import type {
   FetchLibraryFavoritesResponse,
@@ -554,7 +558,7 @@ export const refreshActiveDownloads = () =>
   queryClient.invalidateQueries({ queryKey: queryKeys.activeDownloads });
 
 const markDownloadStarted = (started: ActiveDownloadStart) => {
-  queryClient.setQueryData(queryKeys.activeDownloads, (current) =>
+  queryClient.setQueryData<ActiveDownloads>(queryKeys.activeDownloads, (current) =>
     addActiveDownload(current, started),
   );
   void refreshActiveDownloads();
@@ -724,7 +728,7 @@ export const requestAlbumFromSearch = async (
 ): Promise<RequestAlbumFromSearchResponse> => {
   const started = { albumMbid: payload?.albumMbid, artistMbid: payload?.artistMbid };
   const previous = queryClient.getQueryData(queryKeys.activeDownloads);
-  const optimistic = queryClient.setQueryData(queryKeys.activeDownloads, (current) =>
+  const optimistic = queryClient.setQueryData<ActiveDownloads>(queryKeys.activeDownloads, (current) =>
     addActiveDownload(current, started),
   );
   let result: RequestAlbumFromSearchResponse;

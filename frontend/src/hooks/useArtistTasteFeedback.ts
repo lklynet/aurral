@@ -20,6 +20,7 @@ import { buildArtistFeedbackPayload } from "../utils/artistTaste";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { queryClient, queryKeys } from "../queryClient.ts";
+import type { DiscoveryFeedbackEntry } from "../utils/discoveryFeedback.ts";
 
 const EMPTY_FEEDBACK = [];
 
@@ -68,7 +69,7 @@ export function useArtistTasteFeedback() {
     onMutate: async (variables) => {
       await queryClient.cancelQueries({ queryKey });
       const snapshot = queryClient.getQueryData(queryKey);
-      queryClient.setQueryData(queryKey, (current) =>
+      queryClient.setQueryData<DiscoveryFeedbackEntry[]>(queryKey, (current) =>
         previewArtistDiscoveryFeedback(current, variables),
       );
       return { snapshot };
@@ -86,7 +87,9 @@ export function useArtistTasteFeedback() {
     async ({ artist, change, onRevert }) => {
       const name = artistLabel(artist);
       const before = queryClient.getQueryData(queryKey);
-      queryClient.setQueryData(queryKey, (current) => revertDiscoveryFeedback(current, change));
+      queryClient.setQueryData<DiscoveryFeedbackEntry[]>(queryKey, (current) =>
+        revertDiscoveryFeedback(current, change),
+      );
       onRevert?.();
       try {
         const response = await restoreDiscoveryFeedback({

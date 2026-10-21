@@ -16,6 +16,7 @@ import {
   buildAurralAlbumRetryPayload,
   describeAurralAlbumStatus,
   shouldPollAlbumStatus,
+  type AlbumStatus,
 } from "../utils/aurralAlbumStatus.ts";
 
 const POLL_INTERVAL_MS = 4000;
@@ -64,7 +65,7 @@ export function AurralAlbumStatus({
     refetchIntervalInBackground: false,
   });
   const state = describeAurralAlbumStatus(statusQuery.data || {});
-  const previousStatusRef = useRef<string | null>(null);
+  const previousStatusRef = useRef<AlbumStatus | null>(null);
 
   useEffect(() => {
     const status = statusQuery.data?.status;

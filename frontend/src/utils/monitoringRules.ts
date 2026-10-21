@@ -1,3 +1,5 @@
+import type { MonitoringRules } from "../components/MonitoringRulesFields.tsx";
+
 export const MAX_LATEST_RELEASES = 10;
 export const MAX_TOP_TRACKS = 50;
 
@@ -45,15 +47,17 @@ export const TRACK_SKIP_REASONS = {
   queued: "Already downloading",
 };
 
-const labelsFor = (values, options) =>
-  options.filter((option) => values?.includes(option.value)).map((option) => option.label);
+const labelsFor = (
+  values: string[] | null | undefined,
+  options: { value: string; label: string }[],
+) => options.filter((option) => values?.includes(option.value)).map((option) => option.label);
 
-export const joinWords = (words) =>
+export const joinWords = (words: string[]) =>
   words.length <= 1 ? words.join("") : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
 
-const lowerFirst = (text) => text.charAt(0).toLowerCase() + text.slice(1);
+const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 
-function describeScope(rules) {
+function describeScope(rules: MonitoringRules) {
   const catalog = {
     all: "Everything",
     since: `Everything since ${rules.sinceYear}`,
@@ -65,7 +69,7 @@ function describeScope(rules) {
   return rules.newReleases ? `${catalog} and new releases` : catalog;
 }
 
-export function describeMonitoringRules(rules) {
+export function describeMonitoringRules(rules: MonitoringRules | null | undefined) {
   if (!rules) return "";
   const scope = describeScope(rules);
   const types = joinWords(labelsFor(rules.types, RELEASE_TYPE_OPTIONS));
@@ -81,15 +85,26 @@ export function describeMonitoringRules(rules) {
   return parts.filter(Boolean).join(" · ");
 }
 
-export const plural = (count, singular, pluralForm = `${singular}s`) =>
+export const plural = (count: number, singular: string, pluralForm = `${singular}s`) =>
   `${count} ${count === 1 ? singular : pluralForm}`;
 
-export function describeDownloadCount({ releases = 0, tracks = 0 }) {
+export function describeDownloadCount({
+  releases = 0,
+  tracks = 0,
+}: {
+  releases?: number;
+  tracks?: number;
+}) {
   const parts = [
     releases > 0 ? plural(releases, "release") : null,
     tracks > 0 ? plural(tracks, "top track") : null,
-  ].filter(Boolean);
+  ].filter(Boolean) as string[];
   return parts.length ? joinWords(parts) : "";
 }
 
-export const rulesForEditing = (state) => state?.rules || state?.defaultRules || null;
+export const rulesForEditing = (
+  state:
+    | { rules?: MonitoringRules | null; defaultRules?: MonitoringRules | null }
+    | null
+    | undefined,
+) => state?.rules || state?.defaultRules || null;

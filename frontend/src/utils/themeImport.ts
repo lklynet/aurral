@@ -9,19 +9,19 @@ import {
 export const THEME_GALLERY_URL = "https://tinted-theming.github.io/tinted-gallery/";
 export const MAX_THEME_FILE_BYTES = 64 * 1024;
 
-function readYamlScalar(raw) {
+function readYamlScalar(raw: string) {
   const quoted = raw.match(/^(["'])(.*?)\1/);
   if (quoted) return quoted[2];
   return raw.replace(/\s+#.*$/, "").trim();
 }
 
-function parseBase16Scheme(text) {
-  const values = {};
+function parseBase16Scheme(text: string) {
+  const values: Record<string, string> = {};
   for (const line of text.split(/\r?\n/)) {
     const match = line.match(/^\s*([A-Za-z0-9_-]+)\s*:\s*(.*?)\s*$/);
     if (match) values[match[1]] = readYamlScalar(match[2]);
   }
-  const color = (key) =>
+  const color = (key: string) =>
     normalizeHexColor(
       values[key] || values[key.replace(/[A-F]$/, (letter) => letter.toLowerCase())],
     );
@@ -32,22 +32,22 @@ function parseBase16Scheme(text) {
     throw new Error("Paste an Aurral theme file or a base16 or base24 scheme.");
   }
   const mode = isDarkColor(background) ? "dark" : "light";
-  const seed = { background, text: text0, accent };
+  const seed: Record<string, string> = { background, text: text0, accent };
   for (const [role, key] of [
     ["danger", "base08"],
     ["warning", "base0A"],
     ["success", "base0B"],
     ["info", "base0C"],
-  ]) {
+  ] as const) {
     const value = color(key);
     if (value) seed[role] = value;
   }
   return { name: (values.name || values.scheme || "Imported theme").slice(0, 48), [mode]: seed };
 }
 
-function parseThemeFile(value) {
+function parseThemeFile(value: Record<string, unknown>) {
   if (value?.version === THEME_DOCUMENT_VERSION) {
-    const theme = { name: value.name };
+    const theme: Record<string, unknown> = { name: value.name };
     for (const mode of THEME_MODES) if (value[mode]) theme[mode] = value[mode];
     return theme;
   }
@@ -58,14 +58,14 @@ function parseThemeFile(value) {
   throw new Error("This theme file uses a version Aurral can't read.");
 }
 
-export function parseThemeText(text) {
+export function parseThemeText(text: string) {
   const source = String(text || "").trim();
   if (!source) throw new Error("Paste a theme or choose a file.");
   if (new TextEncoder().encode(source).byteLength > MAX_THEME_FILE_BYTES) {
     throw new Error("That file is too large to be a theme.");
   }
   if (source.startsWith("{")) {
-    let value;
+    let value: Record<string, unknown>;
     try {
       value = JSON.parse(source);
     } catch {
@@ -77,7 +77,7 @@ export function parseThemeText(text) {
   return parseBase16Scheme(source);
 }
 
-export function serializeThemeFile(theme) {
+export function serializeThemeFile(theme: { name: string; light?: unknown; dark?: unknown }) {
   return `${JSON.stringify(
     {
       version: THEME_DOCUMENT_VERSION,

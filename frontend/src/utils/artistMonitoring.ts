@@ -1,19 +1,51 @@
-import { getMonitorOptionLabel, summarizeAurralMonitoring } from "./aurralMonitoring.ts";
+import type { MonitoringRules } from "../components/MonitoringRulesFields.tsx";
+import {
+  getMonitorOptionLabel,
+  summarizeAurralMonitoring,
+  type AurralMonitoringPlan,
+} from "./aurralMonitoring.ts";
+
+interface ArtistMonitoringState {
+  manager?: string | null;
+  added?: boolean;
+  monitored?: boolean;
+  monitorOption?: string | null;
+  useDefault?: boolean;
+  rules?: MonitoringRules | null;
+  monitoring?: AurralMonitoringPlan;
+}
+
+type ArtistMonitoringRequest =
+  | {
+      monitoring: { monitored: boolean; useDefault?: boolean; rules?: MonitoringRules };
+      monitorOption?: undefined;
+    }
+  | { monitoring?: undefined; monitorOption: string };
 
 const LIDARR_OPTIONS = ["none", "existing", "all", "future", "missing", "latest", "first"];
 
-export const getArtistOptionLabel = (option) =>
+export const getArtistOptionLabel = (option: string) =>
   option === "none" ? "Not monitored" : getMonitorOptionLabel(option);
 
-export const getArtistMonitorOption = (state) =>
+export const getArtistMonitorOption = (state: ArtistMonitoringState | null | undefined) =>
   state?.added === false ? "none" : (state?.monitorOption ?? null);
 
-export const isArtistMonitored = (state) => {
+export const isArtistMonitored = (state: ArtistMonitoringState | null | undefined) => {
   if (state?.manager === "aurral") return state.added !== false && state.monitored === true;
   return getArtistMonitorOption(state) !== "none";
 };
 
-export const buildArtistMonitoringItems = ({ manager, state, onSelect, onEditRules = null }) => {
+export const buildArtistMonitoringItems = ({
+  manager,
+  state,
+  onSelect,
+  onEditRules = null,
+}: {
+  manager?: string | null;
+  state: ArtistMonitoringState | null | undefined;
+  onSelect: (request: ArtistMonitoringRequest) => unknown;
+  onEditRules?: (() => void) | null;
+}) => {
   if (manager === "aurral") {
     const monitored = isArtistMonitored(state);
     return [
@@ -54,7 +86,7 @@ export const buildArtistMonitoringItems = ({ manager, state, onSelect, onEditRul
   }));
 };
 
-export const describeArtistMonitoring = (state) => {
+export const describeArtistMonitoring = (state: ArtistMonitoringState | null | undefined) => {
   if (state?.manager === "aurral") {
     if (!isArtistMonitored(state)) return "Not monitored";
     return state.useDefault === false ? "Custom rules" : "Monitored";
@@ -63,7 +95,15 @@ export const describeArtistMonitoring = (state) => {
   return option ? getArtistOptionLabel(option) : "Custom";
 };
 
-export const describeArtistMonitoringChange = ({ name, request, response }) => {
+export const describeArtistMonitoringChange = ({
+  name,
+  request,
+  response,
+}: {
+  name: string;
+  request: ArtistMonitoringRequest;
+  response?: ArtistMonitoringState;
+}) => {
   if (request?.monitoring) {
     if (!request.monitoring.monitored) return `Stopped monitoring ${name}`;
     const change =
@@ -79,7 +119,13 @@ export const describeArtistMonitoringChange = ({ name, request, response }) => {
   return `Monitoring ${name}: ${getMonitorOptionLabel(option)}`;
 };
 
-export const describeArtistAdd = ({ name, monitorOption }) =>
+export const describeArtistAdd = ({
+  name,
+  monitorOption,
+}: {
+  name: string;
+  monitorOption?: string | null;
+}) =>
   monitorOption && monitorOption !== "none"
     ? `Monitoring ${name}: ${getMonitorOptionLabel(monitorOption)}`
     : `Added ${name} to your library`;

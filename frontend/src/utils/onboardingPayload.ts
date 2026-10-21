@@ -1,11 +1,32 @@
+interface OnboardingLidarr {
+  url: string;
+  apiKey: string;
+  qualityProfileId: number | null;
+  metadataProfileId: number | null;
+}
+
+type OnboardingPayload = {
+  authUser: string;
+  authPassword: string | undefined;
+  security: { localNetworkBypass: { enabled: boolean } };
+  lidarr?: OnboardingLidarr & { defaultMonitorOption: "none"; searchOnAdd: false };
+  downloadFolderPath?: string;
+};
+
 export function buildOnboardingPayload({
   authUser,
   authPassword,
   localNetworkBypass,
   lidarr = null,
   downloadFolderPath = "",
+}: {
+  authUser: string;
+  authPassword: string;
+  localNetworkBypass: boolean;
+  lidarr?: OnboardingLidarr | null;
+  downloadFolderPath?: string;
 }) {
-  const payload = {
+  const payload: OnboardingPayload = {
     authUser: String(authUser || "").trim() || "admin",
     authPassword: authPassword || undefined,
     security: {
