@@ -25,7 +25,7 @@ type AuthUser = {
   id?: number;
   username?: string;
   role: string;
-  permissions: Record<string, boolean>;
+  permissions: Record<string, unknown>;
 };
 type LoginResult = { ok: boolean; status?: number };
 type AuthContextValue = {
