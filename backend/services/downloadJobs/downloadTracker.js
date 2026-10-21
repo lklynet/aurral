@@ -590,6 +590,10 @@ export class DownloadTracker {
     );
   }
 
+  isInActiveAlbumGrab(jobId) {
+    return Boolean(this._activeAlbumGrab(jobId));
+  }
+
   releaseFromAlbumGrab(id, reason = null, options = {}) {
     setActiveDownloadAttemptId(id, null);
     return this.setPending(id, reason, options);

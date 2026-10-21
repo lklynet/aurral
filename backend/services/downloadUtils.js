@@ -184,7 +184,11 @@ async function resolveAvailableTargetPath(targetPath) {
   return path.join(dir, `${base} (${Date.now()})${ext}`);
 }
 
-export async function commitDownloadedFile(sourcePath, targetPath, { reuseExisting = false } = {}) {
+export async function commitDownloadedFile(
+  sourcePath,
+  targetPath,
+  { reuseExisting = false, preserveSource = false } = {},
+) {
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   if (path.resolve(sourcePath) === path.resolve(targetPath)) {
     return targetPath;
@@ -192,11 +196,28 @@ export async function commitDownloadedFile(sourcePath, targetPath, { reuseExisti
   if (reuseExisting) {
     const existing = await fs.stat(targetPath).catch(() => null);
     if (existing?.isFile()) {
-      await fs.rm(sourcePath, { force: true });
+      if (!preserveSource) await fs.rm(sourcePath, { force: true });
       return targetPath;
     }
   }
   const resolvedTarget = await resolveAvailableTargetPath(targetPath);
+  if (preserveSource) {
+    const tempTarget = path.join(
+      path.dirname(resolvedTarget),
+      `.aurral-import-${process.pid}-${Date.now()}-${path.basename(resolvedTarget)}.tmp`,
+    );
+    try {
+      await fs.copyFile(sourcePath, tempTarget);
+      const [sourceStat, tempStat] = await Promise.all([fs.stat(sourcePath), fs.stat(tempTarget)]);
+      if (sourceStat.size !== tempStat.size) {
+        throw new Error("Imported file copy did not match source size");
+      }
+      await fs.rename(tempTarget, resolvedTarget);
+    } finally {
+      await fs.rm(tempTarget, { force: true }).catch(() => {});
+    }
+    return resolvedTarget;
+  }
   try {
     await fs.rename(sourcePath, resolvedTarget);
   } catch (error) {

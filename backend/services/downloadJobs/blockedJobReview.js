@@ -77,7 +77,14 @@ export async function approveBlockedJob(jobId) {
     },
     async () => {
       if (!getBlockedJob(job.id)) return null;
-      const committedPath = await commitDownloadedFile(sourcePath, path.join(finalDir, finalName));
+      let preserveSource = false;
+      if (job.downloadSource === "usenet") {
+        const { shouldPreserveReviewedUsenetSource } = await import("../usenetOrchestrator.js");
+        preserveSource = shouldPreserveReviewedUsenetSource(job);
+      }
+      const committedPath = await commitDownloadedFile(sourcePath, path.join(finalDir, finalName), {
+        preserveSource,
+      });
       const recorded = await recordPipelineJobSuccess({
         downloadTracker,
         job,
