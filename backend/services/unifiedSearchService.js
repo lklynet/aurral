@@ -622,6 +622,10 @@ export function searchLocalFromData(
         albumTitle: albumTitle || null,
         albumMbid: track.albumMbid || null,
         albumCanonicalId: track.albumCanonicalId || null,
+        trackMbid: track.trackMbid || null,
+        artistMbid: track.artistMbid || null,
+        durationMs: track.durationMs ?? null,
+        releaseYear: track.releaseYear || null,
         streamPath: track.streamPath || null,
         inLibrary: true,
         score,
@@ -681,6 +685,10 @@ function searchLocalLibrary(query, limit, context) {
       albumTitle: albumDetails?.title || null,
       albumMbid: albumDetails?.releaseGroupMbid || null,
       albumCanonicalId: albumDetails?.canonicalId || null,
+      trackMbid: track.mbid || null,
+      artistMbid: albumDetails?.artistMbid || null,
+      durationMs: track.files?.find((file) => Number(file.durationMs) > 0)?.durationMs ?? null,
+      releaseYear: String(albumDetails?.releaseDate || "").match(/^\d{4}/)?.[0] || null,
       streamPath: album
         ? `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`
         : null,

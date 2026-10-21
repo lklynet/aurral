@@ -56,6 +56,7 @@ import {
   ARTIST_IMAGE_HYDRATION_CONCURRENCY,
   ALBUM_COVER_HYDRATION_CONCURRENCY,
 } from "./searchPageUtils";
+import { buildTrackPlaylistPayload } from "../utils/globalSearchUtils";
 import { Link, useSearchParams } from "react-router";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { artistMatchesGenre } from "./discoverUtils";
@@ -935,22 +936,8 @@ function SearchResultsPage() {
 
   const handleSearchTrackAdd = useCallback(
     async (track, target) => {
-      const payload = {
-        artistName: track.artistName || "",
-        trackName: track.title || "",
-        albumName: track.albumTitle || "",
-        artistMbid: track.artistMbid || "",
-        albumMbid: track.albumMbid || "",
-        trackMbid: track.id || track.trackMbid || "",
-        releaseYear: track.releaseYear || null,
-        durationMs:
-          track.durationMs != null && Number.isFinite(Number(track.durationMs))
-            ? Number(track.durationMs)
-            : null,
-        reason: null,
-        artistAliases: [],
-      };
-      if (!payload.artistName || !payload.trackName) {
+      const payload = buildTrackPlaylistPayload(track);
+      if (!payload) {
         showError("Track details are incomplete");
         return;
       }

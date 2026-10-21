@@ -68,7 +68,7 @@ export function buildTrackPlaylistPayload(track) {
     albumName: track?.albumTitle || "",
     artistMbid: track?.artistMbid || "",
     albumMbid: track?.albumMbid || "",
-    trackMbid: track?.id || track?.trackMbid || "",
+    trackMbid: track?.trackMbid || "",
     releaseYear: track?.releaseYear || null,
     durationMs:
       track?.durationMs != null && Number.isFinite(Number(track.durationMs))
