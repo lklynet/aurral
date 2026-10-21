@@ -1,4 +1,4 @@
-export function formatPlaybackTime(seconds) {
+export function formatPlaybackTime(seconds: number) {
   const total = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);

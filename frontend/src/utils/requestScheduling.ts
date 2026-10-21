@@ -5,18 +5,27 @@ const ACTIVITY_HISTORY_RECONCILE_MS = 5 * 60_000;
 const BOOTSTRAP_DISCONNECTED_POLL_MS = 30_000;
 const BOOTSTRAP_CONNECTED_POLL_MS = 2 * 60_000;
 
-export const getActivityPollIntervalMs = ({ isConnected, isListLikeView } = {}) => {
+type NavigatorWithConnection = Navigator & { connection?: { saveData?: boolean } };
+
+export const getActivityPollIntervalMs = ({
+  isConnected,
+  isListLikeView,
+}: { isConnected?: boolean; isListLikeView?: boolean } = {}) => {
   if (isConnected) {
     return isListLikeView ? ACTIVITY_ACTIVE_RECONCILE_MS : ACTIVITY_HISTORY_RECONCILE_MS;
   }
   return isListLikeView ? ACTIVITY_ACTIVE_FALLBACK_MS : ACTIVITY_HISTORY_FALLBACK_MS;
 };
 
-export const getBootstrapPollIntervalMs = ({ isConnected } = {}) =>
+export const getBootstrapPollIntervalMs = ({ isConnected }: { isConnected?: boolean } = {}) =>
   isConnected ? BOOTSTRAP_CONNECTED_POLL_MS : BOOTSTRAP_DISCONNECTED_POLL_MS;
 
 export const canPrefetchInBackground = () => {
   if (typeof document !== "undefined" && document.visibilityState === "hidden") return false;
-  if (typeof navigator !== "undefined" && navigator.connection?.saveData === true) return false;
+  if (
+    typeof navigator !== "undefined" &&
+    (navigator as NavigatorWithConnection).connection?.saveData === true
+  )
+    return false;
   return true;
 };

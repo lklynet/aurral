@@ -1,6 +1,24 @@
+import type { useToast } from "../contexts/ToastContext.tsx";
 import { restoreLibraryFavorites } from "./api/endpoints/library.ts";
 
-export const showFavoriteRemoved = (toast, { name, removed, restore, revert, onRestored }) => {
+type FavoriteRemoval = { id: string; starredAt: number };
+
+export const showFavoriteRemoved = (
+  toast: ReturnType<typeof useToast>,
+  {
+    name,
+    removed,
+    restore,
+    revert,
+    onRestored,
+  }: {
+    name: string | null | undefined;
+    removed: FavoriteRemoval[] | undefined;
+    restore: () => void;
+    revert: () => void;
+    onRestored?: () => void;
+  },
+) => {
   const label = String(name || "").trim() || "Item";
   if (!Array.isArray(removed) || !removed.length) {
     toast.showSuccess(`Removed ${label} from favorites`);

@@ -49,7 +49,22 @@ export const shouldTriggerAlbumSearch = ({
   return Boolean(inLibrary && monitored);
 };
 
-export const buildAlbumAddAction = (_search, destination = {}) => ({
+type ReleaseLibraryInfo = {
+  trackCount?: number | null;
+  managedBy?: string | null;
+  monitored?: boolean | null;
+  trackFileCount?: number | null;
+  percentOfTracks?: number | null;
+};
+
+type AlbumRequestResult = {
+  status?: string;
+  queued?: boolean;
+  triggeredSearch?: boolean;
+  albumStatus?: { status?: string } | null;
+};
+
+export const buildAlbumAddAction = (_search: boolean, destination = {}) => ({
   label: "Download album",
   icon: Download,
   destination,
@@ -72,7 +87,10 @@ export const isAlbumCompleteInLibrary = ({
   Number(sizeOnDisk) > 0 ||
   Number(trackFileCount) > 0;
 
-export const countReleaseTracks = (libraryInfo, releaseTrackCount) => {
+export const countReleaseTracks = <T extends ReleaseLibraryInfo>(
+  libraryInfo: T | null | undefined,
+  releaseTrackCount: number,
+) => {
   const trackCount = Number(libraryInfo?.trackCount || 0);
   if (
     libraryInfo?.managedBy !== "aurral" ||
@@ -88,7 +106,10 @@ export const countReleaseTracks = (libraryInfo, releaseTrackCount) => {
   };
 };
 
-export const describeAlbumRequestResult = (result, title) => {
+export const describeAlbumRequestResult = (
+  result: AlbumRequestResult | null | undefined,
+  title: string,
+) => {
   if (result?.status === "blocked" || result?.albumStatus?.status === "blocked") {
     return {
       kind: "info",

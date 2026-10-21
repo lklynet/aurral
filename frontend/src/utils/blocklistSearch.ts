@@ -1,11 +1,25 @@
-function normalizeArtist(artist) {
+type ArtistCandidate = {
+  id?: string | null;
+  mbid?: string | null;
+  foreignArtistId?: string | null;
+  name?: string | null;
+  artistName?: string | null;
+};
+
+type BlocklistSearchResponse = {
+  top?: (ArtistCandidate & { type?: string }) | null;
+  catalog?: { artists?: ArtistCandidate[] | null } | null;
+  library?: { artists?: ArtistCandidate[] | null } | null;
+};
+
+function normalizeArtist(artist: ArtistCandidate | null | undefined) {
   return {
     id: artist?.id || artist?.mbid || artist?.foreignArtistId || null,
     name: String(artist?.name || artist?.artistName || "").trim(),
   };
 }
 
-export function buildBlocklistArtistSuggestions(response, limit = 6) {
+export function buildBlocklistArtistSuggestions(response: BlocklistSearchResponse, limit = 6) {
   const candidates = [
     response?.top?.type === "artist" ? response.top : null,
     ...(Array.isArray(response?.catalog?.artists) ? response.catalog.artists : []),

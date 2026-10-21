@@ -1,7 +1,7 @@
 const IMAGE_PROXY_LOCAL_PATTERN = /^\/api\/image-proxy\/([a-f0-9]{64})(?:\.[a-z0-9]+)?$/i;
 const IMAGE_PROXY_BARE_PATTERN = /^([a-f0-9]{64})\.[a-z0-9]+$/i;
 
-export function normalizeMediaUrl(value) {
+export function normalizeMediaUrl(value: string | null | undefined) {
   const src = String(value || "").trim();
   if (!src) return src;
   if (IMAGE_PROXY_LOCAL_PATTERN.test(src)) return src;
@@ -12,7 +12,7 @@ export function normalizeMediaUrl(value) {
   return src;
 }
 
-export function withImageCacheBust(value) {
+export function withImageCacheBust(value: string | null | undefined) {
   const src = normalizeMediaUrl(value);
   if (!src) return src;
   const hashIndex = src.indexOf("#");

@@ -1,11 +1,11 @@
-export const normalizeBasePath = (baseUrl) => {
+export const normalizeBasePath = (baseUrl: string | undefined) => {
   const raw = (baseUrl || "/").trim();
   const withLeadingSlash = raw.startsWith("/") ? raw : `/${raw}`;
   if (withLeadingSlash === "/") return "/";
   return withLeadingSlash.endsWith("/") ? withLeadingSlash.slice(0, -1) : withLeadingSlash;
 };
 
-export const normalizeBasePathWithTrailingSlash = (baseUrl) => {
+export const normalizeBasePathWithTrailingSlash = (baseUrl: string | undefined) => {
   const raw = (baseUrl || "/").trim();
   const withLeadingSlash = raw.startsWith("/") ? raw : `/${raw}`;
   return withLeadingSlash.endsWith("/") ? withLeadingSlash : `${withLeadingSlash}/`;

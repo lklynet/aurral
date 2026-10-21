@@ -10,7 +10,7 @@ const IMAGE_TYPES = {
 
 export const MEDIA_SESSION_SEEK_SECONDS = 10;
 
-export function mediaSessionArtwork(src, baseUrl) {
+export function mediaSessionArtwork(src: string | null | undefined, baseUrl: string) {
   if (!src) return [];
   let url;
   try {
@@ -30,7 +30,7 @@ export function mediaSessionArtwork(src, baseUrl) {
   return [{ src: url.href, ...(sizes ? { sizes } : {}), ...(type ? { type } : {}) }];
 }
 
-export function mediaSessionPosition(duration, position) {
+export function mediaSessionPosition(duration: number, position: number) {
   if (!Number.isFinite(duration) || duration <= 0) return null;
   const safePosition = Number.isFinite(position) ? position : 0;
   return {

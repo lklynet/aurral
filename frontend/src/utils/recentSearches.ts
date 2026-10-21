@@ -1,7 +1,7 @@
 const STORAGE_KEY = "aurral:recent-searches";
 const MAX_RECENT = 8;
 
-function normalizeQuery(value) {
+function normalizeQuery(value: unknown) {
   return String(value || "")
     .trim()
     .replace(/\s+/g, " ");
@@ -30,7 +30,7 @@ export function readRecentSearches() {
   }
 }
 
-export function addRecentSearch(query) {
+export function addRecentSearch(query: string) {
   const normalized = normalizeQuery(query);
   if (!normalized) return readRecentSearches();
   const next = [

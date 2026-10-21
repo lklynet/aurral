@@ -1,6 +1,27 @@
+type ArtistRecord = {
+  id?: string | null;
+  mbid?: string | null;
+  foreignArtistId?: string | null;
+};
+
+type ArtistFeedbackSource = ArtistRecord & {
+  name?: string | null;
+  artistName?: string | null;
+  matchedTags?: string[] | null;
+  tags?: string[] | null;
+  genres?: string[] | null;
+  supportingSeeds?: { artistName?: string | null }[] | null;
+  sourceArtists?: string[] | null;
+  sourceArtist?: string | null;
+  sourceType?: string | null;
+  discoveryTier?: string | null;
+};
+
+type ArtistFeedbackAction = "more_like_this" | "less_like_this" | "block_artist";
+
 export const getArtistRecordId = (artist) => artist?.id || artist?.mbid || artist?.foreignArtistId;
 
-const uniqueTextList = (values) => {
+const uniqueTextList = (values: (string | null | undefined)[]) => {
   const seen = new Set();
   const out = [];
   for (const entry of values) {
@@ -15,9 +36,12 @@ const uniqueTextList = (values) => {
 };
 
 export const buildArtistFeedbackPayload = (
-  artist,
-  action,
-  { sourceContext = null, seedArtistName = null } = {},
+  artist: ArtistFeedbackSource | null | undefined,
+  action: ArtistFeedbackAction,
+  {
+    sourceContext = null,
+    seedArtistName = null,
+  }: { sourceContext?: string | null; seedArtistName?: string | null } = {},
 ) => {
   const tagContext = uniqueTextList([
     ...(Array.isArray(artist?.matchedTags) ? artist.matchedTags : []),
