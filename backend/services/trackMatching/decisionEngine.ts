@@ -1,5 +1,10 @@
-import { buildTrackRequest, recordingRequest } from "./trackIdentity.ts";
-import { getCapabilities, normalizeCandidate } from "./candidateNormalizer.ts";
+import { buildTrackRequest, recordingRequest, type TrackRequest } from "./trackIdentity.ts";
+import {
+  getCapabilities,
+  normalizeCandidate,
+  type CandidateTrack,
+  type RawCandidate,
+} from "./candidateNormalizer.ts";
 import {
   decideRecording,
   isSameAlbumTitle,
@@ -12,18 +17,34 @@ import {
   parseYoutubeTitle,
   readYoutubeUpload,
 } from "./youtubeEvidence.ts";
+import type { buildSoulseekCandidates } from "./providers/soulseekProvider.ts";
 
-const DECISION_RANK = { accept: 0, verify: 1, review: 2, reject: 3 };
+export type SearchResult = RawCandidate & { source?: string; song?: unknown };
+type NormalizedCandidate = CandidateTrack<SearchResult>;
+type ProviderEvidence = ReturnType<typeof buildSoulseekCandidates>["providerEvidence"][number];
+type EvidenceSource =
+  | ProviderEvidence[]
+  | ((candidate: NormalizedCandidate, index: number) => ProviderEvidence | null)
+  | null;
+
+const DECISION_RANK = { accept: 0, verify: 1, review: 2, reject: 3 } as const;
+type Decision = keyof typeof DECISION_RANK;
 
 // A YouTube Music song names its artists, album, and length the way a store
 // does, unlike a video, whose artist and title have to be read from its title.
-function isYoutubeSong(candidate) {
+function isYoutubeSong(candidate: NormalizedCandidate) {
   return candidate.source === "ytdlp" && candidate.raw?.song === true;
 }
 
-function normalizeSourceCandidates(source, candidates, request) {
+function normalizeSourceCandidates(
+  source: string,
+  candidates: SearchResult[],
+  request: TrackRequest,
+): NormalizedCandidate[] {
   const capabilities = getCapabilities(source);
-  const knownArtistNames = [request.artistName, ...(request.artistAliases || [])].filter(Boolean);
+  const knownArtistNames = [request.artistName, ...(request.artistAliases || [])].filter(
+    Boolean,
+  ) as string[];
   return candidates
     .map((entry) =>
       entry?.source
@@ -35,14 +56,14 @@ function normalizeSourceCandidates(source, candidates, request) {
             knownArtistNames,
           }),
     )
-    .filter(Boolean);
+    .filter(Boolean) as NormalizedCandidate[];
 }
 
-function requestArtistNames(request) {
+function requestArtistNames(request: TrackRequest) {
   return [request.artistName, ...(request.artistAliases || [])].filter(Boolean);
 }
 
-function youtubeMatcherCandidate(candidate, request) {
+function youtubeMatcherCandidate(candidate: NormalizedCandidate, request: TrackRequest) {
   const names = requestArtistNames(request);
   const claim = parseYoutubeTitle(candidate.title, names, request.trackName);
   const upload = readYoutubeUpload(candidate.title, candidate.provider?.uploader, names);
@@ -56,7 +77,11 @@ function youtubeMatcherCandidate(candidate, request) {
   };
 }
 
-function matcherCandidate(candidate, request, evidence) {
+function matcherCandidate(
+  candidate: NormalizedCandidate,
+  request: TrackRequest,
+  evidence: ProviderEvidence | null,
+) {
   if (candidate.source === "ytdlp" && !isYoutubeSong(candidate))
     return youtubeMatcherCandidate(candidate, request);
   const parsed = candidate.path ? parseListingTitle(candidate.path) : null;
@@ -73,7 +98,7 @@ function matcherCandidate(candidate, request, evidence) {
   };
 }
 
-function isOfficialYoutubeAudio(candidate, request) {
+function isOfficialYoutubeAudio(candidate: NormalizedCandidate, request: TrackRequest) {
   return (
     candidate.source === "ytdlp" &&
     readYoutubeUpload(candidate.title, candidate.provider?.uploader, requestArtistNames(request))
@@ -81,8 +106,12 @@ function isOfficialYoutubeAudio(candidate, request) {
   );
 }
 
-function evaluate(request, normalized, providerEvidence) {
-  const evidenceFor = (candidate, index) =>
+function evaluate(
+  request: TrackRequest,
+  normalized: NormalizedCandidate[],
+  providerEvidence: EvidenceSource,
+) {
+  const evidenceFor = (candidate: NormalizedCandidate, index: number) =>
     typeof providerEvidence === "function"
       ? providerEvidence(candidate, index)
       : providerEvidence?.[index] || null;
@@ -141,7 +170,7 @@ function evaluate(request, normalized, providerEvidence) {
         match.durationGapMs != null &&
         match.durationGapMs <= MATCH_POLICY.selectedDurationGapMs;
       const songOffAlbum = song && !songOnRequestedAlbum;
-      const decision =
+      const decision: Decision =
         locked ||
         contradiction ||
         (songOffAlbum && !exactSong) ||
@@ -232,7 +261,15 @@ function evaluate(request, normalized, providerEvidence) {
   };
 }
 
-export function prefilterCandidates({ request, source, candidates = [] } = {}) {
+export function prefilterCandidates({
+  request,
+  source,
+  candidates = [],
+}: {
+  request?: TrackRequest;
+  source?: string;
+  candidates?: SearchResult[];
+} = {}) {
   const trackRequest = request || buildTrackRequest({});
   const normalized = normalizeSourceCandidates(source, candidates, trackRequest);
   const assessment = decideRecording(
@@ -256,12 +293,21 @@ export function prefilterCandidates({ request, source, candidates = [] } = {}) {
   });
 }
 
+export type TrackEvaluation = ReturnType<typeof evaluate>;
+export type CandidateEvaluation = TrackEvaluation["evaluations"][number];
+
 export async function evaluateTrackCandidates({
   request,
   context,
   source,
   candidates = [],
   providerEvidence = null,
+}: {
+  request?: TrackRequest;
+  context?: Parameters<typeof buildTrackRequest>[0];
+  source?: string;
+  candidates?: SearchResult[];
+  providerEvidence?: EvidenceSource;
 } = {}) {
   const trackRequest = request || buildTrackRequest(context);
   if (!trackRequest.trackName) throw new Error("evaluateTrackCandidates requires a trackName");

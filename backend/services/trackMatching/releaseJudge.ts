@@ -16,6 +16,7 @@ import {
   labelContradictions,
   prepareVariantRequest,
   RELEASE_MIX_VARIANTS,
+  type NameList,
 } from "./semanticPolicy.ts";
 import {
   coreAlbumTitle,
@@ -30,10 +31,82 @@ import { implausibleBitrateKbps } from "./candidateNormalizer.ts";
 const IDENTITY_BLOCKERS = new Set(["title", "recording-mbid", "artist", "duration", "position"]);
 const PLACEHOLDER_TITLE = /^(?:audio\s*)?track\s*\d{1,3}$/u;
 
-const names = (value) =>
+type ReleaseManifestTrack = {
+  title: string | null;
+  artists?: NameList;
+  artistAliases?: NameList;
+  durationMs?: number | null;
+  pressingDurationsMs?: number[] | null;
+  trackNumber?: number | null;
+  discNumber?: number | null;
+  recordingMbid?: string | null;
+  recordingMbidAliases?: NameList;
+};
+
+type ReleaseManifest = {
+  title: string | null;
+  artistNames: string[];
+  secondaryTypes?: NameList;
+  tracks: ReleaseManifestTrack[];
+};
+
+type ReleaseListingFile = {
+  title?: string | null;
+  artists?: NameList;
+  album?: string | null;
+  durationMs?: number | null;
+  recordingMbid?: string | null;
+  filename?: string | null;
+  path?: string | null;
+  trackNumber?: number | null;
+  discNumber?: number | null;
+  sizeBytes?: number | null;
+};
+
+type ReleaseListing = {
+  artistLabel?: string | null;
+  albumLabel?: string | null;
+  files?: ReleaseListingFile[];
+};
+
+type JudgedListing = Omit<ReleaseListing, "files"> & { files: ReleaseListingFile[] };
+
+type Policy = typeof MATCH_POLICY;
+type Position = ReturnType<typeof comparePosition>;
+type VariantPrep = ReturnType<typeof prepareVariantRequest>;
+type TitleFacts = ReturnType<typeof titleFacts>;
+type TrackEntry = ReturnType<typeof trackRequest>;
+type PreparedManifest = { label: VariantPrep; tracks: TrackEntry[] };
+
+type PairEdge = {
+  fileIndex: number;
+  trackIndex: number;
+  blockers: string[];
+  position: Position | null;
+  named: boolean;
+  eligible: boolean;
+  sameSong: boolean;
+  score: number;
+  implausible?: boolean;
+  evidence?: string[];
+  durationGapMs?: number | null;
+  titleSimilarity?: number;
+};
+
+type JudgeContext = {
+  listing: JudgedListing;
+  policy: Policy;
+  labelArtists: NameList;
+  artistVouched: boolean;
+  ordered: boolean;
+  fileTitles: TitleFacts[];
+  labels: Map<string, string[][] | null>;
+};
+
+const names = (value: NameList) =>
   (Array.isArray(value) ? value : [value]).map((name) => String(name || "").trim()).filter(Boolean);
 
-function performerNames(manifest) {
+function performerNames(manifest: ReleaseManifest) {
   return [
     ...new Set([
       ...manifest.artistNames,
@@ -45,12 +118,12 @@ function performerNames(manifest) {
   ].filter((name) => !isVariousArtistsCredit(name));
 }
 
-function containsWords(text, phrase) {
+function containsWords(text: string | null | undefined, phrase: string) {
   const words = normalizeMatchText(phrase);
   return Boolean(words) && ` ${normalizeMatchText(text)} `.includes(` ${words} `);
 }
 
-function namesArtist(label, performers, threshold) {
+function namesArtist(label: string | null | undefined, performers: string[], threshold: number) {
   return (
     performers.some((name) => containsWords(label, name)) ||
     (bestArtistSimilarity(performers, [label]) ?? 0) >= threshold
@@ -59,7 +132,7 @@ function namesArtist(label, performers, threshold) {
 
 // An artist label that names no one on the release claims another artist.
 // "Various Artists" names no one.
-function artistConflict(label, performers, policy) {
+function artistConflict(label: string | null | undefined, performers: string[], policy: Policy) {
   if (!label || isVariousArtistsCredit(label) || performers.length === 0) return false;
   return (
     !namesArtist(label, performers, policy.minArtistNonConflictSimilarity) &&
@@ -67,13 +140,13 @@ function artistConflict(label, performers, policy) {
   );
 }
 
-function releaseName(manifest) {
+function releaseName(manifest: ReleaseManifest) {
   return normalizeMatchText(coreAlbumTitle(manifest.title));
 }
 
 // The parts of an album label that name an album: what is left after the
 // artist, years, discs, formats, and bracketed notes.
-function albumClaims(label, performers, policy) {
+function albumClaims(label: string | null | undefined, performers: string[], policy: Policy) {
   return String(label || "")
     .replace(/[[({][^\])}]*[\])}]/gu, " - ")
     .split(/\s+[-–—]\s+|\s*[\\/|]\s*/u)
@@ -93,7 +166,7 @@ function albumClaims(label, performers, policy) {
     .filter(Boolean);
 }
 
-function namesAlbum(claim, release, policy) {
+function namesAlbum(claim: string, release: string, policy: Policy) {
   return (
     otherScript(claim, release) ||
     ` ${claim} `.includes(` ${release} `) ||
@@ -102,14 +175,19 @@ function namesAlbum(claim, release, policy) {
   );
 }
 
-function similarity(left, right) {
+function similarity(left: string, right: string) {
   const longest = Math.max(left.length, right.length);
   return longest ? 1 - distance(left, right) / longest : 0;
 }
 
 // An album label that names an album must name this one. A label of only an
 // artist, a year, or a format claims nothing.
-function albumConflict(label, manifest, performers, policy) {
+function albumConflict(
+  label: string | null | undefined,
+  manifest: ReleaseManifest,
+  performers: string[],
+  policy: Policy,
+) {
   const release = releaseName(manifest);
   const claims = albumClaims(label, performers, policy);
   return (
@@ -119,7 +197,7 @@ function albumConflict(label, manifest, performers, policy) {
   );
 }
 
-function labelVariants(prepared, listing) {
+function labelVariants(prepared: VariantPrep, listing: JudgedListing) {
   return [
     ...new Set(
       [listing.albumLabel, listing.artistLabel]
@@ -129,7 +207,7 @@ function labelVariants(prepared, listing) {
   ];
 }
 
-function trackRequest(manifest, track) {
+function trackRequest(manifest: ReleaseManifest, track: ReleaseManifestTrack) {
   const request = {
     title: track.title,
     artists: names(track.artists),
@@ -155,9 +233,9 @@ function trackRequest(manifest, track) {
 
 // A search judges every folder against one manifest, so the request side is
 // prepared once per manifest.
-const preparedRequests = new WeakMap();
+const preparedRequests = new WeakMap<ReleaseManifest, PreparedManifest>();
 
-function preparedRequest(manifest) {
+function preparedRequest(manifest: ReleaseManifest) {
   let prepared = preparedRequests.get(manifest);
   if (!prepared) {
     prepared = {
@@ -174,7 +252,7 @@ function preparedRequest(manifest) {
   return prepared;
 }
 
-function titleFacts(title) {
+function titleFacts(title: string | null | undefined) {
   const text = normalizeMatchText(title);
   return {
     text,
@@ -186,7 +264,7 @@ function titleFacts(title) {
 
 // A placeholder such as "Track 01", or a title in another script than the
 // track's, says nothing about which track a file is.
-function readsAsTitle(track, file) {
+function readsAsTitle(track: TitleFacts, file: TitleFacts) {
   return (
     Boolean(file.text) &&
     !(file.placeholder && !track.placeholder) &&
@@ -194,12 +272,12 @@ function readsAsTitle(track, file) {
   );
 }
 
-function directoryOf(path) {
+function directoryOf(path: string | null | undefined) {
   const parts = String(path || "").split(/[\\/]/);
   return parts.length > 1 ? parts.slice(0, -1).join("/") : null;
 }
 
-function fileCandidate(listing, file, labelArtists) {
+function fileCandidate(listing: JudgedListing, file: ReleaseListingFile, labelArtists: NameList) {
   const filename =
     file.filename ||
     String(file.path || "")
@@ -224,10 +302,16 @@ function fileCandidate(listing, file, labelArtists) {
 // something names the recording: its ID, its title with its length or its
 // place, or, for a file with no readable title from the release's artist,
 // its place and length.
-function judgePair(context, entry, trackIndex, file, fileIndex) {
+function judgePair(
+  context: JudgeContext,
+  entry: TrackEntry,
+  trackIndex: number,
+  file: ReleaseListingFile,
+  fileIndex: number,
+): PairEdge {
   const { listing, policy, labelArtists, artistVouched, ordered, fileTitles, labels } = context;
   const { track } = entry;
-  const blocked = (blockers, named, position) => ({
+  const blocked = (blockers: string[], named: boolean, position: Position | null): PairEdge => ({
     fileIndex,
     trackIndex,
     blockers,
@@ -290,7 +374,7 @@ function judgePair(context, entry, trackIndex, file, fileIndex) {
 // A file that names a track at its place but missed the selection window, or
 // has no length to check, is that track unverified rather than a song the
 // release does not hold.
-function failedPairing(edge, policy) {
+function failedPairing(edge: PairEdge, policy: Policy) {
   return (
     Boolean(edge?.named) &&
     edge.position !== "different" &&
@@ -299,7 +383,7 @@ function failedPairing(edge, policy) {
   );
 }
 
-function variantMarkers(edges) {
+function variantMarkers(edges: PairEdge[]) {
   return edges
     .filter(
       (edge) =>
@@ -310,7 +394,13 @@ function variantMarkers(edges) {
     .flatMap((edge) => edge.blockers);
 }
 
-function labelRejection(manifest, prepared, listing, performers, policy) {
+function labelRejection(
+  manifest: ReleaseManifest,
+  prepared: VariantPrep,
+  listing: JudgedListing,
+  performers: string[],
+  policy: Policy,
+) {
   const product = listing.albumLabel
     ? otherProductMarker(listing.albumLabel, [manifest.title, ...manifest.artistNames], {
         album: true,
@@ -332,7 +422,11 @@ function labelRejection(manifest, prepared, listing, performers, policy) {
 // the complete tracklist at its own place, and no file left over that is
 // not another copy of a track already there. A file the quality profile
 // would refuse still counts, so a listing must include every audio file.
-export function judgeRelease(manifest, listing, policy = MATCH_POLICY) {
+export function judgeRelease(
+  manifest: ReleaseManifest,
+  listing: ReleaseListing,
+  policy: Policy = MATCH_POLICY,
+) {
   const files = listing.files || [];
   const performers = performerNames(manifest);
   const artistVouched =
@@ -340,7 +434,7 @@ export function judgeRelease(manifest, listing, policy = MATCH_POLICY) {
     !isVariousArtistsCredit(listing.artistLabel) &&
     namesArtist(listing.artistLabel, performers, policy.minArtistSimilarity);
   const prepared = preparedRequest(manifest);
-  const context = {
+  const context: JudgeContext = {
     listing: { ...listing, files },
     policy,
     labelArtists: artistVouched ? [listing.artistLabel] : [],
@@ -358,12 +452,14 @@ export function judgeRelease(manifest, listing, policy = MATCH_POLICY) {
       .sort((left, right) => right.score - left.score || left.fileIndex - right.fileIndex),
   );
   const assignment = pairTracksWithFiles(edges, files.length);
-  const fileForTrack = manifest.tracks.map(() => null);
+  const fileForTrack: (number | null)[] = manifest.tracks.map(() => null);
   for (const pair of assignment.pairs) fileForTrack[pair.trackIndex] = pair.fileIndex;
 
-  const copiesForTrack = fileForTrack.map((fileIndex) => (fileIndex == null ? [] : [fileIndex]));
+  const copiesForTrack: number[][] = fileForTrack.map((fileIndex) =>
+    fileIndex == null ? [] : [fileIndex],
+  );
   const missing = assignment.unassignedTrackIndexes;
-  const extras = [];
+  const extras: number[] = [];
   for (const fileIndex of assignment.unassignedFileIndexes) {
     const copyOf = edges
       .flatMap((trackEdges) => trackEdges)
@@ -428,7 +524,12 @@ export function judgeRelease(manifest, listing, policy = MATCH_POLICY) {
 // For a track search after the release search: the listing holds the
 // requested place on this release, whole or with only other tracks absent or
 // unverified.
-export function releaseHolds(manifest, listing, index, policy = MATCH_POLICY) {
+export function releaseHolds(
+  manifest: ReleaseManifest,
+  listing: ReleaseListing,
+  index: number,
+  policy: Policy = MATCH_POLICY,
+) {
   const verdict = judgeRelease(manifest, listing, policy);
   if (verdict.kind !== "exact" && verdict.reason !== "missing-tracks") return false;
   return verdict.fileForTrack[index] != null;

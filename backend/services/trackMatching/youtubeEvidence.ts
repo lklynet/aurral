@@ -1,5 +1,5 @@
 import { splitArtistTitleSegments } from "./candidateNormalizer.ts";
-import { isPromoGroup, stripPromoDescriptors } from "./semanticPolicy.ts";
+import { isPromoGroup, stripPromoDescriptors, type NameList } from "./semanticPolicy.ts";
 import {
   bestArtistSimilarity,
   isSameAlbumTitle,
@@ -7,6 +7,7 @@ import {
   normalizeMatchText,
   titleSimilarity,
 } from "./nativeMatcher.ts";
+import type { TrackRequest } from "./trackIdentity.ts";
 import { coreAlbumTitle } from "./titleText.ts";
 
 const VIDEO_WORDS = /\b(?:video|mv|clip)\b/iu;
@@ -14,7 +15,7 @@ const LYRIC_VIDEO = /\blyrics?\s+video\b/giu;
 const ARTIST_SEGMENT_SIMILARITY = 0.6;
 
 // "Fleetwood Mac - Topic" and "DaftPunkVEVO" are the artist's own channels.
-function channelArtistName(channel) {
+function channelArtistName(channel: string | null | undefined) {
   return String(channel || "")
     .replace(/\s*-\s*topic$/iu, "")
     .replace(/\s*vevo$/iu, "")
@@ -26,7 +27,11 @@ function channelArtistName(channel) {
 // audio, like the "- Topic" uploads YouTube makes from label feeds. Lyric
 // videos and visualizers carry the studio audio; music videos are often cut
 // differently.
-export function readYoutubeUpload(title, channel, artistNames) {
+export function readYoutubeUpload(
+  title: string | null | undefined,
+  channel: string | null | undefined,
+  artistNames: NameList,
+) {
   const channelArtist = channelArtistName(channel);
   const artistChannel =
     (bestArtistSimilarity(artistNames, channelArtist) ?? 0) >= MATCH_POLICY.minArtistSimilarity;
@@ -41,7 +46,11 @@ export function readYoutubeUpload(title, channel, artistNames) {
 // by "| Album". The segment that names the artist is the artist; of the rest,
 // the part closest to the requested title is the title, and all of it keeps
 // any version wording.
-export function parseYoutubeTitle(title, artistNames, requestedTitle) {
+export function parseYoutubeTitle(
+  title: string | null | undefined,
+  artistNames: NameList,
+  requestedTitle: string | null | undefined,
+) {
   const raw = String(title || "").trim();
   const cleaned = stripPromoDescriptors(raw.replace(/[「『]([^」』]+)[」』]/gu, " - $1 - ")) || raw;
   const segments = cleaned
@@ -82,9 +91,19 @@ export function parseYoutubeTitle(title, artistNames, requestedTitle) {
 // outranks the uploader's wording, and in "Six Feet Under - Song - AC/DC" the
 // tag names who performs the cover.
 export function readYoutubeFile(
-  { tagTitle, tagArtists = [], videoTitle, channel },
-  artistNames,
-  requestedTitle,
+  {
+    tagTitle,
+    tagArtists = [],
+    videoTitle,
+    channel,
+  }: {
+    tagTitle: string | null | undefined;
+    tagArtists?: string[];
+    videoTitle?: string | null;
+    channel?: string | null;
+  },
+  artistNames: NameList,
+  requestedTitle: string | null | undefined,
 ) {
   const fromTags = parseYoutubeTitle(tagTitle, artistNames, requestedTitle);
   const fromVideo = videoTitle ? parseYoutubeTitle(videoTitle, artistNames, requestedTitle) : null;
@@ -113,7 +132,7 @@ export function readYoutubeFile(
 
 // Whether a YouTube Music song's album is the requested one. A request that
 // names no album has no other album to rule out.
-export function isRequestedYoutubeAlbum(request, album) {
+export function isRequestedYoutubeAlbum(request: TrackRequest, album: string | null | undefined) {
   return (
     !request.albumName || isSameAlbumTitle(coreAlbumTitle(request.albumName), coreAlbumTitle(album))
   );
