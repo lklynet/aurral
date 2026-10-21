@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type PointerEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router";
 import {
@@ -28,11 +36,17 @@ import { useLibraryShareAction, useShareAction } from "../hooks/useShareAction.t
 import { useCollectionTint } from "./CollectionHeader";
 import ArtworkImage from "./ArtworkImage";
 
+declare module "react" {
+  interface CSSProperties {
+    [customProperty: `--${string}`]: string | number | undefined;
+  }
+}
+
 const SHEET_EXIT_MS = 260;
 const SHEET_DISMISS_DISTANCE = 120;
 const SEEK_SHORTCUT_SECONDS = 5;
 function GlobalPlayerBar() {
-  const [failedArtwork, setFailedArtwork] = useState(null);
+  const [failedArtwork, setFailedArtwork] = useState<string | null>(null);
   const {
     currentTrack,
     playbackError,
@@ -62,8 +76,8 @@ function GlobalPlayerBar() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
   const queuePanelId = useId();
-  const queueTriggerRef = useRef(null);
-  const queueCloseRef = useRef(null);
+  const queueTriggerRef = useRef<HTMLButtonElement>(null);
+  const queueCloseRef = useRef<HTMLButtonElement>(null);
   const closeQueue = useCallback(() => {
     setQueueOpen(false);
     queueTriggerRef.current?.focus({ preventScroll: true });
@@ -71,8 +85,8 @@ function GlobalPlayerBar() {
   const [sheetPresence, setSheetPresence] = useState("closed");
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
-  const dragRef = useRef(null);
-  const sheetCloseRef = useRef(null);
+  const dragRef = useRef<{ pointerId: number; startY: number } | null>(null);
+  const sheetCloseRef = useRef<HTMLButtonElement>(null);
   const closeSheet = useCallback(() => setSheetOpen(false), []);
   const sheetDialog = useModalDialog({
     open: sheetPresence !== "closed",
@@ -97,7 +111,7 @@ function GlobalPlayerBar() {
 
   useEffect(() => {
     if (!queueOpen) return undefined;
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       if (document.querySelector(".player-queue__item.is-dragging")) return;
       const panel = document.getElementById(queuePanelId);
@@ -121,8 +135,8 @@ function GlobalPlayerBar() {
   }, []);
 
   useEffect(() => {
-    let frameId;
-    let timeoutId;
+    let frameId: number | undefined;
+    let timeoutId: number | undefined;
     if (sheetOpen) {
       setSheetPresence("opening");
       frameId = window.requestAnimationFrame(() => setSheetPresence("open"));
@@ -137,7 +151,7 @@ function GlobalPlayerBar() {
     };
   }, [sheetOpen]);
 
-  const seekBy = (offset) => {
+  const seekBy = (offset: number) => {
     if (!duration) return;
     const nextPosition = Math.min(Math.max(getPosition() + offset, 0), duration);
     seek(nextPosition);
@@ -185,7 +199,7 @@ function GlobalPlayerBar() {
       },
       currentTrack.title,
     );
-  const metaLink = (label, path) =>
+  const metaLink = (label: string, path: string) =>
     label ? (
       path ? (
         <Link to={path} className="global-player__link">
@@ -196,12 +210,12 @@ function GlobalPlayerBar() {
       )
     ) : null;
 
-  const handleVolumeChange = (event) => {
+  const handleVolumeChange = (event: ChangeEvent<HTMLInputElement>) => {
     const nextVolume = Math.min(Math.max(Number(event.target.value) || 0, 0), 100);
     setVolume(nextVolume / 100);
   };
 
-  const handleSheetPointerDown = (event) => {
+  const handleSheetPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     if (event.target.closest("button, a, input")) return;
     if (!event.target.closest(".now-playing__header, .now-playing__art")) return;
@@ -210,12 +224,12 @@ function GlobalPlayerBar() {
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
-  const handleSheetPointerMove = (event) => {
+  const handleSheetPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     if (dragRef.current?.pointerId !== event.pointerId) return;
     setDragOffset(Math.max(0, event.clientY - dragRef.current.startY));
   };
 
-  const handleSheetPointerEnd = (event) => {
+  const handleSheetPointerEnd = (event: PointerEvent<HTMLDivElement>) => {
     if (dragRef.current?.pointerId !== event.pointerId) return;
     const distance = event.clientY - dragRef.current.startY;
     dragRef.current = null;
@@ -227,7 +241,7 @@ function GlobalPlayerBar() {
     setDragOffset(0);
   };
 
-  const artwork = (className, thumbnail = true) => (
+  const artwork = (className: string, thumbnail = true) => (
     <span className={className} aria-hidden="true">
       {currentTrack.artwork && currentTrack.artwork !== failedArtwork ? (
         <ArtworkImage

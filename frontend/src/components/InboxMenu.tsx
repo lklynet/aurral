@@ -19,6 +19,9 @@ import { DotLoader } from "./DotLoader";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import Tooltip from "./Tooltip";
 import RelativeTime from "./RelativeTime";
+import type { InboxResponse } from "../../../backend/routes/inbox.ts";
+
+type InboxListItem = Exclude<InboxResponse["items"][number], null>;
 
 const ITEM_ICONS = {
   release: Music2,
@@ -28,9 +31,10 @@ const ITEM_ICONS = {
   discovery: Sparkles,
 };
 
-const isExternalHref = (href) => /^https?:\/\//i.test(String(href || ""));
+const isExternalHref = (href: string | null | undefined) =>
+  /^https?:\/\//i.test(String(href || ""));
 
-const getInboxSubtitle = (item) => {
+const getInboxSubtitle = (item: InboxListItem) => {
   const metadata = item.metadata || {};
   if (item.kind === "release") {
     return ["New release", metadata.artistName].filter(Boolean).join(" · ");
@@ -54,7 +58,17 @@ const FILTER_OPTIONS = [
   { value: "discovery", label: "Discoveries" },
 ];
 
-function InboxItem({ item, onRemove, onOpen, pendingAction }) {
+function InboxItem({
+  item,
+  onRemove,
+  onOpen,
+  pendingAction,
+}: {
+  item: InboxListItem;
+  onRemove: (item: InboxListItem) => void;
+  onOpen: (item: InboxListItem) => void;
+  pendingAction?: string;
+}) {
   const Icon = ITEM_ICONS[item.kind] || Inbox;
   const subtitle =
     item.kind === "show" && Number(item.expiresAt) <= Date.now()
@@ -138,9 +152,9 @@ function InboxMenu() {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("all");
   const [filterOpen, setFilterOpen] = useState(false);
-  const [pendingActions, setPendingActions] = useState({});
-  const menuRef = useRef(null);
-  const triggerRef = useRef(null);
+  const [pendingActions, setPendingActions] = useState<Record<string, string>>({});
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const { user, bootstrap } = useAuth();
   const [inboxEnabled, setInboxEnabled] = useState(true);
   const { showError } = useToast();
@@ -150,7 +164,7 @@ function InboxMenu() {
   }, [bootstrap?.inboxEnabled]);
 
   useEffect(() => {
-    const handleSettingsUpdated = (event) => {
+    const handleSettingsUpdated = (event: Event) => {
       if (typeof event.detail?.inboxEnabled === "boolean")
         setInboxEnabled(event.detail.inboxEnabled);
     };
@@ -174,8 +188,8 @@ function InboxMenu() {
   const serverRefreshing = inboxQuery.data?.refreshing === true;
   const loadInbox = () => inboxQuery.refetch();
   const itemMutation = useMutation({
-    mutationFn: ({ id, action }) => updateInboxItem(id, action),
-    onMutate: async ({ id, action }) => {
+    mutationFn: ({ id, action }: { id: string; action: string }) => updateInboxItem(id, action),
+    onMutate: async ({ id, action }: { id: string; action: string }) => {
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData(queryKey);
       queryClient.setQueryData(queryKey, (current) => {
@@ -213,13 +227,13 @@ function InboxMenu() {
 
   useEffect(() => {
     if (!open) return undefined;
-    const handleOutsideClick = (event) => {
+    const handleOutsideClick = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setOpen(false);
         setFilterOpen(false);
       }
     };
-    const handleEscape = (event) => {
+    const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setFilterOpen(false);
         setOpen(false);
@@ -234,7 +248,7 @@ function InboxMenu() {
     };
   }, [open]);
 
-  const handleOpen = (item) => {
+  const handleOpen = (item: InboxListItem) => {
     if (!item.isRead) {
       void itemMutation.mutateAsync({ id: item.id, action: "read" }).catch((error) => {
         showError(error?.response?.data?.error || error?.message || `Failed to read ${item.title}`);
@@ -243,7 +257,7 @@ function InboxMenu() {
     if (item.href) setOpen(false);
   };
 
-  const handleRemove = async (item) => {
+  const handleRemove = async (item: InboxListItem) => {
     const actionKey = `${item.id}:dismiss`;
     setPendingActions((current) => ({ ...current, [actionKey]: "dismiss" }));
     try {

@@ -40,7 +40,8 @@ const toBase64Url = (bytes: Uint8Array) => {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 };
 
-type ShareItem = { kind: string } & Record<string, unknown>;
+export type ShareKind = "artist" | "album" | "track";
+export type ShareItem = { kind: ShareKind } & Record<string, unknown>;
 
 export function buildSharePayload(item: ShareItem) {
   const kind = KINDS[item?.kind];

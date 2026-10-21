@@ -52,13 +52,13 @@ export function getImportedProviderLabel(provider) {
   return "Spotify";
 }
 
-export const optionMenuItem = ({ checked, ...item }) => ({
+export const optionMenuItem = <T extends { checked: boolean }>({ checked, ...item }: T) => ({
   ...item,
   checked,
   icon: checked ? SquareCheck : Square,
 });
 
-export const choiceMenuItem = ({ checked, ...item }) => ({
+export const choiceMenuItem = <T extends { checked: boolean }>({ checked, ...item }: T) => ({
   ...item,
   checked,
   icon: checked ? CircleDot : Circle,

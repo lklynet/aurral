@@ -28,37 +28,63 @@ const GROUPS = [
 
 const RUNNING = { move: "Moving files", copy: "Copying files", hardlink: "Linking files" };
 
-const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
-const duplicateCopies = (count) => `${count} duplicate ${count === 1 ? "copy" : "copies"}`;
+type FileOperation = {
+  id: number;
+  kind: "ingest" | "cleanup";
+  status: string;
+  options?: { mode?: "move" | "copy" | "hardlink" } | null;
+  summary?: {
+    unchanged?: number;
+    removingSources?: boolean;
+    monitor?: string;
+    doubles?: string;
+  } | null;
+  counts?: Record<string, number>;
+  progress?: { done: number; total: number } | null;
+  sources?: { removable: number; removed: number } | null;
+  error?: string | null;
+  updatedAt: number;
+};
+
+type LibraryFileOperationItem = {
+  position: number;
+  status: string;
+  reason?: string | null;
+  source: string;
+  target: string;
+};
+
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+const duplicateCopies = (count: number) => `${count} duplicate ${count === 1 ? "copy" : "copies"}`;
 
 const REMOVAL = {
   ingest: {
-    question: (count) => `Remove ${plural(count, "source file")} already in the Library?`,
+    question: (count: number) => `Remove ${plural(count, "source file")} already in the Library?`,
     notes: "Deletes source files after checking them against the Library copy.",
     action: "Remove source files",
     failed: "Aurral could not remove the source files. Nothing was removed.",
-    removed: (count) => `Removed ${plural(count, "source file")} already in the Library.`,
+    removed: (count: number) => `Removed ${plural(count, "source file")} already in the Library.`,
   },
   cleanup: {
-    question: (count) => `Remove ${duplicateCopies(count)}?`,
+    question: (count: number) => `Remove ${duplicateCopies(count)}?`,
     notes:
       "Rechecks each pair and deletes the lower-quality copy. Playlists and favorites keep the better copy.",
     action: "Remove duplicates",
     failed: "Aurral could not remove the duplicates. Nothing was removed.",
-    removed: (count) => `Removed ${duplicateCopies(count)}.`,
+    removed: (count: number) => `Removed ${duplicateCopies(count)}.`,
   },
 };
-const countOf = (counts, statuses) =>
+const countOf = (counts: Record<string, number> | undefined, statuses: string[]) =>
   statuses.reduce((sum, status) => sum + Number(counts?.[status] || 0), 0);
 
-function describeSkipped(present, others) {
+function describeSkipped(present: number, others: number) {
   if (present && others)
     return `Skipped ${plural(present, "file")} already in the Library and ${plural(others, "other")}`;
   if (present) return `Skipped ${plural(present, "file")} already in the Library`;
   return others ? `Skipped ${plural(others, "file")}` : null;
 }
 
-function describeResult(operation) {
+function describeResult(operation: FileOperation) {
   const counts = operation.counts || {};
   const skipped = countOf(counts, ["skipped", "conflict"]);
   const parts =
@@ -77,14 +103,14 @@ function describeResult(operation) {
   return parts.filter(Boolean).join(" · ");
 }
 
-function describeRunning(operation) {
+function describeRunning(operation: FileOperation) {
   if (operation.summary?.removingSources)
     return operation.kind === "ingest" ? "Removing source files" : "Removing duplicates";
   if (operation.kind !== "ingest") return "Cleaning up";
   return RUNNING[operation.options?.mode] || "Filing files";
 }
 
-function describeStatus(operation) {
+function describeStatus(operation: FileOperation) {
   const { done = 0, total = 0 } = operation.progress || {};
   const progress = total ? `: ${done} of ${total}` : "";
   const result = describeResult(operation);
@@ -104,7 +130,7 @@ function describeStatus(operation) {
   }
 }
 
-function OperationItem({ item }) {
+function OperationItem({ item }: { item: LibraryFileOperationItem }) {
   return (
     <li className={`library-file-op__item is-${item.status}`}>
       <div className="library-file-op__paths">
@@ -121,7 +147,15 @@ function OperationItem({ item }) {
   );
 }
 
-function StopButton({ operation, onChanged, showError }) {
+function StopButton({
+  operation,
+  onChanged,
+  showError,
+}: {
+  operation: FileOperation;
+  onChanged?: () => unknown;
+  showError?: (message: string) => void;
+}) {
   const [stopping, setStopping] = useState(false);
   const stop = async () => {
     setStopping(true);
@@ -144,7 +178,15 @@ function StopButton({ operation, onChanged, showError }) {
   );
 }
 
-function RemoveSourcesOffer({ operation, onChanged, showError }) {
+function RemoveSourcesOffer({
+  operation,
+  onChanged,
+  showError,
+}: {
+  operation: FileOperation;
+  onChanged?: () => unknown;
+  showError?: (message: string) => void;
+}) {
   const [removing, setRemoving] = useState(false);
   const count = Number(operation.sources?.removable || 0);
   const copy = REMOVAL[operation.kind];
@@ -174,7 +216,15 @@ function RemoveSourcesOffer({ operation, onChanged, showError }) {
   );
 }
 
-export default function LibraryFileOperation({ operation, onChanged, showError }) {
+export default function LibraryFileOperation({
+  operation,
+  onChanged,
+  showError,
+}: {
+  operation: FileOperation | null;
+  onChanged?: () => unknown;
+  showError?: (message: string) => void;
+}) {
   const counts = operation?.counts;
   const cleanup = operation?.kind === "cleanup";
   const groups = useMemo(
@@ -186,7 +236,7 @@ export default function LibraryFileOperation({ operation, onChanged, showError }
       })).filter((group) => group.count > 0),
     [counts, cleanup],
   );
-  const [groupId, setGroupId] = useState(null);
+  const [groupId, setGroupId] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const group = groups.find((entry) => entry.id === groupId) || groups[0] || null;
 
@@ -204,8 +254,8 @@ export default function LibraryFileOperation({ operation, onChanged, showError }
       operation?.updatedAt,
     ],
     queryFn: () =>
-      getLibraryFileOperationItems(operation.id, {
-        status: group.statuses,
+      getLibraryFileOperationItems(operation!.id, {
+        status: group!.statuses,
         offset,
         limit: PAGE_SIZE,
       }),

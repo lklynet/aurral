@@ -1,11 +1,22 @@
 import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { queryKeys } from "../queryClient";
 import { createShareLink, getShareAvailability } from "../utils/api/endpoints/shareLinks";
-import { buildSharePayload, buildShareUrl, shareLink } from "../utils/shareLink";
+import type { ApiError } from "../utils/api/core";
+import type {
+  ShareAvailabilityResponse,
+  ShareLinkResponse,
+} from "../../../backend/routes/shareLinks.ts";
+import {
+  buildSharePayload,
+  buildShareUrl,
+  shareLink,
+  type ShareItem,
+  type ShareKind,
+} from "../utils/shareLink";
 import { formatDateTime } from "../utils/dateTime.ts";
 import { DotLoader } from "./DotLoader";
 import PillToggle from "./PillToggle";
@@ -20,10 +31,12 @@ const EXPIRY_OPTIONS = [
 
 const KIND_LABELS = { artist: "artist", album: "album", track: "track" };
 
-const errorMessage = (error, fallback) =>
+type ShareRequest = { item: ShareItem; label?: string };
+
+const errorMessage = (error: ApiError | null, fallback: string) =>
   error?.response?.data?.message || error?.response?.data?.error || fallback;
 
-function libraryRefs(item) {
+function libraryRefs(item: ShareItem | undefined) {
   return Object.fromEntries(
     [
       "kind",
@@ -39,10 +52,18 @@ function libraryRefs(item) {
   );
 }
 
-const trackCountLabel = (kind, count) =>
+const trackCountLabel = (kind: ShareKind, count: number) =>
   kind === "track" ? "this track" : `${count} ${count === 1 ? "track" : "tracks"}`;
 
-function ListenHint({ kind, availability, onRetry }) {
+function ListenHint({
+  kind,
+  availability,
+  onRetry,
+}: {
+  kind: ShareKind;
+  availability: UseQueryResult<ShareAvailabilityResponse>;
+  onRetry: () => void;
+}) {
   if (availability.isPending) {
     return <p className="settings-page__hint">Checking your Library…</p>;
   }
@@ -77,7 +98,13 @@ function ListenHint({ kind, availability, onRetry }) {
   );
 }
 
-export function ShareModal({ request, onClose }) {
+export function ShareModal({
+  request,
+  onClose,
+}: {
+  request: ShareRequest | null;
+  onClose: () => void;
+}) {
   const open = Boolean(request);
   const item = request?.item;
   const label = request?.label || "";
@@ -88,7 +115,7 @@ export function ShareModal({ request, onClose }) {
   const [listen, setListen] = useState(false);
   const [allowDownload, setAllowDownload] = useState(false);
   const [expiresIn, setExpiresIn] = useState("7d");
-  const [created, setCreated] = useState(null);
+  const [created, setCreated] = useState<ShareLinkResponse | null>(null);
   const ids = { listen: useId(), download: useId(), expires: useId() };
   const refs = libraryRefs(item);
 
@@ -125,7 +152,7 @@ export function ShareModal({ request, onClose }) {
     resetCreate();
   }, [open, request, resetCreate]);
 
-  const sendLink = async (url, successMessage) => {
+  const sendLink = async (url: string, successMessage: string) => {
     try {
       const outcome = await shareLink(url, label);
       if (outcome === "copied") showSuccess(successMessage);

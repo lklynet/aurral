@@ -1,4 +1,5 @@
 import { Download } from "lucide-react";
+import type { useLibraryDestination } from "../hooks/useLibraryDestination";
 
 const ACTIVE_ALBUM_STATUSES = new Set([
   "adding",
@@ -64,14 +65,18 @@ type AlbumRequestResult = {
   albumStatus?: { status?: string } | null;
 };
 
-export const buildAlbumAddAction = (_search: boolean, destination = {}) => ({
+type AlbumDestination = Partial<ReturnType<typeof useLibraryDestination>>;
+
+export const buildAlbumAddAction = (_search: boolean, destination: AlbumDestination = {}) => ({
   label: "Download album",
   icon: Download,
   destination,
 });
 
-export const getAlbumAddAction = (input = {}, destination = {}) =>
-  buildAlbumAddAction(shouldTriggerAlbumSearch(input), destination);
+export const getAlbumAddAction = (
+  input: Parameters<typeof shouldTriggerAlbumSearch>[0] = {},
+  destination: AlbumDestination = {},
+) => buildAlbumAddAction(shouldTriggerAlbumSearch(input), destination);
 
 export const isAlbumCompleteInLibrary = ({
   status = "",
@@ -79,7 +84,10 @@ export const isAlbumCompleteInLibrary = ({
   percentOfTracks = 0,
   sizeOnDisk = 0,
   trackFileCount = 0,
-} = {}) =>
+}: Pick<
+  NonNullable<Parameters<typeof shouldTriggerAlbumSearch>[0]>,
+  "status" | "hasFiles" | "percentOfTracks" | "sizeOnDisk" | "trackFileCount"
+> = {}) =>
   hasFiles ||
   status === "available" ||
   status === "added" ||

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type MouseEvent } from "react";
 import { getArtistCover } from "../utils/api/endpoints/artists.ts";
 import { normalizeMediaUrl, withImageCacheBust } from "../utils/normalizeMediaUrl";
 import { useArtistPreviewPlayback } from "../hooks/useArtistPreviewPlayback";
@@ -7,13 +7,13 @@ import { Music, Play } from "lucide-react";
 import { DotLoader } from "./DotLoader";
 import Tooltip from "./Tooltip";
 import ArtworkImage from "./ArtworkImage";
-const queue = [];
+const queue: (() => Promise<void>)[] = [];
 let active = 0;
 const MAX_CONCURRENT = 4;
 
 const processQueue = () => {
   if (active >= MAX_CONCURRENT || queue.length === 0) return;
-  const next = queue.shift();
+  const next = queue.shift()!;
   active++;
   next().finally(() => {
     active--;
@@ -21,8 +21,8 @@ const processQueue = () => {
   });
 };
 
-const scheduleFetch = (fn, signal) => {
-  return new Promise((resolve, reject) => {
+const scheduleFetch = <T,>(fn: () => Promise<T>, signal?: AbortSignal) => {
+  return new Promise<T>((resolve, reject) => {
     const entry = async () => {
       try {
         const res = await fn();
@@ -47,6 +47,22 @@ const scheduleFetch = (fn, signal) => {
   });
 };
 
+type ArtistImageProps = {
+  mbid?: string | null;
+  src?: string | null;
+  alt?: string;
+  artistName?: string | null;
+  className?: string;
+  showLoading?: boolean;
+  enableBackendFallback?: boolean;
+  enablePreviewPlayback?: boolean;
+  isInLibrary?: boolean;
+  loading?: "eager" | "lazy";
+  thumbnail?: boolean;
+  sizes?: string;
+  onImageLoad?: (src: string | null | undefined) => void;
+};
+
 const ArtistImage = ({
   mbid,
   src,
@@ -61,8 +77,10 @@ const ArtistImage = ({
   thumbnail = true,
   sizes = "200px",
   onImageLoad,
-}) => {
-  const [currentSrc, setCurrentSrc] = useState(() => normalizeMediaUrl(src));
+}: ArtistImageProps) => {
+  const [currentSrc, setCurrentSrc] = useState<string | null | undefined>(() =>
+    normalizeMediaUrl(src),
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [fallbackVisible, setFallbackVisible] = useState(
@@ -70,11 +88,11 @@ const ArtistImage = ({
   );
   const fetchingRef = useRef(false);
   const triedBackendFallbackRef = useRef(false);
-  const failedSourceRef = useRef(null);
-  const visibleMbidRef = useRef(fallbackVisible ? mbid : null);
-  const imgRef = useRef(null);
-  const fallbackTargetRef = useRef(null);
-  const abortRef = useRef(null);
+  const failedSourceRef = useRef<string | null | undefined>(null);
+  const visibleMbidRef = useRef<string | null | undefined>(fallbackVisible ? mbid : null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const fallbackTargetRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const { canPlayArtistPreview, isArtistPreviewActive, isLoadingPreview, playArtistPreview } =
     useArtistPreviewPlayback({
       mbid,
@@ -84,7 +102,12 @@ const ArtistImage = ({
     });
 
   const fetchBackendCover = useCallback(
-    async (mbidToFetch, nameForCover, signal, refresh = false) => {
+    async (
+      mbidToFetch: string,
+      nameForCover: string | null | undefined,
+      signal: AbortSignal | undefined,
+      refresh = false,
+    ) => {
       if (!mbidToFetch || fetchingRef.current) {
         return;
       }
@@ -98,7 +121,9 @@ const ArtistImage = ({
             () =>
               Promise.race([
                 getArtistCover(mbidToFetch, nameForCover, forceRefresh),
-                new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000)),
+                new Promise<never>((_, reject) =>
+                  setTimeout(() => reject(new Error("Timeout")), 5000),
+                ),
               ]),
             signal,
           );
@@ -256,7 +281,7 @@ const ArtistImage = ({
     setIsLoading(false);
   };
 
-  const handlePreviewClick = async (event) => {
+  const handlePreviewClick = async (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
     await playArtistPreview();

@@ -1,13 +1,40 @@
-import { forwardRef, type ForwardedRef } from "react";
-import { MoreVertical, Plus, RefreshCw } from "lucide-react";
+import {
+  forwardRef,
+  type ComponentPropsWithoutRef,
+  type ForwardedRef,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
+import { MoreVertical, Plus, RefreshCw, type LucideIcon } from "lucide-react";
 import Tooltip from "./Tooltip";
 import TooltipButton from "./TooltipButton";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import { DotLoader } from "./DotLoader";
-import { LibraryItemMenu } from "./LibraryItemMenu";
+import { LibraryItemMenu, type LibraryMenuItem } from "./LibraryItemMenu";
 import { getAddToManagerLabel } from "../utils/libraryDestination";
+import type { useLibraryDestination } from "../hooks/useLibraryDestination";
 
-const keepActivationKeysLocal = (event) => {
+export type LibraryDestination = ReturnType<typeof useLibraryDestination>;
+
+export type AddActionButtonProps = ComponentPropsWithoutRef<"button"> & {
+  label?: string | null;
+  destination?: Partial<LibraryDestination> | null;
+  onAdd?: (managedBy: string, event: MouseEvent<HTMLButtonElement>) => void;
+  items?: LibraryMenuItem[] | null;
+  ownerConflict?: { message: string } | null;
+  icon?: LucideIcon;
+  isLoading?: boolean;
+  busy?: boolean;
+  loadingLabel?: string | null;
+  disabled?: boolean;
+  showLabel?: boolean;
+  className?: string;
+  children?: ReactNode;
+  type?: "button" | "submit" | "reset";
+};
+
+const keepActivationKeysLocal = (event: KeyboardEvent) => {
   if (event.key === "Enter" || event.key === " ") event.stopPropagation();
 };
 
@@ -28,7 +55,7 @@ const AddActionButton = forwardRef(function AddActionButton(
     children,
     type = "button",
     ...buttonProps
-  },
+  }: AddActionButtonProps,
   ref: ForwardedRef<HTMLButtonElement>,
 ) {
   if (ownerConflict) {
@@ -62,7 +89,7 @@ const AddActionButton = forwardRef(function AddActionButton(
   const isDisabled = disabled || isLoading || (destination ? !destination.ready : false);
   const handleClick =
     onAdd && primary
-      ? (event) => {
+      ? (event: MouseEvent<HTMLButtonElement>) => {
           event.stopPropagation();
           onAdd(primary, event);
         }

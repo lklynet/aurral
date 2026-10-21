@@ -1,6 +1,14 @@
 import ArtworkImage from "./ArtworkImage";
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEventHandler,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { ArrowDown, ArrowUp, Heart, Pause, Play } from "lucide-react";
+import type { To } from "react-router";
 import { LibraryItemMenu } from "./LibraryItemMenu";
 import Tooltip from "./Tooltip";
 import TooltipButton from "./TooltipButton";
@@ -11,9 +19,69 @@ const SORTABLE_HEADINGS = {
   title: "song",
   artist: "artist",
   album: "album",
+} as const;
+
+type SortableHeading = keyof typeof SORTABLE_HEADINGS;
+type SortKey = (typeof SORTABLE_HEADINGS)[SortableHeading];
+
+type TrackSort = {
+  key: string;
+  direction: "asc" | "desc";
+  onSort: (key: SortKey) => void;
 };
 
-export function FavoriteButton({ active, pending, label, onClick, className = "" }) {
+type TrackSelection = {
+  allSelected: boolean;
+  onToggleAll: ChangeEventHandler<HTMLInputElement>;
+};
+
+type TrackLinkField = {
+  label?: string | null;
+  to?: To;
+  state?: unknown;
+  onOpen?: () => void;
+};
+
+type TrackCoverField = TrackLinkField & { src?: string | null };
+
+export type TrackListRow = {
+  key: string | number;
+  title: string;
+  number: ReactNode;
+  time?: ReactNode;
+  timeMissing?: boolean;
+  badge?: ReactNode;
+  subtitle?: ReactNode;
+  trailing?: ReactNode;
+  active?: boolean;
+  missing?: boolean;
+  playing?: boolean;
+  loading?: boolean;
+  selected?: boolean;
+  onToggleSelected?: ChangeEventHandler<HTMLInputElement>;
+  onPlay?: () => void;
+  playDisabled?: boolean;
+  cover?: TrackCoverField | null;
+  artist?: TrackLinkField | null;
+  album?: TrackLinkField | null;
+  menu?: Omit<ComponentProps<typeof LibraryItemMenu>, "label">;
+  menuElement?: ReactNode;
+  favorite?: { active: boolean; pending: boolean; onToggle: () => void } | null;
+};
+
+export function FavoriteButton({
+  active,
+  pending,
+  label,
+  onClick,
+  className = "",
+}: {
+  active: boolean;
+  pending: boolean;
+  label: string;
+  onClick: () => void;
+  className?: string;
+}) {
   return (
     <TooltipButton
       className={"native-library-favorite " + className + (active ? " is-active" : "")}
@@ -28,7 +96,7 @@ export function FavoriteButton({ active, pending, label, onClick, className = ""
   );
 }
 
-function PlayingIndicator({ row }) {
+function PlayingIndicator({ row }: { row: Pick<TrackListRow, "loading" | "playing"> }) {
   const state = row.loading ? "loading" : row.playing ? "playing" : "paused";
   return (
     <span className={`track-playing-indicator is-${state}`} aria-hidden="true">
@@ -39,7 +107,13 @@ function PlayingIndicator({ row }) {
   );
 }
 
-function TrackCover({ cover, indicator = null }) {
+function TrackCover({
+  cover,
+  indicator = null,
+}: {
+  cover?: TrackCoverField | null;
+  indicator?: ReactNode;
+}) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [cover?.src]);
   const label = cover?.label || "";
@@ -95,7 +169,7 @@ function TrackCover({ cover, indicator = null }) {
   );
 }
 
-function TrackLink({ link, className }) {
+function TrackLink({ link, className }: { link?: TrackLinkField | null; className: string }) {
   if (!link?.label) return <span className={`native-library-track__link ${className}`} />;
   if (link.to) {
     return (
@@ -122,7 +196,17 @@ function TrackLink({ link, className }) {
   );
 }
 
-function HeadingCell({ id, label, sort, className = "" }) {
+function HeadingCell({
+  id,
+  label,
+  sort,
+  className = "",
+}: {
+  id: SortableHeading;
+  label: string;
+  sort: TrackSort | null;
+  className?: string;
+}) {
   const sortKey = SORTABLE_HEADINGS[id];
   if (!sort || !sortKey) return <span className={className}>{label}</span>;
   const active = sort.key === sortKey;
@@ -151,8 +235,15 @@ export function TrackList({
   sort = null,
   selection = null,
   highlightKey = null,
+}: {
+  label: string;
+  rows: TrackListRow[];
+  variant?: "collection" | "release";
+  sort?: TrackSort | null;
+  selection?: TrackSelection | null;
+  highlightKey?: string | number | null;
 }) {
-  const rowRefs = useRef({});
+  const rowRefs = useRef<Record<string, HTMLDivElement>>({});
   const isCollection = variant === "collection";
 
   useEffect(() => {

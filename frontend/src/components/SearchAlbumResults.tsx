@@ -2,32 +2,55 @@ import ArtworkImage from "./ArtworkImage";
 import { useState } from "react";
 import { Music } from "lucide-react";
 import SearchLibraryCheck from "./SearchLibraryCheck";
-import AddActionButton from "./AddActionButton";
+import AddActionButton, { type LibraryDestination } from "./AddActionButton";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { getAlbumAddAction, isAlbumCompleteInLibrary } from "../utils/albumAddAction";
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
 import { OptionalLink } from "./RouteLink";
 import Tooltip from "./Tooltip";
 
-function isAlbumActionDisabled(album, isPending, canAddAlbum) {
+export type SearchAlbum = {
+  id: string;
+  title: string;
+  status?: string | null;
+  artistMbid?: string | null;
+  artistName?: string | null;
+  coverUrl?: string | null;
+  releaseDate?: string | null;
+  primaryType?: string | null;
+  secondaryTypes?: string[] | null;
+  ownerConflict?: { message: string } | null;
+};
+
+type SearchAlbumResultsProps = {
+  albums: SearchAlbum[];
+  albumCovers: Record<string, string | undefined>;
+  canAddAlbum: boolean;
+  pendingAlbumIds: Record<string, boolean | undefined>;
+  onAlbumAction: (album: SearchAlbum, managedBy: string) => void;
+  libraryDestination: LibraryDestination;
+  viewMode?: "grid" | "list";
+};
+
+function isAlbumActionDisabled(album: SearchAlbum, isPending: boolean, canAddAlbum: boolean) {
   if (!canAddAlbum) return true;
   return isPending || ["searching", "downloading", "processing"].includes(album.status);
 }
 
-function getReleaseYear(releaseDate) {
+function getReleaseYear(releaseDate: string | null | undefined) {
   const value = String(releaseDate || "").trim();
   if (!value) return null;
   return value.split("-")[0] || null;
 }
 
-function getReleaseTypeLabel(album) {
+function getReleaseTypeLabel(album: SearchAlbum) {
   const primary = album.primaryType || null;
   const secondary = Array.isArray(album.secondaryTypes) ? album.secondaryTypes.filter(Boolean) : [];
   const types = [primary, ...secondary].filter(Boolean);
   return types.length ? types.join(" · ") : null;
 }
 
-function AlbumCover({ src, alt }) {
+function AlbumCover({ src, alt }: { src?: string | null; alt: string }) {
   const [failed, setFailed] = useState(false);
 
   if (!src || failed) {
@@ -49,7 +72,19 @@ function AlbumCover({ src, alt }) {
   );
 }
 
-function AlbumAction({ album, isPending, canAddAlbum, onAlbumAction, libraryDestination }) {
+function AlbumAction({
+  album,
+  isPending,
+  canAddAlbum,
+  onAlbumAction,
+  libraryDestination,
+}: {
+  album: SearchAlbum;
+  isPending: boolean;
+  canAddAlbum: boolean;
+  onAlbumAction: SearchAlbumResultsProps["onAlbumAction"];
+  libraryDestination: LibraryDestination;
+}) {
   const { isAlbumDownloading } = useActiveDownloads();
   const downloading = isPending || isAlbumDownloading(album.id);
   const actionDisabled = isAlbumActionDisabled(album, downloading, canAddAlbum);
@@ -88,8 +123,8 @@ function SearchAlbumResults({
   onAlbumAction,
   libraryDestination,
   viewMode = "grid",
-}) {
-  const albumLink = (album) => {
+}: SearchAlbumResultsProps) {
+  const albumLink = (album: SearchAlbum) => {
     const target = getReleaseNavigationTarget({ ...album, type: "album" });
     if (target) return { to: target.pathname, state: target.state };
     if (album.artistMbid) {
@@ -101,12 +136,12 @@ function SearchAlbumResults({
     return null;
   };
 
-  const artistLink = (album) =>
+  const artistLink = (album: SearchAlbum) =>
     album.artistMbid
       ? { to: `/artist/${album.artistMbid}`, state: { artistName: album.artistName } }
       : null;
 
-  const renderAlbum = (album) => {
+  const renderAlbum = (album: SearchAlbum) => {
     const isPending = !!pendingAlbumIds[album.id];
     const coverSrc = albumCovers[album.id] || album.coverUrl;
     const releaseYear = getReleaseYear(album.releaseDate);
