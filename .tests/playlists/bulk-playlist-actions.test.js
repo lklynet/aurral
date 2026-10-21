@@ -37,7 +37,12 @@ beforeEach(() => {
   resetDatabase(db);
   config.invalidateFlowPlaylistConfigCache();
   downloadTracker.clearAll();
-  dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({
+    integrations: {},
+    flows: [],
+    sharedPlaylists: [],
+    playlistArtwork: { style: "aurral" },
+  });
   honker.getPlaylistOperationQueue();
   db.prepare("DELETE FROM _honker_live").run();
 });

@@ -461,7 +461,8 @@ test("terminal library scan outcomes clear the persistent registry", () => {
   }
 });
 
-test("library file watcher debounces library changes and ignores generated folders", async () => {
+test("library file watcher debounces library changes and ignores generated folders", () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   let onChange;
   let scheduled = 0;
   let changedRoots = [];
@@ -482,14 +483,14 @@ test("library file watcher debounces library changes and ignores generated folde
 
   onChange("change", "Artist/Album/track.flac");
   onChange("change", "Artist/Album/track.flac");
-  await new Promise((resolve) => setTimeout(resolve, 15));
+  vi.runAllTimers();
   assert.equal(scheduled, 1);
   assert.deepEqual(changedRoots, [process.cwd()]);
   assert.deepEqual(changedPaths, [path.join(process.cwd(), "Artist/Album/track.flac")]);
 
   onChange("change", "aurral-weekly-flow/flow/track.flac");
   onChange("change", "_staging/track.flac");
-  await new Promise((resolve) => setTimeout(resolve, 15));
+  vi.runAllTimers();
   assert.equal(scheduled, 1);
 
   watcher.close();
@@ -530,7 +531,8 @@ test("library watcher creates roots without probing the filesystem on the main t
   assert.deepEqual(roots, ["/slow-root"]);
 });
 
-test("library watcher reports asynchronous errors and ignores callbacks after close", async () => {
+test("library watcher reports asynchronous errors and ignores callbacks after close", () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const errors = [];
   let changed;
   let closed = 0;
@@ -554,12 +556,13 @@ test("library watcher reports asynchronous errors and ignores callbacks after cl
   watcher.close();
   changed("change", "late.flac");
   child.emit("error", new Error("Late error"));
-  await new Promise((resolve) => setTimeout(resolve, 15));
+  vi.runAllTimers();
   assert.equal(errors.length, 1);
   assert.equal(closed, 1);
 });
 
-test("library watcher scans the resolved local root received from its child", async () => {
+test("library watcher scans the resolved local root received from its child", () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   let changed;
   const localRoot = path.resolve("/mapped-library");
   const watched = [];
@@ -577,7 +580,7 @@ test("library watcher scans the resolved local root received from its child", as
     onChange: (roots, paths) => scanned.push({ roots, paths }),
   });
   changed("change", "Artist/track.flac", localRoot);
-  await new Promise((resolve) => setTimeout(resolve, 15));
+  vi.runAllTimers();
   watcher.close();
   assert.equal(watched[0].root, "/remote-library");
   assert.deepEqual(watched[0].options.pathMappings, [
@@ -618,7 +621,8 @@ function createMappedWatcherTest(t) {
 }
 
 for (const firstReady of [0, 1]) {
-  test(`library watcher keeps the first ready local-root owner (ready index ${firstReady})`, async (t) => {
+  test(`library watcher keeps the first ready local-root owner (ready index ${firstReady})`, (t) => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const { localRoot, watcher, children, scanned, errors } = createMappedWatcherTest(t);
     const owner = children[firstReady];
     const duplicate = children[1 - firstReady];
@@ -632,7 +636,7 @@ for (const firstReady of [0, 1]) {
     duplicate.change("duplicate.flac");
     duplicate.emit("error", new Error("Late duplicate error"));
     owner.change("kept.flac");
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    vi.runAllTimers();
     assert.deepEqual(scanned, [{ roots: [localRoot], paths: [path.join(localRoot, "kept.flac")] }]);
     assert.equal(errors.length, 0);
     watcher.close();
@@ -643,7 +647,7 @@ for (const firstReady of [0, 1]) {
     );
     owner.emit("ready", localRoot);
     owner.change("after-close.flac");
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    vi.runAllTimers();
     assert.equal(scanned.length, 1);
   });
 }

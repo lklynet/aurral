@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 import { test } from "vite-plus/test";
 import honker from "@russellthehippo/honker-node";
 
@@ -17,13 +16,19 @@ test(
     const scheduler = db.scheduler();
     const controller = new AbortController();
 
-    scheduler.tick = () => [];
+    const ticked = Promise.withResolvers();
+    let ticks = 0;
+    scheduler.tick = () => {
+      ticks += 1;
+      if (ticks === 30) ticked.resolve();
+      return [];
+    };
     scheduler.soonest = () => Date.now() / 1000 + 0.001;
     const running = scheduler.run("test-worker", controller.signal);
     let final;
 
     try {
-      await delay(150);
+      await ticked.promise;
       final = taskCount();
     } finally {
       controller.abort();

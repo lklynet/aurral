@@ -9,6 +9,15 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
 
+vi.mock("../../backend/services/apiClients/rateLimiter.js", async (importOriginal) => {
+  const { default: createRateLimiter } = await importOriginal();
+  return { default: (_minTime, options) => createRateLimiter(0, options) };
+});
+vi.mock("../../backend/services/metadataProviderBudget.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  reserveMetadataProviderRequest: () => 0,
+}));
+
 const [
   isolatedState,
   { db },

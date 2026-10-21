@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 
 import { listenbrainzRequest } from "../../backend/services/apiClients/listenbrainz.js";
 
@@ -28,10 +28,15 @@ test("a ListenBrainz rate limit holds every request until the window resets, the
     );
   };
 
-  const [first, second] = await Promise.all([
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+  });
+  const requests = Promise.all([
     listenbrainzRequest("/1/stats/sitewide/artists", { count: 1, range: "week" }),
     listenbrainzRequest("/1/stats/sitewide/artists", { count: 2, range: "week" }),
   ]);
+  await vi.runAllTimersAsync();
+  const [first, second] = await requests;
 
   assert.equal(first.payload.artists[0].artist_name, "count 1");
   assert.equal(second.payload.artists[0].artist_name, "count 2");

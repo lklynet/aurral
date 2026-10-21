@@ -1,4 +1,4 @@
-import { test, afterAll, vi } from "vite-plus/test";
+import { test, beforeEach, afterEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import axios from "../../lib/axiosFetch.js";
 
@@ -14,8 +14,18 @@ const [isolatedState, { dbOps }, { resolveTrackSearchContext }] = await setupIso
   "backend/services/downloadJobs/trackSearchContext.js",
 );
 
+// Metadata's rate limit runs on fake time that moves to each next timer. The
+// rate limit remembers that time between tests, so the clock never goes back.
+let now = Date.now();
 afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
+});
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], now });
+  vi.setTimerTickMode("nextTimerAsync");
+});
+afterEach(() => {
+  now = Date.now();
 });
 
 test("BrainzMash release-track IDs are not treated as recording IDs, and merged recording IDs are kept", () => {

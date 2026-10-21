@@ -313,7 +313,7 @@ test("approving a reviewed download queues its playlist sync instead of waiting 
   ]);
 });
 
-test("approving a library track does not wait for another library track's download step", async () => {
+test("approving a library track does not wait for another library track's download step", async (t) => {
   const sourcePath = path.join(isolatedState.baseDir, "review", "Library review.flac");
   await fs.mkdir(path.dirname(sourcePath), { recursive: true });
   await fs.writeFile(sourcePath, "reviewed audio");
@@ -328,6 +328,7 @@ test("approving a library track does not wait for another library track's downlo
   downloadTracker.setBlocked(reviewedJobId, "blocked-duration-mismatch", sourcePath);
   const stepStarted = Promise.withResolvers();
   const releaseStep = Promise.withResolvers();
+  t.onTestFinished(() => releaseStep.resolve());
   const step = processPipelineJob(
     {
       jobId: searchingJobId,
@@ -346,11 +347,8 @@ test("approving a library track does not wait for another library track's downlo
 
   try {
     await stepStarted.promise;
-    const response = await Promise.race([
-      fetch(`${baseUrl}/jobs/${reviewedJobId}/approve`, { method: "POST" }),
-      new Promise((resolve) => setTimeout(() => resolve(null), 1000)),
-    ]);
-    assert.equal(response?.status, 200);
+    const response = await fetch(`${baseUrl}/jobs/${reviewedJobId}/approve`, { method: "POST" });
+    assert.equal(response.status, 200);
     assert.equal(downloadTracker.getJob(reviewedJobId)?.status, "done");
     assert.equal(
       await fs.readFile(downloadTracker.getJob(reviewedJobId).finalPath, "utf8"),
@@ -495,16 +493,15 @@ test("clearing all jobs waits for an in-flight playlist import to finish", async
 
   const clearPromise = fetch(`${baseUrl}/jobs/all`, { method: "DELETE" });
   let concurrentJobId;
+  let watching = true;
   try {
     const state = await Promise.race([
       (async () => {
-        const deadline = Date.now() + 2000;
-        while (Date.now() < deadline) {
+        while (watching) {
           if (!isPipelinePayloadActive(payload)) return "cancelled";
           if (!downloadTracker.getJob(jobId)) return "deleted";
-          await new Promise((resolve) => setTimeout(resolve, 5));
+          await new Promise((resolve) => setImmediate(resolve));
         }
-        return "timeout";
       })(),
       clearPromise.then(() => "responded"),
     ]);
@@ -516,6 +513,7 @@ test("clearing all jobs waits for an in-flight playlist import to finish", async
       "created-during-clear",
     );
   } finally {
+    watching = false;
     releaseCommit();
     await Promise.allSettled([commitPromise, clearPromise]);
   }

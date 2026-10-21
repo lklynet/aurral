@@ -4,6 +4,11 @@ import assert from "node:assert/strict";
 import { NavidromeClient } from "../backend/services/navidrome.js";
 import { createFakeNavidrome } from "./helpers/fakeNavidrome.js";
 
+vi.mock("node:timers/promises", async (importOriginal) => ({
+  ...(await importOriginal()),
+  setTimeout: (delay, value) => new Promise((resolve) => setTimeout(resolve, delay, value)),
+}));
+
 const jsonResponse = (value) =>
   new Response(JSON.stringify(value), {
     headers: { "content-type": "application/json" },
@@ -84,15 +89,26 @@ test("retries Navidrome rate limits", async () => {
 
 test("retries transient Navidrome connection failures", async () => {
   const originalFetch = globalThis.fetch;
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  let firstAttempt;
+  const attempted = new Promise((resolve) => {
+    firstAttempt = resolve;
+  });
   let attempts = 0;
   globalThis.fetch = async () => {
     attempts += 1;
-    if (attempts === 1) throw new TypeError("fetch failed");
+    if (attempts === 1) {
+      firstAttempt();
+      throw new TypeError("fetch failed");
+    }
     return jsonResponse({ "subsonic-response": { status: "ok" } });
   };
 
   try {
-    await new NavidromeClient("http://navidrome.test", "user", "password").ping();
+    const pinging = new NavidromeClient("http://navidrome.test", "user", "password").ping();
+    await attempted;
+    await vi.advanceTimersToNextTimerAsync();
+    await pinging;
   } finally {
     globalThis.fetch = originalFetch;
   }

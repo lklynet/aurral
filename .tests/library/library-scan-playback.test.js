@@ -2,7 +2,6 @@ import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { access, copyFile, mkdir, rm, writeFile } from "node:fs/promises";
-import { spawnSync } from "node:child_process";
 import { once } from "node:events";
 import {
   setupIsolatedBackend,
@@ -11,8 +10,18 @@ import {
 } from "../helpers/backendTestHarness.js";
 import { callFromProcessesWhileHonkerLocked } from "../helpers/playlistManagerCallers.js";
 
+vi.mock("../../backend/services/apiClients/rateLimiter.js", async (importOriginal) => {
+  const { default: createRateLimiter } = await importOriginal();
+  return { default: (_minTime, options) => createRateLimiter(0, options) };
+});
+vi.mock("../../backend/services/metadataProviderBudget.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  reserveMetadataProviderRequest: () => 0,
+}));
+
 const previousGroup = process.env.AURRAL_BACKGROUND_WORKER_GROUP;
 process.env.AURRAL_BACKGROUND_WORKER_GROUP = "library";
+process.env.AURRAL_HONKER_WATCHER_POLL_MS = "1";
 const [
   state,
   { db },
@@ -185,31 +194,40 @@ function setRunAt(jobId, runAt) {
   tx.commit();
 }
 
+function riffChunk(id, body) {
+  const header = Buffer.alloc(8);
+  header.write(id, 0, "latin1");
+  header.writeUInt32LE(body.length, 4);
+  return Buffer.concat([header, body, Buffer.alloc(body.length % 2)]);
+}
+
 async function makeTrack(filePath, title = "Song", artist = "Scan Artist") {
+  const stereo16BitPcm = Buffer.alloc(16);
+  stereo16BitPcm.writeUInt16LE(1, 0);
+  stereo16BitPcm.writeUInt16LE(2, 2);
+  stereo16BitPcm.writeUInt32LE(44100, 4);
+  stereo16BitPcm.writeUInt32LE(44100 * 4, 8);
+  stereo16BitPcm.writeUInt16LE(4, 12);
+  stereo16BitPcm.writeUInt16LE(16, 14);
+  const tags = [
+    ["IART", artist],
+    ["INAM", title],
+    ["IPRD", "Album"],
+  ].map(([id, text]) => riffChunk(id, Buffer.from(`${text}\0`, "utf8")));
+  const silence = Buffer.alloc(2205 * 4);
   await mkdir(path.dirname(filePath), { recursive: true });
-  const generated = spawnSync(
-    "ffmpeg",
-    [
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-f",
-      "lavfi",
-      "-i",
-      "anullsrc",
-      "-t",
-      "0.05",
-      "-metadata",
-      `artist=${artist}`,
-      "-metadata",
-      "album=Album",
-      "-metadata",
-      `title=${title}`,
-      filePath,
-    ],
-    { encoding: "utf8" },
+  await writeFile(
+    filePath,
+    riffChunk(
+      "RIFF",
+      Buffer.concat([
+        Buffer.from("WAVE", "latin1"),
+        riffChunk("fmt ", stereo16BitPcm),
+        riffChunk("LIST", Buffer.concat([Buffer.from("INFO", "latin1"), ...tags])),
+        riffChunk("data", silence),
+      ]),
+    ),
   );
-  assert.equal(generated.status, 0, generated.stderr);
 }
 
 async function libraryScanRunner(t) {
@@ -858,7 +876,7 @@ test("deleting a Library track tells servers its album folder", { timeout: 15000
   let ready;
   const watcher = createLibraryFileWatcher({
     roots: [downloadRoot],
-    debounceMs: 300,
+    debounceMs: 0,
     watchImpl: (...args) => {
       const child = createIsolatedLibraryWatcher(...args);
       ready = once(child, "ready");

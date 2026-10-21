@@ -41,6 +41,7 @@ test(
       findGroupsWithWork: honker.listBackgroundGroupsWithWork,
       getWorkRevision: getDatabaseRevision,
       getNextWorkAt: honker.getNextBackgroundWorkAt,
+      demandPollMs: 50,
       onMessage(message, group) {
         if (message.type === "job-started") started.resolve(message);
         if (message.type === "job-finished") finished.resolve(message);

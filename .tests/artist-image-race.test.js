@@ -6,6 +6,7 @@ import {
   createMockHttpServer,
   setupIsolatedBackend,
 } from "./helpers/backendTestHarness.js";
+import { useFakeClock } from "./helpers/fakeClock.js";
 
 const [
   state,
@@ -24,6 +25,8 @@ const [
   "backend/routes/artists/handlers/stream.js",
   "backend/middleware/auth.js",
 );
+
+useFakeClock();
 
 const originalFetch = globalThis.fetch;
 const previousMetadataUrl = process.env.BRAINZMASH_BASE_URL;

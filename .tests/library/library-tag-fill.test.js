@@ -1,9 +1,7 @@
-import { test, beforeEach, afterAll } from "vite-plus/test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { copyFile, link, mkdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
 import { parseFile } from "music-metadata";
 
 import {
@@ -12,8 +10,16 @@ import {
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
+import { writeFlacFixture as makeTrack } from "../helpers/flacFixture.js";
 
-const execFileAsync = promisify(execFile);
+vi.mock("../../backend/services/apiClients/rateLimiter.js", async (importOriginal) => {
+  const { default: createRateLimiter } = await importOriginal();
+  return { default: (_minTime, options) => createRateLimiter(0, options) };
+});
+vi.mock("../../backend/services/metadataProviderBudget.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  reserveMetadataProviderRequest: () => 0,
+}));
 
 const [
   isolatedState,
@@ -60,7 +66,6 @@ const edition = (id, titles, { lengths = {}, artists = {} } = {}) => ({
     mediumnumber: 1,
   })),
 });
-let tone = 400;
 let sources = 0;
 
 const album = {
@@ -173,24 +178,6 @@ const metadataServer = await createMockHttpServer((request, response) => {
   response.writeHead(404);
   response.end(JSON.stringify({ error: "not found" }));
 });
-
-async function makeTrack(filePath, tags = {}) {
-  await mkdir(path.dirname(filePath), { recursive: true });
-  const args = [
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-nostdin",
-    "-y",
-    "-f",
-    "lavfi",
-    "-i",
-    `sine=frequency=${(tone += 13)}:duration=0.2`,
-  ];
-  for (const [key, value] of Object.entries(tags)) args.push("-metadata", `${key}=${value}`);
-  await execFileAsync("ffmpeg", [...args, filePath]);
-  return filePath;
-}
 
 async function runUntilSettled(id) {
   for (let slice = 0; slice < 100; slice += 1) {

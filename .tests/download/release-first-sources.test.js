@@ -1,4 +1,4 @@
-import { test, beforeEach, afterAll, vi } from "vite-plus/test";
+import { test, beforeEach, afterEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { access, mkdir } from "node:fs/promises";
@@ -55,8 +55,17 @@ const [
   "backend/services/downloadJobs/blockedJobReview.js",
 );
 
+// Metadata's retries and rate limit run on fake time that moves to each
+// next timer. The rate limit remembers that time between tests, so the
+// clock never goes back.
+let now = Date.now();
 afterAll(() => cleanupIsolatedState(state));
+afterEach(() => {
+  now = Date.now();
+});
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], now });
+  vi.setTimerTickMode("nextTimerAsync");
   resetDatabase(db);
   // A released track wakes the worker, and a queued step would start the
   // pipeline worker; these tests drive both themselves.
@@ -1023,9 +1032,9 @@ test("an album attempt whose release cannot be read when it searches gives every
     assert.notEqual(downloadTracker.getJob(id).error, NO_RELEASE_REASON);
   }
   assert.equal(downloadWorker._getNextReadyPendingJob(), null);
-  vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 61 * 1000 });
+  vi.setSystemTime(Date.now() + 61 * 1000);
   assert.ok(ids.includes(downloadWorker._getNextReadyPendingJob()?.id));
-  vi.useRealTimers();
+  vi.setSystemTime(Date.now() - 61 * 1000);
 
   down = false;
   clearApiCaches();

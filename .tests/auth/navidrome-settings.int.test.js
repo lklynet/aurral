@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter, on } from "node:events";
 import http from "node:http";
 import path from "node:path";
 import { test, beforeAll, afterAll } from "vite-plus/test";
@@ -23,6 +24,7 @@ let authToken;
 let navidrome;
 let navidromeUrl;
 const navidromeRequests = [];
+const navidromeEvents = new EventEmitter();
 
 async function apiFetch(path, options = {}) {
   const response = await fetch(`http://127.0.0.1:${aurral.port}${path}`, {
@@ -43,28 +45,14 @@ async function apiFetch(path, options = {}) {
   return { response, payload };
 }
 
-async function waitForLibraryRequest(startIndex) {
-  const deadline = Date.now() + 5000;
-  while (Date.now() < deadline) {
-    const request = navidromeRequests
-      .slice(startIndex)
-      .find(({ method, url }) => method === "POST" && url.pathname === "/api/library");
-    if (request) return request;
-    await new Promise((resolve) => setTimeout(resolve, 100));
+async function waitForNavidromeRequest(startIndex, method, pathname) {
+  const matches = (request) => request.method === method && request.url.pathname === pathname;
+  const seen = navidromeRequests.slice(startIndex).find(matches);
+  if (seen) return seen;
+  const signal = AbortSignal.timeout(5000);
+  for await (const [request] of on(navidromeEvents, "request", { signal })) {
+    if (matches(request)) return request;
   }
-  throw new Error("Timed out waiting for Navidrome library creation");
-}
-
-async function waitForLibraryVerification(startIndex) {
-  const deadline = Date.now() + 5000;
-  while (Date.now() < deadline) {
-    const request = navidromeRequests
-      .slice(startIndex)
-      .find(({ method, url }) => method === "GET" && url.pathname === "/api/library");
-    if (request) return request;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error("Timed out waiting for Navidrome library verification");
 }
 
 beforeAll(async () => {
@@ -84,7 +72,9 @@ beforeAll(async () => {
       try {
         body = requestBody ? JSON.parse(requestBody) : null;
       } catch {}
-      navidromeRequests.push({ method: req.method, url, body });
+      const request = { method: req.method, url, body };
+      navidromeRequests.push(request);
+      navidromeEvents.emit("request", request);
       res.writeHead(200, { "Content-Type": "application/json" });
       if (url.pathname === "/auth/login") {
         res.end(JSON.stringify({ token: "test-token" }));
@@ -163,8 +153,8 @@ test("admin can update and test Navidrome after onboarding", async () => {
         mapping.local === libraryMapping.local,
     ),
   );
-  const libraryRequest = await waitForLibraryRequest(requestStartIndex);
-  await waitForLibraryVerification(requestStartIndex);
+  const libraryRequest = await waitForNavidromeRequest(requestStartIndex, "POST", "/api/library");
+  await waitForNavidromeRequest(requestStartIndex, "GET", "/api/library");
   assert.deepEqual(libraryRequest?.body, {
     name: "Aurral Playlists",
     path: "/music-aurral",

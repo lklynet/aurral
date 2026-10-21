@@ -38,6 +38,8 @@ const [
   { findUniqueLibrarySong },
   { getPlayQueue, savePlayQueue },
   { retryPlaybackRetainedFiles },
+  { getMetadataBaseUrl },
+  { setMetadataProviderCooldown },
 ] = await setupIsolatedBackend(
   "library-cleanup",
   "backend/config/db-sqlite.js",
@@ -52,7 +54,12 @@ const [
   "backend/services/subsonicLibraryService.js",
   "backend/services/subsonicPlayQueueService.js",
   "backend/services/playback/playbackFileRetention.js",
+  "backend/services/providers/brainzmashProvider.js",
+  "backend/services/metadataProviderBudget.js",
 );
+// Unit tests are offline, so the default metadata provider refuses lookups up front
+// instead of making each one wait its turn in the provider's rate limit.
+setMetadataProviderCooldown(getMetadataBaseUrl(), 403, Number.MAX_SAFE_INTEGER);
 
 const root = resolveDownloadRoot();
 const outside = path.join(isolatedState.baseDir, "seed");

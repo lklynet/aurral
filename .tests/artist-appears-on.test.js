@@ -3,6 +3,9 @@ import { test } from "vite-plus/test";
 
 import { registerAppearsOn } from "../backend/routes/artists/handlers/appearsOn.js";
 import { json, openArtistStream, stubFetch } from "./helpers/artistStream.js";
+import { useFakeClock } from "./helpers/fakeClock.js";
+
+useFakeClock();
 
 const VARIOUS_ARTISTS = "89ad4ac3-39f7-470e-963a-56509c546377";
 const GUEST_HOST = "22222222-2222-4222-8222-222222222222";

@@ -1,4 +1,5 @@
 import getSharp from "./sharpConfig.js";
+import BoundedMap from "./boundedMap.js";
 
 const TAG_COLORS = [
   "#845336",
@@ -332,8 +333,20 @@ export async function writePlaylistArtworkWebpFromBuffer(buffer, outputPath) {
     .toFile(outputPath);
 }
 
-export async function buildPlaylistArtworkWebpBuffer({ playlistName, kind }) {
-  const sharp = await getSharp();
+const renderedArtwork = new BoundedMap(32);
+
+export function buildPlaylistArtworkWebpBuffer({ playlistName, kind }) {
   const svg = buildArtworkSvg({ playlistName, kind });
-  return sharp(Buffer.from(svg)).webp({ quality: PLAYLIST_ARTWORK_WEBP_QUALITY }).toBuffer();
+  const cached = renderedArtwork.get(svg);
+  if (cached) return cached;
+  const rendered = getSharp()
+    .then((sharp) =>
+      sharp(Buffer.from(svg)).webp({ quality: PLAYLIST_ARTWORK_WEBP_QUALITY }).toBuffer(),
+    )
+    .catch((error) => {
+      renderedArtwork.delete(svg);
+      throw error;
+    });
+  renderedArtwork.set(svg, rendered);
+  return rendered;
 }

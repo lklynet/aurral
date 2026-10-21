@@ -477,7 +477,10 @@ test("after a restart Aurral resumes downloads first, then deletes only its slsk
   const startup = processSystemTask({ kind: "weekly-flow-startup-check" });
   const respond = await Promise.race([
     heldDelete,
-    new Promise((resolve) => setTimeout(resolve, 2000, null)),
+    startup.then(
+      () => null,
+      () => null,
+    ),
   ]);
   assert.ok(respond, "slskd never received a delete for the dropped upgrade's search");
   assert.equal(

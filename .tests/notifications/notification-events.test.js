@@ -25,6 +25,7 @@ const {
 
 async function withCaptureServer(handler) {
   const requests = [];
+  let waiters = [];
   const server = http.createServer((req, res) => {
     const chunks = [];
     req.on("data", (chunk) => chunks.push(chunk));
@@ -40,6 +41,7 @@ async function withCaptureServer(handler) {
         headers: req.headers,
         body,
       });
+      waiters = waiters.filter((settle) => !settle());
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end("{}");
     });
@@ -51,30 +53,15 @@ async function withCaptureServer(handler) {
       port,
       baseUrl: `http://127.0.0.1:${port}`,
       requests,
-      waitFor: async (count, timeoutMs = 5000) => {
-        const started = Date.now();
-        while (requests.length < count) {
-          if (Date.now() - started > timeoutMs) {
-            throw new Error(`Timed out waiting for ${count} requests; got ${requests.length}`);
-          }
-          await new Promise((resolve) => setTimeout(resolve, 25));
-        }
-        return requests;
-      },
+      waitFor: (count) =>
+        new Promise((resolve) => {
+          const settle = () => requests.length >= count && (resolve(requests), true);
+          if (!settle()) waiters.push(settle);
+        }),
     });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
-}
-
-async function waitFor(predicate, timeoutMs = 5000) {
-  const started = Date.now();
-  while (Date.now() - started <= timeoutMs) {
-    const result = predicate();
-    if (result) return result;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error("Timed out waiting for notification result");
 }
 
 beforeEach(() => {
@@ -224,7 +211,7 @@ test("notifyRequestAvailable omits actor text when username is missing", async (
 });
 
 test("notifyRequestMade does not queue Gotify when the event toggle is off", async () => {
-  await withCaptureServer(async ({ baseUrl, requests }) => {
+  await withCaptureServer(async ({ baseUrl, waitFor }) => {
     const settings = dbOps.getSettings();
     dbOps.updateSettings({
       integrations: {
@@ -233,9 +220,11 @@ test("notifyRequestMade does not queue Gotify when the event toggle is off", asy
           url: baseUrl,
           token: "test-token",
           notifyRequestMade: false,
+          notifyRequestAvailable: false,
         },
         webhookEvents: {
           notifyRequestMade: false,
+          notifyRequestAvailable: true,
         },
         webhooks: [
           {
@@ -253,17 +242,32 @@ test("notifyRequestMade does not queue Gotify when the event toggle is off", asy
       user: { id: 7, username: "alice" },
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    assert.equal(requests.length, 0);
+    await notifyRequestAvailable({ albumName: "Blue Train", artistName: "John Coltrane" });
+
+    const requests = await waitFor(1);
+    assert.deepEqual(
+      requests.map((entry) => [entry.url, entry.body]),
+      [["/hook", { event: "notifyRequestAvailable" }]],
+    );
   });
 });
 
 test("failed notification delivery is logged without an unhandled rejection", async () => {
-  const errors = [];
+  const failedLogs = [];
+  let logged = () => {};
   const unhandled = [];
   const originalError = console.error;
   const onUnhandledRejection = (reason) => unhandled.push(reason);
-  console.error = (...args) => errors.push(args);
+  console.error = (...args) => {
+    if (!args.map(String).join(" ").includes("Notification delivery failed")) return;
+    failedLogs.push(args);
+    logged();
+  };
+  const nextFailedLog = () =>
+    new Promise((resolve) => {
+      const seen = failedLogs.length;
+      logged = () => failedLogs.length > seen && resolve(failedLogs[seen]);
+    });
   process.on("unhandledRejection", onUnhandledRejection);
 
   const server = http.createServer((_req, res) => {
@@ -295,10 +299,9 @@ test("failed notification delivery is logged without an unhandled rejection", as
       },
     });
 
+    const firstFailure = nextFailedLog();
     await notifyRequestMade({ albumName: "Blue Train", artistName: "John Coltrane" });
-    const failedLog = await waitFor(() =>
-      errors.find((args) => args.map(String).join(" ").includes("Notification delivery failed")),
-    );
+    const failedLog = await firstFailure;
     assert.deepEqual(failedLog[failedLog.length - 1], {
       kind: "webhooks",
       event: "notifyRequestMade",
@@ -309,14 +312,10 @@ test("failed notification delivery is logged without an unhandled rejection", as
     assert.doesNotMatch(JSON.stringify(failedLog), /receiver-secret/);
 
     await new Promise((resolve) => server.close(resolve));
+    const secondFailure = nextFailedLog();
     await notifyRequestAvailable({ albumName: "Blue Train", artistName: "John Coltrane" });
-    const failedLogs = await waitFor(() => {
-      const logs = errors.filter((args) =>
-        args.map(String).join(" ").includes("Notification delivery failed"),
-      );
-      return logs.length >= 2 ? logs : null;
-    });
-    const secondLog = failedLogs[1][failedLogs[1].length - 1];
+    const secondArgs = await secondFailure;
+    const secondLog = secondArgs[secondArgs.length - 1];
     assert.deepEqual(
       {
         kind: secondLog.kind,

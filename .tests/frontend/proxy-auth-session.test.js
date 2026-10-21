@@ -48,6 +48,7 @@ test("a proxy auth redirect drops the service worker and reloads through the pro
   const unregistered = [];
   const deletedCaches = [];
   let reloads = 0;
+  const reloaded = Promise.withResolvers();
   globalThis.sessionStorage = createStorage();
   globalThis.localStorage = createStorage({ auth_token: "stale-token" });
   globalThis.window = {
@@ -56,6 +57,7 @@ test("a proxy auth redirect drops the service worker and reloads through the pro
       pathname: "/discover",
       reload: () => {
         reloads += 1;
+        reloaded.resolve();
       },
     },
   };
@@ -83,7 +85,7 @@ test("a proxy auth redirect drops the service worker and reloads through the pro
   const { default: api } = await import("../../frontend/src/utils/api/core.js");
 
   await assert.rejects(api.get("/health/bootstrap"), /redirected to an authentication provider/);
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  await reloaded.promise;
 
   assert.equal(unregistered.length, 1);
   assert.deepEqual(deletedCaches, ["aurral-precache"]);
@@ -125,7 +127,7 @@ test("an unauthorized response drops the stored session without navigating away"
   assert.equal(globalThis.localStorage.getItem("auth_token"), null);
   assert.equal(globalThis.sessionStorage.getItem("auth_token"), null);
   assert.equal(globalThis.window.location.href, currentUrl);
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(reloads, 0);
 });
 
@@ -209,6 +211,7 @@ test("a proxy 401 without an Aurral error body reloads through the proxy", async
   await withApiClient(t);
 
   let reloads = 0;
+  const reloaded = Promise.withResolvers();
   globalThis.sessionStorage = createStorage();
   globalThis.localStorage = createStorage({ auth_token: "stale-token" });
   globalThis.window = {
@@ -217,6 +220,7 @@ test("a proxy 401 without an Aurral error body reloads through the proxy", async
       pathname: "/discover",
       reload: () => {
         reloads += 1;
+        reloaded.resolve();
       },
     },
   };
@@ -229,7 +233,7 @@ test("a proxy 401 without an Aurral error body reloads through the proxy", async
   const { default: api } = await import("../../frontend/src/utils/api/core.js");
 
   await assert.rejects(api.get("/health/bootstrap"), /status code 401/);
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  await reloaded.promise;
   assert.equal(reloads, 1);
 });
 

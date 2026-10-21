@@ -10,6 +10,11 @@ import {
 } from "../helpers/backendTestHarness.js";
 import { createFakeNavidrome } from "../helpers/fakeNavidrome.js";
 
+vi.mock("node:timers/promises", async (importOriginal) => ({
+  ...(await importOriginal()),
+  setTimeout: (delay, value) => new Promise((resolve) => setTimeout(resolve, delay, value)),
+}));
+
 const [
   isolatedState,
   { db },
@@ -1200,10 +1205,6 @@ test("serializes playlist deletion behind an in-flight publish", async () => {
   const lookupStarted = new Promise((resolve) => {
     lookupStartedResolve = resolve;
   });
-  let lookupStartedDone = false;
-  void lookupStarted.then(() => {
-    lookupStartedDone = true;
-  });
   let blockMissing = false;
   client.findSong = async (title) => {
     if (title === "Missing" && blockMissing) {
@@ -1227,7 +1228,7 @@ test("serializes playlist deletion behind an in-flight publish", async () => {
   songs.Missing = { id: "missing-song" };
   blockMissing = true;
   const publishPromise = destination.publishPlaylist(snapshot);
-  while (!lookupStartedDone) await new Promise((resolve) => setTimeout(resolve, 1));
+  await lookupStarted;
 
   const deletePromise = destination.deletePlaylist(snapshot);
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1266,10 +1267,16 @@ test("retries a transient missing-ID response without replacing the playlist", a
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Transient" });
   const client = createClient({ songs: { Song: { id: "song-1" } } });
   const updatePlaylist = client.updatePlaylist.bind(client);
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
+  let firstAttempt;
+  const attempted = new Promise((resolve) => {
+    firstAttempt = resolve;
+  });
   let attempts = 0;
   client.updatePlaylist = async (...args) => {
     attempts += 1;
     if (attempts === 1) {
+      firstAttempt();
       const error = new Error("temporarily missing");
       error.code = 70;
       throw error;
@@ -1282,13 +1289,16 @@ test("retries a transient missing-ID response without replacing the playlist", a
     title: playlist.name,
   });
 
-  const result = await destination.publishPlaylist(
+  const publishing = destination.publishPlaylist(
     createPlaybackPlaylistSnapshot({
       entityId: playlist.id,
       displayName: playlist.name,
       tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
     }),
   );
+  await attempted;
+  await vi.runAllTimersAsync();
+  const result = await publishing;
 
   assert.deepEqual(result, { ok: true });
   assert.equal(attempts, 2);
@@ -1302,7 +1312,13 @@ test("retries a transient missing-ID response without replacing the playlist", a
 test("recreates a stored playlist only when Navidrome reports it missing", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Missing" });
   const client = createClient({ songs: { Song: { id: "song-1" } } });
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
+  let firstAttempt;
+  const attempted = new Promise((resolve) => {
+    firstAttempt = resolve;
+  });
   client.updatePlaylist = async () => {
+    firstAttempt();
     const error = new Error("not found");
     error.code = 70;
     throw error;
@@ -1313,13 +1329,16 @@ test("recreates a stored playlist only when Navidrome reports it missing", async
     title: playlist.name,
   });
 
-  const result = await destination.publishPlaylist(
+  const publishing = destination.publishPlaylist(
     createPlaybackPlaylistSnapshot({
       entityId: playlist.id,
       displayName: playlist.name,
       tracks: [{ path: "/music/song.flac", title: "Song", artist: "Artist" }],
     }),
   );
+  await attempted;
+  await vi.runAllTimersAsync();
+  const result = await publishing;
 
   assert.deepEqual(result, { ok: true });
   assert.deepEqual(client.calls.created, [{ name: "Missing", songIds: ["song-1"] }]);

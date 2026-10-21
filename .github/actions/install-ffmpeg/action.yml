@@ -1,0 +1,17 @@
+name: Install ffmpeg
+description: Copy ffmpeg from the static image the production Dockerfile pins.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        image="$(sed -n 's/^FROM \(mwader\/static-ffmpeg:[^ ]*\) AS ffmpeg$/\1/p' Dockerfile)"
+        if [ -z "$image" ]; then
+          echo "The Dockerfile has no 'FROM mwader/static-ffmpeg:... AS ffmpeg' stage."
+          exit 1
+        fi
+        container="$(docker create "$image")"
+        sudo docker cp "$container:/ffmpeg" /usr/local/bin/ffmpeg
+        docker rm "$container" > /dev/null
+        ffmpeg -version | head -n 1

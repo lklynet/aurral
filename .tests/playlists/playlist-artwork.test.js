@@ -12,17 +12,23 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps }, { flowPlaylistConfig }, { PlaylistManager }] =
-  await setupIsolatedBackend(
-    "playlist-artwork",
-    "backend/config/db-sqlite.js",
-    "backend/db/helpers/index.js",
-    "backend/services/playlists/flowPlaylistConfig.js",
-    "backend/services/playlists/playlistManager.js",
-  );
+const [
+  isolatedState,
+  { db },
+  { dbOps },
+  { flowPlaylistConfig, invalidateFlowPlaylistConfigCache },
+  { PlaylistManager },
+] = await setupIsolatedBackend(
+  "playlist-artwork",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
+  "backend/services/playlists/flowPlaylistConfig.js",
+  "backend/services/playlists/playlistManager.js",
+);
 
 beforeEach(() => {
   resetDatabase(db);
+  invalidateFlowPlaylistConfigCache();
   dbOps.updateSettings({
     integrations: {},
     playlistArtwork: { style: "aurral" },

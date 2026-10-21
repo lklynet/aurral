@@ -1,4 +1,4 @@
-import { test, beforeEach, afterAll } from "vite-plus/test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
 import { once } from "node:events";
@@ -16,40 +16,44 @@ const [state, { SlskdClient }, { db }] = await setupIsolatedBackend(
 afterAll(() => cleanupIsolatedState(state));
 beforeEach(() => resetDatabase(db));
 
-test(
-  "searches from different processes start at least five seconds apart",
-  { timeout: 20000 },
-  async () => {
-    const started = [];
-    const server = await createMockHttpServer((req, res) => {
-      req.resume();
-      req.on("end", () => {
-        if (req.method === "POST" && req.url === "/api/v0/searches") started.push(Date.now());
-        res.writeHead(201, { "content-type": "application/json" });
-        res.end("{}");
-      });
+test("searches from different processes start at least five seconds apart", async () => {
+  const started = [];
+  let mainStartedAt;
+  const server = await createMockHttpServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      if (req.method === "POST" && req.url === "/api/v0/searches") started.push(Date.now());
+      res.writeHead(201, { "content-type": "application/json" });
+      res.end("{}");
     });
-    const worker = fork(new URL("../helpers/slskdSearchStartWorker.js", import.meta.url), [], {
-      env: { ...process.env, SLSKD_TEST_URL: server.url },
-      stdio: ["ignore", "ignore", "pipe", "ipc"],
+  });
+  const worker = fork(new URL("../helpers/slskdSearchStartWorker.js", import.meta.url), [], {
+    env: { ...process.env, SLSKD_TEST_URL: server.url },
+    stdio: ["ignore", "ignore", "pipe", "ipc"],
+  });
+  try {
+    const [message] = await once(worker, "message");
+    assert.deepEqual(message, { done: true });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], now: Date.now() });
+    const search = new SlskdClient({ enabled: true, url: server.url }).createSearch("Main search", {
+      id: "main-search",
+      onSearchCreated: () => {
+        mainStartedAt ??= Date.now();
+      },
     });
-    try {
-      const [message] = await once(worker, "message");
-      assert.deepEqual(message, { done: true });
-      await new SlskdClient({ enabled: true, url: server.url }).createSearch("Main search", {
-        id: "main-search",
-      });
-      assert.equal(started.length, 2);
-      assert.ok(
-        started[1] - started[0] >= 4500,
-        `searches started ${started[1] - started[0]}ms apart`,
-      );
-    } finally {
-      if (worker.exitCode == null) worker.kill();
-      await server.close();
-    }
-  },
-);
+    await vi.advanceTimersByTimeAsync(5000);
+    await search;
+    assert.equal(started.length, 2);
+    assert.ok(
+      mainStartedAt - started[0] >= 4500,
+      `searches started ${mainStartedAt - started[0]}ms apart`,
+    );
+  } finally {
+    vi.useRealTimers();
+    if (worker.exitCode == null) worker.kill();
+    await server.close();
+  }
+});
 
 test("downloads enqueue during cross-process search backoff without bypassing search throttling", async () => {
   let notifyFirstSearch;
@@ -81,31 +85,36 @@ test("downloads enqueue during cross-process search backoff without bypassing se
     stdio: ["ignore", "ignore", "pipe", "ipc"],
   });
   const workerFinished = once(worker, "message");
+  const cancelOtherSearch = new AbortController();
   let enqueue;
   let otherSearch;
-  let timer;
   try {
     await firstSearch;
     const client = new SlskdClient({ enabled: true, url: server.url });
-    otherSearch = client.createSearch("Second", { id: "following-search" });
-    enqueue = client.enqueueBatch({
-      username: "peer",
-      files: [{ filename: "First.flac", size: 1000 }],
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], now: Date.now() });
+    otherSearch = client.createSearch("Second", {
+      id: "following-search",
+      signal: cancelOtherSearch.signal,
     });
-    await Promise.race([
-      enqueue,
-      new Promise((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error("Download enqueue was blocked by search backoff")),
-          2000,
-        );
-      }),
-    ]);
-    clearTimeout(timer);
+    let enqueued = false;
+    enqueue = client
+      .enqueueBatch({ username: "peer", files: [{ filename: "First.flac", size: 1000 }] })
+      .finally(() => {
+        enqueued = true;
+      });
+    const enqueueDeadline = performance.now() + 2000;
+    while (!enqueued && performance.now() < enqueueDeadline) {
+      await new Promise(setImmediate);
+      await vi.advanceTimersByTimeAsync(1);
+    }
+    assert.ok(enqueued, "Download enqueue was blocked by search backoff");
+    await enqueue;
+    await vi.advanceTimersByTimeAsync(10000);
     assert.equal(searches.length, 1, "another search must not bypass the backoff");
     worker.send("advance");
     const [message] = await workerFinished;
     assert.deepEqual(message, { done: true });
+    await vi.advanceTimersByTimeAsync(10000);
     await otherSearch;
     assert.deepEqual(
       searches.map((search) => search.id),
@@ -116,7 +125,9 @@ test("downloads enqueue during cross-process search backoff without bypassing se
       "retry must use the remaining deadline",
     );
   } finally {
-    clearTimeout(timer);
+    cancelOtherSearch.abort();
+    if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(1000);
+    vi.useRealTimers();
     if (worker.connected) worker.send("advance");
     await Promise.allSettled([enqueue, otherSearch, workerFinished]);
     if (worker.exitCode == null) worker.kill();

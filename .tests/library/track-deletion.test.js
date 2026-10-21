@@ -356,10 +356,6 @@ test("deletes a library file committed while track removal waits for its lock", 
     await commitEntered;
     vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
     deletion = libraryManager.deleteTrack(track.id);
-    const deadline = Date.now() + 2000;
-    while (!isDownloadJobCancelled(jobId) && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
     assert.equal(isDownloadJobCancelled(jobId), true);
     releaseCommit();
     await commit;

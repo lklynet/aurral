@@ -31,6 +31,8 @@ const [
   { clearApiCaches },
   { db },
   { resolveReleaseManifest },
+  { getMetadataBaseUrl },
+  { setMetadataProviderCooldown },
 ] = await setupIsolatedBackend(
   "aurral-album-lifecycle",
   "backend/services/downloadJobs/downloadTracker.js",
@@ -50,7 +52,12 @@ const [
   "backend/services/apiClients/clearCache.js",
   "backend/config/db-sqlite.js",
   "backend/services/releaseResolver.js",
+  "backend/services/providers/brainzmashProvider.js",
+  "backend/services/metadataProviderBudget.js",
 );
+// Unit tests are offline, so the default metadata provider refuses lookups up front
+// instead of making each one wait its turn in the provider's rate limit.
+setMetadataProviderCooldown(getMetadataBaseUrl(), 403, Number.MAX_SAFE_INTEGER);
 
 const { downloadTracker, DownloadTracker } = trackerModule;
 const { default: playlistsRouter } = await import("../../backend/routes/playlists/index.js");
@@ -367,6 +374,8 @@ test("track cancellation keeps failed provider cleanup pending and succeeds afte
 });
 
 test("retry keeps a cancelled queued job blocked until provider cleanup succeeds", async () => {
+  await downloadWorker.stopAndDrain();
+  vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   const fixture = createLibraryAlbum();
   const id = fixture.jobFor(0);
   downloadTracker.updateDownloadMetadata(id, {
@@ -399,6 +408,8 @@ test("retry keeps a cancelled queued job blocked until provider cleanup succeeds
 });
 
 test("retry keeps a failed job blocked until its provider request is cleaned up", async () => {
+  await downloadWorker.stopAndDrain();
+  vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   const fixture = createLibraryAlbum();
   const id = fixture.jobFor(0);
   downloadTracker.setDownloading(id);
@@ -529,10 +540,7 @@ test("a cancelled single song can be searched again and the worker takes it", as
       jobId: id,
     });
     assert.equal(result.success, true);
-    const deadline = Date.now() + 5000;
-    while (downloadTracker.getJob(id).status === "pending" && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
+    await downloadWorker.waitForIdle();
     assert.equal(downloadTracker.getJob(id).status, "failed");
   } finally {
     await downloadWorker.stopAndDrain();
@@ -540,6 +548,8 @@ test("a cancelled single song can be searched again and the worker takes it", as
 });
 
 test("requeueing a Library job refreshes the cached activity response", async () => {
+  await downloadWorker.stopAndDrain();
+  vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   const fixture = createLibraryAlbum();
   const id = fixture.jobFor(0);
   downloadTracker.setFailed(id, "No match");

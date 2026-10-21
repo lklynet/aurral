@@ -1,4 +1,4 @@
-import { test, afterAll } from "vite-plus/test";
+import { test, afterAll, vi } from "vite-plus/test";
 import { execFile, fork } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -64,13 +64,26 @@ test("default settings and unset backend config use BrainzMash metadata", () => 
 
 test("stale album metadata is served while one refresh runs in the background", async () => {
   const previousSettings = dbOps.getSettings();
-  const serverResponses = ["Album v1", "Album v2"];
   let requests = 0;
+  let refreshArrived;
+  const refreshRequested = new Promise((resolve) => {
+    refreshArrived = resolve;
+  });
+  let releaseRefresh;
+  const refreshReleased = new Promise((resolve) => {
+    releaseRefresh = resolve;
+  });
   const server = await createMockHttpServer((_request, response) => {
     response.setHeader("content-type", "application/json");
-    const title = serverResponses[Math.min(requests, serverResponses.length - 1)];
     requests += 1;
-    response.end(JSON.stringify({ id: "album-1", title }));
+    if (requests === 1) {
+      response.end(JSON.stringify({ id: "album-1", title: "Album v1" }));
+      return;
+    }
+    refreshArrived();
+    void refreshReleased.then(() =>
+      response.end(JSON.stringify({ id: "album-1", title: "Album v2" })),
+    );
   });
   const originalNow = Date.now;
   let now = 1_000_000;
@@ -96,42 +109,16 @@ test("stale album metadata is served while one refresh runs in the background", 
     assert.equal(requests, 1);
 
     now += 7 * 24 * 60 * 60 * 1000 + 1_000;
-    const [stale, staleAgain] = await Promise.all([
-      getAlbumByMbid("album-1"),
-      getAlbumByMbid("album-1"),
-    ]);
+    const staleReads = Promise.all([getAlbumByMbid("album-1"), getAlbumByMbid("album-1")]);
+    await refreshRequested;
+    const joinedRefresh = getAlbumByMbid("album-1", { forceRefresh: true });
+    releaseRefresh();
+    const [stale, staleAgain] = await staleReads;
     assert.equal(stale.title, "Album v1");
     assert.equal(staleAgain.title, "Album v1");
 
-    const refreshed = await new Promise((resolve, reject) => {
-      let settled = false;
-      let pollTimer;
-      const timeout = setTimeout(() => {
-        settled = true;
-        clearTimeout(pollTimer);
-        reject(new Error("Timed out waiting for the stale metadata refresh"));
-      }, 1000);
-      const poll = async () => {
-        if (settled) return;
-        try {
-          const album = await getAlbumByMbid("album-1");
-          if (settled) return;
-          if (album.title === "Album v2") {
-            settled = true;
-            clearTimeout(timeout);
-            resolve(album);
-            return;
-          }
-          pollTimer = setTimeout(poll, 10);
-        } catch (error) {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timeout);
-          reject(error);
-        }
-      };
-      void poll();
-    });
+    assert.equal((await joinedRefresh).title, "Album v2");
+    const refreshed = await getAlbumByMbid("album-1");
     assert.equal(requests, 2);
     assert.equal(refreshed.title, "Album v2");
   } finally {
@@ -536,7 +523,6 @@ test("BrainzMash rejects the saturation boundary before its deadline", async () 
   });
   const controller = new AbortController();
   let requests = [];
-  let timeout = null;
 
   try {
     dbOps.updateSettings({
@@ -551,6 +537,7 @@ test("BrainzMash rejects the saturation boundary before its deadline", async () 
       },
     });
     clearMetadataProviderCaches();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     requests = Array.from({ length: 81 }, (_, index) =>
       getArtistByMbid(`saturation-${index}`, { signal: controller.signal }),
     );
@@ -559,13 +546,11 @@ test("BrainzMash rejects the saturation boundary before its deadline", async () 
         () => "resolved",
         (error) => error.code || error.name,
       ),
-      new Promise((resolve) => {
-        timeout = setTimeout(() => resolve("late"), 50);
-      }),
+      vi.advanceTimersByTimeAsync(7_999).then(() => "late"),
     ]);
     assert.equal(boundary, "EQUEUEFULL");
   } finally {
-    if (timeout) clearTimeout(timeout);
+    vi.useRealTimers();
     controller.abort();
     await Promise.allSettled(requests);
     clearMetadataProviderCaches();
@@ -582,6 +567,7 @@ test("independent provider processes share request admission", async () => {
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify({ id: "artist", name: "Artist" }));
   });
+  let children = [];
   try {
     dbOps.updateSettings({
       ...previous,
@@ -595,26 +581,25 @@ test("independent provider processes share request admission", async () => {
       },
     });
     clearMetadataProviderCaches();
-    const startAt = Date.now() + 1500;
-    const startAtPerf = performance.now() + 1500;
+    children = Array.from({ length: 2 }, () =>
+      fork(fileURLToPath(new URL("./fixtures/metadata-provider-child.mjs", import.meta.url)), [], {
+        env: { ...process.env },
+        execArgv: OFFLINE_CHILD_ARGS,
+        stdio: ["ignore", "ignore", "ignore", "ipc"],
+      }),
+    );
     await Promise.all(
-      ["first", "second"].map((prefix) =>
-        promisify(execFile)(
-          process.execPath,
-          [
-            ...OFFLINE_CHILD_ARGS,
-            "--input-type=module",
-            "-e",
-            `
-        const { getArtistByMbid } = await import("./backend/services/providers/brainzmashProvider.js");
-        await new Promise((resolve) => setTimeout(resolve, Math.max(0, ${startAt} - Date.now())));
-        for (let index = 0; index < 3; index++) await getArtistByMbid(${JSON.stringify(prefix)} + index);
-        process.exit(0);
-      `,
-          ],
-          { cwd: process.cwd(), env: { ...process.env }, timeout: 10000 },
-        ),
-      ),
+      children.map((child) => new Promise((resolve) => child.once("message", resolve))),
+    );
+    const startAtPerf = performance.now();
+    await Promise.all(
+      children.map(async (child, childIndex) => {
+        for (let index = 0; index < 3; index++) {
+          const done = new Promise((resolve) => child.once("message", resolve));
+          child.send({ type: "request", mbid: `child-${childIndex}-${index}` });
+          assert.equal((await done).ok, true);
+        }
+      }),
     );
     assert.equal(arrivals.length, 6);
     assert.ok(
@@ -622,6 +607,15 @@ test("independent provider processes share request admission", async () => {
       "independent processes admitted a request burst",
     );
   } finally {
+    await Promise.all(
+      children.map(
+        (child) =>
+          new Promise((resolve) => {
+            child.once("exit", resolve);
+            child.send({ type: "shutdown" });
+          }),
+      ),
+    );
     clearMetadataProviderCaches();
     dbOps.updateSettings(previous);
     await server.close();

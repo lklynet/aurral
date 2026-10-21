@@ -306,7 +306,7 @@ test("saves still queued at sign-out are not sent to the next account", async ()
   theme.selectTheme("solarized");
   sync.stop();
   releaseFirstSave();
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setImmediate(resolve));
 
   assert.deepEqual(
     account.saves.map((document) => document.themeId),

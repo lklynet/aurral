@@ -137,7 +137,6 @@ export default defineConfig({
           ...testSetup,
           name: "integration",
           include: [".tests/**/*.int.test.js"],
-          fileParallelism: false,
         },
       },
       {

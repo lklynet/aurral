@@ -1,9 +1,38 @@
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { setTimeout as delay } from "node:timers/promises";
 import { dbOps } from "../../backend/db/helpers/index.js";
 import { LidarrClient } from "../../backend/services/lidarrClient.js";
+
+const flushPendingWork = () => new Promise((resolve) => setImmediate(resolve));
+
+const lidarrResponse = (status, body, headers = {}) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json", ...headers },
+  });
+
+function createStubbedLidarrClient(t, { circuitDisabled = true } = {}) {
+  const client = new LidarrClient();
+  client._holdConfig = true;
+  client.config = {
+    url: "http://lidarr.invalid:8686",
+    apiKey: "test",
+    timeoutMs: 2000,
+    circuitDisabled,
+  };
+  t.onTestFinished(() => {
+    client._httpAgent.destroy();
+    client._httpsAgent.destroy();
+    client._httpsInsecureAgent.destroy();
+  });
+  return client;
+}
+
+function skipRetryDelays() {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  vi.setTimerTickMode("nextTimerAsync");
+}
 
 test("isCircuitOpen returns stale GET cache instead of throwing", async () => {
   const client = new LidarrClient();
@@ -91,30 +120,14 @@ test("bulk album reads use Lidarr artist selectors when requested", async (t) =>
 });
 
 test("no-response Lidarr errors identify the endpoint and timeout", async (t) => {
-  const server = http.createServer((request) => request.destroy());
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.onTestFinished(async () => {
-    server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
-  });
-
-  const address = server.address();
-  const client = new LidarrClient();
-  client._holdConfig = true;
-  client.config = {
-    url: `http://127.0.0.1:${address.port}`,
-    apiKey: "test",
-    timeoutMs: 2000,
-    circuitDisabled: true,
-  };
+  vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("fetch failed"));
+  skipRetryDelays();
+  const client = createStubbedLidarrClient(t);
   const originalConsoleError = console.error;
   const errors = [];
   console.error = (...args) => errors.push(args);
   t.onTestFinished(() => {
     console.error = originalConsoleError;
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
   });
 
   await assert.rejects(
@@ -164,12 +177,12 @@ test("bulk reads wait for active requests before failing", async () => {
     settled = true;
     throw error;
   });
-  await delay(10);
+  await flushPendingWork();
   assert.equal(settled, false);
 
   releasePending();
   await assert.rejects(rejection, /bulk track read failed/);
-  await delay(0);
+  await flushPendingWork();
   assert.deepEqual(started, artistIds.slice(0, 12));
 });
 
@@ -217,28 +230,11 @@ test("bulk track-file reads use bounded repeated ID selectors", async (t) => {
 
 test("testConnection preserves Lidarr HTTP diagnostics", async (t) => {
   let status = 401;
-  const server = http.createServer((_request, response) => {
-    response.writeHead(status, {
-      "content-type": "application/json",
-      "x-test-header": String(status),
-    });
-    response.end(JSON.stringify({ message: `failure-${status}` }));
-  });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.onTestFinished(async () => {
-    server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
-  });
-
-  const address = server.address();
-  const client = new LidarrClient();
-  client._holdConfig = true;
-  client.config = {
-    url: `http://127.0.0.1:${address.port}`,
-    apiKey: "test",
-    timeoutMs: 2000,
-    circuitDisabled: true,
-  };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+    lidarrResponse(status, { message: `failure-${status}` }, { "x-test-header": String(status) }),
+  );
+  skipRetryDelays();
+  const client = createStubbedLidarrClient(t);
 
   let result = await client.testConnection(true);
   assert.equal(result.statusCode, 401);
@@ -250,10 +246,6 @@ test("testConnection preserves Lidarr HTTP diagnostics", async (t) => {
   assert.equal(result.statusCode, 500);
   assert.match(result.details, /failure-500/);
   assert.equal(result.responseHeaders["x-test-header"], "500");
-
-  client._httpAgent.destroy();
-  client._httpsAgent.destroy();
-  client._httpsInsecureAgent.destroy();
 });
 
 test("missing Lidarr resources are absent records, not endpoint failures", async (t) => {
@@ -439,18 +431,22 @@ test("getAlbumsByMbidsSettled bounds concurrent lookups and preserves failures",
 
   let active = 0;
   let maxActive = 0;
+  const lookupsMayFinish = Promise.withResolvers();
   client.getAlbumByMbid = async (albumMbid) => {
     active += 1;
     maxActive = Math.max(maxActive, active);
-    await delay(10);
+    await lookupsMayFinish.promise;
     active -= 1;
     if (albumMbid === "album-7") throw new Error("lookup failed");
     return { foreignAlbumId: albumMbid };
   };
 
-  const results = await client.getAlbumsByMbidsSettled(
+  const settled = client.getAlbumsByMbidsSettled(
     Array.from({ length: 8 }, (_, index) => `album-${index}`),
   );
+  await flushPendingWork();
+  lookupsMayFinish.resolve();
+  const results = await settled;
 
   assert.equal(maxActive, 6);
   assert.equal(results[0].value.foreignAlbumId, "album-0");
@@ -923,30 +919,15 @@ test("Lidarr cooldown permits only one half-open recovery request", async (t) =>
   const firstRequest = Promise.withResolvers();
   const releaseFirst = Promise.withResolvers();
   let requestCount = 0;
-  const server = http.createServer(async (_request, response) => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
     requestCount += 1;
     if (requestCount === 1) {
       firstRequest.resolve();
       await releaseFirst.promise;
     }
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ ok: true }));
+    return lidarrResponse(200, { ok: true });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.onTestFinished(async () => {
-    server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
-  });
-
-  const address = server.address();
-  const client = new LidarrClient();
-  client._holdConfig = true;
-  client.config = {
-    url: `http://127.0.0.1:${address.port}`,
-    apiKey: "test",
-    timeoutMs: 2000,
-    circuitDisabled: false,
-  };
+  const client = createStubbedLidarrClient(t, { circuitDisabled: false });
   client._circuitOpen = true;
   client._circuitOpenedAt = Date.now() - 61000;
 
@@ -957,7 +938,7 @@ test("Lidarr cooldown permits only one half-open recovery request", async (t) =>
     client.request("/probe-c", "GET", null, true),
   ];
 
-  await delay(50);
+  await flushPendingWork();
   const requestsBeforeRecovery = requestCount;
   releaseFirst.resolve();
   await Promise.all([probe, ...waiting]);
@@ -965,34 +946,16 @@ test("Lidarr cooldown permits only one half-open recovery request", async (t) =>
   assert.equal(requestsBeforeRecovery, 1);
   assert.equal(requestCount, 3);
   assert.equal(client._circuitOpen, false);
-
-  client._httpAgent.destroy();
-  client._httpsAgent.destroy();
-  client._httpsInsecureAgent.destroy();
 });
 
 test("a failed Lidarr recovery probe reopens the cooldown", async (t) => {
   let requestCount = 0;
-  const server = http.createServer((_request, response) => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
     requestCount += 1;
-    response.writeHead(503, { "content-type": "application/json" });
-    response.end(JSON.stringify({ error: "unavailable" }));
+    return lidarrResponse(503, { error: "unavailable" });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.onTestFinished(async () => {
-    server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
-  });
-
-  const address = server.address();
-  const client = new LidarrClient();
-  client._holdConfig = true;
-  client.config = {
-    url: `http://127.0.0.1:${address.port}`,
-    apiKey: "test",
-    timeoutMs: 2000,
-    circuitDisabled: false,
-  };
+  skipRetryDelays();
+  const client = createStubbedLidarrClient(t, { circuitDisabled: false });
   client._circuitOpen = true;
   client._circuitFailures = 3;
   client._lastCircuitFailureAt = Date.now() - 61000;
@@ -1007,8 +970,4 @@ test("a failed Lidarr recovery probe reopens the cooldown", async (t) => {
 
   assert.equal(requestCount, requestsAfterProbe);
   assert.equal(client.isCircuitOpen(), true);
-
-  client._httpAgent.destroy();
-  client._httpsAgent.destroy();
-  client._httpsInsecureAgent.destroy();
 });

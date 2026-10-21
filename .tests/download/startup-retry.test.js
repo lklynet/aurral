@@ -108,9 +108,8 @@ test("running out of work leaves downloads the pipeline owns running", async () 
   );
 
   await downloadWorker.start();
-  while (downloadWorker.running) {
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
+  await downloadWorker.waitForIdle();
+  assert.equal(downloadWorker.running, false);
 
   assert.equal(downloadTracker.getJob(lastId)?.status, "failed");
   assert.equal(downloadTracker.getJob(inPipelineId)?.status, "downloading");

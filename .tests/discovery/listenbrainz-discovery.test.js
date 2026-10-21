@@ -1,4 +1,4 @@
-import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
+import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import express from "express";
 import {
@@ -147,6 +147,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   requests = [];
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  vi.setTimerTickMode("nextTimerAsync");
 });
 
 afterAll(async () => {

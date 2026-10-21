@@ -20,6 +20,8 @@ const [
   { downloadWorker },
   { registerJobs },
   { registerTracks },
+  { getMetadataBaseUrl },
+  { setMetadataProviderCooldown },
 ] = await setupIsolatedBackend(
   "aurral-wanted-monitoring",
   "backend/config/db-sqlite.js",
@@ -30,7 +32,12 @@ const [
   "backend/services/downloadJobs/downloadWorker.js",
   "backend/routes/playlists/handlers/jobs.js",
   "backend/routes/library/handlers/tracks.js",
+  "backend/services/providers/brainzmashProvider.js",
+  "backend/services/metadataProviderBudget.js",
 );
+// Unit tests are offline, so the default metadata provider refuses lookups up front
+// instead of making each one wait its turn in the provider's rate limit.
+setMetadataProviderCooldown(getMetadataBaseUrl(), 403, Number.MAX_SAFE_INTEGER);
 
 const app = express();
 app.use(express.json());

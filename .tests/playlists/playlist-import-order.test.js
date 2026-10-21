@@ -228,18 +228,22 @@ beforeEach(async () => {
   await fs.rm(downloadRoot, { recursive: true, force: true });
 });
 
-const waitForImportLog = async (mock, message) => {
-  const deadline = Date.now() + 5000;
-  while (Date.now() < deadline) {
-    const call = mock.mock.calls.find((entry) => entry[1] === message);
-    if (call) return call[2];
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(`Timed out waiting for ${message}`);
+const captureLog = (level, message) => {
+  let resolveLogged;
+  const logged = new Promise((resolve) => {
+    resolveLogged = resolve;
+  });
+  const spy = vi.spyOn(logger, level).mockImplementation((_scope, entry, details) => {
+    if (entry === message) resolveLogged(details);
+  });
+  return { spy, logged };
 };
 
 test("background import logs completion only after the playlist exists", async () => {
-  const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+  const { spy: info, logged: importCompleted } = captureLog(
+    "info",
+    "Playlist import job completed",
+  );
   const { stopPlaylistOperationWorker } = await importFromRepo(
     "backend/services/playlists/playlistOperationWorker.js",
   );
@@ -252,7 +256,7 @@ test("background import logs completion only after the playlist exists", async (
       tracks: [],
       syncEnabled: false,
     });
-    const completed = await waitForImportLog(info, "Playlist import job completed");
+    const completed = await importCompleted;
     const started = info.mock.calls.find((call) => call[1] === "Playlist import job started");
     assert.ok(started);
     assert.equal(started[2].operationId, completed.operationId);
@@ -267,7 +271,7 @@ test("background import logs completion only after the playlist exists", async (
 });
 
 test("background import logs a permanent failure with its reason", async () => {
-  const errors = vi.spyOn(logger, "error").mockImplementation(() => {});
+  const { logged: importFailed } = captureLog("error", "Playlist import failed");
   const { stopPlaylistOperationWorker } = await importFromRepo(
     "backend/services/playlists/playlistOperationWorker.js",
   );
@@ -285,7 +289,7 @@ test("background import logs a permanent failure with its reason", async () => {
       tracks: [],
       syncEnabled: false,
     });
-    const failed = await waitForImportLog(errors, "Playlist import failed");
+    const failed = await importFailed;
     assert.equal(failed.provider, "listenbrainz-playlist");
     assert.match(failed.reason, /already exists/i);
     assert.ok(failed.operationId);

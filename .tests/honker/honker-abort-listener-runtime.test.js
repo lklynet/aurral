@@ -3,7 +3,6 @@ import { getEventListeners, setMaxListeners } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 import { test } from "vite-plus/test";
 import honker from "@russellthehippo/honker-node";
 
@@ -14,13 +13,19 @@ test("Honker scheduler removes abort listeners after each timed wait", async () 
   const controller = new AbortController();
   setMaxListeners(0, controller.signal);
 
-  scheduler.tick = () => [];
+  const ticked = Promise.withResolvers();
+  let ticks = 0;
+  scheduler.tick = () => {
+    ticks += 1;
+    if (ticks === 20) ticked.resolve();
+    return [];
+  };
   scheduler.soonest = () => Date.now() / 1000 + 0.001;
   const running = scheduler.run("test-worker", controller.signal);
   let listenerCount;
 
   try {
-    await delay(75);
+    await ticked.promise;
     listenerCount = getEventListeners(controller.signal, "abort").length;
   } finally {
     controller.abort();

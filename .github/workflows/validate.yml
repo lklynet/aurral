@@ -47,11 +47,21 @@ jobs:
         run: npm run build
         working-directory: docs
 
+      - name: Read Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Chromium
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ env.ImageOS }}-${{ steps.playwright.outputs.version }}
+
       - name: Install Chromium
-        run: vp exec playwright install --with-deps chromium
+        run: vp exec playwright install --only-shell chromium
 
       - name: Run component tests in Chromium
-        run: vp run test:browser
+        run: vp test run --project browser
 
       - name: Start app
         run: |
@@ -78,10 +88,12 @@ jobs:
       - name: Run browser checks with faked APIs
         env:
           AURRAL_BASE_URL: http://127.0.0.1:3001
-        run: |
-          vp exec playwright test tests/e2e/library-track-performer.spec.js
-          vp exec playwright test tests/e2e/library-add-menu.spec.js tests/e2e/playlist-bulk-actions.spec.js
-          vp exec playwright test tests/e2e/local-album-artwork.spec.js
+        run: >-
+          vp exec playwright test --workers=4 --fully-parallel
+          tests/e2e/library-track-performer.spec.js
+          tests/e2e/library-add-menu.spec.js
+          tests/e2e/playlist-bulk-actions.spec.js
+          tests/e2e/local-album-artwork.spec.js
 
       - name: Print app log on failure
         if: failure()
@@ -110,52 +122,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # The runner's Ubuntu mirror sometimes serves packages at under 100 kB/s.
-      - name: Restore validation package cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/apt-archives
-          key: validation-apt-${{ runner.arch }}-${{ env.ImageOS }}-${{ env.ImageVersion }}
-          restore-keys: |
-            validation-apt-${{ runner.arch }}-${{ env.ImageOS }}-
-
-      - name: Ensure validation runtime dependencies
-        run: |
-          mkdir -p ~/apt-archives
-
-          if command -v fc-match >/dev/null 2>&1 && command -v ffmpeg >/dev/null 2>&1 && [ "$(fc-match -f '%{family}' 'Noto Color Emoji')" = "Noto Color Emoji" ]; then
-            exit 0
-          fi
-
-          apt_prefix=()
-          if [ "$(id -u)" -ne 0 ]; then
-            if command -v sudo >/dev/null 2>&1; then
-              apt_prefix=(sudo)
-            else
-              echo "ffmpeg and fontconfig are required for validation."
-              echo "Install ffmpeg, fontconfig, fonts-dejavu-core, and fonts-noto-color-emoji on the runner."
-              exit 1
-            fi
-          fi
-
-          chrome_sources=()
-          restore_chrome_sources() {
-            for source in "${chrome_sources[@]}"; do
-              "${apt_prefix[@]}" mv "$source.disabled" "$source"
-            done
-          }
-          trap restore_chrome_sources EXIT
-
-          while IFS= read -r source; do
-            "${apt_prefix[@]}" mv "$source" "$source.disabled"
-            chrome_sources+=("$source")
-          done < <(grep -ril 'dl.google.com/linux/chrome' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true)
-
-          find ~/apt-archives -name '*.deb' -exec "${apt_prefix[@]}" cp -t /var/cache/apt/archives/ {} +
-          "${apt_prefix[@]}" apt-get update
-          "${apt_prefix[@]}" apt-get install -y --no-install-recommends -o APT::Keep-Downloaded-Packages=true \
-            ffmpeg fontconfig fonts-dejavu-core fonts-noto-color-emoji
-          find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp -t ~/apt-archives/ {} +
+      - uses: ./.github/actions/install-ffmpeg
 
       - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
         with:
@@ -174,12 +141,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Ensure transcoding runtime dependency
-        run: |
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends ffmpeg
-          fi
+      - uses: ./.github/actions/install-ffmpeg
 
       - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
         with:

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { setTimeout as delay } from "node:timers/promises";
-import { test } from "vite-plus/test";
+import { onTestFinished, test, vi } from "vite-plus/test";
 
 process.env.NODE_ENV = "test";
 
@@ -48,12 +47,14 @@ test("Honker shutdown waits for in-flight worker work before closing infrastruct
   void worker.start();
   await workStarted.promise;
 
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  onTestFinished(() => vi.useRealTimers());
   let shutdownSettled = false;
   const shutdown = runtime.shutdownHonkerInfrastructure({ timeoutMs: 2000 }).then(() => {
     shutdownSettled = true;
   });
 
-  await delay(50);
+  await vi.advanceTimersByTimeAsync(1999);
   const returnedBeforeWorkFinished = shutdownSettled;
   releaseWork();
   await shutdown;

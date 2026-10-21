@@ -405,6 +405,7 @@ test("settled slskd searches no longer block playlist cancellation", async () =>
     integrations: {
       ...(originalSettings.integrations || {}),
       slskd: { enabled: true, url: "http://slskd.invalid", apiKey: "test-key" },
+      ytdlp: { enabled: false },
     },
   });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, playlistId);

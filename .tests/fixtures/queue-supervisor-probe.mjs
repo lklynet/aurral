@@ -15,7 +15,7 @@ try {
     const { dbOps } = await import("../../backend/db/helpers/index.js");
     dbOps.updateSettings({ integrations: { ytdlp: { enabled: false } } });
     runtime.startWorkerSupervisor({ group: "downloads" });
-    const id = queue.enqueue({ jobId: "disposable-missing-track", phase: "search" });
+    const id = queue.enqueue({ jobId: "disposable-missing-track", phase: "search" }, { runAt: now });
     runtime.wakeQueuedBackgroundWork("downloads");
     await pump();
     assert.ok(queue.getJob(id), "an unconfigured download source must not run");
@@ -50,7 +50,7 @@ try {
     assert.ok(queue.getJob(laterId), "later scheduled work must stay pending");
   } else {
     runtime.startWorkerSupervisor({ group: "maintenance" });
-    const id = queue.enqueue({ kind: "session-cleanup" });
+    const id = queue.enqueue({ kind: "session-cleanup" }, { runAt: now });
     if (scenario === "expiry") {
       queue.claimOne("disposable-expired-owner");
       const tx = honker.getHonkerDb().transaction();

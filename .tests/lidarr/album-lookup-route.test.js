@@ -129,6 +129,7 @@ test("artist lookup follows fresh Lidarr artist and album membership while the l
       },
     });
     const writes = [];
+    const libraryEvent = Promise.withResolvers();
     let closeStream = () => {};
     await streamRoutes.get("/:mbid/stream")(
       {
@@ -150,19 +151,14 @@ test("artist lookup follows fresh Lidarr artist and album membership while the l
         },
         write(value) {
           writes.push(value);
+          if (writes.at(-2) === "event: library\n")
+            libraryEvent.resolve(JSON.parse(value.slice(6)));
         },
         flush() {},
         end() {},
       },
     );
-    const deadline = Date.now() + 1000;
-    let libraryEventIndex = writes.indexOf("event: library\n");
-    while (libraryEventIndex === -1 && Date.now() < deadline) {
-      await new Promise((resolve) => setImmediate(resolve));
-      libraryEventIndex = writes.indexOf("event: library\n");
-    }
-    assert.notEqual(libraryEventIndex, -1);
-    assert.equal(JSON.parse(writes[libraryEventIndex + 1].slice(6)).exists, false);
+    assert.equal((await libraryEvent.promise).exists, false);
     closeStream();
   } finally {
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);

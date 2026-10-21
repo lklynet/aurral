@@ -4,6 +4,9 @@ import { test } from "vite-plus/test";
 import { registerDetails } from "../backend/routes/artists/handlers/details.js";
 import { listenbrainzGetReleaseGroupListens } from "../backend/services/apiClients/listenbrainz.js";
 import { json, openArtistStream, stubFetch } from "./helpers/artistStream.js";
+import { useFakeClock } from "./helpers/fakeClock.js";
+
+useFakeClock();
 
 const plaid = (n) => {
   const id = (release) => `${release}${n}0000000-0000-4000-8000-000000000000`.slice(0, 36);

@@ -1,4 +1,4 @@
-import { test } from "vite-plus/test";
+import { afterEach, test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
   YoutubeMusicPlaylistClient,
@@ -7,6 +7,12 @@ import {
 } from "../../backend/services/importLists/youtubeMusicPlaylists.js";
 
 const text = (value) => ({ toString: () => value });
+
+const useFakeClock = () =>
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+  });
+afterEach(() => vi.useRealTimers());
 
 const song = ({ id, title, artist, album = null, seconds = null }) => ({
   item_type: "song",
@@ -250,6 +256,7 @@ test("client force refresh bypasses an in-flight playlist load", async () => {
 });
 
 test("client spaces provider requests shared by concurrent playlist loads", async () => {
+  useFakeClock();
   const starts = [];
   const client = new YoutubeMusicPlaylistClient({
     playlistRequestIntervalMs: 30,
@@ -266,10 +273,12 @@ test("client spaces provider requests shared by concurrent playlist loads", asyn
     }),
   });
 
-  await Promise.all([
+  const loads = Promise.all([
     client.getPlaylist("PLabcdefghij_123"),
     client.getPlaylist("PLabcdefghij_456"),
   ]);
+  await vi.advanceTimersByTimeAsync(30);
+  await loads;
 
   assert.equal(starts.length, 2);
   assert.ok(starts[1].at - starts[0].at >= 20);
@@ -303,13 +312,19 @@ test(
         }),
     });
 
+    useFakeClock();
     await client.getPlaylist("PLabcdefghij_000");
-    const first = client.getPlaylist("PLabcdefghij_123");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    const second = client.getPlaylist("PLabcdefghij_456");
+    const first = assert.rejects(client.getPlaylist("PLabcdefghij_123"), {
+      code: "YOUTUBE_PLAYLIST_TIMEOUT",
+    });
+    await vi.advanceTimersByTimeAsync(10);
+    const second = assert.rejects(client.getPlaylist("PLabcdefghij_456"), {
+      code: "YOUTUBE_PLAYLIST_TIMEOUT",
+    });
+    await vi.advanceTimersByTimeAsync(210);
 
-    await assert.rejects(first, { code: "YOUTUBE_PLAYLIST_TIMEOUT" });
-    await assert.rejects(second, { code: "YOUTUBE_PLAYLIST_TIMEOUT" });
+    await first;
+    await second;
   },
 );
 
@@ -446,6 +461,7 @@ test("client rejects page and row limits without returning partial results", asy
 });
 
 test("client aborts and maps operation timeouts to a safe provider error", async () => {
+  useFakeClock();
   let observedSignal;
   const client = new YoutubeMusicPlaylistClient({
     operationTimeoutMs: 20,
@@ -466,10 +482,12 @@ test("client aborts and maps operation timeouts to a safe provider error", async
       });
     },
   });
-  await assert.rejects(client.getPlaylist("PLabcdefghij_123"), {
+  const timedOut = assert.rejects(client.getPlaylist("PLabcdefghij_123"), {
     code: "YOUTUBE_PLAYLIST_TIMEOUT",
     statusCode: 504,
   });
+  await vi.advanceTimersByTimeAsync(20);
+  await timedOut;
   assert.equal(observedSignal.aborted, true);
 });
 
@@ -477,6 +495,7 @@ test(
   "client times out stalled session creation and retries with a fresh session",
   { timeout: 1_000 },
   async () => {
+    useFakeClock();
     let createCalls = 0;
     const client = new YoutubeMusicPlaylistClient({
       operationTimeoutMs: 20,
@@ -496,10 +515,12 @@ test(
       },
     });
 
-    await assert.rejects(client.getPlaylist("PLabcdefghij_123"), {
+    const timedOut = assert.rejects(client.getPlaylist("PLabcdefghij_123"), {
       code: "YOUTUBE_PLAYLIST_TIMEOUT",
       statusCode: 504,
     });
+    await vi.advanceTimersByTimeAsync(20);
+    await timedOut;
     const recovered = await client.getPlaylist("PLabcdefghij_123");
 
     assert.equal(createCalls, 2);

@@ -202,7 +202,10 @@ const heartbeat = setInterval(() => {
       ),
       ...(downloadOwnerStatus ? { downloadOwnerStatus } : {}),
     });
-    if (isIdle()) process.send({ type: "idle" });
   }
 }, 5000);
 heartbeat.unref?.();
+const idleCheck = setInterval(() => {
+  if (process.connected && isIdle()) process.send({ type: "idle" });
+}, 1000);
+idleCheck.unref?.();

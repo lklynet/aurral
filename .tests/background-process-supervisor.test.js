@@ -282,6 +282,10 @@ test("a worker that is busy again keeps running and receives waiting requests", 
 });
 
 test("supervisor restarts an unexpectedly exited worker", async () => {
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    now: 0,
+  });
   const children = [];
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["library"],
@@ -301,7 +305,10 @@ test("supervisor restarts an unexpectedly exited worker", async () => {
     supervisor.start();
     children[0].exitCode = 1;
     children[0].emit("close", 1, null);
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await flush();
+    await vi.advanceTimersByTimeAsync(999);
+    assert.equal(children.length, 1);
+    await vi.advanceTimersByTimeAsync(1);
     assert.equal(children.length, 2);
     assert.deepEqual(supervisor.getGroups(), ["library"]);
   } finally {
@@ -342,6 +349,10 @@ test("flow requests return replies and reject when their owner exits", async () 
 });
 
 test("flow restart waits for job recovery", async () => {
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    now: 0,
+  });
   const children = [];
   let finishRecovery;
   const recovery = new Promise((resolve) => {
@@ -370,10 +381,13 @@ test("flow restart waits for job recovery", async () => {
   try {
     supervisor.start();
     children[0].emit("exit", 1, null);
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await vi.advanceTimersByTimeAsync(60000);
     assert.equal(children.length, 1);
     finishRecovery();
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await flush();
+    await vi.advanceTimersByTimeAsync(999);
+    assert.equal(children.length, 1);
+    await vi.advanceTimersByTimeAsync(1);
     assert.equal(children.length, 2);
   } finally {
     await supervisor.stop();
@@ -381,6 +395,10 @@ test("flow restart waits for job recovery", async () => {
 });
 
 test("only the worker with an overdue job is terminated", async () => {
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    now: 0,
+  });
   const children = new Map();
   const killed = [];
   const errors = [];
@@ -422,7 +440,9 @@ test("only the worker with an overdue job is terminated", async () => {
       jobId: 42,
       payload: '{"kind":"disposable"}',
     });
-    await new Promise((resolve) => setTimeout(resolve, 65));
+    vi.advanceTimersByTime(20);
+    assert.deepEqual(killed, []);
+    vi.advanceTimersByTime(45);
     assert.deepEqual(killed, ["inbox"]);
     assert.deepEqual(supervisor.getGroups(), ["inbox", "maintenance"]);
     assert.deepEqual(errors, [

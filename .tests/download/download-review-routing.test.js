@@ -1,6 +1,7 @@
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import path from "node:path";
+import { watch } from "node:fs";
 import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { parseFile } from "music-metadata";
@@ -909,17 +910,21 @@ btest("denying a held file starts a stopped worker to search again", async () =>
 });
 
 async function waitUntilGone(filePath) {
-  for (let attempt = 0; attempt < 400; attempt += 1) {
-    if (
-      !(await access(filePath).then(
-        () => true,
-        () => false,
-      ))
-    )
-      return;
-    await new Promise((resolve) => setTimeout(resolve, 5));
+  const watcher = watch(path.dirname(filePath));
+  try {
+    await new Promise((resolve, reject) => {
+      const check = () =>
+        access(filePath).then(
+          () => {},
+          () => resolve(),
+        );
+      watcher.on("change", check);
+      watcher.on("error", reject);
+      check();
+    });
+  } finally {
+    watcher.close();
   }
-  assert.fail(`${filePath} was not removed`);
 }
 
 btest("removing a job in review discards its file but leaves a Library file", async () => {

@@ -1,4 +1,4 @@
-import { test, vi } from "vite-plus/test";
+import { beforeEach, test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import axios from "../../lib/axiosFetch.js";
@@ -25,6 +25,11 @@ import {
   upsertLibraryMediaFile,
   upsertLibraryTrack,
 } from "../../backend/services/libraryMediaStore.js";
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  vi.setTimerTickMode("nextTimerAsync");
+});
 
 function createCalendarArtist(name) {
   const mbid = randomUUID();

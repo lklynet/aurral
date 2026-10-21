@@ -1,10 +1,8 @@
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { access, mkdtemp, mkdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 
 import { db } from "../../backend/config/db-sqlite.js";
 import {
@@ -36,8 +34,16 @@ import { setLibraryManagement } from "../../backend/services/libraryManagementSt
 import { dbOps } from "../../backend/db/helpers/index.js";
 import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.js";
 import { createMockHttpServer } from "../helpers/backendTestHarness.js";
+import { writeFlacFixture as makeTrack } from "../helpers/flacFixture.js";
 
-const execFileAsync = promisify(execFile);
+vi.mock("../../backend/services/apiClients/rateLimiter.js", async (importOriginal) => {
+  const { default: createRateLimiter } = await importOriginal();
+  return { default: (_minTime, options) => createRateLimiter(0, options) };
+});
+vi.mock("../../backend/services/metadataProviderBudget.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  reserveMetadataProviderRequest: () => 0,
+}));
 
 const getLibrarySnapshot = () => ({
   artists: db.prepare("SELECT * FROM library_artists ORDER BY name").all(),
@@ -67,16 +73,19 @@ test("overlapping scans keep change tracking isolated", async () => {
   const holdFirst = new Promise((resolve) => {
     releaseFirst = resolve;
   });
-  let firstChanged;
+  let markFirstChanged;
+  const firstChanged = new Promise((resolve) => {
+    markFirstChanged = resolve;
+  });
 
   try {
     const first = withLibraryScan("test-overlap-first", null, async () => {
       upsertLibraryArtist({ identityKey, name: "Overlapping Scan", syncSearch: false });
-      firstChanged = true;
+      markFirstChanged();
       await holdFirst;
       return { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
     });
-    while (!firstChanged) await new Promise((resolve) => setImmediate(resolve));
+    await firstChanged;
 
     const second = await withLibraryScan("test-overlap-second", null, async () => ({
       filesSeen: 0,
@@ -1142,26 +1151,6 @@ const albumListing = (title) =>
     )
     .all(title)
     .map(({ title: name, have }) => [name, have ? "have" : "missing"]);
-
-let tone = 200;
-
-async function makeTrack(filePath, tags) {
-  await mkdir(path.dirname(filePath), { recursive: true });
-  const args = [
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-nostdin",
-    "-y",
-    "-f",
-    "lavfi",
-    "-i",
-    `sine=frequency=${(tone += 7)}:duration=0.2`,
-  ];
-  for (const [key, value] of Object.entries(tags)) args.push("-metadata", `${key}=${value}`);
-  await execFileAsync("ffmpeg", [...args, filePath]);
-  return filePath;
-}
 
 function listedAlbum(
   artist,
@@ -3585,7 +3574,7 @@ test("path scope matching handles large watcher batches without pairwise compari
     path.join(root, `Artist ${index}`, "Album", `${index}.flac`),
   );
   const matchesScope = createPathScopeMatcher(scopes);
-  const startedAt = performance.now();
+  const cpuBefore = process.cpuUsage();
 
   for (let index = 0; index < scopes.length; index += 1) {
     assert.equal(matchesScope(scopes[index]), true);
@@ -3595,7 +3584,8 @@ test("path scope matching handles large watcher batches without pairwise compari
     );
   }
 
-  assert.ok(performance.now() - startedAt < 2_000);
+  const cpu = process.cpuUsage(cpuBefore);
+  assert.ok((cpu.user + cpu.system) / 1000 < 2_000);
 });
 
 test("a targeted directory rescan forgets only removed descendants", async () => {

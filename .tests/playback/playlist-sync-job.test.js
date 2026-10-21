@@ -10,6 +10,16 @@ import {
 import { createFakeNavidrome } from "../helpers/fakeNavidrome.js";
 import { callFromProcessesWhileHonkerLocked } from "../helpers/playlistManagerCallers.js";
 
+vi.mock("../../backend/services/playlistArtwork.js", async (importOriginal) => {
+  const artwork = await importOriginal();
+  let rendered;
+  return {
+    ...artwork,
+    buildPlaylistArtworkWebpBuffer: (options) =>
+      (rendered ??= artwork.buildPlaylistArtworkWebpBuffer(options)),
+  };
+});
+
 const previousGroup = process.env.AURRAL_BACKGROUND_WORKER_GROUP;
 process.env.AURRAL_BACKGROUND_WORKER_GROUP = "library";
 const [

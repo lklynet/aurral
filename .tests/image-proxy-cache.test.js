@@ -255,12 +255,11 @@ test("image proxy cache prunes oldest entries over the size cap", async () => {
       const variant = await sharp(noise, {
         raw: { width: 512, height: 512, channels: 3 },
       })
-        .png()
+        .png({ compressionLevel: 0 })
         .toBuffer();
       global.fetch = async () =>
         new Response(variant, { headers: { "content-type": "image/png" } });
       await warmImageProxy(`https://images.example/cap-${i}.png`);
-      await new Promise((resolve) => setTimeout(resolve, 5));
     }
 
     const size = await getImageProxyCacheSizeBytes();

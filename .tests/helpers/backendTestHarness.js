@@ -4,6 +4,7 @@ import { dirname, join } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { spawn } from "child_process";
 import http from "http";
+import net from "net";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..", "..");
@@ -152,15 +153,24 @@ async function waitForServer(port, child) {
     } catch (error) {
       lastError = error?.message || String(error);
     }
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await new Promise((resolve) => setTimeout(resolve, 20));
   }
   throw new Error(`Timed out waiting for server on port ${port}: ${lastError}`);
 }
 
+function findFreePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.once("error", reject);
+    probe.listen(0, () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
 export async function startServerProcess({ port, extraEnv = {} } = {}) {
-  // Keep automatic ports above Fetch's highest blocked port (10080).
-  const chosenPort =
-    Number.isInteger(port) && port > 0 ? port : 11000 + Math.floor(Math.random() * 1000);
+  const chosenPort = Number.isInteger(port) && port > 0 ? port : await findFreePort();
   const child = spawn("node", ["backend/server.js"], {
     cwd: repoRoot,
     env: {

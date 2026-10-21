@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test, beforeEach, afterAll } from "vite-plus/test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import crypto from "node:crypto";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -432,11 +432,14 @@ test("the tunnel runs while links are live and only reaches share links", async 
   await writeFile(launchLog, "");
 });
 
-test("a crashed tunnel restarts and registers its new address", { timeout: 20000 }, async () => {
+test("a crashed tunnel restarts and registers its new address", async () => {
   await createLink({ kind: "album", albumMbid: SECOND_ALBUM_MBID });
   await nextLookup((entry) => entry.method === "PUT");
   const [crashed] = await launches();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   process.kill(crashed.pid, "SIGKILL");
+  await vi.waitFor(() => assert.equal(isRunning(crashed.pid), false), { timeout: 5000 });
+  await vi.runOnlyPendingTimersAsync();
 
   const reregistered = await nextLookup(
     (entry) =>
@@ -453,8 +456,10 @@ test("Profile shows the tunnel as unreachable while aurral.org refuses it", asyn
   lookupStatus = 503;
   await createLink({ kind: "album", albumMbid: SECOND_ALBUM_MBID });
   await nextLookup((entry) => entry.method === "PUT");
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal((await callApi("GET", "")).body.tunnel, "unreachable");
+  await vi.waitFor(
+    async () => assert.equal((await callApi("GET", "")).body.tunnel, "unreachable"),
+    { timeout: 5000 },
+  );
   db.prepare("DELETE FROM share_links").run();
   await listener.syncShareListener();
   await writeFile(launchLog, "");

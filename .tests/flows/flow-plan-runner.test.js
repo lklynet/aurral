@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 import { createFlowPlanRunner } from "../../backend/services/flows/flowPlanRunner.js";
 
 function fakePlanner() {
@@ -50,9 +50,15 @@ test("an overdue flow plan stops only its planner process", async () => {
   const prior = process.env.NODE_ENV;
   process.env.NODE_ENV = "production";
   const child = fakePlanner();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   try {
     const run = createFlowPlanRunner({ forkProcess: () => child, timeoutMs: 20 });
-    await assert.rejects(run({ id: "flow-2" }), /Flow planning timed out/);
+    const pending = run({ id: "flow-2" });
+    const rejected = assert.rejects(pending, /Flow planning timed out/);
+    await vi.advanceTimersByTimeAsync(19);
+    assert.equal(child.killed, false);
+    await vi.advanceTimersByTimeAsync(1);
+    await rejected;
     assert.equal(child.killed, true);
   } finally {
     if (prior === undefined) delete process.env.NODE_ENV;

@@ -1,6 +1,7 @@
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import fsPromises, { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -15,7 +16,23 @@ test(
   async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "aurral-ytdlp-validation-"));
     const binaryPath = path.join(tempDir, "yt-dlp");
+    const audioPath = path.join(tempDir, "noise.m4a");
     const previousPath = process.env.PATH;
+    execFileSync("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "anoisesrc=r=44100",
+      "-t",
+      "4",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "192k",
+      audioPath,
+    ]);
     await writeFile(
       binaryPath,
       [
@@ -31,7 +48,7 @@ test(
         "  const pair = pattern ? new RegExp(pattern).exec(title) : null;",
         "  tags.push('-metadata', `title=${pair?.groups?.title || title}`, '-metadata', `artist=${pair?.groups?.artist || 'Music Channel'}`);",
         "}",
-        "execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'anoisesrc=r=44100', '-t', '4', '-c:a', 'aac', '-b:a', '192k', ...tags, output]);",
+        `execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', ${JSON.stringify(audioPath)}, '-c', 'copy', ...tags, output]);`,
       ].join("\n"),
     );
     await chmod(binaryPath, 0o755);
@@ -103,16 +120,14 @@ test(
     const binaryPath = path.join(tempDir, "yt-dlp");
     const pidPath = path.join(tempDir, "child.pid");
     const grandchildPidPath = path.join(tempDir, "grandchild.pid");
-    const grandchildMarkerPath = path.join(tempDir, "grandchild.marker");
     const previousPath = process.env.PATH;
     const previousPidPath = process.env.AURRAL_YTDLP_TEST_PID;
     const previousGrandchildPidPath = process.env.AURRAL_YTDLP_TEST_GRANDCHILD_PID;
-    const previousMarkerPath = process.env.AURRAL_YTDLP_TEST_MARKER;
     const grandchildScript = [
       "const fs = require('node:fs');",
       "process.on('SIGTERM', () => {});",
       "fs.writeFileSync(process.env.AURRAL_YTDLP_TEST_GRANDCHILD_PID, String(process.pid));",
-      "setInterval(() => fs.writeFileSync(process.env.AURRAL_YTDLP_TEST_MARKER, String(Date.now())), 20);",
+      "setInterval(() => {}, 1000);",
     ].join("\n");
     await writeFile(
       binaryPath,
@@ -130,40 +145,62 @@ test(
     process.env.PATH = `${tempDir}${path.delimiter}${previousPath || ""}`;
     process.env.AURRAL_YTDLP_TEST_PID = pidPath;
     process.env.AURRAL_YTDLP_TEST_GRANDCHILD_PID = grandchildPidPath;
-    process.env.AURRAL_YTDLP_TEST_MARKER = grandchildMarkerPath;
 
     let pid;
     let grandchildPid;
     let childExited = false;
     let grandchildStopped = false;
+    const until = async (condition) => {
+      while (!condition()) await new Promise((resolve) => setImmediate(resolve));
+    };
+    const running = (target) => {
+      try {
+        return !execFileSync("ps", ["-o", "stat=", "-p", String(target)], { encoding: "utf8" })
+          .trim()
+          .startsWith("Z");
+      } catch {
+        return false;
+      }
+    };
+    const stagingDir = path.join(tempDir, "ytdlp", "stubborn-child");
+    const removals = [];
+    const removeFiles = fsPromises.rm;
     try {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
       const client = new YtdlpClient({ enabled: true, stagingPath: tempDir });
       const download = client.downloadAudio("https://example.test/video", {
         jobId: "stubborn-child",
         shouldCancel: () => existsSync(pidPath) && existsSync(grandchildPidPath),
       });
       const cancelled = assert.rejects(download, { code: "DOWNLOAD_CANCELLED" });
-      for (let attempt = 0; attempt < 50 && !existsSync(pidPath); attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-      assert.equal(existsSync(pidPath), true);
-      let cleanupFinished = false;
-      const cleanup = client.cleanupStaging("stubborn-child").then(() => {
-        cleanupFinished = true;
-      });
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      assert.equal(cleanupFinished, false);
-      await cancelled;
-      await cleanup;
+      await until(() => existsSync(pidPath) && existsSync(grandchildPidPath));
       pid = Number(await readFile(pidPath, "utf8"));
       grandchildPid = Number(await readFile(grandchildPidPath, "utf8"));
+      vi.spyOn(fsPromises, "rm").mockImplementation((target, options) => {
+        removals.push({ target, childRunning: running(pid) });
+        return removeFiles(target, options);
+      });
+      const cleanup = client.cleanupStaging("stubborn-child");
+      await vi.advanceTimersByTimeAsync(1250);
+      await cancelled;
+      await cleanup;
       assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
       childExited = true;
-      const markerBefore = await readFile(grandchildMarkerPath, "utf8");
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      assert.equal(await readFile(grandchildMarkerPath, "utf8"), markerBefore);
+      const stagingRemovals = removals.filter((removal) => removal.target === stagingDir);
+      assert.ok(stagingRemovals.length > 0);
+      assert.ok(
+        stagingRemovals.every((removal) => !removal.childRunning),
+        "staging was cleared while yt-dlp was still running",
+      );
+      const giveUp = Date.now() + 5000;
+      await until(() => !running(grandchildPid) || Date.now() > giveUp);
+      assert.equal(
+        running(grandchildPid),
+        false,
+        `yt-dlp grandchild ${grandchildPid} kept running`,
+      );
       grandchildStopped = true;
-      assert.equal(existsSync(path.join(tempDir, "ytdlp", "stubborn-child")), false);
+      assert.equal(existsSync(stagingDir), false);
     } finally {
       if (!pid && existsSync(pidPath)) pid = Number(await readFile(pidPath, "utf8"));
       if (!grandchildPid && existsSync(grandchildPidPath)) {
@@ -185,8 +222,8 @@ test(
       if (previousGrandchildPidPath === undefined)
         delete process.env.AURRAL_YTDLP_TEST_GRANDCHILD_PID;
       else process.env.AURRAL_YTDLP_TEST_GRANDCHILD_PID = previousGrandchildPidPath;
-      if (previousMarkerPath === undefined) delete process.env.AURRAL_YTDLP_TEST_MARKER;
-      else process.env.AURRAL_YTDLP_TEST_MARKER = previousMarkerPath;
+      vi.restoreAllMocks();
+      vi.useRealTimers();
       await rm(tempDir, { recursive: true, force: true });
     }
   },

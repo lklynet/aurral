@@ -245,23 +245,16 @@ async function saveLidarrSettings({
   assert.equal(response.status, 200, JSON.stringify(payload));
 }
 
-async function waitForPostedArtist(mbid) {
-  const deadline = Date.now() + 5000;
-  while (Date.now() < deadline) {
-    const match = fakeLidarr.state.postedArtists.find((artist) => artist.foreignArtistId === mbid);
-    if (match) return match;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error(`Timed out waiting for fake Lidarr add for ${mbid}`);
-}
-
-async function postLibraryArtist(body, { status = 201, wait = status === 201 } = {}) {
+async function postLibraryArtist(body, { status = 201 } = {}) {
   const { response, payload } = await apiFetch("/api/library/artists", {
     method: "POST",
     body: JSON.stringify(body),
   });
   assert.equal(response.status, status, JSON.stringify(payload));
-  const posted = wait ? await waitForPostedArtist(body.foreignArtistId) : null;
+  const posted = fakeLidarr.state.postedArtists.find(
+    (artist) => artist.foreignArtistId === body.foreignArtistId,
+  );
+  if (status === 201) assert.ok(posted, `Fake Lidarr has no add for ${body.foreignArtistId}`);
   return { response, payload, posted };
 }
 
@@ -716,7 +709,7 @@ test("POST /library/artists returns 409 when saved defaults are stale", async ()
       foreignArtistId: "44444444-4444-4444-4444-444444444444",
       artistName: "Stale Artist",
     },
-    { status: 409, wait: false },
+    { status: 409 },
   );
   assert.equal(payload.field, "rootFolderPath");
   assert.match(payload.message, /saved Lidarr root folder/i);

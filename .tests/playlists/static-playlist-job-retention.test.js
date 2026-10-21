@@ -10,6 +10,16 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
+vi.mock("../../backend/services/playlistArtwork.js", async (importOriginal) => {
+  const artwork = await importOriginal();
+  let rendered;
+  return {
+    ...artwork,
+    buildPlaylistArtworkWebpBuffer: (options) =>
+      (rendered ??= artwork.buildPlaylistArtworkWebpBuffer(options)),
+  };
+});
+
 const [
   state,
   { db },

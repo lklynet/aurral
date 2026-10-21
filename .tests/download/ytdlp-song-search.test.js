@@ -26,18 +26,38 @@ const binDir = path.join(state.baseDir, "bin");
 const fixturePath = path.join(state.baseDir, "ytdlp-fixtures.json");
 const logPath = path.join(state.baseDir, "ytdlp-calls.jsonl");
 const pidPath = path.join(state.baseDir, "ytdlp-pids");
+const audioPath = path.join(state.baseDir, "tone.m4a");
 const previousPath = process.env.PATH;
 
-// Answers the way yt-dlp does from recorded JSON: song lists, song reads,
-// video searches, and downloads tagged as `--embed-metadata` tags them. A
-// song's `delay` holds its read open, as a slow or stalled read does.
 await mkdir(binDir, { recursive: true });
+execFileSync("ffmpeg", [
+  "-v",
+  "error",
+  "-f",
+  "lavfi",
+  "-i",
+  "sine=frequency=440",
+  "-t",
+  "10",
+  "-c:a",
+  "aac",
+  "-b:a",
+  "160k",
+  audioPath,
+]);
+// Answers the way yt-dlp does from recorded JSON: song lists, song reads,
+// video searches, and downloads tagged as `--embed-metadata` tags them, made
+// by repeating one encoded tone to the song's length. A song's `delay` holds
+// its read open, as a slow or stalled read does; a `held` read finishes when
+// sent SIGUSR2, and an `after` read once the named song's read has exited.
 await writeFile(
   path.join(binDir, "yt-dlp"),
   [
     "#!/usr/bin/env node",
     "const fs = require('node:fs');",
     "const { execFileSync } = require('node:child_process');",
+    "let release;",
+    "process.on('SIGUSR2', () => release());",
     `const fixtures = JSON.parse(fs.readFileSync(${JSON.stringify(fixturePath)}, 'utf8'));`,
     "const args = process.argv.slice(2);",
     "const target = args.at(-1);",
@@ -58,13 +78,25 @@ await writeFile(
     "const id = url.searchParams.get('v');",
     "const song = fixtures.songs[id];",
     "if (!song) { process.stderr.write('ERROR: Sign in to confirm your age'); process.exit(1); }",
-    "if (args.includes('--skip-download')) { setTimeout(() => print([song]), song.delay || 0); return; }",
+    "if (args.includes('--skip-download')) {",
+    "  const finish = () => print([song]);",
+    "  if (song.held) {",
+    "    const open = setInterval(() => {}, 60000);",
+    "    release = () => { clearInterval(open); finish(); };",
+    "  } else if (song.after) {",
+    `    const line = () => fs.readFileSync(${JSON.stringify(pidPath)}, 'utf8').split('\\n').find((entry) => entry.endsWith('v=' + song.after));`,
+    "    const running = (pid) => { try { return process.kill(pid, 0); } catch { return false; } };",
+    "    const waitAfter = () => (line() && !running(Number(line().split(' ')[0])) ? finish() : setTimeout(waitAfter, 1));",
+    "    waitAfter();",
+    "  } else setTimeout(finish, song.delay || 0);",
+    "  return;",
+    "}",
     "const parse = args.includes('--parse-metadata') ? args[args.indexOf('--parse-metadata') + 1] : null;",
     "const pair = parse ? new RegExp(parse.slice(6).replace(/\\(\\?P</g, '(?<')).exec(song.track) : null;",
     "const artist = pair ? pair.groups.artist : song.artists.join(', ');",
     "const output = args[args.indexOf('-o') + 1].replace('%(id)s', id).replace('%(ext)s', 'm4a');",
-    "execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440', '-t', String(song.fileDuration || song.duration),",
-    "  '-c:a', 'aac', '-b:a', '128k', '-metadata', `title=${song.track}`,",
+    `execFileSync('ffmpeg', ['-v', 'error', '-y', '-stream_loop', '-1', '-i', ${JSON.stringify(audioPath)}, '-t', String(song.fileDuration || song.duration),`,
+    "  '-c', 'copy', '-metadata', `title=${song.track}`,",
     "  '-metadata', `artist=${artist}`, '-metadata', `album=${song.fileAlbum || song.album}`, output]);",
   ].join("\n"),
 );
@@ -173,7 +205,7 @@ function warnings() {
   return (text) => warned.some((line) => line.includes(text));
 }
 
-for (const { name, track, unreadable = [], delays = {}, chosen } of [
+for (const { name, track, unreadable = [], after = {}, chosen } of [
   {
     name: "accepts the one song that names the requested artist, title, and length",
     track: {
@@ -202,7 +234,7 @@ for (const { name, track, unreadable = [], delays = {}, chosen } of [
       albumName: "In Love and Death",
       durationMs: 190693,
     },
-    delays: { "Fs3h2a-JxHA": 300 },
+    after: { "Fs3h2a-JxHA": "tMgH40LmQds" },
     chosen: [
       ["tMgH40LmQds", "accept"],
       ["Fs3h2a-JxHA", "verify"],
@@ -227,7 +259,9 @@ for (const { name, track, unreadable = [], delays = {}, chosen } of [
     const warned = warnings();
     await useFixtures((fixtures) => {
       unreadable.forEach((id) => delete fixtures.songs[id]);
-      Object.entries(delays).forEach(([id, delay]) => Object.assign(fixtures.songs[id], { delay }));
+      Object.entries(after).forEach(([id, song]) =>
+        Object.assign(fixtures.songs[id], { after: song }),
+      );
     });
     const { next } = await search(track);
     assert.equal(next.phase, "download", next.failed);
@@ -245,7 +279,7 @@ test(
   { timeout: 20000 },
   async () => {
     await useFixtures((fixtures) => {
-      fixtures.songs["4D7u5KF7SP8"].delay = 500;
+      fixtures.songs["4D7u5KF7SP8"].held = true;
     });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], now: 0 });
     const searching = search({
@@ -254,8 +288,9 @@ test(
       albumName: "Random Access Memories",
       durationMs: 369000,
     });
-    await startedPid("4D7u5KF7SP8");
+    const read = await startedPid("4D7u5KF7SP8");
     vi.advanceTimersByTime(10000);
+    process.kill(read, "SIGUSR2");
     const { next } = await searching;
     assert.equal(next.phase, "download", next.failed);
     assert.deepEqual(choices(next), [["4D7u5KF7SP8", "accept"]]);

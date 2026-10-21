@@ -73,6 +73,7 @@ test("removing and readding a library membership renews its incarnation", () => 
 
 test("playlist changes wait for another process's write instead of failing as locked", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Busy Database", tracks: [] });
+  const writing = new Int32Array(new SharedArrayBuffer(4));
   const writer = new Worker(
     `
     const { parentPort, workerData } = require("node:worker_threads");
@@ -81,15 +82,18 @@ test("playlist changes wait for another process's write instead of failing as lo
     db.exec("BEGIN IMMEDIATE");
     db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('otherProcess', '1')").run();
     parentPort.postMessage("locked");
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    Atomics.wait(workerData.writing, 0, 0, 5000);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
     db.exec("COMMIT");
     db.close();
   `,
-    { eval: true, workerData: { dbPath: isolatedState.dbPath } },
+    { eval: true, workerData: { dbPath: isolatedState.dbPath, writing } },
   );
   const exited = once(writer, "exit");
   await once(writer, "message");
 
+  Atomics.store(writing, 0, 1);
+  Atomics.notify(writing, 0);
   flowPlaylistConfig.appendStaticPlaylistTracks(playlist.id, [
     { artistName: "Artist", trackName: "Track" },
   ]);

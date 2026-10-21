@@ -52,7 +52,9 @@ test("task status reports queued jobs beyond the live row display limit", async 
   }
 });
 
-test("withJobHeartbeat extends job claim while work runs", async () => {
+test("withJobHeartbeat extends job claim while work runs", async (t) => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  t.onTestFinished(() => vi.useRealTimers());
   const queue = honkerDb.getLibraryScanQueue();
   const jobId = queue.enqueue({ kind: "heartbeat-test" });
   const job = queue.claimOne(honkerDb.getWorkerId());
@@ -68,7 +70,7 @@ test("withJobHeartbeat extends job claim while work runs", async () => {
     job,
     queue,
     async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await vi.advanceTimersByTimeAsync(1000);
     },
     1,
   );

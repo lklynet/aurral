@@ -1,4 +1,4 @@
-import { test, beforeEach, afterAll } from "vite-plus/test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import {
@@ -21,6 +21,16 @@ import {
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
+import { writeFlacFixture } from "../helpers/flacFixture.js";
+
+vi.mock("../../backend/services/apiClients/rateLimiter.js", async (importOriginal) => {
+  const { default: createRateLimiter } = await importOriginal();
+  return { default: (_minTime, options) => createRateLimiter(0, options) };
+});
+vi.mock("../../backend/services/metadataProviderBudget.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  reserveMetadataProviderRequest: () => 0,
+}));
 
 const execFileAsync = promisify(execFile);
 
@@ -51,6 +61,7 @@ let sourceCount = 0;
 let tone = 200;
 
 async function makeTrack(filePath, tags = {}, { seconds = 0.2 } = {}) {
+  if (filePath.endsWith(".flac")) return writeFlacFixture(filePath, tags, { seconds });
   await mkdir(path.dirname(filePath), { recursive: true });
   const args = [
     "-hide_banner",

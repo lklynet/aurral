@@ -51,11 +51,16 @@ test("flow completion sends display name and track library path", async () => {
   downloadTracker.setDone(jobId, path.join(process.env.WEEKLY_FLOW_FOLDER, "track.mp3"));
 
   const requests = [];
+  let received;
+  const firstRequest = new Promise((resolve) => {
+    received = resolve;
+  });
   const server = http.createServer((req, res) => {
     const chunks = [];
     req.on("data", (chunk) => chunks.push(chunk));
     req.on("end", () => {
       requests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      received();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end("{}");
     });
@@ -89,10 +94,7 @@ test("flow completion sends display name and track library path", async () => {
 
   try {
     await downloadWorker.checkPlaylistComplete(playlist.id);
-    const deadline = Date.now() + 5000;
-    while (requests.length === 0 && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
+    await firstRequest;
     assert.deepEqual(requests, [
       {
         name: "Late Night",

@@ -739,14 +739,15 @@ export async function withHonkerLock(
   inProcessLockTails.set(safeName, tail);
 
   try {
+    let timer;
     const gateAcquired = await Promise.race([
       previousTail.then(() => true),
       new Promise((resolve) => {
         const waitMs = Math.max(0, deadline - Date.now());
-        const timer = setTimeout(() => resolve(false), waitMs);
+        timer = setTimeout(() => resolve(false), waitMs);
         if (typeof timer.unref === "function") timer.unref();
       }),
-    ]);
+    ]).finally(() => clearTimeout(timer));
     if (!gateAcquired) {
       throw new Error(`Timed out waiting for Honker lock: ${safeName}`);
     }

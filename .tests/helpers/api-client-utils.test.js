@@ -1,46 +1,56 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import { spawnSync } from "node:child_process";
-import { test } from "vite-plus/test";
-import { setTimeout as delay } from "node:timers/promises";
+import v8 from "node:v8";
+import { runInNewContext } from "node:vm";
+import { test, vi } from "vite-plus/test";
 import createCache from "../../backend/services/apiClients/simpleCache.js";
 import createRateLimiter from "../../backend/services/apiClients/rateLimiter.js";
 import axios from "../../lib/axiosFetch.js";
 
+const settleWithFakeTimers = async (promise) => {
+  await vi.runAllTimersAsync();
+  return promise;
+};
+
 test("rate limiter spaces concurrent and sequential request starts", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   const limiter = createRateLimiter(30);
   const starts = [];
   const request = () =>
     limiter.schedule(async () => {
       starts.push(Date.now());
-      await delay(5);
+      await new Promise((resolve) => setTimeout(resolve, 5));
     });
-  await Promise.all([request(), request(), request()]);
-  await request();
-  await request();
+  await settleWithFakeTimers(Promise.all([request(), request(), request()]));
+  await settleWithFakeTimers(request());
+  await settleWithFakeTimers(request());
+  assert.equal(starts.length, 5);
   for (let index = 1; index < starts.length; index += 1) {
     assert.ok(starts[index] - starts[index - 1] >= 20, `start ${index} came too soon`);
   }
 });
 
 test("rate limiter rejects excess queued reservations from a burst", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   const limiter = createRateLimiter(20, { maxQueue: 1 });
   const first = limiter.schedule(() => {});
   const queued = limiter.schedule(() => {});
 
-  await assert.rejects(
+  const overflow = assert.rejects(
     limiter.schedule(() => {}),
     (error) => error.code === "EQUEUEFULL",
   );
-  await Promise.all([first, queued]);
+  await settleWithFakeTimers(Promise.all([overflow, first, queued]));
 });
 
 test("rate limiter expires queued work before invoking its callback", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   const limiter = createRateLimiter(30);
   const first = limiter.schedule(() => {});
   let invoked = false;
 
-  await assert.rejects(
+  const expired = assert.rejects(
     limiter.schedule(
       () => {
         invoked = true;
@@ -49,11 +59,13 @@ test("rate limiter expires queued work before invoking its callback", async () =
     ),
     (error) => error.code === "ETIMEDOUT",
   );
+  await settleWithFakeTimers(expired);
   await first;
   assert.equal(invoked, false);
 });
 
 test("rate limiter removes aborted queued work", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   const limiter = createRateLimiter(30);
   const first = limiter.schedule(() => {});
   const controller = new AbortController();
@@ -67,9 +79,9 @@ test("rate limiter removes aborted queued work", async () => {
   );
   controller.abort();
 
-  await assert.rejects(cancelled, { name: "AbortError" });
-  await first;
-  await new Promise((resolve) => setTimeout(resolve, 40));
+  await settleWithFakeTimers(
+    Promise.all([assert.rejects(cancelled, { name: "AbortError" }), first]),
+  );
   assert.equal(invoked, false);
 });
 
@@ -121,40 +133,29 @@ test("TTL cache removes values after the stale window", () => {
   assert.equal(cache.getWithStale("album"), undefined);
 });
 
-test("idle TTL caches release expired payloads while keeping stale and live values", () => {
-  const result = spawnSync(
-    process.execPath,
-    [
-      "--expose-gc",
-      "--input-type=module",
-      "-e",
-      `
-    import assert from "node:assert/strict";
-    import { mock } from "node:test";
-    import createCache from "./backend/services/apiClients/simpleCache.js";
-    mock.timers.enable({ apis: ["setInterval", "Date"], now: 1000 });
-    const cache = createCache();
-    let payload = { id: "expired payload" };
-    const retained = new WeakRef(payload);
-    cache.set("expired", payload, 1);
-    cache.set("stale", "offline fallback", 1, 600);
-    cache.set("live", "live", 3600);
-    payload = null;
-    mock.timers.tick(60001);
+test("idle TTL caches release expired payloads while keeping stale and live values", async () => {
+  v8.setFlagsFromString("--expose-gc");
+  const collectGarbage = runInNewContext("gc");
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"], now: 1000 });
+  vi.resetModules();
+  const { default: createIdleCache } =
+    await import("../../backend/services/apiClients/simpleCache.js");
+  const cache = createIdleCache();
+  let payload = { id: "expired payload" };
+  const retained = new WeakRef(payload);
+  cache.set("expired", payload, 1);
+  cache.set("stale", "offline fallback", 1, 600);
+  cache.set("live", "live", 3600);
+  payload = null;
+  vi.advanceTimersByTime(60001);
+  await new Promise(setImmediate);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    collectGarbage();
     await new Promise(setImmediate);
-    for (let attempt = 0; attempt < 5; attempt++) {
-      global.gc();
-      await new Promise(setImmediate);
-    }
-    assert.equal(retained.deref() === undefined, true, "idle caches must release expired payloads");
-    assert.equal(cache.get("live"), "live");
-    assert.deepEqual(cache.getWithStale("stale"), { value: "offline fallback", stale: true });
-    mock.timers.reset();
-  `,
-    ],
-    { encoding: "utf8" },
-  );
-  assert.equal(result.status, 0, result.stderr || result.stdout);
+  }
+  assert.equal(retained.deref() === undefined, true, "idle caches must release expired payloads");
+  assert.equal(cache.get("live"), "live");
+  assert.deepEqual(cache.getWithStale("stale"), { value: "offline fallback", stale: true });
 });
 
 test("fetch transport failures expose axios-compatible request metadata", async () => {
@@ -175,9 +176,7 @@ test("fetch transport failures expose axios-compatible request metadata", async 
 });
 
 test("fetch timeouts expose an axios-compatible timeout code", async () => {
-  const server = http.createServer((_request, response) => {
-    setTimeout(() => response.end("ok"), 100);
-  });
+  const server = http.createServer(() => {});
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
 
@@ -187,6 +186,7 @@ test("fetch timeouts expose an axios-compatible timeout code", async () => {
       (error) => error.code === "ECONNABORTED",
     );
   } finally {
+    server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   }
 });

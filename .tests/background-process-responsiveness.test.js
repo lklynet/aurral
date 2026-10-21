@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync, watch, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "vite-plus/test";
 import { fileURLToPath } from "node:url";
 import { createBackgroundProcessSupervisor } from "../backend/services/backgroundProcessSupervisor.js";
@@ -16,6 +19,13 @@ test("a blocked background process leaves the web process event loop responsive"
   const donePromise = new Promise((resolve) => {
     done = resolve;
   });
+  const dir = mkdtempSync(join(tmpdir(), "aurral-blocking-child-"));
+  const blockingPath = join(dir, "blocking");
+  const releasePath = join(dir, "release");
+  const watcher = watch(dir);
+  const childBlocking = new Promise((resolve) => {
+    watcher.on("change", () => existsSync(blockingPath) && resolve());
+  });
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["library"],
     findGroupsWithWork: () => ["library"],
@@ -25,7 +35,7 @@ test("a blocked background process leaves the web process event loop responsive"
     },
     onMessage(message) {
       if (message?.type === "ready") ready();
-      if (message?.type === "done") done();
+      if (message?.type === "done") done(message.released);
     },
   });
   try {
@@ -41,14 +51,14 @@ test("a blocked background process leaves the web process event loop responsive"
     } finally {
       clearTimeout(startupTimer);
     }
-    child.send({ type: "block" });
-    const first = await Promise.race([
-      new Promise((resolve) => setTimeout(() => resolve("web"), 100)),
-      donePromise.then(() => "worker"),
-    ]);
-    assert.equal(first, "web");
-    await donePromise;
+    child.send({ type: "block", blockingPath, releasePath });
+    await childBlocking;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    writeFileSync(releasePath, "");
+    assert.equal(await donePromise, true, "the web process must release the blocked child");
   } finally {
+    watcher.close();
     await supervisor.stop();
+    rmSync(dir, { recursive: true, force: true });
   }
 });
