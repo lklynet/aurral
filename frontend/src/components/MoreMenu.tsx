@@ -1,10 +1,15 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { MoreHorizontal } from "lucide-react";
 
-export function MoreMenu({ children, activeButtonClass = "btn-primary" }) {
+interface MoreMenuProps {
+  children: ReactNode;
+  activeButtonClass?: string;
+}
+
+export function MoreMenu({ children, activeButtonClass = "btn-primary" }: MoreMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef(null);
-  const buttonRef = useRef(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const close = useCallback(() => {
     setIsOpen(false);
@@ -12,8 +17,8 @@ export function MoreMenu({ children, activeButtonClass = "btn-primary" }) {
   }, []);
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
     };
@@ -25,7 +30,7 @@ export function MoreMenu({ children, activeButtonClass = "btn-primary" }) {
 
   useEffect(() => {
     if (!isOpen) return undefined;
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
     };
     document.addEventListener("keydown", handleKeyDown);

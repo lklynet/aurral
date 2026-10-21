@@ -1,4 +1,4 @@
-import { forwardRef } from "react";
+import { forwardRef, type ForwardedRef } from "react";
 import { MoreVertical, Plus, RefreshCw } from "lucide-react";
 import Tooltip from "./Tooltip";
 import TooltipButton from "./TooltipButton";
@@ -29,7 +29,7 @@ const AddActionButton = forwardRef(function AddActionButton(
     type = "button",
     ...buttonProps
   },
-  ref,
+  ref: ForwardedRef<HTMLButtonElement>,
 ) {
   if (ownerConflict) {
     return (

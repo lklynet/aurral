@@ -12,7 +12,13 @@ const LOADER_FOOTPRINTS = {
   "2xl": 62,
 };
 
-export function DotLoader({ size = "sm", label = "Loading", className = "" }) {
+interface DotLoaderProps {
+  size?: keyof typeof LOADER_FOOTPRINTS;
+  label?: string | null;
+  className?: string;
+}
+
+export function DotLoader({ size = "sm", label = "Loading", className = "" }: DotLoaderProps) {
   const classes = ["aurral-dot-loader", className].filter(Boolean).join(" ");
   const footprint = LOADER_FOOTPRINTS[size] || LOADER_FOOTPRINTS.sm;
   const tileSize = (footprint * COARSE_TILE_SIZE) / COARSE_FOOTPRINT;

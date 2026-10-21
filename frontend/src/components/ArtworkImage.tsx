@@ -1,6 +1,22 @@
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 
-function ThumbnailImage({ src, sizes, loading, onError, ...props }) {
+type ImageProps = ComponentProps<"img">;
+
+type ArtworkImageProps = ImageProps & {
+  src: string;
+  thumbnail?: boolean;
+  sizes?: string;
+  loading?: ImageProps["loading"];
+  decoding?: ImageProps["decoding"];
+};
+
+type ThumbnailImageProps = ImageProps & {
+  src: string;
+  sizes: string;
+  loading: ImageProps["loading"];
+};
+
+function ThumbnailImage({ src, sizes, loading, onError, ...props }: ThumbnailImageProps) {
   const [previewFailed, setPreviewFailed] = useState(false);
   const preview = src.replace(/\/fanart\//i, "/preview/");
   const bigPreview = src.replace(/\/fanart\//i, "/bigpreview/");
@@ -36,7 +52,7 @@ export default function ArtworkImage({
   loading = "lazy",
   decoding = "async",
   ...props
-}) {
+}: ArtworkImageProps) {
   if (thumbnail && /^https?:\/\/assets\.fanart\.tv\/fanart\//i.test(src)) {
     return (
       <ThumbnailImage

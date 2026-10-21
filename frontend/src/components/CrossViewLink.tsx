@@ -7,7 +7,13 @@ const VIEWS = {
   library: { label: "Open in library", Icon: Library },
 };
 
-function CrossViewLink({ view, to, state }) {
+interface CrossViewLinkProps {
+  view: keyof typeof VIEWS;
+  to: string;
+  state?: unknown;
+}
+
+function CrossViewLink({ view, to, state }: CrossViewLinkProps) {
   const { label, Icon } = VIEWS[view];
   return (
     <Tooltip content={label}>

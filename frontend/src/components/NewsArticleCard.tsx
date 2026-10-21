@@ -5,12 +5,29 @@ import { getArtistCover } from "../utils/api/endpoints/artists.ts";
 import TooltipButton from "./TooltipButton";
 import RelativeTime from "./RelativeTime";
 
-export function NewsArticleCard({ article, compact = false, onDisableFeed }) {
+interface NewsArticle {
+  title: string;
+  description: string;
+  url: string;
+  source: string;
+  sourceUrl: string;
+  publishedAt: string;
+  imageUrl: string | null;
+  artists: { artistMbid: string | null; artistName: string }[];
+}
+
+interface NewsArticleCardProps {
+  article: NewsArticle;
+  compact?: boolean;
+  onDisableFeed?: (sourceUrl: string) => unknown;
+}
+
+export function NewsArticleCard({ article, compact = false, onDisableFeed }: NewsArticleCardProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const [fallbackImage, setFallbackImage] = useState("");
   const [fallbackFailed, setFallbackFailed] = useState(false);
 
-  const artists = Array.isArray(article?.artists) ? article.artists : [];
+  const artists: NewsArticle["artists"] = Array.isArray(article?.artists) ? article.artists : [];
   const { artistMbid: fallbackMbid, artistName: fallbackName } =
     artists.find((artist) => artist.artistMbid) || {};
   const shouldLoadFallback = (!article?.imageUrl || imageFailed) && !fallbackFailed;
@@ -21,7 +38,9 @@ export function NewsArticleCard({ article, compact = false, onDisableFeed }) {
     getArtistCover(fallbackMbid, fallbackName)
       .then((data) => {
         if (cancelled) return;
-        const image = data?.images?.find((entry) => entry.front)?.image || data?.images?.[0]?.image;
+        const image =
+          data?.images?.find((entry: { front?: boolean }) => entry.front)?.image ||
+          data?.images?.[0]?.image;
         setFallbackImage(image || "");
       })
       .catch(() => {});

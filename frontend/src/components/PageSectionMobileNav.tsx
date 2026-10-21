@@ -1,5 +1,15 @@
+import type { ChangeEvent } from "react";
 import { useNavigate } from "react-router";
 import { SettingsSelect } from "../pages/Settings/components/SettingsField";
+
+interface PageSectionMobileNavProps {
+  basePath?: string;
+  sections: readonly { id: string; label: string }[];
+  activeId: string;
+  label?: string;
+  getSectionPath?: (sectionId: string) => string;
+  selectId?: string;
+}
 
 export function PageSectionMobileNav({
   basePath,
@@ -8,7 +18,7 @@ export function PageSectionMobileNav({
   label = "View",
   getSectionPath,
   selectId = "page-section-select",
-}) {
+}: PageSectionMobileNavProps) {
   const navigate = useNavigate();
 
   return (
@@ -20,7 +30,7 @@ export function PageSectionMobileNav({
         legacyStyle
         id={selectId}
         value={activeId}
-        onChange={(event) =>
+        onChange={(event: ChangeEvent<HTMLSelectElement>) =>
           navigate(
             getSectionPath
               ? getSectionPath(event.target.value)

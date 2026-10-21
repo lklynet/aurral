@@ -3,10 +3,10 @@ import { useId } from "react";
 const STAGE_BACKDROP_VIEW_BOX = "0 0 8192 96";
 const SIDEBAR_STAGE_BACKDROP_EVENT = "aurral:sidebar-stage-backdrop";
 
-const getSidebarStageBackdropStorageKey = (userId) =>
+const getSidebarStageBackdropStorageKey = (userId: number | null | undefined) =>
   `sidebar-stage-backdrop:${userId ?? "anonymous"}`;
 
-export function getSidebarStageBackdropEnabled(userId) {
+export function getSidebarStageBackdropEnabled(userId: number | null | undefined) {
   if (typeof window === "undefined") return true;
   try {
     return window.localStorage.getItem(getSidebarStageBackdropStorageKey(userId)) !== "false";
@@ -15,7 +15,10 @@ export function getSidebarStageBackdropEnabled(userId) {
   }
 }
 
-export function setSidebarStageBackdropEnabled(userId, enabled) {
+export function setSidebarStageBackdropEnabled(
+  userId: number | null | undefined,
+  enabled: boolean,
+) {
   if (typeof window === "undefined") return enabled;
   try {
     window.localStorage.setItem(getSidebarStageBackdropStorageKey(userId), String(enabled));
@@ -54,7 +57,9 @@ const NIGHTLY_SPARKLES = [
   { x: 246, y: 26 },
 ];
 
-export function resolveSidebarStageBackdropVariant(channel = import.meta.env.VITE_RELEASE_CHANNEL) {
+export function resolveSidebarStageBackdropVariant(
+  channel = import.meta.env.VITE_RELEASE_CHANNEL,
+): "nightly" | "preview" | null {
   const normalized = String(channel || "stable")
     .trim()
     .toLowerCase();
@@ -311,7 +316,9 @@ function PreviewBlueprintArt() {
   );
 }
 
-export default function SidebarStageBackdrop({ variant }) {
+type StageBackdropVariant = NonNullable<ReturnType<typeof resolveSidebarStageBackdropVariant>>;
+
+export default function SidebarStageBackdrop({ variant }: { variant: StageBackdropVariant }) {
   return (
     <div className="sidebar-stage-backdrop" aria-hidden="true">
       {variant === "preview" ? <PreviewBlueprintArt /> : <NightlySkyArt />}

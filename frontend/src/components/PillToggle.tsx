@@ -1,4 +1,10 @@
 import "./PillToggle.css";
+import type { ComponentPropsWithoutRef } from "react";
+
+type PillToggleProps = Omit<ComponentPropsWithoutRef<"button">, "onChange"> & {
+  checked?: boolean;
+  onChange?: (event: { target: { checked: boolean } }) => void;
+};
 
 function PillToggle({
   checked = false,
@@ -7,7 +13,7 @@ function PillToggle({
   id,
   className,
   ...buttonProps
-}) {
+}: PillToggleProps) {
   const handleClick = () => onChange?.({ target: { checked: !checked } });
 
   return (

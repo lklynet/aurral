@@ -2,6 +2,17 @@ import { useId } from "react";
 import { DotLoader } from "./DotLoader";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 
+interface ConfirmModalProps {
+  open: boolean;
+  title: string;
+  body: string;
+  confirmLabel: string;
+  busyLabel: string;
+  busy?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
 export function ConfirmModal({
   open,
   title,
@@ -11,7 +22,7 @@ export function ConfirmModal({
   busy = false,
   onCancel,
   onConfirm,
-}) {
+}: ConfirmModalProps) {
   const titleId = useId();
   const bodyId = useId();
   const { dialogRef, handleBackdropClick } = useModalDialog({

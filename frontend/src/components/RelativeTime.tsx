@@ -7,14 +7,20 @@ import {
   nextRelativeTimeChange,
 } from "../utils/dateTime.ts";
 
-const toDate = (value) => {
+interface RelativeTimeProps {
+  value: string | number | null | undefined;
+  unit?: "day";
+  className?: string;
+}
+
+const toDate = (value: RelativeTimeProps["value"]) => {
   if (value === null || value === undefined || value === "") return null;
   const dateOnly = typeof value === "string" ? value.match(/^\d{4}-\d{2}-\d{2}$/)?.[0] : null;
   const date = new Date(dateOnly ? `${dateOnly}T12:00:00` : value);
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-export default function RelativeTime({ value, unit, className }) {
+export default function RelativeTime({ value, unit, className }: RelativeTimeProps) {
   const date = toDate(value);
   const time = date ? date.getTime() : null;
   const [tick, setTick] = useState(0);

@@ -2,12 +2,19 @@ import { AlertTriangle, Clock } from "lucide-react";
 import { DotLoader } from "./DotLoader";
 import RelativeTime from "./RelativeTime";
 
+interface DiscoveryStatusPillProps {
+  isUpdating?: boolean;
+  lastUpdated?: string | null;
+  updateProgressMessage?: string | null;
+  error?: string | null;
+}
+
 export default function DiscoveryStatusPill({
   isUpdating = false,
   lastUpdated = null,
   updateProgressMessage,
   error = null,
-}) {
+}: DiscoveryStatusPillProps) {
   if (isUpdating) {
     return (
       <span

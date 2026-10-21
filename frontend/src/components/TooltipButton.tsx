@@ -1,7 +1,12 @@
-import { forwardRef } from "react";
+import { forwardRef, type ComponentPropsWithoutRef } from "react";
 import Tooltip from "./Tooltip";
 
-const TooltipButton = forwardRef(function TooltipButton(
+type TooltipButtonProps = ComponentPropsWithoutRef<"button"> & {
+  label?: string;
+  tooltipPlacement?: "side" | "top";
+};
+
+const TooltipButton = forwardRef<HTMLButtonElement, TooltipButtonProps>(function TooltipButton(
   {
     label,
     children,
