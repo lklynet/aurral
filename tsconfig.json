@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true
+  },
+  "include": [
+    "backend",
+    "lib",
+    "frontend/src",
+    "frontend/scripts",
+    "frontend/vite.config.ts",
+    ".tests",
+    "tests",
+    "scripts",
+    "*.config.ts"
+  ],
+  "exclude": ["**/node_modules", "**/dist", "backend/data*"]
+}

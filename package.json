@@ -19,8 +19,9 @@
   "scripts": {
     "build": "npm run build --workspace frontend",
     "start": "node --env-file=backend/.env backend/server.ts",
-    "check": "vp check && node frontend/scripts/lint-ui-css.mts",
+    "check": "vp check && node frontend/scripts/lint-ui-css.mts && node scripts/typecheck.mts",
     "lint": "vp lint && node frontend/scripts/lint-ui-css.mts",
+    "typecheck": "node scripts/typecheck.mts",
     "lint:ui": "node frontend/scripts/lint-ui-css.mts && vp lint frontend/src",
     "format": "vp fmt",
     "test": "vp test run --project unit",
@@ -41,8 +42,12 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitest/browser-playwright": "5.0.5",
     "ajv": "^8.20.0",
+    "typescript": "^7.0.2",
     "vite-plus": "1.3.0"
   },
   "overrides": {

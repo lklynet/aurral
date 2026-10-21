@@ -69,12 +69,16 @@ Before opening the pull request, run the checks that apply to your change and de
 Aurral uses [Vite+](https://viteplus.dev) for formatting, linting, tests, and frontend builds. Run these from the repository root:
 
 ```sh
-npm run check             # formatting, lint, and UI style checks
+npm run check             # formatting, lint, UI style, and type checks
 npm test                  # unit tests
 npm run test:integration  # integration tests
 npm run test:browser      # component tests in headless Chromium
 npm run build             # frontend build
 ```
+
+Aurral is written in TypeScript and Node runs the `.ts` files directly, so use only type syntax that Node can strip: no `enum`, `namespace`, or constructor parameter properties. In code that Node runs, such as `backend/`, `lib/`, and the tests, write relative imports with their `.ts` extension.
+
+The code is moving to strict type checking. `typecheck-baseline.json` lists how many type errors each file still has, and `npm run check` fails when a file has more. When you fix type errors, run `npm run typecheck -- --update` to lower the baseline. Never raise it.
 
 Run `npm run format` to format the whole repository. After `npm install`, the pre-commit hook formats and lints the files you stage. It adds its fixes to the commit and stops the commit when a lint error remains.
 
