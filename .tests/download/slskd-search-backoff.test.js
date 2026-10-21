@@ -85,6 +85,7 @@ test("downloads enqueue during cross-process search backoff without bypassing se
     stdio: ["ignore", "ignore", "pipe", "ipc"],
   });
   const workerFinished = once(worker, "message");
+  const workerExited = once(worker, "exit");
   const cancelOtherSearch = new AbortController();
   let enqueue;
   let otherSearch;
@@ -128,9 +129,8 @@ test("downloads enqueue during cross-process search backoff without bypassing se
     cancelOtherSearch.abort();
     if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(1000);
     vi.useRealTimers();
-    if (worker.connected) worker.send("advance");
-    await Promise.allSettled([enqueue, otherSearch, workerFinished]);
     if (worker.exitCode == null) worker.kill();
+    await Promise.allSettled([enqueue, otherSearch, workerExited]);
     await server.close();
   }
 });
