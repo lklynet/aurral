@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
+import type { InfiniteData, QueryKey } from "@tanstack/react-query";
+import type { ApiError } from "../utils/api/core.ts";
 import {
   LIBRARY_LOOKUP_BATCH_SIZE,
   libraryLookupBatchQuery,
@@ -8,6 +10,7 @@ import {
   settleLibraryOwnerConflict,
 } from "../utils/api/endpoints/library.ts";
 import { addStaticPlaylistTracks, createStaticPlaylist } from "../utils/api/endpoints/playlists.ts";
+import type { LookupArtistsInLibraryBatchResponse } from "../../../backend/routes/library/handlers/misc.ts";
 import { getDiscovery } from "../utils/api/endpoints/discovery.ts";
 import { DotLoader } from "../components/DotLoader";
 import { SkeletonSearchResults, SkeletonStatus } from "../components/Skeletons";
@@ -17,7 +20,10 @@ import SearchAlbumResults from "../components/SearchAlbumResults";
 import SearchArtistResults from "../components/SearchArtistResults";
 import AddActionButton from "../components/AddActionButton";
 import SearchLibraryCheck from "../components/SearchLibraryCheck";
-import SearchMixedResultList from "../components/SearchMixedResultList";
+import SearchMixedResultList, {
+  type SearchImageMap,
+  type SearchItem,
+} from "../components/SearchMixedResultList";
 import SearchTopResultCard from "../components/SearchTopArtistCard";
 import { TrackPlaylistMenu } from "./ArtistDetails/components/TrackPlaylistMenu";
 import {
@@ -30,6 +36,7 @@ import { useToast } from "../contexts/ToastContext";
 import { allReleaseTypes } from "./ArtistDetails/constants";
 import { readReleaseListViewMode, writeReleaseListViewMode } from "./ArtistDetails/utils";
 import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
+import type { ArtistFeedbackAction, ArtistFeedbackSource } from "../utils/artistTaste";
 import { queryKeys } from "../queryClient.ts";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
 import { getArtistRecordId } from "../utils/artistTaste";
@@ -73,38 +80,75 @@ import {
 import TooltipButton from "../components/TooltipButton";
 import Tooltip from "../components/Tooltip";
 
+type DiscoverPage = Awaited<ReturnType<typeof getDiscovery>>;
+type UnifiedSearchResponse = Awaited<ReturnType<typeof searchUnified>>;
+type CatalogSearchPage = Awaited<ReturnType<typeof searchCatalog>>;
+type SearchPage = DiscoverPage | UnifiedSearchResponse | CatalogSearchPage;
+type SearchResultItem = SearchItem & {
+  id?: string | null;
+  durationMs?: number | null;
+  matchPercent?: number | null;
+  scoreTotal?: number | null;
+  scoreSimilarity?: number | null;
+  popularityRank?: number | null;
+  listeners?: number | null;
+  playcount?: number | null;
+  monitored?: boolean;
+  ownerConflict?: { message: string };
+};
+type PlaylistTarget = { mode: "new"; name: string } | { mode: "existing"; playlistId: string };
+type AlbumLibraryState =
+  | boolean
+  | {
+      inLibrary?: boolean;
+      managedBy?: string;
+      libraryAlbumId?: string | number | null;
+      libraryArtistId?: string | number | null;
+      status?: string;
+      monitored?: boolean;
+      ownerConflict?: { message: string };
+    };
+
 const RECOMMENDED_SORT_OPTIONS = [
   { value: "name", label: "Name" },
   { value: "match", label: "Match" },
   { value: "popularity", label: "Popularity" },
 ];
-const getRecommendedSortOptions = (pageType) =>
+const getRecommendedSortOptions = (pageType: string | null) =>
   pageType === "recommended"
     ? RECOMMENDED_SORT_OPTIONS
     : RECOMMENDED_SORT_OPTIONS.filter((option) => option.value !== "match");
-const getDefaultRecommendedSort = (pageType) =>
+const getDefaultRecommendedSort = (pageType: string | null) =>
   pageType === "recommended"
     ? { key: "match", direction: "desc" }
     : { key: "name", direction: "asc" };
-const EMPTY_SEARCH_PAGES = [];
-const combineLibraryLookup = (queries) =>
+const EMPTY_SEARCH_PAGES: SearchPage[] = [];
+const combineLibraryLookup = (
+  queries: { data?: LookupArtistsInLibraryBatchResponse }[],
+): LookupArtistsInLibraryBatchResponse =>
   Object.assign({}, ...queries.map((query) => query.data || {}));
 const LIBRARY_RESULT_LIMIT = 6;
 
-const getRecommendedArtistName = (artist) => String(artist?.name || "").trim();
+const getRecommendedArtistName = (artist: SearchResultItem | null | undefined) =>
+  String(artist?.name || "").trim();
 
-const getRecommendedMatch = (artist) => Number(artist?.matchPercent ?? 0) || 0;
+const getRecommendedMatch = (artist: SearchResultItem | null | undefined) =>
+  Number(artist?.matchPercent ?? 0) || 0;
 
-const getRecommendedScore = (artist) =>
+const getRecommendedScore = (artist: SearchResultItem | null | undefined) =>
   Number(artist?.scoreTotal ?? artist?.score ?? artist?.scoreSimilarity ?? 0) || 0;
 
-const getRecommendedPopularity = (artist) => {
+const getRecommendedPopularity = (artist: SearchResultItem | null | undefined) => {
   const rank = Number(artist?.popularityRank);
   if (Number.isFinite(rank) && rank > 0) return -rank;
   return Number(artist?.listeners ?? artist?.playcount ?? 0) || 0;
 };
 
-const sortRecommendedArtists = (artists, sortKey, sortDirection) =>
+const sortRecommendedArtists = (
+  artists: SearchResultItem[],
+  sortKey: string,
+  sortDirection: string,
+) =>
   [...artists].sort((left, right) => {
     let difference;
     if (sortKey === "name") {
@@ -126,10 +170,12 @@ function SearchResultsPage() {
   const rawFilter = searchParams.get("filter") || "all";
   const activeFilter = rawFilter === "library" || rawFilter === "tracks" ? "all" : rawFilter;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const [artistImages, setArtistImages] = useState({});
-  const [albumCovers, setAlbumCovers] = useState({});
-  const [albumLibraryLookup, setAlbumLibraryLookup] = useState({});
-  const [pendingAlbumIds, setPendingAlbumIds] = useState({});
+  const [artistImages, setArtistImages] = useState<SearchImageMap>({});
+  const [albumCovers, setAlbumCovers] = useState<SearchImageMap>({});
+  const [albumLibraryLookup, setAlbumLibraryLookup] = useState<Record<string, AlbumLibraryState>>(
+    {},
+  );
+  const [pendingAlbumIds, setPendingAlbumIds] = useState<Record<string, boolean>>({});
   const [albumOptionsOpen, setAlbumOptionsOpen] = useState(false);
   const [albumViewMode, setAlbumViewMode] = useState(() => readReleaseListViewMode());
   const [albumReleaseTab, setAlbumReleaseTab] = useState("all");
@@ -157,9 +203,9 @@ function SearchResultsPage() {
     loadStaticPlaylists,
   } = useStaticPlaylists();
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
-  const sentinelRef = useRef(null);
-  const albumOptionsMenuRef = useRef(null);
-  const recommendedToolbarRef = useRef(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const albumOptionsMenuRef = useRef<HTMLDivElement>(null);
+  const recommendedToolbarRef = useRef<HTMLDivElement>(null);
   const { hasPermission } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
@@ -204,7 +250,7 @@ function SearchResultsPage() {
   const { lookup: artistFeedbackLookup, submitFeedback } = useArtistTasteFeedback();
   const canAddAlbum = hasPermission("addAlbum");
   const updateAlbumSort = useCallback(
-    (nextSort) => {
+    (nextSort: string) => {
       const params = new URLSearchParams(searchParams);
       if (nextSort === DEFAULT_ALBUM_SORT) {
         params.delete("sort");
@@ -217,7 +263,7 @@ function SearchResultsPage() {
   );
 
   const handleRecommendedSortOptionClick = useCallback(
-    (option) => {
+    (option: { value: string; label: string }) => {
       if (recommendedSortKey === option.value) {
         setRecommendedSortDirection((current) => (current === "asc" ? "desc" : "asc"));
         setRecommendedSortMenuOpen(false);
@@ -231,7 +277,7 @@ function SearchResultsPage() {
   );
 
   const updateUnifiedFilter = useCallback(
-    (nextFilter) => {
+    (nextFilter: string) => {
       const params = new URLSearchParams(searchParams);
       if (!nextFilter || nextFilter === "all") {
         params.delete("filter");
@@ -271,13 +317,19 @@ function SearchResultsPage() {
     pagedRecommendations,
     trimmedQuery,
   ]);
-  const searchQuery = useInfiniteQuery({
+  const searchQuery = useInfiniteQuery<
+    SearchPage,
+    ApiError,
+    InfiniteData<SearchPage, number>,
+    QueryKey,
+    number
+  >({
     queryKey: searchQueryKey,
     enabled: Boolean(
       trimmedQuery || normalizedType === "recommended" || normalizedType === "trending",
     ),
     initialPageParam: 0,
-    queryFn: ({ pageParam, signal }) => {
+    queryFn: ({ pageParam, signal }): Promise<SearchPage> => {
       if (normalizedType === "recommended" || normalizedType === "trending") {
         return getDiscovery({
           offset: pageParam,
@@ -304,16 +356,23 @@ function SearchResultsPage() {
     getNextPageParam: (lastPage, pages) => {
       if (normalizedType === "trending" || isUnifiedSearch) return undefined;
       if (normalizedType === "recommended") {
-        const loaded = pages.reduce(
+        const loaded = (pages as DiscoverPage[]).reduce(
           (count, page) => count + (page?.recommendations?.length || 0),
           0,
         );
-        const total = Number(lastPage?.recommendationCount || 0);
+        const total = Number((lastPage as DiscoverPage)?.recommendationCount || 0);
         return loaded < total ? loaded : undefined;
       }
-      const loaded = pages.reduce((count, page) => count + (page?.items?.length || 0), 0);
-      if (!lastPage?.items?.length) return undefined;
-      if (!lastPage?.hasMore && !(Number(lastPage?.count) > loaded)) return undefined;
+      const loaded = (pages as CatalogSearchPage[]).reduce(
+        (count, page) => count + (page?.items?.length || 0),
+        0,
+      );
+      if (!(lastPage as CatalogSearchPage)?.items?.length) return undefined;
+      if (
+        !(lastPage as CatalogSearchPage)?.hasMore &&
+        !(Number((lastPage as CatalogSearchPage)?.count) > loaded)
+      )
+        return undefined;
       return loaded;
     },
     placeholderData: (previous, previousQuery) => {
@@ -331,22 +390,28 @@ function SearchResultsPage() {
   const searchUpdating = searchQuery.isPlaceholderData;
 
   const searchPages = searchQuery.data?.pages || EMPTY_SEARCH_PAGES;
-  const rawUnifiedResults = isUnifiedSearch ? searchPages[0] || null : null;
-  const rawResults = useMemo(() => {
+  const rawUnifiedResults = isUnifiedSearch
+    ? (searchPages[0] as UnifiedSearchResponse) || null
+    : null;
+  const rawResults = useMemo((): SearchResultItem[] => {
     if (normalizedType === "recommended") {
-      const recommendations = searchPages.flatMap((page) => page?.recommendations || []);
+      const recommendations = (searchPages as DiscoverPage[]).flatMap(
+        (page) => page?.recommendations || [],
+      );
       return recommendedTag
         ? recommendations.filter((artist) => artistMatchesGenre(artist, recommendedTag))
         : recommendations;
     }
     if (normalizedType === "trending") {
-      return searchPages[0]?.globalTop || [];
+      return (searchPages as DiscoverPage[])[0]?.globalTop || [];
     }
-    const items = searchPages.flatMap((page) => page?.items || []);
+    const items: SearchResultItem[] = (searchPages as CatalogSearchPage[]).flatMap(
+      (page) => page?.items || [],
+    );
     return isAlbumSearch ? dedupeAlbums(items) : dedupeArtists(items);
   }, [isAlbumSearch, normalizedType, recommendedTag, searchPages]);
   const withAlbumLibraryState = useCallback(
-    (album) => {
+    (album: SearchResultItem) => {
       const match = album?.id ? albumLibraryLookup[album.id] : null;
       return match && typeof match === "object" ? { ...album, ...match } : album;
     },
@@ -416,10 +481,15 @@ function SearchResultsPage() {
       (unifiedResults?.catalog?.albums?.length || 0) +
       (unifiedResults?.catalog?.tracks?.length || 0)
     : pagedRecommendations
-      ? Number(searchPages[searchPages.length - 1]?.recommendationCount || results.length)
+      ? Number(
+          (searchPages as DiscoverPage[])[searchPages.length - 1]?.recommendationCount ||
+            results.length,
+        )
       : normalizedType === "recommended" || normalizedType === "trending"
         ? results.length
-        : Number(searchPages[searchPages.length - 1]?.count ?? results.length);
+        : Number(
+            (searchPages as CatalogSearchPage[])[searchPages.length - 1]?.count ?? results.length,
+          );
   const hasMore = fullList
     ? visibleCount < fullList.length
     : !searchUpdating && searchQuery.hasNextPage === true;
@@ -479,7 +549,7 @@ function SearchResultsPage() {
       : isAlbumSearch
         ? []
         : results;
-    const imagesMap = {};
+    const imagesMap: Record<string, string | null | undefined> = {};
     artists.forEach((artist) => {
       const artistId = getArtistRecordId(artist);
       if (artistId && (artist.image || artist.imageUrl)) {
@@ -539,7 +609,7 @@ function SearchResultsPage() {
           }),
         );
         if (cancelled) return;
-        const nextBatch = {};
+        const nextBatch: Record<string, string | null> = {};
         batch.forEach((artist, batchIndex) => {
           const artistId = getArtistRecordId(artist);
           const entry = coverResults[batchIndex];
@@ -604,7 +674,7 @@ function SearchResultsPage() {
           }),
         );
         if (cancelled) return;
-        const nextBatch = {};
+        const nextBatch: Record<string, string | null> = {};
         batch.forEach((id, batchIndex) => {
           const entry = coverResults[batchIndex];
           if (entry?.status === "fulfilled") {
@@ -668,7 +738,7 @@ function SearchResultsPage() {
           }),
         );
         if (cancelled) return;
-        const nextBatch = {};
+        const nextBatch: Record<string, string | null> = {};
         batch.forEach((id, batchIndex) => {
           const entry = coverResults[batchIndex];
           if (entry?.status === "fulfilled") {
@@ -715,7 +785,7 @@ function SearchResultsPage() {
         const lookup = await lookupAlbumsInLibraryBatch(missingAlbumIds);
         if (cancelled || !lookup || typeof lookup !== "object") return;
 
-        const resolvedLookup = {};
+        const resolvedLookup: Record<string, AlbumLibraryState> = {};
         for (const albumId of missingAlbumIds) {
           resolvedLookup[albumId] = lookup[albumId] || false;
         }
@@ -778,7 +848,7 @@ function SearchResultsPage() {
           }),
         );
         if (cancelled) return;
-        const nextBatch = {};
+        const nextBatch: Record<string, string | null> = {};
         batch.forEach((id, batchIndex) => {
           const entry = coverResults[batchIndex];
           if (entry?.status === "fulfilled") {
@@ -823,7 +893,7 @@ function SearchResultsPage() {
         const lookup = await lookupAlbumsInLibraryBatch(missingAlbumIds);
         if (cancelled || !lookup || typeof lookup !== "object") return;
 
-        const resolvedLookup = {};
+        const resolvedLookup: Record<string, AlbumLibraryState> = {};
         for (const albumId of missingAlbumIds) {
           resolvedLookup[albumId] = lookup[albumId] || false;
         }
@@ -870,7 +940,7 @@ function SearchResultsPage() {
   }, [fullList, hasMore, loading, loadingMore, fetchNextPage]);
 
   const onSentinel = useCallback(
-    (entries) => {
+    (entries: IntersectionObserverEntry[]) => {
       if (entries[0]?.isIntersecting) {
         loadMore();
       }
@@ -879,7 +949,7 @@ function SearchResultsPage() {
   );
 
   const handleAlbumAction = useCallback(
-    async (album, managedBy = libraryDestination.primary) => {
+    async (album: SearchResultItem, managedBy: string = libraryDestination.primary) => {
       if (!album?.id) return;
       const shouldTriggerSearch = shouldTriggerAlbumSearch({
         status: album.status,
@@ -934,7 +1004,7 @@ function SearchResultsPage() {
   );
 
   const handleSearchTrackAdd = useCallback(
-    async (track, target) => {
+    async (track: SearchResultItem, target: PlaylistTarget) => {
       const payload = {
         artistName: track.artistName || "",
         trackName: track.title || "",
@@ -1001,12 +1071,16 @@ function SearchResultsPage() {
   );
 
   const handleArtistFeedback = useCallback(
-    (artist, action, options = {}) => submitFeedback(artist, action, options),
+    (
+      artist: ArtistFeedbackSource,
+      action: ArtistFeedbackAction,
+      options: Parameters<typeof submitFeedback>[2] = {},
+    ) => submitFeedback(artist, action, options),
     [submitFeedback],
   );
 
   const isSearchResultInLibrary = useCallback(
-    (item) => {
+    (item: SearchResultItem | null | undefined) => {
       if (!item) return false;
       if (item.type === "album") {
         return isAlbumCompleteInLibrary({ status: item.status });
@@ -1022,7 +1096,7 @@ function SearchResultsPage() {
   );
 
   const renderSearchResultAction = useCallback(
-    (item) => {
+    (item: SearchResultItem | null | undefined) => {
       if (!item || item.type === "playlist") return null;
 
       if (item.type === "track") {
@@ -1040,7 +1114,7 @@ function SearchResultsPage() {
             defaultNewPlaylistName={`${item.artistName || "Artist"} Picks`}
             menuVariant="search-suggestion"
             onLoadPlaylists={loadStaticPlaylists}
-            onSelect={(target) => handleSearchTrackAdd(item, target)}
+            onSelect={(target: PlaylistTarget) => handleSearchTrackAdd(item, target)}
           />
         );
       }
@@ -1184,7 +1258,7 @@ function SearchResultsPage() {
 
   useEffect(() => {
     if (!albumOptionsOpen) return undefined;
-    const handlePointerDown = (event) => {
+    const handlePointerDown = (event: PointerEvent) => {
       if (albumOptionsMenuRef.current?.contains(event.target)) return;
       setAlbumOptionsOpen(false);
     };
@@ -1194,11 +1268,11 @@ function SearchResultsPage() {
 
   useEffect(() => {
     if (!recommendedSortMenuOpen) return undefined;
-    const handlePointerDown = (event) => {
+    const handlePointerDown = (event: PointerEvent) => {
       if (recommendedToolbarRef.current?.contains(event.target)) return;
       setRecommendedSortMenuOpen(false);
     };
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setRecommendedSortMenuOpen(false);
     };
     document.addEventListener("pointerdown", handlePointerDown);
