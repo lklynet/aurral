@@ -14,9 +14,50 @@ const MUSIC_SCANNER = "Plex Music";
 const TRACK_TYPE = 10; // Plex metadata type for audio tracks
 const READ_TIMEOUT_MS = 30_000;
 
-type PlexMetadata = { ratingKey?: string | number; Media?: { Part?: { file?: string }[] }[] };
+type PlexPart = { file?: string };
+type PlexMedia = { Part?: PlexPart[] };
+type PlexMetadata = {
+  ratingKey?: string | number;
+  playlistItemID?: string | number;
+  title?: string;
+  grandparentTitle?: string;
+  originalTitle?: string;
+  addedAt?: string | number;
+  Media?: PlexMedia[];
+};
 type PlexContainerPage = {
   MediaContainer?: { Metadata?: PlexMetadata[]; size?: number; totalSize?: number };
+};
+type PlexConnection = { uri?: string; local?: unknown; address?: string; port?: number | string };
+type PlexResource = {
+  name?: string;
+  clientIdentifier?: string;
+  provides?: string;
+  owned?: unknown;
+  accessToken?: string;
+  connections?: PlexConnection | PlexConnection[];
+  Connection?: PlexConnection | PlexConnection[];
+};
+type PlexLibrary = { key: string; title?: string; Location?: { path?: string }[] };
+type PlexUserRecord = {
+  id: string | number;
+  uuid?: string | null;
+  title?: string;
+  username?: string;
+  friendlyName?: string;
+  email?: string;
+  restricted?: unknown;
+  admin?: unknown;
+  guest?: unknown;
+  authenticationToken?: string;
+  authToken?: string;
+};
+type PlexQueryParams = Record<string, string | number | boolean | null | undefined>;
+type PlexRequestOptions = {
+  params?: PlexQueryParams;
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  data?: unknown;
+  timeout?: number;
 };
 
 const xmlParser = new XMLParser({
@@ -25,9 +66,9 @@ const xmlParser = new XMLParser({
   htmlEntities: true,
 });
 
-function findPlexXmlElements(xml, name) {
-  const found = [];
-  const visit = (node) => {
+function findPlexXmlElements(xml: string, name: string) {
+  const found: PlexUserRecord[] = [];
+  const visit = (node: unknown) => {
     if (!node || typeof node !== "object") return;
     for (const [key, value] of Object.entries(node)) {
       if (key.toLowerCase() === name) found.push(...[value].flat());
@@ -38,7 +79,7 @@ function findPlexXmlElements(xml, name) {
   return found;
 }
 
-function toBool(value) {
+function toBool(value: unknown) {
   return value === true || value === "1" || value === 1;
 }
 
@@ -54,7 +95,16 @@ export type PlexHomeUser = {
 };
 
 export class PlexClient {
-  constructor(url, token, clientId) {
+  declare url: string | null;
+  declare token: string | null;
+  declare clientId: string | null;
+  declare _machineIdentifier: string | null;
+
+  constructor(
+    url: string | null | undefined,
+    token: string | null | undefined,
+    clientId: string | null | undefined,
+  ) {
     this.url = url ? url.replace(/\/+$/, "") : null;
     this.token = token || null;
     this.clientId = clientId || null;
@@ -65,8 +115,11 @@ export class PlexClient {
     return !!(this.url && this.token);
   }
 
-  static plexHeaders(clientId, { token } = {}) {
-    const headers = {
+  static plexHeaders(
+    clientId: string | null | undefined,
+    { token }: { token?: string | null } = {},
+  ) {
+    const headers: Record<string, string | null | undefined> = {
       Accept: "application/json",
       "X-Plex-Product": PLEX_PRODUCT,
       "X-Plex-Client-Identifier": clientId,
@@ -84,7 +137,7 @@ export class PlexClient {
     return crypto.randomUUID();
   }
 
-  static async generatePin(clientId) {
+  static async generatePin(clientId: string | null | undefined) {
     const { data } = await axios.post(`${PLEX_TV}/api/v2/pins`, null, {
       params: { strong: true },
       headers: PlexClient.plexHeaders(clientId),
@@ -92,7 +145,7 @@ export class PlexClient {
     return { id: data.id, code: data.code };
   }
 
-  static buildAuthUrl(clientId, code, forwardUrl) {
+  static buildAuthUrl(clientId: string, code: string, forwardUrl?: string | null) {
     const params = new URLSearchParams({
       clientID: clientId,
       code,
@@ -102,7 +155,7 @@ export class PlexClient {
     return `${PLEX_AUTH_APP}/auth#?${params.toString()}`;
   }
 
-  static async checkPin(pinId, code, clientId) {
+  static async checkPin(pinId: string | number, code: string, clientId: string | null | undefined) {
     const { data } = await axios.get(`${PLEX_TV}/api/v2/pins/${pinId}`, {
       params: { code },
       headers: PlexClient.plexHeaders(clientId),
@@ -110,7 +163,11 @@ export class PlexClient {
     return data.authToken || null;
   }
 
-  static async validateToken(token, clientId, { throwOnTransient = false } = {}) {
+  static async validateToken(
+    token: string | null | undefined,
+    clientId: string | null | undefined,
+    { throwOnTransient = false }: { throwOnTransient?: boolean } = {},
+  ) {
     try {
       const { data } = await axios.get(`${PLEX_TV}/api/v2/user`, {
         headers: PlexClient.plexHeaders(clientId, { token }),
@@ -123,13 +180,13 @@ export class PlexClient {
     }
   }
 
-  static async getResources(token, clientId) {
+  static async getResources(token: string | null | undefined, clientId: string | null | undefined) {
     const { data } = await axios.get(`${PLEX_TV}/api/v2/resources`, {
       params: { includeHttps: 1, includeRelay: 1 },
       headers: PlexClient.plexHeaders(clientId, { token }),
     });
     // v2 returns a JSON array; tolerate XML-shaped responses too.
-    let list = [];
+    let list: PlexResource[] = [];
     if (Array.isArray(data)) list = data;
     else if (Array.isArray(data?.MediaContainer?.Device)) list = data.MediaContainer.Device;
     else if (data?.MediaContainer?.Device) list = [data.MediaContainer.Device];
@@ -158,12 +215,15 @@ export class PlexClient {
     return { servers, total: list.length };
   }
 
-  static async getHomeUsers(adminToken, adminClientId): Promise<PlexHomeUser[]> {
+  static async getHomeUsers(
+    adminToken: string | null | undefined,
+    adminClientId: string | null | undefined,
+  ): Promise<PlexHomeUser[]> {
     const { data } = await axios.get(`${PLEX_TV}/api/v2/home/users`, {
       headers: PlexClient.plexHeaders(adminClientId, { token: adminToken }),
     });
 
-    let rawUsers = [];
+    let rawUsers: PlexUserRecord[] = [];
     if (typeof data === "string") {
       rawUsers = findPlexXmlElements(data, "user");
     } else if (Array.isArray(data?.users)) {
@@ -188,7 +248,13 @@ export class PlexClient {
     }));
   }
 
-  static async switchHomeUser(homeUserId, adminToken, adminClientId, targetClientId, pin = null) {
+  static async switchHomeUser(
+    homeUserId: string | number,
+    adminToken: string | null | undefined,
+    adminClientId: string | null | undefined,
+    targetClientId: string | null | undefined,
+    pin: string | number | null = null,
+  ) {
     const headers = PlexClient.plexHeaders(targetClientId, { token: adminToken });
     const params = pin ? { pin } : {};
     const paths = [
@@ -196,7 +262,7 @@ export class PlexClient {
       `${PLEX_TV}/api/home/users/${homeUserId}/switch`,
     ];
 
-    let lastError = null;
+    let lastError: unknown = null;
     for (const path of paths) {
       try {
         const { data } = await axios.post(path, null, { params, headers });
@@ -218,7 +284,10 @@ export class PlexClient {
     throw lastError || new Error("Plex switch-user request failed");
   }
 
-  async request(path, { params = {}, method = "GET", data = null, timeout = 0 } = {}) {
+  async request(
+    path: string,
+    { params = {}, method = "GET", data = null, timeout = 0 }: PlexRequestOptions = {},
+  ) {
     if (!this.isConfigured()) throw new Error("Plex not configured");
     try {
       const response = await axios({
@@ -270,14 +339,14 @@ export class PlexClient {
     return data?.MediaContainer?.Directory || [];
   }
 
-  async ensureAurralLibrary(libraryPath) {
+  async ensureAurralLibrary(libraryPath: string) {
     if (!this.isConfigured()) return null;
     const name = "Aurral";
     const flowRoot = libraryPath.replace(/\/+$/, "");
     const locations = [libraryPath, `${flowRoot}/${AURRAL_FLOWS_DIR}`];
     // Also match the legacy "Aurral Flow" name so existing libraries are reused
     // and renamed rather than duplicated.
-    const findExisting = (libs) =>
+    const findExisting = (libs: PlexLibrary[]) =>
       libs.find(
         (lib) =>
           lib.title === name ||
@@ -343,7 +412,7 @@ export class PlexClient {
     return created;
   }
 
-  async scanLibrary(sectionId, folder = null) {
+  async scanLibrary(sectionId: string | number | null | undefined, folder: string | null = null) {
     if (!this.isConfigured() || sectionId == null) return null;
     return this.request(
       `/library/sections/${sectionId}/refresh`,
@@ -356,7 +425,10 @@ export class PlexClient {
    * repeated `location=` query params (no array brackets), so the query is
    * built by hand. The Plex server must be able to browse each path.
    */
-  async editLibrary(sectionId, { name, locations } = {}) {
+  async editLibrary(
+    sectionId: string | number,
+    { name, locations }: { name?: string; locations?: string[] } = {},
+  ) {
     const qs = new URLSearchParams();
     qs.set("agent", MUSIC_AGENT);
     if (name) qs.set("name", name);
@@ -366,7 +438,10 @@ export class PlexClient {
     });
   }
 
-  async getTracks(sectionId, { addedSince = null } = {}) {
+  async getTracks(
+    sectionId: string | number,
+    { addedSince = null }: { addedSince?: number | null } = {},
+  ) {
     const pageSize = 200;
     const out = [];
     let start = 0;
@@ -381,7 +456,7 @@ export class PlexClient {
         },
       });
       const mc = data?.MediaContainer || {};
-      const items = mc.Metadata || [];
+      const items: PlexMetadata[] = mc.Metadata || [];
       for (const t of items) {
         const files = (t.Media || [])
           .flatMap((m) => (m.Part || []).map((p) => p.file))
@@ -401,7 +476,7 @@ export class PlexClient {
     return out;
   }
 
-  async getSampleTrack(sectionId) {
+  async getSampleTrack(sectionId: string | number) {
     const data = await this.request(`/library/sections/${sectionId}/all`, {
       params: {
         type: TRACK_TYPE,
@@ -409,7 +484,7 @@ export class PlexClient {
         "X-Plex-Container-Size": 1,
       },
     });
-    const item = data?.MediaContainer?.Metadata?.[0];
+    const item: PlexMetadata | undefined = data?.MediaContainer?.Metadata?.[0];
     if (!item) return null;
     const files = (item.Media || [])
       .flatMap((m) => (m.Part || []).map((p) => p.file))
@@ -424,8 +499,8 @@ export class PlexClient {
     return data?.MediaContainer?.Metadata || [];
   }
 
-  async getPlaylistTrackPaths(excludedIds = new Set()) {
-    const read = (endpoint, params = {}) =>
+  async getPlaylistTrackPaths(excludedIds = new Set<string>()) {
+    const read = (endpoint: string, params: PlexQueryParams = {}) =>
       readPlaylistPages(async (start) => {
         const data: PlexContainerPage = await this.request(endpoint, {
           timeout: 30_000,
@@ -442,7 +517,7 @@ export class PlexClient {
         };
       });
     const playlists = await read("/playlists", { playlistType: "audio", type: 15 });
-    const paths = new Set();
+    const paths = new Set<string>();
     for (const playlist of playlists) {
       if (!playlist?.ratingKey) throw new Error("Plex playlist is missing its ID");
       if (excludedIds.has(String(playlist.ratingKey))) continue;
@@ -456,20 +531,20 @@ export class PlexClient {
     return [...paths];
   }
 
-  async getPlaylistItems(playlistRatingKey) {
+  async getPlaylistItems(playlistRatingKey: string | number) {
     const data = await this.request(`/playlists/${playlistRatingKey}/items`);
-    const items = data?.MediaContainer?.Metadata || [];
+    const items: PlexMetadata[] = data?.MediaContainer?.Metadata || [];
     return items
       .map((i) => ({ ratingKey: i.ratingKey, playlistItemID: i.playlistItemID }))
       .filter((i) => i.ratingKey && i.playlistItemID != null);
   }
 
-  _metadataUri(machineId, ratingKeys) {
+  _metadataUri(machineId: string, ratingKeys: (string | number) | (string | number)[]) {
     const keys = (Array.isArray(ratingKeys) ? ratingKeys : [ratingKeys]).join(",");
     return `server://${machineId}/com.plexapp.plugins.library/library/metadata/${keys}`;
   }
 
-  async _createPlaylist(title, ratingKeys) {
+  async _createPlaylist(title: string, ratingKeys: (string | number)[]) {
     const machineId = await this.getMachineIdentifier();
     if (!machineId) throw new Error("Could not resolve Plex machineIdentifier");
     const data = await this.request("/playlists", {
@@ -484,7 +559,7 @@ export class PlexClient {
     return data?.MediaContainer?.Metadata?.[0] || null;
   }
 
-  async addToPlaylist(playlistRatingKey, ratingKeys) {
+  async addToPlaylist(playlistRatingKey: string | number, ratingKeys: (string | number)[]) {
     const machineId = await this.getMachineIdentifier();
     return this.request(`/playlists/${playlistRatingKey}/items`, {
       method: "PUT",
@@ -492,14 +567,17 @@ export class PlexClient {
     });
   }
 
-  async removePlaylistItem(playlistRatingKey, playlistItemID) {
+  async removePlaylistItem(playlistRatingKey: string | number, playlistItemID: string | number) {
     return this.request(`/playlists/${playlistRatingKey}/items/${playlistItemID}`, {
       method: "DELETE",
     });
   }
 
-  async updatePlaylistDetails(playlistRatingKey, { title, summary } = {}) {
-    const params = {};
+  async updatePlaylistDetails(
+    playlistRatingKey: string | number,
+    { title, summary }: { title?: string; summary?: string } = {},
+  ) {
+    const params: { title?: string; summary?: string } = {};
     if (title != null) params.title = title;
     if (summary != null) params.summary = summary;
     if (!Object.keys(params).length) return null;
@@ -509,7 +587,7 @@ export class PlexClient {
     });
   }
 
-  async deletePlaylist(playlistRatingKey) {
+  async deletePlaylist(playlistRatingKey: string | number) {
     return this.request(`/playlists/${playlistRatingKey}`, {
       method: "DELETE",
     });
@@ -522,9 +600,16 @@ export class PlexClient {
     title,
     description = null,
     ratingKeys,
+  }: {
+    ratingKey?: string | number | null;
+    previousTitle?: string | null;
+    previousDescription?: string | null;
+    title: string;
+    description?: string | null;
+    ratingKeys: (string | number)[] | null | undefined;
   }) {
     let targetRatingKey = ratingKey;
-    let items = null;
+    let items: Awaited<ReturnType<PlexClient["getPlaylistItems"]>> | null = null;
     let needsDetailsUpdate = false;
 
     if (targetRatingKey) {
@@ -559,7 +644,7 @@ export class PlexClient {
 
     for (const item of toRemove) {
       try {
-        await this.removePlaylistItem(targetRatingKey, item.playlistItemID);
+        await this.removePlaylistItem(targetRatingKey, item.playlistItemID!);
       } catch (err) {
         console.warn(
           `[Plex] Failed to remove item ${item.playlistItemID} from playlist ${targetRatingKey}:`,

@@ -3,6 +3,7 @@ import fs from "fs";
 import fsPromises from "fs/promises";
 import path from "path";
 import { dbOps } from "../db/helpers/index.ts";
+import type { StoredIntegrations } from "../db/helpers/settings.ts";
 import { resolveYtdlpStagingRoot } from "./downloadFolderConfig.ts";
 import { logger } from "./logger.ts";
 
@@ -13,7 +14,30 @@ const SONG_SEARCH_BUDGET_MS = 15000;
 const SONG_READ_BATCH = 3;
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const AUDIO_FORMAT = "m4a";
-const activeDownloads = new Map();
+
+type YtdlpSettings = NonNullable<StoredIntegrations["ytdlp"]>;
+type JobId = string | number | null | undefined;
+type ProcessError = Error & { code?: string };
+type YtdlpJsonEntry = {
+  id?: unknown;
+  url?: unknown;
+  title?: unknown;
+  track?: unknown;
+  channel?: unknown;
+  uploader?: unknown;
+  duration?: unknown;
+  webpage_url?: unknown;
+  live_status?: unknown;
+  artist?: unknown;
+  artists?: unknown;
+  album?: unknown;
+};
+type SongEntry = { id: string; title: string };
+type YtdlpSong = NonNullable<ReturnType<typeof readSong>>;
+type SongFilter = (entry: SongEntry) => boolean;
+type SongDecider = (songs: YtdlpSong[]) => boolean | Promise<boolean>;
+
+const activeDownloads = new Map<string, ReturnType<typeof downloadAudioFor>>();
 
 export const ytdlpSettings = Object.freeze({
   key: "ytdlp",
@@ -45,7 +69,7 @@ export const ytdlpSettings = Object.freeze({
   testConnection: true,
 });
 
-function getSettings(config = null) {
+function getSettings(config: YtdlpSettings | null = null): YtdlpSettings {
   return config || dbOps.getSettings()?.integrations?.ytdlp || {};
 }
 
@@ -53,11 +77,11 @@ function getBinaryPath() {
   return DEFAULT_BINARY;
 }
 
-function isEnabledFor(config = null) {
+function isEnabledFor(config: YtdlpSettings | null = null) {
   return getSettings(config).enabled !== false;
 }
 
-function resolveBinaryExists(binary) {
+function resolveBinaryExists(binary: string) {
   const candidates = path.isAbsolute(binary)
     ? [binary]
     : String(process.env.PATH || "")
@@ -75,18 +99,26 @@ function resolveBinaryExists(binary) {
 }
 
 export function buildYtdlpInvocationArgs(
-  args,
-  { nodeAvailable = resolveBinaryExists("node") } = {},
+  args: string[],
+  { nodeAvailable = resolveBinaryExists("node") }: { nodeAvailable?: boolean } = {},
 ) {
   return [...(nodeAvailable ? ["--no-js-runtimes", "--js-runtimes", "node"] : []), ...args];
 }
 
-function isConfiguredFor(config = null) {
+function isConfiguredFor(config: YtdlpSettings | null = null) {
   return isEnabledFor(config) && resolveBinaryExists(getBinaryPath());
 }
 
-function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel, signal } = {}) {
-  return new Promise((resolve, reject) => {
+function runYtdlp(
+  args: string[],
+  {
+    timeoutMs = 120000,
+    cwd,
+    shouldCancel,
+    signal,
+  }: { timeoutMs?: number; cwd?: string; shouldCancel?: () => boolean; signal?: AbortSignal } = {},
+) {
+  return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
     const isolatedProcessGroup = process.platform !== "win32";
     const child = spawn(getBinaryPath(), buildYtdlpInvocationArgs(args), {
       cwd,
@@ -94,7 +126,7 @@ function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel, signal } = {}) 
       stdio: ["ignore", "pipe", "pipe"],
       detached: isolatedProcessGroup,
     });
-    const signalProcess = (signal) => {
+    const signalProcess = (signal: NodeJS.Signals) => {
       if (isolatedProcessGroup && child.pid) {
         try {
           process.kill(-child.pid, signal);
@@ -106,10 +138,10 @@ function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel, signal } = {}) 
     let stdout = "";
     let stderr = "";
     let settled = false;
-    let terminationError = null;
-    let forcedKillTimer = null;
+    let terminationError: ProcessError | null = null;
+    let forcedKillTimer: NodeJS.Timeout | null = null;
     const timer = setTimeout(() => {
-      const error = new Error(`yt-dlp timed out after ${timeoutMs}ms`);
+      const error: ProcessError = new Error(`yt-dlp timed out after ${timeoutMs}ms`);
       error.code = "DOWNLOAD_TIMEOUT";
       terminationError = error;
       signalProcess("SIGKILL");
@@ -122,7 +154,7 @@ function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel, signal } = {}) 
               cancelled = shouldCancel() === true;
             } catch {}
             if (!cancelled || terminationError) return;
-            const error = new Error("yt-dlp download cancelled");
+            const error: ProcessError = new Error("yt-dlp download cancelled");
             error.code = "DOWNLOAD_CANCELLED";
             terminationError = error;
             clearTimeout(timer);
@@ -134,7 +166,7 @@ function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel, signal } = {}) 
     const abort = () => {
       if (terminationError) return;
       terminationError =
-        signal.reason instanceof Error ? signal.reason : new Error("yt-dlp stopped");
+        signal!.reason instanceof Error ? signal!.reason : new Error("yt-dlp stopped");
       clearTimeout(timer);
       signalProcess("SIGKILL");
     };
@@ -146,7 +178,7 @@ function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel, signal } = {}) 
       if (cancellationTimer) clearInterval(cancellationTimer);
       signal?.removeEventListener("abort", abort);
     }
-    function settleReject(error) {
+    function settleReject(error: Error) {
       if (settled) return;
       settled = true;
       clearTimers();
@@ -182,7 +214,10 @@ function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel, signal } = {}) 
   });
 }
 
-async function testConnectionFor(config = null, { force: _force = false } = {}) {
+async function testConnectionFor(
+  config: YtdlpSettings | null = null,
+  { force: _force = false }: { force?: boolean } = {},
+) {
   if (!isEnabledFor(config)) {
     return { configured: false, ok: false, message: "yt-dlp is disabled" };
   }
@@ -206,7 +241,7 @@ async function testConnectionFor(config = null, { force: _force = false } = {}) 
   }
 }
 
-function readJsonLines(stdout) {
+function readJsonLines(stdout: string): YtdlpJsonEntry[] {
   return String(stdout || "")
     .split("\n")
     .flatMap((line) => {
@@ -218,19 +253,19 @@ function readJsonLines(stdout) {
     });
 }
 
-function readDurationSec(value) {
+function readDurationSec(value: unknown) {
   return Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : null;
 }
 
-function songUrl(id) {
+function songUrl(id: string) {
   return `https://music.youtube.com/watch?v=${encodeURIComponent(id)}`;
 }
 
-function isSongUrl(url) {
+function isSongUrl(url: unknown) {
   return /^https:\/\/music\.youtube\.com\//u.test(String(url || ""));
 }
 
-function readSong(stdout, { id, title }) {
+function readSong(stdout: string, { id, title }: SongEntry) {
   const [entry] = readJsonLines(stdout);
   if (!entry) return null;
   const artists = Array.isArray(entry.artists) ? entry.artists : [entry.artist];
@@ -256,7 +291,14 @@ function readSong(stdout, { id, title }) {
 // it agrees. At the search deadline, the reads still running are killed and
 // the songs in hand are returned. A song that cannot be read (age-gated,
 // removed) is left out.
-async function searchSongs(query, { limit, wanted = () => true, decided = () => false }) {
+async function searchSongs(
+  query: string,
+  {
+    limit,
+    wanted = () => true,
+    decided = () => false,
+  }: { limit: number; wanted?: SongFilter; decided?: SongDecider },
+): Promise<YtdlpSong[]> {
   const stop = new AbortController();
   const deadline = setTimeout(
     () => stop.abort(new Error(`YouTube Music search took longer than ${SONG_SEARCH_BUDGET_MS}ms`)),
@@ -281,7 +323,7 @@ async function searchSongs(query, { limit, wanted = () => true, decided = () => 
       }))
       .filter((entry) => entry.id && wanted(entry))
       .slice(0, limit);
-    const songs = [];
+    const songs: ReturnType<typeof readSong>[] = [];
     for (let first = 0; first < listed.length && !stop.signal.aborted; first += SONG_READ_BATCH) {
       await Promise.all(
         listed.slice(first, first + SONG_READ_BATCH).map((entry, offset) =>
@@ -311,9 +353,21 @@ async function searchSongs(query, { limit, wanted = () => true, decided = () => 
 }
 
 async function searchFor(
-  _config = null,
-  query,
-  { limit = SEARCH_LIMIT, songs = false, wanted, decided, timeoutMs = 60000 } = {},
+  _config: YtdlpSettings | null = null,
+  query: string,
+  {
+    limit = SEARCH_LIMIT,
+    songs = false,
+    wanted,
+    decided,
+    timeoutMs = 60000,
+  }: {
+    limit?: number;
+    songs?: boolean;
+    wanted?: SongFilter;
+    decided?: SongDecider;
+    timeoutMs?: number;
+  } = {},
 ) {
   const trimmed = String(query || "").trim();
   if (!trimmed) return [];
@@ -349,7 +403,7 @@ async function searchFor(
   });
 }
 
-function resolveStagingDir(config, jobId) {
+function resolveStagingDir(config: YtdlpSettings | null, jobId: JobId) {
   return path.join(
     resolveYtdlpStagingRoot(getSettings(config).stagingPath),
     "ytdlp",
@@ -357,7 +411,7 @@ function resolveStagingDir(config, jobId) {
   );
 }
 
-async function findDownloadedAudio(dir) {
+async function findDownloadedAudio(dir: string) {
   const entries = await fsPromises.readdir(dir).catch(() => []);
   const audioExt = new Set([".m4a", ".mp3", ".opus", ".flac", ".ogg", ".webm", ".wav"]);
   for (const name of entries) {
@@ -369,7 +423,11 @@ async function findDownloadedAudio(dir) {
   return null;
 }
 
-async function downloadAudioFor(config = null, videoUrl, { jobId, shouldCancel } = {}) {
+async function downloadAudioFor(
+  config: YtdlpSettings | null = null,
+  videoUrl: string | null | undefined,
+  { jobId, shouldCancel }: { jobId?: JobId; shouldCancel?: () => boolean } = {},
+) {
   const url = String(videoUrl || "").trim();
   if (!url) throw new Error("Missing yt-dlp download URL");
   const stagingDir = resolveStagingDir(config, jobId);
@@ -416,7 +474,7 @@ async function downloadAudioFor(config = null, videoUrl, { jobId, shouldCancel }
   return { filePath, stagingDir };
 }
 
-async function cleanupStagingFor(config = null, jobId) {
+async function cleanupStagingFor(config: YtdlpSettings | null = null, jobId: JobId) {
   await activeDownloads.get(String(jobId || ""))?.catch(() => {});
   await fsPromises
     .rm(resolveStagingDir(config, jobId), { recursive: true, force: true })
@@ -424,13 +482,17 @@ async function cleanupStagingFor(config = null, jobId) {
 }
 
 export class YtdlpClient {
-  constructor(config = null) {
+  declare key: string;
+  declare name: string;
+  declare _config: YtdlpSettings | null;
+
+  constructor(config: YtdlpSettings | null = null) {
     this.key = "ytdlp";
     this.name = "yt-dlp";
     this._config = config;
   }
 
-  updateConfig(config = null) {
+  updateConfig(config: YtdlpSettings | null = null) {
     this._config = config;
   }
 
@@ -449,15 +511,18 @@ export class YtdlpClient {
     };
   }
 
-  testConnection(options) {
+  testConnection(options?: Parameters<typeof testConnectionFor>[1]) {
     return testConnectionFor(this._config, options);
   }
 
-  search(query, options) {
+  search(query: string, options?: Parameters<typeof searchFor>[2]) {
     return searchFor(this._config, query, options);
   }
 
-  downloadAudio(videoUrl, options) {
+  downloadAudio(
+    videoUrl: string | null | undefined,
+    options?: Parameters<typeof downloadAudioFor>[2],
+  ) {
     const download = downloadAudioFor(this._config, videoUrl, options);
     const jobId = String(options?.jobId || "");
     if (jobId) {
@@ -470,7 +535,7 @@ export class YtdlpClient {
     return download;
   }
 
-  cleanupStaging(jobId) {
+  cleanupStaging(jobId: JobId) {
     return cleanupStagingFor(this._config, jobId);
   }
 }
@@ -485,19 +550,22 @@ export function isConfigured() {
   return defaultYtdlpClient.isConfigured();
 }
 
-export function testConnection(options) {
+export function testConnection(options?: Parameters<typeof testConnectionFor>[1]) {
   return defaultYtdlpClient.testConnection(options);
 }
 
-export function search(query, options) {
+export function search(query: string, options?: Parameters<typeof searchFor>[2]) {
   return defaultYtdlpClient.search(query, options);
 }
 
-export function downloadAudio(videoUrl, options) {
+export function downloadAudio(
+  videoUrl: string | null | undefined,
+  options?: Parameters<typeof downloadAudioFor>[2],
+) {
   return defaultYtdlpClient.downloadAudio(videoUrl, options);
 }
 
-export function cleanupStaging(jobId) {
+export function cleanupStaging(jobId: JobId) {
   return defaultYtdlpClient.cleanupStaging(jobId);
 }
 

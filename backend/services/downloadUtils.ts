@@ -1,13 +1,46 @@
 import path from "path";
 import fs from "fs/promises";
-import { parseFile } from "music-metadata";
+import { parseFile, type ICommonTagsResult, type IAudioMetadata } from "music-metadata";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { AURRAL_IDENTITY_TAG, writeAudioTags } from "./audioTags.ts";
 
 const AURRAL_IDENTITY_PREFIX = `${AURRAL_IDENTITY_TAG}=`;
 
-export function sanitizePathPart(value, fallback = "Unknown") {
+export type DownloadTrackFields = {
+  artistName?: string | null;
+  trackName?: string | null;
+  albumName?: string | null;
+  artistMbid?: string | null;
+  albumMbid?: string | null;
+  releaseMbid?: string | null;
+  trackMbid?: string | null;
+  recordingMbidAliases?: string[] | null;
+  releaseYear?: string | number | null;
+  durationMs?: number | null;
+  trackNumber?: number | null;
+  discNumber?: number | null;
+  albumTrackCount?: number | null;
+  albumTrackTitles?: string[] | null;
+  artistAliases?: string[] | null;
+  manualReplacementSearch?: boolean;
+};
+
+export type AurralIdentity = { artistMbid?: string; albumMbid?: string; trackMbid?: string };
+
+export type IdentitySource = {
+  native?: IAudioMetadata["native"];
+  common?: Partial<ICommonTagsResult>;
+};
+
+type BlockedJobFields = {
+  remoteFilename?: string | null;
+  stagingPath?: string | null;
+  downloadSource?: string | null;
+  releaseTitle?: string | null;
+};
+
+export function sanitizePathPart(value: unknown, fallback = "Unknown") {
   const text = String(value || "")
     .replace(/[<>:"/\\|?*]/g, "_")
     .trim();
@@ -17,7 +50,7 @@ export function sanitizePathPart(value, fallback = "Unknown") {
 // "07 - Title.flac" when the album position is known, or "2-07 - Title.flac"
 // past the first disc, so a folder lists in album order and two tracks with
 // one title keep distinct names.
-export function buildTrackFileName(job, ext) {
+export function buildTrackFileName(job: DownloadTrackFields, ext: string) {
   const title = sanitizePathPart(job?.trackName, "Unknown Track");
   const track = normalizePositiveInteger(job?.trackNumber);
   const disc = normalizePositiveInteger(job?.discNumber);
@@ -25,19 +58,19 @@ export function buildTrackFileName(job, ext) {
   return `${position}${title}${ext}`;
 }
 
-export function normalizePositiveInteger(value) {
+export function normalizePositiveInteger(value: unknown) {
   if (value == null || !Number.isFinite(Number(value))) return null;
   const normalized = Math.floor(Number(value));
   return normalized > 0 ? normalized : null;
 }
 
-export function normalizeStringList(value) {
+export function normalizeStringList(value: unknown) {
   return Array.isArray(value)
     ? value.map((entry) => String(entry || "").trim()).filter(Boolean)
     : [];
 }
 
-export function parseStringListJson(value) {
+export function parseStringListJson(value: string | null | undefined) {
   if (!value) return [];
   try {
     return normalizeStringList(JSON.parse(value));
@@ -46,21 +79,21 @@ export function parseStringListJson(value) {
   }
 }
 
-export function stringifyStringListJson(value) {
+export function stringifyStringListJson(value: unknown) {
   const normalized = normalizeStringList(value);
   return normalized.length > 0 ? JSON.stringify(normalized) : null;
 }
 
-export function buildAurralIdentity(metadata = {}) {
+export function buildAurralIdentity(metadata: DownloadTrackFields = {}) {
   const identity = Object.fromEntries(
-    ["artistMbid", "albumMbid", "trackMbid"]
+    (["artistMbid", "albumMbid", "trackMbid"] as const)
       .map((key) => [key, String(metadata?.[key] || "").trim()])
       .filter(([, value]) => value),
   );
   return Object.keys(identity).length > 0 ? identity : null;
 }
 
-export function parseAurralIdentityComment(value) {
+export function parseAurralIdentityComment(value: unknown) {
   const comments = Array.isArray(value) ? value : [value];
   for (const entry of comments) {
     const text = String(typeof entry === "object" ? entry?.text || "" : entry || "").trim();
@@ -73,11 +106,11 @@ export function parseAurralIdentityComment(value) {
   return null;
 }
 
-const nativeTags = (metadata) =>
+const nativeTags = (metadata: IdentitySource) =>
   Object.values(metadata?.native || {}).flatMap((tags) => (Array.isArray(tags) ? tags : []));
 
 // Older versions kept the marker in the comment, then the grouping tag.
-export function readLegacyAurralIdentity(metadata) {
+export function readLegacyAurralIdentity(metadata: IdentitySource) {
   const nativeComments = nativeTags(metadata)
     .filter((tag) => ["txxx:comment", "comm"].includes(String(tag?.id || "").toLowerCase()))
     .map((tag) => tag.value);
@@ -91,7 +124,7 @@ export function readLegacyAurralIdentity(metadata) {
 
 const OWN_IDENTITY_TAG = new RegExp(`(^|:)${AURRAL_IDENTITY_TAG}$`, "i");
 
-export function readAurralIdentity(metadata) {
+export function readAurralIdentity(metadata: IdentitySource): AurralIdentity | null {
   const tag = nativeTags(metadata).find((entry) => OWN_IDENTITY_TAG.test(String(entry?.id || "")));
   let own = null;
   try {
@@ -102,8 +135,12 @@ export function readAurralIdentity(metadata) {
   return own || legacy ? { ...(legacy || {}), ...(own || {}) } : null;
 }
 
-export function buildResolvedJobTrack(job, payloadTrack = {}) {
-  const track = payloadTrack && typeof payloadTrack === "object" ? payloadTrack : {};
+export function buildResolvedJobTrack(
+  job: DownloadTrackFields,
+  payloadTrack: DownloadTrackFields = {},
+) {
+  const track: DownloadTrackFields =
+    payloadTrack && typeof payloadTrack === "object" ? payloadTrack : {};
   return {
     artistName: job.artistName || track.artistName,
     trackName: job.trackName || track.trackName,
@@ -134,19 +171,19 @@ export function buildResolvedJobTrack(job, payloadTrack = {}) {
 
 // A Usenet job's remote name is the whole release, so the held file is the
 // only name that identifies the track waiting for review.
-export function resolveBlockedJobSourceFilename(job) {
+export function resolveBlockedJobSourceFilename(job: BlockedJobFields) {
   const remote = String(job?.remoteFilename || "").trim() || null;
   const staging = String(job?.stagingPath || "").trim();
   const staged = staging ? path.basename(staging) || null : null;
   return job?.downloadSource === "usenet" ? staged || remote : remote || staged;
 }
 
-export function resolveBlockedJobReleaseTitle(job) {
+export function resolveBlockedJobReleaseTitle(job: BlockedJobFields) {
   if (job?.downloadSource !== "usenet") return null;
   return String(job?.releaseTitle || "").trim() || null;
 }
 
-export function joinUnderRoot(root, relativePath, fileName = null) {
+export function joinUnderRoot(root: string, relativePath: unknown, fileName: string | null = null) {
   const parts = String(relativePath || "")
     .replace(/\\/g, "/")
     .split("/")
@@ -163,7 +200,7 @@ export function joinUnderRoot(root, relativePath, fileName = null) {
   return resolvedPath;
 }
 
-async function fileExists(filePath) {
+async function fileExists(filePath: string) {
   try {
     await fs.access(filePath);
     return true;
@@ -172,7 +209,7 @@ async function fileExists(filePath) {
   }
 }
 
-async function resolveAvailableTargetPath(targetPath) {
+async function resolveAvailableTargetPath(targetPath: string) {
   if (!(await fileExists(targetPath))) return targetPath;
   const dir = path.dirname(targetPath);
   const ext = path.extname(targetPath);
@@ -185,9 +222,12 @@ async function resolveAvailableTargetPath(targetPath) {
 }
 
 export async function commitDownloadedFile(
-  sourcePath,
-  targetPath,
-  { reuseExisting = false, preserveSource = false } = {},
+  sourcePath: string,
+  targetPath: string,
+  {
+    reuseExisting = false,
+    preserveSource = false,
+  }: { reuseExisting?: boolean; preserveSource?: boolean } = {},
 ) {
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   if (path.resolve(sourcePath) === path.resolve(targetPath)) {
@@ -244,9 +284,9 @@ export async function commitDownloadedFile(
 // then the download is in place and its source is gone, so a failure is logged
 // instead of failing the job, which could not be retried anyway.
 export async function writeImportedFileMetadata(
-  filePath,
-  metadata = {},
-  { source = "download", jobId = null } = {},
+  filePath: string,
+  metadata: DownloadTrackFields = {},
+  { source = "download", jobId = null }: { source?: string; jobId?: string | number | null } = {},
 ) {
   try {
     await writeAudioMetadata(filePath, metadata);
@@ -261,7 +301,7 @@ export async function writeImportedFileMetadata(
 
 // A compilation's tracks keep their own performer as the artist. The download
 // job knows which track it fetched, so its identity replaces the uploader's.
-export async function writeAudioMetadata(filePath, metadata = {}) {
+export async function writeAudioMetadata(filePath: string, metadata: DownloadTrackFields = {}) {
   const performer = isVariousArtistsCredit(metadata.artistName, metadata.artistMbid)
     ? metadata.artistAliases?.[0]
     : null;
@@ -284,13 +324,22 @@ export async function writeAudioMetadata(filePath, metadata = {}) {
   );
 }
 
-export async function moveIdentityMarkerToOwnTag(filePath, identity) {
+export async function moveIdentityMarkerToOwnTag(
+  filePath: string,
+  identity: AurralIdentity | null,
+) {
   return writeAudioTags(filePath, {}, { identity });
 }
 
-export async function repairYtdlpMetadata(jobs = []) {
+type RepairableJob = DownloadTrackFields & {
+  status?: string | null;
+  downloadClient?: string | null;
+  finalPath?: string | null;
+};
+
+export async function repairYtdlpMetadata(jobs: RepairableJob[] = []) {
   const result = { scanned: 0, repaired: 0, failed: 0 };
-  const seen = new Set();
+  const seen = new Set<string>();
   for (const job of jobs) {
     if (
       job?.status !== "done" ||
@@ -300,7 +349,7 @@ export async function repairYtdlpMetadata(jobs = []) {
     ) {
       continue;
     }
-    const filePath = path.resolve(job.finalPath);
+    const filePath = path.resolve(job.finalPath!);
     if (seen.has(filePath)) continue;
     seen.add(filePath);
     result.scanned += 1;

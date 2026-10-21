@@ -2492,7 +2492,7 @@ export function upsertLibraryMediaFile({
 
 export function getAvailableLibraryMediaPaths(source: string, scopes: string[] | null = null) {
   const mediaSource = normalizeText(source);
-  const paths = new Set();
+  const paths = new Set<string>();
   if (!Array.isArray(scopes)) {
     for (const row of db
       .prepare<[string], Pick<LibraryMediaFilesRow, "path">>(

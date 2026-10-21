@@ -8,11 +8,11 @@ import { isVariousArtistsCredit } from "../trackMatching/titleText.ts";
 // for some logged-out searches in that order, so "Title Artist" is kept as
 // the fallback for when the others find nothing.
 type YtdlpSearchContext = {
-  trackName?: string;
-  title?: string;
-  artistName?: string;
-  artist?: string;
-  artistAliases?: string[];
+  trackName?: string | null;
+  title?: string | null;
+  artistName?: string | null;
+  artist?: string | null;
+  artistAliases?: string[] | null;
 };
 
 export function buildYtdlpSearchQueries(context: YtdlpSearchContext | undefined) {

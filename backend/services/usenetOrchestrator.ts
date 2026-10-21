@@ -766,7 +766,7 @@ async function handleUsenetFinalize(payload, helpers) {
     // Once the last consumer commits, no later job may attach to a source
     // that this operation is about to move away.
     if (!preserveSource) retireNzb(nzbKey(client.key, payload.nzbId));
-    const committedFinalPath = await commitDownloadedFile(found.filePath, finalPath, {
+    const committedFinalPath = await commitDownloadedFile(found.filePath!, finalPath, {
       preserveSource,
     });
     await writeImportedFileMetadata(committedFinalPath, resolvedTrack, {

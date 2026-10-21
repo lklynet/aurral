@@ -15,7 +15,7 @@ import {
 } from "./honkerDb.ts";
 
 function listAurralDownloadedFiles(root) {
-  const files = new Set();
+  const files = new Set<string>();
   for (const job of downloadTracker.getAll()) {
     if (job?.status !== "done" || job.managedBy !== "aurral" || !job.downloadClient) continue;
     const finalPath = String(job.finalPath || "").trim();
