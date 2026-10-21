@@ -7,7 +7,7 @@ const DEFAULT_DATA_DIR = path.join(__dirname, "..", "data");
 const CANONICAL_CONTAINER_DATA_DIR = "/config";
 const LEGACY_CONTAINER_DATA_DIR = "/app/backend/data";
 
-function isDirectory(dir) {
+function isDirectory(dir: string) {
   try {
     return fs.statSync(dir).isDirectory();
   } catch {
@@ -15,7 +15,7 @@ function isDirectory(dir) {
   }
 }
 
-function hasDatabaseFile(dir) {
+function hasDatabaseFile(dir: string) {
   try {
     return fs.existsSync(path.join(dir, "aurral.db"));
   } catch {

@@ -513,7 +513,7 @@ export function resolveSubsonicTokenUser(username, token, salt) {
   const user = userOps.getUserByUsername(normalizedUsername);
   if (!user) return null;
 
-  let password = userOps.getSubsonicPasswordById(user.id);
+  let password: string | null | undefined = userOps.getSubsonicPasswordById(user.id);
   if (!password && safeCompare(normalizedUsername, String(getAuthUser()).trim().toLowerCase())) {
     password = getAuthPassword().find((candidate) =>
       safeCompare(createSubsonicToken(candidate, salt), token),

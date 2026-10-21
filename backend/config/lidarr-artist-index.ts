@@ -1,18 +1,21 @@
-function hasUniqueLidarrArtistIdIndex(db) {
+import type Database from "better-sqlite3";
+import type { LidarrArtistIdMapRow } from "../db/rows.ts";
+
+function hasUniqueLidarrArtistIdIndex(db: Database.Database) {
   return db
-    .prepare("PRAGMA index_list(lidarr_artist_id_map)")
+    .prepare<[], { name: string; unique: number }>("PRAGMA index_list(lidarr_artist_id_map)")
     .all()
     .some(({ name, unique }) => name === "idx_lidarr_artist_id_map_foreign_id" && unique);
 }
 
-export function ensureUniqueLidarrArtistIdIndex(db) {
+export function ensureUniqueLidarrArtistIdIndex(db: Database.Database) {
   if (hasUniqueLidarrArtistIdIndex(db)) return;
 
   db.transaction(() => {
     if (hasUniqueLidarrArtistIdIndex(db)) return;
 
     const duplicateLidarrArtistIds = db
-      .prepare(
+      .prepare<[], Pick<LidarrArtistIdMapRow, "lidarr_foreign_artist_id">>(
         `SELECT lidarr_foreign_artist_id
          FROM lidarr_artist_id_map
          GROUP BY lidarr_foreign_artist_id

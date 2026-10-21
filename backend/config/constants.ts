@@ -20,8 +20,8 @@ export const APP_VERSION = resolveAppVersion({
   cwd: process.cwd(),
 });
 export const DATE_TIME_FORMATS = ["browser", "day-first", "year-first"];
-export const normalizeDateTimeFormat = (value) =>
-  DATE_TIME_FORMATS.includes(value) ? value : "browser";
+export const normalizeDateTimeFormat = (value: string | null | undefined): string =>
+  DATE_TIME_FORMATS.includes(value as string) ? (value as string) : "browser";
 
 export const defaultData = {
   settings: {

@@ -1,7 +1,9 @@
+import type Database from "better-sqlite3";
+
 const GENRE_INDEX_VERSION = "3";
 const entities = ["artists", "albums", "tracks"];
 
-function genreValues(kind, id, metadata, entityFrom = "") {
+function genreValues(kind: string, id: string, metadata: string, entityFrom = "") {
   const valid = `CASE WHEN json_valid(${metadata}) THEN ${metadata} ELSE '{}' END`;
   const parts = "'[' || replace(json_quote(CAST(genre_value.value AS TEXT)), ';', '\",\"') || ']'";
   return ["$.genres", "$.genre", "$.common.genre", "$.tags.genre"]
@@ -15,7 +17,7 @@ function genreValues(kind, id, metadata, entityFrom = "") {
     .join(" UNION ");
 }
 
-export function initializeLibraryGenreIndex(db) {
+export function initializeLibraryGenreIndex(db: Database.Database) {
   const current = () =>
     Boolean(
       db
@@ -25,17 +27,20 @@ export function initializeLibraryGenreIndex(db) {
         .get(),
     ) &&
     db
-      .prepare(
+      .prepare<[], { count: number }>(
         "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'trigger' AND name GLOB 'library_genres_*'",
       )
-      .get().count === 9 &&
-    db.prepare("SELECT value FROM settings WHERE key = 'libraryGenreIndexVersion'").get()?.value ===
-      GENRE_INDEX_VERSION;
+      .get()!.count === 9 &&
+    db
+      .prepare<[], { value: string }>(
+        "SELECT value FROM settings WHERE key = 'libraryGenreIndexVersion'",
+      )
+      .get()?.value === GENRE_INDEX_VERSION;
   if (current()) return;
   db.transaction(() => {
     if (current()) return;
     for (const { name } of db
-      .prepare(
+      .prepare<[], { name: string }>(
         "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name GLOB 'library_genres_*'",
       )
       .all())

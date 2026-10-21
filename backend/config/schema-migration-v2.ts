@@ -1,12 +1,33 @@
+import type Database from "better-sqlite3";
+import type { LibraryArtistsRow, LidarrArtistIdMapRow } from "../db/rows.ts";
+import type { SettingsPlaylistWorker } from "../db/helpers/settings.ts";
+import type { dbHelpers as sqliteDbHelpers } from "./db-sqlite.ts";
+
+export interface TableColumnRow {
+  name: string;
+  pk: number;
+}
+
+interface LibraryArtistMetadata {
+  librarySource?: unknown;
+  monitor?: unknown;
+  addOptions?: { monitor?: unknown };
+}
+
 const SCHEMA_VERSION_KEY = "schemaVersion";
 export const TARGET_SCHEMA_VERSION = 4;
 
-export function getSchemaVersion(db) {
-  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(SCHEMA_VERSION_KEY);
+export function getSchemaVersion(db: Database.Database) {
+  const row = db
+    .prepare<[string], { value: string }>("SELECT value FROM settings WHERE key = ?")
+    .get(SCHEMA_VERSION_KEY);
   return Number(row?.value || 1);
 }
 
-export function initializeSchemaOnStartup(db, dbHelpers) {
+export function initializeSchemaOnStartup(
+  db: Database.Database,
+  dbHelpers: typeof sqliteDbHelpers,
+) {
   const currentVersion = getSchemaVersion(db);
   if (currentVersion >= TARGET_SCHEMA_VERSION) {
     return { migrated: false, schemaVersion: currentVersion };
@@ -30,14 +51,14 @@ export function initializeSchemaOnStartup(db, dbHelpers) {
     .immediate();
 }
 
-function tableExists(db, name) {
+function tableExists(db: Database.Database, name: string) {
   const row = db
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
     .get(name);
   return !!row;
 }
 
-function tryAddColumn(db, sql) {
+function tryAddColumn(db: Database.Database, sql: string) {
   try {
     db.exec(sql);
   } catch (error) {
@@ -51,15 +72,18 @@ function tryAddColumn(db, sql) {
   }
 }
 
-function getTableColumns(db, tableName) {
+function getTableColumns(db: Database.Database, tableName: string) {
   if (!tableExists(db, tableName)) return [];
   return db
-    .prepare(`PRAGMA table_info(${tableName})`)
+    .prepare<[], TableColumnRow>(`PRAGMA table_info(${tableName})`)
     .all()
     .map((column) => column.name);
 }
 
-function buildPlaylistWorkerSettings(weeklyFlowWorker, playlistWorker) {
+function buildPlaylistWorkerSettings(
+  weeklyFlowWorker: Partial<SettingsPlaylistWorker> | null,
+  playlistWorker: Partial<SettingsPlaylistWorker> | null,
+) {
   const legacy = weeklyFlowWorker && typeof weeklyFlowWorker === "object" ? weeklyFlowWorker : {};
   const current = playlistWorker && typeof playlistWorker === "object" ? playlistWorker : {};
   const parsedConcurrency = Number(current.concurrency ?? legacy.concurrency);
@@ -88,8 +112,10 @@ function buildPlaylistWorkerSettings(weeklyFlowWorker, playlistWorker) {
   };
 }
 
-function backfillSlskdSettings(db, dbHelpers) {
-  const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
+function backfillSlskdSettings(db: Database.Database, dbHelpers: typeof sqliteDbHelpers) {
+  const getSettingStmt = db.prepare<[string], { value: string }>(
+    "SELECT value FROM settings WHERE key = ?",
+  );
   const upsertSettingStmt = db.prepare(
     "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
   );
@@ -117,8 +143,10 @@ function backfillSlskdSettings(db, dbHelpers) {
   );
 }
 
-export function finalizeV2SettingsKeys(db, dbHelpers) {
-  const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
+export function finalizeV2SettingsKeys(db: Database.Database, dbHelpers: typeof sqliteDbHelpers) {
+  const getSettingStmt = db.prepare<[string], { value: string }>(
+    "SELECT value FROM settings WHERE key = ?",
+  );
   const upsertSettingStmt = db.prepare(
     "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
   );
@@ -147,7 +175,7 @@ export function finalizeV2SettingsKeys(db, dbHelpers) {
   backfillSlskdSettings(db, dbHelpers);
 }
 
-function ensurePlaylistDownloadJobsTable(db) {
+function ensurePlaylistDownloadJobsTable(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS playlist_download_jobs (
       id TEXT PRIMARY KEY,
@@ -198,7 +226,7 @@ function ensurePlaylistDownloadJobsTable(db) {
   `);
 }
 
-function ensureSlskdTransferHistoryTable(db) {
+function ensureSlskdTransferHistoryTable(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS slskd_transfer_history (
       id TEXT PRIMARY KEY,
@@ -228,12 +256,12 @@ function ensureSlskdTransferHistoryTable(db) {
   `);
 }
 
-function normalizeMonitorMode(value) {
+function normalizeMonitorMode(value: unknown) {
   const normalized = String(value || "").trim();
   return normalized || null;
 }
 
-function ensureLibraryManagementTable(db) {
+function ensureLibraryManagementTable(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS library_management (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -253,7 +281,7 @@ function ensureLibraryManagementTable(db) {
   `);
 }
 
-function backfillJobOwnership(db) {
+function backfillJobOwnership(db: Database.Database) {
   tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN managed_by TEXT");
   tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN request_group_id TEXT");
   db.exec(`
@@ -266,17 +294,23 @@ function backfillJobOwnership(db) {
   );
 }
 
-function backfillLidarrManagementState(db) {
+function backfillLidarrManagementState(db: Database.Database) {
   if (!tableExists(db, "library_artists")) {
     return;
   }
   const now = Date.now();
-  const artists = db.prepare("SELECT id, mbid, metadata_json FROM library_artists").all();
+  const artists = db
+    .prepare<[], Pick<LibraryArtistsRow, "id" | "mbid" | "metadata_json">>(
+      "SELECT id, mbid, metadata_json FROM library_artists",
+    )
+    .all();
   if (!artists.length) return;
   const managedByMbid = tableExists(db, "lidarr_artist_id_map")
     ? new Set(
         db
-          .prepare("SELECT musicbrainz_id FROM lidarr_artist_id_map")
+          .prepare<[], Pick<LidarrArtistIdMapRow, "musicbrainz_id">>(
+            "SELECT musicbrainz_id FROM lidarr_artist_id_map",
+          )
           .all()
           .map((row) => row.musicbrainz_id),
       )
@@ -287,7 +321,7 @@ function backfillLidarrManagementState(db) {
     ON CONFLICT (entity_kind, entity_id) DO NOTHING
   `);
   for (const artist of artists) {
-    let metadata = {};
+    let metadata: LibraryArtistMetadata = {};
     try {
       metadata = JSON.parse(artist.metadata_json || "{}");
     } catch {}
@@ -299,17 +333,17 @@ function backfillLidarrManagementState(db) {
   }
 }
 
-export function applyOwnershipMigration(db) {
+export function applyOwnershipMigration(db: Database.Database) {
   ensureLibraryManagementTable(db);
   backfillJobOwnership(db);
   backfillLidarrManagementState(db);
 }
 
-function legacyColumnExpr(columns, columnName, fallback = "NULL") {
+function legacyColumnExpr(columns: string[], columnName: string, fallback = "NULL") {
   return columns.includes(columnName) ? columnName : fallback;
 }
 
-function syncWeeklyFlowJobsToPlaylistDownloads(db) {
+function syncWeeklyFlowJobsToPlaylistDownloads(db: Database.Database) {
   if (!tableExists(db, "weekly_flow_jobs")) return;
 
   const columns = getTableColumns(db, "weekly_flow_jobs");
@@ -392,7 +426,7 @@ function syncWeeklyFlowJobsToPlaylistDownloads(db) {
   `);
 }
 
-function dropLegacyWeeklyFlowJobTriggers(db) {
+function dropLegacyWeeklyFlowJobTriggers(db: Database.Database) {
   db.exec(`
     DROP TRIGGER IF EXISTS sync_playlist_download_jobs_ai_weekly_flow_jobs;
     DROP TRIGGER IF EXISTS sync_playlist_download_jobs_au_weekly_flow_jobs;
@@ -400,16 +434,16 @@ function dropLegacyWeeklyFlowJobTriggers(db) {
   `);
 }
 
-function dropLegacyWeeklyFlowJobs(db) {
+function dropLegacyWeeklyFlowJobs(db: Database.Database) {
   dropLegacyWeeklyFlowJobTriggers(db);
   db.exec(`DROP TABLE IF EXISTS weekly_flow_jobs;`);
 }
 
-function migrateJobsTable(db) {
+function migrateJobsTable(db: Database.Database) {
   ensurePlaylistDownloadJobsTable(db);
 
   const columns = db
-    .prepare("PRAGMA table_info(playlist_download_jobs)")
+    .prepare<[], TableColumnRow>("PRAGMA table_info(playlist_download_jobs)")
     .all()
     .map((column) => column.name);
 
@@ -452,7 +486,7 @@ function migrateJobsTable(db) {
   syncWeeklyFlowJobsToPlaylistDownloads(db);
 
   const latestColumns = db
-    .prepare("PRAGMA table_info(playlist_download_jobs)")
+    .prepare<[], TableColumnRow>("PRAGMA table_info(playlist_download_jobs)")
     .all()
     .map((column) => column.name);
 

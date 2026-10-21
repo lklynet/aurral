@@ -107,7 +107,12 @@ export const listenbrainzSubmit = async ({ token, baseUrl = LISTENBRAINZ_API, ev
 export async function listenbrainzRequest(
   path,
   params = {},
-  { token = null, baseUrl = LISTENBRAINZ_API, timeoutMs = LISTENBRAINZ_TIMEOUT_MS, data } = {},
+  {
+    token = null,
+    baseUrl = LISTENBRAINZ_API,
+    timeoutMs = LISTENBRAINZ_TIMEOUT_MS,
+    data,
+  }: { token?: string | null; baseUrl?: string; timeoutMs?: number; data?: unknown } = {},
 ) {
   const root = normalizeListenbrainzBaseUrl(baseUrl);
   const isAuthenticated = Boolean(String(token || "").trim());

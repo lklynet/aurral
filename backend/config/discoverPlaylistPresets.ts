@@ -52,7 +52,7 @@ export const RELEASE_RADAR_PRESET = {
   deepDive: false,
 };
 
-export const getDiscoverPlaylistPreset = (presetId) => {
+export const getDiscoverPlaylistPreset = (presetId: string) => {
   const id = String(presetId || "").trim();
   if (!id) return null;
   if (id === RELEASE_RADAR_PRESET.id) return { ...RELEASE_RADAR_PRESET };

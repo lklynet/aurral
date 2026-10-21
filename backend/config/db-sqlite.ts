@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
-import { initializeSchemaOnStartup } from "./schema-migration-v2.ts";
+import { initializeSchemaOnStartup, type TableColumnRow } from "./schema-migration-v2.ts";
 import { initializeLibrarySearchIndex } from "./library-search-index.ts";
 import { initializeLibraryGenreIndex } from "./library-genre-index.ts";
 import { ensureUniqueLidarrArtistIdIndex } from "./lidarr-artist-index.ts";
@@ -37,12 +37,12 @@ db.pragma("synchronous = NORMAL");
 // Worker processes share this file. A deferred transaction that reads before it writes
 // fails with SQLITE_BUSY without waiting when another process writes first.
 const createTransaction = db.transaction.bind(db);
-db.transaction = (fn) => createTransaction(fn).immediate;
+db.transaction = ((fn) => createTransaction(fn).immediate) as typeof db.transaction;
 db.pragma("cache_size = -2000");
 db.pragma("mmap_size = 25165824");
 db.pragma("temp_store = FILE");
 
-function tryAddColumn(sql) {
+function tryAddColumn(sql: string) {
   try {
     db.exec(sql);
   } catch (error) {
@@ -616,7 +616,7 @@ tryAddColumn("ALTER TABLE play_events ADD COLUMN album_key TEXT");
 
 db.transaction(() => {
   const columns = db
-    .prepare("PRAGMA table_info(play_album_stats)")
+    .prepare<[], TableColumnRow>("PRAGMA table_info(play_album_stats)")
     .all()
     .map((column) => column.name);
   if (!columns.includes("album_key")) {
@@ -753,7 +753,7 @@ db.transaction(() => {
 }).immediate();
 
 const releaseCalendarPrimaryKey = db
-  .prepare("PRAGMA table_info(library_release_calendar)")
+  .prepare<[], TableColumnRow>("PRAGMA table_info(library_release_calendar)")
   .all()
   .filter((column) => Number(column.pk) > 0)
   .sort((left, right) => Number(left.pk) - Number(right.pk))
@@ -811,15 +811,15 @@ db.prepare(`
 tryAddColumn("ALTER TABLE library_media_files ADD COLUMN album_id INTEGER");
 tryAddColumn("ALTER TABLE images_cache ADD COLUMN images_json TEXT");
 
-function hasUniqueIndex(columns) {
+function hasUniqueIndex(columns: string[]) {
   return db
-    .prepare("PRAGMA index_list(library_media_files)")
+    .prepare<[], { name: string; unique: number }>("PRAGMA index_list(library_media_files)")
     .all()
     .some((index) => {
       if (!index.unique) return false;
       const indexName = String(index.name).replaceAll('"', '""');
       const indexColumns = db
-        .prepare(`PRAGMA index_info("${indexName}")`)
+        .prepare<[], { name: string | null }>(`PRAGMA index_info("${indexName}")`)
         .all()
         .map((column) => column.name);
       return JSON.stringify(indexColumns) === JSON.stringify(columns);
@@ -890,7 +890,7 @@ db.exec(`
 ensureUniqueLidarrArtistIdIndex(db);
 
 const tableColumns = db
-  .prepare("PRAGMA table_info(playlist_download_jobs)")
+  .prepare<[], TableColumnRow>("PRAGMA table_info(playlist_download_jobs)")
   .all()
   .map((column) => column.name);
 
@@ -967,7 +967,7 @@ if (!tableColumns.includes("reused_library_file")) {
 }
 
 const sessionColumns = db
-  .prepare("PRAGMA table_info(sessions)")
+  .prepare<[], TableColumnRow>("PRAGMA table_info(sessions)")
   .all()
   .map((column) => column.name);
 if (!sessionColumns.includes("reauthenticated_at")) {
@@ -975,7 +975,7 @@ if (!sessionColumns.includes("reauthenticated_at")) {
 }
 
 const userColumns = db
-  .prepare("PRAGMA table_info(users)")
+  .prepare<[], TableColumnRow>("PRAGMA table_info(users)")
   .all()
   .map((column) => column.name);
 
@@ -1007,7 +1007,7 @@ if (!userColumns.includes("is_protected")) {
   db.transaction(() => {
     tryAddColumn("ALTER TABLE users ADD COLUMN is_protected INTEGER NOT NULL DEFAULT 0");
     const integrationsRow = db
-      .prepare("SELECT value FROM settings WHERE key = 'integrations'")
+      .prepare<[], { value: string }>("SELECT value FROM settings WHERE key = 'integrations'")
       .get();
     let integrations = null;
     try {
@@ -1076,7 +1076,7 @@ db.exec(`
 `);
 
 export const dbHelpers = {
-  parseJSON: (text) => {
+  parseJSON: (text: string | null | undefined) => {
     if (!text) return null;
     try {
       return JSON.parse(text);
@@ -1085,7 +1085,7 @@ export const dbHelpers = {
     }
   },
 
-  stringifyJSON: (obj) => {
+  stringifyJSON: (obj: unknown) => {
     if (obj === undefined) return null;
     try {
       return JSON.stringify(obj);
@@ -1240,7 +1240,10 @@ db.transaction(() => {
     .run(aurralMonitoringRulesMigrationKey, "1");
   if (claimed.changes === 0) return;
   const artists = db
-    .prepare(`
+    .prepare<
+      [],
+      { id: number; mode: string | null; updatedAt: number; startedAt: string | number | null }
+    >(`
     SELECT management.entity_id AS id, management.monitor_mode AS mode, management.updated_at AS updatedAt,
       CASE WHEN json_valid(artist.metadata_json)
         THEN json_extract(artist.metadata_json, '$.monitorStartedAt') END AS startedAt
@@ -1252,7 +1255,7 @@ db.transaction(() => {
       AND COALESCE(management.monitor_mode, 'none') != 'none'
   `)
     .all();
-  const rulesFor = (catalog) => ({
+  const rulesFor = (catalog: string) => ({
     catalog,
     sinceYear: null,
     latestCount: 1,
@@ -1286,10 +1289,12 @@ db.transaction(() => {
     // Latest took whichever release was newest at each scan, so its cutoffs
     // start now rather than when the mode was chosen.
     const since =
-      {
-        future: Number(artist.startedAt) || Number(artist.updatedAt) || migratedAt,
-        latest: migratedAt,
-      }[mode] ??
+      (
+        {
+          future: Number(artist.startedAt) || Number(artist.updatedAt) || migratedAt,
+          latest: migratedAt,
+        } as Partial<Record<string, number>>
+      )[mode] ??
       (Number(artist.updatedAt) || migratedAt);
     const stored =
       mode === "future" || mode === "latest"
@@ -1337,16 +1342,16 @@ initializeLibraryGenreIndex(db);
 initializeLibrarySearchIndex(db);
 
 const existingDownloadFolder = db
-  .prepare("SELECT value FROM settings WHERE key = ?")
+  .prepare<[string], { value: string }>("SELECT value FROM settings WHERE key = ?")
   .get("downloadFolderPath");
 syncDownloadFolderPath(existingDownloadFolder?.value || null);
 
-const databaseRevisionStmt = db.prepare(
+const databaseRevisionStmt = db.prepare<[], { data_version: number; changes: number }>(
   "SELECT data_version, total_changes() AS changes FROM pragma_data_version",
 );
 
 export function getDatabaseRevision() {
-  const { data_version, changes } = databaseRevisionStmt.get();
+  const { data_version, changes } = databaseRevisionStmt.get()!;
   return `${data_version}:${changes}`;
 }
 

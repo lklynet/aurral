@@ -1,9 +1,11 @@
+import type Database from "better-sqlite3";
+
 const SEARCH_INDEX_VERSION = "2";
 const GENRE_STATS_SETTING_PREFIX = "libraryGenreStats:";
 
-const genreMediaExists = (kind, sourceFilter, availableOnly) => {
-  const filters = [];
-  const parameters = [];
+const genreMediaExists = (kind: string, sourceFilter: string | null, availableOnly: boolean) => {
+  const filters: string[] = [];
+  const parameters: string[] = [];
   if (sourceFilter) {
     filters.push("page_media.source = ?");
     parameters.push(sourceFilter);
@@ -44,7 +46,13 @@ const genreMediaExists = (kind, sourceFilter, availableOnly) => {
   };
 };
 
-export function computeLibraryGenreStats(db, { sourceFilter = null, availableOnly = false } = {}) {
+export function computeLibraryGenreStats(
+  db: Database.Database,
+  {
+    sourceFilter = null,
+    availableOnly = false,
+  }: { sourceFilter?: string | null; availableOnly?: boolean } = {},
+) {
   const entities = [
     ["artists", "library_artists AS artist", "artist.id"],
     [
@@ -54,7 +62,7 @@ export function computeLibraryGenreStats(db, { sourceFilter = null, availableOnl
     ],
     ["tracks", "library_tracks AS track", "track.id"],
   ];
-  const parameters = [];
+  const parameters: string[] = [];
   const rows = entities.map(([kind, from, id]) => {
     const media = genreMediaExists(kind, sourceFilter, availableOnly);
     parameters.push(...media.parameters);
@@ -66,7 +74,10 @@ export function computeLibraryGenreStats(db, { sourceFilter = null, availableOnl
       WHERE ${media.sql}`;
   });
   return db
-    .prepare(
+    .prepare<
+      string[],
+      { name: string; artists: number | null; albums: number | null; tracks: number | null }
+    >(
       `WITH genre_entities AS (
        SELECT DISTINCT entity_kind, entity_id, name
        FROM (${rows.join(" UNION ALL ")})
@@ -88,7 +99,7 @@ export function computeLibraryGenreStats(db, { sourceFilter = null, availableOnl
     }));
 }
 
-export function rebuildStoredLibraryGenreStats(db) {
+export function rebuildStoredLibraryGenreStats(db: Database.Database) {
   for (const availableOnly of [false, true]) {
     const cacheKey = `all:${availableOnly ? "available" : "all"}`;
     const stats = computeLibraryGenreStats(db, { availableOnly });
@@ -99,9 +110,9 @@ export function rebuildStoredLibraryGenreStats(db) {
   }
 }
 
-const createSearchSchema = (db) => {
+const createSearchSchema = (db: Database.Database) => {
   const fts5Enabled = db
-    .prepare("SELECT sqlite_compileoption_used(?) AS enabled")
+    .prepare<[string], { enabled: number }>("SELECT sqlite_compileoption_used(?) AS enabled")
     .get("ENABLE_FTS5")?.enabled;
   if (!fts5Enabled) return false;
 
@@ -154,7 +165,7 @@ const createSearchSchema = (db) => {
   return true;
 };
 
-export const populateLibrarySearchDocuments = (db) => {
+export const populateLibrarySearchDocuments = (db: Database.Database) => {
   db.exec(`
     INSERT INTO library_search_documents (entity_kind, entity_id, title, artist_name, album_name)
     SELECT 'artist', artist.id, artist.name, '', ''
@@ -185,9 +196,9 @@ export const populateLibrarySearchDocuments = (db) => {
   `);
 };
 
-export function initializeLibrarySearchIndex(db) {
+export function initializeLibrarySearchIndex(db: Database.Database) {
   const fts5Enabled = db
-    .prepare("SELECT sqlite_compileoption_used(?) AS enabled")
+    .prepare<[string], { enabled: number }>("SELECT sqlite_compileoption_used(?) AS enabled")
     .get("ENABLE_FTS5")?.enabled;
   const hasCurrentSearchIndex = () => {
     const hasIndex = Boolean(
@@ -197,7 +208,7 @@ export function initializeLibrarySearchIndex(db) {
     );
     const hasTriggers =
       db
-        .prepare(`
+        .prepare<[], { count: number }>(`
       SELECT COUNT(*) AS count FROM sqlite_master
       WHERE type = 'trigger' AND name IN (
         'library_search_documents_ai',
@@ -205,9 +216,9 @@ export function initializeLibrarySearchIndex(db) {
         'library_search_documents_ad'
       )
     `)
-        .get().count === 3;
+        .get()!.count === 3;
     const version = db
-      .prepare("SELECT value FROM settings WHERE key = ?")
+      .prepare<[string], { value: string }>("SELECT value FROM settings WHERE key = ?")
       .get("librarySearchIndexVersion")?.value;
     return { hasIndex, hasTriggers, version };
   };
