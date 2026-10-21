@@ -26,8 +26,10 @@ jobs:
           cache: true
           run-install: |
             - args: ["--frozen-lockfile"]
-            - cwd: docs
-              args: ["--frozen-lockfile"]
+
+      - name: Install docs dependencies
+        run: npm ci --include=optional
+        working-directory: docs
 
       - run: vp run check
 
