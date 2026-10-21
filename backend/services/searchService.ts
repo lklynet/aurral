@@ -19,7 +19,7 @@ export function parsePositiveInt(value, fallback) {
 }
 
 const ALL_RELEASE_TYPES = new Set([...PRIMARY_RELEASE_TYPE_LIST, ...SECONDARY_RELEASE_TYPE_LIST]);
-async function getAlbumLibraryLookup(albumMbids) {
+async function getAlbumLibraryLookup(albumMbids: string[]) {
   const lookup = new Map();
   if (!lidarrClient.isConfigured() || albumMbids.length === 0) {
     return lookup;

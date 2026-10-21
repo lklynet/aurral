@@ -2,12 +2,9 @@ import { validateLidarrTestCredentials, withTemporaryLidarrClient } from "./lida
 import { runLidarrLibraryAccessTest } from "./lidarrLibraryAccessTest.ts";
 import { applyLidarrCommunityGuide } from "./lidarrCommunityGuide.ts";
 import { logger } from "./logger.ts";
+import type { LidarrNamedProfile, LidarrRootFolder, LidarrTag } from "./lidarrClient.ts";
 
 type LidarrCredentials = { url: string; apiKey: string };
-
-export type LidarrRootFolder = { path: string };
-export type LidarrNamedProfile = { id: number; name: string };
-export type LidarrTag = { id: number; label: string };
 
 function resolve({ url, apiKey }: LidarrCredentials) {
   const validation = validateLidarrTestCredentials(url, apiKey);
