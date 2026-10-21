@@ -590,6 +590,10 @@ export class DownloadTracker {
     );
   }
 
+  isInActiveAlbumGrab(jobId) {
+    return Boolean(this._activeAlbumGrab(jobId));
+  }
+
   releaseFromAlbumGrab(id, reason = null, options = {}) {
     setActiveDownloadAttemptId(id, null);
     return this.setPending(id, reason, options);
@@ -1810,6 +1814,10 @@ export class DownloadTracker {
 
   getAll() {
     return sortByCreatedAt(Array.from(this.jobs.values()));
+  }
+
+  hasPersistedJob(id) {
+    return Boolean(liveJobStmt.get(id ?? null));
   }
 
   getDoneWithFinalPath(limit = 500) {

@@ -63,10 +63,9 @@ function getUsenetClientKey(preferredKey = null) {
 
 const isAutomaticUpgrade = (job) => Boolean(job?.upgradeForJobId) && !job.manualReplacementSearch;
 
-// A job that is done with a shared download no longer counts as using it,
-// even before it moves on to another release. A download being removed is
-// retired, so no new upgrade attaches to it while its jobs still point at it.
-// So is a release attempt's download, which must stay whole until it is read.
+// A job that is done with a shared download no longer counts as using it.
+// A download being removed is retired, so no new track attaches to it while
+// its jobs still point at it. Release-level album attempts stay isolated.
 const releasedNzbs = new Set();
 const retiredNzbs = new Set();
 const MAX_RETIRED_NZBS = 1000;
@@ -80,47 +79,46 @@ function retireNzb(key) {
   }
 }
 
-function otherJobsOnNzb(clientKey, nzbId, jobId) {
+function trackedConsumers(clientKey, nzbId) {
   const id = String(nzbId ?? "").trim();
   if (!id) return [];
-  return downloadTracker
-    .getAll()
-    .filter(
-      (entry) =>
-        entry.id !== jobId &&
-        isAutomaticUpgrade(entry) &&
-        entry.status === "downloading" &&
-        entry.downloadSource === "usenet" &&
-        entry.downloadClient === clientKey &&
-        String(entry.downloadClientId ?? "").trim() === id &&
-        !releasedNzbs.has(`${entry.id}\0${nzbKey(clientKey, id)}`),
-    );
-}
-
-// Upgrades for several tracks of one album usually rank the same release
-// first. They share its download instead of each fetching the whole album.
-// Only automatic upgrades share, because they never hold a file for review,
-// and only for different tracks, because each import moves its file away.
-// A release attempt never shares: it judges the release by every file in
-// the download, so upgrades of one release share one attempt instead.
-const pendingUpgradeSubmissions = new Map();
-
-const trackKey = (job) =>
-  [job.artistName, job.albumName, job.trackName]
-    .map((value) =>
-      String(value || "")
-        .trim()
-        .toLowerCase(),
+  return downloadTracker.getAll().filter((entry) => {
+    if (
+      !downloadTracker.hasPersistedJob(entry.id) ||
+      releasedNzbs.has(`${entry.id}\0${nzbKey(clientKey, id)}`)
     )
-    .join("\0");
-
-function isSameTrack(left, right) {
-  return left.trackMbid && right.trackMbid
-    ? left.trackMbid === right.trackMbid
-    : trackKey(left) === trackKey(right);
+      return false;
+    const currentMatches =
+      ["downloading", "blocked"].includes(entry.status) &&
+      !downloadTracker.isInActiveAlbumGrab(entry.id) &&
+      entry.downloadSource === "usenet" &&
+      entry.downloadClient === clientKey &&
+      String(entry.downloadClientId ?? "").trim() === id;
+    const held = entry.heldForReview;
+    const heldMatches =
+      held?.source === "usenet" &&
+      held.metadata?.downloadClient === clientKey &&
+      String(held.transferId ?? "").trim() === id;
+    return currentMatches || heldMatches;
+  });
 }
 
-function sharedUpgradeNzb(clientKey, release, job) {
+function consumersForNzb(clientKey, nzbId, jobId = null) {
+  const consumers = new Set(trackedConsumers(clientKey, nzbId).map((entry) => entry.id));
+  if (jobId) consumers.add(jobId);
+  return consumers;
+}
+
+function hasOtherNzbConsumers(clientKey, nzbId, jobId) {
+  return [...consumersForNzb(clientKey, nzbId, jobId)].some((id) => id !== jobId);
+}
+
+// Track-level jobs can independently rank the same album release. They share
+// one client download by GUID, including duplicate requests for the same song.
+// Album grabs remain separate because they own and judge the complete release.
+const pendingTrackSubmissions = new Map();
+
+function sharedTrackNzb(clientKey, release, job) {
   const guid = String(release?.guid || "").trim();
   if (!guid) return null;
   const users = downloadTracker
@@ -128,29 +126,35 @@ function sharedUpgradeNzb(clientKey, release, job) {
     .filter(
       (entry) =>
         entry.id !== job.id &&
-        isAutomaticUpgrade(entry) &&
+        downloadTracker.hasPersistedJob(entry.id) &&
         entry.status === "downloading" &&
         entry.downloadSource === "usenet" &&
         entry.downloadClient === clientKey &&
         entry.releaseGuid === guid &&
         entry.downloadClientId != null &&
+        !downloadTracker.isInActiveAlbumGrab(entry.id) &&
         !retiredNzbs.has(nzbKey(clientKey, entry.downloadClientId)) &&
         !releasedNzbs.has(`${entry.id}\0${nzbKey(clientKey, entry.downloadClientId)}`),
     );
-  const pending = pendingUpgradeSubmissions.get(`${clientKey}\0${guid}`);
-  if ([...users, pending?.job].some((entry) => entry && isSameTrack(entry, job)))
-    return { separate: true };
+  const pending = pendingTrackSubmissions.get(`${clientKey}\0${guid}`);
   return { nzbId: users[0]?.downloadClientId ?? pending?.nzbId ?? null };
 }
 
 // Both clients drop the queue and history entry. With deleteFiles, Aurral also
 // removes the completed folder unless that client's setting is off. A download
 // another upgrade still reads is left to the last one.
+// Both clients drop the queue and history entry. SABnzbd also deletes the
+// job's files; NZBGet does with deleteFiles, unless its setting is off. A
+// shared track download is left in place until its final consumer releases it.
 async function removeUsenetItem(payload, jobId, options = {}) {
   const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
   const key = nzbKey(client.key, payload.nzbId);
   releasedNzbs.add(`${jobId}\0${key}`);
-  if (otherJobsOnNzb(client.key, payload.nzbId, jobId).length > 0) return;
+  if (payload.albumGrab !== true) {
+    const consumers = consumersForNzb(client.key, payload.nzbId, jobId);
+    consumers.delete(jobId);
+    if (consumers.size > 0) return false;
+  }
   retireNzb(key);
   for (const [entry, remove] of [
     ["queue", () => client.deleteQueueItem(payload.nzbId)],
@@ -163,6 +167,7 @@ async function removeUsenetItem(payload, jobId, options = {}) {
       });
     });
   }
+  return true;
 }
 
 export async function discardUsenetWork(payload) {
@@ -172,11 +177,17 @@ export async function discardUsenetWork(payload) {
 // A song held for review keeps its release until it is approved, denied, or removed.
 export async function removeReviewedUsenetDownload(job) {
   if (job?.downloadSource !== "usenet" || !job.downloadClientId) return;
-  await removeUsenetItem(
+  return removeUsenetItem(
     { downloadClient: job.downloadClient, nzbId: job.downloadClientId },
     job.id,
     { deleteFiles: true },
   );
+}
+
+export function shouldPreserveReviewedUsenetSource(job) {
+  if (job?.downloadSource !== "usenet" || !job.downloadClientId || !job.id) return false;
+  const client = getUsenetClient(job.downloadClient);
+  return hasOtherNzbConsumers(client.key, job.downloadClientId, job.id);
 }
 
 const RELEASE_RESET = Object.freeze({
@@ -523,27 +534,24 @@ async function handleUsenetDownload(payload, helpers) {
     missingPolls: 0,
     unreadPolls: 0,
   });
-  const upgrade =
-    isAutomaticUpgrade(job) &&
-    payload.albumGrab !== true &&
-    Boolean(String(release.guid || "").trim());
+  const shareable = payload.albumGrab !== true && Boolean(String(release.guid || "").trim());
   const submissionKey = `${clientKey}\0${String(release.guid || "").trim()}`;
   let claimed = null;
   let sharedNzbId = null;
   // Checking for a shared download and claiming the submission happen in one
   // synchronous step, so one waiter at a time takes over a failed submission.
-  while (upgrade && sharedNzbId == null && !claimed) {
-    const shared = sharedUpgradeNzb(clientKey, release, job);
-    if (shared?.separate) break;
+  while (shareable && sharedNzbId == null && !claimed) {
+    const shared = sharedTrackNzb(clientKey, release, job);
     if (shared?.nzbId == null) {
       let settle;
       const nzbId = new Promise((resolve) => {
         settle = resolve;
       });
       claimed = { nzbId, settle, job };
-      pendingUpgradeSubmissions.set(submissionKey, claimed);
+      pendingTrackSubmissions.set(submissionKey, claimed);
     } else {
-      sharedNzbId = await shared.nzbId;
+      const sharedId = await shared.nzbId;
+      if (!retiredNzbs.has(nzbKey(clientKey, sharedId))) sharedNzbId = sharedId;
     }
   }
   if (sharedNzbId != null) {
@@ -570,6 +578,9 @@ async function handleUsenetDownload(payload, helpers) {
         ...releaseMetadata,
         downloadClientId: appended.nzbId,
       });
+      // Client IDs can be reused after an earlier item was removed. A
+      // successful append establishes a new item that may be shared again.
+      retiredNzbs.delete(nzbKey(clientKey, appended.nzbId));
       return appended;
     });
   } catch (error) {
@@ -585,8 +596,8 @@ async function handleUsenetDownload(payload, helpers) {
     return helpers.failOrTryNextSource(payload, job, message);
   } finally {
     if (claimed) {
-      if (pendingUpgradeSubmissions.get(submissionKey) === claimed)
-        pendingUpgradeSubmissions.delete(submissionKey);
+      if (pendingTrackSubmissions.get(submissionKey) === claimed)
+        pendingTrackSubmissions.delete(submissionKey);
       claimed.settle(submission?.result?.nzbId ?? null);
     }
   }
@@ -751,7 +762,13 @@ async function handleUsenetFinalize(payload, helpers) {
       .catch((err) => {
         console.warn(err);
       });
-    const committedFinalPath = await commitDownloadedFile(found.filePath, finalPath);
+    const preserveSource = hasOtherNzbConsumers(client.key, payload.nzbId, job.id);
+    // Once the last consumer commits, no later job may attach to a source
+    // that this operation is about to move away.
+    if (!preserveSource) retireNzb(nzbKey(client.key, payload.nzbId));
+    const committedFinalPath = await commitDownloadedFile(found.filePath, finalPath, {
+      preserveSource,
+    });
     await writeImportedFileMetadata(committedFinalPath, resolvedTrack, {
       source: "usenet",
       jobId: job.id,

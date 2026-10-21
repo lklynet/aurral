@@ -24,6 +24,7 @@ export async function discardReviewFile(job) {
   const filePath = path.resolve(stagingPath);
   try {
     if (isInLibraryFolder(filePath)) return;
+    let preserveSource = false;
     if (job.downloadSource === "slskd") {
       const { discardSlskdDownload } = await import("../slskdOrchestrator.js");
       await discardSlskdDownload({
@@ -38,9 +39,9 @@ export async function discardReviewFile(job) {
       });
     } else if (job.downloadSource === "usenet") {
       const { removeReviewedUsenetDownload } = await import("../usenetOrchestrator.js");
-      await removeReviewedUsenetDownload(job);
+      preserveSource = (await removeReviewedUsenetDownload(job)) === false;
     }
-    await fs.rm(filePath, { force: true });
+    if (!preserveSource) await fs.rm(filePath, { force: true });
     if (path.basename(path.dirname(filePath)) === String(job.id)) {
       await fs.rmdir(path.dirname(filePath)).catch(() => {});
     }

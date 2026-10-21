@@ -15,7 +15,8 @@ const [
   { dbOps, userOps },
   { downloadTracker },
   { getDownloadClient },
-  { processUsenetPipelinePayload },
+  { processUsenetPipelinePayload, removeReviewedUsenetDownload },
+  { discardReviewFile },
   { processPipelinePayload },
   { downloadWorker },
   { buildSlskdRankingHistoryOptions },
@@ -47,6 +48,7 @@ const [
   "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/download/downloadClientSettings.js",
   "backend/services/usenetOrchestrator.js",
+  "backend/services/downloadJobs/reviewFiles.js",
   "backend/services/downloadPipeline.js",
   "backend/services/downloadJobs/downloadWorker.js",
   "backend/services/slskdTransferHistory.js",
@@ -493,15 +495,204 @@ test("an upgrade never attaches to a Usenet download that is being removed", asy
   assert.equal(next.nzbId, 102);
 });
 
-test("upgrades for two copies of one track download the release separately", async (t) => {
+test("a track awaiting a shared NZB submits a new one if the old download is retired", async (t) => {
+  const group = "retired-while-attaching";
+  const folder = join(state.baseDir, group);
+  await writeTracks(folder, ["First"]);
+  const firstJobId = downloadTracker.addJob(
+    { artistName: "The Band", albumName: group, trackName: "First" },
+    "library",
+  );
+  downloadTracker.setDownloading(firstJobId);
+  downloadTracker.updateDownloadMetadata(firstJobId, {
+    downloadSource: "usenet",
+    downloadClient: "nzbget",
+    downloadClientId: 84,
+    releaseGuid: `${group}-guid`,
+  });
+  const nextJobId = downloadTracker.addJob(
+    { artistName: "The Band", albumName: group, trackName: "First" },
+    "library",
+  );
+  downloadTracker.setDownloading(nextJobId);
+  const candidate = {
+    raw: {
+      release: {
+        title: `The Band - ${group}`,
+        guid: `${group}-guid`,
+        downloadUrl: `https://nzb.test/${group}`,
+      },
+    },
+    score: 10,
+    resolvedAlbumName: group,
+  };
+  const { append } = mockNzbget(t, folder, [85]);
+
+  const attaching = processUsenetPipelinePayload(
+    {
+      source: "usenet",
+      phase: "download",
+      jobId: nextJobId,
+      playlistId: "library",
+      playlistGeneration: 0,
+      destination: `The Band/${group}`,
+      candidates: [candidate],
+      candidateIndex: 0,
+    },
+    failOnSourceFallback,
+  );
+  const removing = removeReviewedUsenetDownload(downloadTracker.getJob(firstJobId));
+  const [next] = await Promise.all([attaching, removing]);
+
+  assert.equal(next.nzbId, 85);
+  assert.equal(append.mock.calls.length, 1);
+  downloadTracker.removeJob(firstJobId);
+  downloadTracker.removeJob(nextJobId);
+});
+
+test("upgrades for two copies of one track share the release without moving its file early", async (t) => {
   const { folder, upgradeIds, start } = await makeUpgrades("same-track", ["First", "First"], {
     files: ["First"],
   });
-  const { append } = mockNzbget(t, folder, [81, 82]);
+  const { append, removed } = mockNzbget(t, folder, [81, 82]);
 
   const started = await Promise.all(upgradeIds.map((id) => start(id, failOnSourceFallback)));
-  assert.equal(append.mock.calls.length, 2);
-  assert.deepEqual(started.map((payload) => payload.nzbId).sort(), [81, 82]);
+  assert.equal(append.mock.calls.length, 1);
+  assert.deepEqual(
+    started.map((payload) => payload.nzbId),
+    [81, 81],
+  );
+  await runToEnd(started[0]);
+  assert.equal(removed.mock.calls.length, 0);
+  await runToEnd(started[1]);
+  assert.equal(removed.mock.calls.length, 1);
+  const upgraded = downloadTracker
+    .getAll()
+    .filter((job) => job.albumName === "same-track" && !job.upgradeForJobId);
+  assert.equal(upgraded.length, 2);
+  for (const job of upgraded) assert.ok((await stat(job.finalPath)).isFile());
+});
+
+test("overlapping static playlists share one Usenet release across their track jobs", async (t) => {
+  const group = "shared-playlist-release";
+  const folder = join(state.baseDir, group);
+  await writeTracks(folder, ["First", "Second"]);
+  const firstPlaylist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Shared Usenet release A",
+    tracks: [],
+  });
+  const secondPlaylist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Shared Usenet release B",
+    tracks: [],
+  });
+  const requests = [
+    { playlistId: firstPlaylist.id, trackName: "First" },
+    { playlistId: secondPlaylist.id, trackName: "First" },
+    { playlistId: secondPlaylist.id, trackName: "Second" },
+  ];
+  const jobs = requests.map(({ playlistId, trackName }) => {
+    const id = downloadTracker.addJob(
+      { artistName: "The Band", albumName: group, trackName, durationMs: 1000 },
+      "static",
+      { playlistId },
+    );
+    downloadTracker.setDownloading(id);
+    return id;
+  });
+  const candidate = {
+    raw: {
+      release: {
+        title: `The Band - ${group}`,
+        guid: `${group}-guid`,
+        downloadUrl: `https://nzb.test/${group}`,
+      },
+    },
+    score: 10,
+    resolvedAlbumName: group,
+  };
+  const { append, removed } = mockNzbget(t, folder, [84, 85, 86]);
+  const started = await Promise.all(
+    jobs.map((jobId, index) =>
+      processUsenetPipelinePayload(
+        {
+          source: "usenet",
+          phase: "download",
+          jobId,
+          playlistId: requests[index].playlistId,
+          playlistGeneration: 0,
+          destination: `The Band/${group}-${index}`,
+          candidates: [candidate],
+          candidateIndex: 0,
+        },
+        failOnSourceFallback,
+      ),
+    ),
+  );
+
+  assert.equal(append.mock.calls.length, 1);
+  assert.deepEqual(
+    started.map((payload) => payload.nzbId),
+    [84, 84, 84],
+  );
+  for (const [index, payload] of started.entries()) {
+    await runToEnd(payload);
+    assert.equal(removed.mock.calls.length, index === started.length - 1 ? 1 : 0);
+  }
+  for (const jobId of jobs) {
+    const job = downloadTracker.getJob(jobId);
+    assert.equal(job.status, "done");
+    assert.ok((await stat(job.finalPath)).isFile());
+  }
+});
+
+test("a pending review keeps a shared Usenet file until its final consumer releases it", async (t) => {
+  const folder = join(state.baseDir, "shared-review-release");
+  const [sourcePath] = await writeTracks(folder, ["First"]);
+  const { removed } = mockNzbget(t, folder);
+  const downloadMetadata = {
+    downloadSource: "usenet",
+    downloadClient: "nzbget",
+    downloadClientId: 87,
+    releaseGuid: "shared-review-release-guid",
+  };
+  const pendingJobId = downloadTracker.addJob(
+    { artistName: "The Band", albumName: "Album", trackName: "First" },
+    "library",
+  );
+  downloadTracker.setDownloading(pendingJobId);
+  downloadTracker.updateDownloadMetadata(pendingJobId, downloadMetadata);
+  downloadTracker.keepHeldForReview(pendingJobId, {
+    source: "usenet",
+    sourcePath,
+    transferId: 87,
+    metadata: downloadMetadata,
+  });
+  downloadTracker.setPending(pendingJobId);
+
+  const reviewedJobId = downloadTracker.addJob(
+    { artistName: "The Band", albumName: "Album", trackName: "First" },
+    "library",
+  );
+  downloadTracker.setDownloading(reviewedJobId);
+  downloadTracker.updateDownloadMetadata(reviewedJobId, downloadMetadata);
+  downloadTracker.setBlocked(reviewedJobId, "Review required", sourcePath);
+
+  await discardReviewFile({ ...downloadTracker.getJob(reviewedJobId) });
+  assert.ok((await stat(sourcePath)).isFile());
+  assert.equal(removed.mock.calls.length, 0);
+
+  await discardReviewFile({
+    id: pendingJobId,
+    stagingPath: sourcePath,
+    downloadSource: "usenet",
+    downloadClient: "nzbget",
+    downloadClientId: 87,
+  });
+  await assert.rejects(stat(sourcePath));
+  assert.equal(removed.mock.calls.length, 1);
+  downloadTracker.setPending(reviewedJobId);
+  downloadTracker.removeJob(reviewedJobId);
+  downloadTracker.removeJob(pendingJobId);
 });
 
 test("after a failed Usenet submission, one waiting upgrade submits the release for the others", async () => {
