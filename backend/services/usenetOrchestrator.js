@@ -84,6 +84,7 @@ function trackedConsumers(clientKey, nzbId) {
   if (!id) return [];
   return downloadTracker.getAll().filter((entry) => {
     if (
+      !downloadTracker.hasPersistedJob(entry.id) ||
       !["downloading", "blocked"].includes(entry.status) ||
       downloadTracker.isInActiveAlbumGrab(entry.id) ||
       releasedNzbs.has(`${entry.id}\0${nzbKey(clientKey, id)}`)
@@ -125,6 +126,7 @@ function sharedTrackNzb(clientKey, release, job) {
     .filter(
       (entry) =>
         entry.id !== job.id &&
+        downloadTracker.hasPersistedJob(entry.id) &&
         entry.status === "downloading" &&
         entry.downloadSource === "usenet" &&
         entry.downloadClient === clientKey &&

@@ -1816,6 +1816,10 @@ export class DownloadTracker {
     return sortByCreatedAt(Array.from(this.jobs.values()));
   }
 
+  hasPersistedJob(id) {
+    return Boolean(liveJobStmt.get(id ?? null));
+  }
+
   getDoneWithFinalPath(limit = 500) {
     const max =
       Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : 500;
