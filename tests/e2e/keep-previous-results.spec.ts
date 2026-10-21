@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
-const albumPage = (page, title) => ({
+const albumPage = (page: number, title: string) => ({
   kind: "albums",
   albums: [{ id: page, title, trackCount: 1 }],
   page,
@@ -13,7 +13,7 @@ const albumPage = (page, title) => ({
 test("library paging keeps the current page visible until the next one arrives", async ({
   page,
 }) => {
-  let releaseSecondPage;
+  let releaseSecondPage!: (value?: unknown) => void;
   const secondPageHeld = new Promise((resolve) => {
     releaseSecondPage = resolve;
   });
@@ -22,7 +22,7 @@ test("library paging keeps the current page visible until the next one arrives",
     const url = new URL(route.request().url());
     if (!url.pathname.startsWith("/api/")) return route.continue();
     const path = url.pathname.replace(/^\/api/, "");
-    const json = (body) => route.fulfill({ status: 200, json: body });
+    const json = (body: unknown) => route.fulfill({ status: 200, json: body });
     if (path === "/health/bootstrap") {
       return json({ authRequired: false, onboardingRequired: false, lidarrConfigured: true });
     }

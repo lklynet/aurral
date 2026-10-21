@@ -5,7 +5,7 @@ test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } }
 const artist = { id: 901, identityKey: "mbid:box-set-artist", mbid: null, name: "Box Set Artist" };
 const trackIds = Array.from({ length: 105 }, (_, index) => 9001 + index);
 
-const track = (id, index) => ({
+const track = (id: number, index: number) => ({
   id,
   canonicalId: String(id),
   identityKey: `recording:${id}`,
@@ -34,7 +34,7 @@ const track = (id, index) => ({
   source: index === 0 ? "aurral" : null,
 });
 
-function libraryPage(url) {
+function libraryPage(url: URL) {
   const number = Number(url.searchParams.get("page")) || 1;
   const size = Number(url.searchParams.get("pageSize")) || 100;
   const items = trackIds
@@ -80,7 +80,7 @@ test("an album with more tracks than one page lists every track", async ({ page 
     const url = new URL(route.request().url());
     if (!url.pathname.startsWith("/api/")) return route.continue();
     const path = url.pathname.replace(/^\/api/, "");
-    const json = (body) => route.fulfill({ status: 200, json: body });
+    const json = (body: unknown) => route.fulfill({ status: 200, json: body });
     if (path === "/health/bootstrap")
       return json({ authRequired: false, onboardingRequired: false });
     if (path === "/health") return json({ lidarrConfigured: false });

@@ -5,7 +5,7 @@ const COVER = "/arralogo.svg";
 
 test("the player finds a missing cover and the album-art theme follows it", async ({ page }) => {
   let coverAvailable = false;
-  const coverRequests = [];
+  const coverRequests: string[] = [];
 
   await page.route("**/api/library/canonical?*", async (route) => {
     const response = await route.fetch();
@@ -17,7 +17,7 @@ test("the player finds a missing cover and the album-art theme follows it", asyn
     await route.fulfill({ response, json: body });
   });
   await page.route("**/api/artists/release-groups/covers", async (route) => {
-    const { items } = route.request().postDataJSON();
+    const { items }: { items: { mbid: string }[] } = route.request().postDataJSON();
     coverRequests.push(...items.map((item) => item.mbid));
     const cover = coverAvailable
       ? { image: COVER, notFound: false }

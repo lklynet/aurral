@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 const ARTIST_COUNT = 250;
-const artistName = (number) => `Artist ${String(number).padStart(3, "0")}`;
+const artistName = (number: number) => `Artist ${String(number).padStart(3, "0")}`;
 const allArtists = Array.from({ length: ARTIST_COUNT }, (_, index) => ({
   id: `e2e-view-state-${index + 1}`,
   name: artistName(index + 1),
@@ -60,7 +60,7 @@ test("library keeps its page, sort, view, and search in the URL across Back and 
   await main.evaluate((node) => node.scrollTo({ top: 900 }));
   await expect.poll(() => main.evaluate((node) => node.scrollTop)).toBe(900);
   const target = page.getByRole("link", { name: `Open ${artistName(120)}` });
-  await target.evaluate((element) => element.click());
+  await target.evaluate<void, void, HTMLElement>((element) => element.click());
   await expect(page).toHaveURL(/\/library\/artist\/e2e-view-state-120$/);
 
   await page.goBack();
@@ -74,7 +74,7 @@ test("library keeps its page, sort, view, and search in the URL across Back and 
   await expect.poll(() => main.evaluate((node) => node.scrollTop)).toBe(900);
 
   const gridView = page.getByRole("button", { name: "Grid view" });
-  await gridView.evaluate((button) => button.click());
+  await gridView.evaluate<void, void, HTMLElement>((button) => button.click());
   await expect.poll(search).toBe("?sort=newest&page=2");
   await expect(gridView).toHaveAttribute("aria-pressed", "true");
   expect(await main.evaluate((node) => node.scrollTop)).toBe(900);

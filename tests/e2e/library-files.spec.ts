@@ -3,11 +3,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import type { getLibraryArtistProjection } from "../../backend/services/libraryQueryService.ts";
 import { apiRequest, openApp, requireCredentials } from "./helpers.ts";
 
 requireCredentials();
 
-function makeTrack(file, tags) {
+type LibraryArtist = ReturnType<typeof getLibraryArtistProjection>[number];
+
+function makeTrack(file: string, tags: Record<string, string | number>) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   execFileSync("ffmpeg", [
     "-hide_banner",
@@ -61,12 +64,13 @@ test("ingest a folder as monitored tracks, then clean up the Library", async ({ 
     await page.screenshot({ path: test.info().outputPath("ingest-finished.png"), fullPage: true });
     expect(fs.readdirSync(path.join(source, "old rip")).sort()).toEqual(["a.flac", "b.flac"]);
 
-    let artist = null;
+    let artist: LibraryArtist | null = null;
     await expect
       .poll(
         async () => {
           const artists = await apiRequest(page, "/api/library/artists");
-          artist = (artists.body || []).find((entry) => entry.name === artistName) || null;
+          artist =
+            (artists.body || []).find((entry: LibraryArtist) => entry.name === artistName) || null;
           return artist?.monitored;
         },
         { timeout: 60_000 },
@@ -85,7 +89,7 @@ test("ingest a folder as monitored tracks, then clean up the Library", async ({ 
             page,
             `/api/library/tracks?albumId=${album.id}&readPath=canonical`,
           );
-          return (tracks.body || []).map((track) => track.monitored);
+          return (tracks.body || []).map((track: { monitored: boolean }) => track.monitored);
         },
         { timeout: 60_000 },
       )
@@ -122,7 +126,9 @@ test("ingest a folder as monitored tracks, then clean up the Library", async ({ 
     });
     expect(fs.existsSync(path.join(downloadRoot, artistName))).toBe(false);
     const remaining = await apiRequest(page, "/api/library/artists");
-    expect((remaining.body || []).some((entry) => entry.name === artistName)).toBe(false);
+    expect((remaining.body || []).some((entry: LibraryArtist) => entry.name === artistName)).toBe(
+      false,
+    );
   } finally {
     fs.rmSync(source, { recursive: true, force: true });
     if (downloadRoot)

@@ -4,14 +4,14 @@ test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } }
 
 test("turning off a flow warns that its songs are removed", async ({ page }, testInfo) => {
   await page.addInitScript(() => localStorage.setItem("auth_token", "fixture-token"));
-  const writes = [];
+  const writes: { path: string; method: string }[] = [];
   await page.routeWebSocket("**/ws**", (socket) => socket.close());
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
     if (!pathname.startsWith("/api/")) return route.continue();
     const path = pathname.replace(/^\/api/, "");
-    const json = (body) => route.fulfill({ json: body });
+    const json = (body: unknown) => route.fulfill({ json: body });
     if (path === "/health/bootstrap")
       return json({ authRequired: false, onboardingRequired: false });
     if (path === "/auth/me") return json({ user: { id: 1, username: "test", role: "admin" } });

@@ -21,7 +21,7 @@ test("one bulk request reports partial completion against its original playlist"
     worker: {},
     capabilities: { unavailableSources: {} },
   };
-  const submissions = [];
+  const submissions: unknown[] = [];
   let resultReads = 0;
   await page.route("**/api/**", (route) =>
     new URL(route.request().url()).pathname.startsWith("/api/")
@@ -100,8 +100,8 @@ test("removed tracks can be restored in place until their Undo toast closes", as
     worker: {},
     capabilities: { unavailableSources: {} },
   };
-  const submissions = [];
-  const removed = new Set();
+  const submissions: unknown[] = [];
+  const removed = new Set<string>();
   await page.route("**/api/**", (route) =>
     new URL(route.request().url()).pathname.startsWith("/api/")
       ? route.fulfill({ json: [] })
@@ -122,7 +122,7 @@ test("removed tracks can be restored in place until their Undo toast closes", as
   await page.route("**/track-removals", async (route) => {
     const body = route.request().postDataJSON();
     submissions.push(body);
-    body.jobIds.forEach((id) => removed.add(id));
+    body.jobIds.forEach((id: string) => removed.add(id));
     await route.fulfill({
       json: { queued: true, operationId: 201, acceptedJobIds: body.jobIds, rejected: [] },
     });
@@ -140,7 +140,7 @@ test("removed tracks can be restored in place until their Undo toast closes", as
       .getByText(/^Undo track \d$/)
       .filter({ visible: true })
       .allInnerTexts();
-  const removeTrack = async (name) => {
+  const removeTrack = async (name: string) => {
     await page.getByRole("button", { name: `${name} options`, exact: true }).click();
     await page.getByRole("menuitem", { name: "Remove from playlist" }).click();
   };
@@ -196,7 +196,7 @@ test("removing a library track from a playlist waits for its Undo toast to close
     worker: {},
     capabilities: { unavailableSources: {} },
   };
-  const submissions = [];
+  const submissions: unknown[] = [];
   await page.route("**/api/**", (route) =>
     new URL(route.request().url()).pathname.startsWith("/api/")
       ? route.fulfill({ json: [] })

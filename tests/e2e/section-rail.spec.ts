@@ -12,7 +12,7 @@ test("the profile section rail previews, jumps to, and tracks sections", async (
     );
 
   const rail = page.getByRole("navigation", { name: "Profile sections" });
-  const tick = (name) => rail.getByRole("button", { name, exact: true });
+  const tick = (name: string) => rail.getByRole("button", { name, exact: true });
   await expect(tick("Appearance")).toHaveAttribute("aria-current", "location");
   await expect(tick("Listening history")).toBeVisible();
   await expect(tick("Discovery tastes")).toBeVisible();
@@ -33,7 +33,7 @@ test("the profile section rail previews, jumps to, and tracks sections", async (
 
   await page.evaluate(() => {
     const first = document.querySelector(".profile-settings__section");
-    const inserted = first.cloneNode(false);
+    const inserted = first.cloneNode(false) as HTMLElement;
     inserted.innerHTML = '<h3 class="settings-page__section-title">Inserted section</h3>';
     first.before(inserted);
   });

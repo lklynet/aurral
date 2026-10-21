@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { createAlbumActivityFixture } from "../../.tests/helpers/albumActivityFixture.ts";
+import type { AurralRequestItem } from "../../backend/services/aurralHistoryService.ts";
 
-let fixture;
+let fixture: Awaited<ReturnType<typeof createAlbumActivityFixture>>;
 test.beforeAll(async () => {
   fixture = await createAlbumActivityFixture();
 });
@@ -12,7 +13,7 @@ test.afterAll(async () => {
 test("album-grab rows preserve track controls and survive polling, search, restart, and cleanup", async ({
   page,
 }, testInfo) => {
-  const errors = [];
+  const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const baseUrl = `http://127.0.0.1:${fixture.port}`;
   await page.goto(baseUrl);
@@ -21,7 +22,7 @@ test("album-grab rows preserve track controls and survive polling, search, resta
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByLabel("Primary navigation")).toBeVisible();
   await page.goto(`${baseUrl}/activity/queue`);
-  const flatRequests = await page.evaluate(async () => {
+  const flatRequests = await page.evaluate(async (): Promise<AurralRequestItem[]> => {
     const token = localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token");
     const response = await fetch("/api/requests", {
       headers: { Authorization: `Bearer ${token}` },

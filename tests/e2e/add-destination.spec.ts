@@ -1,14 +1,17 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import type { getArtistLibraryLookup } from "../../backend/routes/library/handlers/misc.ts";
 import { apiRequest, openApp, requireCredentials } from "./helpers.ts";
 
 const lidarrArtist = { mbid: "69158f97-4c07-4c4e-baf8-4e4ab1ed666e", name: "Boards of Canada" };
 
 requireCredentials();
 
-const lookupArtist = async (page, mbid) =>
+type ArtistLibraryLookup = Awaited<ReturnType<typeof getArtistLibraryLookup>>;
+
+const lookupArtist = async (page: Page, mbid: string): Promise<ArtistLibraryLookup> =>
   (await apiRequest(page, `/api/library/lookup/${mbid}`)).body;
 
-async function tabTo(page, locator) {
+async function tabTo(page: Page, locator: Locator) {
   for (let step = 0; step < 120; step += 1) {
     await page.keyboard.press("Tab");
     if (await locator.evaluate((element) => element === document.activeElement)) return;

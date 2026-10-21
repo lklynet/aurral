@@ -1,17 +1,17 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
 const artist = { id: "skeleton-artist", name: "Skeleton Artist", tags: [], genres: [] };
 
-async function fixture(page, { holdDiscover }) {
+async function fixture(page: Page, { holdDiscover }: { holdDiscover: Promise<unknown> }) {
   await page.routeWebSocket("**/ws**", (socket) => socket.close());
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
     if (!pathname.startsWith("/api/")) return route.continue();
     const path = pathname.replace(/^\/api/, "");
-    const json = (body, status = 200) => route.fulfill({ status, json: body });
+    const json = (body: unknown, status = 200) => route.fulfill({ status, json: body });
     if (path === "/health/bootstrap") {
       return json({ authRequired: false, onboardingRequired: false, lidarrConfigured: true });
     }
@@ -23,7 +23,7 @@ async function fixture(page, { holdDiscover }) {
     if (path === "/discover/editorial") return json({ forYou: [], genres: [] });
     if (path === "/library/lookup/batch") {
       return json(
-        Object.fromEntries((request.postDataJSON()?.mbids || []).map((id) => [id, false])),
+        Object.fromEntries((request.postDataJSON()?.mbids || []).map((id: string) => [id, false])),
       );
     }
     if (path.endsWith("/cover")) return json({ images: [] });
@@ -41,7 +41,7 @@ test("Discover keeps its heading and reserves section space while loading", asyn
 }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  let release;
+  let release!: (value?: unknown) => void;
   await fixture(page, {
     holdDiscover: new Promise((resolve) => {
       release = resolve;

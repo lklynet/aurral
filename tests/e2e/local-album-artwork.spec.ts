@@ -66,7 +66,7 @@ test.beforeEach(async ({ page }) => {
     const req = route.request();
     const url = new URL(req.url());
     const path = url.pathname.replace(/^\/api/, "");
-    const json = (body) => route.fulfill({ json: body });
+    const json = (body: unknown) => route.fulfill({ json: body });
     if (path === "/health/bootstrap")
       return json({ authRequired: false, onboardingRequired: false, lidarrConfigured: false });
     if (path.startsWith("/health")) return json({ lidarrConfigured: false });
@@ -125,7 +125,13 @@ test("unidentified local album artwork authenticates in the library and playing 
     /\/api\/library\/albums\/42\/cover\?token=fixture-token/,
   );
   await expect(cover).toBeVisible();
-  await expect.poll(() => cover.evaluate((img) => img.complete && img.naturalWidth > 0)).toBe(true);
+  await expect
+    .poll(() =>
+      cover.evaluate<boolean, void, HTMLImageElement>(
+        (img) => img.complete && img.naturalWidth > 0,
+      ),
+    )
+    .toBe(true);
   await page.screenshot({
     path: test.info().outputPath("local-album-library.png"),
     animations: "disabled",
@@ -148,7 +154,11 @@ test("unidentified local album artwork authenticates in the library and playing 
     /\/api\/library\/albums\/42\/cover\?token=fixture-token/,
   );
   await expect
-    .poll(() => playerArt.evaluate((img) => img.complete && img.naturalWidth > 0))
+    .poll(() =>
+      playerArt.evaluate<boolean, void, HTMLImageElement>(
+        (img) => img.complete && img.naturalWidth > 0,
+      ),
+    )
     .toBe(true);
   await page.screenshot({
     path: test.info().outputPath("local-album-playing.png"),

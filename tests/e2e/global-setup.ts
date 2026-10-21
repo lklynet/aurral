@@ -1,18 +1,20 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { request } from "@playwright/test";
+import { request, type FullConfig } from "@playwright/test";
 import { assertSafeCredentialTransport } from "./helpers.ts";
 
 export const AUTH_STATE_PATH = fileURLToPath(
   new URL("../../playwright/.auth/user.json", import.meta.url),
 );
 
-export default async function globalSetup(config) {
-  const baseURL = config.projects[0].use.baseURL;
+type StorageOrigin = { origin: string; localStorage: { name: string; value: string }[] };
+
+export default async function globalSetup(config: FullConfig) {
+  const baseURL = config.projects[0].use.baseURL!;
   const username = String(process.env.AURRAL_TEST_USERNAME || "").trim();
   const password = String(process.env.AURRAL_TEST_PASSWORD || "");
-  let origins = [];
+  let origins: StorageOrigin[] = [];
   if (username && password) {
     const url = new URL(baseURL);
     assertSafeCredentialTransport(baseURL);

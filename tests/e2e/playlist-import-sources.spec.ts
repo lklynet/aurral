@@ -1,11 +1,11 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { requireCredentials } from "./helpers.ts";
 
 requireCredentials();
 
-const apiPath = (path) => (url) => url.pathname === `/api${path}`;
+const apiPath = (path: string) => (url: URL) => url.pathname === `/api${path}`;
 
-async function openImport(page) {
+async function openImport(page: Page) {
   await page.goto("/playlists");
   await expect(page.getByRole("heading", { level: 1, name: /^Playlists\b/ })).toBeVisible();
   await page.getByRole("button", { name: "Create playlist" }).click();
@@ -18,8 +18,8 @@ async function openImport(page) {
 test("Last.fm import starts from the profile username and can switch accounts", async ({
   page,
 }) => {
-  const stationRequests = [];
-  let importPayload;
+  const stationRequests: (string | null)[] = [];
+  let importPayload: unknown;
 
   await page.route(apiPath("/playlists/import/spotify/status"), (route) =>
     route.fulfill({ json: { connected: false, displayName: null } }),

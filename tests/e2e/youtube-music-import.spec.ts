@@ -1,9 +1,9 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { assertSafeCredentialTransport, credentials, requireCredentials } from "./helpers.ts";
 
 requireCredentials();
 
-async function signIn(page) {
+async function signIn(page: Page) {
   await page.goto("/playlists");
   const signInHeading = page.getByRole("heading", { name: "Sign in" });
   const playlistsHeading = page.getByRole("heading", { level: 1, name: /^Playlists\b/ });
@@ -16,7 +16,7 @@ async function signIn(page) {
   await expect(playlistsHeading).toBeVisible();
 }
 
-async function openImport(page, { selectYoutube = true } = {}) {
+async function openImport(page: Page, { selectYoutube = true } = {}) {
   await page.getByRole("button", { name: "Create playlist" }).click();
   await page.getByRole("menuitem", { name: "Import playlist" }).click();
   await expect(page.getByRole("heading", { name: "Import playlist" })).toBeVisible();
@@ -33,9 +33,9 @@ for (const viewport of [
     page,
   }) => {
     await page.setViewportSize(viewport);
-    let previewMode = "error";
-    let releasePreview;
-    let importPayload;
+    let previewMode: "error" | "loading" | "zero" | "success" = "error";
+    let releasePreview: ((value?: unknown) => void) | undefined;
+    let importPayload: unknown;
 
     await page.route("**/api/playlists/import/spotify/status", (route) =>
       route.fulfill({ json: { connected: false, displayName: null } }),

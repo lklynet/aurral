@@ -1,14 +1,17 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { apiRequest, openApp, requireCredentials } from "./helpers.ts";
 
 const linkedMbid = "10adbe5e-a2c0-4bf3-8249-2b4cbf6e6ca8";
 
 requireCredentials();
 
-async function findUntaggedArtist(page) {
+async function findUntaggedArtist(page: Page) {
   const response = await apiRequest(page, "/api/library/canonical?kind=artists&pageSize=100");
   expect(response.ok).toBe(true);
-  const artist = (response.body?.items || []).find((item) => !item.mbid && item.providerId == null);
+  const artist = (response.body?.items || []).find(
+    (item: { mbid: string | null; providerId: string | null }) =>
+      !item.mbid && item.providerId == null,
+  );
   expect(
     artist,
     "The candidate library needs an untagged Aurral artist such as the playback fixture",
