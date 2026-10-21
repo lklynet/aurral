@@ -1,6 +1,14 @@
 import path from "node:path";
+import type { Response } from "express";
 
-const MISSING_FILE_CODES = new Set(["ENOENT", "ENOTDIR", "EISDIR", "ENAMETOOLONG"]);
+type SendFileError = Error & { status?: number; headers?: Record<string, string>; code?: string };
+
+const MISSING_FILE_CODES = new Set<string | undefined>([
+  "ENOENT",
+  "ENOTDIR",
+  "EISDIR",
+  "ENAMETOOLONG",
+]);
 
 const AUDIO_CONTENT_TYPES = {
   aiff: "audio/x-aiff",
@@ -13,12 +21,12 @@ const AUDIO_CONTENT_TYPES = {
   mp3: "audio/mpeg",
 };
 
-export function audioContentType(format) {
+export function audioContentType(format: string) {
   const normalized = String(format).toLowerCase();
   return AUDIO_CONTENT_TYPES[normalized] || `audio/${normalized}`;
 }
 
-export function streamAudioFile(res, filePath) {
+export function streamAudioFile(res: Response, filePath: string) {
   const absolutePath = path.resolve(String(filePath));
   const contentType = AUDIO_CONTENT_TYPES[path.extname(absolutePath).slice(1).toLowerCase()];
   return new Promise((resolve, reject) => {
@@ -29,7 +37,7 @@ export function streamAudioFile(res, filePath) {
         dotfiles: "allow",
         ...(contentType ? { headers: { "Content-Type": contentType } } : {}),
       },
-      (error) => {
+      (error: SendFileError | undefined) => {
         if (!error || res.headersSent) return resolve(true);
         if (error.status === 416) {
           res.status(416).set(error.headers).end();

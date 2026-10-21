@@ -1,4 +1,5 @@
 import { db, dbHelpers } from "../config/db-sqlite.ts";
+import type { LibraryMediaFilesRow } from "../db/rows.ts";
 import {
   computeLibraryGenreStats,
   rebuildStoredLibraryGenreStats,
@@ -743,7 +744,12 @@ export function getLibraryTrackPath(albumReference, trackReference) {
   if (!album || !track) return null;
 
   const files = db
-    .prepare(
+    .prepare<
+      [number, number, number],
+      Pick<LibraryMediaFilesRow, "id" | "source" | "path" | "available"> & {
+        albumId: number | null;
+      }
+    >(
       `SELECT media.id,
             media.album_id AS albumId,
             media.source,

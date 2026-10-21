@@ -1,5 +1,7 @@
-export default class BoundedMap extends Map {
-  constructor(maxEntries = 1000, entries?: Iterable<readonly [unknown, unknown]>) {
+export default class BoundedMap<K, V> extends Map<K, V> {
+  declare maxEntries: number;
+
+  constructor(maxEntries = 1000, entries?: Iterable<readonly [K, V]>) {
     super();
     const parsed = Math.floor(Number(maxEntries));
     this.maxEntries = Number.isFinite(parsed) && parsed > 0 ? parsed : 1000;
@@ -8,11 +10,11 @@ export default class BoundedMap extends Map {
     }
   }
 
-  set(key, value) {
+  set(key: K, value: V) {
     if (this.has(key)) this.delete(key);
     super.set(key, value);
     while (this.size > this.maxEntries) {
-      this.delete(this.keys().next().value);
+      this.delete(this.keys().next().value!);
     }
     return this;
   }

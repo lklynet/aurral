@@ -4,9 +4,21 @@ const createAbortError = () => {
   return error;
 };
 
-const getAbortReason = (signal) => signal?.reason || createAbortError();
+type InflightEntry<T> = {
+  controller: AbortController;
+  consumers: Set<object>;
+  settled: boolean;
+  promise: Promise<Awaited<T>> | null;
+};
 
-export const runSharedInflight = (inflight, key, task, { signal } = {}) => {
+const getAbortReason = (signal: AbortSignal | undefined) => signal?.reason || createAbortError();
+
+export const runSharedInflight = <K, T>(
+  inflight: Map<K, InflightEntry<T>>,
+  key: K,
+  task: (signal: AbortSignal) => T,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<Awaited<T>> => {
   if (!(inflight instanceof Map)) {
     throw new TypeError("inflight must be a Map");
   }
@@ -33,7 +45,7 @@ export const runSharedInflight = (inflight, key, task, { signal } = {}) => {
       taskResult = Promise.reject(error);
     }
     entry.promise = Promise.resolve(taskResult).finally(() => {
-      entry.settled = true;
+      entry!.settled = true;
       if (inflight.get(key) === entry) {
         inflight.delete(key);
       }
@@ -44,7 +56,7 @@ export const runSharedInflight = (inflight, key, task, { signal } = {}) => {
   const consumer = {};
   entry.consumers.add(consumer);
 
-  return new Promise((resolve, reject) => {
+  return new Promise<Awaited<T>>((resolve, reject) => {
     let finished = false;
     const release = () => {
       if (finished) return;
@@ -61,7 +73,7 @@ export const runSharedInflight = (inflight, key, task, { signal } = {}) => {
     };
 
     signal?.addEventListener("abort", onAbort, { once: true });
-    entry.promise.then(
+    entry.promise!.then(
       (value) => {
         if (finished) return;
         release();

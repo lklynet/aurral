@@ -27,7 +27,7 @@ const WORKER_QUEUE_ALIASES = Object.freeze({
   "play-event-outbox": "_outbox:play-events",
 });
 
-export function shouldStartQueueHere(queueName) {
+export function shouldStartQueueHere(queueName: string) {
   if (process.env.NODE_ENV === "test" && !process.env.AURRAL_BACKGROUND_WORKER_GROUP) {
     return true;
   }
@@ -36,7 +36,7 @@ export function shouldStartQueueHere(queueName) {
   return group ? owner === group : !owner;
 }
 
-export function isQueueOwnedByGroup(queueName, group = null) {
+export function isQueueOwnedByGroup(queueName: string, group: string | null = null) {
   const queue = WORKER_QUEUE_ALIASES[queueName] || queueName;
   return group ? ISOLATED_QUEUE_GROUPS[queue] === group : !ISOLATED_QUEUE_GROUPS[queue];
 }

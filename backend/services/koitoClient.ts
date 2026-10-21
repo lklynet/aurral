@@ -21,7 +21,7 @@ const KOITO_PERIOD_BY_DISCOVERY_PERIOD = {
   overall: "all_time",
 };
 
-export function normalizeKoitoBaseUrl(baseUrl) {
+export function normalizeKoitoBaseUrl(baseUrl: unknown) {
   const trimmed = String(baseUrl || "")
     .trim()
     .replace(/\/+$/, "");
@@ -39,68 +39,73 @@ export function normalizeKoitoBaseUrl(baseUrl) {
   }
 }
 
-export function getKoitoListenBrainzBaseUrl(baseUrl) {
+export function getKoitoListenBrainzBaseUrl(baseUrl: unknown) {
   const normalized = normalizeKoitoBaseUrl(baseUrl);
   return normalized ? `${normalized}/apis/listenbrainz` : "";
 }
 
-export function getKoitoPeriod(discoveryPeriod) {
+export function getKoitoPeriod(discoveryPeriod: string | null | undefined) {
   if (!discoveryPeriod || discoveryPeriod === "none") return null;
   return KOITO_PERIOD_BY_DISCOVERY_PERIOD[discoveryPeriod] || "month";
 }
 
-const koitoRequest = koitoLimiter.wrap(async (baseUrl, path, params = {}) => {
-  const normalizedBaseUrl = normalizeKoitoBaseUrl(baseUrl);
-  const cacheKey = `koito:${normalizedBaseUrl}:${path}:${JSON.stringify(params)}`;
-  const cached = koitoCache.get(cacheKey);
-  if (cached) return cached;
-  const inflight = koitoInflightRequests.get(cacheKey);
-  if (inflight) return inflight;
+const koitoRequest = koitoLimiter.wrap(
+  async (baseUrl: unknown, path: string, params: Record<string, string | number> = {}) => {
+    const normalizedBaseUrl = normalizeKoitoBaseUrl(baseUrl);
+    const cacheKey = `koito:${normalizedBaseUrl}:${path}:${JSON.stringify(params)}`;
+    const cached = koitoCache.get(cacheKey);
+    if (cached) return cached;
+    const inflight = koitoInflightRequests.get(cacheKey);
+    if (inflight) return inflight;
 
-  const requestPromise = (async () => {
-    let lastError = null;
-    for (let retryCount = 0; retryCount <= KOITO_MAX_RETRIES; retryCount++) {
-      try {
-        const response = await axios.get(`${normalizedBaseUrl}${path}`, {
-          params,
-          timeout: KOITO_TIMEOUT_MS,
-          validateStatus: (status) => status >= 200 && status < 300,
-        });
-        koitoCache.set(cacheKey, response.data);
-        return response.data;
-      } catch (error) {
-        lastError = error;
-        const status = error.response?.status;
-        const code = error.code;
-        const retryable =
-          code === "ECONNABORTED" ||
-          code === "ETIMEDOUT" ||
-          code === "ECONNRESET" ||
-          code === "ENOTFOUND" ||
-          code === "EAI_AGAIN" ||
-          [408, 425, 429, 500, 502, 503, 504].includes(status);
-        if (retryCount < KOITO_MAX_RETRIES && retryable) {
-          const backoffMs = 300 * Math.pow(2, retryCount) + retryCount * 200;
-          await new Promise((resolve) => setTimeout(resolve, backoffMs));
-          continue;
+    const requestPromise = (async () => {
+      let lastError = null;
+      for (let retryCount = 0; retryCount <= KOITO_MAX_RETRIES; retryCount++) {
+        try {
+          const response = await axios.get(`${normalizedBaseUrl}${path}`, {
+            params,
+            timeout: KOITO_TIMEOUT_MS,
+            validateStatus: (status) => status >= 200 && status < 300,
+          });
+          koitoCache.set(cacheKey, response.data);
+          return response.data;
+        } catch (error) {
+          lastError = error;
+          const status = error.response?.status;
+          const code = error.code;
+          const retryable =
+            code === "ECONNABORTED" ||
+            code === "ETIMEDOUT" ||
+            code === "ECONNRESET" ||
+            code === "ENOTFOUND" ||
+            code === "EAI_AGAIN" ||
+            [408, 425, 429, 500, 502, 503, 504].includes(status);
+          if (retryCount < KOITO_MAX_RETRIES && retryable) {
+            const backoffMs = 300 * Math.pow(2, retryCount) + retryCount * 200;
+            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+            continue;
+          }
+          break;
         }
-        break;
       }
-    }
-    throw lastError;
-  })();
+      throw lastError;
+    })();
 
-  koitoInflightRequests.set(cacheKey, requestPromise);
-  try {
-    return await requestPromise;
-  } finally {
-    koitoInflightRequests.delete(cacheKey);
-  }
-});
+    koitoInflightRequests.set(cacheKey, requestPromise);
+    try {
+      return await requestPromise;
+    } finally {
+      koitoInflightRequests.delete(cacheKey);
+    }
+  },
+);
 
 export async function fetchKoitoTopArtists(
-  baseUrl,
-  { discoveryPeriod = "1month", limit = 50 } = {},
+  baseUrl: unknown,
+  {
+    discoveryPeriod = "1month",
+    limit = 50,
+  }: { discoveryPeriod?: string | null; limit?: number } = {},
 ) {
   const validation = validateExternalUrl(baseUrl);
   if (!validation.valid) {

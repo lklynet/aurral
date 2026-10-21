@@ -1,14 +1,26 @@
 export const CATALOG_POPULARITY_LOG_BASE = 6;
 
-export function isCatalogPopularityScore(score) {
+type SearchRankItem = {
+  score?: unknown;
+  source?: string;
+  type?: string;
+  inLibrary?: boolean;
+  inPlaylist?: boolean;
+  libraryBoostEligible?: boolean;
+  contextBoost?: unknown;
+  primaryMatchScore?: unknown;
+  catalogRank?: unknown;
+};
+
+export function isCatalogPopularityScore(score: number) {
   return Number.isFinite(score) && score > 100;
 }
 
-export function catalogPopularityToUnit(score) {
+export function catalogPopularityToUnit(score: number) {
   return Math.min(1, Math.log10(score + 1) / CATALOG_POPULARITY_LOG_BASE);
 }
 
-export function normalizeRelevanceScore(item) {
+export function normalizeRelevanceScore(item: SearchRankItem | null | undefined) {
   const raw = Number(item?.score);
   if (!Number.isFinite(raw) || raw < 0) return 0;
   if (item?.source === "library") {
@@ -23,7 +35,7 @@ export function normalizeRelevanceScore(item) {
 
 const LIBRARY_TIER_STEP = 0.015;
 
-function getLibraryTier(item) {
+function getLibraryTier(item: SearchRankItem | null | undefined) {
   if (item?.type === "playlist" && item.inLibrary) return 10;
   if (item?.inPlaylist) {
     if (item.type === "track") return 7;
@@ -37,26 +49,29 @@ function getLibraryTier(item) {
   return 0;
 }
 
-function getContextBoostNormalized(item) {
+function getContextBoostNormalized(item: SearchRankItem | null | undefined) {
   const raw = Number(item?.contextBoost || 0);
   if (!Number.isFinite(raw) || raw <= 0) return 0;
   return Math.min(0.1, raw / 5000);
 }
 
-function getPrimaryMatchBoost(item) {
+function getPrimaryMatchBoost(item: SearchRankItem | null | undefined) {
   const matchScore = Number(item?.primaryMatchScore || 0);
   if (matchScore >= 100) return 0.03;
   if (matchScore >= 92) return 0.015;
   return 0;
 }
 
-export function getSearchRankScore(item) {
+export function getSearchRankScore(item: SearchRankItem | null | undefined) {
   const relevance = normalizeRelevanceScore(item);
   const tierBoost = getLibraryTier(item) * LIBRARY_TIER_STEP;
   return relevance + tierBoost + getContextBoostNormalized(item) + getPrimaryMatchBoost(item);
 }
 
-export function compareSearchResults(left, right) {
+export function compareSearchResults(
+  left: SearchRankItem | null | undefined,
+  right: SearchRankItem | null | undefined,
+) {
   const scoreDiff = getSearchRankScore(right) - getSearchRankScore(left);
   if (scoreDiff !== 0) return scoreDiff;
   const leftRank = Number(left?.catalogRank);
@@ -67,7 +82,7 @@ export function compareSearchResults(left, right) {
   return 0;
 }
 
-export function getLocalMatchThreshold(query) {
+export function getLocalMatchThreshold(query: string | null | undefined) {
   const wordCount = String(query || "")
     .trim()
     .split(/\s+/)

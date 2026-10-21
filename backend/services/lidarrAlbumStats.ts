@@ -1,4 +1,4 @@
-export function normalizePercentOfTracks(value) {
+export function normalizePercentOfTracks(value: unknown) {
   const raw = Number(value);
   if (!Number.isFinite(raw) || raw <= 0) return 0;
   if (raw > 1 && raw <= 100) return Math.round(raw);

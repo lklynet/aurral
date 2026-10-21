@@ -1,6 +1,6 @@
 import { getPublishedNightlyImage } from "../../lib/nightly-image.ts";
 
-let cached;
+let cached: ReturnType<typeof getPublishedNightlyImage> | undefined;
 let expiresAt = 0;
 
 export function getLatestNightlyImage() {

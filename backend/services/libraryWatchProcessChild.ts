@@ -1,21 +1,27 @@
 import fs from "node:fs";
+import type { FSWatcher } from "node:fs";
 import { resolveLocalPath } from "./pathMappings.ts";
 
-let watcher;
+type ChildMessage =
+  | { type: "ready"; root: string }
+  | { type: "change"; root: string; eventType: string; filename: string | null }
+  | { type: "error"; message: string; code?: string };
+
+let watcher: FSWatcher | undefined;
 
 function stop() {
   watcher?.close();
-  if (process.connected) process.disconnect();
+  if (process.connected) process.disconnect!();
 }
 
-function send(message) {
+function send(message: ChildMessage) {
   if (!process.connected) return;
-  process.send(message, (error) => {
+  process.send!(message, (error) => {
     if (error) stop();
   });
 }
 
-function fail(error) {
+function fail(error: Error & { code?: string }) {
   send({ type: "error", message: error.message, code: error.code });
   stop();
 }

@@ -333,7 +333,7 @@ export async function writePlaylistArtworkWebpFromBuffer(buffer: Buffer, outputP
     .toFile(outputPath);
 }
 
-const renderedArtwork = new BoundedMap(32);
+const renderedArtwork = new BoundedMap<string, Promise<Buffer>>(32);
 
 export function buildPlaylistArtworkWebpBuffer({
   playlistName,
