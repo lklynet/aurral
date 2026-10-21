@@ -350,7 +350,7 @@ export class ProwlarrClient {
     return indexerCache.indexers
       .map((entry) => normalizeIndexer(entry, settings))
       .filter(
-        (entry) =>
+        (entry): entry is typeof entry & { id: number } =>
           entry.id != null &&
           entry.protocol === "usenet" &&
           entry.supportsSearch &&

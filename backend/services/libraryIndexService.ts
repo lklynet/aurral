@@ -25,6 +25,8 @@ import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 import { removePlaylistTracksWithoutDownloads } from "./playlists/trackRemoval.ts";
 import { rebuildLibrarySearchIndex } from "./librarySearchIndex.ts";
 import { rebuildLibraryGenreStats } from "./libraryQueryService.ts";
+import type { LibraryScanRequest } from "./libraryScanRequest.ts";
+import type { LidarrClient } from "./lidarrClient.ts";
 import {
   musicbrainzGetArtistNameByMbid,
   musicbrainzResolveLibraryArtistMbid,
@@ -88,8 +90,8 @@ async function syncLibraryFlowFiles(
   musicRoot,
   jobMetadataByPath,
   force,
-  changedPaths,
-  changedFiles,
+  changedPaths: string[] | null,
+  changedFiles: Set<string>,
 ) {
   const targeted = Array.isArray(changedPaths);
   const matchesScope = targeted ? createPathScopeMatcher(changedPaths) : () => true;
@@ -247,6 +249,11 @@ export async function scanConfiguredLibrary({
   changedPaths = null,
   force = false,
   changedFiles = new Set(),
+}: LibraryScanRequest & {
+  musicRoot?: string;
+  lidarrClient?: LidarrClient;
+  lidarrRoots?: string[] | null;
+  changedFiles?: Set<string>;
 } = {}) {
   const jobMetadataByPath = getAurralJobMetadataByPath();
   const targeted = Array.isArray(changedPaths);

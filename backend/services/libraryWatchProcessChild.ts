@@ -1,11 +1,7 @@
 import fs from "node:fs";
 import type { FSWatcher } from "node:fs";
+import type { WatchMessage } from "./libraryWatchProcess.ts";
 import { resolveLocalPath } from "./pathMappings.ts";
-
-type ChildMessage =
-  | { type: "ready"; root: string }
-  | { type: "change"; root: string; eventType: string; filename: string | null }
-  | { type: "error"; message: string; code?: string };
 
 let watcher: FSWatcher | undefined;
 
@@ -14,7 +10,7 @@ function stop() {
   if (process.connected) process.disconnect!();
 }
 
-function send(message: ChildMessage) {
+function send(message: WatchMessage) {
   if (!process.connected) return;
   process.send!(message, (error) => {
     if (error) stop();

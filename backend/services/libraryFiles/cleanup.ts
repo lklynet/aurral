@@ -371,7 +371,7 @@ function commitRename(from, to) {
 export function createCleanupContext() {
   let guard = null;
   return {
-    rescan: new Set(),
+    rescan: new Set<string>(),
     deletionGuard() {
       return guard;
     },

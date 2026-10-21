@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import type { Serializable } from "node:child_process";
 import type { PathMapping } from "./pathMappings.ts";
 
-type WatchMessage =
+export type WatchMessage =
   | { type: "ready"; root: string }
   | { type: "change"; root: string; eventType: string; filename: string | null }
   | { type: "error"; message: string; code?: string };

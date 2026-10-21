@@ -4,7 +4,9 @@ export function normalizeBaseUrl(value: unknown) {
     .replace(/\/+$/, "");
 }
 
-export function normalizeInteger(value: unknown, fallback = 0) {
+export function normalizeInteger(value: unknown, fallback: number): number;
+export function normalizeInteger(value: unknown, fallback: null): number | null;
+export function normalizeInteger(value: unknown, fallback: number | null = 0) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.trunc(parsed);

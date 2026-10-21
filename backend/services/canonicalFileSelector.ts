@@ -1,15 +1,7 @@
-type CanonicalFileCandidate = {
-  id?: number;
-  albumId?: number | null;
-  source?: string | null;
-  path?: string | null;
-  format?: string | null;
-  size?: number;
-  mtimeMs?: number | null;
-  durationMs?: number | null;
-  quality?: { audioFormat?: string; format?: string; quality?: { name?: string } } | null;
+import type { LibraryTrackFile } from "./libraryQueryService.ts";
+
+type CanonicalFileCandidate = Partial<Omit<LibraryTrackFile, "available">> & {
   available?: unknown;
-  createdAt?: number;
 };
 
 const sourceRank = (source: string | null | undefined, managedBy: string | null) => {

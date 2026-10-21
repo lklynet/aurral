@@ -4,7 +4,7 @@ import { db, dbHelpers } from "../config/db-sqlite.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { enqueueLibraryScanJob, getLibraryScanQueue } from "./honkerDb.ts";
 import { isHonkerDatabaseClosedError } from "./honkerWorkerRuntime.ts";
-import { resolveLibraryScanChangedPaths } from "./libraryScanRequest.ts";
+import { resolveLibraryScanChangedPaths, type LibraryScanRequest } from "./libraryScanRequest.ts";
 import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.ts";
 import { websocketService } from "./websocketService.ts";
 
@@ -117,7 +117,7 @@ export function clearScheduledLibraryScan(jobId = null) {
   }
 }
 
-export function scheduleLibraryScan(options = {}) {
+export function scheduleLibraryScan(options: LibraryScanRequest = {}) {
   if (Array.isArray(options.changedPaths) && options.changedPaths.length > 0) {
     import("./playlists/playlistManager.ts")
       .then(({ playlistManager }) => playlistManager.schedulePlaybackScan(options.changedPaths))
@@ -128,7 +128,11 @@ export function scheduleLibraryScan(options = {}) {
   return registerLibraryScan(options);
 }
 
-function registerLibraryScan({ force = false, includeLidarr = true, changedPaths = null } = {}) {
+function registerLibraryScan({
+  force = false,
+  includeLidarr = true,
+  changedPaths = null,
+}: LibraryScanRequest = {}) {
   const snapshot = getScanRegistrySnapshot();
   const registry = snapshot.registry;
   const requestedPaths = normalizeChangedPaths(changedPaths);
@@ -407,7 +411,7 @@ const {
       scheduleLibraryScan({ includeLidarr: false, changedPaths: removedRetainedFiles });
     }
     const { includeLidarr, force, changedPaths } = beginLibraryScanJob(job.id, payload);
-    const changedFiles = new Set();
+    const changedFiles = new Set<string>();
     let scanResult;
     try {
       scanResult = await scanConfiguredLibrary({

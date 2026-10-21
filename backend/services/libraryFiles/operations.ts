@@ -1,6 +1,7 @@
 import path from "node:path";
 import { resolveDownloadRoot } from "../downloadPaths.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
+import type { LibraryScanRequest } from "../libraryScanRequest.ts";
 import {
   IngestSourceError,
   applyIngestItem,
@@ -91,7 +92,7 @@ const handlers = {
   cleanup: { plan: planCleanup, apply: applyCleanupItem, finish: finishCleanup },
 };
 
-async function requestScan(request) {
+async function requestScan(request: LibraryScanRequest) {
   const changedPaths = [...new Set((request?.changedPaths || []).filter(Boolean))];
   if (!changedPaths.length) return;
   const { scheduleLibraryScan } = await import("../libraryScanWorker.ts");

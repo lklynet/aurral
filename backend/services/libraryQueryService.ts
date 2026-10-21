@@ -13,6 +13,29 @@ import {
 } from "./libraryManagementStore.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
 
+type LibraryTrackFileQuality = {
+  format?: string | null;
+  bitrate?: number | null;
+  sampleRate?: number | null;
+  bitsPerSample?: number | null;
+  audioFormat?: string | null;
+  quality?: { name?: string | null } | null;
+};
+
+export type LibraryTrackFile = {
+  id: LibraryMediaFilesRow["id"];
+  albumId: LibraryMediaFilesRow["album_id"];
+  source: LibraryMediaFilesRow["source"];
+  path: LibraryMediaFilesRow["path"];
+  format: LibraryMediaFilesRow["format"];
+  size: LibraryMediaFilesRow["size"];
+  mtimeMs: LibraryMediaFilesRow["mtime_ms"];
+  durationMs: LibraryMediaFilesRow["duration_ms"];
+  quality: LibraryTrackFileQuality | null;
+  available: boolean;
+  createdAt: LibraryMediaFilesRow["created_at"];
+};
+
 const SOURCES = new Set(["aurral", "lidarr", "readonly", "flow"]);
 const libraryCache = new Map();
 const pageCountCache = new Map();
