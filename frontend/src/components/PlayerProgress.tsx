@@ -1,10 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { PLAYER_SHORTCUTS } from "../hooks/usePlayerShortcuts.ts";
 import { formatPlaybackTime } from "../utils/playbackTime";
 
 const TICK_MS = 250;
-const SEEK_KEY_OFFSETS = {
+const SEEK_KEY_OFFSETS: Partial<Record<string, number>> = {
   ArrowLeft: -5,
   ArrowDown: -5,
   ArrowRight: 5,
@@ -36,22 +44,34 @@ function usePlaybackProgress() {
     return () => window.clearInterval(interval);
   }, [getBufferedEnd, getPosition, isActive, isLoading, isPlaying]);
 
-  const setPosition = (position) => setProgress((previous) => ({ ...previous, position }));
-  return [progress, setPosition];
+  const setPosition = (position: number) => setProgress((previous) => ({ ...previous, position }));
+  return [progress, setPosition] as const;
 }
 
-function fraction(value, duration) {
+function fraction(value: number, duration: number) {
   return duration > 0 ? Math.min(Math.max(value / duration, 0), 1) : 0;
 }
 
-export function PlayerSeek({ variant }) {
+type TrackKey = string | number | null;
+
+interface ScrubState {
+  trackKey: TrackKey;
+  position: number | null;
+  stop: () => void;
+}
+
+interface PlayerSeekProps {
+  variant: "sheet" | "bar";
+}
+
+export function PlayerSeek({ variant }: PlayerSeekProps) {
   const { duration, seek, isPlaying, currentTrack } = useAudioQueue();
   const [{ position, buffered }, setPosition] = usePlaybackProgress();
-  const trackKey = currentTrack?.entryId ?? currentTrack?.id ?? null;
+  const trackKey: TrackKey = currentTrack?.entryId ?? currentTrack?.id ?? null;
   const trackKeyRef = useRef(trackKey);
-  const [scrub, setScrub] = useState(null);
-  const [hoverRatio, setHoverRatio] = useState(null);
-  const scrubRef = useRef(null);
+  const [scrub, setScrub] = useState<{ trackKey: TrackKey; position: number } | null>(null);
+  const [hoverRatio, setHoverRatio] = useState<number | null>(null);
+  const scrubRef = useRef<ScrubState | null>(null);
   const scrubPosition = scrub?.trackKey === trackKey ? scrub.position : null;
 
   useEffect(() => {
@@ -62,15 +82,16 @@ export function PlayerSeek({ variant }) {
 
   const displayPosition = scrubPosition ?? position;
   const progress = fraction(displayPosition, duration);
-  const clampPosition = (value) => Math.min(Math.max(Number(value) || 0, 0), duration);
+  const clampPosition = (value: string | number) =>
+    Math.min(Math.max(Number(value) || 0, 0), duration);
 
-  const seekTo = (value) => {
+  const seekTo = (value: string | number) => {
     const nextPosition = clampPosition(value);
     seek(nextPosition);
     setPosition(nextPosition);
   };
 
-  const handleChange = (event) => {
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (!duration) return;
     if (scrubRef.current) {
       if (scrubRef.current.trackKey !== trackKey) return;
@@ -81,7 +102,7 @@ export function PlayerSeek({ variant }) {
     seekTo(event.currentTarget.value);
   };
 
-  const handlePointerDown = (event) => {
+  const handlePointerDown = (event: ReactPointerEvent<HTMLInputElement>) => {
     if (!duration || scrubRef.current) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     const finish = () => {
@@ -100,14 +121,14 @@ export function PlayerSeek({ variant }) {
     window.addEventListener("pointercancel", finish);
   };
 
-  const handlePointerMove = (event) => {
+  const handlePointerMove = (event: ReactPointerEvent<HTMLInputElement>) => {
     if (!duration || event.pointerType === "touch") return;
     const rect = event.currentTarget.getBoundingClientRect();
     if (!rect.width) return;
     setHoverRatio(Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1));
   };
 
-  const handleKeyDown = (event) => {
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (!duration) return;
     const offset = SEEK_KEY_OFFSETS[event.key];
     const target =
@@ -123,7 +144,7 @@ export function PlayerSeek({ variant }) {
     seekTo(target);
   };
 
-  const input = (className, style) => (
+  const input = (className: string, style?: CSSProperties) => (
     <input
       type="range"
       min={0}
@@ -147,7 +168,7 @@ export function PlayerSeek({ variant }) {
   if (variant === "sheet") {
     return (
       <div className="now-playing__progress">
-        {input("now-playing__seek", { "--seek-percent": `${progress * 100}%` })}
+        {input("now-playing__seek", { "--seek-percent": `${progress * 100}%` } as CSSProperties)}
         <div className="now-playing__times">
           <span>{formatPlaybackTime(displayPosition)}</span>
           <span>{formatPlaybackTime(duration)}</span>
@@ -166,10 +187,12 @@ export function PlayerSeek({ variant }) {
   return (
     <div
       className={className}
-      style={{
-        "--progress": progress,
-        "--buffered": Math.max(fraction(buffered, duration), progress),
-      }}
+      style={
+        {
+          "--progress": progress,
+          "--buffered": Math.max(fraction(buffered, duration), progress),
+        } as CSSProperties
+      }
     >
       <span className="global-player__progress-time global-player__progress-time--current">
         {formatPlaybackTime(displayPosition)}
@@ -204,7 +227,7 @@ export function PlayerMiniProgress() {
     <span
       className={`global-player__mini-progress${isPlaying ? " is-playing" : ""}`}
       aria-hidden="true"
-      style={{ "--progress": fraction(position, duration) }}
+      style={{ "--progress": fraction(position, duration) } as CSSProperties}
     >
       <span />
     </span>

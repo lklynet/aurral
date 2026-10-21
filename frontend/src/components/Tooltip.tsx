@@ -6,25 +6,48 @@ import {
   useId,
   useRef,
   useState,
+  type FocusEvent,
+  type PointerEvent,
+  type ReactNode,
+  type SyntheticEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { getTooltipDescribedBy, hasAccessibleTextContent } from "./tooltip-accessibility.ts";
 import { createTooltipInteractionState } from "./tooltip-interaction.ts";
 
-function chainHandlers(current, next) {
-  return (event) => {
+type TooltipPlacement = "side" | "top";
+type TooltipSource = "focus" | "pointer";
+
+interface TriggerProps {
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
+  "aria-hidden"?: boolean | "true" | "false";
+  alt?: string;
+  role?: string;
+  children?: ReactNode;
+  onBlur?: (event: FocusEvent<HTMLElement>) => void;
+  onFocus?: (event: FocusEvent<HTMLElement>) => void;
+  onPointerEnter?: (event: PointerEvent<HTMLElement>) => void;
+  onPointerLeave?: (event: PointerEvent<HTMLElement>) => void;
+}
+
+function chainHandlers<E>(current: ((event: E) => void) | undefined, next: (event: E) => void) {
+  return (event: E) => {
     current?.(event);
     next(event);
   };
 }
 
-function needsTooltipLabel(element) {
-  if (!isValidElement(element) || typeof element.type !== "string") return false;
+function needsTooltipLabel(element: ReactNode) {
+  if (!isValidElement<TriggerProps>(element) || typeof element.type !== "string") return false;
 
   const { type, props } = element;
   const isControl =
-    ["a", "button", "input", "select", "textarea"].includes(type) ||
-    ["button", "checkbox", "link", "radio", "switch"].includes(props.role);
+    ["a", "button", "input", "select", "textarea"].includes(type as string) ||
+    (["button", "checkbox", "link", "radio", "switch"] as (string | undefined)[]).includes(
+      props.role,
+    );
   if (!isControl) return false;
 
   return !(
@@ -35,12 +58,20 @@ function needsTooltipLabel(element) {
   );
 }
 
-export default function Tooltip({ content, placement = "side", children }) {
+interface TooltipProps {
+  content?: ReactNode;
+  placement?: TooltipPlacement;
+  children: ReactNode;
+}
+
+export default function Tooltip({ content, placement = "side", children }: TooltipProps) {
   const tooltipId = useId();
-  const tooltipRef = useRef(null);
-  const triggerRef = useRef(null);
-  const interactionRef = useRef(null);
-  const [tooltipPosition, setTooltipPosition] = useState(null);
+  const tooltipRef = useRef<HTMLSpanElement | null>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+  const interactionRef = useRef<ReturnType<typeof createTooltipInteractionState> | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ left: string; top: string } | null>(
+    null,
+  );
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
 
   if (!interactionRef.current) interactionRef.current = createTooltipInteractionState();
@@ -85,22 +116,22 @@ export default function Tooltip({ content, placement = "side", children }) {
   }, [placement]);
 
   const showTooltip = useCallback(
-    (event, source) => {
+    (event: SyntheticEvent<HTMLElement>, source: TooltipSource) => {
       triggerRef.current = event.currentTarget;
-      interactionRef.current.enter(source);
+      interactionRef.current!.enter(source);
       updateTooltipPosition();
-      setIsTooltipVisible(interactionRef.current.isVisible());
+      setIsTooltipVisible(interactionRef.current!.isVisible());
     },
     [updateTooltipPosition],
   );
 
-  const hideTooltip = useCallback((source) => {
-    interactionRef.current.leave(source);
-    setIsTooltipVisible(interactionRef.current.isVisible());
+  const hideTooltip = useCallback((source: TooltipSource) => {
+    interactionRef.current!.leave(source);
+    setIsTooltipVisible(interactionRef.current!.isVisible());
   }, []);
 
   const dismissTooltip = useCallback(() => {
-    interactionRef.current.dismiss();
+    interactionRef.current!.dismiss();
     setIsTooltipVisible(false);
   }, []);
 
@@ -108,7 +139,7 @@ export default function Tooltip({ content, placement = "side", children }) {
     if (!isTooltipVisible) return undefined;
 
     const handleViewportChange = () => updateTooltipPosition();
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") dismissTooltip();
     };
     window.addEventListener("resize", handleViewportChange);
@@ -121,11 +152,11 @@ export default function Tooltip({ content, placement = "side", children }) {
     };
   }, [dismissTooltip, isTooltipVisible, updateTooltipPosition]);
 
-  if (!isValidElement(children) || content == null || content === "") return children;
+  if (!isValidElement<TriggerProps>(children) || content == null || content === "") return children;
 
   const needsLabel = needsTooltipLabel(children);
   const tooltipProvidesLabel = needsLabel || children.props["aria-label"] === String(content);
-  const triggerProps = {
+  const triggerProps: TriggerProps = {
     "aria-describedby": getTooltipDescribedBy({
       existingDescribedBy: children.props["aria-describedby"],
       tooltipId,

@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FocusEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { AlertCircle, CheckCircle, Info, TriangleAlert, X } from "lucide-react";
 import { DotLoader } from "./DotLoader";
 
@@ -12,13 +21,31 @@ const TOAST_ICONS = {
 
 const TOAST_EXIT_DURATION = 180;
 
-export function Toast({ toast, onDismiss, index = 0 }) {
+type ToastType = keyof typeof TOAST_ICONS;
+
+export interface ToastItem {
+  id: string;
+  type?: ToastType;
+  title?: ReactNode;
+  message?: ReactNode;
+  description?: ReactNode;
+  action?: { label: string; onClick?: () => void; dismiss?: boolean };
+  duration?: number;
+}
+
+interface ToastProps {
+  toast: ToastItem;
+  onDismiss: (id: string) => void;
+  index?: number;
+}
+
+export function Toast({ toast, onDismiss, index = 0 }: ToastProps) {
   const { id, type = "info", title, message, description, action, duration = 3000 } = toast;
   const [isExiting, setIsExiting] = useState(false);
-  const timerRef = useRef(null);
-  const exitTimerRef = useRef(null);
+  const timerRef = useRef<number | null>(null);
+  const exitTimerRef = useRef<number | null>(null);
   const remainingRef = useRef(Math.max(0, Number(duration) || 3000));
-  const startedAtRef = useRef(null);
+  const startedAtRef = useRef<number | null>(null);
   const interactionRef = useRef(false);
   const dismissedRef = useRef(false);
 
@@ -101,8 +128,8 @@ export function Toast({ toast, onDismiss, index = 0 }) {
     pauseTimer();
   };
 
-  const handleInteractionEnd = (event) => {
-    if (event?.currentTarget?.contains(event.relatedTarget)) return;
+  const handleInteractionEnd = (event: FocusEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>) => {
+    if (event?.currentTarget?.contains(event.relatedTarget as Node | null)) return;
     interactionRef.current = false;
     syncTimer();
   };
@@ -120,7 +147,7 @@ export function Toast({ toast, onDismiss, index = 0 }) {
       className={`app-toast app-toast--${type}${isExiting ? " app-toast--exiting" : ""}`}
       role={type === "error" ? "alert" : "status"}
       aria-live={type === "error" ? "assertive" : "polite"}
-      style={{ "--toast-index": index }}
+      style={{ "--toast-index": index } as CSSProperties}
       onMouseEnter={handleInteractionStart}
       onMouseLeave={handleInteractionEnd}
       onFocusCapture={handleInteractionStart}
@@ -152,7 +179,12 @@ export function Toast({ toast, onDismiss, index = 0 }) {
   );
 }
 
-export function ToastContainer({ toasts, onDismiss }) {
+interface ToastContainerProps {
+  toasts: ToastItem[];
+  onDismiss: (id: string) => void;
+}
+
+export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
   return (
     <div className="app-toast-container">
       <div className="app-toast-stack">

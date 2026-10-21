@@ -1,16 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import "./SectionRail.css";
 
 const RAIL_ROOM_PX = 80;
 
-function findScrollParent(element) {
+function findScrollParent(element: Element) {
   for (let node = element?.parentElement; node; node = node.parentElement) {
     if (/(auto|scroll)/.test(getComputedStyle(node).overflowY)) return node;
   }
   return document.documentElement;
 }
 
-const sameSections = (current, next) =>
+interface SectionEntry {
+  element: Element;
+  title: string;
+  description: string;
+}
+
+const sameSections = (current: SectionEntry[], next: SectionEntry[]) =>
   current.length === next.length &&
   current.every(
     (section, index) =>
@@ -19,18 +25,26 @@ const sameSections = (current, next) =>
       section.description === next[index].description,
   );
 
+interface SectionRailProps {
+  containerRef: RefObject<HTMLElement | null>;
+  sectionSelector: string;
+  titleSelector: string;
+  descriptionSelector?: string;
+  label: string;
+}
+
 export default function SectionRail({
   containerRef,
   sectionSelector,
   titleSelector,
   descriptionSelector,
   label,
-}) {
-  const [sections, setSections] = useState([]);
+}: SectionRailProps) {
+  const [sections, setSections] = useState<SectionEntry[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [hoveredIndex, setHoveredIndex] = useState(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [hasRoom, setHasRoom] = useState(false);
-  const pinnedElementRef = useRef(null);
+  const pinnedElementRef = useRef<Element | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -55,9 +69,9 @@ export default function SectionRail({
       const found = [...container.querySelectorAll(sectionSelector)]
         .map((element) => ({
           element,
-          title: element.querySelector(titleSelector)?.textContent.trim() || "",
+          title: element.querySelector(titleSelector)?.textContent!.trim() || "",
           description: descriptionSelector
-            ? element.querySelector(descriptionSelector)?.textContent.trim() || ""
+            ? element.querySelector(descriptionSelector)?.textContent!.trim() || ""
             : "",
         }))
         .filter((section) => section.title);
@@ -73,7 +87,7 @@ export default function SectionRail({
     if (!sections.length) return undefined;
     const scrollParent = findScrollParent(sections[0].element);
     const scrollTarget = scrollParent === document.documentElement ? window : scrollParent;
-    let frame = null;
+    let frame: number | null = null;
     const update = () => {
       frame = null;
       if (pinnedElementRef.current) {
@@ -121,7 +135,7 @@ export default function SectionRail({
 
   if (sections.length < 2 || !hasRoom) return null;
 
-  const jumpTo = (index) => {
+  const jumpTo = (index: number) => {
     pinnedElementRef.current = sections[index].element;
     setActiveIndex(index);
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -137,7 +151,7 @@ export default function SectionRail({
     <nav className="section-rail" aria-label={label}>
       <div
         className={`section-rail__track${hovered ? " is-hovered" : ""}`}
-        style={hovered ? { "--section-rail-hovered": hoveredIndex } : undefined}
+        style={hovered ? ({ "--section-rail-hovered": hoveredIndex } as CSSProperties) : undefined}
         onMouseLeave={() => setHoveredIndex(null)}
       >
         <ol className="section-rail__list">

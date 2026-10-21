@@ -1,5 +1,5 @@
 import ArtworkImage from "./ArtworkImage";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type CSSProperties, type RefObject } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -7,6 +7,9 @@ import {
   closestCenter,
   useSensor,
   useSensors,
+  type Announcements,
+  type DragEndEvent,
+  type UniqueIdentifier,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -22,8 +25,20 @@ import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import TooltipButton from "./TooltipButton";
 
-function QueueArt({ src }) {
-  const [failedSrc, setFailedSrc] = useState(null);
+interface QueueTrack {
+  entryId: UniqueIdentifier;
+  title?: string | null;
+  artist?: string | null;
+  artwork?: string | null;
+}
+
+interface QueueEntry {
+  track: QueueTrack;
+  index: number;
+}
+
+function QueueArt({ src }: { src?: string | null }) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
   return (
     <span className="player-queue__art" aria-hidden="true">
       {src && src !== failedSrc ? (
@@ -42,7 +57,13 @@ function QueueArt({ src }) {
   );
 }
 
-function QueueRow({ entry, onPlay, onRemove }) {
+interface QueueRowProps {
+  entry: QueueEntry;
+  onPlay: (index: number) => void;
+  onRemove: (entryId: UniqueIdentifier) => void;
+}
+
+function QueueRow({ entry, onPlay, onRemove }: QueueRowProps) {
   const { track } = entry;
   const {
     attributes,
@@ -90,7 +111,7 @@ function QueueRow({ entry, onPlay, onRemove }) {
   );
 }
 
-export function UpNextQueue({ className = "" }) {
+export function UpNextQueue({ className = "" }: { className?: string }) {
   const { upcoming, skipTo, removeFromQueue, reorderUpcoming, clearUpcoming } = useAudioQueue();
   const { addToast } = useToast();
   const headingId = useId();
@@ -99,10 +120,11 @@ export function UpNextQueue({ className = "" }) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const entryIds = upcoming.map(({ track }) => track.entryId);
-  const titleOf = (id) =>
+  const titleOf = (id: UniqueIdentifier) =>
     upcoming.find(({ track }) => track.entryId === id)?.track.title || "Track";
-  const positionOf = (id) => `position ${entryIds.indexOf(id) + 1} of ${entryIds.length}`;
-  const announcements = {
+  const positionOf = (id: UniqueIdentifier) =>
+    `position ${entryIds.indexOf(id) + 1} of ${entryIds.length}`;
+  const announcements: Announcements = {
     onDragStart: ({ active }) => `Picked up ${titleOf(active.id)} at ${positionOf(active.id)}.`,
     onDragOver: ({ active, over }) =>
       over ? `${titleOf(active.id)} moved to ${positionOf(over.id)}.` : undefined,
@@ -112,7 +134,7 @@ export function UpNextQueue({ className = "" }) {
       `Reordering cancelled. ${titleOf(active.id)} stays at ${positionOf(active.id)}.`,
   };
 
-  const handleDragEnd = ({ active, over }) => {
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
     const from = entryIds.indexOf(active.id);
     const to = entryIds.indexOf(over.id);
@@ -173,10 +195,16 @@ export function UpNextQueue({ className = "" }) {
   );
 }
 
-export function PlayerQueuePanel({ id, onClose, closeRef }) {
+interface PlayerQueuePanelProps {
+  id: string;
+  onClose: () => void;
+  closeRef: RefObject<HTMLButtonElement | null>;
+}
+
+export function PlayerQueuePanel({ id, onClose, closeRef }: PlayerQueuePanelProps) {
   const { currentTrack, source } = useAudioQueue();
   const titleId = useId();
-  const [height, setHeight] = useState(null);
+  const [height, setHeight] = useState<number | null>(null);
 
   useEffect(() => {
     const mainWrap = document.querySelector(".app-main-wrap");
@@ -193,7 +221,7 @@ export function PlayerQueuePanel({ id, onClose, closeRef }) {
       id={id}
       className="player-queue"
       aria-labelledby={titleId}
-      style={height ? { "--player-queue-height": `${height}px` } : undefined}
+      style={height ? ({ "--player-queue-height": `${height}px` } as CSSProperties) : undefined}
     >
       <div className="player-queue__header">
         <h2 id={titleId} className="player-queue__title">

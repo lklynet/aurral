@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import PillToggle from "./PillToggle";
 import { DotLoader } from "./DotLoader";
-import { MonitoringRulesFields } from "./MonitoringRulesFields";
+import { MonitoringRulesFields, type MonitoringRules } from "./MonitoringRulesFields";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import {
@@ -21,10 +21,53 @@ import "./MonitoringRules.css";
 
 const PREVIEW_DELAY_MS = 400;
 
-const releaseKind = (release) =>
+type ReleaseSkipReason = keyof typeof RELEASE_SKIP_REASONS;
+type TrackSkipReason = keyof typeof TRACK_SKIP_REASONS;
+
+interface ArtistMonitoringState {
+  monitored: boolean;
+  useDefault: boolean;
+  rules: MonitoringRules | null;
+  defaultRules: MonitoringRules;
+}
+
+interface ArtistMonitoringRequest {
+  monitored: boolean;
+  useDefault: boolean;
+  rules?: MonitoringRules | null;
+}
+
+interface PlannedRelease {
+  id: string;
+  title: string;
+  type: string | null;
+  secondaryTypes: string[];
+  releaseDate: string | null;
+  existing?: object | null;
+}
+
+interface MonitoringPlan {
+  releases: PlannedRelease[];
+  topTracks: { title: string; albumName: string | null }[];
+  skipped: { title: string; reason: ReleaseSkipReason }[];
+  skippedTracks: { title: string; reason: TrackSkipReason }[];
+  topTracksError: string | null;
+}
+
+interface ArtistMonitoringPreview extends ArtistMonitoringState {
+  monitoring: MonitoringPlan;
+}
+
+interface MonitoringExclusion {
+  id: number;
+  kind: string;
+  title: string;
+}
+
+const releaseKind = (release: PlannedRelease) =>
   [...(release.secondaryTypes || []), release.type].filter(Boolean).join(" ") || "Release";
 
-const releaseMeta = (release) =>
+const releaseMeta = (release: PlannedRelease) =>
   [
     releaseKind(release),
     String(release.releaseDate || "").slice(0, 4),
@@ -33,7 +76,7 @@ const releaseMeta = (release) =>
     .filter(Boolean)
     .join(" · ");
 
-function useDebounced(value) {
+function useDebounced<T>(value: T) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(value), PREVIEW_DELAY_MS);
@@ -42,10 +85,16 @@ function useDebounced(value) {
   return debounced;
 }
 
-function MonitoringPreview({ mbid, artistName, request }) {
+interface MonitoringPreviewProps {
+  mbid: string;
+  artistName: string;
+  request: ArtistMonitoringRequest;
+}
+
+function MonitoringPreview({ mbid, artistName, request }: MonitoringPreviewProps) {
   const debounced = useDebounced(request);
   const pending = debounced !== request;
-  const preview = useQuery({
+  const preview = useQuery<ArtistMonitoringPreview>({
     queryKey: [...queryKeys.artistMonitoring(mbid), "preview", debounced],
     queryFn: ({ signal }) =>
       previewArtistMonitoring(mbid, { monitoring: debounced, artistName }, { signal }),
@@ -144,13 +193,18 @@ function MonitoringPreview({ mbid, artistName, request }) {
   );
 }
 
-function MonitoringExclusions({ mbid, onError }) {
-  const exclusionsQuery = useQuery({
+interface MonitoringExclusionsProps {
+  mbid: string;
+  onError: (message: string) => void;
+}
+
+function MonitoringExclusions({ mbid, onError }: MonitoringExclusionsProps) {
+  const exclusionsQuery = useQuery<MonitoringExclusion[]>({
     queryKey: queryKeys.monitoringExclusions(mbid),
     queryFn: ({ signal }) => getMonitoringExclusions({ artistMbid: mbid, signal }),
   });
   const allow = useMutation({
-    mutationFn: (exclusion) => removeMonitoringExclusion(exclusion.id),
+    mutationFn: (exclusion: MonitoringExclusion) => removeMonitoringExclusion(exclusion.id),
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.monitoringExclusionsPrefix }),
@@ -217,7 +271,25 @@ function MonitoringExclusions({ mbid, onError }) {
   );
 }
 
-function RulesDialog({ mbid, artistName, state, saving, onClose, onSave, onError }) {
+interface RulesDialogProps {
+  mbid: string;
+  artistName: string;
+  state?: ArtistMonitoringState | null;
+  saving: boolean;
+  onClose: () => void;
+  onSave: (request: ArtistMonitoringRequest) => void;
+  onError: (message: string) => void;
+}
+
+function RulesDialog({
+  mbid,
+  artistName,
+  state,
+  saving,
+  onClose,
+  onSave,
+  onError,
+}: RulesDialogProps) {
   const titleId = useId();
   const { dialogRef, handleBackdropClick } = useModalDialog({
     open: true,
@@ -268,7 +340,9 @@ function RulesDialog({ mbid, artistName, state, saving, onClose, onSave, onError
               checked={useDefault}
               disabled={saving}
               aria-label="Use the default rules"
-              onChange={(event) => setUseDefault(event.target.checked)}
+              onChange={(event: { target: { checked: boolean } }) =>
+                setUseDefault(event.target.checked)
+              }
             />
           </div>
           {shownRules ? (
@@ -300,6 +374,10 @@ function RulesDialog({ mbid, artistName, state, saving, onClose, onSave, onError
   );
 }
 
-export function ArtistMonitoringRulesDialog({ open, ...props }) {
+interface ArtistMonitoringRulesDialogProps extends RulesDialogProps {
+  open: boolean;
+}
+
+export function ArtistMonitoringRulesDialog({ open, ...props }: ArtistMonitoringRulesDialogProps) {
   return open ? <RulesDialog {...props} /> : null;
 }

@@ -1,8 +1,27 @@
-import { useEffect, useId, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import { Check, MoreVertical, Plus, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { DotLoader } from "./DotLoader";
 import TooltipButton from "./TooltipButton";
+
+interface ModalShellProps {
+  open: boolean;
+  title: string;
+  description?: string;
+  onClose: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+  disableClose?: boolean;
+  className?: string;
+}
 
 export function ModalShell({
   open,
@@ -13,7 +32,7 @@ export function ModalShell({
   footer,
   disableClose = false,
   className = "",
-}) {
+}: ModalShellProps) {
   const titleId = useId();
   const descriptionId = useId();
   const { dialogRef, handleBackdropClick } = useModalDialog({
@@ -63,6 +82,15 @@ export function ModalShell({
   );
 }
 
+interface CreatePlaylistModalProps {
+  open: boolean;
+  defaultName?: string;
+  saving?: boolean;
+  error?: string;
+  onClose: () => void;
+  onSubmit?: (name: string) => void | Promise<void>;
+}
+
 export function CreatePlaylistModal({
   open,
   defaultName = "",
@@ -70,7 +98,7 @@ export function CreatePlaylistModal({
   error = "",
   onClose,
   onSubmit,
-}) {
+}: CreatePlaylistModalProps) {
   const [name, setName] = useState(defaultName);
   const [localError, setLocalError] = useState("");
   const wasOpenRef = useRef(false);
@@ -150,6 +178,23 @@ export function CreatePlaylistModal({
   );
 }
 
+interface RenamePlaylistModalProps {
+  open: boolean;
+  title: string;
+  defaultName?: string;
+  displayName?: string;
+  artworkUrl?: string;
+  saving?: boolean;
+  coverBusy?: boolean;
+  error?: string;
+  coverError?: string;
+  onClose: () => void;
+  onSubmit?: (name: string) => void | Promise<void>;
+  onUpload?: (file: File) => void | Promise<void>;
+  onRemoveCover?: () => void | Promise<void>;
+  onGenerateCover?: () => void | Promise<void>;
+}
+
 export function RenamePlaylistModal({
   open,
   title,
@@ -165,14 +210,14 @@ export function RenamePlaylistModal({
   onUpload,
   onRemoveCover,
   onGenerateCover,
-}) {
+}: RenamePlaylistModalProps) {
   const [name, setName] = useState(defaultName);
   const [localError, setLocalError] = useState("");
-  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
   const [coverMenuOpen, setCoverMenuOpen] = useState(false);
-  const fileInputRef = useRef(null);
-  const coverMenuRef = useRef(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const coverMenuRef = useRef<HTMLDivElement | null>(null);
   const wasOpenRef = useRef(false);
   const busy = saving || coverBusy;
 
@@ -193,8 +238,8 @@ export function RenamePlaylistModal({
   }, [defaultName, open]);
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (coverMenuRef.current && !coverMenuRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (coverMenuRef.current && !coverMenuRef.current.contains(event.target as Node | null)) {
         setCoverMenuOpen(false);
       }
     };
@@ -244,7 +289,7 @@ export function RenamePlaylistModal({
     await onRemoveCover?.();
   };
 
-  const handleFileChange = async (event) => {
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
@@ -264,7 +309,7 @@ export function RenamePlaylistModal({
     await onUpload?.(file);
   };
 
-  const isSafeImageUrl = (value) => {
+  const isSafeImageUrl = (value: string) => {
     if (!value) return false;
     try {
       return ["http:", "https:", "data:", "blob:"].includes(
@@ -329,7 +374,7 @@ export function RenamePlaylistModal({
                 title="Cover image options"
                 aria-expanded={coverMenuOpen}
                 aria-haspopup="menu"
-                onClick={(event) => {
+                onClick={(event: ReactMouseEvent<HTMLButtonElement>) => {
                   event.stopPropagation();
                   setCoverMenuOpen((prev) => !prev);
                 }}

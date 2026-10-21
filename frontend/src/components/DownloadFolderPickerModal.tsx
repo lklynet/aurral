@@ -5,7 +5,26 @@ import { createPortal } from "react-dom";
 import { ArrowUp, Folder, X } from "lucide-react";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { DotLoader } from "./DotLoader";
-function normalizeConfirmedPath(pathValue, browsePath) {
+interface FilesystemEntry {
+  name: string;
+  path: string;
+}
+
+interface FilesystemListing {
+  path: string;
+  displayPath?: string | null;
+  entries?: FilesystemEntry[];
+  parent?: string | null;
+}
+
+interface DownloadFolderPickerModalProps {
+  initialPath?: string;
+  createOnConfirm?: boolean;
+  onConfirm?: (path: string) => void;
+  onCancel: () => void;
+}
+
+function normalizeConfirmedPath(pathValue: string, browsePath: string) {
   const raw = String(pathValue ?? "").trim() || browsePath || "/";
   if (raw === "/") return "/";
   return raw.replace(/\/+$/, "");
@@ -16,11 +35,11 @@ export default function DownloadFolderPickerModal({
   createOnConfirm = true,
   onConfirm,
   onCancel,
-}) {
+}: DownloadFolderPickerModalProps) {
   const [browsePath, setBrowsePath] = useState("");
   const [pathInput, setPathInput] = useState("");
-  const [entries, setEntries] = useState([]);
-  const [parentPath, setParentPath] = useState(null);
+  const [entries, setEntries] = useState<FilesystemEntry[]>([]);
+  const [parentPath, setParentPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const requestIdRef = useRef(0);
@@ -31,7 +50,7 @@ export default function DownloadFolderPickerModal({
     closeDisabled: loading,
   });
 
-  const applyBrowseResult = useCallback((result) => {
+  const applyBrowseResult = useCallback((result: FilesystemListing) => {
     setBrowsePath(result.path);
     setPathInput(result.displayPath ?? "");
     setEntries(Array.isArray(result.entries) ? result.entries : []);
@@ -39,7 +58,7 @@ export default function DownloadFolderPickerModal({
   }, []);
 
   const loadDirectory = useCallback(
-    async (pathValue) => {
+    async (pathValue: string | undefined) => {
       const requestId = ++requestIdRef.current;
       setLoading(true);
       setError("");
@@ -66,7 +85,7 @@ export default function DownloadFolderPickerModal({
   );
 
   const ensureDirectory = useCallback(
-    async (pathValue) => {
+    async (pathValue: string) => {
       const requestId = ++requestIdRef.current;
       setLoading(true);
       setError("");
@@ -111,7 +130,7 @@ export default function DownloadFolderPickerModal({
     };
   }, [loadDirectory]);
 
-  const handleNavigate = (nextPath) => {
+  const handleNavigate = (nextPath: string) => {
     void loadDirectory(nextPath);
   };
 

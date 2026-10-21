@@ -5,7 +5,21 @@ import Tooltip from "./Tooltip";
 
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-const parseShowDate = (value) => {
+interface NearbyShow {
+  eventName: string | null;
+  artistNames?: string[];
+  image: string | null;
+  url: string | null;
+  date: string | null;
+  time: string | null;
+  dateTime: string | null;
+  venueName: string | null;
+  city: string | null;
+  region: string | null;
+  distance: number | null;
+}
+
+const parseShowDate = (value: string | null) => {
   if (!value) return null;
   const raw = String(value);
   const dateOnlyMatch = raw.match(DATE_ONLY_PATTERN);
@@ -17,7 +31,7 @@ const parseShowDate = (value) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
-const formatShowTime = (value) => {
+const formatShowTime = (value: string | null) => {
   if (!value) return null;
   const match = String(value).match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
   if (!match) return value;
@@ -29,7 +43,7 @@ const formatShowTime = (value) => {
   });
 };
 
-const formatShowDate = (show) => {
+const formatShowDate = (show: NearbyShow) => {
   if (!show?.date && !show?.dateTime) return null;
   const parsed = parseShowDate(show.date) || parseShowDate(show.dateTime);
   if (!parsed) return show.date || null;
@@ -42,18 +56,18 @@ const formatShowDate = (show) => {
   return timeLabel ? `${dateLabel} at ${timeLabel}` : dateLabel;
 };
 
-const formatShowLocation = (show) =>
+const formatShowLocation = (show: NearbyShow) =>
   [show?.venueName, [show?.city, show?.region].filter(Boolean).join(", ")]
     .filter(Boolean)
     .join(" - ");
 
-const formatDistance = (distance) => {
+const formatDistance = (distance: number | null) => {
   if (distance == null || distance === "") return null;
   const numericDistance = Number(distance);
   return Number.isFinite(numericDistance) ? `${Math.round(numericDistance)} mi` : null;
 };
 
-const getEventUrl = (value) => {
+const getEventUrl = (value: string | null) => {
   const trimmed = typeof value === "string" ? value.trim() : "";
   if (!trimmed) return "";
   try {
@@ -64,7 +78,13 @@ const getEventUrl = (value) => {
   }
 };
 
-function ShowMeta({ showDate, showLocation, className }) {
+interface ShowMetaProps {
+  showDate: string | null;
+  showLocation: string;
+  className: string;
+}
+
+function ShowMeta({ showDate, showLocation, className }: ShowMetaProps) {
   return (
     <div className={className}>
       {showDate && (
@@ -86,7 +106,7 @@ function ShowMeta({ showDate, showLocation, className }) {
   );
 }
 
-const titleNamesArtists = (title, artistNames) => {
+const titleNamesArtists = (title: string, artistNames: string[]) => {
   const normalizedTitle = String(title || "").toLocaleLowerCase();
   return (
     artistNames.length > 0 &&
@@ -94,7 +114,11 @@ const titleNamesArtists = (title, artistNames) => {
   );
 };
 
-const ShowCard = memo(({ show }) => {
+interface ShowCardProps {
+  show: NearbyShow;
+}
+
+const ShowCard = memo(({ show }: ShowCardProps) => {
   const artistNames = (show.artistNames || []).filter(Boolean);
   const artistLabel = artistNames.join(", ") || "Matched artist";
   const eventLabel = show.eventName || artistLabel || "Upcoming show";

@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { RotateCcw, X } from "lucide-react";
 
 import { DotLoader } from "./DotLoader";
+import type { AurralAlbumRef } from "./AurralAlbumMonitoring";
 import { useToast } from "../contexts/ToastContext";
 import { queryKeys } from "../queryClient.ts";
 import {
@@ -19,8 +20,30 @@ import {
 
 const POLL_INTERVAL_MS = 4000;
 
-const errorMessage = (error, fallback) =>
+interface AlbumArtistRef {
+  mbid?: string;
+  name?: string;
+}
+
+interface RequestErrorLike {
+  message?: string;
+  response?: { data?: { message?: string; error?: string } };
+}
+
+const errorMessage = (error: RequestErrorLike | null | undefined, fallback: string) =>
   error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback;
+
+type AlbumStatusState = NonNullable<ReturnType<typeof describeAurralAlbumStatus>>;
+type AlbumStatusAction = AlbumStatusState["actions"][number];
+
+interface AurralAlbumStatusProps {
+  album: AurralAlbumRef;
+  artist?: AlbumArtistRef | null;
+  canManage?: boolean;
+  canRetry?: boolean;
+  onChanged?: () => void;
+  onSettled?: () => void;
+}
 
 export function AurralAlbumStatus({
   album,
@@ -29,9 +52,9 @@ export function AurralAlbumStatus({
   canRetry = true,
   onChanged,
   onSettled,
-}) {
+}: AurralAlbumStatusProps) {
   const { showError } = useToast();
-  const [pendingAction, setPendingAction] = useState(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
   const statusQuery = useQuery({
     queryKey: queryKeys.aurralAlbumStatus(album.id),
     queryFn: ({ signal }) => getAurralAlbumStatus(album.id, { signal }),
@@ -41,7 +64,7 @@ export function AurralAlbumStatus({
     refetchIntervalInBackground: false,
   });
   const state = describeAurralAlbumStatus(statusQuery.data || {});
-  const previousStatusRef = useRef(null);
+  const previousStatusRef = useRef<string | null>(null);
 
   useEffect(() => {
     const status = statusQuery.data?.status;
@@ -57,7 +80,7 @@ export function AurralAlbumStatus({
     ? state.actions
     : state.actions.filter((action) => action.id === "cancel");
 
-  const runAction = async (action) => {
+  const runAction = async (action: AlbumStatusAction) => {
     setPendingAction(action.id);
     try {
       if (action.id === "cancel") {

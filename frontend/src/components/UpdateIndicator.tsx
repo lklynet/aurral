@@ -12,7 +12,40 @@ const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const NIGHTLY_CHECK_INTERVAL_MS = 2 * 60 * 60 * 1000;
 const MAX_NIGHTLY_NOTES = 8;
 
-async function fetchJson(url) {
+interface UpdateInfo {
+  current: string;
+  latest: string;
+  url: string;
+  notes: string[];
+}
+
+interface CachedUpdate {
+  sourceVersion: string;
+  update: UpdateInfo | null;
+}
+
+interface NightlyPublished {
+  version: string;
+  sha: string;
+}
+
+interface GithubCompare {
+  status?: string;
+  commits?: { commit?: { message?: string } }[];
+}
+
+interface GithubRelease {
+  tag_name?: string;
+  html_url?: string;
+  body?: string | null;
+}
+
+interface UpdateIndicatorProps {
+  currentVersion?: string;
+  visible?: boolean;
+}
+
+async function fetchJson(url: string) {
   const response = await fetch(url, {
     headers: { Accept: "application/vnd.github+json" },
   });
@@ -22,11 +55,11 @@ async function fetchJson(url) {
   return response.json();
 }
 
-function isSha(value) {
+function isSha(value: string) {
   return /^[0-9a-f]{7,40}$/i.test(value || "");
 }
 
-function readStorage(key) {
+function readStorage(key: string) {
   try {
     return JSON.parse(localStorage.getItem(key) || "null");
   } catch {
@@ -34,18 +67,18 @@ function readStorage(key) {
   }
 }
 
-function writeStorage(key, value) {
+function writeStorage(key: string, value: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {}
 }
 
-const UpdateIndicator = ({ currentVersion, visible = true }) => {
-  const [updateInfo, setUpdateInfo] = useState(null);
+const UpdateIndicator = ({ currentVersion, visible = true }: UpdateIndicatorProps) => {
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const indicatorRef = useRef(null);
-  const triggerRef = useRef(null);
-  const resolvedVersion = currentVersion || import.meta.env.VITE_APP_VERSION;
+  const indicatorRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const resolvedVersion: string = currentVersion || import.meta.env.VITE_APP_VERSION;
   const repo = import.meta.env.VITE_GITHUB_REPO || "lklynet/aurral";
   const releaseChannel = (import.meta.env.VITE_RELEASE_CHANNEL || "stable").toLowerCase();
   const isNightly = releaseChannel === "nightly";
@@ -71,16 +104,17 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
       return undefined;
     }
 
-    let cached = readStorage(cacheKey);
+    let cached: CachedUpdate | null = readStorage(cacheKey);
     setUpdateInfo(cached?.sourceVersion === resolvedVersion ? cached.update : null);
 
     const resolveNightlyUpdate = async () => {
-      const { data: published } = await api.get("/updates/nightly");
+      const { data: published }: { data: NightlyPublished | null } =
+        await api.get("/updates/nightly");
       const update = selectNightlyUpdate(resolvedVersion, published?.sha);
       if (!update) return null;
 
-      const comparison = await fetchJson(
-        `https://api.github.com/repos/${repo}/compare/${update.current}...${published.sha}`,
+      const comparison: GithubCompare = await fetchJson(
+        `https://api.github.com/repos/${repo}/compare/${update.current}...${published!.sha}`,
       );
       if (comparison?.status !== "ahead") return null;
       const notes = (Array.isArray(comparison?.commits) ? comparison.commits : [])
@@ -95,13 +129,15 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
       return {
         ...update,
         channel: "nightly",
-        url: `https://github.com/${repo}/compare/${update.current}...${published.sha}`,
+        url: `https://github.com/${repo}/compare/${update.current}...${published!.sha}`,
         notes,
       };
     };
 
     const resolveStableUpdate = async () => {
-      const release = await fetchJson(`https://api.github.com/repos/${repo}/releases/latest`);
+      const release: GithubRelease = await fetchJson(
+        `https://api.github.com/repos/${repo}/releases/latest`,
+      );
       const latest = normalizeReleaseVersion(release?.tag_name);
       if (!latest) return null;
 
@@ -122,7 +158,7 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
 
     let active = true;
     const checkForUpdate = async () => {
-      const checkMeta = readStorage(checkMetaKey);
+      const checkMeta: { lastCheckedAt?: number } | null = readStorage(checkMetaKey);
       if (
         checkMeta?.lastCheckedAt &&
         Date.now() - Number(checkMeta.lastCheckedAt) < checkIntervalMs &&
@@ -174,12 +210,12 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
 
   useEffect(() => {
     if (!menuOpen) return undefined;
-    const handlePointerDown = (event) => {
-      if (!indicatorRef.current?.contains(event.target)) {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!indicatorRef.current?.contains(event.target as Node | null)) {
         setMenuOpen(false);
       }
     };
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setMenuOpen(false);
         triggerRef.current?.focus();

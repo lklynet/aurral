@@ -12,8 +12,28 @@ import {
 } from "../utils/aurralMonitoring.ts";
 import { ConfirmModal } from "./ConfirmModal.tsx";
 
-const errorMessage = (error) =>
+type AurralAlbumId = string | number;
+
+export interface AurralAlbumRef {
+  id: AurralAlbumId;
+  title?: string;
+}
+
+interface RequestErrorLike {
+  message?: string;
+  response?: { data?: { message?: string; error?: string } };
+}
+
+const errorMessage = (error: RequestErrorLike | null | undefined) =>
   error?.response?.data?.message || error?.response?.data?.error || error?.message || "Try again.";
+
+interface AurralAlbumMonitoringOptions {
+  album: AurralAlbumRef | null;
+  enabled: boolean;
+  canChange: boolean;
+  hasMissingTracks: boolean;
+  onChanged?: (albumId: AurralAlbumId, result: unknown) => void;
+}
 
 export function useAurralAlbumMonitoring({
   album,
@@ -21,11 +41,13 @@ export function useAurralAlbumMonitoring({
   canChange,
   hasMissingTracks,
   onChanged,
-}) {
+}: AurralAlbumMonitoringOptions) {
   const { showSuccess, showError } = useToast();
   const [pending, setPending] = useState(false);
-  const [confirmingId, setConfirmingId] = useState(null);
-  const [override, setOverride] = useState(null);
+  const [confirmingId, setConfirmingId] = useState<AurralAlbumId | null>(null);
+  const [override, setOverride] = useState<{ albumId: AurralAlbumId; monitored: boolean } | null>(
+    null,
+  );
   const savedMonitored = enabled ? getAlbumMonitoredState(album) : null;
   const monitored =
     savedMonitored !== null && override?.albumId === album?.id
@@ -36,7 +58,7 @@ export function useAurralAlbumMonitoring({
   if (!canChange) return { monitored, menuItem: null, dialog: null };
 
   const albumId = album.id;
-  const apply = async (nextMonitored) => {
+  const apply = async (nextMonitored: boolean) => {
     if (pending) return;
     setPending(true);
     setConfirmingId(null);

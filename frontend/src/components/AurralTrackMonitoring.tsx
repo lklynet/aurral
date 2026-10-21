@@ -13,23 +13,61 @@ import {
 } from "../utils/aurralMonitoring.ts";
 import { ConfirmModal } from "./ConfirmModal.tsx";
 
-const errorMessage = (error) =>
+type AurralTrackId = number | string;
+
+interface AurralTrackRef {
+  id: AurralTrackId;
+  title?: string | null;
+  trackName?: string | null;
+  monitored?: boolean;
+  keepFile?: boolean;
+}
+
+interface TrackKeepFileResult {
+  keepFile?: boolean;
+}
+
+interface TrackMenuOptions {
+  aurral?: boolean;
+  hasFile?: boolean;
+  downloadPending?: boolean;
+}
+
+interface RequestErrorLike {
+  message?: string;
+  response?: { data?: { message?: string; error?: string } };
+}
+
+const errorMessage = (error: RequestErrorLike | null | undefined) =>
   error?.response?.data?.message || error?.response?.data?.error || error?.message || "Try again.";
 
-const trackTitle = (track) => track?.title || track?.trackName || "this track";
+const trackTitle = (track: AurralTrackRef | null | undefined) =>
+  track?.title || track?.trackName || "this track";
 
-export function useAurralTrackMonitoring({ canChange, onChanged, onKeepFileChanged }) {
+interface AurralTrackMonitoringOptions {
+  canChange: boolean;
+  onChanged?: (trackId: AurralTrackId, result: unknown) => void | Promise<void>;
+  onKeepFileChanged?: (trackId: AurralTrackId, result: TrackKeepFileResult) => void | Promise<void>;
+}
+
+export function useAurralTrackMonitoring({
+  canChange,
+  onChanged,
+  onKeepFileChanged,
+}: AurralTrackMonitoringOptions) {
   const { showSuccess, showError } = useToast();
-  const [pending, setPending] = useState(null);
-  const [keepPending, setKeepPending] = useState(null);
-  const [confirming, setConfirming] = useState(null);
+  const [pending, setPending] = useState<{ id: AurralTrackId; monitored: boolean } | null>(null);
+  const [keepPending, setKeepPending] = useState<{ id: AurralTrackId; keepFile: boolean } | null>(
+    null,
+  );
+  const [confirming, setConfirming] = useState<AurralTrackRef | null>(null);
 
-  const isKept = (track) =>
+  const isKept = (track: AurralTrackRef | null | undefined) =>
     keepPending && String(keepPending.id) === String(track?.id)
       ? keepPending.keepFile
       : track?.keepFile === true;
 
-  const setKeepFile = async (track, keepFile) => {
+  const setKeepFile = async (track: AurralTrackRef, keepFile: boolean) => {
     if (keepPending) return;
     setKeepPending({ id: track.id, keepFile });
     try {
@@ -46,12 +84,12 @@ export function useAurralTrackMonitoring({ canChange, onChanged, onKeepFileChang
     }
   };
 
-  const isMonitored = (track) =>
+  const isMonitored = (track: AurralTrackRef | null | undefined) =>
     pending && String(pending.id) === String(track?.id)
       ? pending.monitored
       : track?.monitored !== false;
 
-  const apply = async (track, nextMonitored) => {
+  const apply = async (track: AurralTrackRef, nextMonitored: boolean) => {
     if (pending) return;
     setPending({ id: track.id, monitored: nextMonitored });
     setConfirming(null);
@@ -70,8 +108,8 @@ export function useAurralTrackMonitoring({ canChange, onChanged, onKeepFileChang
   };
 
   const getMenuItem = (
-    track,
-    { aurral = false, hasFile = false, downloadPending = false } = {},
+    track: AurralTrackRef,
+    { aurral = false, hasFile = false, downloadPending = false }: TrackMenuOptions = {},
   ) => {
     if (!aurral || !canChange || !Number.isInteger(Number(track?.id))) return null;
     const monitored = isMonitored(track);
@@ -90,7 +128,10 @@ export function useAurralTrackMonitoring({ canChange, onChanged, onKeepFileChang
     };
   };
 
-  const getKeepFileItem = (track, { aurral = false, hasFile = false } = {}) => {
+  const getKeepFileItem = (
+    track: AurralTrackRef,
+    { aurral = false, hasFile = false }: TrackMenuOptions = {},
+  ) => {
     if (!aurral || !hasFile || !canChange || !Number.isInteger(Number(track?.id))) return null;
     const kept = isKept(track);
     return {

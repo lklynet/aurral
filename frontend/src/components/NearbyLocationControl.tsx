@@ -1,7 +1,24 @@
 import { useState, useEffect, useRef } from "react";
 import { ChevronDown, Locate } from "lucide-react";
 
-function getNearbyCityLabel(location) {
+interface NearbyLocation {
+  city?: string | null;
+  label?: string | null;
+  postalCode?: string | null;
+}
+
+interface NearbyLocationControlProps {
+  locationMode: "ip" | "zip";
+  appliedZip: string;
+  appliedCountry?: string;
+  location?: NearbyLocation;
+  onSelectYourLocation: () => void;
+  onStartCustomLocation: () => void;
+  onApplyZip: (zip: string, country: string) => void;
+  className?: string;
+}
+
+function getNearbyCityLabel(location: NearbyLocation | undefined) {
   if (!location) return "Location";
   if (location.city) return location.city;
   const first = location.label?.split(",")?.[0]?.trim();
@@ -19,9 +36,9 @@ function NearbyLocationControl({
   onStartCustomLocation,
   onApplyZip,
   className = "",
-}) {
-  const wrapRef = useRef(null);
-  const zipInputRef = useRef(null);
+}: NearbyLocationControlProps) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const zipInputRef = useRef<HTMLInputElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [zipDraft, setZipDraft] = useState(appliedZip);
   const [countryDraft, setCountryDraft] = useState(appliedCountry || "");
@@ -37,9 +54,9 @@ function NearbyLocationControl({
 
   useEffect(() => {
     if (!menuOpen) return undefined;
-    const close = (event) => {
+    const close = (event: Event & Partial<Pick<KeyboardEvent, "key">>) => {
       if (event.type === "keydown" && event.key !== "Escape") return;
-      if (event.type === "mousedown" && wrapRef.current?.contains(event.target)) {
+      if (event.type === "mousedown" && wrapRef.current?.contains(event.target as Node | null)) {
         return;
       }
       setMenuOpen(false);

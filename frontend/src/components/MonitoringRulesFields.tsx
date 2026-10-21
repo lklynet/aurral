@@ -10,6 +10,22 @@ import {
 } from "../utils/monitoringRules.ts";
 import "./MonitoringRules.css";
 
+export interface MonitoringRules {
+  catalog: "none" | "all" | "since" | "latest";
+  sinceYear: number | null;
+  latestCount: number;
+  newReleases: boolean;
+  types: string[];
+  extraTypes: string[];
+  edition: "standard" | "expanded";
+  topTracks: number;
+}
+
+interface ChoiceOption {
+  value: string;
+  label: string;
+}
+
 const CATALOG_HINTS = {
   all: "All matching releases available now.",
   since: "Matching releases from this year on.",
@@ -22,8 +38,18 @@ const EDITION_HINTS = {
   expanded: "The longest edition with every standard track.",
 };
 
-function NumberField({ id, label, value, min, max, disabled, onChange }) {
-  const [draft, setDraft] = useState(null);
+interface NumberFieldProps {
+  id: string;
+  label: string;
+  value: number | null;
+  min: number;
+  max: number;
+  disabled: boolean;
+  onChange: (value: number) => void;
+}
+
+function NumberField({ id, label, value, min, max, disabled, onChange }: NumberFieldProps) {
+  const [draft, setDraft] = useState<string | null>(null);
   return (
     <input
       id={id}
@@ -51,7 +77,23 @@ function NumberField({ id, label, value, min, max, disabled, onChange }) {
   );
 }
 
-function ChoiceGroup({ legend, options, selected, disabled, keepOne = false, onToggle }) {
+interface ChoiceGroupProps {
+  legend: string;
+  options: ChoiceOption[];
+  selected: string[];
+  disabled: boolean;
+  keepOne?: boolean;
+  onToggle: (value: string) => void;
+}
+
+function ChoiceGroup({
+  legend,
+  options,
+  selected,
+  disabled,
+  keepOne = false,
+  onToggle,
+}: ChoiceGroupProps) {
   return (
     <fieldset className="monitoring-rules__choices">
       <legend className="artist-field-label">{legend}</legend>
@@ -76,11 +118,21 @@ function ChoiceGroup({ legend, options, selected, disabled, keepOne = false, onT
   );
 }
 
-export function MonitoringRulesFields({ rules, onChange, disabled = false }) {
+interface MonitoringRulesFieldsProps {
+  rules: MonitoringRules;
+  onChange: (rules: MonitoringRules) => void;
+  disabled?: boolean;
+}
+
+export function MonitoringRulesFields({
+  rules,
+  onChange,
+  disabled = false,
+}: MonitoringRulesFieldsProps) {
   const id = useId();
   const currentYear = new Date().getFullYear();
-  const update = (patch) => onChange({ ...rules, ...patch });
-  const toggle = (key) => (value) =>
+  const update = (patch: Partial<MonitoringRules>) => onChange({ ...rules, ...patch });
+  const toggle = (key: "types" | "extraTypes") => (value: string) =>
     update({
       [key]: rules[key].includes(value)
         ? rules[key].filter((entry) => entry !== value)
@@ -102,7 +154,7 @@ export function MonitoringRulesFields({ rules, onChange, disabled = false }) {
               disabled={disabled}
               onChange={(event) =>
                 update({
-                  catalog: event.target.value,
+                  catalog: event.target.value as MonitoringRules["catalog"],
                   sinceYear:
                     event.target.value === "since"
                       ? rules.sinceYear || currentYear - 5
@@ -152,7 +204,9 @@ export function MonitoringRulesFields({ rules, onChange, disabled = false }) {
           checked={rules.newReleases}
           disabled={disabled}
           aria-label="New releases"
-          onChange={(event) => update({ newReleases: event.target.checked })}
+          onChange={(event: { target: { checked: boolean } }) =>
+            update({ newReleases: event.target.checked })
+          }
         />
       </div>
 
@@ -183,7 +237,9 @@ export function MonitoringRulesFields({ rules, onChange, disabled = false }) {
               className="artist-modal-select"
               value={rules.edition}
               disabled={disabled}
-              onChange={(event) => update({ edition: event.target.value })}
+              onChange={(event) =>
+                update({ edition: event.target.value as MonitoringRules["edition"] })
+              }
             >
               {EDITION_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
