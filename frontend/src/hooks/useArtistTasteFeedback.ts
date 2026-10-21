@@ -15,29 +15,49 @@ import {
   previewArtistDiscoveryFeedback,
   revertDiscoveryFeedback,
 } from "../utils/discoveryFeedback";
-import { buildArtistFeedbackPayload } from "../utils/artistTaste";
+import {
+  buildArtistFeedbackPayload,
+  type ArtistFeedbackAction,
+  type ArtistFeedbackSource,
+} from "../utils/artistTaste";
 
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import type { DiscoveryFeedbackEntry } from "../utils/discoveryFeedback.ts";
 
-const EMPTY_FEEDBACK = [];
+type FeedbackChange = ReturnType<typeof diffDiscoveryFeedback>;
+type ArtistFeedbackVariables = {
+  artist: ArtistFeedbackSource;
+  action: ArtistFeedbackAction;
+  isSelected: boolean;
+  payload: DiscoveryFeedbackEntry;
+};
+type SubmitFeedbackOptions = {
+  isSelected?: boolean;
+  sourceContext?: string | null;
+  seedArtistName?: string | null;
+  onRevert?: (() => void) | null;
+};
 
-const UNDOABLE_MESSAGES = {
+const EMPTY_FEEDBACK: DiscoveryFeedbackEntry[] = [];
+
+const UNDOABLE_MESSAGES: Partial<Record<ArtistFeedbackAction, (name: string) => string>> = {
   less_like_this: (name) => `Showing less like ${name}`,
   block_artist: (name) => `Blocked ${name} from recommendations and playlist downloads`,
 };
 
-const FAILED_ACTIONS = {
-  more_like_this: (name, isSelected) =>
-    isSelected ? `remove "More like this" from ${name}` : `save "More like this" for ${name}`,
-  less_like_this: (name, isSelected) =>
-    isSelected ? `remove "Less like this" from ${name}` : `save "Less like this" for ${name}`,
-  block_artist: (name, isSelected) => (isSelected ? `unblock ${name}` : `block ${name}`),
-};
+const FAILED_ACTIONS: Record<ArtistFeedbackAction, (name: string, isSelected: boolean) => string> =
+  {
+    more_like_this: (name, isSelected) =>
+      isSelected ? `remove "More like this" from ${name}` : `save "More like this" for ${name}`,
+    less_like_this: (name, isSelected) =>
+      isSelected ? `remove "Less like this" from ${name}` : `save "Less like this" for ${name}`,
+    block_artist: (name, isSelected) => (isSelected ? `unblock ${name}` : `block ${name}`),
+  };
 
-const artistLabel = (artist) => artist?.name || artist?.artistName || "this artist";
+const artistLabel = (artist: ArtistFeedbackSource | null | undefined) =>
+  artist?.name || artist?.artistName || "this artist";
 
 export function useArtistTasteFeedback() {
   const { user } = useAuth();
@@ -53,7 +73,7 @@ export function useArtistTasteFeedback() {
   const feedbackList = feedbackQuery.data ?? EMPTY_FEEDBACK;
   const { mutateAsync } = useMutation({
     scope: { id: `taste-feedback:${user?.id ?? "anonymous"}` },
-    mutationFn: async ({ artist, action, isSelected, payload }) => {
+    mutationFn: async ({ artist, action, isSelected, payload }: ArtistFeedbackVariables) => {
       const previous = normalizeDiscoveryFeedbackList(await getDiscoveryFeedback());
       const result = await applyArtistDiscoveryFeedback({
         feedbackList: previous,
@@ -84,7 +104,15 @@ export function useArtistTasteFeedback() {
   });
 
   const undoFeedback = useCallback(
-    async ({ artist, change, onRevert }) => {
+    async ({
+      artist,
+      change,
+      onRevert,
+    }: {
+      artist: ArtistFeedbackSource;
+      change: FeedbackChange;
+      onRevert?: (() => void) | null;
+    }) => {
       const name = artistLabel(artist);
       const before = queryClient.getQueryData(queryKey);
       queryClient.setQueryData<DiscoveryFeedbackEntry[]>(queryKey, (current) =>
@@ -112,15 +140,20 @@ export function useArtistTasteFeedback() {
   const lookup = useMemo(() => buildArtistFeedbackLookup(feedbackList), [feedbackList]);
 
   const getFeedbackFlags = useCallback(
-    (artist) => getArtistFeedbackFlags(lookup, artist),
+    (artist: ArtistFeedbackSource) => getArtistFeedbackFlags(lookup, artist),
     [lookup],
   );
 
   const submitFeedback = useCallback(
     async (
-      artist,
-      action,
-      { isSelected = false, sourceContext = null, seedArtistName = null, onRevert = null } = {},
+      artist: ArtistFeedbackSource,
+      action: ArtistFeedbackAction,
+      {
+        isSelected = false,
+        sourceContext = null,
+        seedArtistName = null,
+        onRevert = null,
+      }: SubmitFeedbackOptions = {},
     ) => {
       const name = artistLabel(artist);
       const payload = buildArtistFeedbackPayload(artist, action, { sourceContext, seedArtistName });

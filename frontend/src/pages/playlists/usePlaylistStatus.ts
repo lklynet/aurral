@@ -16,7 +16,7 @@ export function usePlaylistStatus() {
   }, []);
 
   const getPlaylistStats = useCallback(
-    (playlistId) =>
+    (playlistId: string) =>
       sanitizePlaylistStats(
         status?.flowStats?.[playlistId] ||
           status?.sharedPlaylistStats?.[playlistId] ||
@@ -26,7 +26,7 @@ export function usePlaylistStatus() {
   );
 
   const getPlaylistState = useCallback(
-    (playlistId) => getPlaylistStateFromStats(getPlaylistStats(playlistId)),
+    (playlistId: string) => getPlaylistStateFromStats(getPlaylistStats(playlistId)),
     [getPlaylistStats],
   );
 

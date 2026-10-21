@@ -5,13 +5,16 @@ import {
   useEffect,
   useState,
   useSyncExternalStore,
+  type ReactNode,
 } from "react";
 import { useToast } from "../../contexts/ToastContext";
 import { createPlaylistTrackChanges } from "./playlistTrackChanges.ts";
 
-const BulkActionsContext = createContext(null);
+type PlaylistTrackChanges = ReturnType<typeof createPlaylistTrackChanges>;
 
-export function PlaylistBulkActionsProvider({ children }) {
+const BulkActionsContext = createContext<PlaylistTrackChanges | null>(null);
+
+export function PlaylistBulkActionsProvider({ children }: { children: ReactNode }) {
   const toast = useToast();
   const [changes] = useState(() => createPlaylistTrackChanges(toast));
 

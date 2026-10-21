@@ -149,7 +149,7 @@ export function resolveLinkTarget(
   return Promise.reject(notFound("This link isn't valid"));
 }
 
-export const resolveLinkQueryOptions = (kind: string, search: string) => {
+export const resolveLinkQueryOptions = (kind: string, search: string | URLSearchParams) => {
   const params = new URLSearchParams(search);
   params.sort();
   return queryOptions({

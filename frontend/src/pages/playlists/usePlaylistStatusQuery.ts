@@ -1,14 +1,16 @@
 import { useCallback, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useWebSocketChannel } from "../../hooks/useWebSocket";
 import { playlistStatusQueryOptions } from "../../queryOptions.ts";
 import { queryClient, queryKeys } from "../../queryClient.ts";
+import type { PlaylistStatus } from "./playlistStats.ts";
+import type { WebSocketChannelMessage } from "../../../../backend/services/websocketService.ts";
 
 const ACTIVE_POLL_INTERVAL_MS = 4000;
 const IDLE_POLL_INTERVAL_MS = 30000;
 
 export function usePlaylistStatusQuery({ enabled = true } = {}) {
-  const applyStatusMessage = useCallback((message) => {
+  const applyStatusMessage = useCallback((message: WebSocketChannelMessage) => {
     if (message?.type !== "playlist_status" || !message.status) return;
     queryClient.setQueryData(queryKeys.playlistStatus, message.status);
   }, []);
@@ -20,7 +22,7 @@ export function usePlaylistStatusQuery({ enabled = true } = {}) {
       queryClient.invalidateQueries({ queryKey: queryKeys.playlistStatus });
     }
   }, [enabled, socketConnected]);
-  const query = useQuery({
+  const query: UseQueryResult<PlaylistStatus> = useQuery({
     ...playlistStatusQueryOptions(),
     enabled,
     refetchInterval: (currentQuery) => {

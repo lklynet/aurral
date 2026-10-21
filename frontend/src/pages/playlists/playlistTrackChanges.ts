@@ -9,6 +9,8 @@ import type { BulkPlaylistOperationResponse } from "../../../../backend/routes/p
 import type { PlaylistStatus } from "./playlistStats.ts";
 import type { PlaylistTrack } from "./trackAvailability.ts";
 
+type ChangedTrack = Pick<PlaylistTrack, "id" | "trackName">;
+
 interface TrackChange {
   key: number;
   action: "move" | "remove";
@@ -42,7 +44,7 @@ const errorReason = (error: unknown) => {
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const describeTracks = (tracks: PlaylistTrack[], jobIds: string[]) => {
+const describeTracks = (tracks: ChangedTrack[], jobIds: string[]) => {
   const named =
     jobIds.length === 1 ? tracks.find((track) => track?.id === jobIds[0])?.trackName : "";
   return named || trackCountLabel(jobIds.length);
@@ -177,7 +179,7 @@ export function createPlaylistTrackChanges(toast) {
     toast.showSuccess(`Restored ${change.label} to ${change.sourceName}`);
   };
 
-  const pendingIds = (source: { id: string } | null | undefined, tracks: PlaylistTrack[]) => {
+  const pendingIds = (source: { id: string } | null | undefined, tracks: ChangedTrack[]) => {
     const taken = hidden.get(source?.id) || EMPTY_IDS;
     return [...new Set(tracks.map((track) => track?.id).filter(Boolean))].filter(
       (id) => !taken.has(id),
@@ -192,7 +194,7 @@ export function createPlaylistTrackChanges(toast) {
     getHidden: () => hidden,
     remove(
       source: { id: string; name?: string | null } | null | undefined,
-      tracks: PlaylistTrack[],
+      tracks: ChangedTrack[],
     ) {
       const jobIds = pendingIds(source, tracks);
       if (!source?.id || !jobIds.length) return;
@@ -220,7 +222,7 @@ export function createPlaylistTrackChanges(toast) {
     },
     move(
       source: { id: string; name?: string | null } | null | undefined,
-      tracks: PlaylistTrack[],
+      tracks: ChangedTrack[],
       target: MoveTarget | null | undefined,
     ) {
       const jobIds = pendingIds(source, tracks);

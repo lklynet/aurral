@@ -3,7 +3,7 @@ import type {
   DiscoveryRecommendation,
 } from "../../../backend/services/discovery/recommendationPipeline.ts";
 
-type ArtistFeedbackSource = ArtistIdentity &
+export type ArtistFeedbackSource = ArtistIdentity &
   Pick<
     DiscoveryRecommendation,
     "tags" | "matchedTags" | "supportingSeeds" | "sourceArtist" | "sourceArtists"
@@ -13,7 +13,7 @@ type ArtistFeedbackSource = ArtistIdentity &
     discoveryTier?: string | null;
   };
 
-type ArtistFeedbackAction = "more_like_this" | "less_like_this" | "block_artist";
+export type ArtistFeedbackAction = "more_like_this" | "less_like_this" | "block_artist";
 
 export const getArtistRecordId = (artist) => artist?.id || artist?.mbid || artist?.foreignArtistId;
 

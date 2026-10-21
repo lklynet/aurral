@@ -5,9 +5,9 @@ import { ACTIVITY_VIEWS, buildActivityPath, WANTED_VIEWS } from "./activityNavCo
 import { LIBRARY_VIEWS } from "./libraryNavConfig";
 import { DEFAULT_SHOWS_FILTER, SHOWS_FILTERS } from "./showsNavConfig";
 
-const DISCOVER_BROWSE_TYPES = new Set(["recommended", "trending"]);
+const DISCOVER_BROWSE_TYPES = new Set<string | null>(["recommended", "trending"]);
 
-function firstSegment(pathname, prefix) {
+function firstSegment(pathname: string, prefix: string) {
   return pathname.slice(prefix.length).replace(/^\//, "").split("/")[0];
 }
 
@@ -16,7 +16,7 @@ export function useSectionNav() {
   const { user, bootstrap } = useAuth();
 
   return useMemo(() => {
-    const allowed = (permission) =>
+    const allowed = (permission: string | undefined) =>
       !permission || user?.role === "admin" || !!user?.permissions?.[permission];
     const searchType = new URLSearchParams(search).get("type");
 

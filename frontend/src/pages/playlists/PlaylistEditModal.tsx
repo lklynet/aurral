@@ -8,13 +8,35 @@ import {
 } from "../../utils/api/endpoints/playlists.ts";
 import { usePlaylistArtwork } from "./playlistPageUtils";
 
-export function PlaylistEditModal({ entry, title, open, saving, error, onClose, onRename }) {
+type PlaylistEditModalProps = {
+  entry: { id: string; name: string };
+  title: string;
+  open: boolean;
+  saving: boolean;
+  error: string;
+  onClose: () => void;
+  onRename: (name: string) => void | Promise<void>;
+};
+
+export function PlaylistEditModal({
+  entry,
+  title,
+  open,
+  saving,
+  error,
+  onClose,
+  onRename,
+}: PlaylistEditModalProps) {
   const { showSuccess, showError } = useToast();
   const { artworkUrlFor, bumpArtwork } = usePlaylistArtwork();
   const [coverBusy, setCoverBusy] = useState(false);
   const [coverError, setCoverError] = useState("");
 
-  const runCoverAction = async (action, successMessage, fallbackMessage) => {
+  const runCoverAction = async (
+    action: (playlistId: string) => Promise<unknown>,
+    successMessage: string,
+    fallbackMessage: string,
+  ) => {
     setCoverBusy(true);
     setCoverError("");
     try {

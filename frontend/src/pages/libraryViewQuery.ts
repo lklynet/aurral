@@ -144,6 +144,16 @@ export function libraryViewQueryOptions({
   genre = "",
   sort = "name",
   direction = "asc",
+}: {
+  preview?: boolean;
+  section?: string;
+  albumId?: string | null;
+  artistId?: string | null;
+  pageIndex?: number;
+  query?: string;
+  genre?: string;
+  sort?: string;
+  direction?: string;
 } = {}) {
   const view =
     albumId || artistId

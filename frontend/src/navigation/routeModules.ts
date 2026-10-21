@@ -1,4 +1,4 @@
-const trackLoad = (load) => {
+const trackLoad = <T>(load: () => Promise<T>) => {
   let loaded = false;
   const importModule = () =>
     load().then((module) => {

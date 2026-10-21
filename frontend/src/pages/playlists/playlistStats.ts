@@ -44,6 +44,13 @@ export interface StaticPlaylist {
   trackCount: number;
   recordHistory: boolean;
   showTrackAvailability: boolean;
+  importSource: {
+    provider: string;
+    syncEnabled: boolean;
+    syncIntervalHours: number;
+    keepRemovedTracks: boolean;
+  } | null;
+  trackEntries: { id: string | null }[];
 }
 
 export type PlaylistStatus = Omit<PlaylistStatusSnapshot, "flows" | "sharedPlaylists"> & {

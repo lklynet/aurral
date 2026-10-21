@@ -3,11 +3,13 @@ import { useShareContext } from "../contexts/ShareContext";
 import { useToast } from "../contexts/ToastContext";
 import { buildShareUrl, shareLink } from "../utils/shareLink";
 
+type ShareItem = Parameters<typeof buildShareUrl>[0];
+
 export function useShareAction() {
   const { showSuccess, showError } = useToast();
 
   return useCallback(
-    async (item, label) => {
+    async (item: ShareItem, label: string) => {
       const url = buildShareUrl(item);
       if (!url) {
         showError(`${label} is missing the name needed to share it.`);
