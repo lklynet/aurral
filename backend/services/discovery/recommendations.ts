@@ -17,17 +17,31 @@ import {
   mergeResolvedRecommendations,
   normalizeArtistIdentityKeys,
   rerankRecommendations,
+  type DiscoveryRecommendation,
+  type DiscoverySeed,
+  type RecommendationAccumulator,
+  type RecommendationCandidate,
+  type RecommendationSeed,
 } from "./recommendationPipeline.ts";
-import { fetchArtistGenreTags, hydrateRecommendationCandidateTags } from "./tasteProfile.ts";
+import {
+  fetchArtistGenreTags,
+  hydrateRecommendationCandidateTags,
+  type SourceHealth,
+} from "./tasteProfile.ts";
+import type { ArtistMatchFields } from "./artistKeys.ts";
 
-const getSeedTags = async (seed, seedTagMap, sourceHealth) => {
+const getSeedTags = async (
+  seed: ArtistMatchFields,
+  seedTagMap: Map<string, string[]>,
+  sourceHealth: SourceHealth,
+) => {
   const key = getSeedTagMapKey(seed);
   if (seedTagMap.has(key)) return normalizeSeedTagList(seedTagMap.get(key));
   const [tags] = await fetchArtistGenreTags([seed], sourceHealth);
   return normalizeSeedTagList(tags.map((tag) => tag.name));
 };
 
-const collectSimilarCandidates = async ({
+const collectSimilarCandidates = async <Seed extends RecommendationSeed & { mbid: string | null }>({
   seeds,
   similarLimit,
   maxPerSeed,
@@ -37,8 +51,18 @@ const collectSimilarCandidates = async ({
   sourceHealth,
   profileTagWeights,
   existingArtistKeys,
+}: {
+  seeds: Seed[];
+  similarLimit: number;
+  maxPerSeed: number;
+  candidateOverrides?: RecommendationCandidate;
+  getSourceTags: (seed: Seed) => string[] | Promise<string[]>;
+  accumulator: RecommendationAccumulator;
+  sourceHealth: SourceHealth;
+  profileTagWeights: Map<string, number>;
+  existingArtistKeys: Set<string>;
 }) => {
-  await mapWithConcurrency(seeds, getDiscoveryNetworkConcurrency(), async (seed) => {
+  await mapWithConcurrency(seeds, getDiscoveryNetworkConcurrency(), async (seed: Seed) => {
     const sourceTags = await getSourceTags(seed);
     const artists = await getSimilarArtists(
       { mbid: seed.mbid, name: seed.artistName },
@@ -62,7 +86,7 @@ const collectSimilarCandidates = async ({
   });
 };
 
-const toBridgeSeed = (bridge) => {
+const toBridgeSeed = (bridge: DiscoveryRecommendation) => {
   const weight = Math.min(
     0.78,
     Math.max(
@@ -74,7 +98,7 @@ const toBridgeSeed = (bridge) => {
   );
   return {
     mbid: bridge.id || bridge.mbid || null,
-    artistName: bridge.name,
+    artistName: bridge.name!,
     source: "lastfm_related",
     profileBucket: "two_hop_bridge",
     weight,
@@ -94,9 +118,17 @@ export const buildRecommendationsFromSeeds = async ({
   profileTagWeights,
   seedTagMap = new Map(),
   discoveryMode,
+}: {
+  seeds: DiscoverySeed[];
+  existingArtistKeys: Set<string>;
+  bridgeExclusionKeys?: Set<string>;
+  sourceHealth: SourceHealth;
+  profileTagWeights: Map<string, number>;
+  seedTagMap?: Map<string, string[]>;
+  discoveryMode: string;
 }) => {
   const candidateLimit = getDiscoveryCandidateLimit();
-  const directRecommendations = new Map();
+  const directRecommendations: RecommendationAccumulator = new Map();
   await collectSimilarCandidates({
     seeds,
     ...getSimilarArtistSampling(getSourceFailureRatio(sourceHealth)),
@@ -108,9 +140,13 @@ export const buildRecommendationsFromSeeds = async ({
     existingArtistKeys,
   });
 
-  let directList = finalizeRecommendationAccumulator(directRecommendations, candidateLimit, {
-    discoveryMode,
-  });
+  let directList: DiscoveryRecommendation[] = finalizeRecommendationAccumulator(
+    directRecommendations,
+    candidateLimit,
+    {
+      discoveryMode,
+    },
+  );
   directList = await hydrateRecommendationCandidateTags({
     recommendations: directList,
     sourceHealth,
@@ -140,7 +176,7 @@ export const buildRecommendationsFromSeeds = async ({
     .filter((bridge) => bridge.bridgeTags.length > 0)
     .slice(0, secondHopSampling.seedLimit);
 
-  const secondHopRecommendations = new Map();
+  const secondHopRecommendations: RecommendationAccumulator = new Map();
   await collectSimilarCandidates({
     seeds: bridgeSeeds,
     similarLimit: secondHopSampling.similarLimit,
@@ -158,9 +194,13 @@ export const buildRecommendationsFromSeeds = async ({
   });
 
   const secondHopLimit = getSecondHopRecommendationLimit();
-  let secondHopList = finalizeRecommendationAccumulator(secondHopRecommendations, secondHopLimit, {
-    discoveryMode,
-  });
+  let secondHopList: DiscoveryRecommendation[] = finalizeRecommendationAccumulator(
+    secondHopRecommendations,
+    secondHopLimit,
+    {
+      discoveryMode,
+    },
+  );
   secondHopList = await hydrateRecommendationCandidateTags({
     recommendations: secondHopList,
     sourceHealth,

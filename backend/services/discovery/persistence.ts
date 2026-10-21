@@ -1,5 +1,5 @@
 import { dbOps } from "../../db/helpers/index.ts";
-import type { DiscoveryCache } from "../../db/helpers/discovery.ts";
+import type { DiscoveryCache, DiscoveryMetadata } from "../../db/helpers/discovery.ts";
 import { websocketService } from "../websocketService.ts";
 import { isHonkerLockHeld } from "../honkerDb.ts";
 
@@ -57,7 +57,9 @@ export function reloadDiscoveryPersistedCache() {
 
 export const getDiscoveryCache = () => discoveryCache;
 
-export function synchronizeDiscoveryCacheFromWorker(update = {}) {
+export function synchronizeDiscoveryCacheFromWorker(
+  update: Partial<DiscoveryCache> & { isUpdating?: boolean; type?: string } = {},
+) {
   if (!update || typeof update !== "object") return;
   if (update.isUpdating === false) {
     reloadDiscoveryPersistedCache();
@@ -76,14 +78,15 @@ export function synchronizeDiscoveryCacheFromWorker(update = {}) {
     "enrichmentStartedAt",
     "enrichmentCompletedAt",
     "enrichmentProgressMessage",
-  ]) {
-    if (Object.hasOwn(update, key)) discoveryCache[key] = update[key];
+  ] as const) {
+    if (Object.hasOwn(update, key))
+      (discoveryCache as Partial<Record<keyof DiscoveryCache, unknown>>)[key] = update[key];
   }
 }
 
 const REFRESH_TRACKING_WINDOW_MS = 2 * 60 * 60 * 1000;
 
-export const getDiscoveryRefreshState = (metadata = {}, now = Date.now()) => {
+export const getDiscoveryRefreshState = (metadata: DiscoveryMetadata = {}, now = Date.now()) => {
   const requestedAt = Number(metadata?.refreshRequestedAt) || 0;
   const startedAt = Number(metadata?.refreshStartedAt) || 0;
   const finishedAt = Number(metadata?.refreshFinishedAt) || 0;
@@ -100,13 +103,18 @@ export const getDiscoveryRefreshState = (metadata = {}, now = Date.now()) => {
   };
 };
 
-const updateRefreshMetadata = (namespace, metadata) =>
+const updateRefreshMetadata = (namespace: string | null, metadata: DiscoveryMetadata) =>
   dbOps.updateDiscoveryCache({ metadata }, namespace);
 
-export const markDiscoveryRefreshRequested = (namespace = null, requestedAt = Date.now()) =>
-  updateRefreshMetadata(namespace, { refreshRequestedAt: requestedAt });
+export const markDiscoveryRefreshRequested = (
+  namespace: string | null = null,
+  requestedAt = Date.now(),
+) => updateRefreshMetadata(namespace, { refreshRequestedAt: requestedAt });
 
-export const markDiscoveryRefreshStarted = (namespace = null, startedAt = Date.now()) =>
+export const markDiscoveryRefreshStarted = (
+  namespace: string | null = null,
+  startedAt = Date.now(),
+) =>
   updateRefreshMetadata(namespace, {
     refreshStartedAt: startedAt,
     refreshPhase: null,
@@ -114,15 +122,21 @@ export const markDiscoveryRefreshStarted = (namespace = null, startedAt = Date.n
     refreshMessage: null,
   });
 
-export const markDiscoveryRefreshFinished = (namespace = null, { error = null } = {}) =>
+export const markDiscoveryRefreshFinished = (
+  namespace: string | null = null,
+  { error = null }: { error?: string | null } = {},
+) =>
   updateRefreshMetadata(namespace, {
     refreshFinishedAt: Date.now(),
     refreshError: error || null,
   });
 
 export const markInterruptedDiscoveryRefresh = (
-  error,
-  { namespace = null, clearPending = false } = {},
+  error: string,
+  {
+    namespace = null,
+    clearPending = false,
+  }: { namespace?: string | null; clearPending?: boolean } = {},
 ) => {
   const state = getDiscoveryRefreshState(dbOps.getDiscoveryRefreshSource(namespace).metadata);
   if (!state.running && !(clearPending && state.pending)) return false;
@@ -131,7 +145,12 @@ export const markInterruptedDiscoveryRefresh = (
   return true;
 };
 
-export const saveDiscoveryRefreshProgress = (namespace, phase, message, progress) => {
+export const saveDiscoveryRefreshProgress = (
+  namespace: string | null,
+  phase: string,
+  message: string,
+  progress: number,
+) => {
   const normalizedProgress = Math.max(0, Math.min(100, Math.round(Number(progress) || 0)));
   updateRefreshMetadata(namespace, {
     refreshPhase: phase || null,
@@ -141,7 +160,12 @@ export const saveDiscoveryRefreshProgress = (namespace, phase, message, progress
   return normalizedProgress;
 };
 
-export const recordDiscoveryUpdateProgress = (phase, progressMessage, progress, extra = {}) => {
+export const recordDiscoveryUpdateProgress = (
+  phase: string,
+  progressMessage: string,
+  progress: number,
+  extra: { provider?: string } = {},
+) => {
   websocketService.emitDiscoveryUpdate({
     phase: phase || null,
     progress: saveDiscoveryRefreshProgress(null, phase, progressMessage, progress),

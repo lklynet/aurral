@@ -9,10 +9,21 @@ import {
 import { websocketService } from "../websocketService.ts";
 import { getDiscoveryAutoRefreshHours, getDiscoveryCache } from "./index.ts";
 import { markDiscoveryRefreshRequested, markInterruptedDiscoveryRefresh } from "./persistence.ts";
+import type { HonkerLiveRow, HonkerLocksRow } from "../../db/rows.ts";
+
+type EnqueueDiscoveryRefreshOptions = {
+  force?: boolean;
+  reason?: string;
+  runAt?: number | null;
+  delaySeconds?: number | null;
+  scheduleOnly?: boolean;
+};
+
+type QueuedDiscoveryPayload = { reason?: string; scheduleOnly?: boolean };
 
 const DISCOVERY_GLOBAL_REFRESH_LOCK = "discovery-global-refresh";
 
-function isWorkerAlive(workerId) {
+function isWorkerAlive(workerId: string | null) {
   const match = /^aurral-(\d+)$/.exec(String(workerId || ""));
   if (!match) return true;
   try {
@@ -25,18 +36,18 @@ function isWorkerAlive(workerId) {
 
 export function recoverDeadDiscoveryRefresh() {
   const honker = getHonkerDb();
-  let liveRows;
-  let lockRows;
+  let liveRows: Pick<HonkerLiveRow, "id" | "worker_id">[];
+  let lockRows: Pick<HonkerLocksRow, "owner">[];
   try {
     liveRows = honker.query(`
       SELECT id, worker_id
       FROM _honker_live
       WHERE queue = 'discovery-refresh'
         AND state = 'processing'
-    `);
+    `) as typeof liveRows;
     lockRows = honker.query("SELECT owner FROM _honker_locks WHERE name = ?", [
       DISCOVERY_GLOBAL_REFRESH_LOCK,
-    ]);
+    ]) as typeof lockRows;
   } catch {
     return false;
   }
@@ -70,7 +81,7 @@ export function recoverDeadDiscoveryRefresh() {
   return true;
 }
 
-function parseQueuedPayload(payload) {
+function parseQueuedPayload(payload: string): QueuedDiscoveryPayload {
   try {
     return JSON.parse(String(payload || "{}"));
   } catch {
@@ -90,7 +101,7 @@ function getPendingScheduledDiscoveryRefresh() {
         ORDER BY run_at ASC, id ASC
       `,
       [Math.floor(Date.now() / 1000)],
-    );
+    ) as Pick<HonkerLiveRow, "id" | "payload" | "run_at">[];
     return (
       rows.find((row) => {
         const payload = parseQueuedPayload(row.payload);
@@ -115,7 +126,7 @@ export function pruneDuplicateScheduledDiscoveryRefreshes() {
         ORDER BY run_at ASC, id ASC
       `,
       [now],
-    );
+    ) as Pick<HonkerLiveRow, "id" | "payload" | "run_at">[];
     const scheduled = rows.filter((row) => {
       const payload = parseQueuedPayload(row.payload);
       return payload?.scheduleOnly === true && String(payload?.reason || "") === "scheduled";
@@ -137,7 +148,7 @@ function hasQueuedDiscoveryRefresh() {
   const now = Math.floor(Date.now() / 1000);
   const rows = getHonkerDb().query(
     "SELECT payload, state, run_at FROM _honker_live WHERE queue = 'discovery-refresh' AND state IN ('pending', 'processing')",
-  );
+  ) as Pick<HonkerLiveRow, "payload" | "state" | "run_at">[];
   return rows.some((row) => {
     if (row.state === "processing") return true;
     const payload = parseQueuedPayload(row.payload);
@@ -159,7 +170,7 @@ export function discoveryNeedsRefresh(cache = dbOps.getDiscoveryCache()) {
   return !hasRecommendations && !hasGlobalTop;
 }
 
-function markDiscoveryQueued(reason) {
+function markDiscoveryQueued(reason: string) {
   markDiscoveryRefreshRequested();
   websocketService.emitDiscoveryUpdate({
     isUpdating: true,
@@ -170,7 +181,7 @@ function markDiscoveryQueued(reason) {
   });
 }
 
-export function enqueueDiscoveryRefresh(options = {}) {
+export function enqueueDiscoveryRefresh(options: EnqueueDiscoveryRefreshOptions = {}) {
   const {
     force = false,
     reason = "manual",
@@ -225,7 +236,9 @@ export function scheduleNextDiscoveryRefresh() {
   });
 }
 
-export async function enqueueDiscoveryRefreshIfNeeded(options = {}) {
+export async function enqueueDiscoveryRefreshIfNeeded(
+  options: EnqueueDiscoveryRefreshOptions = {},
+) {
   if (!options.force && !discoveryNeedsRefresh()) {
     return { enqueued: false, reason: "fresh" };
   }

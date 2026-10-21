@@ -10,11 +10,11 @@ interface RawDiscoveryFeedbackEntry {
   sourceContext?: unknown;
   tagContext?: unknown;
   seedContext?: unknown;
-  createdAt?: unknown;
-  expiresAt?: unknown;
+  createdAt?: string | number | null;
+  expiresAt?: string | number | null;
 }
 
-const getDiscoveryFeedbackKey = (userId = "global") =>
+const getDiscoveryFeedbackKey = (userId: string | number = "global") =>
   `discoveryFeedback:${String(userId || "global").trim()}`;
 
 const normalizeFeedbackAction = (value: unknown) => {
@@ -32,8 +32,8 @@ export interface DiscoveryFeedbackEntry {
   sourceContext: string | null;
   tagContext: string[];
   seedContext: string[];
-  createdAt: unknown;
-  expiresAt: unknown;
+  createdAt: string | number | null;
+  expiresAt: string | number | null;
 }
 
 const normalizeFeedbackList = (
@@ -59,12 +59,15 @@ const normalizeFeedbackList = (
       return Number.isFinite(time) ? time > Date.now() : true;
     });
 
-export const getDiscoveryFeedback = (userId = "global") =>
+export const getDiscoveryFeedback = (userId: string | number = "global") =>
   normalizeFeedbackList(
     dbOps.getJSONSetting<RawDiscoveryFeedbackEntry[]>(getDiscoveryFeedbackKey(userId)),
   );
 
-export const getBlockedArtistKeys = (userId = "global", feedback = getDiscoveryFeedback(userId)) =>
+export const getBlockedArtistKeys = (
+  userId: string | number = "global",
+  feedback = getDiscoveryFeedback(userId),
+) =>
   buildArtistMatchKeySet(
     feedback
       .filter((entry) => entry.action === "block_artist")

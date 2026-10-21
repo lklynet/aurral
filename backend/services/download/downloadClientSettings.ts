@@ -34,12 +34,12 @@ export function getDownloadClientSettings() {
   return structuredClone(definitions);
 }
 
-export function getDownloadClient(key) {
+export function getDownloadClient(key: string | null) {
   downloadClientRegistry.updateConfig(dbOps.getSettings()?.integrations || {});
   return downloadClientRegistry.get(key);
 }
 
-export async function testDownloadClient(key, config = {}) {
+export async function testDownloadClient(key: string, config: Record<string, unknown> = {}) {
   const client = factories[key]?.();
   if (!client) throw new Error(`Unknown download client: ${key}`);
   client.updateConfig(config);

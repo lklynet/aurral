@@ -1,11 +1,19 @@
 import { dbOps } from "../../db/helpers/index.ts";
 import { getMusicDataSourceName } from "../musicDataSource/index.ts";
 import { getDiscoveryAutoRefreshHours, getDiscoveryMode } from "./helpers.ts";
-import { getBlockedArtistKeys, getDiscoveryFeedback } from "./feedback.ts";
+import {
+  getBlockedArtistKeys,
+  getDiscoveryFeedback,
+  type DiscoveryFeedbackEntry,
+} from "./feedback.ts";
 import { getDiscoveryCache, getDiscoveryRefreshState } from "./persistence.ts";
 import { getUserDiscoveryNamespace, requestUserDiscoveryRefresh } from "./provider.ts";
-import { serveRecommendations, withArtistRouteId } from "./recommendationPipeline.ts";
-import { getLibraryArtistKeys, matchesArtistKeys } from "./artistKeys.ts";
+import {
+  serveRecommendations,
+  withArtistRouteId,
+  type DiscoveryRecommendation,
+} from "./recommendationPipeline.ts";
+import { getLibraryArtistKeys, matchesArtistKeys, type ArtistMatchFields } from "./artistKeys.ts";
 
 const FAILED_REFRESH_BACKOFF_MS = 15 * 60 * 1000;
 const servedRecommendationsByUser = new Map();
@@ -17,6 +25,18 @@ const getServedRecommendations = ({
   discoveryMode,
   library,
   isVisible,
+}: {
+  userId: string | number;
+  source: {
+    namespace: string | null;
+    lastUpdated?: string | null;
+    discoveryRunId?: string | null;
+    recommendations?: DiscoveryRecommendation[];
+  };
+  feedback: DiscoveryFeedbackEntry[];
+  discoveryMode: string;
+  library: ReturnType<typeof getLibraryArtistKeys>;
+  isVisible: (artist: ArtistMatchFields) => boolean;
 }) => {
   const key = [
     source.namespace,
@@ -36,7 +56,10 @@ const getServedRecommendations = ({
   return recommendations;
 };
 
-const ensureUserRefresh = (userId, userCache) => {
+const ensureUserRefresh = (
+  userId: number | null,
+  userCache: ReturnType<typeof getDiscoveryCache>,
+) => {
   const refreshState = getDiscoveryRefreshState(userCache.metadata);
   if (refreshState.pending || refreshState.running) return;
   const lastUpdatedMs = Date.parse(userCache.lastUpdated || "") || 0;
@@ -49,7 +72,9 @@ const ensureUserRefresh = (userId, userCache) => {
   });
 };
 
-const describeActiveRefresh = (global, user) => {
+type RefreshState = ReturnType<typeof getDiscoveryRefreshState>;
+
+const describeActiveRefresh = (global: RefreshState, user: RefreshState) => {
   if (global.running) {
     return {
       updatePhase: global.phase || "starting",
@@ -81,7 +106,7 @@ const describeActiveRefresh = (global, user) => {
   return null;
 };
 
-export function getDiscoveryStatus(userId) {
+export function getDiscoveryStatus(userId: number | null) {
   const globalSource = dbOps.getDiscoveryRefreshSource();
   const userSource =
     userId != null ? dbOps.getDiscoveryRefreshSource(getUserDiscoveryNamespace(userId)) : null;
@@ -99,7 +124,7 @@ export function getDiscoveryStatus(userId) {
   };
 }
 
-export function getUserDiscovery(userId, limit = 50, offset = 0) {
+export function getUserDiscovery(userId: number | null, limit = 50, offset = 0) {
   const globalCache = getDiscoveryCache();
   const namespace = userId != null ? getUserDiscoveryNamespace(userId) : null;
   const userCache = namespace ? dbOps.getDiscoveryCache(namespace) : null;
@@ -114,7 +139,7 @@ export function getUserDiscovery(userId, limit = 50, offset = 0) {
   const blockedKeys = getBlockedArtistKeys(feedbackUserId, feedback);
   const library = getLibraryArtistKeys();
   const discoveryMode = getDiscoveryMode();
-  const isVisible = (artist) =>
+  const isVisible = (artist: ArtistMatchFields) =>
     !matchesArtistKeys(artist, library.keys) && !matchesArtistKeys(artist, blockedKeys);
 
   const recommendations = getServedRecommendations({

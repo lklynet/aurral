@@ -1,27 +1,37 @@
 import { buildWeightedTopList, canInheritTagsFromSeeds, getSeedTagMapKey } from "./helpers.ts";
 import { getArtistTagLists } from "../musicDataSource/index.ts";
 import { isKnownGenre } from "../musicGenres.ts";
-import { applyHydratedCandidateTags } from "./recommendationPipeline.ts";
+import {
+  applyHydratedCandidateTags,
+  type DiscoveryRecommendation,
+  type DiscoverySeed,
+} from "./recommendationPipeline.ts";
+import type { ArtistMatchFields } from "./artistKeys.ts";
+
+export type SourceHealth = { success: number; failure: number };
+type ArtistTag = { name: string; count: number };
 
 const TAGS_PER_ARTIST = 15;
 
-const toArtistRef = (artist) => ({
+const toArtistRef = (artist: ArtistMatchFields) => ({
   mbid: artist?.mbid || artist?.id || null,
   name: String(artist?.artistName || artist?.name || "").trim(),
 });
 
-const toGenreTags = (tags) =>
+const toGenreTags = (tags: ArtistTag[]) =>
   tags
     .map((tag) => ({ name: tag.name.replace(/-/g, " "), count: tag.count }))
     .filter((tag) => tag.name && isKnownGenre(tag.name))
     .slice(0, TAGS_PER_ARTIST);
 
-export const fetchArtistGenreTags = async (artists, sourceHealth) =>
-  (await getArtistTagLists(artists.map(toArtistRef), { health: sourceHealth })).map(toGenreTags);
+export const fetchArtistGenreTags = async (
+  artists: ArtistMatchFields[],
+  sourceHealth: SourceHealth,
+) => (await getArtistTagLists(artists.map(toArtistRef), { health: sourceHealth })).map(toGenreTags);
 
-export const collectSeedTags = async (seeds, sourceHealth) => {
-  const tagWeights = new Map();
-  const tagMap = new Map();
+export const collectSeedTags = async (seeds: DiscoverySeed[], sourceHealth: SourceHealth) => {
+  const tagWeights = new Map<string, number>();
+  const tagMap = new Map<string, string[]>();
   const tagLists = await fetchArtistGenreTags(seeds, sourceHealth);
 
   seeds.forEach((seed, index) => {
@@ -43,8 +53,8 @@ export const collectSeedTags = async (seeds, sourceHealth) => {
   return { tagMap, tagWeights };
 };
 
-export const buildTagProfile = (tagWeights = new Map()) => {
-  const profileTagWeights = new Map();
+export const buildTagProfile = (tagWeights: Map<string, number> = new Map()) => {
+  const profileTagWeights = new Map<string, number>();
   for (const [tag, weight] of tagWeights.entries()) {
     const normalized = String(tag || "")
       .trim()
@@ -64,8 +74,16 @@ export const hydrateRecommendationCandidateTags = async ({
   profileTagWeights,
   limit,
   depth = 1,
+}: {
+  recommendations?: DiscoveryRecommendation[];
+  sourceHealth: SourceHealth;
+  profileTagWeights: Map<string, number>;
+  limit: number;
+  depth?: number;
 }) => {
-  const items = Array.isArray(recommendations) ? [...recommendations] : [];
+  const items: DiscoveryRecommendation[] = Array.isArray(recommendations)
+    ? [...recommendations]
+    : [];
   const hydrationLimit = Math.min(items.length, Math.max(0, Number(limit) || 0));
   const options = { tagAffinityMultiplier: depth >= 2 ? 0.55 : 1 };
   const fetchIndexes = [];

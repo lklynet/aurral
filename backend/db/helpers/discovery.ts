@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import type { DiscoveryCacheRow } from "../rows.ts";
+import type { DiscoveryRecommendation } from "../../services/discovery/recommendationPipeline.ts";
 
 export interface DiscoveryMetadata {
   recommendationQuality?: string | null;
@@ -29,8 +30,8 @@ export interface DiscoveryBasedOn {
 }
 
 export interface DiscoveryCache {
-  recommendations: unknown[];
-  globalTop: unknown[];
+  recommendations: DiscoveryRecommendation[];
+  globalTop: DiscoveryRecommendation[];
   basedOn: DiscoveryBasedOn[];
   topTags: unknown[];
   topGenres: unknown[];
@@ -46,8 +47,8 @@ export interface DiscoveryCache {
 }
 
 export interface DiscoveryCacheUpdate extends DiscoveryMetadata {
-  recommendations?: unknown[] | null;
-  globalTop?: unknown[] | null;
+  recommendations?: DiscoveryRecommendation[] | null;
+  globalTop?: DiscoveryRecommendation[] | null;
   basedOn?: DiscoveryBasedOn[] | null;
   topTags?: unknown[] | null;
   topGenres?: unknown[] | null;
