@@ -728,8 +728,9 @@ export const requestAlbumFromSearch = async (
 ): Promise<RequestAlbumFromSearchResponse> => {
   const started = { albumMbid: payload?.albumMbid, artistMbid: payload?.artistMbid };
   const previous = queryClient.getQueryData(queryKeys.activeDownloads);
-  const optimistic = queryClient.setQueryData<ActiveDownloads>(queryKeys.activeDownloads, (current) =>
-    addActiveDownload(current, started),
+  const optimistic = queryClient.setQueryData<ActiveDownloads>(
+    queryKeys.activeDownloads,
+    (current) => addActiveDownload(current, started),
   );
   let result: RequestAlbumFromSearchResponse;
   try {

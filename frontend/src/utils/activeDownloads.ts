@@ -103,7 +103,7 @@ export const addActiveDownload = (
     albumMbid,
     artistMbid,
     track,
-  }: { albumMbid?: string; artistMbid?: string; track?: ActiveDownloadTrack } = {},
+  }: { albumMbid?: string | null; artistMbid?: string | null; track?: ActiveDownloadTrack } = {},
 ) => {
   const active = normalizeActiveDownloads(data);
   return {

@@ -287,8 +287,8 @@ const getActiveLidarrAlbums = async () => {
 };
 
 export const getActiveLibraryDownloads = async () => {
-  const albums = new Set();
-  const artists = new Set();
+  const albums = new Set<string>();
+  const artists = new Set<string>();
   const tracks = [];
   for (const job of downloadTracker.getActiveByPlaylistType("library")) {
     tracks.push({

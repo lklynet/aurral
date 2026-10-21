@@ -149,20 +149,6 @@ export interface LibraryAlbumMetadata {
   monitored?: boolean | null;
 }
 
-export interface LibraryTrackFile {
-  id: number;
-  albumId: number | null;
-  source: string;
-  path: string;
-  format: string | null;
-  size: number;
-  mtimeMs: number | null;
-  durationMs: number | null;
-  quality: unknown;
-  available: boolean;
-  createdAt: number;
-}
-
 export interface LibraryTrackAlbumRef {
   albumId: number;
   discNumber: number;
@@ -215,7 +201,43 @@ export interface LibraryTrack {
   monitorMode?: string | null;
 }
 
-export type LibraryArtist = NonNullable<ReturnType<typeof getLibraryArtistPage>["artists"][number]>;
+interface LibraryRowArtist {
+  id: number;
+  canonicalId: string;
+  identityKey: string;
+  mbid: string | null;
+  name: string;
+  sortName: string | null;
+  metadata: Record<string, unknown> | null;
+  providerId: string | number | null;
+  monitored: boolean;
+  monitorOption: string;
+  albumIds: number[];
+  sources: string[];
+  source: string | null;
+  available: boolean;
+  managedBy: string | null;
+  monitorMode: string | null;
+}
+
+interface LibraryAlbumTrackArtist {
+  id: number;
+  identityKey: string;
+  mbid: string | null;
+  name: string;
+  sortName: string | null;
+  metadata: Record<string, unknown> | null;
+  albumIds: number[];
+  managedBy: string | null;
+  monitorMode: string | null;
+  sources: string[];
+  available: boolean;
+}
+
+export type LibraryArtist =
+  | NonNullable<ReturnType<typeof getLibraryArtistPage>["artists"][number]>
+  | LibraryRowArtist
+  | LibraryAlbumTrackArtist;
 export type LibraryGenre = ReturnType<typeof computeLibraryGenreStats>[number];
 
 function buildLibraryFromRows(rows) {

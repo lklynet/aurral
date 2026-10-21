@@ -20,8 +20,8 @@ export interface DiscoveryFeedbackEntry {
   sourceContext: string | null;
   tagContext: string[];
   seedContext: string[];
-  createdAt: string | number | null;
-  expiresAt: string | number | null;
+  createdAt: unknown;
+  expiresAt: unknown;
 }
 
 const normalizeFeedbackList = (value): DiscoveryFeedbackEntry[] =>
