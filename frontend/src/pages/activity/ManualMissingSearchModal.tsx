@@ -10,7 +10,9 @@ import {
 } from "../../utils/api/endpoints/playlists.ts";
 import { queryKeys } from "../../queryClient.ts";
 
-const errorMessage = (error, fallback) =>
+export type ManualSearchJob = { id: string; trackName?: string | null; artistName?: string | null };
+
+const errorMessage = (error, fallback: string) =>
   error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback;
 
 export default function ManualMissingSearchModal({
@@ -19,6 +21,12 @@ export default function ManualMissingSearchModal({
   playlistId = null,
   onClose,
   onQueued,
+}: {
+  job: ManualSearchJob | null;
+  mode?: "missing" | "replacement";
+  playlistId?: string | null;
+  onClose: () => void;
+  onQueued?: (job: ManualSearchJob) => void;
 }) {
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [searching, setSearching] = useState(false);
@@ -31,7 +39,7 @@ export default function ManualMissingSearchModal({
   const searchRequestRef = useRef(0);
   const sourcesQuery = useQuery({
     queryKey: queryKeys.manualMissingSearchSources(job?.id, mode, playlistId),
-    queryFn: ({ signal }) => getManualMissingSearchSources(job.id, { mode, playlistId, signal }),
+    queryFn: ({ signal }) => getManualMissingSearchSources(job!.id, { mode, playlistId, signal }),
     enabled: Boolean(job?.id),
     select: (data) => (Array.isArray(data?.sources) ? data.sources : []),
   });
@@ -195,7 +203,7 @@ export default function ManualMissingSearchModal({
             {resultCount} result{resultCount === 1 ? "" : "s"}
           </legend>
           <div className="manual-search-results__list">
-            {search.results.map((result) => (
+            {search!.results.map((result) => (
               <label
                 className={`manual-search-result${selectedId === result.id ? " is-selected" : ""}`}
                 key={result.id}

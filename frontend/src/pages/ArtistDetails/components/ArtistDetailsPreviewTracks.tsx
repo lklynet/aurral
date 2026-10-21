@@ -1,9 +1,11 @@
 import { useMemo } from "react";
 import { ArtistDetailsVideos } from "./ArtistDetailsVideos";
 import { TrackPlaylistMenu } from "./TrackPlaylistMenu";
+import type { PlaylistSelection } from "./TrackPlaylistMenu";
 import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
-
+import type { ArtistPreviewTrack } from "../hooks/usePreviewPlayer";
+import type { useStaticPlaylists } from "../../../hooks/useStaticPlaylists";
 import { Pause, Play } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import TooltipButton from "../../../components/TooltipButton";
@@ -25,6 +27,24 @@ export function ArtistDetailsPreviewTracks({
   playlistError,
   getDefaultPlaylistName,
   onLoadPlaylists,
+}: {
+  mbid: string | undefined;
+  artistName: string;
+  loadingPreview: boolean;
+  previewTracks: ArtistPreviewTrack[];
+  playingPreviewId: string | number | null;
+  isArtistPlaybackActive: boolean;
+  handlePreviewPlay: (track: ArtistPreviewTrack) => void;
+  onAddTrackToPlaylist?: (track: ArtistPreviewTrack, target: PlaylistSelection) => void;
+  onAddTrackToLibrary?: (track: ArtistPreviewTrack, releaseGroup: null, trackKey: string) => void;
+  libraryTrackSavingKeys: ReadonlySet<string> | undefined;
+  resolveMembershipTrack?: (track: ArtistPreviewTrack) => unknown;
+  playlists: ReturnType<typeof useStaticPlaylists>["staticPlaylists"];
+  playlistsLoading: boolean;
+  playlistSavingKey: string;
+  playlistError: string;
+  getDefaultPlaylistName?: (track: ArtistPreviewTrack) => string;
+  onLoadPlaylists: () => void;
 }) {
   const popularTracks = useMemo(() => (previewTracks || []).slice(0, 6), [previewTracks]);
   const getQueueItems = useQueueTrackActions();
@@ -95,7 +115,7 @@ export function ArtistDetailsPreviewTracks({
                         }
                         onSelect={
                           onAddTrackToPlaylist
-                            ? (target) => onAddTrackToPlaylist(track, target)
+                            ? (target: PlaylistSelection) => onAddTrackToPlaylist(track, target)
                             : undefined
                         }
                       />

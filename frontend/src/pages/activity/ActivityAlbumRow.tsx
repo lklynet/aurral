@@ -1,8 +1,21 @@
 import { useEffect, useId, useState } from "react";
-import ActivityRequestRow from "./ActivityRequestRow";
-import { matchesActivitySearch } from "./activityListUtils";
+import ActivityRequestRow, { type ActivityRequestRowProps } from "./ActivityRequestRow";
+import { matchesActivitySearch, type ActivityRequest } from "./activityListUtils";
+import type { AurralAlbumGrab } from "../../../../backend/services/aurralHistoryService.ts";
 
-export default function ActivityAlbumRow({ request, filterValue, ...actions }) {
+type ActivityAlbumRowProps = Omit<
+  ActivityRequestRowProps,
+  "request" | "onToggle" | "expanded" | "tracksId"
+> & {
+  request: ActivityRequest & { children: ActivityRequest[]; albumGrab: AurralAlbumGrab };
+  filterValue: string;
+};
+
+export default function ActivityAlbumRow({
+  request,
+  filterValue,
+  ...actions
+}: ActivityAlbumRowProps) {
   const [expanded, setExpanded] = useState(false);
   const tracksId = useId();
   const hasTrackMatch =

@@ -7,13 +7,20 @@ import ReleaseStatusCheck from "./ReleaseStatusCheck";
 import AddActionButton from "../../../components/AddActionButton";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { getReleaseGroupLink } from "../../../utils/searchNavigation";
-import { getReleaseGroupCoverUrl, getReleaseMetric, getReleaseYear } from "../utils";
+import {
+  getReleaseGroupCoverUrl,
+  getReleaseMetric,
+  getReleaseYear,
+  type ReleaseGroup,
+} from "../utils";
+import type { ArtistDetailsResponse } from "../../../../../backend/routes/artists/handlers/details.ts";
+import type { useArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary";
 import { getAlbumAddAction } from "../../../utils/albumAddAction";
 import { useResponsiveReleaseLimit } from "../hooks/useResponsiveReleaseLimit";
 import Tooltip from "../../../components/Tooltip";
 import RouteLink, { OptionalLink } from "../../../components/RouteLink";
 
-const sortLatest = (items) =>
+const sortLatest = (items: ReleaseGroup[]) =>
   [...items].sort((a, b) =>
     String(b["first-release-date"] || "").localeCompare(String(a["first-release-date"] || "")),
   );
@@ -32,6 +39,20 @@ export function ArtistDetailsAppearsOn({
   artistName,
   onVisibleCoverIdsChange,
   viewAllLink,
+}: {
+  artist: Partial<ArtistDetailsResponse>;
+  loadingAppearsOn?: boolean;
+  albumCovers: Record<string, string | undefined>;
+  fulfilledCoverIds: ReadonlySet<unknown> | undefined;
+  artistCoverImage: string | null | undefined;
+  getAlbumStatus: ReturnType<typeof useArtistDetailsLibrary>["getAlbumStatus"];
+  canAddAlbum: boolean;
+  handleRequestAlbum: ReturnType<typeof useArtistDetailsLibrary>["handleRequestAlbum"];
+  libraryDestination: Parameters<typeof getAlbumAddAction>[1];
+  requestingAlbum: string | null;
+  artistName: string;
+  onVisibleCoverIdsChange?: (ids: string[]) => void;
+  viewAllLink?: { to: string; state?: object } | null;
 }) {
   const { isAlbumDownloading } = useActiveDownloads();
   const [releaseGridRef, previewLimit] = useResponsiveReleaseLimit();
@@ -45,12 +66,12 @@ export function ArtistDetailsAppearsOn({
     onVisibleCoverIdsChange?.(visibleReleaseGroups.map((item) => item.id).filter(Boolean));
   }, [onVisibleCoverIdsChange, visibleReleaseGroups]);
 
-  const coverOptions = (releaseGroup) => ({
+  const coverOptions = (releaseGroup: ReleaseGroup) => ({
     artistFallback: artistCoverImage,
     resolved: fulfilledCoverIds?.has(releaseGroup.id),
   });
 
-  const releaseLink = (releaseGroup, coverUrl) =>
+  const releaseLink = (releaseGroup: ReleaseGroup, coverUrl: string) =>
     getReleaseGroupLink(releaseGroup, {
       artistMbid: artist?.id,
       artistName: artistName || artist?.name || "",

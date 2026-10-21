@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type RefObject } from "react";
 import {
   lookupArtistsInLibraryBatch,
   readLibraryLookupCache,
 } from "../../../utils/api/endpoints/library.ts";
 import { getArtistFeedbackFlags } from "../../../utils/discoveryFeedback";
-import { getArtistRecordId } from "../../../utils/artistTaste";
+import { getArtistRecordId, type ArtistFeedbackAction } from "../../../utils/artistTaste";
+import type { SimilarArtistsResponse } from "../../../../../backend/routes/artists/handlers/similar.ts";
+import type { LookupArtistsInLibraryBatchResponse } from "../../../../../backend/routes/library/handlers/misc.ts";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
@@ -13,14 +15,23 @@ import ArtistImage from "../../../components/ArtistImage";
 import { ArtistContextMenu } from "../../../components/ArtistContextMenu";
 import TooltipButton from "../../../components/TooltipButton";
 import RouteLink from "../../../components/RouteLink";
+
+type SimilarArtist = SimilarArtistsResponse["artists"][number];
+
 export function ArtistDetailsSimilar({
   loadingSimilar,
   similarArtists,
   similarArtistsScrollRef,
   onArtistFeedback,
   artistFeedbackLookup,
+}: {
+  loadingSimilar: boolean;
+  similarArtists: SimilarArtist[];
+  similarArtistsScrollRef: RefObject<HTMLDivElement | null>;
+  onArtistFeedback: (artist: SimilarArtist, action: ArtistFeedbackAction) => void;
+  artistFeedbackLookup: Map<string, Set<string>> | null | undefined;
 }) {
-  const [libraryLookup, setLibraryLookup] = useState({});
+  const [libraryLookup, setLibraryLookup] = useState<LookupArtistsInLibraryBatchResponse>({});
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const artistIds = useMemo(
@@ -37,7 +48,7 @@ export function ArtistDetailsSimilar({
   }, [similarArtistsScrollRef]);
 
   const scrollByAmount = useCallback(
-    (direction) => {
+    (direction: number) => {
       const node = similarArtistsScrollRef?.current;
       if (!node) return;
       const width = node.clientWidth;

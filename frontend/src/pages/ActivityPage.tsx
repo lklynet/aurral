@@ -61,8 +61,8 @@ function ActivityPage() {
   const [localError, setLocalError] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(ACTIVITY_PAGE_SIZE);
   const [reSearchingAlbumIds, setReSearchingAlbumIds] = useState<Record<string, boolean>>({});
-  const [reviewingJobs, setReviewingJobs] = useState<Record<string, string>>({});
-  const [controllingJobs, setControllingJobs] = useState<Record<string, string>>({});
+  const [reviewingJobs, setReviewingJobs] = useState<Record<string, "approve" | "deny">>({});
+  const [controllingJobs, setControllingJobs] = useState<Record<string, "cancel" | "retry">>({});
   const [jobErrors, setJobErrors] = useState<Record<string, string>>({});
   const [filterValue, setFilterValue] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -286,7 +286,7 @@ function ActivityPage() {
     }
   };
 
-  const reviewBlockedJob = async (jobId: string | null | undefined, action: string) => {
+  const reviewBlockedJob = async (jobId: string | null | undefined, action: "approve" | "deny") => {
     if (!jobId || reviewingJobs[jobId]) return;
     setReviewingJobs((prev) => ({ ...prev, [jobId]: action }));
     try {
@@ -308,7 +308,10 @@ function ActivityPage() {
     }
   };
 
-  const controlDownloadJob = async (jobId: string | null | undefined, action: string) => {
+  const controlDownloadJob = async (
+    jobId: string | null | undefined,
+    action: "cancel" | "retry",
+  ) => {
     if (!jobId || controllingJobs[jobId]) return;
     setControllingJobs((prev) => ({ ...prev, [jobId]: action }));
     try {

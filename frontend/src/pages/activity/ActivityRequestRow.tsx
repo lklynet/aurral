@@ -14,11 +14,36 @@ import {
 } from "lucide-react";
 import TooltipButton from "../../components/TooltipButton";
 import { DotLoader } from "../../components/DotLoader";
-import { formatReviewReasonSummary, formatTimelineTime } from "./activityListUtils";
+import {
+  formatReviewReasonSummary,
+  formatTimelineTime,
+  type ActivityRequest,
+} from "./activityListUtils";
 import Tooltip from "../../components/Tooltip";
 import RouteLink from "../../components/RouteLink";
+import type { QueueEntry } from "../../utils/audioQueue.ts";
 
-function getStatusMeta(request) {
+export type ActivityRequestRowProps = {
+  request: ActivityRequest;
+  reSearchingAlbumIds: Record<string, boolean>;
+  reviewingJobs: Record<string, "approve" | "deny">;
+  controllingJobs: Record<string, "cancel" | "retry">;
+  jobErrors: Record<string, string>;
+  currentTrack: QueueEntry | null;
+  isPlaying: boolean;
+  onReSearch?: (request: ActivityRequest) => void;
+  onApprove: (jobId: string | null | undefined) => void;
+  onDeny: (jobId: string | null | undefined) => void;
+  onCancel: (jobId: string | null | undefined) => void;
+  onRetry: (jobId: string | null | undefined) => void;
+  onPreview: (request: ActivityRequest) => void;
+  onInfo?: (request: ActivityRequest) => void;
+  onToggle?: () => void;
+  expanded?: boolean;
+  tracksId?: string;
+};
+
+function getStatusMeta(request: ActivityRequest) {
   if (request.status === "completed" || request.status === "available") {
     return { icon: CheckCircle2, label: request.statusLabel || "Done", tone: "success" };
   }
@@ -41,7 +66,7 @@ function getStatusMeta(request) {
   return { icon: Clock, label: request.statusLabel || "Requested", tone: "pending" };
 }
 
-function getRequestTitle(request) {
+function getRequestTitle(request: ActivityRequest) {
   return (
     String(request.trackName || "").trim() ||
     String(request.albumName || "").trim() ||
@@ -51,7 +76,7 @@ function getRequestTitle(request) {
   );
 }
 
-function getRequestMeta(request, title) {
+function getRequestMeta(request: ActivityRequest, title: string) {
   const artist = String(request.artistName || "").trim();
   const album = String(request.albumName || "").trim();
   const isTrack = Boolean(request.trackName);
@@ -77,7 +102,7 @@ export default function ActivityRequestRow({
   onToggle,
   expanded,
   tracksId,
-}) {
+}: ActivityRequestRowProps) {
   const isSlskd = request.source === "slskd";
   const isUsenet = request.source === "nzbget" || request.source === "sabnzbd";
   const isYtdlp = request.source === "ytdlp";
@@ -109,7 +134,7 @@ export default function ActivityRequestRow({
             }
           : null;
   const status = getStatusMeta(request);
-  const StatusIcon = status.icon;
+  const StatusIcon = status.icon!;
   const timelineAt = request.completedAt || request.requestedAt;
   const timelineTime = formatTimelineTime(timelineAt);
   const canReSearch =
@@ -250,7 +275,7 @@ export default function ActivityRequestRow({
         {canReSearch ? (
           <TooltipButton
             className="native-library-icon-button"
-            onClick={() => onReSearch(request)}
+            onClick={() => onReSearch!(request)}
             disabled={isReSearching}
             label={isReSearching ? "Re-searching" : "Re-search"}
           >

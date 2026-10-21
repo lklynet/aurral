@@ -53,7 +53,7 @@ import Tooltip from "../../components/Tooltip";
 import TooltipButton from "../../components/TooltipButton";
 import { useShareAction } from "../../hooks/useShareAction";
 import CrossViewLink from "../../components/CrossViewLink";
-const buildReleaseFromState = (releaseMbid, locationState) => {
+const buildReleaseFromState = (releaseMbid: string | undefined, locationState) => {
   const focusRelease = locationState?.focusReleaseGroup || {};
   const title = String(focusRelease.title || "").trim();
   return {
@@ -84,7 +84,10 @@ function ReleasePage() {
   const { showSuccess, showError, showInfo } = useToast();
   const libraryDestination = useLibraryDestination();
   const { isAlbumDownloading } = useActiveDownloads();
-  const [ownerConflictState, setOwnerConflictState] = useState(null);
+  const [ownerConflictState, setOwnerConflictState] = useState<{
+    releaseMbid: string | undefined;
+    conflict: NonNullable<ReturnType<typeof settleLibraryOwnerConflict>>;
+  } | null>(null);
   const ownerConflict =
     ownerConflictState?.releaseMbid === releaseMbid ? ownerConflictState.conflict : null;
   const { hasPermission } = useAuth();

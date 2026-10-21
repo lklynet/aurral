@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Ban,
   MoreHorizontal,
@@ -16,6 +16,8 @@ import TooltipButton from "../../../components/TooltipButton";
 import Tooltip from "../../../components/Tooltip";
 import { ArtistMonitoringButtons } from "../../../components/ArtistMonitoringButtons";
 import { useShareAction } from "../../../hooks/useShareAction";
+import type { ArtistFeedbackAction } from "../../../utils/artistTaste.ts";
+import type { useArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary";
 
 export function ArtistDetailsActionBar({
   library,
@@ -34,6 +36,29 @@ export function ArtistDetailsActionBar({
   onTasteFeedback,
   tasteFeedbackUsed = {},
   tasteActionPending = null,
+}: {
+  library: Pick<
+    ReturnType<typeof useArtistDetailsLibrary>,
+    | "handleOpenAddCustomizeModal"
+    | "reloadLibraryState"
+    | "handleRefreshArtist"
+    | "refreshingArtist"
+  >;
+  mbid: string | undefined;
+  artistName?: string;
+  existsInLibrary: boolean;
+  libraryLink?: ReactNode;
+  loadingLibrary: boolean;
+  canChangeMonitoring: boolean;
+  canAddArtist: boolean;
+  canRefreshArtist: boolean;
+  buildingQueue?: boolean;
+  isArtistPlaybackActive: boolean;
+  handlePreviewPlayAll: () => void;
+  onEditIds?: () => void;
+  onTasteFeedback?: (action: ArtistFeedbackAction) => void;
+  tasteFeedbackUsed?: Partial<Record<ArtistFeedbackAction, boolean>>;
+  tasteActionPending?: ArtistFeedbackAction | null;
 }) {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const share = useShareAction();

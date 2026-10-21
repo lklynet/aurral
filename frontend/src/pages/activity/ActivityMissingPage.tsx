@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import type { ApiError } from "../../utils/api/core.ts";
 import {
   AlertCircle,
   ArrowUpCircle,
@@ -35,12 +36,29 @@ import {
   isCutoffUnmetAurralJob,
   isMissingAurralJob,
   sortMissingJobs,
+  type MissingJob,
 } from "./activityMissingUtils.ts";
 import Tooltip from "../../components/Tooltip";
+import type { PlaylistStatus } from "../playlists/playlistStats.ts";
 
 const WANTED_PAGE_SIZE = 25;
 
-const toPlaylistInfo = (status) => {
+type MissingActionState = "working" | "queued";
+
+type MissingPageJob = MissingJob & {
+  id: string;
+  status: string;
+  playlistType: string;
+  artistName?: string | null;
+  albumName?: string | null;
+  error?: string | null;
+  qualityLabel?: string | null;
+  upgradeQueued?: boolean;
+};
+
+type MissingInfoJob = MissingPageJob & { playlistName: string };
+
+const toPlaylistInfo = (status: PlaylistStatus | undefined) => {
   const entries = [
     ...(Array.isArray(status?.flows) ? status.flows : []).map((entry) => ({
       ...entry,
@@ -54,14 +72,19 @@ const toPlaylistInfo = (status) => {
   return new Map(entries.map((entry) => [String(entry.id), entry]));
 };
 
-const toJobDate = (value) => {
+type JobDateInput = string | number | null | undefined;
+
+type PlaylistInfo =
+  ReturnType<typeof toPlaylistInfo> extends Map<string, infer Entry> ? Entry : never;
+
+const toJobDate = (value: JobDateInput) => {
   if (value == null || (typeof value === "string" && !value.trim())) return null;
   const numericValue = Number(value);
   const date = new Date(Number.isFinite(numericValue) ? numericValue : value);
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const formatJobDate = (value) => {
+const formatJobDate = (value: JobDateInput) => {
   const date = toJobDate(value);
   if (!date) return "";
   return formatDateTime(date, {
@@ -72,7 +95,21 @@ const formatJobDate = (value) => {
   });
 };
 
-function MissingJobRow({ job, playlist, actionState, onAction, onInfo, onManualSearch }) {
+function MissingJobRow({
+  job,
+  playlist,
+  actionState,
+  onAction,
+  onInfo,
+  onManualSearch,
+}: {
+  job: MissingPageJob;
+  playlist: PlaylistInfo | undefined;
+  actionState: MissingActionState | "";
+  onAction: (job: MissingPageJob) => void;
+  onInfo: (job: MissingInfoJob) => void;
+  onManualSearch: (job: MissingPageJob) => void;
+}) {
   const isMissing = isMissingAurralJob(job);
   const isWorking = actionState === "working";
   const isQueued = actionState === "queued";
@@ -177,20 +214,20 @@ function MissingJobRow({ job, playlist, actionState, onAction, onInfo, onManualS
 export default function ActivityMissingPage() {
   const [searchParams] = useSearchParams();
   const { showError, showSuccess } = useToast();
-  const [infoJob, setInfoJob] = useState(null);
-  const [manualSearchJob, setManualSearchJob] = useState(null);
-  const [actionStates, setActionStates] = useState({});
+  const [infoJob, setInfoJob] = useState<MissingInfoJob | null>(null);
+  const [manualSearchJob, setManualSearchJob] = useState<MissingPageJob | null>(null);
+  const [actionStates, setActionStates] = useState<Record<string, MissingActionState>>({});
   const [filterValue, setFilterValue] = useState("");
   const [searchingAll, setSearchingAll] = useState(false);
   const [visibleCount, setVisibleCount] = useState(WANTED_PAGE_SIZE);
   const jobsQueryKey = queryKeys.playlistJobs();
-  const jobsQuery = useQuery({
+  const jobsQuery = useQuery<unknown, ApiError>({
     queryKey: jobsQueryKey,
     queryFn: ({ signal }) => getDownloadJobs({ signal }),
     staleTime: 15_000,
   });
   const statusQuery = usePlaylistStatusQuery();
-  const allJobs = useMemo(
+  const allJobs: MissingPageJob[] = useMemo(
     () => (Array.isArray(jobsQuery.data) ? jobsQuery.data : []),
     [jobsQuery.data],
   );
@@ -234,7 +271,7 @@ export default function ActivityMissingPage() {
   useEffect(() => {
     const jobsByKey = new Map(jobs.map((job) => [getMissingJobKey(job), job]));
     setActionStates((current) => {
-      const next = {};
+      const next: Record<string, MissingActionState> = {};
       for (const [id, state] of Object.entries(current)) {
         if (state === "working") next[id] = state;
         else if (jobsByKey.get(id)?.upgradeQueued) next[id] = "queued";
@@ -273,7 +310,7 @@ export default function ActivityMissingPage() {
   const hasActionableJobs = actionableJobs.length > 0;
   const allUpgradesQueued = showingCutoff && hasWantedJobs && !hasActionableJobs;
 
-  const handleAction = async (job) => {
+  const handleAction = async (job: MissingPageJob) => {
     const id = getMissingJobKey(job);
     if (!id || actionStates[id]) return;
     const isMissing = isMissingAurralJob(job);

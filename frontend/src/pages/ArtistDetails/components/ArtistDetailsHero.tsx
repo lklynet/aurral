@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { getArtistHeroImage } from "../utils";
+import { getArtistHeroImage, type ArtistCoverImage } from "../utils";
+import type { ArtistDetailsResponse } from "../../../../../backend/routes/artists/handlers/details.ts";
 import { withImageCacheBust } from "../../../utils/normalizeMediaUrl";
 import Tooltip from "../../../components/Tooltip";
 import RouteLink from "../../../components/RouteLink";
 import { useSharedArtworkStyle } from "../../../navigation/viewTransitions.ts";
 
-const normalizeTagName = (value) => String(value || "").trim();
+const normalizeTagName = (value: string | null | undefined) => String(value || "").trim();
 
-const buildTags = (artist) => {
-  const seen = new Set();
-  const tags = [];
+const buildTags = (artist: Partial<ArtistDetailsResponse>) => {
+  const seen = new Set<string>();
+  const tags: { key: string; name: string }[] = [];
   const source = [
     ...(Array.isArray(artist?.genres) ? artist.genres : []),
     ...(Array.isArray(artist?.tags) ? artist.tags : []),
@@ -25,7 +26,15 @@ const buildTags = (artist) => {
   return tags;
 };
 
-export function ArtistDetailsHero({ artist, coverImages, onCoverError }) {
+export function ArtistDetailsHero({
+  artist,
+  coverImages,
+  onCoverError,
+}: {
+  artist: Partial<ArtistDetailsResponse>;
+  coverImages: readonly ArtistCoverImage[] | null | undefined;
+  onCoverError?: () => void;
+}) {
   const heroImage = getArtistHeroImage(coverImages);
   const [imageFailed, setImageFailed] = useState(false);
   const [retryImage, setRetryImage] = useState("");

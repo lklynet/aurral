@@ -12,7 +12,10 @@ import {
   getReleaseGroupCoverUrl,
   getReleaseMetric,
   getReleaseYear,
+  type ReleaseGroup,
 } from "../utils";
+import type { ArtistDetailsResponse } from "../../../../../backend/routes/artists/handlers/details.ts";
+import type { useArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary";
 import { getAlbumAddAction } from "../../../utils/albumAddAction";
 import { useResponsiveReleaseLimit } from "../hooks/useResponsiveReleaseLimit";
 import Tooltip from "../../../components/Tooltip";
@@ -23,21 +26,27 @@ const viewModes = [
   { value: "albums", label: "Albums" },
   { value: "singles", label: "Singles & EPs" },
   { value: "compilations", label: "Compilations" },
-];
+] as const;
 
-const isCompilation = (releaseGroup) =>
+type ReleaseViewMode = (typeof viewModes)[number]["value"];
+
+const isCompilation = (releaseGroup: ReleaseGroup | null | undefined) =>
   releaseGroup?.["primary-type"] === "Compilation" ||
   (releaseGroup?.["secondary-types"] || []).includes("Compilation");
 
-const isSingleOrEp = (releaseGroup) =>
+const isSingleOrEp = (releaseGroup: ReleaseGroup | null | undefined) =>
   releaseGroup?.["primary-type"] === "Single" || releaseGroup?.["primary-type"] === "EP";
 
-const sortLatest = (items) =>
+const sortLatest = (items: ReleaseGroup[]) =>
   [...items].sort((a, b) =>
     String(b["first-release-date"] || "").localeCompare(String(a["first-release-date"] || "")),
   );
 
-const getVisibleReleases = (releaseGroups, viewMode, limit) => {
+const getVisibleReleases = (
+  releaseGroups: ReleaseGroup[],
+  viewMode: ReleaseViewMode,
+  limit: number,
+) => {
   if (viewMode === "popular") {
     return getPopularReleaseGroups(releaseGroups, limit);
   }
@@ -73,9 +82,23 @@ export function ArtistDetailsReleaseGroups({
   artistName,
   onVisibleCoverIdsChange,
   viewAllLink,
+}: {
+  artist: Partial<ArtistDetailsResponse>;
+  loadingReleases?: boolean;
+  albumCovers: Record<string, string | undefined>;
+  fulfilledCoverIds: ReadonlySet<unknown> | undefined;
+  artistCoverImage: string | null | undefined;
+  getAlbumStatus: ReturnType<typeof useArtistDetailsLibrary>["getAlbumStatus"];
+  canAddAlbum: boolean;
+  handleRequestAlbum: ReturnType<typeof useArtistDetailsLibrary>["handleRequestAlbum"];
+  libraryDestination: Parameters<typeof getAlbumAddAction>[1];
+  requestingAlbum: string | null;
+  artistName: string;
+  onVisibleCoverIdsChange?: (ids: string[]) => void;
+  viewAllLink: { to: string; state?: object };
 }) {
   const { isAlbumDownloading } = useActiveDownloads();
-  const [viewMode, setViewMode] = useState("popular");
+  const [viewMode, setViewMode] = useState<ReleaseViewMode>("popular");
   const [releaseGridRef, previewLimit] = useResponsiveReleaseLimit();
   const releaseGroups = useMemo(() => artist["release-groups"] || [], [artist]);
   const visibleReleaseGroups = useMemo(
@@ -87,12 +110,12 @@ export function ArtistDetailsReleaseGroups({
     onVisibleCoverIdsChange?.(visibleReleaseGroups.map((item) => item.id).filter(Boolean));
   }, [onVisibleCoverIdsChange, visibleReleaseGroups]);
 
-  const coverOptions = (releaseGroup) => ({
+  const coverOptions = (releaseGroup: ReleaseGroup) => ({
     artistFallback: artistCoverImage,
     resolved: fulfilledCoverIds?.has(releaseGroup.id),
   });
 
-  const releaseLink = (releaseGroup, coverUrl) =>
+  const releaseLink = (releaseGroup: ReleaseGroup, coverUrl: string) =>
     getReleaseGroupLink(releaseGroup, {
       artistMbid: artist?.id,
       artistName: artistName || artist?.name || "",

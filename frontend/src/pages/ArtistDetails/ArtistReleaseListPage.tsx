@@ -37,6 +37,7 @@ import {
   writeReleaseListViewMode,
 } from "./utils";
 import { matchesReleaseGroupSearch, matchesReleaseGroupTab } from "./releaseFilters.ts";
+import type { ReleaseGroup, ReleaseListViewMode } from "./utils";
 import { getAlbumAddAction } from "../../utils/albumAddAction";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import {
@@ -53,7 +54,10 @@ const sortOptions = [
   { value: "date", label: "Date", defaultDirection: "desc" },
   { value: "name", label: "Name", defaultDirection: "asc" },
   { value: "popularity", label: "Popularity", defaultDirection: "desc" },
-];
+] as const;
+
+type SortKey = (typeof sortOptions)[number]["value"];
+type SortDirection = "asc" | "desc";
 
 const releaseTabs = [
   { value: "all", label: "All" },
@@ -62,7 +66,7 @@ const releaseTabs = [
   { value: "compilations", label: "Compilations" },
 ];
 
-const getReleaseTypeLabel = (releaseGroup) => {
+const getReleaseTypeLabel = (releaseGroup: ReleaseGroup | null | undefined) => {
   const types = [
     releaseGroup?.["primary-type"],
     ...(Array.isArray(releaseGroup?.["secondary-types"]) ? releaseGroup["secondary-types"] : []),
@@ -70,7 +74,7 @@ const getReleaseTypeLabel = (releaseGroup) => {
   return types.length ? types.join(" · ") : "Release";
 };
 
-const sortReleaseGroups = (items, sortKey, sortDirection) =>
+const sortReleaseGroups = (items: ReleaseGroup[], sortKey: SortKey, sortDirection: SortDirection) =>
   [...items].sort((a, b) => {
     let diff;
     if (sortKey === "popularity") {
@@ -98,15 +102,18 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   const [selectedTab, setSelectedTab] = useState("all");
   const [showLiveAlbums, setShowLiveAlbums] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortKey, setSortKey] = useState("date");
-  const [sortDirection, setSortDirection] = useState("desc");
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [viewMode, setViewMode] = useState(() => readReleaseListViewMode());
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
-  const [visibleCoverIds, setVisibleCoverIds] = useState([]);
+  const [visibleCoverIds, setVisibleCoverIds] = useState<string[]>([]);
   const [visibleReleaseCount, setVisibleReleaseCount] = useState(RELEASE_PAGE_SIZE);
-  const toolbarRef = useRef(null);
-  const requestedRatingIdsRef = useRef(new Set());
-  const appearsOnOffsetRef = useRef({ mbid: null, offset: null });
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const requestedRatingIdsRef = useRef(new Set<string>());
+  const appearsOnOffsetRef = useRef<{ mbid: string | null | undefined; offset: number | null }>({
+    mbid: null,
+    offset: null,
+  });
   const artistNameFromNav = state?.artistName || "";
   const canAddAlbum = hasPermission("addAlbum");
 
@@ -162,7 +169,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     libraryDestination,
   });
 
-  const releaseGroups = useMemo(
+  const releaseGroups: ReleaseGroup[] = useMemo(
     () => artist?.[isAppearsOn ? "appears-on-release-groups" : "release-groups"] || [],
     [artist, isAppearsOn],
   );
@@ -342,11 +349,11 @@ function ArtistReleaseListPage({ mode = "releases" }) {
 
   useEffect(() => {
     if (!sortMenuOpen) return undefined;
-    const handlePointerDown = (event) => {
+    const handlePointerDown = (event: PointerEvent) => {
       if (toolbarRef.current?.contains(event.target)) return;
       setSortMenuOpen(false);
     };
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setSortMenuOpen(false);
     };
     document.addEventListener("pointerdown", handlePointerDown);
@@ -357,12 +364,12 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     };
   }, [sortMenuOpen]);
 
-  const handleViewModeChange = (next) => {
+  const handleViewModeChange = (next: ReleaseListViewMode) => {
     setViewMode(next);
     writeReleaseListViewMode(next);
   };
 
-  const handleSortOptionClick = (option) => {
+  const handleSortOptionClick = (option: (typeof sortOptions)[number]) => {
     if (sortKey === option.value) {
       setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
       setSortMenuOpen(false);

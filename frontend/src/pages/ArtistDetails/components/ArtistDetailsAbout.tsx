@@ -1,6 +1,9 @@
 import { Fragment, useMemo } from "react";
 import { ExternalLink } from "lucide-react";
-import { getArtistHeroImage, getArtistType } from "../utils";
+import { getArtistHeroImage, getArtistType, type ArtistCoverImage } from "../utils";
+import type { ArtistDetailsResponse } from "../../../../../backend/routes/artists/handlers/details.ts";
+import type { AppSettingsResponse } from "../../../utils/api/endpoints/settings.ts";
+import type { LibraryArtist } from "../../../utils/libraryPageData.ts";
 import lidarrLogo from "../../../../images/logos/lidarr-color.svg";
 import lastFmLogo from "../../../../images/logos/last-fm-color.svg";
 import musicBrainzLogo from "../../../../images/logos/musicbrainz-color.svg";
@@ -10,7 +13,7 @@ import { UUID_REGEX } from "../../../../../lib/uuid.ts";
 import Tooltip from "../../../components/Tooltip";
 import RouteLink from "../../../components/RouteLink";
 
-const normalizeHref = (value) => {
+const normalizeHref = (value: unknown) => {
   const href = String(value || "").trim();
   if (!href) return null;
   try {
@@ -20,7 +23,7 @@ const normalizeHref = (value) => {
   }
 };
 
-const hostnameLabel = (href) => {
+const hostnameLabel = (href: string) => {
   try {
     return new URL(href).hostname.replace(/^www\./, "");
   } catch {
@@ -28,9 +31,9 @@ const hostnameLabel = (href) => {
   }
 };
 
-const buildTags = (artist) => {
-  const seen = new Set();
-  const out = [];
+const buildTags = (artist: Partial<ArtistDetailsResponse>) => {
+  const seen = new Set<string>();
+  const out: { key: string; name: string }[] = [];
   const source = [
     ...(Array.isArray(artist?.genres) ? artist.genres : []),
     ...(Array.isArray(artist?.tags) ? artist.tags : []),
@@ -46,7 +49,7 @@ const buildTags = (artist) => {
   return out;
 };
 
-const buildRelationLinks = (artist) => {
+const buildRelationLinks = (artist: Partial<ArtistDetailsResponse>) => {
   const direct = Array.isArray(artist?.links) ? artist.links : [];
   const relationSource =
     direct.length > 0
@@ -76,7 +79,7 @@ const buildRelationLinks = (artist) => {
     .filter(Boolean);
 };
 
-const tagSearchPath = (name) => `/search?q=${encodeURIComponent(`#${name}`)}&type=tag`;
+const tagSearchPath = (name: string) => `/search?q=${encodeURIComponent(`#${name}`)}&type=tag`;
 
 export function ArtistDetailsAbout({
   artist,
@@ -85,6 +88,13 @@ export function ArtistDetailsAbout({
   lidarrConnected,
   existsInLibrary,
   coverImages,
+}: {
+  artist: Partial<ArtistDetailsResponse>;
+  libraryArtist: LibraryArtist | null;
+  appSettings: AppSettingsResponse | null;
+  lidarrConnected: boolean;
+  existsInLibrary: boolean;
+  coverImages: readonly ArtistCoverImage[] | null | undefined;
 }) {
   const tags = useMemo(() => buildTags(artist), [artist]);
   const visibleTags = tags.slice(0, 5);

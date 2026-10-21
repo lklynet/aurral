@@ -3,6 +3,7 @@ import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 import AddActionButton from "../../../components/AddActionButton";
 import { MONITOR_OPTIONS } from "../../../utils/aurralMonitoring";
+import type { LidarrPreferencesResponse } from "../../../../../backend/routes/users.ts";
 
 export function AddArtistCustomizeModal({
   show,
@@ -21,6 +22,23 @@ export function AddArtistCustomizeModal({
   onConfirm,
   confirming,
   error,
+}: {
+  show: boolean;
+  artistName: string | undefined;
+  loading: boolean;
+  preferences: LidarrPreferencesResponse | null;
+  rootFolderPath: string;
+  setRootFolderPath: (value: string) => void;
+  qualityProfileId: string;
+  setQualityProfileId: (value: string) => void;
+  tagId: string;
+  setTagId: (value: string) => void;
+  monitorOption: string;
+  setMonitorOption: (value: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+  confirming: boolean;
+  error: string | null | undefined;
 }) {
   const titleId = useId();
   const { dialogRef, handleBackdropClick } = useModalDialog({

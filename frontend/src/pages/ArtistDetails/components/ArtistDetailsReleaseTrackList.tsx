@@ -9,11 +9,19 @@ import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
 import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
+import type { ReleaseGroupTrack } from "../../../../../backend/routes/artists/handlers/releaseGroup.ts";
+import type { useStaticPlaylists } from "../../../hooks/useStaticPlaylists";
+import type { PlaybackSource } from "../../../hooks/useAlbumTrackListToolbar";
+import type { ReleaseGroup } from "../utils";
+import type { PlaylistSelection } from "./TrackPlaylistMenu";
 
-const releaseTrackId = (track, trackKey, index) =>
-  String(track?.id ?? track?.mbid ?? `${trackKey}-${index}`);
+const releaseTrackId = (
+  track: Partial<ReleaseGroupTrack> | null | undefined,
+  trackKey: string | undefined,
+  index: number,
+) => String(track?.id ?? track?.mbid ?? `${trackKey}-${index}`);
 
-const formatReleaseTrackDuration = (length) =>
+const formatReleaseTrackDuration = (length: number | null | undefined) =>
   length
     ? `${Math.floor(length / 60000)}:${Math.floor((length % 60000) / 1000)
         .toString()
@@ -28,9 +36,17 @@ export function useReleasePreviewQueue({
   artistMbid,
   artwork,
   playbackSource,
+}: {
+  release: ReleaseGroup | null | undefined;
+  trackKey: string | undefined;
+  tracks: ReleaseGroupTrack[];
+  artistName: string;
+  artistMbid: string | undefined;
+  artwork: string | null | undefined;
+  playbackSource: PlaybackSource | null;
 }) {
   const normalizeTrack = useCallback(
-    (track, index) =>
+    (track: ReleaseGroupTrack, index: number) =>
       normalizePreviewTrack(
         {
           id: releaseTrackId(track, trackKey, index),
@@ -78,6 +94,30 @@ export function ArtistDetailsReleaseTrackList({
   getDefaultPlaylistName,
   onLoadPlaylists,
   highlightTrackId = null,
+}: {
+  release: ReleaseGroup | null | undefined;
+  trackKey: string | undefined;
+  tracks: ReleaseGroupTrack[] | undefined;
+  loading: boolean;
+  preview: ReturnType<typeof useReleasePreviewQueue>;
+  playbackSource?: PlaybackSource | null;
+  onAddTrackToPlaylist?: (
+    track: ReleaseGroupTrack,
+    release: ReleaseGroup,
+    target: PlaylistSelection,
+  ) => void;
+  onAddTrackToLibrary?: (track: ReleaseGroupTrack, release: ReleaseGroup) => void;
+  libraryTrackSavingKey: string;
+  albumDownloading?: boolean;
+  ownedTrackMbids?: readonly string[] | undefined;
+  resolveMembershipTrack?: (track: ReleaseGroupTrack, release: ReleaseGroup) => unknown;
+  playlists: ReturnType<typeof useStaticPlaylists>["staticPlaylists"];
+  playlistsLoading: boolean;
+  playlistSavingKey: string;
+  playlistError: string;
+  getDefaultPlaylistName?: (track: ReleaseGroupTrack, release: ReleaseGroup) => string;
+  onLoadPlaylists: () => void;
+  highlightTrackId?: string | null;
 }) {
   const ownedTrackSet = new Set(
     (Array.isArray(ownedTrackMbids) ? ownedTrackMbids : []).map(String),
@@ -104,7 +144,7 @@ export function ArtistDetailsReleaseTrackList({
     );
   }
 
-  const handlePlay = (track, index) => {
+  const handlePlay = (track: ReleaseGroupTrack, index: number) => {
     const normalized = preview.normalizeTrack(track, index);
     if (!normalized?.src) return;
     if (currentTrack?.id === normalized.id) {
@@ -189,7 +229,9 @@ export function ArtistDetailsReleaseTrackList({
                         saving={playlistSavingKey === id}
                         error={playlistError}
                         defaultNewPlaylistName={getDefaultPlaylistName?.(track, release)}
-                        onSelect={(target) => onAddTrackToPlaylist(track, release, target)}
+                        onSelect={(target: PlaylistSelection) =>
+                          onAddTrackToPlaylist(track, release, target)
+                        }
                         onClose={closeMenu}
                         toggleOnClick
                       />
