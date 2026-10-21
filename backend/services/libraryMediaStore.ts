@@ -2596,10 +2596,10 @@ export function removeLibraryMediaFiles(source: string, paths: string[]) {
   return removed;
 }
 
-export async function withLibraryScan(
+export async function withLibraryScan<T extends LibraryScanCounts>(
   source: string,
   rootPath: string | null,
-  run: (scanId: number) => Promise<LibraryScanCounts>,
+  run: (scanId: number) => Promise<T>,
 ) {
   const parentScan = libraryScanContext.getStore();
   const scan = { changed: false };

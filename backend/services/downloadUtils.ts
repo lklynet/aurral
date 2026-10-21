@@ -335,6 +335,7 @@ type RepairableJob = DownloadTrackFields & {
   status?: string | null;
   downloadClient?: string | null;
   finalPath?: string | null;
+  externalPath?: string | null;
 };
 
 export async function repairYtdlpMetadata(jobs: RepairableJob[] = []) {
