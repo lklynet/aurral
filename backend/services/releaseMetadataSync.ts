@@ -129,7 +129,7 @@ export async function refreshReleaseMetadata({
   let releasesStale = 0;
 
   for (const artist of eligibleArtists) {
-    const seenReleaseGroupMbids = new Set();
+    const seenReleaseGroupMbids = new Set<string>();
     let releases;
     try {
       releases = await listArtistAlbums(artist.mbid, {

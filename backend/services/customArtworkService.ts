@@ -3,16 +3,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { db } from "../config/db-sqlite.ts";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
+import type { CustomArtworkRow } from "../db/rows.ts";
 import { inspectImageBuffer, optimizeImageBuffer, warmImageProxy } from "./imageProxyService.ts";
 
 const ARTWORK_DIR = path.join(resolveAurralDataDir(), "custom-artwork");
 const ENTITY_KINDS = new Set(["album", "track", "playlist-track"]);
-const targetOperations = new Map();
+const targetOperations = new Map<string, Promise<unknown>>();
 
-const getArtworkStmt = db.prepare(
+const getArtworkStmt = db.prepare<[string, string], CustomArtworkRow>(
   "SELECT entity_kind, entity_id, content_type, source_url, updated_at FROM custom_artwork WHERE entity_kind = ? AND entity_id = ?",
 );
-const saveArtworkStmt = db.prepare(`
+const saveArtworkStmt = db.prepare<[string, string, string, string | null, number]>(`
   INSERT INTO custom_artwork (entity_kind, entity_id, content_type, source_url, updated_at)
   VALUES (?, ?, ?, ?, ?)
   ON CONFLICT(entity_kind, entity_id) DO UPDATE SET
@@ -20,18 +21,20 @@ const saveArtworkStmt = db.prepare(`
     source_url = excluded.source_url,
     updated_at = excluded.updated_at
 `);
-const deleteArtworkStmt = db.prepare(
+const deleteArtworkStmt = db.prepare<[string, string]>(
   "DELETE FROM custom_artwork WHERE entity_kind = ? AND entity_id = ?",
 );
-const getArtworkRevisionStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
-const saveArtworkRevisionStmt = db.prepare(`
+const getArtworkRevisionStmt = db.prepare<[string], { value: string }>(
+  "SELECT value FROM settings WHERE key = ?",
+);
+const saveArtworkRevisionStmt = db.prepare<[string, string]>(`
   INSERT INTO settings (key, value) VALUES (?, ?)
   ON CONFLICT(key) DO UPDATE SET value = excluded.value
 `);
 
-const artworkRevisionKey = (kind) => `custom-artwork:revision:${kind}`;
+const artworkRevisionKey = (kind: string) => `custom-artwork:revision:${kind}`;
 
-function advanceArtworkRevision(kind, candidate = Date.now()) {
+function advanceArtworkRevision(kind: string, candidate = Date.now()) {
   const key = artworkRevisionKey(kind);
   const current = Number(getArtworkRevisionStmt.get(key)?.value) || 0;
   const revision = Math.max(Date.now(), Number(candidate) || 0, current + 1);
@@ -39,7 +42,7 @@ function advanceArtworkRevision(kind, candidate = Date.now()) {
   return revision;
 }
 
-function normalizeTarget(kind, id) {
+function normalizeTarget(kind: string, id: string | number) {
   const entityKind = String(kind || "")
     .trim()
     .toLowerCase();
@@ -50,12 +53,18 @@ function normalizeTarget(kind, id) {
   return { entityKind, entityId };
 }
 
-function artworkPath(kind, id) {
+type ArtworkTarget = ReturnType<typeof normalizeTarget>;
+
+function artworkPath(kind: string, id: string) {
   const key = crypto.createHash("sha256").update(`${kind}:${id}`).digest("hex");
   return path.join(ARTWORK_DIR, `${key}.image`);
 }
 
-async function withTargetOperation(kind, id, operation) {
+async function withTargetOperation<T>(
+  kind: string,
+  id: string | number,
+  operation: (target: ArtworkTarget) => Promise<T>,
+) {
   const target = normalizeTarget(kind, id);
   const key = `${target.entityKind}:${target.entityId}`;
   const previous = targetOperations.get(key) || Promise.resolve();
@@ -68,7 +77,12 @@ async function withTargetOperation(kind, id, operation) {
   }
 }
 
-async function writeArtwork(target, buffer, contentType, sourceUrl = null) {
+async function writeArtwork(
+  target: ArtworkTarget,
+  buffer: Buffer,
+  contentType: string,
+  sourceUrl: string | null = null,
+) {
   await fs.promises.mkdir(ARTWORK_DIR, { recursive: true });
   const destination = artworkPath(target.entityKind, target.entityId);
   const temporary = `${destination}.${crypto.randomUUID()}.tmp`;
@@ -87,10 +101,15 @@ async function writeArtwork(target, buffer, contentType, sourceUrl = null) {
   const updatedAt = Math.max(Date.now(), previousUpdatedAt + 1);
   saveArtworkStmt.run(target.entityKind, target.entityId, contentType, sourceUrl, updatedAt);
   advanceArtworkRevision(target.entityKind, updatedAt);
-  return getCustomArtwork(target.entityKind, target.entityId);
+  return getCustomArtwork(target.entityKind, target.entityId)!;
 }
 
-export async function saveCustomArtworkUpload(kind, id, buffer, contentType) {
+export async function saveCustomArtworkUpload(
+  kind: string,
+  id: string | number,
+  buffer: Buffer,
+  contentType: string | undefined,
+) {
   return withTargetOperation(kind, id, async (target) => {
     const normalizedContentType = String(contentType || "")
       .split(";")[0]
@@ -102,7 +121,7 @@ export async function saveCustomArtworkUpload(kind, id, buffer, contentType) {
   });
 }
 
-export async function saveCustomArtworkUrl(kind, id, sourceUrl) {
+export async function saveCustomArtworkUrl(kind: string, id: string | number, sourceUrl: unknown) {
   return withTargetOperation(kind, id, async (target) => {
     const url = String(sourceUrl || "").trim();
     if (!url) throw new Error("Image URL is required");
@@ -112,7 +131,7 @@ export async function saveCustomArtworkUrl(kind, id, sourceUrl) {
   });
 }
 
-export function getCustomArtwork(kind, id) {
+export function getCustomArtwork(kind: string, id: string | number) {
   const target = normalizeTarget(kind, id);
   const row = getArtworkStmt.get(target.entityKind, target.entityId);
   if (!row) return null;
@@ -128,25 +147,25 @@ export function getCustomArtwork(kind, id) {
   };
 }
 
-export function getCustomArtworkMap(kind, ids) {
+export function getCustomArtworkMap(kind: string, ids: (string | number)[]) {
   const entityKind = normalizeTarget(kind, "placeholder").entityKind;
   const entityIds = [...new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean))];
   if (!entityIds.length) return new Map();
   const placeholders = entityIds.map(() => "?").join(", ");
   const rows = db
-    .prepare(
+    .prepare<(string | number)[], Pick<CustomArtworkRow, "entity_id" | "updated_at">>(
       `SELECT entity_id, updated_at FROM custom_artwork WHERE entity_kind = ? AND entity_id IN (${placeholders})`,
     )
     .all(entityKind, ...entityIds);
   return new Map(rows.map((row) => [String(row.entity_id), Number(row.updated_at)]));
 }
 
-export function getCustomArtworkRevision(kind) {
+export function getCustomArtworkRevision(kind: string) {
   const entityKind = normalizeTarget(kind, "placeholder").entityKind;
   return Number(getArtworkRevisionStmt.get(artworkRevisionKey(entityKind))?.value) || 0;
 }
 
-export async function removeCustomArtwork(kind, id) {
+export async function removeCustomArtwork(kind: string, id: string | number) {
   return withTargetOperation(kind, id, async (target) => {
     const removed = deleteArtworkStmt.run(target.entityKind, target.entityId).changes > 0;
     await fs.promises.unlink(artworkPath(target.entityKind, target.entityId)).catch((error) => {
@@ -156,7 +175,12 @@ export async function removeCustomArtwork(kind, id) {
   });
 }
 
-export function buildCustomArtworkUrl(kind, id, updatedAt, query = {}) {
+export function buildCustomArtworkUrl(
+  kind: string,
+  id: string | number,
+  updatedAt?: number,
+  query: Record<string, string> = {},
+) {
   const target = normalizeTarget(kind, id);
   const route =
     target.entityKind === "playlist-track"

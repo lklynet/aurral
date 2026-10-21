@@ -1,7 +1,23 @@
-import { fork } from "node:child_process";
+import { fork, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import v8 from "node:v8";
 import { ISOLATED_WORKER_GROUPS } from "./backgroundWorkerQueues.ts";
+
+interface WorkerMessage {
+  type?: string;
+  queue?: string;
+  jobId?: number;
+  payload?: unknown;
+  requestId?: number;
+  method?: string;
+  args?: unknown[];
+  timeoutMs?: number;
+  error?: string;
+  result?: unknown;
+  workers?: unknown[];
+  memory?: { rss: number; heapUsed: number };
+  downloadOwnerStatus?: unknown;
+}
 
 const ENTRY = fileURLToPath(new URL("./backgroundWorkerProcess.ts", import.meta.url));
 const RESTART_BASE_MS = 1000;
@@ -60,6 +76,26 @@ export function createBackgroundProcessSupervisor({
   unresponsiveMs = UNRESPONSIVE_MS,
   watchdogIntervalMs = 15000,
   demandPollMs = DEMAND_POLL_MS,
+}: {
+  groups?: readonly string[];
+  findGroupsWithWork?: (now: number) => string[];
+  getWorkRevision?: (() => unknown) | null;
+  getNextWorkAt?: (now: number) => unknown;
+  forkProcess?: typeof fork;
+  onMessage?: (message: WorkerMessage, group: string, child: ChildProcess) => void;
+  onExit?: (
+    group: string,
+    code: number | null,
+    signal: NodeJS.Signals | null,
+    pid: number | undefined,
+    exitReason: string | null,
+    retired: boolean,
+  ) => void | Promise<void>;
+  logger?: Pick<Console, "error" | "warn">;
+  jobTimeoutsMs?: typeof JOB_TIMEOUT_MS;
+  unresponsiveMs?: number;
+  watchdogIntervalMs?: number;
+  demandPollMs?: number;
 } = {}) {
   const children = new Map();
   const restartTimers = new Map();
@@ -68,7 +104,7 @@ export function createBackgroundProcessSupervisor({
   const workerStatuses = new Map();
   const workerMemory = new Map();
   const activeJobs = new Map();
-  const exitReasons = new Map();
+  const exitReasons = new Map<string, string>();
   const pendingRequests = new Map();
   const downloadOwnerStatuses = new Map();
   const readyGroups = new Set();
@@ -76,14 +112,14 @@ export function createBackgroundProcessSupervisor({
   const recoveringGroups = new Set();
   const relaunchGroups = new Set();
   let nextRequestId = 0;
-  let watchdogInterval = null;
-  let demandInterval = null;
-  let demandTimer = null;
-  let lastWorkRevision = null;
+  let watchdogInterval: NodeJS.Timeout | null = null;
+  let demandInterval: NodeJS.Timeout | null = null;
+  let demandTimer: NodeJS.Timeout | null = null;
+  let lastWorkRevision: unknown = null;
   let started = false;
   let stopping = false;
 
-  function canSend(group) {
+  function canSend(group: string) {
     const child = children.get(group);
     return (
       Boolean(child) &&
@@ -93,11 +129,11 @@ export function createBackgroundProcessSupervisor({
     );
   }
 
-  function hasRequests(group) {
+  function hasRequests(group: string) {
     return [...pendingRequests.values()].some((pending) => pending.group === group);
   }
 
-  function sendRequest(requestId) {
+  function sendRequest(requestId: number) {
     const pending = pendingRequests.get(requestId);
     if (!pending || pending.sent || !canSend(pending.group)) return false;
     try {
@@ -111,13 +147,13 @@ export function createBackgroundProcessSupervisor({
     return true;
   }
 
-  function flushRequests(group) {
+  function flushRequests(group: string) {
     for (const [requestId, pending] of pendingRequests) {
       if (pending.group === group) sendRequest(requestId);
     }
   }
 
-  function describeRun(group) {
+  function describeRun(group: string) {
     const jobs = [...(activeJobs.get(group)?.values() || [])].map(
       ({ queue, jobId, payload }) => `${queue} job ${jobId}${payload ? ` ${payload}` : ""}`,
     );
@@ -129,7 +165,7 @@ export function createBackgroundProcessSupervisor({
     }`;
   }
 
-  function retire(group, child) {
+  function retire(group: string, child: ChildProcess) {
     if (stopping || !canSend(group) || hasRequests(group) || activeJobs.get(group)?.size) return;
     retiringGroups.add(group);
     try {
@@ -139,7 +175,7 @@ export function createBackgroundProcessSupervisor({
     }
   }
 
-  function launch(group) {
+  function launch(group: string) {
     if (stopping || !started || children.has(group) || recoveringGroups.has(group)) return;
     let child;
     try {
@@ -210,7 +246,7 @@ export function createBackgroundProcessSupervisor({
       logger.error?.(`[BackgroundWorkers] ${group} process error:`, error);
     });
     let exited = false;
-    const handleExit = (code, signal) => {
+    const handleExit = (code: number | null, signal: NodeJS.Signals | null) => {
       if (exited) return;
       exited = true;
       const run = describeRun(group);
@@ -258,7 +294,7 @@ export function createBackgroundProcessSupervisor({
     child.once("close", handleExit);
   }
 
-  function scheduleRestart(group) {
+  function scheduleRestart(group: string) {
     if (stopping || restartTimers.has(group)) return;
     const count = attempts.get(group) || 0;
     attempts.set(group, count + 1);
@@ -271,7 +307,7 @@ export function createBackgroundProcessSupervisor({
     restartTimers.set(group, timer);
   }
 
-  function ensure(group) {
+  function ensure(group: string) {
     if (!started || stopping || !groups.includes(group)) return false;
     if (retiringGroups.has(group) || recoveringGroups.has(group)) relaunchGroups.add(group);
     else if (!restartTimers.has(group)) launch(group);
@@ -353,7 +389,7 @@ export function createBackgroundProcessSupervisor({
     return true;
   }
 
-  async function stop({ timeoutMs = 3000 } = {}) {
+  async function stop({ timeoutMs = 3000 }: { timeoutMs?: number } = {}) {
     stopping = true;
     clearInterval(demandInterval);
     demandInterval = null;
@@ -365,12 +401,12 @@ export function createBackgroundProcessSupervisor({
     restartTimers.clear();
     const pending = [...children.values()].map(
       (child) =>
-        new Promise((resolve) => {
+        new Promise<void>((resolve) => {
           if (child.exitCode !== null || child.signalCode !== null) {
             resolve();
             return;
           }
-          let timer = null;
+          let timer: NodeJS.Timeout | null = null;
           let exited = false;
           const done = () => {
             if (exited) return;
@@ -412,7 +448,12 @@ export function createBackgroundProcessSupervisor({
     pendingRequests.clear();
   }
 
-  function request(group, method, args = [], { timeoutMs = 30000 } = {}) {
+  function request(
+    group: string,
+    method: string,
+    args: unknown[] = [],
+    { timeoutMs = 30000 }: { timeoutMs?: number } = {},
+  ) {
     if (!started || stopping || !groups.includes(group)) {
       return Promise.reject(new Error(`${group} worker is unavailable`));
     }
@@ -434,7 +475,7 @@ export function createBackgroundProcessSupervisor({
     });
   }
 
-  function wake(group) {
+  function wake(group: string) {
     if (!canSend(group)) {
       launchGroupsWithWork();
       return false;

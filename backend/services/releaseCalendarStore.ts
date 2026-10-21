@@ -1,6 +1,20 @@
 import { db } from "../config/db-sqlite.ts";
+import type {
+  LibraryArtistsRow,
+  LibraryReleaseCalendarArtistsRow,
+  LibraryReleaseCalendarRow,
+} from "../db/rows.ts";
 
-const parseJsonArray = (value) => {
+type CalendarEntryRow = LibraryReleaseCalendarRow & {
+  artist_mbid: string | null;
+  artist_name: string;
+  album_id: number | null;
+  track_count: number;
+  available_track_count: number;
+  size_on_disk: number;
+};
+
+const parseJsonArray = (value: string | null) => {
   try {
     const parsed = JSON.parse(value || "[]");
     return Array.isArray(parsed) ? parsed : [];
@@ -34,7 +48,13 @@ const upsertRelease = db.prepare(`
     updated_at = excluded.updated_at
 `);
 
-const selectArtistReleases = db.prepare(`
+const selectArtistReleases = db.prepare<
+  [number],
+  Pick<
+    LibraryReleaseCalendarRow,
+    "release_group_mbid" | "release_date" | "refreshed_at" | "present"
+  >
+>(`
   SELECT release_group_mbid, release_date, refreshed_at, present
   FROM library_release_calendar
   WHERE artist_id = ?
@@ -46,14 +66,14 @@ const markReleaseAbsent = db.prepare(`
   WHERE release_group_mbid = ? AND artist_id = ?
 `);
 
-const selectCalendarArtists = db.prepare(`
+const selectCalendarArtists = db.prepare<[], Pick<LibraryArtistsRow, "id"> & { mbid: string }>(`
   SELECT id, mbid
   FROM library_artists
   WHERE mbid IS NOT NULL AND TRIM(mbid) != ''
   ORDER BY id
 `);
 
-const selectArtistRefreshes = db.prepare(`
+const selectArtistRefreshes = db.prepare<[], LibraryReleaseCalendarArtistsRow>(`
   SELECT artist_id, refreshed_at, failed_at
   FROM library_release_calendar_artists
 `);
@@ -70,7 +90,7 @@ const upsertArtistFailed = db.prepare(`
   ON CONFLICT(artist_id) DO UPDATE SET failed_at = excluded.failed_at
 `);
 
-const ownedReleaseGroupCondition = (releaseGroupMbid) => `EXISTS (
+const ownedReleaseGroupCondition = (releaseGroupMbid: string) => `EXISTS (
   SELECT 1
   FROM library_albums AS owned_album
   JOIN library_album_tracks AS owned_relation ON owned_relation.album_id = owned_album.id
@@ -84,7 +104,7 @@ const ownedReleaseGroupCondition = (releaseGroupMbid) => `EXISTS (
     AND owned_media.available = 1
 )`;
 
-const selectReleaseGroupOwned = db.prepare(
+const selectReleaseGroupOwned = db.prepare<[Record<string, unknown>], { owned: number }>(
   `SELECT ${ownedReleaseGroupCondition("@releaseGroupMbid")} AS owned`,
 );
 
@@ -97,6 +117,15 @@ export function upsertReleaseCalendarEntry({
   secondaryTypes = [],
   releaseStatuses = [],
   refreshedAt = Date.now(),
+}: {
+  releaseGroupMbid: string;
+  artistId: number;
+  title: string;
+  releaseDate: string;
+  releaseType?: string | null;
+  secondaryTypes?: string[];
+  releaseStatuses?: string[];
+  refreshedAt?: number;
 }) {
   const timestamp = Number(refreshedAt) || Date.now();
   upsertRelease.run(
@@ -128,15 +157,15 @@ export function getReleaseCalendarArtistRefreshes() {
   );
 }
 
-export function markReleaseCalendarArtistRefreshed(artistId, refreshedAt) {
+export function markReleaseCalendarArtistRefreshed(artistId: number, refreshedAt: number) {
   upsertArtistRefreshed.run(Number(artistId), Number(refreshedAt));
 }
 
-export function markReleaseCalendarArtistFailed(artistId, failedAt) {
+export function markReleaseCalendarArtistFailed(artistId: number, failedAt: number) {
   upsertArtistFailed.run(Number(artistId), Number(failedAt));
 }
 
-export function getArtistReleaseCalendar(artistId) {
+export function getArtistReleaseCalendar(artistId: number) {
   return new Map(
     selectArtistReleases
       .all(Number(artistId))
@@ -147,17 +176,17 @@ export function getArtistReleaseCalendar(artistId) {
   );
 }
 
-export function isReleaseGroupOwned(releaseGroupMbid) {
+export function isReleaseGroupOwned(releaseGroupMbid: string) {
   return (
     selectReleaseGroupOwned.get({
       releaseGroupMbid: String(releaseGroupMbid || "").trim(),
-    }).owned === 1
+    })!.owned === 1
   );
 }
 
 export function markUnseenReleaseCalendarEntries(
-  artistId,
-  seenReleaseGroupMbids,
+  artistId: number,
+  seenReleaseGroupMbids: Iterable<string>,
   refreshedAt = Date.now(),
 ) {
   const seen = new Set(seenReleaseGroupMbids);
@@ -170,7 +199,17 @@ export function markUnseenReleaseCalendarEntries(
   return stale;
 }
 
-export function getReleaseCalendarEntries({ from, to = null, limit = 100, artistIds = [] } = {}) {
+export function getReleaseCalendarEntries({
+  from,
+  to = null,
+  limit = 100,
+  artistIds = [],
+}: {
+  from?: string;
+  to?: string | null;
+  limit?: number;
+  artistIds?: unknown[];
+} = {}) {
   const fromDate = String(from || "").trim();
   const toDate = String(to || "").trim();
   if (!fromDate) return [];
@@ -179,7 +218,7 @@ export function getReleaseCalendarEntries({ from, to = null, limit = 100, artist
     "calendar.release_date >= ?",
     `NOT ${ownedReleaseGroupCondition("calendar.release_group_mbid")}`,
   ];
-  const parameters = [fromDate];
+  const parameters: (string | number)[] = [fromDate];
   if (toDate) {
     conditions.push("calendar.release_date <= ?");
     parameters.push(toDate);
@@ -196,10 +235,10 @@ export function getReleaseCalendarEntries({ from, to = null, limit = 100, artist
     conditions.push("calendar.artist_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))");
     parameters.push(JSON.stringify(normalizedArtistIds));
   }
-  parameters.push(Math.min(1000, Math.max(1, Number.parseInt(limit, 10) || 100)));
+  parameters.push(Math.min(1000, Math.max(1, Number.parseInt(String(limit), 10) || 100)));
 
   const rows = db
-    .prepare(`
+    .prepare<(string | number)[], CalendarEntryRow>(`
     WITH eligible_calendar AS MATERIALIZED (
       SELECT
         calendar.*,

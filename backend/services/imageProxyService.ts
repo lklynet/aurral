@@ -2,12 +2,32 @@ import crypto from "crypto";
 import dns from "node:dns";
 import fs from "fs";
 import path from "path";
-import { Agent, fetch as undiciFetch } from "undici";
+import { Agent, fetch as undiciFetch, type Response as UndiciResponse } from "undici";
 import PQueue from "p-queue";
 import getSharp from "./sharpConfig.ts";
 import BoundedMap from "./boundedMap.ts";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
 import { isPrivateAddress, isPrivateHostname } from "../../lib/publicUrl.ts";
+import type { Request, Response as ExpressResponse } from "express";
+
+type CachedImageMeta = {
+  sourceUrl: string | null;
+  contentType: string;
+  extension: string;
+  fetchedAt: number;
+  size: number;
+  profile: string;
+};
+
+type StoredCachedImageMeta = Partial<CachedImageMeta>;
+
+type CachedImageEntry = {
+  cacheKey: string;
+  meta: StoredCachedImageMeta;
+  imagePath: string;
+  localUrl: string;
+  isFresh: boolean;
+};
 
 const IMAGE_PROXY_ROUTE = "/api/image-proxy";
 const DATA_DIR = resolveAurralDataDir();
@@ -26,14 +46,14 @@ const IMAGE_PROXY_MAX_BYTES = (() => {
   const parsed = Number(process.env.AURRAL_IMAGE_PROXY_MAX_BYTES);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 256 * 1024 * 1024;
 })();
-const inflightRequests = new Map();
+const inflightRequests = new Map<string, Promise<CachedImageEntry>>();
 const imageWorkQueue = new PQueue({ concurrency: 2 });
-const cacheEntriesByKey = new BoundedMap(256);
+const cacheEntriesByKey: Map<string, CachedImageEntry> = new BoundedMap(256);
 let cacheIndexInitialized = false;
-let indexBuildPromise = null;
+let indexBuildPromise: Promise<void> | null = null;
 
-const runImageWork = (workKey, work) => {
-  if (inflightRequests.has(workKey)) return inflightRequests.get(workKey);
+const runImageWork = (workKey: string, work: () => Promise<CachedImageEntry>) => {
+  if (inflightRequests.has(workKey)) return inflightRequests.get(workKey)!;
   const request = imageWorkQueue.add(work).finally(() => inflightRequests.delete(workKey));
   inflightRequests.set(workKey, request);
   return request;
@@ -65,12 +85,20 @@ const OPTIMIZABLE_CONTENT_TYPES = new Set([
   "image/svg+xml",
 ]);
 
-const safeLookup = (hostname, options, callback) => {
+const safeLookup = (
+  hostname: string,
+  options: dns.LookupOptions,
+  callback: (
+    err: NodeJS.ErrnoException | null,
+    address?: string | dns.LookupAddress[],
+    family?: number,
+  ) => void,
+) => {
   dns.lookup(hostname, { ...options, all: true }, (error, addresses) => {
     if (error) return callback(error);
     const publicAddresses = addresses.filter(({ address }) => !isPrivateAddress(address));
     if (publicAddresses.length === 0) {
-      const lookupError = new Error("Refusing to connect to a private host");
+      const lookupError: NodeJS.ErrnoException = new Error("Refusing to connect to a private host");
       lookupError.code = "EHOSTUNREACH";
       return callback(lookupError);
     }
@@ -132,7 +160,7 @@ export const getImageProxyCacheSizeBytes = async () => {
   return total;
 };
 
-const removeCacheEntryFromDisk = async (cacheKey, extension) => {
+const removeCacheEntryFromDisk = async (cacheKey: string, extension: string) => {
   const normalizedKey = String(cacheKey || "").toLowerCase();
   if (!normalizedKey) return;
   const { metaPath, baseImagePath } = getCachePaths(normalizedKey);
@@ -193,20 +221,21 @@ const pruneImageProxyCacheToLimit = async () => {
   }
 };
 
-const touchCacheEntry = (imagePath) => {
+const touchCacheEntry = (imagePath: string) => {
   if (!imagePath) return;
   const now = new Date();
   fs.promises.utimes(imagePath, now, now).catch(() => {});
 };
 
-const hashValue = (value) => crypto.createHash("sha256").update(String(value)).digest("hex");
+const hashValue = (value: string) =>
+  crypto.createHash("sha256").update(String(value)).digest("hex");
 
-const normalizeImageProfile = () => "library";
+const normalizeImageProfile = (): "library" => "library";
 
-const buildImageCacheKey = (sourceUrl, profile = "library") =>
+const buildImageCacheKey = (sourceUrl: string, profile = "library") =>
   hashValue(`${normalizeImageProfile(profile)}:${sourceUrl}`);
 
-const normalizeKnownImageUrl = (value) =>
+const normalizeKnownImageUrl = (value: string | null | undefined) =>
   String(value || "")
     .trim()
     .replace(
@@ -222,12 +251,12 @@ const normalizeKnownImageUrl = (value) =>
       "$1$2",
     );
 
-const getCachePaths = (cacheKey) => ({
+const getCachePaths = (cacheKey: string) => ({
   metaPath: path.join(IMAGE_PROXY_DIR, `${cacheKey}.json`),
   baseImagePath: path.join(IMAGE_PROXY_DIR, `${cacheKey}`),
 });
 
-const removeStaleCachedFiles = (cacheKey, keepExtension) =>
+const removeStaleCachedFiles = (cacheKey: string, keepExtension: string | null) =>
   Promise.allSettled(
     [...new Set([...Object.values(MIME_EXTENSION_MAP), "img"])]
       .filter((extension) => extension !== keepExtension)
@@ -271,7 +300,8 @@ const migrateObsoleteImageCache = () => {
   }
 };
 
-const buildLocalImageUrl = (cacheKey, extension) => `${IMAGE_PROXY_ROUTE}/${cacheKey}.${extension}`;
+const buildLocalImageUrl = (cacheKey: string, extension: string) =>
+  `${IMAGE_PROXY_ROUTE}/${cacheKey}.${extension}`;
 
 const awaitCacheIndexReady = async () => {
   initializeCacheIndex();
@@ -280,7 +310,7 @@ const awaitCacheIndexReady = async () => {
   }
 };
 
-const readCacheEntryFromDisk = (cacheKey) => {
+const readCacheEntryFromDisk = (cacheKey: string): CachedImageEntry | null => {
   if (!cacheKey) return null;
   const existing = cacheEntriesByKey.get(cacheKey);
   if (existing?.imagePath && fs.existsSync(existing.imagePath)) {
@@ -304,7 +334,7 @@ const readCacheEntryFromDisk = (cacheKey) => {
   return entry;
 };
 
-const getCacheKeyFromLocalUrl = (value) => {
+const getCacheKeyFromLocalUrl = (value: string | null | undefined) => {
   const normalized = String(value || "").trim();
   const proxyMatch = normalized.match(/\/api\/image-proxy\/([a-f0-9]{64})(?:\.[a-z0-9]+)?$/i);
   if (proxyMatch?.[1]) return proxyMatch[1].toLowerCase();
@@ -312,16 +342,17 @@ const getCacheKeyFromLocalUrl = (value) => {
   return bareMatch?.[1]?.toLowerCase() || null;
 };
 
-export const isImageProxyLocalUrl = (value) => getCacheKeyFromLocalUrl(value) != null;
+export const isImageProxyLocalUrl = (value: string | null | undefined) =>
+  getCacheKeyFromLocalUrl(value) != null;
 
-export const resolveImageProxyLocalUrl = (value) => {
+export const resolveImageProxyLocalUrl = (value: string | null | undefined) => {
   const cacheKey = getCacheKeyFromLocalUrl(value);
   if (!cacheKey) return null;
   const entry = readCacheEntryFromDisk(cacheKey);
   return entry?.localUrl || null;
 };
 
-const _readCacheMetadata = (metaPath) => {
+const _readCacheMetadata = (metaPath: string): StoredCachedImageMeta | null => {
   try {
     return JSON.parse(fs.readFileSync(metaPath, "utf8"));
   } catch {
@@ -329,7 +360,7 @@ const _readCacheMetadata = (metaPath) => {
   }
 };
 
-const getCachedEntryFromKey = (cacheKey) => {
+const getCachedEntryFromKey = (cacheKey: string) => {
   if (!cacheKey) return null;
   initializeCacheIndex();
   const entry = cacheEntriesByKey.get(cacheKey) || readCacheEntryFromDisk(cacheKey);
@@ -342,7 +373,7 @@ const getCachedEntryFromKey = (cacheKey) => {
   };
 };
 
-const getCachedEntry = (sourceUrl, imageProfile = "library") => {
+const getCachedEntry = (sourceUrl: string, imageProfile = "library") => {
   const normalizedSourceUrl = normalizeKnownImageUrl(sourceUrl);
   if (!normalizedSourceUrl) return null;
   const profile = normalizeImageProfile(imageProfile);
@@ -352,10 +383,10 @@ const getCachedEntry = (sourceUrl, imageProfile = "library") => {
 };
 
 const writeCacheEntry = async (
-  cacheKey,
-  buffer,
-  contentType,
-  sourceUrl,
+  cacheKey: string,
+  buffer: Buffer,
+  contentType: string,
+  sourceUrl: string | null,
   imageProfile = "library",
 ) => {
   await ensureCacheDir();
@@ -389,14 +420,14 @@ const writeCacheEntry = async (
   return entry;
 };
 
-const shouldNormalizeCachedEntry = (entry) => {
+const shouldNormalizeCachedEntry = (entry: CachedImageEntry | null) => {
   if (!entry?.imagePath || !entry?.meta?.contentType) return false;
   if (!OPTIMIZABLE_CONTENT_TYPES.has(entry.meta.contentType)) return false;
   const profile = IMAGE_PROFILES[normalizeImageProfile(entry.meta.profile)];
   return entry.meta.contentType !== "image/webp" || Number(entry.meta.size || 0) > profile.maxBytes;
 };
 
-export const inspectImageBuffer = async (buffer, contentType) => {
+export const inspectImageBuffer = async (buffer: Buffer, contentType: string) => {
   const expectedFormats = IMAGE_FORMATS_BY_CONTENT_TYPE[contentType];
   if (!expectedFormats) {
     throw new Error("Unsupported image content type");
@@ -418,7 +449,11 @@ export const inspectImageBuffer = async (buffer, contentType) => {
   return metadata;
 };
 
-export const optimizeImageBuffer = async (buffer, contentType, imageProfile = "library") => {
+export const optimizeImageBuffer = async (
+  buffer: Buffer,
+  contentType: string,
+  imageProfile = "library",
+) => {
   if (!OPTIMIZABLE_CONTENT_TYPES.has(contentType)) {
     return { buffer, contentType };
   }
@@ -442,7 +477,7 @@ export const optimizeImageBuffer = async (buffer, contentType, imageProfile = "l
   return { buffer: optimizedBuffer, contentType: "image/webp" };
 };
 
-const normalizeCachedEntryIfNeeded = async (entry) => {
+const normalizeCachedEntryIfNeeded = async (entry: CachedImageEntry) => {
   if (!shouldNormalizeCachedEntry(entry)) {
     return entry;
   }
@@ -450,7 +485,7 @@ const normalizeCachedEntryIfNeeded = async (entry) => {
   return runImageWork(`normalize:${entry.cacheKey}`, () => normalizeCachedEntry(entry));
 };
 
-const normalizeCachedEntry = async (entry) => {
+const normalizeCachedEntry = async (entry: CachedImageEntry) => {
   let buffer = null;
   try {
     buffer = await fs.promises.readFile(entry.imagePath);
@@ -475,7 +510,7 @@ const normalizeCachedEntry = async (entry) => {
   );
 };
 
-const parseSafeRemoteUrl = (value, baseUrl) => {
+const parseSafeRemoteUrl = (value: string, baseUrl?: string | URL) => {
   const parsed = new URL(value, baseUrl);
   if (!["http:", "https:"].includes(parsed.protocol)) {
     throw new Error("Unsupported image protocol");
@@ -486,7 +521,7 @@ const parseSafeRemoteUrl = (value, baseUrl) => {
   return parsed;
 };
 
-const readBoundedResponse = async (response) => {
+const readBoundedResponse = async (response: Response | UndiciResponse) => {
   const contentLength = response.headers.get("content-length");
   if (contentLength && Number(contentLength) > MAX_SOURCE_IMAGE_BYTES) {
     await response.body?.cancel();
@@ -506,7 +541,7 @@ const readBoundedResponse = async (response) => {
   return Buffer.concat(chunks, totalBytes);
 };
 
-const fetchRemoteImage = async (sourceUrl) => {
+const fetchRemoteImage = async (sourceUrl: string) => {
   let currentUrl = parseSafeRemoteUrl(sourceUrl);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -559,12 +594,12 @@ const fetchRemoteImage = async (sourceUrl) => {
   throw new Error("Too many upstream image redirects");
 };
 
-const fetchAndCacheImage = (sourceUrl, imageProfile = "library") =>
+const fetchAndCacheImage = (sourceUrl: string, imageProfile = "library") =>
   runImageWork(`fetch:${buildImageCacheKey(normalizeKnownImageUrl(sourceUrl), imageProfile)}`, () =>
     fetchAndWriteImage(sourceUrl, imageProfile),
   );
 
-const fetchAndWriteImage = async (sourceUrl, imageProfile = "library") => {
+const fetchAndWriteImage = async (sourceUrl: string, imageProfile = "library") => {
   const normalizedSourceUrl = normalizeKnownImageUrl(sourceUrl);
   if (!normalizedSourceUrl) {
     throw new Error("Missing source image URL");
@@ -583,7 +618,7 @@ const fetchAndWriteImage = async (sourceUrl, imageProfile = "library") => {
   );
 };
 
-export const warmImageProxy = async (sourceUrl, imageProfile = "library") => {
+export const warmImageProxy = async (sourceUrl: string, imageProfile = "library") => {
   const profile = normalizeImageProfile(imageProfile);
   const cacheKeyFromLocalUrl = getCacheKeyFromLocalUrl(sourceUrl);
   if (cacheKeyFromLocalUrl) {
@@ -621,7 +656,10 @@ export const warmImageProxy = async (sourceUrl, imageProfile = "library") => {
   return fetchAndCacheImage(normalizedSourceUrl, profile);
 };
 
-export const warmPublicImageUrl = async (sourceUrl, imageProfile = "library") => {
+export const warmPublicImageUrl = async (
+  sourceUrl: string | null | undefined,
+  imageProfile = "library",
+) => {
   const normalized = String(sourceUrl || "").trim();
   if (!normalized || normalized === "NOT_FOUND") return null;
   if (isImageProxyLocalUrl(normalized)) {
@@ -650,11 +688,11 @@ export const warmPublicImageUrl = async (sourceUrl, imageProfile = "library") =>
   }
 };
 
-export const buildImageProxyUrl = (sourceUrl) => {
+export const buildImageProxyUrl = (sourceUrl: string | null | undefined) => {
   return buildStableImageProxyUrl(sourceUrl);
 };
 
-export const buildStableImageProxyUrl = (sourceUrl) => {
+export const buildStableImageProxyUrl = (sourceUrl: string | null | undefined) => {
   const normalized = normalizeKnownImageUrl(sourceUrl);
   if (!normalized) return null;
 
@@ -688,7 +726,7 @@ export const buildStableImageProxyUrl = (sourceUrl) => {
   return remote;
 };
 
-export const handleImageProxyRequest = async (req, res) => {
+export const handleImageProxyRequest = async (req: Request, res: ExpressResponse) => {
   const rawKey = String(req.params.cacheKey || "").trim();
   const match = rawKey.match(/^([a-f0-9]{64})(?:\.([a-z0-9]+))?$/i);
   if (!match) {
@@ -725,7 +763,7 @@ export const handleImageProxyRequest = async (req, res) => {
   });
 };
 
-export const handleImageCacheRequest = async (req, res) => {
+export const handleImageCacheRequest = async (req: Request, res: ExpressResponse) => {
   const sourceUrl = typeof req.body?.src === "string" ? req.body.src.trim() : "";
   if (!/^https?:\/\//i.test(sourceUrl)) {
     return res.status(400).json({ error: "An http or https image URL is required" });

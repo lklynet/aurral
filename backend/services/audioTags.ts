@@ -2,14 +2,15 @@ import { randomUUID } from "node:crypto";
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import type * as TagLib from "node-taglib-sharp";
 
-let File;
-let Id3v2FrameClassType;
-let Id3v2UserTextInformationFrame;
-let TagTypes;
-let readStyle;
-let addedTagTypes;
-let taglibReady;
+let File: typeof TagLib.File;
+let Id3v2FrameClassType: typeof TagLib.Id3v2FrameClassType;
+let Id3v2UserTextInformationFrame: typeof TagLib.Id3v2UserTextInformationFrame;
+let TagTypes: typeof TagLib.TagTypes;
+let readStyle: TagLib.ReadStyle;
+let addedTagTypes: TagLib.TagTypes;
+let taglibReady: Promise<void> | undefined;
 
 function loadTaglib() {
   return (taglibReady ||= import("node-taglib-sharp").then(({ default: taglib }) => {
@@ -25,103 +26,111 @@ const AURRAL_IDENTITY_PREFIX = `${AURRAL_IDENTITY_TAG}=`;
 const ITUNES_MEAN = "com.apple.iTunes";
 const MUSICBRAINZ_UFID_OWNER = "http://musicbrainz.org";
 
-const text = (value) => (value == null ? "" : String(value).trim());
-const first = (values) => text(Array.isArray(values) ? values[0] : values);
-const positive = (value) => {
+type TagFieldValue = string | number | string[] | null | undefined;
+
+interface TagFieldSpec {
+  read(tag: TagLib.Tag): TagFieldValue;
+  write(tag: TagLib.Tag, value: TagFieldValue, file: TagLib.File): void;
+  normalize?(value: unknown): TagFieldValue;
+}
+
+const text = (value: unknown) => (value == null ? "" : String(value).trim());
+const first = (values: unknown) => text(Array.isArray(values) ? values[0] : values);
+const positive = (value: unknown) => {
   const number = Number(value);
   return Number.isSafeInteger(number) && number > 0 ? number : 0;
 };
-const list = (value) =>
+const list = (value: unknown) =>
   (Array.isArray(value) ? value : text(value) ? [value] : [])
     .flatMap((entry) => String(entry).split(";"))
     .map(text)
     .filter(Boolean);
 
-const FIELDS = {
+const FIELDS: Record<string, TagFieldSpec> = {
   title: {
     read: (tag) => text(tag.title),
-    write: (tag, value) => {
+    write: (tag, value: string) => {
       tag.title = value;
     },
   },
   artist: {
     read: (tag) => first(tag.performers),
-    write: (tag, value) => {
+    write: (tag, value: string) => {
       tag.performers = [value];
     },
   },
   albumArtist: {
     read: (tag) => first(tag.albumArtists),
-    write: (tag, value) => {
+    write: (tag, value: string) => {
       tag.albumArtists = [value];
     },
   },
   album: {
     read: (tag) => text(tag.album),
-    write: (tag, value) => {
+    write: (tag, value: string) => {
       tag.album = value;
     },
   },
   year: {
     read: (tag) => positive(tag.year),
-    write: (tag, value) => {
+    write: (tag, value: number) => {
       tag.year = value;
     },
     normalize: positive,
   },
   trackNumber: {
     read: (tag) => positive(tag.track),
-    write: (tag, value) => {
+    write: (tag, value: number) => {
       tag.track = value;
     },
     normalize: positive,
   },
   discNumber: {
     read: (tag) => positive(tag.disc),
-    write: (tag, value) => {
+    write: (tag, value: number) => {
       tag.disc = value;
     },
     normalize: positive,
   },
   genres: {
     read: (tag) => list(tag.genres),
-    write: (tag, value) => {
+    write: (tag, value: string[]) => {
       tag.genres = value;
     },
     normalize: list,
   },
   artistMbid: {
     read: (tag) => text(tag.musicBrainzArtistId),
-    write: (tag, value) => {
+    write: (tag, value: string) => {
       tag.musicBrainzArtistId = value;
     },
   },
   albumArtistMbid: {
     read: (tag) => text(tag.musicBrainzReleaseArtistId),
-    write: (tag, value) => {
+    write: (tag, value: string) => {
       tag.musicBrainzReleaseArtistId = value;
     },
   },
   releaseGroupMbid: {
     read: (tag) => text(tag.musicBrainzReleaseGroupId),
-    write: (tag, value) => {
+    write: (tag, value: string) => {
       tag.musicBrainzReleaseGroupId = value;
     },
   },
   releaseMbid: {
     read: (tag) => text(tag.musicBrainzReleaseId),
-    write: (tag, value) => {
+    write: (tag, value: string) => {
       tag.musicBrainzReleaseId = value;
     },
   },
   recordingMbid: {
     read: (tag) => text(tag.musicBrainzTrackId),
-    write: (tag, value, file) => {
-      const id3 = file.getTag(TagTypes.Id3v2, false);
-      for (const frame of id3?.getFramesByClassType(
+    write: (tag, value: string, file) => {
+      const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
+      for (const frame of id3?.getFramesByClassType<TagLib.Id3v2UniqueFileIdentifierFrame>(
         Id3v2FrameClassType.UniqueFileIdentifierFrame,
       ) || []) {
-        if (frame.owner === MUSICBRAINZ_UFID_OWNER) id3.removeFrame(frame);
+        if (frame.owner === MUSICBRAINZ_UFID_OWNER) id3!.removeFrame(frame);
       }
       tag.musicBrainzTrackId = value;
     },
@@ -131,7 +140,9 @@ const FIELDS = {
 export const AUDIO_TAG_FIELDS = Object.keys(FIELDS);
 
 export class UnsupportedTagFormatError extends Error {
-  constructor(filePath, kind = "") {
+  declare code: string;
+
+  constructor(filePath: string, kind = "") {
     super(`Aurral cannot write tags to ${kind}${path.extname(filePath) || "this kind of"} files`);
     this.code = "TAGS_UNSUPPORTED";
   }
@@ -139,7 +150,7 @@ export class UnsupportedTagFormatError extends Error {
 
 // taglib grows the header of a fragmented MP4 without moving the data offsets
 // its fragments point at, which breaks the audio.
-function isFragmentedMp4(filePath) {
+function isFragmentedMp4(filePath: string) {
   const fd = openSync(filePath, "r");
   try {
     const size = fstatSync(fd).size;
@@ -161,7 +172,7 @@ function isFragmentedMp4(filePath) {
   }
 }
 
-async function openFile(filePath) {
+async function openFile(filePath: string) {
   await loadTaglib();
   if (isFragmentedMp4(filePath)) throw new UnsupportedTagFormatError(filePath, "fragmented ");
   try {
@@ -173,21 +184,23 @@ async function openFile(filePath) {
   }
 }
 
-const emptyValue = (field) =>
+const emptyValue = (field: string) =>
   field === "genres" ? [] : FIELDS[field].normalize === positive ? 0 : undefined;
-const isEmpty = (value) => (Array.isArray(value) ? value.length === 0 : !value);
-const normalize = (field, value) => (FIELDS[field].normalize || text)(value);
-const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+const isEmpty = (value: unknown) => (Array.isArray(value) ? value.length === 0 : !value);
+const normalize = (field: string, value: unknown) => (FIELDS[field].normalize || text)(value);
+const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 
-function readFields(tag) {
-  return Object.fromEntries(AUDIO_TAG_FIELDS.map((field) => [field, FIELDS[field].read(tag)]));
+function readFields(tag: TagLib.Tag) {
+  return Object.fromEntries(
+    AUDIO_TAG_FIELDS.map((field): [string, TagFieldValue] => [field, FIELDS[field].read(tag)]),
+  );
 }
 
-function parseIdentity(value) {
+function parseIdentity(value: unknown) {
   const raw = text(value);
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(
+    const parsed: unknown = JSON.parse(
       raw.startsWith(AURRAL_IDENTITY_PREFIX) ? raw.slice(AURRAL_IDENTITY_PREFIX.length) : raw,
     );
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
@@ -196,16 +209,18 @@ function parseIdentity(value) {
   }
 }
 
-function identityFrames(id3) {
+function identityFrames(id3: TagLib.Id3v2Tag) {
   return id3
-    .getFramesByClassType(Id3v2FrameClassType.UserTextInformationFrame)
+    .getFramesByClassType<TagLib.Id3v2UserTextInformationFrame>(
+      Id3v2FrameClassType.UserTextInformationFrame,
+    )
     .filter((frame) => frame.description === AURRAL_IDENTITY_TAG);
 }
 
-function readIdentity(file) {
-  const xiph = file.getTag(TagTypes.Xiph, false);
-  const id3 = file.getTag(TagTypes.Id3v2, false);
-  const apple = file.getTag(TagTypes.Apple, false);
+function readIdentity(file: TagLib.File) {
+  const xiph = file.getTag(TagTypes.Xiph, false) as TagLib.XiphComment | undefined;
+  const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
+  const apple = file.getTag(TagTypes.Apple, false) as TagLib.Mpeg4AppleTag | undefined;
   return (
     parseIdentity(xiph?.getFieldFirstValue(AURRAL_IDENTITY_TAG)) ||
     parseIdentity(id3 ? identityFrames(id3)[0]?.text?.[0] : null) ||
@@ -213,13 +228,13 @@ function readIdentity(file) {
   );
 }
 
-function writeIdentity(file, identity) {
+function writeIdentity(file: TagLib.File, identity: object) {
   const value = JSON.stringify(identity);
-  const xiph = file.getTag(TagTypes.Xiph, false);
+  const xiph = file.getTag(TagTypes.Xiph, false) as TagLib.XiphComment | undefined;
   if (xiph) xiph.setFieldAsStrings(AURRAL_IDENTITY_TAG, value);
-  const apple = file.getTag(TagTypes.Apple, false);
+  const apple = file.getTag(TagTypes.Apple, false) as TagLib.Mpeg4AppleTag | undefined;
   if (apple) apple.setItunesStrings(ITUNES_MEAN, AURRAL_IDENTITY_TAG, value);
-  const id3 = file.getTag(TagTypes.Id3v2, false);
+  const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
   if (id3) {
     for (const frame of identityFrames(id3)) id3.removeFrame(frame);
     const frame = Id3v2UserTextInformationFrame.fromDescription(AURRAL_IDENTITY_TAG);
@@ -228,38 +243,47 @@ function writeIdentity(file, identity) {
   }
 }
 
-const isLegacyMarker = (value) => text(value).startsWith(AURRAL_IDENTITY_PREFIX);
+const isLegacyMarker = (value: unknown) => text(value).startsWith(AURRAL_IDENTITY_PREFIX);
 
 // ffmpeg wrote the old comment marker to Vorbis comments as DESCRIPTION, which
 // taglib does not read as the comment.
-const legacyDescription = (file) =>
-  (file.getTag(TagTypes.Xiph, false)?.getField("DESCRIPTION") || []).some(isLegacyMarker);
+const legacyDescription = (file: TagLib.File) =>
+  (
+    (file.getTag(TagTypes.Xiph, false) as TagLib.XiphComment | undefined)?.getField(
+      "DESCRIPTION",
+    ) || []
+  ).some(isLegacyMarker);
 
-function clearLegacyIdentity(file) {
+function clearLegacyIdentity(file: TagLib.File) {
   if (isLegacyMarker(file.tag.grouping)) file.tag.grouping = undefined;
   if (isLegacyMarker(file.tag.comment)) file.tag.comment = undefined;
   if (legacyDescription(file)) {
-    const xiph = file.getTag(TagTypes.Xiph, false);
+    const xiph = file.getTag(TagTypes.Xiph, false) as TagLib.XiphComment;
     xiph.setFieldAsStrings(
       "DESCRIPTION",
       ...xiph.getField("DESCRIPTION").filter((value) => !isLegacyMarker(value)),
     );
   }
-  const id3 = file.getTag(TagTypes.Id3v2, false);
-  for (const frame of id3?.getFramesByClassType(Id3v2FrameClassType.UserTextInformationFrame) ||
-    []) {
+  const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
+  for (const frame of id3?.getFramesByClassType<TagLib.Id3v2UserTextInformationFrame>(
+    Id3v2FrameClassType.UserTextInformationFrame,
+  ) || []) {
     if (frame.description.toLowerCase() === "comment" && isLegacyMarker(frame.text?.[0]))
-      id3.removeFrame(frame);
+      id3!.removeFrame(frame);
   }
 }
 
-function hasLegacyIdentity(file) {
-  const id3 = file.getTag(TagTypes.Id3v2, false);
+function hasLegacyIdentity(file: TagLib.File) {
+  const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
   return (
     isLegacyMarker(file.tag.grouping) ||
     isLegacyMarker(file.tag.comment) ||
     legacyDescription(file) ||
-    (id3?.getFramesByClassType(Id3v2FrameClassType.UserTextInformationFrame) || []).some(
+    (
+      id3?.getFramesByClassType<TagLib.Id3v2UserTextInformationFrame>(
+        Id3v2FrameClassType.UserTextInformationFrame,
+      ) || []
+    ).some(
       (frame) => frame.description.toLowerCase() === "comment" && isLegacyMarker(frame.text?.[0]),
     )
   );
@@ -267,8 +291,12 @@ function hasLegacyIdentity(file) {
 
 // Changes only the tags Aurral has a value for. Every other tag, including
 // ratings, lyrics, ReplayGain, and cover art, stays as it was.
-function planChanges(current, values, fillOnly) {
-  const changes = {};
+function planChanges(
+  current: Record<string, TagFieldValue>,
+  values: Record<string, TagFieldValue>,
+  fillOnly: boolean,
+) {
+  const changes: Record<string, TagFieldValue> = {};
   for (const field of AUDIO_TAG_FIELDS) {
     if (values[field] == null) continue;
     const wanted = normalize(field, values[field]);
@@ -288,7 +316,7 @@ function planChanges(current, values, fillOnly) {
   return changes;
 }
 
-export async function readAudioTags(filePath) {
+export async function readAudioTags(filePath: string) {
   const file = await openFile(filePath);
   try {
     return { ...readFields(file.tag), identity: readIdentity(file) };
@@ -301,15 +329,15 @@ export async function readAudioTags(filePath) {
 // leaves half a file, and a hardlinked file gets its own copy while the other
 // link keeps its tags.
 export async function writeAudioTags(
-  filePath,
-  values = {},
-  { fillOnly = false, identity = null } = {},
+  filePath: string,
+  values: Record<string, TagFieldValue> = {},
+  { fillOnly = false, identity = null }: { fillOnly?: boolean; identity?: object | null } = {},
 ) {
   const source = path.resolve(filePath);
   const preview = await openFile(source);
-  let changes;
-  let identityChanged;
-  let legacyIdentity;
+  let changes: Record<string, TagFieldValue>;
+  let identityChanged: boolean;
+  let legacyIdentity: boolean;
   try {
     changes = planChanges(readFields(preview.tag), values, fillOnly);
     identityChanged = Boolean(identity) && !same(readIdentity(preview), identity);
@@ -330,7 +358,7 @@ export async function writeAudioTags(
     const file = await openFile(working);
     try {
       file.removeTags(addedTagTypes & ~file.tagTypesOnDisk);
-      const id3 = file.getTag(TagTypes.Id3v2, false);
+      const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
       if (id3 && !(file.tagTypesOnDisk & TagTypes.Id3v2)) id3.version = 4;
       for (const field of changed) {
         FIELDS[field].write(
