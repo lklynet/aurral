@@ -68,7 +68,6 @@ const isAutomaticUpgrade = (job) => Boolean(job?.upgradeForJobId) && !job.manual
 // its jobs still point at it. Release-level album attempts stay isolated.
 const releasedNzbs = new Set();
 const retiredNzbs = new Set();
-const activeNzbConsumers = new Map();
 const MAX_RETIRED_NZBS = 1000;
 const nzbKey = (clientKey, nzbId) => `${clientKey}\0${String(nzbId ?? "").trim()}`;
 
@@ -78,48 +77,35 @@ function retireNzb(key) {
   for (const released of releasedNzbs) {
     if (released.endsWith(`\0${key}`)) releasedNzbs.delete(released);
   }
-  activeNzbConsumers.delete(key);
 }
 
 function trackedConsumers(clientKey, nzbId) {
   const id = String(nzbId ?? "").trim();
   if (!id) return [];
-  return downloadTracker
-    .getAll()
-    .filter((entry) => {
-      if (
-        !["downloading", "blocked"].includes(entry.status) ||
-        downloadTracker.isInActiveAlbumGrab(entry.id) ||
-        releasedNzbs.has(`${entry.id}\0${nzbKey(clientKey, id)}`)
-      )
-        return false;
-      const currentMatches =
-        entry.downloadSource === "usenet" &&
-        entry.downloadClient === clientKey &&
-        String(entry.downloadClientId ?? "").trim() === id;
-      const held = entry.heldForReview;
-      const heldMatches =
-        held?.source === "usenet" &&
-        held.metadata?.downloadClient === clientKey &&
-        String(held.transferId ?? "").trim() === id;
-      return currentMatches || heldMatches;
-    });
+  return downloadTracker.getAll().filter((entry) => {
+    if (
+      !["downloading", "blocked"].includes(entry.status) ||
+      downloadTracker.isInActiveAlbumGrab(entry.id) ||
+      releasedNzbs.has(`${entry.id}\0${nzbKey(clientKey, id)}`)
+    )
+      return false;
+    const currentMatches =
+      entry.downloadSource === "usenet" &&
+      entry.downloadClient === clientKey &&
+      String(entry.downloadClientId ?? "").trim() === id;
+    const held = entry.heldForReview;
+    const heldMatches =
+      held?.source === "usenet" &&
+      held.metadata?.downloadClient === clientKey &&
+      String(held.transferId ?? "").trim() === id;
+    return currentMatches || heldMatches;
+  });
 }
 
 function consumersForNzb(clientKey, nzbId, jobId = null) {
-  const key = nzbKey(clientKey, nzbId);
-  let consumers = activeNzbConsumers.get(key);
-  if (!consumers) {
-    consumers = new Set(trackedConsumers(clientKey, nzbId).map((entry) => entry.id));
-    activeNzbConsumers.set(key, consumers);
-  }
+  const consumers = new Set(trackedConsumers(clientKey, nzbId).map((entry) => entry.id));
   if (jobId) consumers.add(jobId);
   return consumers;
-}
-
-function registerNzbConsumer(clientKey, nzbId, jobId) {
-  if (!clientKey || nzbId == null || !jobId) return;
-  consumersForNzb(clientKey, nzbId, jobId);
 }
 
 function hasOtherNzbConsumers(clientKey, nzbId, jobId) {
@@ -542,8 +528,7 @@ async function handleUsenetDownload(payload, helpers) {
     missingPolls: 0,
     unreadPolls: 0,
   });
-  const shareable =
-    payload.albumGrab !== true && Boolean(String(release.guid || "").trim());
+  const shareable = payload.albumGrab !== true && Boolean(String(release.guid || "").trim());
   const submissionKey = `${clientKey}\0${String(release.guid || "").trim()}`;
   let claimed = null;
   let sharedNzbId = null;
@@ -568,7 +553,6 @@ async function handleUsenetDownload(payload, helpers) {
       ...releaseMetadata,
       downloadClientId: sharedNzbId,
     });
-    registerNzbConsumer(clientKey, sharedNzbId, job.id);
     return pollPayload(sharedNzbId);
   }
   let submission;
@@ -587,7 +571,6 @@ async function handleUsenetDownload(payload, helpers) {
         ...releaseMetadata,
         downloadClientId: appended.nzbId,
       });
-      if (shareable) registerNzbConsumer(clientKey, appended.nzbId, job.id);
       return appended;
     });
   } catch (error) {
@@ -620,7 +603,6 @@ async function handleUsenetPoll(payload, helpers) {
   if (job.status === "failed" || job.status === "done") return null;
   const pollAttempts = Number(payload.pollAttempts || 0) + 1;
   const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
-  if (payload.albumGrab !== true) registerNzbConsumer(client.key, payload.nzbId, job.id);
   let historyItem;
   let queueItem = null;
   try {
@@ -699,7 +681,6 @@ async function handleUsenetFinalize(payload, helpers) {
   if (job.status === "failed" || job.status === "done") return null;
   const candidate = getPayloadCandidate(payload);
   const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
-  if (payload.albumGrab !== true) registerNzbConsumer(client.key, payload.nzbId, job.id);
   const historyItem = payload.history || (await client.getHistoryItem(payload.nzbId));
   if (payload.albumGrab === true) {
     const filePaths = await collectDownloadedAudioFiles(

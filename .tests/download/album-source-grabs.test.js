@@ -501,7 +501,10 @@ test("upgrades for two copies of one track share the release without moving its 
 
   const started = await Promise.all(upgradeIds.map((id) => start(id, failOnSourceFallback)));
   assert.equal(append.mock.calls.length, 1);
-  assert.deepEqual(started.map((payload) => payload.nzbId), [81, 81]);
+  assert.deepEqual(
+    started.map((payload) => payload.nzbId),
+    [81, 81],
+  );
   await runToEnd(started[0]);
   assert.equal(removed.mock.calls.length, 0);
   await runToEnd(started[1]);
@@ -570,7 +573,10 @@ test("overlapping static playlists share one Usenet release across their track j
   );
 
   assert.equal(append.mock.calls.length, 1);
-  assert.deepEqual(started.map((payload) => payload.nzbId), [84, 84, 84]);
+  assert.deepEqual(
+    started.map((payload) => payload.nzbId),
+    [84, 84, 84],
+  );
   for (const [index, payload] of started.entries()) {
     await runToEnd(payload);
     assert.equal(removed.mock.calls.length, index === started.length - 1 ? 1 : 0);
