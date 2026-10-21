@@ -707,7 +707,6 @@ async function updateStaticPlaylistLocked({
       },
       { clearPending: false },
     );
-    downloadWorker.pruneOrphanedJobState();
   }
 
   playlistManager.requestPlaylistSync([safePlaylistId, ...affectedPlaylistIds]);
@@ -763,7 +762,6 @@ async function deleteStaticPlaylistTrack({ playlistId, jobId } = {}) {
       if (failed) throw new Error(failed.message);
     },
   );
-  downloadWorker.pruneOrphanedJobState();
   const updatedPlaylist = (await syncStaticPlaylistConfigFromJobs(safePlaylistId)) || playlist;
   playlistManager.requestPlaylistSync(affectedPlaylistIds);
   await playlistManager.scheduleScanLibrary(true);
