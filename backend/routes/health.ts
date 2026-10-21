@@ -243,7 +243,10 @@ export type HealthResponse = BootstrapPayload & {
     cachedImagesCount: number;
     cachedImagesSizeBytes: number;
   };
-  websocket?: { clients: number; channels: Record<string, number> };
+  websocket?: {
+    clients: number;
+    channels: ReturnType<typeof websocketService.getStats>["channels"];
+  };
   system?: Awaited<ReturnType<typeof buildSystemPayload>>;
 };
 
