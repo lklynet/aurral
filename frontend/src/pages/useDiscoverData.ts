@@ -31,6 +31,24 @@ import { useDiscoveryStatus } from "../hooks/useDiscoveryStatus";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
 import { queryClient, queryKeys } from "../queryClient.ts";
+import type { DiscoverArtist } from "../../../backend/routes/discovery/handlers/main.ts";
+import type {
+  GetRecentlyAddedResponse,
+  GetRecentReleasesResponse,
+  LookupArtistsInLibraryBatchResponse,
+} from "../../../backend/routes/library/handlers/misc.ts";
+
+export type DiscoverData = Omit<
+  NonNullable<ReturnType<typeof normalizeDiscoveryData>>,
+  "recommendations" | "globalTop" | "topGenres" | "topTags"
+> & {
+  recommendations: DiscoverArtist[];
+  globalTop: DiscoverArtist[];
+  topGenres: string[];
+  topTags: string[];
+};
+
+export type RecentRelease = GetRecentReleasesResponse[number];
 
 export function useDiscoverData() {
   const { user: authUser, hasPermission, bootstrap } = useAuth();
@@ -60,9 +78,9 @@ export function useDiscoverData() {
     initialDataUpdatedAt: 0,
     staleTime: 30_000,
   });
-  const data = discoveryQuery.data || null;
+  const data = (discoveryQuery.data || null) as DiscoverData | null;
   const setData = useCallback(
-    (updater) => {
+    (updater: (current: DiscoverData | undefined) => DiscoverData | undefined) => {
       queryClient.setQueryData(discoveryQueryKey, updater);
     },
     [discoveryQueryKey],
@@ -91,13 +109,15 @@ export function useDiscoverData() {
       : undefined,
     staleTime: 5 * 60 * 1000,
   });
-  const recentlyAdded = recentlyAddedQuery.data || [];
-  const recentReleases = recentReleasesQuery.data || [];
-  const [pendingRecentReleaseIds, setPendingRecentReleaseIds] = useState({});
-  const [libraryLookup, setLibraryLookup] = useState({});
+  const recentlyAdded: GetRecentlyAddedResponse = recentlyAddedQuery.data || [];
+  const recentReleases: RecentRelease[] = recentReleasesQuery.data || [];
+  const [pendingRecentReleaseIds, setPendingRecentReleaseIds] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [libraryLookup, setLibraryLookup] = useState<LookupArtistsInLibraryBatchResponse>({});
   const { lookup: artistFeedbackLookup, submitFeedback } = useArtistTasteFeedback();
   const { status: discoveryStatus } = useDiscoveryStatus();
-  const previousDiscoveryStatusRef = useRef(null);
+  const previousDiscoveryStatusRef = useRef<typeof discoveryStatus>(null);
   const canAddAlbum = hasPermission("addAlbum");
 
   useEffect(() => {
@@ -155,12 +175,12 @@ export function useDiscoverData() {
   }, [bootstrap]);
 
   const getRecentReleaseKey = useCallback(
-    (album) => album.mbid || album.foreignAlbumId || album.id,
+    (album: RecentRelease) => album.mbid || album.foreignAlbumId || album.id,
     [],
   );
 
   const handleRecentReleaseAlbumAction = useCallback(
-    async (album, managedBy = libraryDestination.primary) => {
+    async (album: RecentRelease, managedBy = libraryDestination.primary) => {
       const albumKey = getRecentReleaseKey(album);
       const albumMbid = album?.mbid || album?.foreignAlbumId;
       const artistMbid = album?.artistMbid || album?.foreignArtistId;
@@ -205,15 +225,21 @@ export function useDiscoverData() {
   );
 
   const handleDiscoveryFeedback = useCallback(
-    async (artist, action, options = {}) => {
+    async (
+      artist: DiscoverArtist,
+      action: Parameters<ReturnType<typeof useArtistTasteFeedback>["submitFeedback"]>[1],
+      options: Parameters<ReturnType<typeof useArtistTasteFeedback>["submitFeedback"]>[2] = {},
+    ) => {
       if (action !== "block_artist" || options.isSelected) {
         return submitFeedback(artist, action, options);
       }
-      const hidden = {};
+      const hidden: Partial<
+        Record<"recommendations" | "globalTop", { candidate: DiscoverArtist; index: number }[]>
+      > = {};
       setData((current) => {
         if (!current) return current;
         const next = { ...current };
-        for (const key of ["recommendations", "globalTop"]) {
+        for (const key of ["recommendations", "globalTop"] as const) {
           const list = current[key] || [];
           hidden[key] = list
             .map((candidate, index) => ({ candidate, index }))

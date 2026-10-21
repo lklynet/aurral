@@ -1,5 +1,5 @@
 import ArtworkImage from "../components/ArtworkImage";
-import { memo, useState, useEffect } from "react";
+import { memo, useState, useEffect, type ReactNode } from "react";
 import { getReleaseGroupCover, getArtistCover } from "../utils/api/endpoints/artists.ts";
 
 import { Music } from "lucide-react";
@@ -14,7 +14,24 @@ import { formatDate, formatRelativeTime } from "../utils/dateTime.ts";
 import Tooltip from "../components/Tooltip";
 import RecommendationMeta from "../components/RecommendationMeta";
 import RouteLink from "../components/RouteLink";
-const parseCalendarDate = (value) => {
+import type { DiscoverArtist } from "../../../backend/routes/discovery/handlers/main.ts";
+import type { useLibraryDestination } from "../hooks/useLibraryDestination.ts";
+import type { RecentRelease, useDiscoverData } from "./useDiscoverData.ts";
+
+export type DiscoverCardArtist = Partial<DiscoverArtist> & {
+  canonicalId?: string | null;
+  libraryPath?: string | null;
+  imageUrl?: string | null;
+  metaText?: string;
+  subtitle?: string;
+  subtitleDetail?: string;
+};
+
+type DiscoverFeedbackHandler = ReturnType<typeof useDiscoverData>["handleDiscoveryFeedback"];
+type DiscoverAlbumAction = ReturnType<typeof useDiscoverData>["handleRecentReleaseAlbumAction"];
+type CardLink = { to: string; state?: unknown };
+
+const parseCalendarDate = (value: string | null | undefined) => {
   if (!value) return null;
   const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (match) {
@@ -26,7 +43,7 @@ const parseCalendarDate = (value) => {
   return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
 };
 
-const formatReleaseStatus = (releaseDate) => {
+const formatReleaseStatus = (releaseDate: string | null | undefined) => {
   const date = parseCalendarDate(releaseDate);
   if (!date) return null;
   const today = new Date();
@@ -38,7 +55,7 @@ const formatReleaseStatus = (releaseDate) => {
   return { text: `Released ${formatRelativeTime(date, { unit: "day" })}`, detail: formattedDate };
 };
 
-const getRecommendationReason = (artist) => {
+const getRecommendationReason = (artist: DiscoverCardArtist | null | undefined) => {
   if (artist?.metaText !== undefined) return artist.metaText;
   const seedNames = Array.isArray(artist?.supportingSeeds)
     ? artist.supportingSeeds
@@ -67,7 +84,15 @@ const getRecommendationReason = (artist) => {
   return artist?.discoveryTier === "deeper" ? "A deeper pick" : "Picked for your profile";
 };
 
-function CardText({ link, label, children }) {
+function CardText({
+  link,
+  label,
+  children,
+}: {
+  link: CardLink | null;
+  label: string;
+  children: ReactNode;
+}) {
   if (!link) return <div className="artist-discover-card__text">{children}</div>;
   return (
     <RouteLink
@@ -82,7 +107,20 @@ function CardText({ link, label, children }) {
 }
 
 export const ArtistCard = memo(
-  ({ artist, isInLibrary, getLibraryLink, onFeedback, feedbackUsed = {} }) => {
+  ({
+    artist,
+    isInLibrary,
+    getLibraryLink,
+    onFeedback,
+    feedbackUsed = {},
+  }: {
+    artist: DiscoverCardArtist;
+    isInLibrary: boolean;
+    getLibraryLink: (artist: DiscoverCardArtist) => { to: string } | null;
+    onFeedback?: DiscoverFeedbackHandler;
+    feedbackUsed?: Partial<Record<"more_like_this" | "less_like_this" | "block_artist", boolean>>;
+    status?: string;
+  }) => {
     const navigateTo = artist.navigateTo || artist.id;
     const hasValidMbid = navigateTo && navigateTo !== "null" && navigateTo !== "undefined";
     const artistMetaText = getRecommendationReason(artist);
@@ -178,12 +216,24 @@ export const ArtistCard = memo(
 
 ArtistCard.displayName = "ArtistCard";
 export const AlbumCard = memo(
-  ({ album, canAddAlbum = false, isPending = false, onAlbumAction, libraryDestination }) => {
+  ({
+    album,
+    canAddAlbum = false,
+    isPending = false,
+    onAlbumAction,
+    libraryDestination,
+  }: {
+    album: RecentRelease;
+    canAddAlbum?: boolean;
+    isPending?: boolean;
+    onAlbumAction: DiscoverAlbumAction;
+    libraryDestination: ReturnType<typeof useLibraryDestination>;
+  }) => {
     const releaseGroupMbid = album.mbid || album.foreignAlbumId;
     const artistMbid = album.artistMbid || album.foreignArtistId;
     const { isAlbumDownloading } = useActiveDownloads();
     const downloading = isPending || isAlbumDownloading(releaseGroupMbid);
-    const [fetchedCover, setFetchedCover] = useState(null);
+    const [fetchedCover, setFetchedCover] = useState<string | null>(null);
     const coverUrl = album.coverUrl || fetchedCover;
 
     useEffect(() => {
@@ -329,7 +379,7 @@ export const AlbumCard = memo(
 );
 
 AlbumCard.displayName = "AlbumCard";
-export const ViewAllCard = memo(({ to, label = "View all" }) => {
+export const ViewAllCard = memo(({ to, label = "View all" }: { to: string; label?: string }) => {
   return (
     <RouteLink to={to} className="artist-view-all-card--discover">
       <div className="artist-media-cell">

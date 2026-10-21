@@ -488,10 +488,10 @@ export const lookupArtistInLibrary = (
 };
 
 export const readLibraryLookupCache = (mbids: string[] | null | undefined) => {
-  const result: Record<string, unknown> = {};
+  const result: LookupArtistsInLibraryBatchResponse = {};
   if (!Array.isArray(mbids)) return result;
   mbids.forEach((id) => {
-    const value = queryClient.getQueryData(queryKeys.libraryLookup(id));
+    const value = queryClient.getQueryData<boolean>(queryKeys.libraryLookup(id));
     if (value !== undefined) result[id] = value;
   });
   return result;

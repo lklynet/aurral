@@ -27,7 +27,7 @@ import { NewsArticleCard } from "../components/NewsArticleCard";
 import { DiscoverLayoutModal } from "./DiscoverLayoutModal";
 import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
 import { useEditorialShelf } from "./useEditorialShelf";
-import { AlbumCard, ArtistCard, ViewAllCard } from "./DiscoverCards";
+import { AlbumCard, ArtistCard, ViewAllCard, type DiscoverCardArtist } from "./DiscoverCards";
 import { useDiscoverLayoutState } from "./useDiscoverLayoutState";
 import {
   DEFAULT_DISCOVER_SECTIONS,
@@ -43,7 +43,8 @@ import { useLibraryNews } from "../hooks/useLibraryNews";
 import { formatDate, formatRelativeTime } from "../utils/dateTime.ts";
 import TooltipButton from "../components/TooltipButton";
 import RouteLink from "../components/RouteLink";
-const getArtistId = (artist) => getArtistRecordId(artist);
+import type { DiscoveryBasedOn } from "../../../backend/db/helpers/discovery.ts";
+const getArtistId = (artist: DiscoverCardArtist) => getArtistRecordId(artist);
 
 const SECTION_CARD_KINDS = {
   playlists: "playlist",
@@ -175,7 +176,7 @@ function DiscoverPage() {
   const { recommendations = [], globalTop = [], topGenres = [], basedOn = [] } = data || {};
   const { data: editorialShelf, isPending: editorialShelfPending } = useEditorialShelf();
 
-  const nearbyShows = nearbyShowsData?.shows || [];
+  const nearbyShows: NonNullable<typeof nearbyShowsData>["shows"] = nearbyShowsData?.shows || [];
   const nearbyLocationLabel =
     nearbyShowsData?.location?.label || nearbyShowsData?.location?.postalCode || "your area";
   const featuredPlaylists = useMemo(() => {
@@ -219,7 +220,7 @@ function DiscoverPage() {
     return names;
   }, [basedOn, recommendations]);
 
-  const renderBasedOnArtist = (artist, key) => {
+  const renderBasedOnArtist = (artist: DiscoveryBasedOn, key: number) => {
     const routeId =
       artist?.id || artist?.mbid || (artist?.name ? encodeURIComponent(artist.name) : "");
     if (!routeId) {
@@ -241,7 +242,7 @@ function DiscoverPage() {
     );
   };
 
-  const getArtistLibraryLink = useCallback((artist) => {
+  const getArtistLibraryLink = useCallback((artist: DiscoverCardArtist) => {
     if (artist.canonicalId) {
       return { to: `/library/artist/${encodeURIComponent(artist.canonicalId)}` };
     }
@@ -321,7 +322,7 @@ function DiscoverPage() {
     recentReleases: recentReleasesPending,
   };
 
-  const renderSection = (id) => {
+  const renderSection = (id: string) => {
     if (sectionPending[id]) {
       return (
         <SkeletonStatus key={id} label="Loading section">
@@ -666,7 +667,7 @@ function DiscoverPage() {
 
   const [showFullBasedOnList, setShowFullBasedOnList] = useState(false);
 
-  const sectionMayRender = (id) =>
+  const sectionMayRender = (id: string) =>
     (id !== "news" || newsConfigured) && (id !== "recommendedShows" || ticketmasterConfigured);
 
   if ((data === null && !error) || isActuallyUpdating) {
