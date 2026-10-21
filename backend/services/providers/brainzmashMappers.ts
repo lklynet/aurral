@@ -1,12 +1,116 @@
-function normalizeArray(value) {
+interface RawImage {
+  Url?: unknown;
+  url?: unknown;
+  CoverType?: unknown;
+  kind?: unknown;
+}
+
+interface RawLink {
+  target?: unknown;
+  type?: unknown;
+  url?: { resource?: unknown };
+}
+
+interface RawRating {
+  Count?: unknown;
+  Value?: unknown;
+}
+
+interface RawArtist {
+  id?: unknown;
+  artistname?: unknown;
+  name?: unknown;
+  sortname?: unknown;
+  sortName?: unknown;
+  type?: unknown;
+  status?: unknown;
+  disambiguation?: unknown;
+  overview?: unknown;
+  genres?: unknown;
+  artistaliases?: unknown;
+  images?: unknown;
+  links?: unknown;
+  rating?: RawRating | null;
+}
+
+interface RawTrack {
+  id?: unknown;
+  recordingid?: unknown;
+  recordingId?: unknown;
+  oldrecordingids?: unknown;
+  trackname?: unknown;
+  title?: unknown;
+  trackposition?: unknown;
+  trackNumber?: unknown;
+  mediumnumber?: unknown;
+  durationms?: unknown;
+  artistid?: unknown;
+}
+
+interface RawRelease {
+  id?: unknown;
+  title?: unknown;
+  status?: unknown;
+  country?: unknown;
+  label?: unknown;
+  media?: unknown;
+  tracks?: unknown;
+  track_count?: unknown;
+  releasedate?: unknown;
+  releaseDate?: unknown;
+  disambiguation?: unknown;
+}
+
+interface RawAlbum {
+  id?: unknown;
+  title?: unknown;
+  artistid?: unknown;
+  artists?: unknown;
+  type?: unknown;
+  secondarytypes?: unknown;
+  releasedate?: unknown;
+  genres?: unknown;
+  aliases?: unknown;
+  overview?: unknown;
+  images?: unknown;
+  links?: unknown;
+  releases?: unknown;
+  rating?: RawRating | null;
+}
+
+interface RawArtistAlbum {
+  Id?: unknown;
+  id?: unknown;
+  Title?: unknown;
+  title?: unknown;
+  Type?: unknown;
+  type?: unknown;
+  SecondaryTypes?: unknown;
+  secondaryTypes?: unknown;
+  ReleaseStatuses?: unknown;
+  releaseStatuses?: unknown;
+  FirstReleaseDate?: unknown;
+  firstReleaseDate?: unknown;
+  ReleaseDate?: unknown;
+  releaseDate?: unknown;
+  releasedate?: unknown;
+  images?: unknown;
+}
+
+export type NormalizedArtist = ReturnType<typeof toNormalizedArtist>;
+export type NormalizedTrack = ReturnType<typeof toNormalizedTrack>;
+export type NormalizedRelease = ReturnType<typeof toNormalizedRelease>;
+export type NormalizedAlbum = ReturnType<typeof toNormalizedAlbum>;
+
+function normalizeArray(value: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
-function normalizeString(value) {
+function normalizeString(value: unknown) {
   return String(value || "").trim();
 }
 
-function normalizeType(value) {
+function normalizeType(value: unknown) {
   const normalized = normalizeString(value);
   if (normalized === "Album" || normalized === "EP" || normalized === "Single") {
     return normalized;
@@ -14,12 +118,12 @@ function normalizeType(value) {
   return normalized || "Album";
 }
 
-function normalizeImageKind(value) {
+function normalizeImageKind(value: unknown) {
   const normalized = normalizeString(value);
   return normalized || "Cover";
 }
 
-export function toNormalizedArtistImage(image) {
+export function toNormalizedArtistImage(image: RawImage | null | undefined) {
   const url = normalizeString(image?.Url || image?.url);
   if (!url) return null;
   return {
@@ -28,7 +132,7 @@ export function toNormalizedArtistImage(image) {
   };
 }
 
-export function toNormalizedArtistLink(link) {
+export function toNormalizedArtistLink(link: RawLink | null | undefined) {
   const target = normalizeString(link?.target || link?.url);
   if (!target) return null;
   return {
@@ -42,7 +146,7 @@ const LINKED_ARTIST_PROVIDERS = {
   "discogs.com": "discogs",
 };
 
-export function getLinkedArtistProviderIds(links = []) {
+export function getLinkedArtistProviderIds(links: RawLink[] = []) {
   const providerIds = [];
   for (const link of normalizeArray(links)) {
     try {
@@ -57,12 +161,12 @@ export function getLinkedArtistProviderIds(links = []) {
   return [...new Set(providerIds)];
 }
 
-export function getLinkedDeezerArtistId(links = []) {
+export function getLinkedDeezerArtistId(links: RawLink[] = []) {
   const providerId = getLinkedArtistProviderIds(links).find((id) => id.endsWith("@deezer"));
   return providerId ? providerId.split("@")[0] : null;
 }
 
-export function toNormalizedArtist(raw) {
+export function toNormalizedArtist(raw: RawArtist | null | undefined) {
   const images = normalizeArray(raw?.images).map(toNormalizedArtistImage).filter(Boolean);
   const links = normalizeArray(raw?.links).map(toNormalizedArtistLink).filter(Boolean);
   return {
@@ -84,7 +188,7 @@ export function toNormalizedArtist(raw) {
     rating:
       raw?.rating && raw.rating.Value != null
         ? {
-            count: Number.parseInt(raw.rating.Count, 10) || 0,
+            count: Number.parseInt(String(raw.rating.Count), 10) || 0,
             value:
               raw.rating.Value != null && Number.isFinite(Number(raw.rating.Value))
                 ? Number(raw.rating.Value)
@@ -94,7 +198,7 @@ export function toNormalizedArtist(raw) {
   };
 }
 
-export function toNormalizedTrack(raw) {
+export function toNormalizedTrack(raw: RawTrack | null | undefined) {
   return {
     id: normalizeString(raw?.id),
     recordingId: normalizeString(raw?.recordingid || raw?.recordingId),
@@ -124,7 +228,7 @@ export function toNormalizedTrack(raw) {
   };
 }
 
-export function toNormalizedRelease(raw) {
+export function toNormalizedRelease(raw: RawRelease | null | undefined) {
   const tracks = normalizeArray(raw?.tracks).map(toNormalizedTrack).filter(Boolean);
   return {
     id: normalizeString(raw?.id),
@@ -154,7 +258,7 @@ export function toNormalizedRelease(raw) {
   };
 }
 
-export function toNormalizedAlbum(raw) {
+export function toNormalizedAlbum(raw: RawAlbum | null | undefined) {
   const artists = normalizeArray(raw?.artists)
     .map(toNormalizedArtist)
     .filter((artist) => artist?.id);
@@ -186,7 +290,7 @@ export function toNormalizedAlbum(raw) {
     rating:
       raw?.rating && raw.rating.Value != null
         ? {
-            count: Number.parseInt(raw.rating.Count, 10) || 0,
+            count: Number.parseInt(String(raw.rating.Count), 10) || 0,
             value:
               raw.rating.Value != null && Number.isFinite(Number(raw.rating.Value))
                 ? Number(raw.rating.Value)
@@ -196,7 +300,7 @@ export function toNormalizedAlbum(raw) {
   };
 }
 
-export function toNormalizedArtistAlbum(raw) {
+export function toNormalizedArtistAlbum(raw: RawArtistAlbum | null | undefined) {
   return {
     id: normalizeString(raw?.Id || raw?.id),
     title: normalizeString(raw?.Title || raw?.title),
@@ -220,7 +324,7 @@ export function toNormalizedArtistAlbum(raw) {
   };
 }
 
-export function toLegacyArtist(normalizedArtist) {
+export function toLegacyArtist(normalizedArtist: NormalizedArtist) {
   return {
     id: normalizedArtist.id,
     name: normalizedArtist.name,
@@ -238,7 +342,11 @@ export function toLegacyArtist(normalizedArtist) {
   };
 }
 
-export function toLegacyReleaseGroupSummary(album, artist = null, { score = 0 } = {}) {
+export function toLegacyReleaseGroupSummary(
+  album: NormalizedAlbum & { artistName?: unknown; firstReleaseDate?: unknown },
+  artist: { id?: unknown; name?: unknown } | null = null,
+  { score = 0 }: { score?: number } = {},
+) {
   const artistName = artist?.name || album?.artistName || "";
   const artistId = artist?.id || album?.artistId || null;
   return {
@@ -266,7 +374,7 @@ export function toLegacyReleaseGroupSummary(album, artist = null, { score = 0 } 
   };
 }
 
-export function toLegacyRelease(release) {
+export function toLegacyRelease(release: NormalizedRelease) {
   return {
     id: release.id,
     title: release.title,
@@ -299,7 +407,7 @@ export function toLegacyRelease(release) {
   };
 }
 
-export function toLegacySearchArtistResult(normalizedArtist, score = 0) {
+export function toLegacySearchArtistResult(normalizedArtist: NormalizedArtist, score = 0) {
   return {
     id: normalizedArtist.id,
     name: normalizedArtist.name,
@@ -311,7 +419,16 @@ export function toLegacySearchArtistResult(normalizedArtist, score = 0) {
   };
 }
 
-export function toLegacySearchAlbumResult(item) {
+export function toLegacySearchAlbumResult(item: {
+  id?: unknown;
+  title?: unknown;
+  type?: unknown;
+  secondaryTypes?: unknown;
+  releaseDate?: unknown;
+  score?: unknown;
+  artistName?: unknown;
+  artistId?: unknown;
+}) {
   const normalizedArtistName = normalizeString(item?.artistName) || "Unknown Artist";
   return {
     id: item.id,

@@ -5,17 +5,19 @@ import { createHash, randomUUID } from "node:crypto";
 
 export const TRANSFER_MODES = new Set(["move", "copy", "hardlink"]);
 
+type TransferMode = "move" | "copy" | "hardlink";
+
 const LINK_UNSUPPORTED = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EMLINK"]);
 const SIDECAR_EXTENSIONS = [".lrc"];
 export const ALBUM_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
 
-async function digest(filePath) {
+async function digest(filePath: string) {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(filePath)) hash.update(chunk);
   return hash.digest("hex");
 }
 
-export async function filesIdentical(left, right) {
+export async function filesIdentical(left: string, right: string) {
   const [a, b] = await Promise.all([fs.stat(left), fs.stat(right)]);
   if (!a.isFile() || !b.isFile()) return false;
   if (a.dev === b.dev && a.ino === b.ino) return true;
@@ -29,7 +31,7 @@ export const LINKED_FOLDER_REASON =
 
 // The Library scan does not follow linked folders, so music filed through one
 // would drop out of the Library.
-export async function passesThroughLinkedFolder(root, target) {
+export async function passesThroughLinkedFolder(root: string, target: string) {
   let current = path.resolve(root);
   for (const part of path.relative(current, path.dirname(target)).split(path.sep).filter(Boolean)) {
     current = path.join(current, part);
@@ -40,15 +42,15 @@ export async function passesThroughLinkedFolder(root, target) {
   return false;
 }
 
-export async function isSameFile(left, right) {
+export async function isSameFile(left: string, right: string) {
   const [a, b] = await Promise.all([fs.stat(left), fs.stat(right)]);
   return a.dev === b.dev && a.ino === b.ino;
 }
 
-const temporaryPath = (target) =>
+const temporaryPath = (target: string) =>
   path.join(path.dirname(target), `.aurral-transfer-${process.pid}-${randomUUID()}.tmp`);
 
-async function linkOrRenameNew(from, target) {
+async function linkOrRenameNew(from: string, target: string) {
   try {
     await fs.link(from, target);
     await fs.unlink(from);
@@ -61,7 +63,7 @@ async function linkOrRenameNew(from, target) {
   }
 }
 
-async function copyNew(source, target) {
+async function copyNew(source: string, target: string) {
   const temporary = temporaryPath(target);
   try {
     await fs.copyFile(source, temporary, fsConstants.COPYFILE_FICLONE);
@@ -75,7 +77,7 @@ async function copyNew(source, target) {
 }
 
 // Never replaces an existing target: a taken name fails with EEXIST.
-export async function placeFile(source, target, mode) {
+export async function placeFile(source: string, target: string, mode: TransferMode) {
   await fs.mkdir(path.dirname(target), { recursive: true });
   if (mode === "hardlink") {
     await fs.link(source, target);
@@ -94,7 +96,7 @@ export async function placeFile(source, target, mode) {
   }
 }
 
-export async function transferSidecars(source, target, mode) {
+export async function transferSidecars(source: string, target: string, mode: TransferMode) {
   const sourceBase = source.slice(0, -path.extname(source).length);
   const targetBase = target.slice(0, -path.extname(target).length);
   const placed = [];
@@ -111,13 +113,13 @@ export async function transferSidecars(source, target, mode) {
   return placed;
 }
 
-export async function removeSidecars(filePath) {
+export async function removeSidecars(filePath: string) {
   const base = filePath.slice(0, -path.extname(filePath).length);
   for (const extension of SIDECAR_EXTENSIONS) await fs.rm(`${base}${extension}`, { force: true });
 }
 
 // A folder that has only album art left once its music is gone goes too.
-export async function removeEmptiedFolder(directory, stopAt) {
+export async function removeEmptiedFolder(directory: string, stopAt: string) {
   const root = path.resolve(stopAt);
   const folder = path.resolve(directory);
   if (!folder.startsWith(`${root}${path.sep}`)) return;
@@ -140,7 +142,7 @@ const HARDLINK_REASONS = {
     "The source folder and the Downloads Folder are on different filesystems or mounts. In Docker, mount one parent folder that holds both.",
 };
 
-export async function probeHardlink(sourceFile, targetDirectory) {
+export async function probeHardlink(sourceFile: string, targetDirectory: string) {
   const probe = path.join(targetDirectory, `.aurral-link-check-${process.pid}-${randomUUID()}`);
   try {
     await fs.mkdir(targetDirectory, { recursive: true });
@@ -158,7 +160,7 @@ export async function probeHardlink(sourceFile, targetDirectory) {
   }
 }
 
-export async function removeEmptyDirectories(directory, stopAt) {
+export async function removeEmptyDirectories(directory: string, stopAt: string) {
   const root = path.resolve(stopAt);
   let current = path.resolve(directory);
   while (current !== root && current.startsWith(`${root}${path.sep}`)) {

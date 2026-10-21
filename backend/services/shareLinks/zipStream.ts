@@ -8,7 +8,19 @@ const MAX32 = 0xffffffff;
 const UTF8_FLAG = 0x0800;
 const UNIX_FILE_MODE = 0o100644;
 
-function dosDateTime(ms) {
+type ZipEntry = {
+  path: string;
+  name: Buffer;
+  size: number;
+  offset: number;
+  localZip64: boolean;
+  centralZip64: boolean;
+  time: number;
+  date: number;
+  crc?: number;
+};
+
+function dosDateTime(ms: number) {
   const date = new Date(Number.isFinite(ms) ? ms : Date.now());
   const year = Math.max(1980, date.getFullYear());
   return {
@@ -17,17 +29,19 @@ function dosDateTime(ms) {
   };
 }
 
-export async function planZip(files) {
+type ZipPlan = Awaited<ReturnType<typeof planZip>>;
+
+export async function planZip(files: { name: string; path: string }[]) {
   let offset = 0;
   let centralSize = 0;
-  const entries = [];
+  const entries: ZipEntry[] = [];
   for (const file of files) {
     const info = await stat(file.path);
     const name = Buffer.from(file.name, "utf8");
     const size = info.size;
     const localZip64 = size >= MAX32;
     const centralZip64 = localZip64 || offset >= MAX32;
-    const entry = {
+    const entry: ZipEntry = {
       path: file.path,
       name,
       size,
@@ -50,7 +64,7 @@ export async function planZip(files) {
   };
 }
 
-async function fileCrc(path, expectedSize) {
+async function fileCrc(path: string, expectedSize: number) {
   let crc = 0;
   let size = 0;
   for await (const chunk of createReadStream(path)) {
@@ -61,7 +75,7 @@ async function fileCrc(path, expectedSize) {
   return crc;
 }
 
-function localHeader(entry) {
+function localHeader(entry: ZipEntry) {
   const header = Buffer.alloc(30 + entry.name.length + (entry.localZip64 ? 20 : 0));
   header.writeUInt32LE(0x04034b50, 0);
   header.writeUInt16LE(entry.localZip64 ? 45 : 20, 4);
@@ -85,7 +99,7 @@ function localHeader(entry) {
   return header;
 }
 
-function centralHeader(entry) {
+function centralHeader(entry: ZipEntry) {
   const header = Buffer.alloc(46 + entry.name.length + (entry.centralZip64 ? 28 : 0));
   const version = entry.centralZip64 ? 45 : 20;
   header.writeUInt32LE(0x02014b50, 0);
@@ -114,7 +128,7 @@ function centralHeader(entry) {
   return header;
 }
 
-function endRecords(plan) {
+function endRecords(plan: ZipPlan) {
   const count = plan.entries.length;
   const records = [];
   if (plan.zip64End) {
@@ -143,7 +157,7 @@ function endRecords(plan) {
   return records;
 }
 
-async function* zipChunks(plan) {
+async function* zipChunks(plan: ZipPlan) {
   for (const entry of plan.entries) {
     entry.crc = await fileCrc(entry.path, entry.size);
     yield localHeader(entry);
@@ -159,6 +173,6 @@ async function* zipChunks(plan) {
   yield* endRecords(plan);
 }
 
-export function zipStream(plan) {
+export function zipStream(plan: ZipPlan) {
   return Readable.from(zipChunks(plan), { objectMode: false });
 }

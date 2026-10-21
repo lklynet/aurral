@@ -8,7 +8,7 @@ export const SPOTIFY_RENEW_URI =
   process.env.SPOTIFY_OAUTH_RENEW_URI || "https://spotify.lidarr.audio/renew";
 export const SPOTIFY_SCOPES = "playlist-read-private playlist-read-collaborative";
 
-export function buildSpotifyOAuthUrl(callbackUrl) {
+export function buildSpotifyOAuthUrl(callbackUrl: string) {
   const params = new URLSearchParams({
     client_id: SPOTIFY_CLIENT_ID,
     response_type: "code",

@@ -1,8 +1,10 @@
-import { parseFile } from "music-metadata";
+import { parseFile, type IAudioMetadata } from "music-metadata";
 
 export const SAME_LENGTH_MS = 3000;
 
-export async function readRecording(filePath, metadata = null) {
+export type Recording = Awaited<ReturnType<typeof readRecording>>;
+
+export async function readRecording(filePath: string, metadata: IAudioMetadata | null = null) {
   try {
     const parsed = metadata || (await parseFile(filePath, { skipCovers: true, duration: false }));
     let seconds = Number(parsed.format?.duration);
@@ -24,10 +26,10 @@ export async function readRecording(filePath, metadata = null) {
 // MusicBrainz can give one recording to several tracks of a release, such as
 // a run of silent tracks. Files whose tags number them differently are
 // different tracks, not copies, whatever the Library merged them into.
-export const differentTracks = (left, right) =>
+export const differentTracks = (left: Recording, right: Recording) =>
   left.trackNumber > 0 && right.trackNumber > 0 && left.trackNumber !== right.trackNumber;
 
-export const formatGap = (ms) => {
+export const formatGap = (ms: number) => {
   const seconds = Math.round(Math.abs(ms) / 1000);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 };

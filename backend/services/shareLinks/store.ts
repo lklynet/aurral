@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { db } from "../../config/db-sqlite.ts";
+import type { SettingsRow, ShareLinksRow } from "../../db/rows.ts";
 
 export const SHARE_ORIGIN = String(process.env.AURRAL_SHARE_ORIGIN || "https://aurral.org").replace(
   /\/+$/,
@@ -8,7 +9,9 @@ export const SHARE_ORIGIN = String(process.env.AURRAL_SHARE_ORIGIN || "https://a
 const INSTANCE_ID_KEY = "shareInstanceId";
 const INSTANCE_SECRET_KEY = "shareInstanceSecret";
 
-const toShareLink = (row) =>
+type ShareLink = NonNullable<ReturnType<typeof toShareLink>>;
+
+const toShareLink = (row: ShareLinksRow | undefined) =>
   row && {
     id: row.id,
     token: row.token,
@@ -24,11 +27,16 @@ const toShareLink = (row) =>
     createdAt: row.created_at,
   };
 
-const randomId = (bytes) => crypto.randomBytes(bytes).toString("base64url");
+const randomId = (bytes: number) => crypto.randomBytes(bytes).toString("base64url");
 
-function claimSetting(key, value) {
-  db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)").run(key, value);
-  return db.prepare("SELECT value FROM settings WHERE key = ?").get(key).value;
+function claimSetting(key: string, value: string) {
+  db.prepare<[string, string]>("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)").run(
+    key,
+    value,
+  );
+  return db
+    .prepare<[string], Pick<SettingsRow, "value">>("SELECT value FROM settings WHERE key = ?")
+    .get(key)!.value;
 }
 
 export function getShareInstance() {
@@ -38,7 +46,7 @@ export function getShareInstance() {
   };
 }
 
-export function shareLinkUrl(link) {
+export function shareLinkUrl(link: ShareLink) {
   return `${SHARE_ORIGIN}/s/${link.payload}~${getShareInstance().id}.${link.token}`;
 }
 
@@ -58,9 +66,34 @@ export function createShareLink({
   artistName,
   allowDownload,
   expiresAt,
+}: {
+  userId: number;
+  kind: string;
+  targetRef: string;
+  albumRef?: string | null;
+  payload: string;
+  title: string;
+  artistName: string;
+  allowDownload: boolean;
+  expiresAt: number | null;
 }) {
   const row = db
-    .prepare(
+    .prepare<
+      [
+        string,
+        number,
+        string,
+        string,
+        string | null,
+        string,
+        string,
+        string,
+        number,
+        number | null,
+        number,
+      ],
+      ShareLinksRow
+    >(
       `INSERT INTO share_links
        (token, user_id, kind, target_ref, album_ref, payload, title, artist_name,
         allow_download, expires_at, created_at)
@@ -83,33 +116,40 @@ export function createShareLink({
   return toShareLink(row);
 }
 
-export function listShareLinks(userId) {
+export function listShareLinks(userId: number) {
   deleteExpiredShareLinks();
   return db
-    .prepare("SELECT * FROM share_links WHERE user_id = ? ORDER BY created_at DESC, id DESC")
+    .prepare<[number], ShareLinksRow>(
+      "SELECT * FROM share_links WHERE user_id = ? ORDER BY created_at DESC, id DESC",
+    )
     .all(userId)
     .map(toShareLink);
 }
 
-export function getLiveShareLink(token) {
+export function getLiveShareLink(token: string | undefined) {
   const value = String(token || "");
   if (!/^[A-Za-z0-9_-]{16,64}$/.test(value)) return null;
-  const link = toShareLink(db.prepare("SELECT * FROM share_links WHERE token = ?").get(value));
+  const link = toShareLink(
+    db.prepare<[string], ShareLinksRow>("SELECT * FROM share_links WHERE token = ?").get(value),
+  );
   if (!link || (link.expiresAt != null && link.expiresAt <= Date.now())) return null;
   return link;
 }
 
-export function deleteShareLink(userId, id) {
+export function deleteShareLink(userId: number, id: string) {
   return (
-    db.prepare("DELETE FROM share_links WHERE id = ? AND user_id = ?").run(Number(id), userId)
-      .changes > 0
+    db
+      .prepare<[number, number]>("DELETE FROM share_links WHERE id = ? AND user_id = ?")
+      .run(Number(id), userId).changes > 0
   );
 }
 
 export function getShareLinkSchedule() {
   deleteExpiredShareLinks();
   const row = db
-    .prepare("SELECT COUNT(*) AS count, MIN(expires_at) AS next_expires_at FROM share_links")
-    .get();
+    .prepare<[], { count: number; next_expires_at: number | null }>(
+      "SELECT COUNT(*) AS count, MIN(expires_at) AS next_expires_at FROM share_links",
+    )
+    .get()!;
   return { count: row.count, nextExpiresAt: row.next_expires_at ?? null };
 }

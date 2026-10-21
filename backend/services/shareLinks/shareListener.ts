@@ -16,7 +16,7 @@ const notFound = (res) =>
   res.status(404).json({ error: "not_found", message: "This link has expired or was stopped." });
 
 function loadShare(req, res) {
-  const link = getLiveShareLink(req.params.token);
+  const link = getLiveShareLink(req.params.token)!;
   const owner = link ? userOps.getUserById(link.userId) : null;
   const target = owner?.status === "active" ? resolveShareTarget(link) : null;
   if (!target) {

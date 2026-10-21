@@ -13,19 +13,19 @@ const REQUIRED_METHODS = [
 const REJECTED_HTTP_STATUSES = new Set([400, 401, 403]);
 const REJECTED_SUBSONIC_CODES = new Set([10, 40, 41, 50]);
 
-const requireText = (value, field) => {
+const requireText = (value: unknown, field: string) => {
   if (typeof value !== "string" || !value.trim()) {
     throw new TypeError(`${field} must be a non-empty string`);
   }
   return value.trim();
 };
 
-const optionalText = (value, field) => {
+const optionalText = (value: unknown, field: string) => {
   if (value == null) return null;
   return requireText(value, field);
 };
 
-const normalizeOwnerUserId = (value) => {
+const normalizeOwnerUserId = (value: number | null) => {
   if (value == null) return null;
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new TypeError("ownerUserId must be a positive integer or null");
@@ -33,12 +33,24 @@ const normalizeOwnerUserId = (value) => {
   return value;
 };
 
-export function createPlaybackPlaylistIdentity({ entityId, ownerUserId = null } = {}) {
+export function createPlaybackPlaylistIdentity({
+  entityId,
+  ownerUserId = null,
+}: { entityId?: unknown; ownerUserId?: number | null } = {}) {
   return Object.freeze({
     entityId: requireText(entityId, "entityId"),
     ownerUserId: normalizeOwnerUserId(ownerUserId),
   });
 }
+
+type PlaybackTrack = {
+  path: string;
+  title: string;
+  artist: string;
+  album?: string;
+  mbid?: string;
+  durationMs?: number;
+};
 
 export function createPlaybackPlaylistSnapshot({
   entityId,
@@ -46,6 +58,12 @@ export function createPlaybackPlaylistSnapshot({
   displayName,
   description = null,
   tracks,
+}: {
+  entityId?: unknown;
+  ownerUserId?: number | null;
+  displayName?: unknown;
+  description?: unknown;
+  tracks?: unknown;
 } = {}) {
   if (!Array.isArray(tracks)) {
     throw new TypeError("tracks must be an array");
@@ -54,7 +72,7 @@ export function createPlaybackPlaylistSnapshot({
   const normalizedTracks = tracks.map((track, index) => {
     const trackPath = track?.path;
     requireText(trackPath, `tracks[${index}].path`);
-    const normalized = {
+    const normalized: PlaybackTrack = {
       path: trackPath,
       title: requireText(track?.title, `tracks[${index}].title`),
       artist: requireText(track?.artist, `tracks[${index}].artist`),
@@ -80,7 +98,7 @@ export function createPlaybackPlaylistSnapshot({
   });
 }
 
-function requireAbsolutePaths(values, label) {
+function requireAbsolutePaths(values: unknown, label: string) {
   if (!Array.isArray(values)) {
     throw new TypeError(`${label} must be an array`);
   }
@@ -94,14 +112,17 @@ function requireAbsolutePaths(values, label) {
   );
 }
 
-export function createPlaybackScanRequest({ folders, roots } = {}) {
+export function createPlaybackScanRequest({
+  folders,
+  roots,
+}: { folders?: unknown; roots?: unknown } = {}) {
   return Object.freeze({
     folders: requireAbsolutePaths(folders, "folders"),
     roots: requireAbsolutePaths(roots, "roots"),
   });
 }
 
-export function playbackOperationSuccess({ pending = false } = {}) {
+export function playbackOperationSuccess({ pending = false }: { pending?: boolean } = {}) {
   return Object.freeze(pending ? { ok: true, pending: true } : { ok: true });
 }
 
@@ -116,7 +137,11 @@ export function playbackScanDeferred() {
   return Object.freeze({ ok: true, deferred: true });
 }
 
-export function playbackOperationFailure({ code, message, retryable = false } = {}) {
+export function playbackOperationFailure({
+  code,
+  message,
+  retryable = false,
+}: { code?: unknown; message?: unknown; retryable?: unknown } = {}) {
   return Object.freeze({
     ok: false,
     error: Object.freeze({

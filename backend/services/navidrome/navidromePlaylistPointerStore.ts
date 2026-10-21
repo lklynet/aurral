@@ -1,19 +1,26 @@
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
+import type { SettingsRow } from "../../db/rows.ts";
 
 const SETTINGS_KEY = "navidromePlaylistPointers";
-const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
-const upsertSettingStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+const getSettingStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
+  "SELECT value FROM settings WHERE key = ?",
+);
+const upsertSettingStmt = db.prepare<[string, string | null]>(
+  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+);
 
 const readStore = () => {
   const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
   return parsed && typeof parsed === "object" ? parsed : {};
 };
 
-const writeStore = (store) => {
+const writeStore = (store: unknown) => {
   upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
 };
 
-const normalizePointer = (raw) => {
+type StoredPointer = { playlistId?: unknown; title?: unknown; updatedAt?: unknown };
+
+const normalizePointer = (raw: StoredPointer | null | undefined) => {
   if (!raw || typeof raw !== "object") return null;
   const playlistId = raw.playlistId != null ? String(raw.playlistId) : null;
   const title = String(raw.title || "");
@@ -25,12 +32,14 @@ const normalizePointer = (raw) => {
   };
 };
 
+type NavidromePointer = NonNullable<ReturnType<typeof normalizePointer>>;
+
 export const navidromePlaylistPointerStore = {
   getEntityIds() {
     return Object.keys(readStore());
   },
 
-  getPointersForEntity(entityId) {
+  getPointersForEntity(entityId: string): (NavidromePointer & { targetKey: string })[] {
     return Object.entries(readStore()[entityId] || {})
       .map(([targetKey, raw]) => {
         const pointer = normalizePointer(raw);
@@ -39,11 +48,15 @@ export const navidromePlaylistPointerStore = {
       .filter(Boolean);
   },
 
-  getPointer(entityId, targetKey) {
+  getPointer(entityId: string, targetKey: string) {
     return normalizePointer(readStore()[entityId]?.[targetKey] || null);
   },
 
-  setPointer(entityId, targetKey, { playlistId, title }) {
+  setPointer(
+    entityId: string,
+    targetKey: string,
+    { playlistId, title }: { playlistId: string | null; title: string },
+  ) {
     const store = readStore();
     if (!store[entityId]) store[entityId] = {};
     store[entityId][targetKey] = {
@@ -54,7 +67,7 @@ export const navidromePlaylistPointerStore = {
     writeStore(store);
   },
 
-  deletePointer(entityId, targetKey) {
+  deletePointer(entityId: string, targetKey: string) {
     const store = readStore();
     if (!store[entityId]?.[targetKey]) return false;
     delete store[entityId][targetKey];
@@ -63,7 +76,7 @@ export const navidromePlaylistPointerStore = {
     return true;
   },
 
-  hasPlaylistId(playlistId) {
+  hasPlaylistId(playlistId: unknown) {
     const expected = String(playlistId);
     return Object.values(readStore()).some((targets) =>
       Object.values(targets || {}).some((raw) => normalizePointer(raw)?.playlistId === expected),

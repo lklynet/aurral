@@ -6,16 +6,25 @@ import {
 
 const DELETE_OPERATIONS = new Set(["deletePlaylist", "deleteEntityPlaylists"]);
 
+type PlaybackDestination = {
+  key: string;
+  name: string;
+  isConfigured(): boolean;
+  updateConfig(config: unknown): void;
+};
+
 export class PlaybackDestinationRegistry {
-  constructor(destinations) {
+  declare destinations: PlaybackDestination[];
+
+  constructor(destinations: PlaybackDestination[]) {
     this.destinations = destinations.map((destination) => {
       assertPlaybackDestination(destination);
-      for (const property of ["key", "name"]) {
+      for (const property of ["key", "name"] as const) {
         if (typeof destination[property] !== "string" || !destination[property].trim()) {
           throw new TypeError(`PlaybackDestination.${property} must be a non-empty string`);
         }
       }
-      for (const method of ["isConfigured", "updateConfig"]) {
+      for (const method of ["isConfigured", "updateConfig"] as const) {
         if (typeof destination[method] !== "function") {
           throw new TypeError(`PlaybackDestination.${method} must be a function`);
         }
@@ -24,17 +33,17 @@ export class PlaybackDestinationRegistry {
     });
   }
 
-  updateConfig(integrations = {}) {
+  updateConfig(integrations: Record<string, unknown> = {}) {
     for (const destination of this.destinations) {
       destination.updateConfig(integrations[destination.key] || {});
     }
   }
 
-  async run(operation, ...args) {
+  async run(operation: string, ...args: unknown[]) {
     return this.runOn(null, operation, ...args);
   }
 
-  async runOn(keys, operation, ...args) {
+  async runOn(keys: string[] | null, operation: string, ...args: unknown[]) {
     return Promise.all(
       this.destinations
         .filter(

@@ -605,7 +605,7 @@ async function deleteAurralLibraryFiles(paths) {
   if (reconciledPaths.length > 0) {
     markLibraryMediaFilesUnavailable("aurral", reconciledPaths);
   }
-  const emptiedFolders = new Set();
+  const emptiedFolders = new Set<string>();
   for (const filePath of reconciledPaths) {
     if (libraryFolderOwner(filePath, folders) !== "aurral") continue;
     if (

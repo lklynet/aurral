@@ -1,19 +1,32 @@
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
+import type { SettingsRow } from "../../db/rows.ts";
 
 const SETTINGS_KEY = "plexPlaylistPointers";
-const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
-const upsertSettingStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+const getSettingStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
+  "SELECT value FROM settings WHERE key = ?",
+);
+const upsertSettingStmt = db.prepare<[string, string | null]>(
+  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+);
 
 const readStore = () => {
   const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
   return parsed && typeof parsed === "object" ? parsed : {};
 };
 
-const writeStore = (store) => {
+const writeStore = (store: unknown) => {
   upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
 };
 
-const normalizePointer = (raw) => {
+type StoredPointer = {
+  location?: unknown;
+  ratingKey?: unknown;
+  title?: unknown;
+  description?: unknown;
+  updatedAt?: unknown;
+};
+
+const normalizePointer = (raw: StoredPointer | null | undefined) => {
   if (!raw || typeof raw !== "object") return null;
   const ratingKey = raw.ratingKey != null ? String(raw.ratingKey) : null;
   const location = String(raw.location || "").trim();
@@ -27,13 +40,24 @@ const normalizePointer = (raw) => {
   };
 };
 
+type PlexPointer = NonNullable<ReturnType<typeof normalizePointer>>;
+
 export const plexPlaylistPointerStore = {
-  getPointer(entityId, targetKey) {
+  getPointer(entityId: string, targetKey: string) {
     const store = readStore();
     return normalizePointer(store[entityId]?.[targetKey] || null);
   },
 
-  setPointer(entityId, targetKey, { location, ratingKey, title, description = null }) {
+  setPointer(
+    entityId: string,
+    targetKey: string,
+    {
+      location,
+      ratingKey,
+      title,
+      description = null,
+    }: { location: string; ratingKey: string | number; title: string; description?: string | null },
+  ) {
     const store = readStore();
     if (!store[entityId]) store[entityId] = {};
     store[entityId][targetKey] = {
@@ -46,7 +70,7 @@ export const plexPlaylistPointerStore = {
     writeStore(store);
   },
 
-  deletePointer(entityId, targetKey) {
+  deletePointer(entityId: string, targetKey: string) {
     const store = readStore();
     if (!store[entityId]?.[targetKey]) return false;
     delete store[entityId][targetKey];
@@ -55,7 +79,7 @@ export const plexPlaylistPointerStore = {
     return true;
   },
 
-  getPointersForTarget(targetKey) {
+  getPointersForTarget(targetKey: string) {
     const store = readStore();
     const results = [];
     for (const [entityId, targets] of Object.entries(store)) {
@@ -69,7 +93,7 @@ export const plexPlaylistPointerStore = {
     return Object.keys(readStore());
   },
 
-  getPointersForEntity(entityId) {
+  getPointersForEntity(entityId: string): (PlexPointer & { targetKey: string })[] {
     const store = readStore();
     return Object.entries(store[entityId] || {})
       .map(([targetKey, raw]) => {

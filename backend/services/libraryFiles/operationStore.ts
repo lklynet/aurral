@@ -1,9 +1,12 @@
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
+import type { LibraryFileOperationItemsRow, LibraryFileOperationsRow } from "../../db/rows.ts";
 
 export const ACTIVE_OPERATION_STATUSES = ["planning", "running"];
 const FINISHED_STATUSES = new Set(["complete", "failed", "cancelled"]);
 
-const toOperation = (row) =>
+type LibraryFileOperation = NonNullable<ReturnType<typeof toOperation>>;
+
+const toOperation = (row: LibraryFileOperationsRow | undefined) =>
   row && {
     id: row.id,
     kind: row.kind,
@@ -16,7 +19,7 @@ const toOperation = (row) =>
     finishedAt: row.finished_at || null,
   };
 
-const toItem = (row) =>
+const toItem = (row: LibraryFileOperationItemsRow) =>
   row && {
     position: row.position,
     sourcePath: row.source_path,
@@ -26,16 +29,20 @@ const toItem = (row) =>
     details: dbHelpers.parseJSON(row.details_json) || {},
   };
 
-export function getLibraryFileOperation(id) {
+export function getLibraryFileOperation(id: string | number) {
   return toOperation(
-    db.prepare("SELECT * FROM library_file_operations WHERE id = ?").get(Number(id)),
+    db
+      .prepare<[number], LibraryFileOperationsRow>(
+        "SELECT * FROM library_file_operations WHERE id = ?",
+      )
+      .get(Number(id)),
   );
 }
 
 export function getActiveLibraryFileOperation() {
   return toOperation(
     db
-      .prepare(
+      .prepare<string[], LibraryFileOperationsRow>(
         `SELECT * FROM library_file_operations
      WHERE status IN (${ACTIVE_OPERATION_STATUSES.map(() => "?").join(",")})
      ORDER BY id DESC LIMIT 1`,
@@ -47,19 +54,28 @@ export function getActiveLibraryFileOperation() {
 export function getLatestLibraryFileOperation() {
   return (
     getActiveLibraryFileOperation() ||
-    toOperation(db.prepare("SELECT * FROM library_file_operations ORDER BY id DESC LIMIT 1").get())
+    toOperation(
+      db
+        .prepare<[], LibraryFileOperationsRow>(
+          "SELECT * FROM library_file_operations ORDER BY id DESC LIMIT 1",
+        )
+        .get(),
+    )
   );
 }
 
 export class OperationConflictError extends Error {
-  constructor(operation) {
+  declare code: string;
+  declare operation: LibraryFileOperation;
+
+  constructor(operation: LibraryFileOperation) {
     super("Another library file operation is in progress. Finish or cancel it first.");
     this.code = "LIBRARY_FILE_OPERATION_ACTIVE";
     this.operation = operation;
   }
 }
 
-export function createLibraryFileOperation({ kind, options }) {
+export function createLibraryFileOperation({ kind, options }: { kind: string; options?: unknown }) {
   return db
     .transaction(() => {
       const active = getActiveLibraryFileOperation();
@@ -71,12 +87,19 @@ export function createLibraryFileOperation({ kind, options }) {
        VALUES (?, 'planning', ?, '{}', ?, ?)`,
         )
         .run(kind, JSON.stringify(options || {}), now, now);
-      return getLibraryFileOperation(result.lastInsertRowid);
+      return getLibraryFileOperation(result.lastInsertRowid as number);
     })
     .immediate();
 }
 
-export function updateLibraryFileOperation(id, { status, summary, error } = {}) {
+export function updateLibraryFileOperation(
+  id: string | number,
+  {
+    status,
+    summary,
+    error,
+  }: { status?: string; summary?: Record<string, unknown>; error?: string | null } = {},
+) {
   const current = getLibraryFileOperation(id);
   if (!current) return null;
   const now = Date.now();
@@ -97,7 +120,7 @@ export function updateLibraryFileOperation(id, { status, summary, error } = {}) 
 }
 
 // Moves an operation on only from the status it is expected to be in.
-export function transitionLibraryFileOperation(id, from, to) {
+export function transitionLibraryFileOperation(id: string | number, from: string[], to: string) {
   const now = Date.now();
   const changed = db
     .prepare(
@@ -109,17 +132,29 @@ export function transitionLibraryFileOperation(id, from, to) {
   return changed > 0;
 }
 
-export function addLibraryFileOperationItems(id, items) {
+type LibraryFileOperationItemInput = {
+  position?: number;
+  sourcePath: string;
+  targetPath?: string | null;
+  status: string;
+  reason?: string | null;
+  details?: unknown;
+};
+
+export function addLibraryFileOperationItems(
+  id: string | number,
+  items: LibraryFileOperationItemInput[],
+) {
   const insert = db.prepare(
     `INSERT OR REPLACE INTO library_file_operation_items
       (operation_id, position, source_path, target_path, status, reason, details_json, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   );
-  const next = db.prepare(
+  const next = db.prepare<[number], { position: number }>(
     "SELECT COALESCE(MAX(position), -1) + 1 AS position FROM library_file_operation_items WHERE operation_id = ?",
   );
   db.transaction(() => {
-    let position = next.get(Number(id)).position;
+    let position = next.get(Number(id))!.position;
     for (const item of items) {
       insert.run(
         Number(id),
@@ -136,12 +171,24 @@ export function addLibraryFileOperationItems(id, items) {
 }
 
 export function updateLibraryFileOperationItem(
-  id,
-  position,
-  { status, targetPath, reason, details },
+  id: string | number,
+  position: number,
+  {
+    status,
+    targetPath,
+    reason,
+    details,
+  }: {
+    status?: string;
+    targetPath?: string | null;
+    reason?: string | null;
+    details?: unknown;
+  },
 ) {
   const current = db
-    .prepare("SELECT * FROM library_file_operation_items WHERE operation_id = ? AND position = ?")
+    .prepare<[number, number], LibraryFileOperationItemsRow>(
+      "SELECT * FROM library_file_operation_items WHERE operation_id = ? AND position = ?",
+    )
     .get(Number(id), Number(position));
   if (!current) return;
   db.prepare(
@@ -160,15 +207,19 @@ export function updateLibraryFileOperationItem(
 }
 
 export function listLibraryFileOperationItems(
-  id,
-  { statuses = null, offset = 0, limit = 100 } = {},
+  id: string | number,
+  {
+    statuses = null,
+    offset = 0,
+    limit = 100,
+  }: { statuses?: string[] | null; offset?: number; limit?: number } = {},
 ) {
   const filter =
     Array.isArray(statuses) && statuses.length
       ? `AND status IN (${statuses.map(() => "?").join(",")})`
       : "";
   return db
-    .prepare(
+    .prepare<(string | number)[], LibraryFileOperationItemsRow>(
       `SELECT * FROM library_file_operation_items
      WHERE operation_id = ? ${filter}
      ORDER BY position LIMIT ? OFFSET ?`,
@@ -177,10 +228,10 @@ export function listLibraryFileOperationItems(
     .map(toItem);
 }
 
-export function countLibraryFileOperationItems(id) {
-  const counts = {};
+export function countLibraryFileOperationItems(id: string | number) {
+  const counts: Record<string, number> = {};
   for (const row of db
-    .prepare(
+    .prepare<[number], { status: string; count: number }>(
       "SELECT status, COUNT(*) AS count FROM library_file_operation_items WHERE operation_id = ? GROUP BY status",
     )
     .all(Number(id)))
@@ -188,7 +239,7 @@ export function countLibraryFileOperationItems(id) {
   return counts;
 }
 
-export function deleteLibraryFileOperationItems(id, statuses) {
+export function deleteLibraryFileOperationItems(id: string | number, statuses: string[]) {
   db.prepare(
     `DELETE FROM library_file_operation_items
      WHERE operation_id = ? AND status IN (${statuses.map(() => "?").join(",")})`,
@@ -197,7 +248,7 @@ export function deleteLibraryFileOperationItems(id, statuses) {
 
 export function listUnfinishedLibraryFileOperations() {
   return db
-    .prepare(
+    .prepare<[], LibraryFileOperationsRow>(
       "SELECT * FROM library_file_operations WHERE status IN ('planning', 'running') ORDER BY id",
     )
     .all()
@@ -207,7 +258,7 @@ export function listUnfinishedLibraryFileOperations() {
 // An operation keeps a duplicate file until the user asks to remove it. The
 // operation then runs again over just those files, each checked again before
 // it is removed. Files a stopped operation never reached stay where they are.
-export function reopenToRemoveDuplicates(id, unfinishedReason) {
+export function reopenToRemoveDuplicates(id: string | number, unfinishedReason: string) {
   return db
     .transaction(() => {
       const operation = getLibraryFileOperation(id);
@@ -240,16 +291,16 @@ export function reopenToRemoveDuplicates(id, unfinishedReason) {
     .immediate();
 }
 
-export function restoreUnremovedDuplicates(id) {
+export function restoreUnremovedDuplicates(id: string | number) {
   db.prepare(
     `UPDATE library_file_operation_items SET status = 'duplicate', updated_at = ?
      WHERE operation_id = ? AND status = 'pending' AND json_extract(details_json, '$.action') = 'remove-source'`,
   ).run(Date.now(), Number(id));
 }
 
-export function countRemovableDuplicates(id) {
+export function countRemovableDuplicates(id: string | number) {
   return db
-    .prepare(
+    .prepare<[number], { removable: number; removed: number }>(
       `SELECT
        COALESCE(SUM(json_extract(details_json, '$.removable') = 1), 0) AS removable,
        COALESCE(SUM(json_extract(details_json, '$.sourceRemoved') = 1), 0) AS removed
