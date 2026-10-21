@@ -123,6 +123,7 @@ export interface LidarrQueueItem {
   trackedDownloadStatus?: string;
   trackedDownloadState?: string;
   errorMessage?: string;
+  statusMessages?: { title?: string | null; messages?: string[] | null }[] | null;
   downloadId?: string;
   protocol?: string;
   downloadClient?: string;
@@ -202,6 +203,8 @@ export interface LidarrCommand {
   commandName?: string;
   message?: string;
   status?: string;
+  body?: { albumIds?: number[] | null } | null;
+  ended?: string | null;
 }
 
 type LidarrError = Error & {
