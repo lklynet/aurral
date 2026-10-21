@@ -149,16 +149,16 @@ interface MergedRecommendation extends DiscoveryRecommendation {
   reasonCodes: string[];
 }
 
-const SOURCE_BASE_WEIGHTS: Record<string, number> = {
+const SOURCE_BASE_WEIGHTS = {
   library: 1,
   local: 1.25,
   lastfm: 1.2,
   listenbrainz: 1.3,
   koito: 1.3,
   feedback: 1.5,
-};
+} satisfies Record<string, number>;
 
-const DISCOVERY_MODE_MULTIPLIERS: Record<string, DiscoveryModeMultipliers> = {
+const DISCOVERY_MODE_MULTIPLIERS = {
   safer: {
     similarity: 1.2,
     tagAffinity: 0.9,
@@ -183,7 +183,7 @@ const DISCOVERY_MODE_MULTIPLIERS: Record<string, DiscoveryModeMultipliers> = {
     popularityPenalty: 1.4,
     diversityPenalty: 1.2,
   },
-};
+} satisfies Record<string, DiscoveryModeMultipliers>;
 
 const normalizeText = (value: unknown) =>
   String(value || "")

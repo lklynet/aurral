@@ -392,14 +392,14 @@ function getTrackPosition(track: TrackLike) {
     track?.trackNumber ??
     track?.tracknumber ??
     track?.position;
-  const numeric = Number.parseInt(raw, 10);
+  const numeric = Number.parseInt(String(raw), 10);
   if (Number.isFinite(numeric) && numeric > 0) return numeric;
   return normalizeMbidTrackNumber(raw);
 }
 
 function getTrackMedium(track: TrackLike) {
   const numeric = Number.parseInt(
-    track?.mediumNumber ?? track?.mediumnumber ?? track?.disk_number ?? track?.diskNumber,
+    String(track?.mediumNumber ?? track?.mediumnumber ?? track?.disk_number ?? track?.diskNumber),
     10,
   );
   return Number.isFinite(numeric) && numeric > 0 ? numeric : null;

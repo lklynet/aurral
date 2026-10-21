@@ -37,15 +37,17 @@ export function isImportSourceDue(importSource, now = Date.now()) {
   return !lastSyncAt || now - lastSyncAt >= intervalMs;
 }
 
+type SyncStaticPlaylistImportResult = Awaited<ReturnType<typeof syncStaticPlaylistImportHere>>;
+
+type SyncStaticPlaylistImportResponse =
+  | { ok: true; result: SyncStaticPlaylistImportResult }
+  | { ok: false; error: { message: string; code: string | null; statusCode: number | null } };
+
 export async function syncStaticPlaylistImport(options = {}) {
   if (isDownloadOwnerProcess()) return syncStaticPlaylistImportHere(options);
   const { playlistId, user, force = false } = options;
   try {
-    const response = await requestDownloadOwner<{
-      ok?: boolean;
-      error?: { message?: string; code?: string; statusCode?: number };
-      result?: Record<string, unknown>;
-    }>(
+    const response = await requestDownloadOwner<SyncStaticPlaylistImportResponse>(
       "syncStaticPlaylistImport",
       [
         {
