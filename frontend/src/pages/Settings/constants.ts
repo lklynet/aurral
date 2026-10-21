@@ -29,4 +29,4 @@ export const granularPerms = [
   { key: "deleteArtist", label: "Delete artists" },
   { key: "deleteAlbum", label: "Delete albums" },
   { key: "deleteTrack", label: "Delete tracks" },
-];
+] as const;

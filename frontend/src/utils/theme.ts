@@ -74,8 +74,8 @@ type Theme = { id: string; name: string } & (
 type StoredTheme = {
   id?: unknown;
   name?: unknown;
-  light?: StoredThemeSeed;
-  dark?: StoredThemeSeed;
+  light?: StoredThemeSeed | null;
+  dark?: StoredThemeSeed | null;
 };
 type ThemeDocument = {
   version: number;
@@ -432,7 +432,7 @@ function readLocalDocument(): ThemeDocument {
 
 let documentCache: ThemeDocument | null = null;
 let artworkColor: HexColor | null = null;
-let preview: { theme: Theme; mode: ThemeMode } | null = null;
+let preview: { theme: Theme; mode?: ThemeMode } | null = null;
 let saveToAccount: ((document: ThemeDocument) => void) | null = null;
 let appliedPalette: ThemePalette | null = null;
 let tweenFrame: number | null = null;
@@ -606,7 +606,7 @@ export function startThemeAccountSync({
   };
 }
 
-export function previewTheme(theme: Theme | null, mode: ThemeMode) {
+export function previewTheme(theme: Theme | null, mode?: ThemeMode) {
   preview = theme ? { theme, mode } : null;
   render();
 }

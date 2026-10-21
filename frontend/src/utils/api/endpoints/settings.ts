@@ -39,7 +39,7 @@ type HonkerTasks = Awaited<ReturnType<typeof getHonkerTaskStatus>>;
 type SuccessMessage = { success: true; message: string };
 
 export const startPlexAuth = (
-  forwardUrl: string,
+  forwardUrl?: string,
 ): Promise<{ pinId: PlexPin["id"]; code: PlexPin["code"]; clientId: string; authUrl: string }> =>
   postData("/settings/plex/auth/pin", { forwardUrl });
 

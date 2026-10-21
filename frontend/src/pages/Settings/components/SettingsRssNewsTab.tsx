@@ -6,7 +6,7 @@ import { SettingsInput } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import Tooltip from "../../../components/Tooltip";
-import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
+import type { SettingsState } from "../utils";
 
 const GROUPS = [
   ["major", "Music publications"],
@@ -21,18 +21,18 @@ const GROUPS = [
   ["classical", "Classical"],
   ["regional", "Regional music scenes"],
   ["concerts", "Live music"],
-];
+] as const;
 
-type NewsDraft = NonNullable<AppSettings["integrations"]["news"]>;
-type NewsFeed = NonNullable<NewsDraft["feeds"]>[number];
+type NewsDraft = SettingsState["integrations"]["news"];
+type NewsFeed = NewsDraft["feeds"][number];
 type FeedEditor = { index: number | null; draft: NewsFeed };
 
 type SettingsRssNewsTabProps = {
-  settings: { integrations?: Partial<AppSettings["integrations"]> };
-  updateSettings: (next: { integrations?: Partial<AppSettings["integrations"]> }) => void;
+  settings: SettingsState;
+  updateSettings: (next: SettingsState) => void;
   handleSaveSettings: (
     event?: FormEvent<HTMLFormElement>,
-    settingsOverride?: { integrations?: Partial<AppSettings["integrations"]> },
+    settingsOverride?: SettingsState,
   ) => unknown;
 };
 
@@ -43,10 +43,10 @@ export function SettingsRssNewsTab({
 }: SettingsRssNewsTabProps) {
   const [feedEditor, setFeedEditor] = useState<FeedEditor | null>(null);
   const [feedError, setFeedError] = useState("");
-  const news: NewsDraft = settings.integrations?.news || { enabled: true, feeds: [], groups: {} };
+  const news = settings.integrations?.news || { enabled: true, feeds: [], groups: {} };
   const feeds: NewsFeed[] = Array.isArray(news.feeds) ? news.feeds : [];
 
-  const updateNews = (patch: NewsDraft) =>
+  const updateNews = (patch: Partial<NewsDraft>) =>
     updateSettings({
       ...settings,
       integrations: { ...settings.integrations, news: { ...news, ...patch } },

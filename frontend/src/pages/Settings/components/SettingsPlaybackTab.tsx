@@ -29,7 +29,7 @@ export function SettingsPlaybackTab({
   hasUnsavedChanges: boolean;
   saving: boolean;
   handleSaveSettings: (
-    event?: FormEvent<HTMLFormElement>,
+    event?: FormEvent<HTMLFormElement> | null,
     settingsOverride?: SettingsState,
   ) => Promise<boolean>;
   showSuccess: Toast;

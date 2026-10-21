@@ -38,6 +38,26 @@ import {
   SettingsModalToggleGroup,
 } from "./SettingsModalLayout";
 import { pickBestPlexConnection, resolvePlexConnectionUrl } from "../utils/plexConnections";
+import type { useSettingsData } from "../hooks/useSettingsData";
+
+type SettingsData = ReturnType<typeof useSettingsData>;
+type Integrations = SettingsData["settings"]["integrations"];
+type PlexSettings = Integrations["plex"];
+type NavidromeSettings = Integrations["navidrome"];
+type JellyfinSettings = Integrations["jellyfin"];
+type PlexServer = Awaited<ReturnType<typeof getPlexResources>>["servers"][number];
+type ScrobbleProvider = "lastfm" | "listenbrainz" | "koito";
+type ActiveModal = ScrobbleProvider | "navidrome" | "plex" | "jellyfin" | null;
+type TestStatus = { tone: "success" | "error"; message: string };
+type SettingsPlaybackSectionProps = Pick<
+  SettingsData,
+  "settings" | "playbackSettings" | "updateSettings" | "hasUnsavedChanges" | "handleSaveSettings"
+> & {
+  showSuccess: (message: string) => void;
+  showError: (message: string) => void;
+  showInfo: (message: string) => void;
+};
+
 export function SettingsPlaybackSection({
   settings,
   playbackSettings,
@@ -47,15 +67,15 @@ export function SettingsPlaybackSection({
   showSuccess,
   showError,
   showInfo,
-}) {
-  const [activeModal, setActiveModal] = useState(null);
+}: SettingsPlaybackSectionProps) {
+  const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [plexConnecting, setPlexConnecting] = useState(false);
   const [testingPlex, setTestingPlex] = useState(false);
   const [testingNavidrome, setTestingNavidrome] = useState(false);
   const [testingJellyfin, setTestingJellyfin] = useState(false);
-  const [testStatus, setTestStatus] = useState(null);
+  const [testStatus, setTestStatus] = useState<TestStatus | null>(null);
   const [syncingPlex, setSyncingPlex] = useState(false);
-  const [plexServers, setPlexServers] = useState([]);
+  const [plexServers, setPlexServers] = useState<PlexServer[]>([]);
   const [plexLibraries, setPlexLibraries] = useState<
     Awaited<ReturnType<typeof getPlexLibraries>>["libraries"]
   >([]);
@@ -76,7 +96,7 @@ export function SettingsPlaybackSection({
   const [listenBrainzToken, setListenBrainzToken] = useState("");
   const [koitoToken, setKoitoToken] = useState("");
   const [koitoUrl, setKoitoUrl] = useState("");
-  const lastfmPollRef = useRef(null);
+  const lastfmPollRef = useRef<number | null>(null);
 
   useEffect(() => {
     setTestStatus(null);
@@ -107,7 +127,7 @@ export function SettingsPlaybackSection({
     setPlexPathPickerOpen(false);
   };
 
-  const updateNavidrome = (patch) => {
+  const updateNavidrome = (patch: Partial<NavidromeSettings>) => {
     setTestStatus(null);
     updateSettings({
       ...settings,
@@ -118,7 +138,7 @@ export function SettingsPlaybackSection({
     });
   };
 
-  const updatePlex = (patch) => {
+  const updatePlex = (patch: Partial<PlexSettings>) => {
     setTestStatus(null);
     updateSettings({
       ...settings,
@@ -129,7 +149,7 @@ export function SettingsPlaybackSection({
     });
   };
 
-  const updateJellyfin = (patch) => {
+  const updateJellyfin = (patch: Partial<JellyfinSettings>) => {
     setTestStatus(null);
     updateSettings({
       ...settings,
@@ -140,7 +160,7 @@ export function SettingsPlaybackSection({
     });
   };
 
-  const updatePlexLibraryLocalPath = (localPath) => {
+  const updatePlexLibraryLocalPath = (localPath: string) => {
     const trimmed = String(localPath || "").trim();
     const others = pathMappings.filter((entry) => entry?.source !== "plex");
     if (!trimmed) {
@@ -154,7 +174,7 @@ export function SettingsPlaybackSection({
     });
   };
 
-  const loadPlexServers = async (token) => {
+  const loadPlexServers = async (token: string) => {
     const { servers } = await getPlexResources(token);
     const list = Array.isArray(servers) ? servers : [];
     setPlexServers(list);
@@ -268,7 +288,7 @@ export function SettingsPlaybackSection({
     }
   };
 
-  const handleSelectPlexServer = (server) => {
+  const handleSelectPlexServer = (server: PlexServer) => {
     const best = pickBestPlexConnection(server);
     const url = resolvePlexConnectionUrl(best);
     if (!url) {
@@ -445,7 +465,7 @@ export function SettingsPlaybackSection({
     }
   };
 
-  const handleUnlink = async (provider) => {
+  const handleUnlink = async (provider: ScrobbleProvider) => {
     try {
       await unlinkScrobbleProvider(provider);
       setActiveModal(null);
@@ -458,7 +478,7 @@ export function SettingsPlaybackSection({
     }
   };
 
-  const handleScrobbleToggle = (provider, enabled) => {
+  const handleScrobbleToggle = (provider: ScrobbleProvider, enabled: boolean) => {
     if (enabled) {
       if (provider === "lastfm" && scrobbleStatus?.lastfm?.configured !== true) {
         setActiveModal("lastfm");

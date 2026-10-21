@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
-import api from "../../../utils/api/core.ts";
+import api, { type ApiError } from "../../../utils/api/core.ts";
+import type { useToast } from "../../../contexts/ToastContext";
+import type { useSettingsTabs } from "./useSettingsTabs";
 import { checkHealth, fetchHealth } from "../../../utils/api/endpoints/auth.ts";
 import {
   fetchAppSettings,
@@ -26,6 +28,9 @@ import {
   type SettingsState,
 } from "../utils";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
+
+type Toast = ReturnType<typeof useToast>["showSuccess"];
+type LidarrResourceConfig = { url: string; apiKey: string; credentialsRevision: number };
 
 const defaultSettings = {
   dateTimeFormat: "browser",
@@ -225,7 +230,7 @@ const defaultSettings = {
 const AUTOSAVE_DELAY_MS = 450;
 const SETTINGS_SAVE_KEY = ["settings", "save"];
 
-const getLidarrResourceConfig = (settings) => {
+const getLidarrResourceConfig = (settings: SettingsState) => {
   const lidarr = settings?.integrations?.lidarr || {};
   return {
     url: lidarr.url || "",
@@ -233,35 +238,45 @@ const getLidarrResourceConfig = (settings) => {
   };
 };
 
-const buildLidarrQueries = ({ url, apiKey, credentialsRevision }, enabled) =>
+const buildLidarrQueries = (
+  { url, apiKey, credentialsRevision }: LidarrResourceConfig,
+  enabled?: boolean,
+) =>
   [
     {
       queryKey: queryKeys.lidarrRootFolders(url, credentialsRevision),
-      queryFn: ({ signal }) => getLidarrRootFolders(url, apiKey, { signal }),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        getLidarrRootFolders(url, apiKey, { signal }),
       enabled: enabled && Boolean(url && apiKey),
       staleTime: 60_000,
     },
     {
       queryKey: queryKeys.lidarrProfiles(url, credentialsRevision),
-      queryFn: ({ signal }) => getLidarrProfiles(url, apiKey, { signal }),
+      queryFn: ({ signal }: { signal: AbortSignal }) => getLidarrProfiles(url, apiKey, { signal }),
       enabled: enabled && Boolean(url && apiKey),
       staleTime: 60_000,
     },
     {
       queryKey: queryKeys.lidarrMetadataProfiles(url, credentialsRevision),
-      queryFn: ({ signal }) => getLidarrMetadataProfiles(url, apiKey, { signal }),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        getLidarrMetadataProfiles(url, apiKey, { signal }),
       enabled: enabled && Boolean(url && apiKey),
       staleTime: 60_000,
     },
     {
       queryKey: queryKeys.lidarrTags(url, credentialsRevision),
-      queryFn: ({ signal }) => getLidarrTags(url, apiKey, { signal }),
+      queryFn: ({ signal }: { signal: AbortSignal }) => getLidarrTags(url, apiKey, { signal }),
       enabled: enabled && Boolean(url && apiKey),
       staleTime: 60_000,
     },
   ] as const;
 
-export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
+export function useSettingsData(
+  showSuccess: Toast,
+  showError: Toast,
+  showInfo: Toast,
+  activeTab: ReturnType<typeof useSettingsTabs>["activeTab"],
+) {
   const [settings, setSettingsState] = useState<SettingsState>(defaultSettings);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [originalSettings, setOriginalSettings] = useState<SettingsState | null>(null);
@@ -273,14 +288,16 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   const settingsRef = useRef<SettingsState>(defaultSettings);
   const originalSettingsRef = useRef<SettingsState | null>(null);
   const hasUnsavedChangesRef = useRef(false);
-  const saveTimerRef = useRef(null);
-  const persistSettingsRef = useRef(null);
-  const settingsActivationTimerRef = useRef(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistSettingsRef = useRef<((settingsToSave: SettingsState) => Promise<boolean>) | null>(
+    null,
+  );
+  const settingsActivationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const lidarrResourceConfigRef = useRef({ url: "", apiKey: "", credentialsRevision: 0 });
   const [lidarrResourceConfig, setLidarrResourceConfig] = useState(lidarrResourceConfigRef.current);
 
-  const updateLidarrResourceConfig = useCallback((config) => {
+  const updateLidarrResourceConfig = useCallback((config: { url: string; apiKey: string }) => {
     const previous = lidarrResourceConfigRef.current;
     const url = config.url || "";
     const apiKey = config.apiKey || "";
@@ -383,7 +400,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
         refetchPlayback({ throwOnError: false }),
         refetchDownloadClients({ throwOnError: false }),
       ]);
-      const savedSettings = settingsResult.data;
+      const savedSettings = settingsResult.data!;
       const updatedSettings = normalizeSettings(savedSettings);
       const savedSnapshot = structuredClone(updatedSettings);
       updateLidarrResourceConfig(getLidarrResourceConfig(updatedSettings));
@@ -452,7 +469,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   }, []);
 
   const persistSettings = useCallback(
-    async (settingsToSave) => {
+    async (settingsToSave: SettingsState) => {
       if (!settingsToSave) return false;
       try {
         const savedSettings = await saveSettings(settingsToSave);
@@ -503,7 +520,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
 
   persistSettingsRef.current = persistSettings;
 
-  const updateSettings = useCallback((newSettings) => {
+  const updateSettings = useCallback((newSettings: SettingsState) => {
     settingsRef.current = newSettings;
     setSettingsState(newSettings);
     if (!comparisonEnabledRef.current || !originalSettingsRef.current) return;
@@ -524,7 +541,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   }, []);
 
   const handleSaveSettings = useCallback(
-    (e, settingsOverride) => {
+    (e?: FormEvent<HTMLFormElement> | null, settingsOverride?: SettingsState) => {
       e?.preventDefault();
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
@@ -546,7 +563,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
     onSuccess: () => {
       localStorage.setItem(DISCOVERY_MANUAL_REFRESH_KEY, "1");
     },
-    onError: (err) => {
+    onError: (err: ApiError) => {
       showError(
         "Failed to start refresh: " +
           (err.response?.data?.message || err.response?.data?.error || err.message),
@@ -568,7 +585,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
       showSuccess("Artwork cache cleared.");
       await refreshHealth();
     },
-    onError: (err) => {
+    onError: (err: ApiError) => {
       showError(
         "Failed to clear cache: " +
           (err.response?.data?.message || err.response?.data?.error || err.message),
@@ -586,7 +603,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
 
   const communityGuideMutation = useMutation({
     mutationFn: () => applyLidarrCommunityGuide(),
-    onError: (err) => {
+    onError: (err: ApiError) => {
       const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
       showError(`Failed to apply community guide: ${errorMsg}`);
     },

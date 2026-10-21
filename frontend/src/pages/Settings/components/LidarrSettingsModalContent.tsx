@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { ComponentProps } from "react";
 import { testLidarrConnection } from "../../../utils/api/endpoints/settings.ts";
 import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
 import type { BootstrapPayload } from "../../../../../backend/routes/health.ts";
@@ -17,11 +16,8 @@ import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { describeLidarrConnectionState } from "../utils/librarySettings";
 import { RootOverlapWarning } from "./RootOverlapWarning";
+import type { SettingsState } from "../utils";
 
-type LidarrSettings = {
-  integrations?: Partial<AppSettings["integrations"]>;
-  rootWarnings?: ComponentProps<typeof RootOverlapWarning>["rootWarnings"];
-};
 type LidarrIntegrationDraft = NonNullable<AppSettings["integrations"]["lidarr"]>;
 type LidarrTestStatus = { tone: "success" | "error"; message: string };
 type LidarrRootFolderOption = Awaited<ReturnType<typeof fetchRootFolders>>[number];
@@ -30,8 +26,8 @@ type LidarrTagOption = Awaited<ReturnType<typeof fetchTags>>[number];
 type LidarrHealth = Pick<BootstrapPayload, "lidarr" | "lidarrConfigured"> | null;
 
 type LidarrSettingsSectionProps = {
-  settings: LidarrSettings;
-  updateSettings: (next: LidarrSettings) => void;
+  settings: SettingsState;
+  updateSettings: (next: SettingsState) => void;
   health?: LidarrHealth;
   lidarrRootFolders?: LidarrRootFolderOption[];
   loadingLidarrRootFolders: boolean;

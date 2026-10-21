@@ -13,7 +13,20 @@ import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { useAuth } from "../../../contexts/AuthContext";
 import { DotLoader } from "../../../components/DotLoader";
-function getLocalBypassStatus(status) {
+import type { useSettingsData } from "../hooks/useSettingsData";
+import type { useSettingsUsers } from "../hooks/useSettingsUsers";
+import type { UserListResponse } from "../../../../../backend/routes/users.ts";
+
+type UsersHook = ReturnType<typeof useSettingsUsers>;
+type SettingsData = ReturnType<typeof useSettingsData>;
+type SettingsUser = UserListResponse[number];
+type SettingsHealth = NonNullable<SettingsData["health"]>;
+type SettingsUsersTabProps = UsersHook &
+  Pick<SettingsData, "settings" | "updateSettings" | "handleSaveSettings" | "health"> & {
+    authUser: Parameters<typeof useSettingsUsers>[0];
+    refreshSettingsData: SettingsData["fetchSettings"];
+  };
+function getLocalBypassStatus(status: SettingsHealth["localNetworkBypass"]) {
   if (!status) {
     return {
       title: "Unavailable: status unknown",
@@ -76,14 +89,14 @@ function getLocalBypassStatus(status) {
   }
 }
 
-function formatListenHistory(user) {
+function formatListenHistory(user: SettingsUser) {
   if (!user.listenHistoryUsername && !user.listenHistoryUrl) return "—";
   if (user.listenHistoryProvider === "koito") return `Koito: ${user.listenHistoryUrl}`;
   const provider = user.listenHistoryProvider === "listenbrainz" ? "ListenBrainz" : "Last.fm";
   return `${provider}: ${user.listenHistoryUsername}`;
 }
 
-function formatPlexLink(user) {
+function formatPlexLink(user: SettingsUser) {
   const plexLink = user.plexLink;
   if (plexLink?.connected) {
     const label = plexLink.linkType === "managed" ? "Managed" : "Self";
@@ -102,7 +115,15 @@ function formatPlexLink(user) {
   return "—";
 }
 
-function PermissionChecklist({ permissions, onChange }) {
+type GranularPermissions = typeof GRANULAR_PERMISSIONS;
+
+function PermissionChecklist({
+  permissions,
+  onChange,
+}: {
+  permissions: GranularPermissions;
+  onChange: (permissions: GranularPermissions) => void;
+}) {
   return (
     <div className="arr-permissions">
       {granularPerms.map(({ key, label }) => (
@@ -177,7 +198,7 @@ export function SettingsUsersTab({
   refreshSettingsData,
   showSuccess,
   showError,
-}) {
+}: SettingsUsersTabProps) {
   const { bootstrap } = useAuth();
   const ssoEnabled = !!bootstrap?.oidcEnabled;
   const isSelfEdit = editUser && editUser.id === authUser?.id;

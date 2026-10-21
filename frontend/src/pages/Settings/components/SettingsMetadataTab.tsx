@@ -1,6 +1,6 @@
 import type { ChangeEvent, FormEvent } from "react";
 import { CheckCircle } from "lucide-react";
-import { DEFAULT_METADATA_BASE_URL, type SavedSettings, type SettingsState } from "../utils";
+import { DEFAULT_METADATA_BASE_URL, type SettingsState } from "../utils";
 import { SettingsInput } from "./SettingsField";
 
 export function SettingsMetadataTab({
@@ -15,7 +15,7 @@ export function SettingsMetadataTab({
   health: { metadataConfigured?: boolean } | null | undefined;
   handleSaveSettings: (
     event: FormEvent<HTMLFormElement>,
-    settingsOverride?: SavedSettings,
+    settingsOverride?: SettingsState,
   ) => unknown;
   hidePanelHeader?: boolean;
 }) {

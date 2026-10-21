@@ -12,19 +12,39 @@ import { RootOverlapWarning } from "./RootOverlapWarning";
 import { getProviderStatus } from "../utils/integrationStatus";
 import { PATH_MAPPING_SOURCE_OPTIONS, PathMappingModal } from "./PathMappingModal";
 import { QUALITY_TIER_LABELS, QualityProfileModal } from "./QualityProfileModal";
+import type { useSettingsData } from "../hooks/useSettingsData";
+import type { QualityProfile } from "../../../../../backend/db/helpers/settings.ts";
+
+type SettingsData = ReturnType<typeof useSettingsData>;
+type DownloadClientSettings = NonNullable<SettingsData["downloadClientSettings"]>;
+type DownloadClientDefinition = DownloadClientSettings[keyof DownloadClientSettings] & {
+  key: keyof DownloadClientSettings;
+  healthKey?: keyof NonNullable<SettingsData["health"]>;
+};
+type PathMapping = ReturnType<typeof coercePathMappings>[number];
+type TestStatus = { tone: "success" | "warning" | "error"; message: string };
+type MappingModal = { mode: "add" | "edit"; index: number | null };
+type SettingsDownloadClientsSectionProps = Pick<
+  SettingsData,
+  "settings" | "downloadClientSettings" | "updateSettings" | "health" | "handleSaveSettings"
+> & {
+  showSuccess: (message: string) => void;
+  showError: (message: string) => void;
+  showInfo: (message: string) => void;
+};
 
 const PATH_MAPPING_SOURCE_VALUES = new Set(
   PATH_MAPPING_SOURCE_OPTIONS.map((option) => option.value),
 );
 
-function normalizePathMappingSource(value) {
+function normalizePathMappingSource(value: unknown) {
   const normalized = String(value || "")
     .trim()
     .toLowerCase();
   return PATH_MAPPING_SOURCE_VALUES.has(normalized) ? normalized : "all";
 }
 
-function coercePathMappings(value) {
+function coercePathMappings(value: SettingsData["settings"]["pathMappings"]) {
   if (!Array.isArray(value)) return [];
   return value.map((entry) => ({
     source: normalizePathMappingSource(entry?.source),
@@ -33,26 +53,33 @@ function coercePathMappings(value) {
   }));
 }
 
-function sourceLabel(source) {
+function sourceLabel(source: string) {
   return PATH_MAPPING_SOURCE_OPTIONS.find((option) => option.value === source)?.label || source;
 }
 
-function isClientEnabled(definition, config) {
+function isClientEnabled(definition: DownloadClientDefinition, config: Record<string, unknown>) {
   return definition.enabledDefault === true ? config.enabled !== false : config.enabled === true;
 }
 
-function isClientConfigured(definition, config, health) {
+function isClientConfigured(
+  definition: DownloadClientDefinition,
+  config: Record<string, unknown>,
+  health: SettingsData["health"],
+) {
   if (definition.healthKey) return health?.[definition.healthKey] === true;
   return (definition.validation?.required || []).every((key) => String(config[key] || "").trim());
 }
 
-function missingRequiredFields(definition, config) {
+function missingRequiredFields(
+  definition: DownloadClientDefinition,
+  config: Record<string, unknown>,
+) {
   return (definition.validation?.required || [])
     .filter((key) => !String(config[key] || "").trim())
     .map((key) => definition.fields.find((field) => field.key === key)?.label || key);
 }
 
-function clientMeta(definition, config) {
+function clientMeta(definition: DownloadClientDefinition, config: Record<string, unknown>) {
   const priorityField = definition.fields.find((field) => field.key === "priority");
   if (!priorityField) return null;
   const priority = config.priority ?? definition.defaults?.priority;
@@ -71,11 +98,13 @@ export function SettingsDownloadClientsSection({
   showSuccess,
   showError,
   showInfo,
-}) {
-  const [activeModal, setActiveModal] = useState(null);
-  const [testingClient, setTestingClient] = useState(null);
-  const [testStatus, setTestStatus] = useState(null);
-  const [mappingModal, setMappingModal] = useState(null);
+}: SettingsDownloadClientsSectionProps) {
+  const [activeModal, setActiveModal] = useState<
+    keyof DownloadClientSettings | typeof ADD_CLIENT_MODAL | typeof QUALITY_PROFILE_MODAL | null
+  >(null);
+  const [testingClient, setTestingClient] = useState<string | null>(null);
+  const [testStatus, setTestStatus] = useState<TestStatus | null>(null);
+  const [mappingModal, setMappingModal] = useState<MappingModal | null>(null);
 
   useEffect(() => {
     setTestStatus(null);
@@ -85,23 +114,29 @@ export function SettingsDownloadClientsSection({
   const pathMappings = coercePathMappings(settings.pathMappings).filter(
     (entry) => entry.remote || entry.local,
   );
-  const qualityProfile = settings.qualityProfile || {};
+  const qualityProfile: Partial<QualityProfile> = settings.qualityProfile || {};
   const qualityOrder = Array.isArray(qualityProfile.order)
     ? qualityProfile.order
     : Object.keys(QUALITY_TIER_LABELS);
   const qualityEnabled = new Set(
     Array.isArray(qualityProfile.enabled) ? qualityProfile.enabled : qualityOrder,
   );
-  const clientDefinitions = downloadClientSettings ? Object.values(downloadClientSettings) : [];
+  const clientDefinitions: DownloadClientDefinition[] = downloadClientSettings
+    ? Object.values(downloadClientSettings)
+    : [];
   const enabledClientDefinitions = clientDefinitions.filter((definition) =>
     isClientEnabled(definition, integrations[definition.key] || {}),
   );
   const availableClientDefinitions = clientDefinitions.filter(
     (definition) => !isClientEnabled(definition, integrations[definition.key] || {}),
   );
-  const activeClient = downloadClientSettings?.[activeModal] || null;
+  const activeClient: DownloadClientDefinition | null =
+    downloadClientSettings?.[activeModal] || null;
 
-  const updateIntegration = (key, patch) => {
+  const updateIntegration = (
+    key: DownloadClientDefinition["key"],
+    patch: Record<string, unknown>,
+  ) => {
     setTestStatus(null);
     updateSettings({
       ...settings,
@@ -115,19 +150,19 @@ export function SettingsDownloadClientsSection({
     });
   };
 
-  const addClient = (definition) => {
+  const addClient = (definition: DownloadClientDefinition) => {
     updateIntegration(definition.key, { enabled: true });
     setActiveModal(definition.key);
   };
 
-  const updatePathMappings = (nextMappings) => {
+  const updatePathMappings = (nextMappings: PathMapping[]) => {
     updateSettings({
       ...settings,
       pathMappings: coercePathMappings(nextMappings),
     });
   };
 
-  const updateQualityProfile = (patch) => {
+  const updateQualityProfile = (patch: Partial<QualityProfile>) => {
     updateSettings({
       ...settings,
       qualityProfile: { ...qualityProfile, ...patch },
@@ -138,7 +173,7 @@ export function SettingsDownloadClientsSection({
     setMappingModal({ mode: "add", index: null });
   };
 
-  const openEditMapping = (index) => {
+  const openEditMapping = (index: number) => {
     setMappingModal({ mode: "edit", index });
   };
 
@@ -146,7 +181,7 @@ export function SettingsDownloadClientsSection({
     setMappingModal(null);
   };
 
-  const saveMapping = (mapping) => {
+  const saveMapping = (mapping: PathMapping) => {
     if (mappingModal?.mode === "edit" && mappingModal.index != null) {
       const nextMappings = [...pathMappings];
       nextMappings[mappingModal.index] = mapping;
@@ -157,11 +192,11 @@ export function SettingsDownloadClientsSection({
     closeMappingModal();
   };
 
-  const deleteMapping = (index) => {
+  const deleteMapping = (index: number) => {
     updatePathMappings(pathMappings.filter((_entry, entryIndex) => entryIndex !== index));
   };
 
-  const handleTestClient = async (definition) => {
+  const handleTestClient = async (definition: DownloadClientDefinition) => {
     const config = integrations[definition.key] || {};
     const missing = missingRequiredFields(definition, config);
     if (definition.testRequiresEnabled && !isClientEnabled(definition, config)) {
@@ -270,7 +305,7 @@ export function SettingsDownloadClientsSection({
             id="download-clients-download-folder"
             value={settings.downloadFolderPath || ""}
             autoApplySuggestion={false}
-            onChange={(nextPath) =>
+            onChange={(nextPath: string) =>
               updateSettings({
                 ...settings,
                 downloadFolderPath: nextPath,
@@ -456,7 +491,9 @@ export function SettingsDownloadClientsSection({
             key={activeClient.key}
             definition={activeClient}
             settings={integrations[activeClient.key] || {}}
-            onChange={(patch) => updateIntegration(activeClient.key, patch)}
+            onChange={(patch: Record<string, unknown>) =>
+              updateIntegration(activeClient.key, patch)
+            }
           />
         </SettingsIntegrationModal>
       ) : null}

@@ -7,6 +7,7 @@ import {
 } from "../../../utils/api/endpoints/settings.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
+import type { SettingsState } from "../utils";
 import type { prowlarrClient } from "../../../../../backend/services/prowlarrClient.ts";
 
 import { RefreshCw } from "lucide-react";
@@ -27,12 +28,12 @@ type ProwlarrIndexer = Awaited<ReturnType<typeof prowlarrClient.listUsenetIndexe
 type TestStatus = { tone: "success" | "error"; message: string };
 
 type SettingsIndexersSectionProps = {
-  settings: { integrations?: Partial<AppSettings["integrations"]> };
-  updateSettings: (next: { integrations?: Partial<AppSettings["integrations"]> }) => void;
+  settings: SettingsState;
+  updateSettings: (next: SettingsState) => void;
   health?: { prowlarrConfigured?: boolean } | null;
   handleSaveSettings: (
     event?: FormEvent<HTMLFormElement>,
-    settingsOverride?: { integrations?: Partial<AppSettings["integrations"]> },
+    settingsOverride?: SettingsState,
   ) => unknown;
   showSuccess: (message: string) => void;
   showError: (message: string) => void;
